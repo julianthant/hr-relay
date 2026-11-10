@@ -16,6 +16,7 @@ async function assertStorageNotice(page: import("@playwright/test").Page): Promi
   const notice = page.getByRole("alert").filter({ hasText: "Storage unavailable" });
   await expect(notice).toHaveCount(1);
   await expect(notice).toContainText("Open Settings > Storage.");
+  await notice.locator('[data-slot="toast-close"]').hover();
   await expect(notice.getByRole("button")).toHaveAccessibleName("Dismiss");
 }
 

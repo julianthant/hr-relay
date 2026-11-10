@@ -7,7 +7,7 @@ import { createServer, type ViteDevServer } from 'vite';
 import { captureA11yReference } from './helpers/capture.js';
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from './helpers/fixture-identity.js';
 
-const states = ['library', 'library-registered', 'editor', 'versions', 'type-create', 'type-edit', 'import'] as const;
+const states = ['library', 'editor', 'versions', 'type-create', 'type-edit', 'import'] as const;
 let server: ViteDevServer, baseUrl: string, fixtureRoot: string;
 test.beforeAll(async () => {
   const evidence = resolve('.work/HUB-WIRE-1C'); mkdirSync(evidence, { recursive: true });

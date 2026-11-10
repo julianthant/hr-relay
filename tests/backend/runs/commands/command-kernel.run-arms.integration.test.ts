@@ -160,10 +160,10 @@ describe("run arms", () => {
     const again = harness.kernel.execute(runCommand("bump", runId, version()));
     assert.equal(again.state, "applied");
 
-    const { workerId, workerLifetime } = testAdmittedWorker(harness.database, harness.clock, {
+    const { workerId } = testAdmittedWorker(harness.database, harness.clock, {
       path: join(harness.stateRoot, "state.db"), workflow: rejectActiveDescriptor.id, poolIndex: 1, browserSystems: [],
     });
-    const claimed = harness.database.authority.runs.claimNext({ workflow: rejectActiveDescriptor.id, workerId, workerLifetime, now: NOW });
+    const claimed = harness.database.authority.runs.claimNext({ workflow: rejectActiveDescriptor.id, workerId, now: NOW });
     assert.equal(claimed.state, "claimed");
     const busy = harness.kernel.execute(runCommand("bump", runId, version()));
     assert.equal(busy.state, "rejected");

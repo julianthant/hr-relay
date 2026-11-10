@@ -23,8 +23,7 @@ export function buildOcrReviewSection(deps: RunDetailQueryDeps, requestedRunId: 
     const current = descriptor?.contractFingerprint === run.envelope.contractFingerprint && descriptor.version === run.envelope.descriptorVersion;
     const busy = runClaim(run) !== undefined || run.cancelRequested === true || run.lifecycle.state === "parked-write"
       || run.lifecycle.state === "queued" && run.delegationRefresh !== undefined
-      || run.lifecycle.state === "terminal" && ["cancelled", "discarded", "superseded"].includes(run.lifecycle.outcome)
-      || canonical.database.authority.workerControls.resetForRun(runId) !== undefined;
+      || run.lifecycle.state === "terminal" && ["cancelled", "discarded", "superseded"].includes(run.lifecycle.outcome);
     const editing = !current ? { state: "unavailable" as const, reason: "retained-workflow" as const }
       : snapshots.length > 0 ? { state: "unavailable" as const, reason: "approved" as const }
       : busy ? { state: "unavailable" as const, reason: "run-busy" as const }

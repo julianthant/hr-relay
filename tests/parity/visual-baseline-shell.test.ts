@@ -24,6 +24,7 @@ async function prepare(page: Page, theme: ParityTheme, width: number) {
 async function capture(page: Page, info: TestInfo, theme: ParityTheme, width: number, state: string) {
   await assertThemeApplied(page, theme);
   await page.evaluate(() => document.fonts.ready);
+  await page.clock.runFor(100); // the paused clock holds the two-frame enter transition at opacity 0
   const name = `baseline-shell-${state}-${theme.name}-${String(width)}.a11y.yml`;
   info.annotations.push({ type: "required-a11y-evidence", description: name });
   await attachShellA11y(page, info, name);

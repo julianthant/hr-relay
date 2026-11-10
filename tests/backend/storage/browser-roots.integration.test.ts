@@ -9,11 +9,10 @@ import { join } from "node:path";
 import { it } from "vitest";
 import { testProcessImport } from "../../support/compiled-process.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { createBrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions, BrowserRootUnavailableError, admitCommandBrowser, commandProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
+import { createBrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions, admitCommandBrowser, commandProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
 import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { detachBoundFixtureWorkers, registerBoundFixtureWorker, stopSyntheticDatabaseWorkers } from "../../support/helpers/synthetic-database-admission.js";
 import { boundProfileCredentials, createBoundProfileFixture, withOfflineMaintenance } from "../../support/helpers/admission-fixture.js";
 import { createBrowserSessionFactoryFixtures } from "../../support/helpers/browser/session-factory-fixtures.js";
 import { testAdmittedWorker } from "../../support/fixtures/run-lifecycle-fixtures.js";
@@ -22,10 +21,10 @@ const clock = manualClock(new Date("2026-11-01T12:00:01.000Z"));
 const scheduler = { schedule: () => ({ cancel() {} }) };
 const browser = createBrowserSessionFactoryFixtures(clock, randomUUID(), scheduler);
 
-async function fixture(systems: ("crm" | "ucpath")[] = ["crm"]) {
+async function fixture() {
   const f = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "browser-roots-tests" }, clock, undefined, undefined, undefined, boundProfileCredentials(f.admission));
-  const worker = testAdmittedWorker(database, clock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: systems });
+  const worker = testAdmittedWorker(database, clock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: ["crm"] });
   const profileRoot = join(f.stateRoot, "browsers"), profileDirectory = join(profileRoot, "w1", "crm");
   const input: BrowserRootLaunchInput = { profileId: f.admission.profileBinding.profileId, profileRoot, profileDirectory,
     credentialFingerprint: "a".repeat(64), owner: { kind: "worker", database, workerId: worker.workerId } };
@@ -270,7 +269,7 @@ for (const phase of ["publishing", "abort"] as const)
 
 
 for (const state of ["launching", "open", "closed"] as const)
-  it(`requires the prior ${state} launch to close before a newer real worker lease can probe and take ownership`, async () => {
+  it(`requires the prior ${state} launch to close before a later probe for the same worker can take ownership`, async () => {
     const w = await fixture();
     try {
       const old = w.roots.beginLaunch(w.input);
@@ -280,16 +279,6 @@ for (const state of ["launching", "open", "closed"] as const)
       assert.equal(w.input.owner.kind, "worker");
       if (w.input.owner.kind !== "worker") assert.fail("worker fixture required");
       const workerId = w.input.owner.workerId;
-      const prior = w.database.authority.workerLeases.get(workerId); assert.ok(prior);
-      stopSyntheticDatabaseWorkers({ database: w.database, path: w.f.path });
-      detachBoundFixtureWorkers(w.database);
-      const started = w.database.authority.workerLeases.start({ workerId, workflow: "person-lookup", browserSystems: ["crm"],
-        processId: process.pid, requestedBy: "local-operator", now: clock.now().toISOString() });
-      assert.equal(started.state, "started");
-      const successor = w.database.authority.workerLeases.get(workerId); assert.ok(successor);
-      assert.ok(successor.leaseGeneration > prior.leaseGeneration);
-      registerBoundFixtureWorker({ database: w.database, path: w.f.path, workerId,
-        generation: successor.leaseGeneration, processId: process.pid, clock });
       const native = browser.fakeLauncher(), before = readFileSync(w.path);
       if (state !== "closed") {
         await assert.rejects(w.roots.withUnused(w.input.profileDirectory, w.options(native.launcher), async () => assert.fail("live predecessor cannot be adopted"), w.input));
@@ -299,84 +288,42 @@ for (const state of ["launching", "open", "closed"] as const)
       await w.roots.withUnused(w.input.profileDirectory, w.options(native.launcher), async () => undefined, w.input);
       assert.equal(native.launches().length, 1);
       const row = w.roots.inventory().roots[0]; assert.ok(row && row.owner.kind === "worker");
-      assert.equal(row.owner.leaseGeneration, successor.leaseGeneration);
+      assert.equal(row.owner.workerId, workerId);
       assert.equal(row.launch.state, "closed"); assert.equal(row.native, undefined);
       const settled = readFileSync(w.path); assert.throws(() => old.closed()); assert.deepEqual(readFileSync(w.path), settled);
     } finally { await w.close(); }
   });
-
-it("refuses a retried worker lease's launch on its predecessor's closed roots until the profile probe adopts them", async () => {
-  const w = await fixture(["ucpath", "crm"]);
-  try {
-    if (w.input.owner.kind !== "worker") assert.fail("worker fixture required");
-    const workerId = w.input.owner.workerId;
-    const inputs = (["ucpath", "crm"] as const).map((system, i) => ({ ...w.input, profileDirectory: join(w.input.profileRoot, "w1", system), credentialFingerprint: "ab"[i].repeat(64) }));
-    for (const input of inputs) { const l = w.roots.beginLaunch(input); l.closing(); l.closed(); mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 }); }
-    const prior = w.database.authority.workerLeases.get(workerId); assert.ok(prior);
-    stopSyntheticDatabaseWorkers({ database: w.database, path: w.f.path });
-    detachBoundFixtureWorkers(w.database);
-    const started = w.database.authority.workerLeases.start({ workerId, workflow: "person-lookup", browserSystems: ["ucpath", "crm"],
-      processId: process.pid, requestedBy: "local-operator", now: clock.now().toISOString() });
-    assert.equal(started.state, "started");
-    const successor = w.database.authority.workerLeases.get(workerId); assert.ok(successor);
-    assert.ok(successor.leaseGeneration > prior.leaseGeneration);
-    registerBoundFixtureWorker({ database: w.database, path: w.f.path, workerId, generation: successor.leaseGeneration, processId: process.pid, clock });
-    const native = browser.fakeLauncher(), before = readFileSync(w.path);
-    for (const input of inputs) assert.throws(() => w.roots.beginLaunch(input), BrowserRootUnavailableError);
-    assert.deepEqual(readFileSync(w.path), before);
-    for (const input of inputs) {
-      await w.roots.probe(input, w.options(native.launcher));
-      const row = w.roots.inventory().roots.find((r) => input.profileDirectory.endsWith(`/${r.directory}`));
-      assert.ok(row && row.owner.kind === "worker");
-      assert.equal(row.owner.leaseGeneration, successor.leaseGeneration);
-      assert.equal(row.launch.state, "closed"); assert.equal(row.native, undefined);
-      assert.equal(row.credentialFingerprint, input.credentialFingerprint);
-      const l = w.roots.beginLaunch(input); l.closing(); l.closed();
-    }
-    assert.equal(native.launches().length, 2);
-  } finally { await w.close(); }
-});
 
 async function restoredProfileFixture(row: "closed" | "open" | "native") {
   const w = await fixture();
   const launch = w.roots.beginLaunch(w.input);
   if (row !== "open") { launch.closing(); launch.closed(); }
   mkdirSync(w.input.profileDirectory, { recursive: true, mode: 0o700 });
-  if (w.input.owner.kind !== "worker") assert.fail("worker fixture required");
-  const workerId = w.input.owner.workerId;
-  assert.equal(w.database.authority.workerLeases.get(workerId)?.leaseGeneration, 1);
   const document = BrowserRootsSchema.parse(JSON.parse(readFileSync(w.path, "utf8")));
   const [registered] = document.roots; assert.ok(registered?.owner.kind === "worker");
+  assert.ok(registered.sessionGeneration > 0);
   const native = row !== "native" ? {} : { native: { operationId: randomUUID(), launchId: randomUUID(), generation: document.nextGeneration,
     source: { device: 1, inode: 1 }, priorLaunchDigest: "0".repeat(64), phase: "observed" as const } };
   writeFileSync(w.path, JSON.stringify({ ...document, nextGeneration: document.nextGeneration + 1,
-    roots: [{ ...registered, ...native, owner: { ...registered.owner, leaseGeneration: 3 } }] }), { mode: 0o600 });
-  stopSyntheticDatabaseWorkers({ database: w.database, path: w.f.path });
-  detachBoundFixtureWorkers(w.database);
-  const started = w.database.authority.workerLeases.start({ workerId, workflow: "person-lookup", browserSystems: ["crm"],
-    processId: process.pid, requestedBy: "local-operator", now: clock.now().toISOString() });
-  assert.equal(started.state, "started");
-  const successor = w.database.authority.workerLeases.get(workerId); assert.ok(successor);
-  assert.equal(successor.leaseGeneration, 2);
-  registerBoundFixtureWorker({ database: w.database, path: w.f.path, workerId, generation: successor.leaseGeneration, processId: process.pid, clock });
-  return { ...w, successor };
+    roots: [{ ...registered, ...native, sessionGeneration: registered.sessionGeneration - 1 }] }), { mode: 0o600 });
+  return w;
 }
 
-it("admits a restored profile's worker to its closed browser root registered under a later lease generation", async () => {
+it("admits a restored profile's worker to its closed browser root", async () => {
   const w = await restoredProfileFixture("closed");
   try {
     const native = browser.fakeLauncher();
     await w.roots.probe(w.input, w.options(native.launcher));
     assert.equal(native.launches().length, 1);
     const row = w.roots.inventory().roots[0]; assert.ok(row?.owner.kind === "worker");
-    assert.equal(row.owner.leaseGeneration, w.successor.leaseGeneration);
+    assert.equal(row.owner.workerId, w.input.owner.kind === "worker" ? w.input.owner.workerId : undefined);
     assert.equal(row.launch.state, "closed"); assert.equal(row.native, undefined);
     const launch = w.roots.beginLaunch(w.input); launch.closing(); launch.closed();
   } finally { await w.close(); }
 });
 
 for (const state of ["open", "native"] as const)
-  it(`still refuses a restored profile's worker while its later-generation browser root is ${state}`, async () => {
+  it(`still refuses a restored profile's worker while its browser root is ${state}`, async () => {
     const w = await restoredProfileFixture(state);
     try {
       const native = browser.fakeLauncher(), before = readFileSync(w.path);

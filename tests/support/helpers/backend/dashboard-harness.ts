@@ -3,7 +3,9 @@ import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../../src/models/run/worker-slot.js";
-import type { WorkerControlRecord } from "../../../../src/models/run/worker-control.js";
+import type { WorkerMemberView } from "../../../../src/backend/runtime/workers/worker-pool.js";
+import { WorkerActivitySchema, type WorkerActivity } from "../../../../src/backend/runtime/workers/worker-messages.js";
+import { workerPoolMember } from "../../../../src/models/run/worker-slot.js";
 import { AuthorityDatabase } from "../synthetic-database-admission.js";
 import { DatabaseSync } from "node:sqlite";
 import type { TimelineRepository } from "../../../../src/models/events/timeline.js";
@@ -19,7 +21,6 @@ import { localDatePart, manualClock, type TestClock } from "../../../../src/rule
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { NotificationRecordSchema } from "../../../../src/models/notifications/notifications.js";
 import { RunLifecycleSchema, RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
-import { isLiveWorker, WorkerLeaseRecordSchema, type WorkerLeaseRecord } from "../../../../src/models/run/worker.js";
 import { WorkerPoolRecordSchema, type WorkerPoolRecord } from "../../../../src/models/run/worker-pool.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import {
@@ -114,13 +115,10 @@ export interface AuthorityFake {
   listWorkerSlots(): readonly WorkerSlotRecord[];
   listWorkerRuns(workerId: string): readonly RunRecord[];
   putWorkerSlot(record: unknown): void;
-  readonly workerOwners: Set<string>;
-  workerOwnerAlive(lease: WorkerLeaseRecord): boolean;
-  workerControls(): readonly WorkerControlRecord[];
-  readonly workerLeases: Map<string, WorkerLeaseRecord>;
-  listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
-  getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
-  putWorkerLease(record: unknown): void;
+  /** The pool's in-memory members by worker id. */
+  readonly members: Map<string, WorkerMemberView>;
+  workerMembers(): readonly WorkerMemberView[];
+  putWorkerMember(view: WorkerMemberView): void;
 
   readonly workerPools: Map<string, WorkerPoolRecord>;
   listWorkerPools(): readonly WorkerPoolRecord[];
@@ -138,8 +136,8 @@ export function authorityFake(): AuthorityFake {
   const activityPersonPseudonyms: ActivityPersonPseudonymEvidence[] = [];
   const writeIntents = new Map<string, WriteIntentRecord>();
   const gateResults: GateResultRecord[] = [];
-  const workerSlots = new Map<string, WorkerSlotRecord>(), workerOwners = new Set<string>();
-  const workerLeases = new Map<string, WorkerLeaseRecord>();
+  const workerSlots = new Map<string, WorkerSlotRecord>();
+  const members = new Map<string, WorkerMemberView>();
   const workerPools = new Map<string, WorkerPoolRecord>();
   const notifications: NotificationRecord[] = [];
   const checkpointKey = (workflowId: string, itemId: string, nodeId: string): string =>
@@ -181,19 +179,13 @@ export function authorityFake(): AuthorityFake {
     writeIntents,
     getWriteIntent: (writeIntentId) => writeIntents.get(writeIntentId),
     putWriteIntent: (record) => writeIntents.set(record.writeIntentId, record),
-    workerSlots, workerOwners,
+    workerSlots,
     listWorkerSlots: () => [...workerSlots.values()].sort((a, b) => a.workerId.localeCompare(b.workerId)),
     listWorkerRuns: workerId => [...records.values()].filter(run => "workerId" in run.lifecycle && run.lifecycle.workerId === workerId),
     putWorkerSlot: record => { const member = WorkerSlotRecordSchema.parse(record); workerSlots.set(member.workerId, member); },
-    workerOwnerAlive: lease => workerOwners.has(`${lease.workerId}:${String(lease.leaseGeneration)}:${String(lease.processId)}:${lease.lifecycle.startedAt}`),
-    workerControls: () => [],
-    workerLeases,
-    listLiveWorkerLeases: () => [...workerLeases.values()].filter((lease) => isLiveWorker(lease)),
-    getWorkerLease: (workerId) => workerLeases.get(workerId),
-    putWorkerLease: (record) => {
-      const lease = WorkerLeaseRecordSchema.parse(record);
-      workerLeases.set(lease.workerId, lease);
-    },
+    members,
+    workerMembers: () => [...members.values()],
+    putWorkerMember: view => { members.set(view.member.workerId, view); },
     workerPools,
     batches: new Map<string, RunSessionRecord>(),
     listRunBatches() { return [...this.batches.values()]; },
@@ -398,32 +390,22 @@ export interface SeedRunInput {
 }
 
 
-export function workerLeaseOf(input: Readonly<{
+/** A pool member view for a slot `declareProjectionWorker` declared. */
+export function workerMemberOf(authority: AuthorityFake, input: Readonly<{
   workerId?: string;
-  workflow?: string;
-  browserSystems?: unknown;
-  lifecycle?: unknown;
-  directive?: "run" | "pause" | "stop";
+  state?: WorkerMemberView["state"];
+  activity?: Readonly<{ state: WorkerActivity["state"]; runId?: string }>;
+  directive?: "run" | "pause";
   version?: number;
-}> = {}): WorkerLeaseRecord {
-  const startedAt = instantOffsetOf(0);
-  return WorkerLeaseRecordSchema.parse({
-    workerId: input.workerId ?? "person-lookup-worker-1",
-    workflow: input.workflow ?? "person-lookup",
-    browserSystems: input.browserSystems ?? ["crm", "ucpath"],
-    processId: 4242,
-    leaseGeneration: 1,
-    lifecycle: input.lifecycle ?? { state: "idle", startedAt, heartbeatAt: instantOffsetOf(0, 1_000) },
-    control: {
-      directive: input.directive ?? "run",
-      requestedAt: startedAt,
-      requestedBy: "local-operator",
-    },
-    controlRevision: 1,
-    version: input.version ?? 1,
-    createdAt: startedAt,
-    updatedAt: instantOffsetOf(0, 1_000),
-  });
+  browsers?: WorkerMemberView["browsers"];
+  exit?: WorkerMemberView["exit"];
+}> = {}): WorkerMemberView {
+  const workerId = input.workerId ?? "person-lookup-worker-1";
+  const slot = authority.workerSlots.get(workerId);
+  if (slot === undefined) throw new Error(`declare ${workerId} before its member`);
+  return { member: workerPoolMember(slot), lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000", version: input.version ?? 0,
+    state: input.state ?? "running", directive: input.directive ?? "run", pid: 4242, startedAt: instantOffsetOf(0),
+    activity: WorkerActivitySchema.parse(input.activity ?? { state: "idle" }), browsers: input.browsers ?? [], exit: input.exit, held: undefined };
 }
 
 export function runRecordOf(input: SeedRunInput): RunRecord {
@@ -692,8 +674,6 @@ export function claimEventOf(world: DashboardWorld, seed: number, workerId = "pe
 
 
 export function declareProjectionWorker(authority: AuthorityFake, workerId: string, ordinal: number): void {
-  authority.putWorkerSlot({ workerId, workflow: "person-lookup", ordinal, poolIndex: ordinal, membershipRevision: 1,
-    phase: "idle", retiredAt: null, retirementCommandId: null, reservationCommandId: null,
-    createdAt: instantOffsetOf(0), updatedAt: instantOffsetOf(0) });
-  authority.workerOwners.add(`${workerId}:1:4242:${instantOffsetOf(0)}`);
+  authority.putWorkerSlot({ workerId, workflow: "person-lookup", ordinal, poolIndex: ordinal, paused: false,
+    retiredAt: null, createdAt: instantOffsetOf(0), updatedAt: instantOffsetOf(0) });
 }

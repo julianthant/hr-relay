@@ -300,7 +300,8 @@ afterEach(_afterEachFixture0);
           workerId: 'child-worker', spanPath: 'worker/child-worker', name: 'Child worker' });
         writer.emit({ t: 'span.ended', kind: 'worker', workflow: 'person-lookup', ts: process.argv[3],
           workerId: 'child-worker', spanPath: 'worker/child-worker', outcome: 'done' });
-      } finally { db.close(); admission.release(); machine.release(); await lifetime.close(); process.disconnect(); }
+      } finally { db.close(); admission.release(); machine.release(); }
+      process.exit(0);
     `;
     try {
       const child = await runInheritedRuntimeChild(profile.lifetime, script, [path, "2026-09-08T00:30:00.000Z"],

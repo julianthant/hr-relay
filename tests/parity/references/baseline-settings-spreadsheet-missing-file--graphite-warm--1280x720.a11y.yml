@@ -42,6 +42,80 @@
         - /url: "?settings=keyboard"
     - region "Spreadsheets":
       - button "Open XLSX or CSV"
+      - heading "Spreadsheets" [level=1]
+      - paragraph: Reference data and workbooks made by your workflows.
+      - heading "Your spreadsheets" [level=2]
+      - group:
+        - searchbox "Search spreadsheets"
+      - combobox "Spreadsheet type": All types
+      - button "Create type"
+      - button "Import spreadsheet"
+      - table "Your spreadsheets":
+        - rowgroup:
+          - row "Select all visible spreadsheets Spreadsheet Type Source Rows Actions":
+            - columnheader "Select all visible spreadsheets":
+              - checkbox "Select all visible spreadsheets"
+              - text: Select all visible spreadsheets
+            - columnheader "Spreadsheet"
+            - columnheader "Type"
+            - columnheader "Source"
+            - columnheader "Rows"
+            - columnheader "Actions"
+        - rowgroup:
+          - row "Select 26–27 Student applicants.xlsx Open 26–27 Student applicants.xlsx July 6, August 2, Sept 11, Sept 28, Oct 5, Oct. 12, Oct. 19 · Original Roster This Mac 21 Versions of 26–27 Student applicants.xlsx Actions for 26–27 Student applicants.xlsx":
+            - cell "Select 26–27 Student applicants.xlsx":
+              - checkbox "Select 26–27 Student applicants.xlsx"
+              - text: Select 26–27 Student applicants.xlsx
+            - cell "Open 26–27 Student applicants.xlsx July 6, August 2, Sept 11, Sept 28, Oct 5, Oct. 12, Oct. 19 · Original":
+              - button "Open 26–27 Student applicants.xlsx": 26–27 Student applicants.xlsx
+              - text: July 6, August 2, Sept 11, Sept 28, Oct 5, Oct. 12, Oct. 19 · Original
+            - cell "Roster"
+            - cell "This Mac"
+            - cell "21"
+            - cell "Versions of 26–27 Student applicants.xlsx Actions for 26–27 Student applicants.xlsx":
+              - button "Versions of 26–27 Student applicants.xlsx"
+              - button "Actions for 26–27 Student applicants.xlsx"
+          - row "Select 25–26 Student applicants.xlsx Open 25–26 Student applicants.xlsx July 6, August 2, Sept 11, Sept 28, Oct 5, Oct. 12, Oct. 19 · Original Roster This Mac 21 Versions of 25–26 Student applicants.xlsx Actions for 25–26 Student applicants.xlsx":
+            - cell "Select 25–26 Student applicants.xlsx":
+              - checkbox "Select 25–26 Student applicants.xlsx"
+              - text: Select 25–26 Student applicants.xlsx
+            - cell "Open 25–26 Student applicants.xlsx July 6, August 2, Sept 11, Sept 28, Oct 5, Oct. 12, Oct. 19 · Original":
+              - button "Open 25–26 Student applicants.xlsx": 25–26 Student applicants.xlsx
+              - text: July 6, August 2, Sept 11, Sept 28, Oct 5, Oct. 12, Oct. 19 · Original
+            - cell "Roster"
+            - cell "This Mac"
+            - cell "21"
+            - cell "Versions of 25–26 Student applicants.xlsx Actions for 25–26 Student applicants.xlsx":
+              - button "Versions of 25–26 Student applicants.xlsx"
+              - button "Actions for 25–26 Student applicants.xlsx"
+          - row "Select Summer student roster.xlsx Open Summer student roster.xlsx July 6, August 2, Sept 11 · Original Roster This Mac 9 Versions of Summer student roster.xlsx Actions for Summer student roster.xlsx":
+            - cell "Select Summer student roster.xlsx":
+              - checkbox "Select Summer student roster.xlsx"
+              - text: Select Summer student roster.xlsx
+            - cell "Open Summer student roster.xlsx July 6, August 2, Sept 11 · Original":
+              - button "Open Summer student roster.xlsx": Summer student roster.xlsx
+              - text: July 6, August 2, Sept 11 · Original
+            - cell "Roster"
+            - cell "This Mac"
+            - cell "9"
+            - cell "Versions of Summer student roster.xlsx Actions for Summer student roster.xlsx":
+              - button "Versions of Summer student roster.xlsx"
+              - button "Actions for Summer student roster.xlsx"
+      - heading "Workflow outputs" [level=2]
+      - table "Workflow outputs":
+        - rowgroup:
+          - row "Workbook Run Created Actions":
+            - columnheader "Workbook"
+            - columnheader "Run"
+            - columnheader "Created"
+            - columnheader "Actions"
+        - rowgroup
+      - paragraph: Workbooks made by workflows will appear here.
+      - heading "Spreadsheet types" [level=2]
+      - text: Roster Define which columns belong to this type.
+      - button "Edit Roster": Edit
+      - text: Local spreadsheet Define which columns belong to this type.
+      - button "Edit Local spreadsheet": Edit
 - status
 - region "Session Panel":
   - group "Session actions":
@@ -52,5 +126,4 @@
 - region "Notifications":
   - alert "Spreadsheet unavailable":
     - heading "Spreadsheet unavailable" [level=2]
-    - paragraph: No longer registered.
-    - button "Open library"
+    - paragraph: No longer registered. Pick another from the library.

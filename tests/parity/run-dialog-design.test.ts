@@ -44,7 +44,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       await dialog.getByRole("button", { name: "Continue", exact: true }).click();
       await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
-      expect((await dialog.getByRole("button", { name: "None Workbook · Optional", exact: true }).boundingBox())!.height).toBe(36);
+      await expect(dialog.getByRole("button", { name: "None Workbook · Optional", exact: true })).toHaveCount(0);
       await expect(dialog.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
       await setSwitchChecked(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true }), true);
 

@@ -1,4 +1,3 @@
-import { isLiveWorker } from "../../../../src/models/run/worker.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 import assert from "node:assert/strict";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
@@ -6,7 +5,7 @@ import { foundationFixture } from "../database-foundation/fixtures.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { testRunService, testWorkerLifetime, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testRunService, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { separationsDescriptor } from "../registered-workflows.js";
 import { HASH_A } from "../../fixtures/phase1c-contract-fixtures.js";
 import { atomicWriteCheckpoint, releaseSeededWriteOwners } from "../timeline-write-fixture.js";
@@ -31,9 +30,7 @@ export async function historyWorld(options: Readonly<{ terminalize?: boolean }> 
         lifecycle:{state:"queued"},claimGeneration:0,version:1,createdAt:ledger.fencedAt,updatedAt:ledger.fencedAt }));
       const slots = database.authority.workerSlots.list(separationsDescriptor.id).filter(entry => entry.retiredAt === null);
       const free = slots.find(slot => {
-        const lease = database.authority.workerLeases.get(slot.workerId);
-        assert.ok(lease, "history fixture member has no retained worker lifetime");
-        return isLiveWorker(lease) && !database.authority.runs.listByWorker(slot.workerId).some(run =>
+        return !database.authority.runs.listByWorker(slot.workerId).some(run =>
           ["claimed", "validating", "running"].includes(run.lifecycle.state));
       });
       const poolIndex = free?.poolIndex ?? [1, 2, 3].find(index => !slots.some(slot => slot.poolIndex === index));
@@ -41,7 +38,7 @@ export async function historyWorld(options: Readonly<{ terminalize?: boolean }> 
       if (free === undefined) testWorkerPorts(database, historyClock, { path, descriptor: separationsDescriptor, poolIndex });
       const slot = database.authority.workerSlots.list(separationsDescriptor.id).find(entry => entry.poolIndex === poolIndex && entry.retiredAt === null);
       assert.ok(slot);
-      assert.equal(database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, separationsDescriptor.id, poolIndex).workerLifetime, workflow: separationsDescriptor.id, workerId: slot.workerId, now: ledger.fencedAt }).state,"claimed");
+      assert.equal(database.authority.runs.claimNext({ workflow: separationsDescriptor.id, workerId: slot.workerId, now: ledger.fencedAt }).state,"claimed");
       assert.equal(fenceWriteFixture(database, { intent: fixture.intent, attempt: fixture.attempt }).state, "fenced");
       database.commitWriteAttempt(fixture.commit, { ...atomicWriteCheckpoint(fixture.commit), descriptorVersion:separationsDescriptor.version,contractFingerprint:separationsDescriptor.contractFingerprint });
       if (options.terminalize !== true) return fixture;

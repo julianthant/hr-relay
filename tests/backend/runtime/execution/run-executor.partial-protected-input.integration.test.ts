@@ -1,5 +1,4 @@
 import { retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
-import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { requireLifecycleApplied,workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -52,7 +51,7 @@ it("refuses partial signer metadata from a genuinely admitted private producer b
     const slot = h.database.authority.workerSlots.list(separationsDescriptor.id)[0];
     assert.ok(slot);
     const claimed = requireLifecycleApplied(h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: separationsDescriptor.id,
-      workerId: slot.workerId, workerLifetime: testWorkerLifetime(h.database, separationsDescriptor.id, slot.poolIndex).workerLifetime, runtimeConfig: { generation: snapshot.generation, settingsRevision: snapshot.settingsRevision,
+      workerId: slot.workerId, runtimeConfig: { generation: snapshot.generation, settingsRevision: snapshot.settingsRevision,
         settingsFingerprint: snapshot.settingsFingerprint, configFingerprint: snapshot.configFingerprint } }));
     const partial = { ...claimed, input: { ...claimed.input, parsed: { ...claimed.input.parsed, protectedBindings: [documentBinding] } } };
     assert.throws(() => RunInputStorageSchema.parse(partial.input), /timekeeperName binding is absent/u);

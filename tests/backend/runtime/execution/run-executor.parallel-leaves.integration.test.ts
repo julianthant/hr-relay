@@ -74,7 +74,7 @@ describe("parallel leaves retry independently", () => {
     const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
-    const { workerId, workerLifetime } = testAdmittedWorker(database, clock, {
+    const { workerId } = testAdmittedWorker(database, clock, {
       path: authority.path, workflow: descriptor.id, poolIndex: 1, browserSystems: ["ucpath", "crm"],
     });
 
@@ -98,7 +98,7 @@ describe("parallel leaves retry independently", () => {
     });
     database.authority.runs.enqueue(queuedRun());
     const claimed = database.authority.runs.claimNext({
-      workerLifetime, workflow: descriptor.id,
+      workflow: descriptor.id,
       workerId: workerId,
       now: clock.now().toISOString(),
     });
@@ -124,7 +124,7 @@ describe("parallel leaves retry independently", () => {
     retryEnvelope.retryOf = RUN_ID;
     database.authority.runs.enqueue(retry);
     const reclaimed = database.authority.runs.claimNext({
-      workerLifetime, workflow: descriptor.id,
+      workflow: descriptor.id,
       workerId: workerId,
       now: clock.now().toISOString(),
     });

@@ -39,7 +39,7 @@ it("admits only a complete value-free authority tuple with no default or unknown
 });
 
 it("preserves numeric logout journals and exact decimal identities while refusing rounded witnesses", () => {
-  const operation = { schemaVersion: 2, kind: "logout", operationId: "11111111-1111-4111-8111-111111111111",
+  const operation = { schemaVersion: 3, kind: "logout", operationId: "11111111-1111-4111-8111-111111111111",
     profileId: "22222222-2222-4222-8222-222222222222", sessionGeneration: 1, at: "2026-11-04T12:00:00.000Z", phase: "admitted" };
   for (const inode of [17, "21110623253370482"]) {
     const journal = { ...operation, source: { database: { device: 4, inode } } };

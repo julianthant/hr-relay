@@ -715,7 +715,10 @@
               - text: While trying to
               - strong: fill timekeeper comments
             - paragraph: Last completed · UCPath termination verified
-            - button "Retry Kuali step"
+            - text: Next step
+            - button "Mark as failed Next step": Mark as failed
+            - paragraph: Ends this person's run as failed; files nothing.
+            - button "Confirm"
             - button "Cancel run"
     - group:
       - searchbox "Search logs"

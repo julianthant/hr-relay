@@ -29,7 +29,6 @@ export function createSettingsStorageDoctorFixtures() {
       values: {
         pendingCommands: 0,
         unresolvedWriteIntents: 0,
-        leases: 0,
         providerReservations: 0,
         artifactOutbox: 0,
       },

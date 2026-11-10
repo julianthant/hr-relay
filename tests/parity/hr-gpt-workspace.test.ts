@@ -8,6 +8,9 @@ import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 import { FIXTURE_DAY } from './helpers/fixture-identity.js';
 import { chooseSelect } from './helpers/select-choice.js';
+import { fixtureSettingsDocument } from './helpers/fixture-settings.js';
+import { mergeSettingsPatch } from '../../src/models/config/settings.js';
+import { CommandResultSchema, SettingsCommandRequestSchema } from '../../src/rules/commands/commands.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`Relay settings, shortcuts, Activity and workbook editor @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
@@ -17,6 +20,24 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     page.on('request', request => { if (request.method() !== 'GET') writes.push(new URL(request.url()).pathname); });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
+      await page.addInitScript(() => Reflect.set(window, 'relayParityPersonPreferences', true));
+      let saved: Parameters<typeof mergeSettingsPatch>[0] = { preferences: { theme: theme.attribute } };
+      let revision = 2;
+      await page.route('**/api/v1/profile/state', route => route.fulfill({ json: {
+        state: 'active', profileId: '00000000-0000-4000-8000-000000000001', epoch: 1, duoState: 'ready',
+      } }));
+      await page.route('**/api/v1/settings/editable', route => route.fulfill({ json: fixtureSettingsDocument(saved, revision) }));
+      await page.route('**/api/v1/commands', route => {
+        const command = SettingsCommandRequestSchema.parse(route.request().postDataJSON());
+        expect(command.source).toBe('person-preferences');
+        expect(command.target.expectedRevision).toBe(revision);
+        expect(Object.keys(command.payload.patch).every(path => path.startsWith('preferences.shortcuts.'))).toBe(true);
+        saved = mergeSettingsPatch(saved, command.payload.patch); revision++;
+        const document = fixtureSettingsDocument(saved, revision);
+        return route.fulfill({ json: CommandResultSchema.parse({ state: 'applied', commandId: command.commandId,
+          affectedTargets: [{ family: 'settings', revision }], settingsRevision: revision,
+          settingsFingerprint: document.settingsFingerprint, restartRequired: false }) });
+      });
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const skip = page.getByRole('link', { name: 'Skip to content', exact: true });
       await skip.focus(); await skip.press('Enter');
@@ -138,6 +159,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.reload(); await page.getByRole('button', { name: 'Settings', exact: true }).click(); await choosePage('Keyboard');
       await expect(settings.locator('.shortcut-reference-row').filter({ hasText: 'Start a run' }).locator('kbd')).toHaveText('q');
       await settings.getByRole('button', { name: 'Reset defaults', exact: true }).click();
+      await expect(settings.locator('.shortcut-reference-row').filter({ hasText: 'Start a run' }).locator('kbd')).toHaveText('r');
+      await page.reload();
+      await expect(settings.locator('.shortcut-reference-row').filter({ hasText: 'Start a run' }).locator('kbd')).toHaveText('r');
       await choosePage('General');
       const date = settings.locator('[data-settings-path$=".jobEndDate"] .ds-date-picker');
       await expect(date.locator('.ds-date-text-input')).toHaveCount(0); await expect(date.getByRole('spinbutton')).toHaveCount(3);
@@ -206,18 +230,18 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(durations.locator('.activity-duration-copy > span').first()).toHaveCSS('font-size', await outcomes.locator('tbody th').first().evaluate(node => getComputedStyle(node).fontSize));
 
       await choosePage('Spreadsheets');
-      const library = settings.getByRole('table', { name: 'Registered spreadsheets', exact: true });
-      await expect(library.getByRole('columnheader')).toHaveText(['Spreadsheet', 'Type', 'Rows', 'Actions']);
+      const library = settings.getByRole('table', { name: 'Your spreadsheets', exact: true });
+      await expect(library.getByRole('columnheader')).toHaveText(['Select all visible spreadsheets', 'Spreadsheet', 'Type', 'Source', 'Rows', 'Actions']);
       await expect(library.getByRole('columnheader', { name: 'Date added', exact: true })).toHaveCount(0);
-      await expect(library.getByRole('button', { name: /^Open / })).toHaveCount(0);
+      await expect(library.getByRole('button', { name: /^Open / })).toHaveCount(3);
       await expect(settings.getByText('Drop an XLSX or CSV file here', { exact: true })).toHaveCount(0);
-      await library.getByRole('button', { name: '26–27 Student applicants.xlsx', exact: true }).click();
+      await library.getByRole('button', { name: 'Open 26–27 Student applicants.xlsx', exact: true }).click();
       await expect(settings.getByRole('textbox', { name: 'A2', exact: true })).toBeVisible();
       await expect(settings.getByRole('navigation', { name: 'Breadcrumb', exact: true })).toContainText('26–27 Student applicants.xlsx');
       await settings.getByRole('navigation', { name: 'Breadcrumb', exact: true }).getByRole('button', { name: 'Spreadsheets', exact: true }).click();
       await expect(library).toBeVisible();
       const original = new Workbook(), sheet = original.addWorksheet('People'); sheet.addRows([['Name', 'ID', 'Department'], ['Zoe', '10000002', 'Services'], ['Alex', '10000001', 'Payroll']]);
-      sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB7D7F0' } }; sheet.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE699' } }; sheet.getCell('A3').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6E0B4' } };
+      sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB7D7F0' }, bgColor: { indexed: 64 } }; sheet.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE699' }, bgColor: { indexed: 64 } }; sheet.getCell('A3').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6E0B4' }, bgColor: { indexed: 64 } };
       const source = Buffer.from(writeXlsx(original));
       await settings.locator('input[type=file]').setInputFiles({ name: 'People.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: source });
       const importColumns = page.getByRole('dialog', { name: 'Choose spreadsheet columns', exact: true });
@@ -246,14 +270,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await settings.getByRole('button', { name: 'Columns', exact: true }).click(); await page.getByRole('menuitemcheckbox', { name: 'C · Department', exact: true }).click(); await page.keyboard.press('Escape');
       await settings.getByRole('button', { name: 'Export copy', exact: true }).click(); const fullDownload = page.waitForEvent('download'); await page.getByRole('menuitem', { name: 'Excel workbook (.xlsx)', exact: true }).click(); await fullDownload;
       await settings.getByRole('navigation', { name: 'Breadcrumb', exact: true }).getByRole('button', { name: 'Spreadsheets', exact: true }).click();
-      await expect(library).toBeVisible(); await expect(library.getByRole('button', { name: 'People.xlsx', exact: true })).toBeFocused(); await library.getByRole('button', { name: 'People.xlsx', exact: true }).click();
+      await expect(library).toBeVisible(); await expect(library.getByRole('button', { name: 'Open People.xlsx', exact: true })).toBeFocused(); await library.getByRole('button', { name: 'Open People.xlsx', exact: true }).click();
       await expect(settings.getByRole('textbox', { name: 'A2', exact: true })).toHaveValue('Alex edited');
       await settings.getByRole('textbox', { name: 'A2', exact: true }).fill('Still editing');
       await settings.getByRole('navigation', { name: 'Breadcrumb', exact: true }).getByRole('button', { name: 'Spreadsheets', exact: true }).click();
       await expect(page.getByRole('dialog', { name: 'Close edited spreadsheet?', exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
       await settings.getByRole('button', { name: 'Back to dashboard', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Discard unsaved settings?', exact: true })).toBeVisible(); await page.getByRole('button', { name: 'Keep editing', exact: true }).click(); await expect(settings.getByRole('textbox', { name: 'A2', exact: true })).toHaveValue('Still editing');
-      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width); expect(errors).toEqual([]); expect(writes).toEqual(['/api/v1/preflight/rerun']);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width); expect(errors).toEqual([]);
+      expect(writes).toEqual(['/api/v1/commands', '/api/v1/commands', '/api/v1/commands', '/api/v1/commands', '/api/v1/preflight/rerun']);
     } finally { await server.close(); }
   });
 }

@@ -1,9 +1,9 @@
 import { createRunWorkbookService } from "../../../src/backend/runs/workbooks.js";
 import { sourceBoundHarness } from "../../support/fixtures/integration/source-bound-fixtures.js";
 import { failedSourceReadDescriptor, sourceBoundReadStores } from "../../support/fixtures/source-bound-read-fixtures.js";
-import { randomUUID } from "node:crypto";
 import { RunRecordService, lifecycleCommandId } from "../../../src/backend/runs/lifecycle/run-record-service.js";
-import { admitDirectWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
+import { admitFixtureSlot } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { unusedWorkerPool } from "../../support/helpers/backend/unused-worker-pool.js";
 import { seedSyntheticRuntimeConfig,singleAppliedRunId } from "../../support/fixtures/operator-command-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -26,6 +26,8 @@ import { QUEUED_RUN,sequentialIdFactory } from "../../support/fixtures/phase1f-r
 import { boundProfileCredentials,createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { REPO_ROOT,walkFiles } from "../support/helpers/guard-files.js";
 
+/** Read-only command receipt queries: each may reach exactly one commandAudits.findByCommand(id) inside an authority read snapshot. */
+const RECEIPT_QUERIES: readonly string[] = ["src/backend/runs/queries/intake-command-result.ts", "src/backend/runs/queries/worker-command-result.ts"];
 function withoutIntakeCommandReceiptRead(content: string): string {
   const source = ts.createSourceFile("candidate.ts", content, ts.ScriptTarget.Latest, true);
   const auditUses: ts.PropertyAccessExpression[] = [];
@@ -102,89 +104,6 @@ function withoutAssistantReconciliationAuditRead(content: string): string {
   if (auditUses.length !== 1 || admitted !== auditUses[0]) return content;
   const start = admitted.name.getStart(source);
   return content.slice(0, start) + "receiptReads" + content.slice(admitted.name.end);
-}
-
-function withoutWorkerControlAdmissions(content: string, kernelContent: string): string {
-  const workerPath = join(REPO_ROOT, "src/backend/storage/sqlite/worker-control.ts");
-  const kernelPath = join(REPO_ROOT, "src/backend/runs/commands/command-kernel.ts");
-  const options = { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext };
-  const host = ts.createCompilerHost(options);
-  const original = host.getSourceFile.bind(host);
-  host.getSourceFile = (file, version, onError, fresh) => file === workerPath || file === kernelPath
-    ? ts.createSourceFile(file, file === workerPath ? content : kernelContent, version, true) : original(file, version, onError, fresh);
-  const program = ts.createProgram([workerPath, kernelPath], options, host), checker = program.getTypeChecker();
-  const worker = program.getSourceFile(workerPath)!, kernel = program.getSourceFile(kernelPath)!;
-  const compact = (node: ts.Node): string => node.getText().replace(/\s+/gu, "");
-  const canonical = (node: ts.Node, name: string, owner: string): boolean => {
-    let symbol = checker.getSymbolAtLocation(node);
-    if (symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-    return symbol?.name === name && symbol.declarations?.some(declaration => declaration.getSourceFile().fileName.replaceAll("\\", "/").endsWith(owner)) === true;
-  };
-  const specs = [
-    { name: "admitWorkerReset", schema: "LiveWorkerResetRequestSchema", binding: "WorkerResetBindingSchema", args: "repositories,request,dependencies.ids.uuid(),now,descriptor" },
-    { name: "admitWorkerLifecycle", schema: "WorkerBrowserCommandRequestSchema", binding: "WorkerLifecycleBindingSchema", args: 'repositories,request,dependencies.ids.uuid(),now,{descriptor,mode:"initialize"}' },
-  ];
-  const admitted: ts.CallExpression[] = [];
-  for (const spec of specs) {
-    const functions = worker.statements.filter(ts.isFunctionDeclaration).filter(fn => fn.name?.text === spec.name);
-    if (functions.length !== 1) return content;
-    const fn = functions[0], repo = fn.parameters[0];
-    if (repo.name.getText() !== "repositories" || repo.type === undefined || !ts.isTypeReferenceNode(repo.type)
-      || !canonical(repo.type.typeName, "AuthorityRepositories", "/src/backend/storage/sqlite/authority-database.ts") || fn.body === undefined) return content;
-    const first = fn.body.statements[0];
-    if (!ts.isVariableStatement(first) || first.declarationList.declarations.length !== 1) return content;
-    const request = first.declarationList.declarations[0], parse = request.initializer;
-    if (request.name.getText() !== "request" || parse === undefined || !ts.isCallExpression(parse) || !ts.isPropertyAccessExpression(parse.expression)
-      || parse.expression.name.text !== "parse" || !canonical(parse.expression.expression, spec.schema, "/src/rules/commands/commands.ts")
-      || compact(parse) !== `${spec.schema}.parse(input)`) return content;
-    const tail = fn.body.statements.slice(-3);
-    if (tail.length !== 3 || !ts.isExpressionStatement(tail[0]) || !ts.isCallExpression(tail[0].expression)
-      || compact(tail[0]) !== "repositories.commands.insert(request);"
-      || !compact(tail[1]).startsWith("repositories.workerLeases.reserveControl(") || !ts.isReturnStatement(tail[2])
-      || tail[2].expression === undefined || !compact(tail[2].expression).startsWith("repositories.workerControls.admit(")) return content;
-    let identity = false, binding = false;
-    function validate(node: ts.Node): void {
-      if (ts.isExpressionStatement(node) && node.parent === fn.body && compact(node) === "repositories.commands.assertIdentity(request);") identity = true;
-      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "parse"
-        && canonical(node.expression.expression, spec.binding, "/src/models/run/worker-control.ts")) binding = true;
-      ts.forEachChild(node, validate);
-    }
-    validate(fn);
-    if (!identity || !binding) return content;
-    let localInvocation = false;
-    function rejectLocalCall(node: ts.Node): void {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && canonical(node.expression, spec.name, "/src/backend/storage/sqlite/worker-control.ts")) localInvocation = true;
-      ts.forEachChild(node, rejectLocalCall);
-    }
-    rejectLocalCall(worker);
-    if (localInvocation) return content;
-    const calls: ts.CallExpression[] = [];
-    function find(node: ts.Node): void {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === spec.name) calls.push(node);
-      ts.forEachChild(node, find);
-    }
-    find(kernel);
-    if (calls.length !== 1) return content;
-    const call = calls[0];
-    if (!canonical(call.expression, spec.name, "/src/backend/storage/sqlite/worker-control.ts")
-      || call.arguments.map(compact).join(",") !== spec.args) return content;
-    let parent: ts.Node | undefined = call.parent;
-    while (parent !== undefined && !ts.isArrowFunction(parent)) parent = parent.parent;
-    if (parent === undefined || !ts.isArrowFunction(parent) || parent.parameters.length !== 1 || parent.parameters[0].name.getText() !== "repositories"
-      || !ts.isCallExpression(parent.parent) || compact(parent.parent.expression) !== "dependencies.authority.withAuthorityTransaction"
-      || parent.parent.arguments.length !== 1 || parent.parent.arguments[0] !== parent
-      || !ts.isPropertyAccessExpression(parent.parent.expression) || !canonical(parent.parent.expression.name, "withAuthorityTransaction", "/src/backend/runs/commands/command-kernel.ts")) return content;
-    const transaction = checker.getSymbolAtLocation(parent.parent.expression.name);
-    if (!transaction?.declarations?.some(declaration => ts.isMethodSignature(declaration)
-      && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "CommandAuthority")) return content;
-    const repoSymbol = checker.getSymbolAtLocation(repo.name);
-    const receiver = tail[0].expression.expression;
-    if (!ts.isPropertyAccessExpression(receiver) || !ts.isPropertyAccessExpression(receiver.expression)
-      || checker.getSymbolAtLocation(receiver.expression.expression) !== repoSymbol) return content;
-    admitted.push(tail[0].expression);
-  }
-  for (const call of admitted.sort((a, b) => b.pos - a.pos)) content = content.slice(0, call.getStart(worker)) + content.slice(call.end);
-  return content;
 }
 
 type DelegationAuditRead = Readonly<{ owner: string; id: string; guards: readonly string[]; calls?: readonly string[]; bindings?: Readonly<Record<string, string>> }>;
@@ -345,48 +264,49 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
   ],
 };
 
-const STOP_HELD_CANCEL_SCOPE = "repositories,cancel,()=>executeCancel(dependencies,repositories,cancel,now)";
-const STOP_HELD_CANCEL_STATEMENTS = [
-  'constcancel=CommandRequestSchema.parse({commandId:lifecycleCommandId("worker-stop-held-cancel",{commandId:request.commandId,runId:run.envelope.runId}),family:"run",type:"cancel",source:request.source,requestedBy:request.requestedBy,requestedAt:request.requestedAt,target:{runId:run.envelope.runId,expectedVersion:run.version}});',
-  'if(cancel.family!=="run"||cancel.type!=="cancel")thrownewError("worker-reset-held-run-cancel-shape");',
-  "repositories.commands.insert(cancel);",
-  `constapplication=withCanonicalRunCommandScope(${STOP_HELD_CANCEL_SCOPE});`,
-  "repositories.commandAudits.insert({auditId:dependencies.ids.uuid(),request:cancel,result:application.result,completedAt:now,versionChanges:application.versionChanges,affectedDependencyIds:application.affectedDependencyIds});",
-];
+const STOP_CANCELS = 'constcancels=[...(run===undefined?[]:[journaledResetCancel(repositories,run,false)]),...workerPauseHeldRuns(repositories,member.workerId,"paused").map(held=>journaledResetCancel(repositories,held,true))];';
 
-/** Stop's operator Cancel of its paused held run: journaled, scoped and audited inside the stop-worker admission transaction, before reset admission. */
-function stopHeldCancelLoop(kernel: ts.SourceFile): ts.ForOfStatement | undefined {
-  const loops: ts.ForOfStatement[] = [];
+/** Stop ends the current run (fenced write finish) and every paused-held run (no finish) through journaledResetCancel, inside the stop-worker admission transaction. */
+function stopCancelsDeclaration(kernel: ts.SourceFile): ts.VariableStatement | undefined {
+  const found: ts.VariableStatement[] = [];
   function find(node: ts.Node): void {
-    if (ts.isForOfStatement(node) && node.expression.getText(kernel).replace(/\s+/gu, "") === 'workerPauseHeldRuns(repositories,live.target.workerId,"paused")') loops.push(node);
+    if (ts.isCaseClause(node) && node.expression.getText(kernel) === '"stop-worker"') {
+      function inCase(inner: ts.Node): void {
+        if (ts.isVariableStatement(inner) && inner.declarationList.declarations.some(declaration => declaration.name.getText(kernel) === "cancels")) found.push(inner);
+        ts.forEachChild(inner, inCase);
+      }
+      inCase(node);
+    }
     ts.forEachChild(node, find);
   }
   find(kernel);
-  return loops.length === 1 ? loops[0] : undefined;
+  return found.length === 1 ? found[0] : undefined;
 }
 
-function isStopHeldCancelAdmission(kernel: ts.SourceFile, call: ts.CallExpression): boolean {
+function isStopHeldCancelAdmission(kernel: ts.SourceFile): boolean {
   const compact = (node: ts.Node): string => node.getText(kernel).replace(/\s+/gu, "");
-  const loop = stopHeldCancelLoop(kernel);
-  if (loop === undefined || compact(loop.initializer) !== "construn" || !ts.isBlock(loop.statement)
-    || loop.statement.statements.length !== STOP_HELD_CANCEL_STATEMENTS.length
-    || loop.statement.statements.some((statement, index) => compact(statement) !== STOP_HELD_CANCEL_STATEMENTS[index])) return false;
-  let inside: ts.Node | undefined = call.parent;
-  while (inside !== undefined && inside !== loop) inside = inside.parent;
-  if (inside !== loop || !ts.isBlock(loop.parent)) return false;
-  const siblings = loop.parent.statements, next = siblings[siblings.indexOf(loop) + 1];
-  if (next === undefined || compact(next) !== "constrecord=admitWorkerReset(repositories,request,dependencies.ids.uuid(),now,descriptor);") return false;
-  let callback: ts.Node | undefined = loop.parent;
+  const declaration = stopCancelsDeclaration(kernel);
+  if (declaration === undefined || compact(declaration) !== STOP_CANCELS) return false;
+  let callback: ts.Node | undefined = declaration.parent;
   while (callback !== undefined && !ts.isArrowFunction(callback)) callback = callback.parent;
-  if (callback === undefined || !ts.isArrowFunction(callback) || !ts.isBlock(callback.body) || !ts.isCallExpression(callback.parent)
-    || compact(callback.parent.expression) !== "dependencies.authority.withAuthorityTransaction"
-    || compact(callback.body.statements[0] ?? callback) !== "repositories.commands.assertIdentity(request);") return false;
-  let arm: ts.Node = callback, branch: ts.Node | undefined = callback.parent;
-  while (branch !== undefined && !(ts.isIfStatement(branch) && compact(branch.expression) === 'request.type==="stop-worker"')) { arm = branch; branch = branch.parent; }
-  if (branch === undefined || !ts.isIfStatement(branch) || branch.thenStatement !== arm) return false;
-  let owner: ts.Node | undefined = branch.parent;
-  while (owner !== undefined && !ts.isFunctionDeclaration(owner)) owner = owner.parent;
-  return owner !== undefined && ts.isFunctionDeclaration(owner) && owner.name?.text === "executeWorkerPoolCommand";
+  if (callback === undefined || !ts.isArrowFunction(callback) || !ts.isCallExpression(callback.parent) || compact(callback.parent.expression) !== "transact" || callback.body !== declaration.parent) return false;
+  let clause: ts.Node | undefined = callback;
+  while (clause !== undefined && !ts.isCaseClause(clause)) clause = clause.parent;
+  if (clause === undefined || !ts.isCaseClause(clause)) return false;
+  const journaled: ts.CallExpression[] = [], scopedOrBare: ts.CallExpression[] = [];
+  function calls(node: ts.Node): void {
+    if (ts.isCallExpression(node)) {
+      const name = compact(node.expression);
+      if (name === "journaledResetCancel") journaled.push(node);
+      if (name === "executeCancel" || name === "withCanonicalRunCommandScope") scopedOrBare.push(node);
+    }
+    ts.forEachChild(node, calls);
+  }
+  calls(clause);
+  let owner: ts.Node | undefined = scopedOrBare[0];
+  while (owner !== undefined && !(ts.isVariableDeclaration(owner) && owner.name.getText(kernel) === "journaledResetCancel")) owner = owner.parent;
+  return journaled.length === 2 && scopedOrBare.length === 2 && owner !== undefined
+    && scopedOrBare.every(call => { let node: ts.Node | undefined = call; while (node !== undefined && node !== owner) node = node.parent; return node === owner; });
 }
 
 function withoutDelegationAuditReads(content: string, path: string, kernelContent: string): string {
@@ -488,11 +408,29 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     function find(node: ts.Node): void { if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)
       && node.expression.text === "withCanonicalRunCommandScope") calls.push(node); ts.forEachChild(node, find); }
     find(kernel);
-    const args = (call: ts.CallExpression) => call.arguments.map(node => node.getText(kernel).replace(/\s+/gu, "")).join(",");
-    const dispatch = calls.filter(call => args(call) === "repositories,request,()=>dispatchActive(dependencies,repositories,request,now,auditId),parentCommandId");
-    const heldCancel = calls.filter(call => args(call) === STOP_HELD_CANCEL_SCOPE);
-    if (calls.length !== 2 || dispatch.length !== 1 || heldCancel.length !== 1 || !isStopHeldCancelAdmission(kernel, heldCancel[0])) return content;
-    calls.splice(0, calls.length, dispatch[0]);
+    const argumentsOf = (call: ts.CallExpression) => call.arguments.map(node => node.getText(kernel).replace(/\s+/gu, "")).join(",");
+    if (calls.length !== 2 || argumentsOf(calls[0]) !== "repositories,cancel,()=>executeCancel(dependencies,repositories,cancel,now,!held)"
+      || argumentsOf(calls[1]) !== "repositories,request,()=>dispatchActive(dependencies,repositories,request,now,auditId),parentCommandId") return content;
+    // Reset's own Cancel is journaled inside the Reset's transaction: commands.insert before the scope, commandAudits.insert after.
+    let resetOwner: ts.Node | undefined = calls[0].parent;
+    while (resetOwner !== undefined && !ts.isArrowFunction(resetOwner)) resetOwner = resetOwner.parent;
+    if (resetOwner === undefined || !ts.isArrowFunction(resetOwner) || !ts.isVariableDeclaration(resetOwner.parent)
+      || resetOwner.parent.name.getText(kernel) !== "journaledResetCancel") return content;
+    const resetBefore: ts.CallExpression[] = [], resetAfter: ts.CallExpression[] = [], resetStray: ts.CallExpression[] = [];
+    function resetJournal(node: ts.Node): void {
+      if (ts.isCallExpression(node)) {
+        const expression = node.expression.getText(kernel);
+        if (expression === "repositories.commands.insert" && node.getText(kernel) === "repositories.commands.insert(cancel)") resetBefore.push(node);
+        else if (expression === "repositories.commandAudits.insert") resetAfter.push(node);
+        else if (expression.startsWith("repositories.command")) resetStray.push(node);
+      }
+      ts.forEachChild(node, resetJournal);
+    }
+    resetJournal(resetOwner.body);
+    if (resetBefore.length !== 1 || resetAfter.length !== 1 || resetStray.length !== 0 || resetBefore[0].end >= calls[0].getStart(kernel)
+      || calls[0].end >= resetAfter[0].getStart(kernel)) return content;
+    if (!isStopHeldCancelAdmission(kernel)) return content;
+    calls.shift();
     const selection = calls[0].parent;
     if (!ts.isConditionalExpression(selection) || selection.whenTrue !== calls[0]
       || selection.condition.getText(kernel).replace(/\s+/gu, "") !== 'request.family==="ocr-review"||request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="recover-run"||request.type==="cancel"||request.type==="resume")') return content;
@@ -539,33 +477,24 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
   return content;
 }
 
-/** Stop held-cancel negative controls: an extra or foreign scoped call, the Cancel outside its admission transaction, in the Stop branch's else arm or after reset admission, an altered request or dispatch, and a missing or moved journal or audit. */
+/** Stop held-cancel negative controls: held cancels outside the admission transaction, the wrong pause state, a missing or unjournaled held cancel, and swapped finish flags. */
 function stopHeldCancelMutants(kernel: string): readonly string[] {
   const parsed = ts.createSourceFile("kernel.ts", kernel, ts.ScriptTarget.Latest, true);
-  const loop = stopHeldCancelLoop(parsed);
-  assert.ok(loop && ts.isBlock(loop.statement) && ts.isBlock(loop.parent));
-  const body = loop.statement.statements, siblings = loop.parent.statements, next = siblings[siblings.indexOf(loop) + 1];
-  assert.equal(body.length, STOP_HELD_CANCEL_STATEMENTS.length);
-  assert.ok(next);
-  const text = (node: ts.Node) => kernel.slice(node.getStart(parsed), node.end);
-  const without = (node: ts.Node) => kernel.slice(0, node.getStart(parsed)) + kernel.slice(node.end);
-  const swap = (first: ts.Node, second: ts.Node) => kernel.slice(0, first.getStart(parsed)) + text(second)
-    + kernel.slice(first.end, second.getStart(parsed)) + text(first) + kernel.slice(second.end);
-  const [request, , journal, scope, audit] = body;
-  assert.ok(request && journal && scope && audit);
+  const declaration = stopCancelsDeclaration(parsed);
+  assert.ok(declaration);
+  const statement = kernel.slice(declaration.getStart(parsed), declaration.end);
+  const held = "...workerPauseHeldRuns(repositories, member.workerId, \"paused\").map(held => journaledResetCancel(repositories, held, true))";
+  const current = "run === undefined ? [] : [journaledResetCancel(repositories, run, false)]";
+  assert.ok(statement.includes(held) && statement.includes(current));
+  const without = kernel.slice(0, declaration.getStart(parsed)) + kernel.slice(declaration.end);
   return [
-    `${kernel}\nfunction rogue(repositories: any, cancel: any, dependencies: any, now: any) { return withCanonicalRunCommandScope(repositories, cancel, () => executeCancel(dependencies, repositories, cancel, now)); }`,
-    kernel.replace("withCanonicalRunCommandScope(repositories, cancel, () => executeCancel(", "withCanonicalRunCommandScope(repositories, request, () => executeCancel("),
-    kernel.replace("() => executeCancel(dependencies, repositories, cancel, now)", "() => executeRetry(dependencies, repositories, cancel, now)"),
-    kernel.replace("try { result = dependencies.authority.withAuthorityTransaction(repositories => {", "try { result = unowned(repositories => {"),
-    kernel.replace('if (request.type === "stop-worker") {', 'if (request.type === "stop-worker") {} else {'),
-    swap(loop, next),
-    kernel.replace('family: "run", type: "cancel", source: request.source', 'family: "run", type: "retry", source: request.source'),
-    kernel.replace('lifecycleCommandId("worker-stop-held-cancel",', 'lifecycleCommandId("operator-cancel",'),
-    without(journal),
-    swap(journal, scope),
-    without(audit),
-    swap(scope, audit),
+    without.replace('catch (error) { if (workerEffectRefusal(request, error) === undefined) throw error; }\n      return result;', `catch (error) { if (workerEffectRefusal(request, error) === undefined) throw error; }\n      ${statement}\n      return result;`),
+    kernel.replace(statement, statement.replace('"paused"', '"requested"')),
+    kernel.replace(statement, statement.replace(`, ${held}`, "").replace(held, "")),
+    kernel.replace(statement, statement.replace("journaledResetCancel(repositories, held, true)", "executeCancel(dependencies, repositories, held, now, false)")),
+    kernel.replace(statement, statement.replace("run, false", "run, true").replace("held, true", "held, false")),
+    kernel.replace(statement, statement.replace("run, false", "run, true")),
+    kernel.replace(statement, statement.replace("held, true", "held, false")),
   ];
 }
 
@@ -685,7 +614,11 @@ describe("finite native delegation audit read ownership", () => {
           kernel.replaceAll("dependencies.authority.withAuthorityTransaction", "dependencies.authority.withAuthorityReadSnapshot"),
           kernel.replace('request.family === "ocr-review" || request.family === "start"', 'request.family === "settings" || request.family === "start"'),
           kernel.replace('request.family === "ocr-review" || request.family === "start"', 'request.family === "start"'),
+          kernel.replace("() => executeCancel(dependencies, repositories, cancel, now, !held))", "() => executeCancel(dependencies, repositories, request, now, !held))"),
+          kernel.replace("repositories.commands.insert(cancel);", ""),
           ...stopHeldCancelMutants(kernel),
+          kernel.replace("const journaledResetCancel =", "const resetCancel ="),
+          kernel.replace("const application = withCanonicalRunCommandScope(repositories, cancel,", "repositories.commandAudits.findByCommand(cancel.commandId); const application = withCanonicalRunCommandScope(repositories, cancel,"),
         ]) {
           assert.notEqual(mutant, kernel);
           assert.ok(withoutDelegationAuditReads(source, path, mutant).includes("commandAudits"));
@@ -738,15 +671,13 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   ...["remove-worker", "retry-worker"].map((type, index) => ({
     commandId: index === 0 ? "10101010-1010-4010-8010-101010101010" : "20202020-2020-4020-8020-202020202020",
     requestedAt: NOW, requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type,
-    target: { workflowId: "fixture-graph", workerId: "fixture-graph-worker-1", membershipRevision: 1,
-      expectedVersion: 0, controlBasis: { leaseGeneration: 1, controlRevision: 1 } },
+    target: { workflowId: "fixture-graph", workerId: "fixture-graph-worker-1", lifetimeId: null, expectedVersion: 0 },
   })),
   {
     commandId: "35353535-3535-4353-8353-353535353535",
     requestedAt: NOW, requestedBy: "local-operator", source: "run-detail", family: "worker-browser", type: "check-parked-write",
     target: {
-      workerId: "fixture-graph-worker-9", expectedVersion: 1, membershipRevision: 1, processId: 1, startedAt: NOW,
-      controlBasis: { leaseGeneration: 1, controlRevision: 1 },
+      workerId: "fixture-graph-worker-9", lifetimeId: "49494949-4949-4494-8494-494949494949", expectedVersion: 1,
       installationId: "33333333-3333-4333-8333-333333333333", profileId: ASSISTANT_PREFERENCE_PROFILE,
       workflowId: "fixture-graph", itemId: "46464646-4646-4464-8464-464646464646",
       runId: "45454545-4545-4454-8454-454545454545", runVersion: 1, runAttempt: 1, traceId: "ab-120000-0001", nodeId: "parked-check",
@@ -884,17 +815,7 @@ async function createHarness(wrap?: RepositoryWrap): Promise<GuardHarness> {
       recheck: seamFailure("recheck-write"),
       resolveAbsent: seamFailure("resolve-write-absent"),
     },
-    workerRuntime: { pool: {
-      planPoolWorkerCount: async () => seamFailure("plan-worker-count")(),
-      spawnPoolWorker: async () => seamFailure("spawn-worker")(),
-      refreshPoolBrowser: async () => seamFailure("refresh-browser")(),
-      reopenPoolBrowser: async () => seamFailure("reopen-browser")(),
-      checkParkedWrite: async () => seamFailure("check-parked-write")(),
-      assertResetOwner: () => seamFailure("check-parked-write")(),
-      stopPoolWorker: async () => seamFailure("stop-worker")(),
-      pausePoolWorker: async () => seamFailure("pause-worker")(),
-      resumePoolWorker: async () => seamFailure("resume-worker")(),
-    } },
+    workerRuntime: { pool: unusedWorkerPool(seamFailure("worker-pool")) },
     settings: {
       validateRequest: (command) => command.type === "apply-settings" && command.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH
         ? { state: "rejected", code: "schema-mismatch", message: "guard fixture uses a noncurrent settings schema" } : undefined,
@@ -1022,8 +943,8 @@ describe("control-command-single-path", () => {
     }
   });
 
-  it("admits only the intake receipt query's snapshot-bound audit read", () => {
-    const source = readFileSync(join(REPO_ROOT, "src/backend/runs/queries/intake-command-result.ts"), "utf8");
+  it.each(RECEIPT_QUERIES)("admits only %s's snapshot-bound audit read", path => {
+    const source = readFileSync(join(REPO_ROOT, path), "utf8");
     assert.ok(!withoutIntakeCommandReceiptRead(source).includes("commandAudits"));
     for (const bad of [
       source.replace("commandAudits.findByCommand(id)", "commandAudits.insert(id)"),
@@ -1054,18 +975,20 @@ describe("control-command-single-path", () => {
       const path = relative(REPO_ROOT, file).replaceAll("\\", "/");
       const raw = readFileSync(file, "utf8");
       const kernelContent = readFileSync(join(REPO_ROOT, "src/backend/runs/commands/command-kernel.ts"), "utf8");
-      const content = path === "src/backend/storage/sqlite/worker-control.ts"
-        ? withoutWorkerControlAdmissions(raw, kernelContent) : withoutDelegationAuditReads(raw, path, kernelContent);
+      const content = withoutDelegationAuditReads(raw, path, kernelContent);
       if (content.includes("export function createCommandKernel")) kernelDefinitions += 1;
-      if (path !== "src/backend/runs/commands/command-kernel.ts" && path !== "src/backend/storage/sqlite/worker-control.ts"
-        && /\b(?:admitWorkerReset|admitWorkerLifecycle)\b/u.test(raw)) violations.push(`${path} references private native worker admission outside the kernel`);
       if (path !== "src/backend/runs/commands/command-kernel.ts" && path !== "src/backend/storage/sqlite/command-record-row.ts"
         && /\bwithCanonicalRunCommandScope\b/u.test(raw)) violations.push(`${path} references private synchronous run command custody outside the kernel`);
       if (allowed.has(path)) continue;
       for (const token of tokens) {
         const expectedSettingsAuditReads = settingsAuditReaders.get(path);
-        if (path === "src/backend/runs/queries/intake-command-result.ts" && token === "commandAudits") {
-          if (withoutIntakeCommandReceiptRead(content).includes(token)) violations.push(`${path} may only read its actual intake receipt in an authority snapshot`);
+        if (RECEIPT_QUERIES.includes(path) && token === "commandAudits") {
+          if (withoutIntakeCommandReceiptRead(content).includes(token)) violations.push(`${path} may only read its actual command receipt in an authority snapshot`);
+          continue;
+        }
+        if (path === "src/backend/runs/queries/run-detail/gate-park.ts" && token === "commandAudits") {
+          const uses = content.match(/\bcommandAudits\.[A-Za-z]+/gu) ?? [];
+          if (uses.length !== 1 || uses[0] !== "commandAudits.parkedWriteChecks") violations.push(`${path} may only read its run's parked-write check audits`);
           continue;
         }
         if (path === "src/backend/assistant/authorization.ts" && token === "commandAudits") {
@@ -1095,17 +1018,6 @@ describe("control-command-single-path", () => {
     assert.ok(!/\bDatabaseSync\b/.test(kernelSource), "the kernel may not hold a raw database handle");
     assert.ok(!/\bDELETE\s+FROM\b/i.test(kernelSource), "the kernel may not physically delete authority rows");
     assert.ok(!/"Delete"/.test(kernelSource), "the UI label is Hide, never Delete");
-  });
-
-  it.each(["rogue", "repository", "schema", "caller"])("refuses %s command insertion beyond exact native admission", kind => {
-    const source = readFileSync(join(REPO_ROOT, "src/backend/storage/sqlite/worker-control.ts"), "utf8");
-    const kernel = readFileSync(join(REPO_ROOT, "src/backend/runs/commands/command-kernel.ts"), "utf8");
-    const candidate = kind === "rogue" ? `${source}\nfunction rogue(repositories: any, request: any) { repositories.commands.insert(request); }`
-      : kind === "repository" ? source.replaceAll("repositories: AuthorityRepositories", "repositories: any")
-      : kind === "schema" ? source.replace("CommandIdentityConflictError, LiveWorkerResetRequestSchema,", "CommandIdentityConflictError,") + "\nconst LiveWorkerResetRequestSchema = { parse: (input: unknown) => input };" : source;
-    const caller = kind === "caller" ? kernel.replace("try { result = dependencies.authority.withAuthorityTransaction(repositories => {", "try { result = unowned(repositories => {") : kernel;
-    assert.ok(candidate !== source || caller !== kernel, "the negative control must change its targeted source");
-    assert.ok(withoutWorkerControlAdmissions(candidate, caller).includes(".commands.insert("));
   });
 
   it("carries a version or immutability binding on every wire arm's target", () => {
@@ -1285,23 +1197,15 @@ describe("control-command-single-path", () => {
     const plan = createFixturePlan(harness);
     const runId = singleAppliedRunId(harness.kernel.execute(startCommandFor(plan)));
     const slot = harness.database.withAuthorityTransaction(repositories => {
-      const member = admitDirectWorker(repositories, { commandId: randomUUID(), workflow: "fixture-graph", poolIndex: 1,
-    expectedPoolVersion: 0, processId: process.pid,
-    now: NOW }, randomUUID());
-      assert.equal(repositories.workerLeases.start({ workerId: member.workerId, workflow: "fixture-graph", browserSystems: [],
-        processId: process.pid, requestedBy: "local-operator", now: NOW }).state, "started");
-      return member;
+      return admitFixtureSlot(repositories, "fixture-graph", 1, NOW);
     });
-    const lease = harness.database.authority.workerLeases.get(slot.workerId);
-    assert.ok(lease);
-    const workerLifetime = { membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration };
     const claimed = harness.database.authority.runs.claimNext({
-      workflow: "fixture-graph", workerId: slot.workerId, workerLifetime, now: NOW,
+      workflow: "fixture-graph", workerId: slot.workerId, now: NOW,
     });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") return;
     const claim = { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration };
-    const live = { workerId: slot.workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW };
+    const live = { workerId: slot.workerId, claimedAt: NOW, heartbeatAt: NOW };
     let version: number = claimed.run.version;
     for (const state of ["validating", "running"] as const) {
       assert.equal(harness.database.authority.runs.transition({

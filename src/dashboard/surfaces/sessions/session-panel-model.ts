@@ -1,4 +1,3 @@
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { z } from "zod";
 import type {
 WorkerCardWireSchema,
@@ -359,38 +358,6 @@ export const WORKER_TONE: Record<WorkerState, { dot: string; label: string; text
 export const WORKER_STATE_ORDER: WorkerState[] = ["running", "starting", "idle", "waiting", "paused", "failed"];
 
 
-/** How a settled lease ended, in the operator's words rather than the enum's. */
-export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopReason"]>, string> = {
-  operator: "stopped by you",
-  shutdown: "shut down",
-  crashed: formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_CRASHED", {})).text,
-};
-
-/** The card control a served worker operation answers; while unaudited it locks that card behind Check outcome. */
-export const WORKER_OPERATION_CONTROL: Readonly<Record<string, "stop" | "remove" | "retry" | "pause" | "resume" | "refresh" | undefined>> = {
-  "stop-worker": "stop", "remove-worker": "remove", "retry-worker": "retry", "pause-worker": "pause", "resume-worker": "resume", "refresh-browser": "refresh" };
-
-const RETRY_REFUSAL_LABEL: Readonly<Record<string, string>> = {
-  "worker-retirement-child-close-unproved": "Couldn't restart: Relay couldn't confirm the last worker's browsers closed.",
-  "worker-retirement-closure-not-proved": "Couldn't restart: Relay couldn't confirm the last worker's browsers closed.",
-  "worker-retry-death-unproved": "Couldn't restart: Relay couldn't confirm the last worker stopped.",
-  "worker-retirement-profile-identity-mismatch": "Couldn't restart: this worker's browser folder doesn't match its record.",
-};
-
-/** Plain words for a worker restart (a Retry, or a stop-worker that restarts it) that was refused or left unconfirmed; undefined otherwise. */
-export function workerRetryProblem(card: WorkerCardWire): string | undefined {
-  const operation = card.controls?.operation;
-  if (operation === undefined || (operation.state !== "refused" && operation.state !== "uncertain")) return undefined;
-  return workerRestartProblem(operation.type, operation.message);
-}
-
-export function workerRestartProblem(type: string, message: string | undefined): string | undefined {
-  const named = RETRY_REFUSAL_LABEL[message ?? ""];
-  if (type === "stop-worker") return named ?? (message === "worker-retry-never-started" ? "The last restart never started. Use Retry." : undefined);
-  return type === "retry-worker" ? named ?? "Couldn't restart this worker." : undefined;
-}
-
-
 /** A served step interrupt names what happens to the current step. A directive alone does not. */
 export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
   if (card.state === "failed") return undefined;
@@ -401,7 +368,7 @@ export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
 }
 
 
-/** Settled leases take no directives; stopping twice must not offer another command. */
+/** An exited member takes no directives; stopping twice must not offer another command. */
 export function canStopWorker(card: WorkerCardWire): boolean {
   return card.state !== "failed" && card.directive !== "stop";
 }
@@ -409,7 +376,7 @@ export function canStopWorker(card: WorkerCardWire): boolean {
 
 /** Settled worker duration uses its recorded end; elapsed-to-now would grow after death. */
 export function workerElapsedSeconds(card: WorkerCardWire, nowIso: string): number {
-  return elapsedSecondsBetween(card.startedAt, card.endedAt ?? nowIso);
+  return elapsedSecondsBetween(card.startedAt, card.endedAt ?? (card.state === "failed" ? card.startedAt : nowIso));
 }
 
 
