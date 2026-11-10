@@ -1,3 +1,4 @@
+import { operatorFailureSentence } from "../../../../src/models/failures/error-catalog.js";
 import { isQueueMember, isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
@@ -363,6 +364,7 @@ describe("the Activity report", () => {
         registration: { state: "registered", label: "Fixture Graph", code: "fx", categoryId: "operations" },
         runs: 1,
         completion: clean,
+        needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
         failed: 0, cancelled: 0, partial: 0, open: 1,
       },
       {
@@ -371,6 +373,7 @@ describe("the Activity report", () => {
         runs: 4,
 
         completion: { readBack: 0, warnings: 0, warningsUnknown: 1 },
+        needsAttention: 1, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 1, unmeasuredRuns: 0, meanMs: { state: "present", value: 5000 } },
         failed: 1, cancelled: 0, partial: 0, open: 2,
       },
       {
@@ -378,6 +381,7 @@ describe("the Activity report", () => {
         registration: { state: "registered", label: "Kuali Finalization", code: "sf", categoryId: "separation" },
         runs: 2,
         completion: clean,
+        needsAttention: 2, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
         failed: 2, cancelled: 0, partial: 0, open: 0,
       },
       {
@@ -389,6 +393,7 @@ describe("the Activity report", () => {
         runs: 1,
         completion: clean,
         // Interrupted is terminal lifecycle but still requeueable, so status and open-work columns differ.
+        needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
         failed: 0, cancelled: 0, partial: 0, open: 1,
       },
     ]);
@@ -437,8 +442,12 @@ describe("the Activity report", () => {
 
     // "3 failures" reads very differently once two of them are known retryable.
     assert.deepEqual(report.failures, [
-      { code: "STALE_SESSION", runs: 2, transient: 2, sample: [uuidOf(2), uuidOf(4)] },
-      { code: "SUBJECT_MISMATCH", runs: 1, transient: 0, sample: [uuidOf(5)] },
+      { workflowId: "person-lookup", registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "search" },
+        code: "STALE_SESSION", sentence: operatorFailureSentence("STALE_SESSION"), runs: 1, transient: 1, sample: [uuidOf(2)] },
+      { workflowId: "separations-kuali-finalization", registration: { state: "registered", label: "Kuali Finalization", code: "sf", categoryId: "separation" },
+        code: "STALE_SESSION", sentence: operatorFailureSentence("STALE_SESSION"), runs: 1, transient: 1, sample: [uuidOf(4)] },
+      { workflowId: "separations-kuali-finalization", registration: { state: "registered", label: "Kuali Finalization", code: "sf", categoryId: "separation" },
+        code: "SUBJECT_MISMATCH", sentence: operatorFailureSentence("SUBJECT_MISMATCH"), runs: 1, transient: 0, sample: [uuidOf(5)] },
     ]);
     assert.equal(
       report.failures.reduce((total, { runs }) => total + runs, 0),

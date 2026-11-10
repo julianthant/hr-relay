@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chatGptStatusFixture } from "../../../support/helpers/chatgpt-status-fixture.js";
 import { useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
 
@@ -16,7 +17,7 @@ const file: AssistantFile = { id: 'people', name: 'People.csv', status: 'Attache
   { id: 'header', cells: [{ value: 'Name' }, { value: 'Hire date' }] },
   { id: 'one', cells: [{ value: 'Morgan Vega' }, { value: '2026-10-19' }] },
 ] }] } };
-const accountClient: Pick<DashboardClient, 'chatGptAccount'> = { async chatGptAccount() { return ChatGptAccountViewSchema.parse({ state: 'connected', name: 'Fixture', email: 'fixture@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' }); } };
+const accountClient: Pick<DashboardClient, 'chatGptAccount'> = { async chatGptAccount() { return chatGptStatusFixture(ChatGptAccountViewSchema.parse({ state: 'connected', name: 'Fixture', email: 'fixture@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' })); } };
 async function mount(ports: AssistantPorts, client = accountClient) {
   const producer = createAssistantMockProducer();
   function Harness() { model = useAssistantPanel({ producer, accountClient: client, ports }); return null; }

@@ -38,7 +38,7 @@ import { workbookInputBinding } from "../workbooks.js";
 
 
 export interface StartPlannerDeps {
-  readonly workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion">;
+  readonly workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion" | "types">;
   readonly protectedSecrets?: ProtectedSecretSource;
 
   readonly authority: Readonly<{
@@ -197,7 +197,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
               || parsed === null || typeof parsed !== "object"
               || Reflect.get(parsed, capability.inputField) !== lookup.keys[0]) throw new WorkbookLibraryError("WORKBOOK_INVALID");
           }
-          const libraryId = selection.libraryId ?? workbooks.catalog().find(entry => entry.type.id === selection.typeId)?.type.defaultWorkbookId;
+          const libraryId = selection.libraryId ?? workbooks.types().find(type => type.id === selection.typeId)?.defaultWorkbookId;
           if (!libraryId) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
           const selected = workbooks.libraryVersion(libraryId, selection.versionId);
           const current = workbooks.catalog().find(entry => entry.libraryId === libraryId);

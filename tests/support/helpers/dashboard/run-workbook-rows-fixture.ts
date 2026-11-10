@@ -22,7 +22,7 @@ const type = WorkbookTypeSchema.parse({ id: 'onboarding-roster', name: 'Onboardi
 const versions = ['Reviewed roster', 'Delayed roster', 'New roster', 'Empty roster', 'Unavailable roster'].map((name, index) => ({
   id: `roster-${index + 1}`, name, version: index + 1, snapshotId: `snapshot-${index + 1}`, savedAt: '2026-08-03T09:00:00-07:00', source: 'operator',
 }));
-const catalog = WorkbookLibraryCatalogSchema.parse([{ libraryId, version: 5, name: 'Onboarding.xlsx', rowCount: 4,
+const catalog = WorkbookLibraryCatalogSchema.parse([{ libraryId, version: 5, name: 'Onboarding.xlsx', updatedAt: versions[0].savedAt, rowCount: 4,
   worksheets: [{ id: 'people', name: 'People' }], metadata: { typeId: type.id, sharePoint: null }, type,
   state: { libraryId, revision: 1, selectedVersionId: versions[0].id, origin: { kind: 'local' }, removed: false, versions },
 }]);

@@ -4,6 +4,7 @@ import { afterEach, it } from "vitest";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { composeShell } from "../../../../src/backend/app/composition/dashboard/shell.js";
+import { projectWorkbookReferences } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { descriptorSetHash, WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { buildOcrReviewSection } from "../../../../src/backend/runs/queries/ocr-review.js";
@@ -38,7 +39,7 @@ it("projects editable native records, persists corrections/exclusions and freeze
   const unused = (): never => { throw new Error("Unrequested fixture effect"); };
   const shell = composeShell({ database: f.database, projection, clock: f.clock, appVersion: "0.1.0", ids: { uuid: randomUUID },
     artifacts: f.artifacts, descriptors: { resolve: f.resolve }, descriptorSetHash: projection.descriptorSetHash(), actorLabel: () => "Fixture operator",
-    preflightReport: () => healthyDashboardPreflightReport(f.clock), backupSummary: () => "current",
+    preflightReport: () => healthyDashboardPreflightReport(f.clock), workbookReferences: workflows => projectWorkbookReferences(f.database.authority.workbooks, workflows),
     activity: { read: unused, readSelected: unused }, backfillGaps: { detected: unused } });
   try {
     const bootstrap = buildBootstrap(shell.bootstrap), workflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);

@@ -1,3 +1,4 @@
+import { chatGptStatusFixture } from "../support/helpers/chatgpt-status-fixture.js";
 import { expect, type Page, type TestInfo } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -29,7 +30,7 @@ for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, 
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.clock.install({ time: new Date(FIXTURE_NOW) });
     await page.route("**/api/v1/settings/chatgpt-account", route => resumed
-      ? route.fulfill({ json: { state: "signing-in", attemptId, authorizationUrl, expiresAt, account: { state: "signed-out" } } })
+      ? route.fulfill({ json: chatGptStatusFixture({ state: "signing-in", attemptId, authorizationUrl, expiresAt, account: { state: "signed-out" } }) })
       : route.continue());
     await page.route("**/api/v1/settings/chatgpt-account/sign-in", route => route.fulfill({ json: { state: "started", attemptId, authorizationUrl, expiresAt } }));
     await page.route(`**/api/v1/settings/chatgpt-account/sign-in/${attemptId}`, async route => {

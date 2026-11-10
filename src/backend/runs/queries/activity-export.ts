@@ -82,6 +82,7 @@ export function activityReportCsv(report: ActivityReportWire): string {
     row([
       "Workflow", "Code", "Label", "Category", "Runs",
       "Read back", "Warnings", "Unread", "Failed", "Cancelled", "Partial", "Open",
+      "Needs attention", "Typical time: successful root mean (ms)", "Successful roots measured", "Successful roots unmeasured",
     ]),
     ...report.workflows.map((workflow) => row([
       workflow.workflowId,
@@ -99,6 +100,10 @@ export function activityReportCsv(report: ActivityReportWire): string {
       workflow.cancelled,
       workflow.partial,
       workflow.open,
+      workflow.needsAttention,
+      workflow.typicalTime.meanMs.state === "present" ? workflow.typicalTime.meanMs.value : workflow.typicalTime.meanMs.reason,
+      workflow.typicalTime.measuredRuns,
+      workflow.typicalTime.unmeasuredRuns,
     ])),
   ]);
 
@@ -125,11 +130,13 @@ export function activityReportCsv(report: ActivityReportWire): string {
 
   blocks.push([
     row(["Failures"]),
-    row(["Code", "Runs", "Transient", "Sample run ids"]),
+    row(["Code", "Runs", "Transient", "Sample run ids", "Workflow", "Label", "Reason"]),
     ...(report.failures.length === 0
       ? [row(["No run in this range settled with a structured failure."])]
       : report.failures.map((failure) => row([
-        failure.code, failure.runs, failure.transient, failure.sample.join(" "),
+        failure.code, failure.runs, failure.transient, failure.sample.join(" "), failure.workflowId,
+        failure.registration.state === "registered" ? failure.registration.label : failure.registration.reason,
+        failure.sentence,
       ]))),
   ]);
 

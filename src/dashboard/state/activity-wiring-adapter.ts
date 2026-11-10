@@ -41,6 +41,8 @@ export function projectActivityPopulation(selection: ActivityPopulationSelection
       successfulTiming: { totalSeconds: timing.totalMs === null ? null : timing.totalMs / 1000, measured: timing.measured, unmeasured: timing.unmeasured } };
   });
   const knownReadback = completed.every(row => row.readback !== null);
+  const failures = new Map<string, number>();
+  for (const row of report.failures) failures.set(row.code, (failures.get(row.code) ?? 0) + row.runs);
   return { runs: population.map(row => runRecord(row, selection)), range: { from: report.from, to: report.to }, timeZone: report.volume.timeZone,
     total: population.length, completed: completed.length, outstanding: population.filter(row => outstanding.has(row.status)).length,
     running: population.filter(row => row.status === "running" || row.status === "cancelling").length,
@@ -49,7 +51,7 @@ export function projectActivityPopulation(selection: ActivityPopulationSelection
     duration: { medianSeconds: report.durations.medianMs.state === "present" ? report.durations.medianMs.value / 1000 : null,
       longestSeconds: report.durations.longestMs.state === "present" ? report.durations.longestMs.value / 1000 : null,
       totalSeconds: report.durations.measuredRuns === 0 && report.durations.unmeasuredRuns > 0 ? null : report.durations.totalMs / 1000, measured: report.durations.measuredRuns, unmeasured: report.durations.unmeasuredRuns },
-    failures: report.failures.map(row => ({ label: row.code, runs: row.runs })),
+    failures: [...failures].map(([label, runs]) => ({ label, runs })),
     evidence: { verified: knownReadback ? completed.filter(row => row.readback === true).length : null, unread: knownReadback ? completed.filter(row => row.readback === false).length : null },
     workflows, durationWorkflows: workflows.map(row => ({ ...row, completed: row.successfulTiming.measured + row.successfulTiming.unmeasured })),
     transactions: report.ledger.systems.flatMap(row => ([{ id: `${row.system}:prod`, label: row.system, count: row.prod, environment: "production" as const }, { id: `${row.system}:test`, label: row.system, count: row.test, environment: "test" as const }])),
