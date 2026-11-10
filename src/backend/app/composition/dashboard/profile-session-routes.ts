@@ -21,7 +21,7 @@ type PublicProfileState
 } from "../../../../models/profiles/public-profile.js";
 import { systemClock } from "../../../../rules/time/clock.js";
 import { appendEmergencyFault } from "../../../logs/emergency-faults.js";
-import { causeChainToken,serializeErrorCauses } from "../../../../models/failures/error-origins.js";
+import { serializeTokenedErrorCauses } from "../../../../models/failures/error-origins.js";
 import { ProfileRuntimeStartFailedError,ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { type ActiveProfileSession } from "../../../profiles/profile-session.js";
 import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
@@ -133,14 +133,13 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   const publicFailure = (error: Error) => {
     const custodyUnproved = retainPublicFailureCustody(error, retainedCustodyFailures);
     const mapped = failureStatus(error);
-    const causes = mapped.status === 500 || error.cause !== undefined || mapped.body.code === "CREDENTIAL_CONVERSION_REQUIRED" ? serializeErrorCauses(error) : [];
-    const reason = causeChainToken(error.cause) ?? "profile-request-cause";
+    const causes = mapped.status === 500 || error.cause !== undefined || mapped.body.code === "CREDENTIAL_CONVERSION_REQUIRED" ? serializeTokenedErrorCauses(error) : [];
     for (const cause of causes) {
       const diagnostic = new Error(cause.name);
       diagnostic.name = cause.name;
       diagnostic.stack = cause.stack;
       appendEmergencyFault({ stateRoot: machine.stateRoot, build: appVersion, code: cause.code, error: diagnostic,
-        area: "profile-request", reason, now: clock.now() });
+        area: "profile-request", reason: cause.token ?? "profile-request-cause", now: clock.now() });
     }
     if (error instanceof ProfileSessionRefusedError) return { status: 409 as const,
       body: PublicProfileStateSchema.parse({ state: "refused", code: error.code }) };
