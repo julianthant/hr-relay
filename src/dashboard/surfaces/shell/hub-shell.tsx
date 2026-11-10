@@ -77,7 +77,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
         {list && <header className="hub-slot-header"><div className="hub-slot-title"><span>History</span></div><div className="hub-header-actions">
           {icon("History", <History aria-hidden />, () => { setList(value => !value); })}{icon("New chat", <Plus aria-hidden />, () => { void model.create(); setList(false); })}{icon("Close assistant", <X aria-hidden />, closePanel)}
         </div></header>}
-        {list ? <div className="hub-history"><div className="hub-history-bar"><SearchInput aria-label={tab === "chats" ? "Search chats" : "Search activity"} placeholder={tab === "chats" ? "Search chats" : "Search activity"} value={query} onChange={event => setQuery(event.target.value)} />
+        {list ? <div className="hub-history"><div className="hub-history-bar"><SearchInput variant="sidebar" aria-label={tab === "chats" ? "Search chats" : "Search activity"} placeholder={tab === "chats" ? "Search chats" : "Search activity"} value={query} onChange={event => setQuery(event.target.value)} />
           <SegmentedChoice hideLabel label="History" value={tab} options={HISTORY_TABS} onChange={setTab} /></div>
           {tab === "chats" ? <div className="hub-transcript hub-chat-list" onKeyDown={event => {
           if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || event.target instanceof HTMLInputElement) return;

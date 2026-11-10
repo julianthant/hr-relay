@@ -32,6 +32,7 @@ const FRAMES: Frame[] = [
   { id: "r2-open", query: "assistantOpen=1", view: RUN },
   { id: "r2-open-sessions", query: "assistantOpen=1", view: { ...RUN, sessions: true } },
   { id: "r2-history-chats", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); } },
+  { id: "r2-model-menu", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: /^Model: / }).click(); } },
   { id: "r2-history-hover", query: "assistantOpen=1", view: RUN, keepHover: true, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); await page.locator(".hub-chat-row").nth(1).hover(); } },
   { id: "r2-history-activity", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); await page.getByRole("radio", { name: "Activity" }).check({ force: true }); } },
   { id: "r2-new-chat", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "New chat", exact: true }).click(); } },
@@ -134,6 +135,10 @@ for (const theme of THEMES) test(`assistant panel header, History and composer @
   expect(shape.composerBorder).toBe("0px");
   expect(shape.send).toEqual([28, 28]);
   expect(Math.abs(shape.composerHeight - 98)).toBeLessThanOrEqual(2);
+  // The model is fixed: the menu holds only the thinking efforts.
+  await page.getByRole("button", { name: /^Model: GPT-6.1 Sol/u }).click();
+  await expect(page.getByRole("menuitemradio")).toHaveText(["Light", "Medium", "High", "xHigh", "Max"]);
+  await page.keyboard.press("Escape");
   // Send is the filled circle even when empty: aria-disabled, never dimmed.
   const send = page.locator("#hub-send");
   await expect(send).toHaveAttribute("aria-disabled", "true");
@@ -153,6 +158,11 @@ for (const theme of THEMES) test(`assistant panel header, History and composer @
   await expect(page.getByRole("searchbox", { name: "Search chats" })).toBeVisible();
   expect(await headerFill()).toEqual(chat);
   await page.screenshot({ path: join(OUT, `panel-history-chats-${theme}.png`) });
+  // The search is the 32px pill; the Chats/Activity toggle stays 28px and centres on it.
+  const bar = await page.evaluate(() => { const field = document.querySelector<HTMLElement>(".hub-history-bar [data-slot=search-field-group]")!.getBoundingClientRect(), toggle = document.querySelector<HTMLElement>(".hub-history-bar .ds-segment")!.getBoundingClientRect(); return { field: field.height, toggle: toggle.height, centres: Math.abs((field.top + field.bottom) / 2 - (toggle.top + toggle.bottom) / 2) }; });
+  expect(bar.field).toBe(32);
+  expect(bar.toggle).toBe(28);
+  expect(bar.centres).toBeLessThanOrEqual(0.5);
   // Row actions appear on row hover or focus only, 24px with 6px corners.
   const rowIcon = page.locator(".hub-chat-row").nth(1).getByRole("button", { name: /Rename|Delete/u }).first();
   await expect(rowIcon).toHaveCSS("opacity", "0");
