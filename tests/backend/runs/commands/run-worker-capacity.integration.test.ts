@@ -83,7 +83,8 @@ describe("automatic Run capacity", () => {
       targets: runIds.map(runId => ({ runId, expectedVersion: h.database.authority.runs.get(runId)?.version ?? 0 })) }; };
     const commands = launchCommands(h);
     const ingress = createOperatorCommandIngress({ clock: h.clock, journal: h.database.authority.commands, protectedCommandAcceptedAt: () => undefined,
-      bulkAcceptances: { withTransaction: work => h.database.withAuthorityTransaction(repositories => work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })) } });
+      bulkAcceptances: { withTransaction: work => h.database.withAuthorityTransaction(repositories => work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })) },
+      resolveIdentityGateAnswer: () => { throw new Error("a bulk run command must not resolve an identity answer"); } });
     const executeBulk = (body: unknown) => ingress.executeBulk(body, accepted => commands.executeBulk(accepted));
     const paused = await executeBulk(bulk("pause"));
     assert.ok(paused.state === "vector" && paused.results.every(result => result.outcome === "applied"));

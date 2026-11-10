@@ -1,6 +1,6 @@
 import { createErrorCatalogFailure,formatErrorCatalogFailure,type ErrorCatalogMessage } from "../../../models/failures/error-catalog.js";
 import { deriveBulkChildCommand } from "../../../rules/commands/command-groups.js";
-import { BulkRunCommandRequestSchema,CommandRequestSchema,type BulkRunCommandOutcome,type BulkRunCommandRequest,type BulkRunCommandResponse,type CommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
+import { BulkRunCommandRequestSchema,DashboardCommandRequestSchema,type BulkRunCommandOutcome,type BulkRunCommandRequest,type BulkRunCommandResponse,type DashboardCommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { checkedBulkCommandResult,checkedCommandResult,type SharedCommands } from "../../client/commands/shared-commands.js";
 import { DashboardClientError } from "../../client/errors.js";
@@ -13,7 +13,7 @@ export interface CommandExecutionScope {
   readonly dayRequest: object;
 }
 
-export type RetainedCommandRequest = CommandRequest | BulkRunCommandRequest;
+export type RetainedCommandRequest = DashboardCommandRequest | BulkRunCommandRequest;
 export type CommandExecutionReply = CommandResult | BulkRunCommandResponse | BulkRunCommandOutcome;
 export type CommandReadbackVerification =
   | { readonly state: "matched"; readonly evidence: unknown }
@@ -38,7 +38,7 @@ export type CommandOutcome = OutcomeData & (
 export interface CommandExecutionOptions {
   readonly scope: CommandExecutionScope;
   /** Proves effect, revision and every returned target's admitted relationship. */
-  readonly readback: (request: CommandRequest, reply: CommandResult | BulkRunCommandOutcome, scope: CommandExecutionScope) => Promise<CommandReadbackVerification>;
+  readonly readback: (request: DashboardCommandRequest, reply: CommandResult | BulkRunCommandOutcome, scope: CommandExecutionScope) => Promise<CommandReadbackVerification>;
   readonly publish?: (outcome: CommandOutcome) => void;
 }
 
@@ -70,7 +70,7 @@ function sameScope(left: CommandExecutionScope | undefined, right: CommandExecut
   return left?.actorId === right.actorId && left.client === right.client && left.authority === right.authority && left.dayRequest === right.dayRequest;
 }
 
-function lockKey(request: CommandRequest): string {
+function lockKey(request: DashboardCommandRequest): string {
   let identity: readonly unknown[];
   switch (request.family) {
     case "ocr-review": identity = [request.target.runId]; break;
@@ -89,7 +89,7 @@ function lockKey(request: CommandRequest): string {
   return JSON.stringify([request.family, request.type, ...identity]);
 }
 
-function children(request: RetainedCommandRequest): readonly CommandRequest[] {
+function children(request: RetainedCommandRequest): readonly DashboardCommandRequest[] {
   return "targets" in request ? request.targets.map(target => deriveBulkChildCommand(request, target)) : [request];
 }
 
@@ -119,7 +119,7 @@ export class CommandExecutor {
     let request: RetainedCommandRequest;
     try {
       request = deepFreeze(typeof input === "object" && input !== null && "targets" in input
-        ? BulkRunCommandRequestSchema.parse(input) : CommandRequestSchema.parse(input));
+        ? BulkRunCommandRequestSchema.parse(input) : DashboardCommandRequestSchema.parse(input));
     } catch (cause) {
       return this.publish({ kind: "failed", commandId: "", feedback: feedback("COMMAND_DISPATCH_FAILED"), cause }, options);
     }
@@ -133,7 +133,7 @@ export class CommandExecutor {
   }
 
   async check(commandId: string, options: CommandExecutionOptions & {
-    readonly observe: (request: CommandRequest) => Promise<CommandResult | undefined>;
+    readonly observe: (request: DashboardCommandRequest) => Promise<CommandResult | undefined>;
   }): Promise<CommandOutcome> {
     const attempt = this.attempts.get(commandId);
     if (attempt === undefined || "targets" in attempt.request) return this.publish(this.refuse(commandId, "attempt-unavailable"), options);
@@ -174,7 +174,7 @@ export class CommandExecutor {
     return { kind: "refused", commandId, reason, feedback: feedback(reason === "scope-replaced" ? "DASHBOARD_AUTHORITY_REPLACED" : "COMMAND_REFUSED") };
   }
 
-  private async settle(request: CommandRequest, reply: CommandResult | BulkRunCommandOutcome, options: CommandExecutionOptions): Promise<CommandOutcome> {
+  private async settle(request: DashboardCommandRequest, reply: CommandResult | BulkRunCommandOutcome, options: CommandExecutionOptions): Promise<CommandOutcome> {
     const commandId = request.commandId;
     if ("outcome" in reply) {
       switch (reply.outcome) {

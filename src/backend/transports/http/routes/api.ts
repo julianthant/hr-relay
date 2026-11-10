@@ -13,6 +13,7 @@ import { registerQueueRoutes } from "./queue.js";
 import { registerIntakeRoutes } from "./intake.js";
 import { registerOcrRoutes } from "./ocr.js";
 import { registerCommandsRoutes } from "./commands.js";
+import { resolveIdentityGateAnswer } from "../../../runs/queries/run-detail.js";
 import { registerRunDetailRoutes } from "./run-detail.js";
 import type { DashboardApp, DashboardAppDeps } from "./api-types.js";
 export type { DashboardApp, DashboardAppDeps } from "./api-types.js";
@@ -134,7 +135,8 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerWorkbookRoutes(app, deps);
   registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, resolveWriteCommand: deps.resolveWriteCommand, commandJournal: deps.commandJournal,
     bulkCommandAcceptances: deps.bulkCommandAcceptances, protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
-    intake: deps.intake, ...(deps.workerCommandResult === undefined ? {} : { workerCommandResult: deps.workerCommandResult }) });
+    intake: deps.intake, resolveIdentityGateAnswer: (answer, journaled) => resolveIdentityGateAnswer(deps.runDetail, answer, journaled),
+    ...(deps.workerCommandResult === undefined ? {} : { workerCommandResult: deps.workerCommandResult }) });
   if (deps.staticBundle !== undefined) app.use("*", staticBundleHandler(deps.staticBundle));
 
   app.notFound((c) => c.json(wireError("ROUTE_NOT_FOUND", `no route serves ${c.req.method} ${c.req.path}`, false), 404));
