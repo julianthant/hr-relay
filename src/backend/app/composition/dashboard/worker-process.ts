@@ -86,6 +86,21 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
   const profileId = input.admission.profileBinding.profileId;
   const children = new Map<string, ChildProcess>();
   const fault = (error: unknown): Error => error instanceof Error ? error : new Error("worker pool fault", { cause: error });
+  const respawned = new Set<string>();
+  let respawnOpen = true;
+  const poolRef: { current?: WorkerPool } = {};
+  const releaseRespawn = (workerId: string): void => { respawned.delete(workerId); };
+  const queuedWork = (workflowId: string): boolean => input.database.authority.runs.listByWorkflow(workflowId)
+    .some(run => run.lifecycle.state === "queued" && run.pause === undefined);
+  const onMemberChange = (view: WorkerMemberView): void => {
+    input.onChange?.(view);
+    const current = poolRef.current;
+    if (current === undefined || !respawnOpen || view.state !== "exited" || view.exit?.outcome !== "crashed" || view.exit.settlement !== "settled") return;
+    if (respawned.has(view.member.workerId) || !queuedWork(view.member.workflowId)) return;
+    respawned.add(view.member.workerId);
+    // onChange runs only after settleExit, so the replacement starts against a settled crash.
+    void current.start(view.member).catch((error: unknown) => { input.onFault(fault(error)); });
+  };
   const pool = createWorkerPool({
     profileId, sessionGeneration: input.sessionGeneration, clock: input.clock, scheduler: input.scheduler, ids: input.ids,
     platform: input.platform ?? process.platform,
@@ -101,15 +116,17 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
     },
     // A crashed child can leave a root open; it is probed closed before the exit settles, so the replacement can launch.
     settleExit: async member => { await settleProfiles(member, "recover"); await input.settleExit(member); },
-    ...(input.onChange === undefined ? {} : { onChange: input.onChange }),
+    onChange: onMemberChange,
     onFault: (_member, error) => { input.onFault(fault(error)); },
   });
+  poolRef.current = pool;
   const viewOf = (workerId: string): WorkerMemberView | undefined => pool.snapshot().find(view => view.member.workerId === workerId);
   const targetOf = (view: WorkerMemberView) => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, expectedVersion: view.version });
   const live = (view: WorkerMemberView | undefined): view is WorkerMemberView => view !== undefined && view.state !== "exited";
 
   const ensure = async (member: WorkerPoolMember): Promise<void> => {
     if (live(viewOf(member.workerId))) return;
+    releaseRespawn(member.workerId);
     await pool.start(member);
   };
   const stop = async (workerId: string, reason: "operator" | "reset" | "remove"): Promise<void> => {
@@ -169,7 +186,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
       }
       return view?.state ?? "absent";
     },
-    async start(member) { await pool.start(member); },
+    async start(member) { releaseRespawn(member.workerId); await pool.start(member); },
     // A failed member start shows on its card and as a worker fault, whichever command asked for it.
     ensure: member => ensure(member).catch((error: unknown) => { input.onFault(fault(error)); throw error; }),
     stop,
@@ -201,7 +218,14 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
     await Promise.all(members.map(member => ensure(member).catch((error: unknown) => { input.onFault(fault(error)); })));
   };
   return Object.freeze({
-    pool, seam: Object.freeze(seam),
+    pool: Object.freeze({
+      ...pool,
+      stopAll: async (reason: Parameters<WorkerPool["stopAll"]>[0]) => {
+        respawnOpen = false;
+        return pool.stopAll(reason);
+      },
+    }),
+    seam: Object.freeze(seam),
     running: (workflowId: string) => activeMembers(workflowId).some(member => live(viewOf(member.workerId))),
     /** Preflights once, then starts every member that is not live; throws when the workflow still has no live member. */
     ensureRunning: async (workflowId: string) => {

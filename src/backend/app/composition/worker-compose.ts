@@ -531,11 +531,17 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     let current: WorkerActivity = { state: paused() ? "paused" : "idle" };
     const browserActivities = new Map<symbol, "acquiring" | "authenticating" | "closing">();
     let claimedRun: RunId | undefined;
-    const activityNow = (): WorkerActivity => browserActivities.size !== 0 ? { state: "waiting", waiting: [...browserActivities.values()].at(-1) }
-      : claimedRun !== undefined ? { state: "busy", runId: claimedRun } : { state: paused() ? "paused" : "idle" };
+    let standing: WorkerActivity["refusal"];
+    const activityNow = (): WorkerActivity => {
+      const base: WorkerActivity = browserActivities.size !== 0 ? { state: "waiting", waiting: [...browserActivities.values()].at(-1) }
+        : claimedRun !== undefined ? { state: "busy", runId: claimedRun } : { state: paused() ? "paused" : "idle" };
+      return standing === undefined || base.state !== "idle" ? base : { ...base, refusal: standing };
+    };
     let channel: WorkerChildChannel | undefined;
     const publish = (next: WorkerActivity): void => {
-      if (next.state === current.state && next.runId === current.runId && next.waiting === current.waiting) return;
+      if (next.state === current.state && next.runId === current.runId && next.waiting === current.waiting
+        && next.refusal?.code === current.refusal?.code && next.refusal?.summary === current.refusal?.summary
+        && next.refusal?.retryAt === current.refusal?.retryAt) return;
       current = next;
       channel?.activity(next);
     };
@@ -621,6 +627,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         },
         browserObservation: observation => { channel?.browser(observation); },
         configFingerprint: resolved.fingerprint,
+        onStanding: refusal => { standing = refusal; publish(activityNow()); },
         // The SQLite claim transaction fences settings and runtime tokens; the filesystem check fences its inode.
         claimNext: (request, sessions) => {
           assertCurrent();
