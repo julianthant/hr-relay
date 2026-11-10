@@ -350,7 +350,7 @@ describe("the Activity report", () => {
     assert.equal(report.inFlightRuns, 3);
 
     assert.deepEqual(report.people, { state: "present", distinct: 0, evidenceRows: 0 });
-    assert.deepEqual(report.days, [
+    assert.deepEqual(report.days.map(({ day, runs }) => ({ day, runs })), [
       { day: D0, runs: 3 },
       { day: D1, runs: 2 },
       { day: D2, runs: 3 },
@@ -358,7 +358,7 @@ describe("the Activity report", () => {
 
 
     const clean = { readBack: 0, warnings: 0, warningsUnknown: 0 };
-    assert.deepEqual(report.workflows, [
+    assert.deepEqual(report.workflows.map(({ outcomes: _outcomes, days: _days, failedAt: _failedAt, typicalMedian: _typicalMedian, ...row }) => row), [
       {
         workflowId: fixtureDescriptor.id,
         registration: { state: "registered", label: "Fixture Graph", code: "fx", categoryId: "operations" },
@@ -620,7 +620,7 @@ describe("the Activity report inherits the day's exclusions rather than re-decid
       const oneDay = w.projection.buildActivityReportWire(day, day);
 
       assert.equal(oneDay.totalRuns, countable.length, `day ${day} (offset ${String(offset)}) row count`);
-      assert.deepEqual(oneDay.days, [{ day, runs: countable.length }]);
+      assert.deepEqual(oneDay.days.map(({ day: countedDay, runs }) => ({ day: countedDay, runs })), [{ day, runs: countable.length }]);
       assert.deepEqual(
         oneDay.statuses.map(({ status, runs }) => [status, runs]),
         [...dayWire.statusCounts].map(({ status, count }) => [status, count]),
@@ -644,7 +644,7 @@ describe("the Activity report inherits the day's exclusions rather than re-decid
     const after = w.projection.buildActivityReportWire(D0, D2);
     assert.equal(after.totalRuns, 7);
     assert.equal(after.terminalRuns, 4);
-    assert.deepEqual(after.days[0], { day: D0, runs: 2 });
+    assert.deepEqual({ day: after.days[0]?.day, runs: after.days[0]?.runs }, { day: D0, runs: 2 });
     assert.equal(after.durations.measuredRuns, 3);
     assert.equal(after.durations.totalMs, 90_000);
     assert.equal(w.projection.buildDashboardDayWire(D0).queueSurfaces.length, 2);
@@ -661,7 +661,7 @@ describe("the Activity report inherits the day's exclusions rather than re-decid
     assert.equal(dayWire.queueSurfaces.length, 5);
     assert.equal(dayWire.queueSurfaces.filter(isQueueMember).length, 2);
     assert.equal(report.totalRuns, 3);
-    assert.deepEqual(report.days, [{ day: D2, runs: 3 }]);
+    assert.deepEqual(report.days.map(({ day, runs }) => ({ day, runs })), [{ day: D2, runs: 3 }]);
   });
 });
 
