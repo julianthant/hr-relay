@@ -687,6 +687,14 @@ export const ERROR_CATALOG = Object.freeze({
   PROFILE_AUTHORITY_UNAVAILABLE: catalogEntry("Current profile authority is unavailable.", EmptyParametersSchema),
   PROFILE_SESSION_LOG_UNAVAILABLE: catalogEntry("Relay could not record session transition evidence. The transition could not finish.", EmptyParametersSchema),
   PROFILE_AUTHORITY_CHANGED: catalogEntry("Profile authority changed. Capture it again before continuing.", EmptyParametersSchema),
+  DASHBOARD_FRONTEND_NOT_OWNED: catalogEntry(
+    "This Relay page was not started by the running Relay. Close it and start Relay again with npm run dashboard.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_RUNTIME_START_FAILED: catalogEntry(
+    "You are signed in, but Relay could not open the dashboard. Nothing was changed. Close Relay and start it again.",
+    EmptyParametersSchema,
+  ),
   PROFILE_SESSION_STALE: catalogEntry(
     "This sign-in is no longer active. Sign in again.",
     EmptyParametersSchema,

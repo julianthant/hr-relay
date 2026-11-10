@@ -1,16 +1,22 @@
 import { createServer } from "node:net";
 import { accessSync, constants, readFileSync, statfsSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { DashboardLaunchNonceSchema } from "../../../models/dashboard/dashboard-frontend-owner.js";
 import { ConfigSchema, type Config } from "../../../models/config/schema.js";
 import { PreflightCheckIdSchema } from "../../../models/preflight/preflight-contract.js";
 import {
+  createPreflightAuthority,
   PreflightObservationSchema,
   requiredPreflightChecks,
   type PreflightRunner,
 } from "../../../models/preflight/preflight.js";
+import type { CredentialStore } from "../../../models/config/credential-store.js";
+import type { RuntimeAdmission } from "../../storage/admission/admission.js";
+import { AuthorityHealthPreflightRunner } from "../../storage/sqlite/authority-health-runner.js";
+import type { AuthorityImageOwner } from "../../storage/sqlite/readonly-authority-snapshot.js";
+import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { probeOwnedViteServer } from "../host/local-vite-probe.js";
 
 const RuntimePackageSchema = z.object({
@@ -222,4 +228,35 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
       ownedBackendPort = backendPort === 0 ? parsed : backendPort;
     },
   });
+}
+
+export interface DashboardPreflightInput extends Omit<DashboardPreflightRunnerInput, "authorityHealth"> {
+  readonly admission: RuntimeAdmission;
+  readonly credentials: CredentialStore;
+  readonly backupDirectory: string;
+  readonly configFingerprint: string;
+  readonly descriptorFingerprint?: string;
+  readonly authorityOwner?: AuthorityImageOwner;
+}
+
+/** The one dashboard preflight construction, shared by sign-in and the pre-login rehearsal. */
+export function createDashboardPreflight(input: DashboardPreflightInput) {
+  const runners = createDashboardPreflightRunners({ ...input,
+    authorityHealth: new AuthorityHealthPreflightRunner(input.admission, {
+      stateRootTrustAnchor: resolve(input.stateRoot, ".."),
+      stateRoot: input.stateRoot,
+      authorityPath: join(input.stateRoot, "state.db"),
+      backupDirectory: input.backupDirectory,
+      busyTimeoutMs: 5000,
+    }, input.clock, input.credentials, input.authorityOwner) });
+  const authority = createPreflightAuthority({
+    configFingerprint: input.configFingerprint,
+    ...(input.descriptorFingerprint === undefined ? {} : { descriptorFingerprint: input.descriptorFingerprint }),
+    requestedCapabilities: ["dashboard.serve"],
+    runners: runners.runners,
+    clock: input.clock,
+    scheduler: createTimeoutDeadlineScheduler(input.clock),
+    incompleteAsFailure: true,
+  });
+  return { runners, authority };
 }

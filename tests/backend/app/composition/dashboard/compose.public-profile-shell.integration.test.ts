@@ -139,7 +139,8 @@ it("serves public profile state without minting a selected profile, actor or aut
   try {
 
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
-      backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+      backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      frontendProbe: () => Promise.resolve({ state: "owned" as const }) });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const response = await fetch(`${base}/api/v1/profile/state`);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "signed-out", signUpRequired: true });
