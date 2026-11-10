@@ -104,10 +104,24 @@ function readableStepTitle(title: string, nodeId: string, spanPath: string): boo
   return title.length > 0 && title !== nodeId && title !== spanPath && !ErrorCodeSchema.safeParse(title).success;
 }
 
+/** A missing end sorts before every recorded instant. An offset and a `Z` instant compare as the same timeline. */
+function endedInstant(span: ActivityTaskSpan): number {
+  if (span.endedAt === undefined) return Number.NEGATIVE_INFINITY;
+  const instant = Date.parse(span.endedAt);
+  if (!Number.isFinite(instant)) throw new Error(`activity-failure-step-ended-at-invalid: ${span.spanPath}`);
+  return instant;
+}
+
+function compareEndedAt(left: ActivityTaskSpan, right: ActivityTaskSpan): number {
+  const leftInstant = endedInstant(left);
+  const rightInstant = endedInstant(right);
+  if (leftInstant !== rightInstant) return leftInstant < rightInstant ? -1 : 1;
+  return left.spanPath.localeCompare(right.spanPath);
+}
+
 /** One failed run's step. The title is the one the Logs panel shows; the node id is only a key. */
 export function failureStepOfTaskSpans(spans: readonly ActivityTaskSpan[], timeline: StepTimeline | undefined): { state: "known"; nodeId: NodeId; title: string } | { state: "unavailable"; reason: string } {
-  const failed = spans.filter(span => span.outcome === "failed")
-    .sort((left, right) => (left.endedAt ?? "").localeCompare(right.endedAt ?? "") || left.spanPath.localeCompare(right.spanPath));
+  const failed = spans.filter(span => span.outcome === "failed").sort(compareEndedAt);
   const span = failed.at(-1);
   if (span === undefined) return { state: "unavailable", reason: NO_FAILED_SPAN };
   const nodeId = nodeIdOfTaskSpanPath(span.spanPath);
