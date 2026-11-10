@@ -26,14 +26,14 @@ export const STATUS_MOCK_UNKNOWN_COMMAND = { inFlightKey: "mock-pause-all", labe
 /** Mock-only: a rejected and a conflicted single command plus a partly applied bulk Retry, so their sticky toasts and the Review dialog have something to show. */
 const mockUuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 export const STATUS_MOCK_COMMAND_RESULTS: readonly CommandResultFeedEntry[] = [
-  { id: mockUuid(901), targetRunId: mockUuid(4), expectedVersion: 3, subject: "EID 10555001", workflowLabel: "Person Lookup", actionLabel: "Retry", clock: "9:41 AM", actorId: "mock-actor",
+  { id: mockUuid(901), targetRunId: mockUuid(4), expectedVersion: 3, subject: "EID 10000001", workflowLabel: "Person Lookup", actionLabel: "Retry", clock: "9:41 AM", actorId: "mock-actor",
     settlement: { kind: "refused", reason: "conflict", problem: "conflict", message: "This run changed while you were looking at it.", currentVersion: 4 } },
   { id: mockUuid(902), targetRunId: mockUuid(5), expectedVersion: 2, subject: "Morrow, Bea", workflowLabel: "Person Lookup", actionLabel: "Cancel run", clock: "9:42 AM", actorId: "mock-actor",
     settlement: { kind: "refused", reason: "rejected", problem: "invalid-state", message: "The run already finished.", code: "invalid-state" } },
 ];
 export const STATUS_MOCK_BULK_OUTCOME: BulkBatchOutcome = {
-  plan: { verb: "retry", label: "Retry", eligible: [], skipped: [{ runId: mockUuid(7), title: "EID 10222009" }], unavailable: [] },
-  subjects: new Map([[mockUuid(4), "EID 10555001"], [mockUuid(8), "EID 10333015"], [mockUuid(9), "EID 10101010"]]),
+  plan: { verb: "retry", label: "Retry", eligible: [], skipped: [{ runId: mockUuid(7), title: "EID 10000002" }], unavailable: [] },
+  subjects: new Map([[mockUuid(4), "EID 10000001"], [mockUuid(8), "EID 10000003"], [mockUuid(9), "EID 10000004"]]),
   response: BulkRunCommandResponseSchema.parse({ state: "vector", bulkCommandId: mockUuid(910), type: "retry", requestedCount: 4, results: [
     { outcome: "applied", runId: mockUuid(4), commandId: mockUuid(911), replayed: false, detail: "Retry started." },
     { outcome: "applied", runId: mockUuid(8), commandId: mockUuid(912), replayed: false, detail: "Retry started." },

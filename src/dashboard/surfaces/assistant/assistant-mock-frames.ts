@@ -26,7 +26,7 @@ const text = (value: string): ChatItem => ({ kind: "text", text: value });
 const session = (label: string, meta: string): ChatItem => ({ kind: "session", label, meta });
 const answered = (value: string): ChatItem => ({ kind: "answered", text: value });
 
-const ortegaPlan = "I'll file Lin Ortega's termination in UCPath (EID 10031877):\n- Effective date __04/30/2031__\n- Last day worked __04/29/2031__\n- Reason __Resignation__\nFrom Kuali SIM-50112. Reply **yes** to file it, or tell me what to change.";
+const ortegaPlan = "I'll file Lin Ortega's termination in UCPath (EID 10000022):\n- Effective date __04/30/2031__\n- Last day worked __04/29/2031__\n- Reason __Resignation__\nFrom Kuali SIM-50112. Reply **yes** to file it, or tell me what to change.";
 const phones = "I'll save these phones in UCPath:\n- Ortega, Lin: ~~(619) 555-014~~ __(619) 555-0148__ (Scan_0412.pdf · page 2)\n- Park, Joon: ~~858-555-01~~ __(858) 555-0193__ (Contacts.xlsx · Sheet1!D14)\n- Haddad, Rami: ~~760555~~ __(760) 555-0127__ (typed by you · 13:42)\nReply **yes** to save all 3, or tell me which to skip or change.";
 
 const frames: readonly AssistantFrame[] = [
@@ -56,7 +56,7 @@ const frames: readonly AssistantFrame[] = [
   ] },
   { id: "04c-change-request", scenario: "Not a yes", look: "Anything other than a short yes is a change request: the assistant re-proposes; nothing is filed.", title: "Separate Lin Ortega", chat: [
     you("Separate Lin Ortega"), text(ortegaPlan), you("make the last day 04/28"),
-    text("I'll file Lin Ortega's termination in UCPath (EID 10031877):\n- Effective date __04/30/2031__\n- Last day worked ~~04/29/2031~~ __04/28/2031__ (typed by you)\n- Reason __Resignation__\nReply **yes** to file it, or tell me what to change."),
+    text("I'll file Lin Ortega's termination in UCPath (EID 10000022):\n- Effective date __04/30/2031__\n- Last day worked ~~04/29/2031~~ __04/28/2031__ (typed by you)\n- Reason __Resignation__\nReply **yes** to file it, or tell me what to change."),
   ] },
   { id: "05-plan-stopped", scenario: "Run stopped", look: "The reason in one sentence, then a question; the operator replies yes to retry. No action link.", title: "Separate Lin Ortega", chat: [
     text("!!Stopped!! at Read timecard: Kronos shows the last punch on **04/27/2031**; the request says **04/29/2031**. Nothing was filed.\nWant me to retry from Read timecard?"),
@@ -77,7 +77,7 @@ const frames: readonly AssistantFrame[] = [
     you("Sort out Rei Nakamura's read-back"), text("Checked Smart HR Transactions: T00042871 is **Approved**. The run continued. {{Open log}}"),
   ] },
   { id: "08b-evidence-ambiguous", scenario: "Evidence ambiguous", look: "Two options as bullets (ids link to the transaction); the operator replies with the number; the DecisionCard stays open in Logs.", title: "Rei Nakamura", chat: [
-    you("Sort out Rei Nakamura's read-back"), text("Smart HR lists two terminations for Rei Nakamura (10431187). Which one is this run's? Reply with its number.\n- {{T00042871}}: Pending, filed today 09:33 by this run\n- {{T00042905}}: Approved, filed 04/22/2031 by hand"),
+    you("Sort out Rei Nakamura's read-back"), text("Smart HR lists two terminations for Rei Nakamura (10000023). Which one is this run's? Reply with its number.\n- {{T00042871}}: Pending, filed today 09:33 by this run\n- {{T00042905}}: Approved, filed 04/22/2031 by hand"),
   ] },
   { id: "09-waiting-on-me", scenario: "\"What's waiting on me?\"", look: "A sentence and bullets, each name a link.", title: "Waiting on me", chat: [
     you("What's waiting on me?"), text("4 runs are waiting on you:\n- {{Rei Nakamura}}: read-back failed (38 min)\n- {{Lin Ortega}}: phone rejected (31 min)\n- {{Bea Morrow}}: pick the person (4 min)\n- {{Chinedu Okafor}}: approve the hire (3 min)"),
@@ -87,7 +87,7 @@ const frames: readonly AssistantFrame[] = [
   ] },
   { id: "11-activity", scenario: "Activity", look: "History · Activity tab: today's 8 entries (what, person, time); each opens its log.", title: "Activity", view: "activity", chat: [] },
   { id: "12-person-timeline", scenario: "Person timeline", look: "5 runs as bullets with log links.", title: "Lin Ortega", chat: [
-    you("Everything we've done for Lin Ortega"), text("5 runs for Lin Ortega (10031877):\n- Today 15:21, {{Separations}}: !!stopped!!, last day worked differs\n- Today 13:20, {{Emergency Contact}}: !!failed!!, phone rejected\n- 04/12/2031, {{Person Lookup}}: Active\n- 08/02/2030, {{Onboarding}}: hire filed\n- 07/28/2030, {{I-9 Check}}: done"),
+    you("Everything we've done for Lin Ortega"), text("5 runs for Lin Ortega (10000022):\n- Today 15:21, {{Separations}}: !!stopped!!, last day worked differs\n- Today 13:20, {{Emergency Contact}}: !!failed!!, phone rejected\n- 04/12/2031, {{Person Lookup}}: Active\n- 08/02/2030, {{Onboarding}}: hire filed\n- 07/28/2030, {{I-9 Check}}: done"),
   ] },
   { id: "13-preflight", scenario: "Pre-flight before a batch", look: "Issues as bullets; the ready people as bullets; then the yes line.", title: "May separations", chat: [
     you("Separate everyone on this list", "May separations.xlsx"),

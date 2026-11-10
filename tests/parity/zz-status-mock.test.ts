@@ -239,8 +239,8 @@ test("run dialog keys", async ({ page }) => {
   await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
   await box.fill("10555001");
   await box.press("Shift+Enter");
-  await box.pressSequentially("10555002");
-  await expect(box).toHaveValue("10555001\n10555002");
+  await box.pressSequentially("10000002");
+  await expect(box).toHaveValue("10555001\n10000002");
   await expect(dialog.getByText("Enter to continue")).toBeVisible();
   await box.press("Enter");
   await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);

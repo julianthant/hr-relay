@@ -8,7 +8,7 @@ import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js"
 // Design lane renders (never merged): Spreadsheets page v2. SHEETS_V2_OUT=<folder> SHEETS_V2_ONLY=<frame ids, default all>
 const OUT = process.env.SHEETS_V2_OUT ?? "/Users/julianhein/Projects/hr-relay/.work/next-20261101/settings-spreadsheets/screens-v2";
 const ONLY = process.env.SHEETS_V2_ONLY?.split(",");
-const file = { name: "Contacts export.xlsx", mimeType: "text/csv", buffer: Buffer.from("Employee ID,Full name\n10482917,Example Person") };
+const file = { name: "Contacts export.xlsx", mimeType: "text/csv", buffer: Buffer.from("Employee ID,Full name\n10000006,Example Person") };
 
 for (const theme of ["light", "dark"] as const) {
   test(`sheets v2 scenes @ ${theme} 1280x720`, async ({ page }) => {

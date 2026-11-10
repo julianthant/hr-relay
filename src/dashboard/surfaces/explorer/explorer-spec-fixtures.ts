@@ -54,7 +54,7 @@ export const PERSON_LOOKUP_SPEC: ExplorerSpec = {
       blocks: [
         { kind: "card", title: "CRM onboarding search", mode: "fill", rows: [{ label: "Name", value: "Morrow, Bea A.", source: "crm-name" }] },
         { kind: "card", title: "CRM onboarding record", mode: "read", when: { crm_result: ["agree", "differ", "other"] }, rows: [
-          { label: "Employee ID", value: { by: "crm_result", values: { differ: "10000420" }, otherwise: "10000001" } },
+          { label: "Employee ID", value: { by: "crm_result", values: { differ: "10000009" }, otherwise: "10000001" } },
           { label: "Start date", value: "03/14/2031" },
         ] },
         { kind: "decision", id: "crm_result", label: "CRM cross-check result", initial: "agree", outcomes: [
