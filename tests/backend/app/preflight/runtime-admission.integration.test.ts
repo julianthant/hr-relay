@@ -226,6 +226,7 @@ try {
 
 it("returns a changed observation before browser preparation or claim once every bounded re-preparation changed", async () => {
   let changed = false, observations = 0, preparations = 0;
+  const seen: number[] = [];
   try {
     const h = await harness(runners => runners.map(runner => runner.check !== "authority.health" ? runner : {
       ...runner, async run(context) {
@@ -241,9 +242,77 @@ it("returns a changed observation before browser preparation or claim once every
     const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
     changed = true;
     const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
+      onObservationChanged: attempt => { seen.push(attempt); },
       claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => { preparations++; } });
     assert.deepEqual(result, { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: original.envelope.runId });
-    assert.equal(observations, 4); assert.equal(preparations, 0);
+    assert.equal(observations, 4); assert.equal(preparations, 0); assert.deepEqual(seen, [1, 2, 3]);
+    assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original);
+    assert.equal(h.database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
+  } finally { await _afterEachFixture0(); }
+});
+
+it("claims after three changed observations when the fourth preparation succeeds", async () => {
+  let armed = false, observations = 0, preparations = 0;
+  const seen: number[] = [];
+  try {
+    const h = await harness(runners => runners.map(runner => runner.check !== "authority.health" ? runner : {
+      ...runner, async run(context) {
+        if (armed) { observations++; if (observations <= 3) throw new PreflightObservationChangedError(); }
+        return runner.run(context);
+      },
+    }));
+    await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
+    assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+    const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
+    const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+      workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
+    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
+    armed = true;
+    const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
+      onObservationChanged: attempt => { seen.push(attempt); },
+      claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => { preparations++; } });
+    assert.equal(result.state, "applied"); assert.deepEqual(seen, [1, 2, 3]);
+    assert.equal(observations, 4); assert.equal(preparations, 1);
+    assert.equal(h.database.authority.runs.get(original.envelope.runId)?.claimGeneration, 1);
+  } finally { await _afterEachFixture0(); }
+});
+
+it("returns a refusal for a paused selected run and claims nothing", async () => {
+  try {
+    const h = await harness(); await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
+    assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+    const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
+    const paused = h.lifecycle.pause({ commandId: randomUUID(), runId: original.envelope.runId, expectedVersion: original.version });
+    assert.ok(paused.state === "applied");
+    const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
+      prepareRun: async () => { throw new Error("paused selection must not prepare"); },
+      claim: admit => { admit(paused.run); throw new Error("paused selection must not claim"); } });
+    assert.deepEqual(result, { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: original.envelope.runId });
+    const stored = h.database.authority.runs.get(original.envelope.runId); assert.ok(stored);
+    assert.equal(stored.claimGeneration, 0); assert.equal(stored.lifecycle.state, "queued");
+  } finally { await _afterEachFixture0(); }
+});
+
+it("returns a blocked refusal when preparation cannot verify readiness", async () => {
+  let armed = false, preparations = 0;
+  try {
+    const h = await harness(runners => runners.map(runner => runner.check !== "authority.health" ? runner : {
+      ...runner, async run(context) {
+        if (armed) throw new Error("detector could not verify");
+        return runner.run(context);
+      },
+    }));
+    await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
+    assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+    const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
+    const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+      workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
+    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
+    armed = true;
+    const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
+      claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => { preparations++; } });
+    assert.deepEqual(result, { state: "preflight-refused", code: "PREFLIGHT_BLOCKED", runId: original.envelope.runId });
+    assert.equal(preparations, 0);
     assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original);
     assert.equal(h.database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
   } finally { await _afterEachFixture0(); }
