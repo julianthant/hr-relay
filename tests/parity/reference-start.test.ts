@@ -1,6 +1,7 @@
 import { expect } from "@playwright/test";
+import { CommandResultSchema, StartCommandRequestSchema } from "../../src/rules/commands/commands.js";
 import { test } from "./helpers/fixtures.js";
-import { gotoAppState } from "./helpers/app-driver.js";
+import { gotoAppState, installServedSurfaces } from "./helpers/app-driver.js";
 import { PARITY_THEMES, PARITY_VIEWPORTS, assertThemeApplied, installTheme, type ParityTheme } from "./helpers/capture.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
@@ -61,47 +62,74 @@ test.describe("separations start-run continuity", () => {
       test(`${theme.name} @ ${viewport.name}`, async ({ page }) => {
         const errors = failOnPageErrors(page);
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await installServedSurfaces(page);
         await installTheme(page, theme satisfies ParityTheme);
-        await gotoAppState(page, servers.separationsStartServer.baseUrl, { day: FIXTURE_DAY });
+        await page.goto(`${servers.separationsStartServer.baseUrl}/?day=${FIXTURE_DAY}&start=1&view=${encodeURIComponent(JSON.stringify({ workflow: "separations", launchServed: "separations" }))}`);
         await assertThemeApplied(page, theme satisfies ParityTheme);
 
-        await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).click();
-        await page.getByRole("button", { name: "Start run", exact: true }).click();
-        const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
-        await expect(dialog).toContainText("Separations");
+        await expect(page.getByRole("dialog", { name: "Start run", exact: true })).toContainText("New work · Separations");
+
         await expect(page.getByRole("tablist", { name: "How to start this run" })).toHaveCount(0);
-        const typedDocument = dialog.getByRole("textbox", { name: "Kuali ID", exact: true });
+        const typedDocument = page.getByPlaceholder(
+          "Enter Kuali IDs, semicolon-separated (e.g. 4502; 4510)",
+        );
         await typedDocument.fill("4502");
         await expect(typedDocument).toHaveValue("4502");
         await assertShellGeometry(page, `separations-start-input @ ${viewport.name} ${theme.name}`);
         expect(errors, "page errors while rendering the separations Start Run input").toEqual([]);
 
-        await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-        const customize = dialog.getByRole("switch", { name: "Customize steps", exact: true });
-        await expect(customize).toBeVisible();
-        await customize.check();
-        await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-        const steps = dialog.getByRole("region", { name: "Steps", exact: true }).last();
-        const total = await steps.locator(".ds-run-row").count();
-        expect(total).toBeGreaterThan(0);
-        await expect(dialog).toContainText(`${total} of ${total} steps`);
 
-        const optional = steps.getByRole("switch", { name: /^Include / }).and(steps.locator(":enabled")).first();
-        await optional.uncheck();
-        await expect(dialog).toContainText(`${total - 1} of ${total} steps`);
+
+        await page.getByRole("button", { name: "Continue", exact: true }).click();
+        await expect(page.getByRole("checkbox", { name: "Customize steps" })).toBeVisible();
+
+
+
+        await page.getByRole("checkbox", { name: "Customize steps" }).check();
+        await page.getByRole("button", { name: "Continue", exact: true }).click();
+        await expect(page.getByRole("heading", { name: "Workflow steps" })).toBeVisible();
+        await expect(page.getByText("6 / 6 included", { exact: true })).toBeVisible();
+
+
+
+
+        await page.getByRole("checkbox", { name: "Kronos timecard" }).uncheck();
+        await expect(page.getByText("5 / 6 included", { exact: true })).toBeVisible();
+        await page.getByRole("textbox", { name: "Last day worked", exact: true }).fill("06/30/2026");
+        await page.getByRole("textbox", { name: "Separation date", exact: true }).fill("07/01/2026");
+        await expect(page.getByRole("textbox", { name: "Separation date", exact: true })).toHaveValue("07/01/2026");
         expect(errors, "page errors while rendering the omitted separations step").toEqual([]);
 
-        // Put it back so the start request carries every step.
-        await optional.check();
-        await expect(dialog).toContainText(`${total} of ${total} steps`);
-        await assertShellGeometry(page, `separations-start-plan @ ${viewport.name} ${theme.name}`);
 
-        await dialog.getByRole("button", { name: /^Start (dry|live) run$/u }).click();
-        await expect(page.getByText("Run started", { exact: true }).last()).toBeVisible();
+
+        // Put it back, so the plan capture below photographs the same request
+        // it always did: the drafts leave with the omission.
+        await page.getByRole("checkbox", { name: "Kronos timecard" }).check();
+        await expect(page.getByText("6 / 6 included", { exact: true })).toBeVisible();
+
+        await page.getByRole("button", { name: "Preview plan", exact: true }).click();
+        await expect(page.getByRole("heading", { name: "1 run ready to queue", exact: true })).toBeVisible();
+        await expect(page.getByText("4502", { exact: true })).toBeVisible();
+        await expect(page.getByText(/Julian Zaw/u)).toHaveCount(0);
+        await assertShellGeometry(page, `separations-start-plan @ ${viewport.name} ${theme.name}`);
+        expect(errors, "page errors while rendering the separations Start Run plan").toEqual([]);
+
+
+
+        const appliedResponse = page.waitForResponse(response => response.url().endsWith("/api/v1/commands") && response.request().method() === "POST");
+        await page.getByRole("button", { name: "Start 1 run", exact: true }).click();
+        const response = await appliedResponse;
+        expect(response.ok()).toBe(true);
+        const request = StartCommandRequestSchema.parse(response.request().postDataJSON());
+        expect(request.target.workflowId).toBe("separations");
+        const result = CommandResultSchema.parse(await response.json());
+        expect(result.state).toBe("applied");
         await expect(page.getByRole("dialog", { name: "Start run", exact: true })).toHaveCount(0);
         await expect(page.locator("#dashboard-run-start-door")).toBeFocused();
+        await expect(page.getByText(/Julian Zaw/u)).toHaveCount(0);
         await assertShellGeometry(page, `separations-start-result @ ${viewport.name} ${theme.name}`);
         expect(errors, "page errors while rendering the separations Start Run result").toEqual([]);
+
       });
     }
   }

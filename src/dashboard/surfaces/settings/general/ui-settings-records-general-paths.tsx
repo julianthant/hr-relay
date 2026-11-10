@@ -91,7 +91,7 @@ export function CompactSettingsSection({ editor, appearance, deleteAccount }: { 
   const mock = statusMock();
   return <section className="settings-compact-page">
     <PageHeading title="General" />
-    <AssistantPermissions />
+    {mock !== undefined && <AssistantPermissions />}
     {mock === undefined && <ChatGptAccountSettings />}
     {appearance}
     {editor.editor.state === "failed" && <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />}

@@ -473,6 +473,7 @@ function LoadedApp({
 type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: RetainedCommandRequest };
   const [pendingBulk, setPendingBulk] = useState<(PendingBulkCommand & { readonly scope: CommandExecutionScope }) | null>(null);
   const [bulkReview, setBulkReview] = useState(false);
+  const [noticeRead, setNoticeRead] = useState<ReadonlySet<string>>(() => new Set());
   const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(() => statusMock() === "command-results" ? STATUS_MOCK_BULK_OUTCOME : null);
   const [, refreshCommandRecovery] = useState(0);
   const [pendingRecovery, setPendingRecovery] = useState<string | null>(null);
@@ -1030,7 +1031,16 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   ];
   const railNotifications = withCommandNotices(notifications, commandNotices);
   const openInbox: InboxWiring["open"] = (item, navigate, opened, refused) => item.kind === "command" ? navigate(item.destination, opened, refused) : inbox.open(item, navigate, opened, refused);
-  const railInbox = workflowComposition.inbox === "served" ? { ...inbox, state: withCommandNotices(inbox.state, commandNotices), open: openInbox } : undefined;
+  // Local command notices are not server rows: their read state lives here, never in the served inbox.
+  const localNoticeIds = new Set(commandNotices.map(notice => notice.id));
+  const railInbox = workflowComposition.inbox === "served" ? { ...inbox, open: openInbox,
+    state: withCommandNotices(inbox.state, commandNotices.map(notice => noticeRead.has(notice.id) ? { ...notice, read: true } : notice)),
+    control: async (id: string, action: Parameters<InboxWiring["control"]>[1]) => {
+      if (!localNoticeIds.has(id)) return inbox.control(id, action);
+      if (action === "read" || action === "unread") setNoticeRead(previous => { const next = new Set(previous); if (action === "read") next.add(id); else next.delete(id); return next; });
+      return true;
+    },
+    readAll: async () => { setNoticeRead(previous => new Set([...previous, ...localNoticeIds])); await inbox.readAll(); } } : undefined;
   const canOpenRegisteredWorkflow = useCallback((id: string) => workflows.some(flow => flow.id === id), [workflows]);
   const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId });
   notificationContext.current = { day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId };
