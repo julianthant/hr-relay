@@ -3,7 +3,7 @@ import type { WorkerBrowserObservation } from "../../../models/run/worker-contro
 import type { RunRecord } from "../../../models/run/record.js";
 
 import { z } from "zod";
-import { WorkerPreflightRefusalSchema, type WorkerPreflightRefusal } from "../../../models/preflight/preflight-contract.js";
+import { WorkerPreflightRefusalSchema, WorkerRefusalStandingSchema, type WorkerPreflightRefusal, type WorkerRefusalStanding } from "../../../models/preflight/preflight-contract.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure.js";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
@@ -69,6 +69,8 @@ export interface WorkerRunResources {
  readonly defaultBrowserMode: BrowserPresentationMode;
  readonly providers?: RunProviderWiring;
 }
+const PREFLIGHT_RETRY_CAP_MS = 60_000;
+
 export interface WorkerLoopDependencies {
   readonly debugEvents?: import("../execution/run-executor.js").RunExecutorDependencies["debugEvents"];
  readonly resourcesForRun?: (run:RunRecord)=>WorkerRunResources;
@@ -126,6 +128,8 @@ export interface WorkerLoopDependencies {
   readonly browserObservation?: (observation: WorkerBrowserObservation) => void;
 
   readonly configFingerprint?: string;
+  /** The standing refusal the parent shows on the worker card. Cleared with `undefined`. */
+  readonly onStanding?: (refusal: WorkerRefusalStanding | undefined) => void;
   /** Production claim gate comparing the exact boot/current epochs inside one SQLite transaction. */
   readonly claimNext: (
     input: WorkerClaimRequest,
@@ -285,6 +289,11 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
   let stopped: WorkerLoopReport["stopped"] = "stop-signal";
   let preflightRefusal: WorkerPreflightRefusal | undefined;
   try {
+    let refusalStreak = 0;
+    const clearRefusal = (): void => {
+      refusalStreak = 0;
+      deps.onStanding?.(undefined);
+    };
     while (!deps.stopSignal.aborted) {
       // Between items only: the active run always settles before the next poll.
       const directive = deps.controlPoll?.() ?? "run";
@@ -314,11 +323,19 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           area: "worker-admission", code: preflightRefusal.code, reason: "operation-refused",
           ...(preflightRefusal.summary === undefined ? {} : { message: preflightRefusal.summary }) }, { kind: "worker", workerId });
         if (deps.exitWhenIdle) { stopped = "preflight-refused"; break; }
+        // A pool worker stays up. Each consecutive refusal doubles the idle cadence, capped at a minute.
+        refusalStreak += 1;
+        const delay = Math.min(PREFLIGHT_RETRY_CAP_MS, (deps.idleCadence?.() ?? deps.idleRepollMs) * 2 ** (refusalStreak - 1));
+        idleDelayMs = delay;
+        deps.onStanding?.(WorkerRefusalStandingSchema.parse({
+          code: preflightRefusal.code, retryAt: new Date(clock.nowMs() + delay).toISOString(),
+          ...(preflightRefusal.summary === undefined ? {} : { summary: preflightRefusal.summary }),
+        }));
         preflightRefusal = undefined;
-        idleDelayMs = deps.idleCadence?.() ?? deps.idleRepollMs;
         continue;
       }
       if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible") {
+        clearRefusal();
         const notBefore = claimed.refusal.notBefore;
         const decision = deps.exitWhenIdle
           ? decideIdleClaim({ exitWhenIdle: true, notBefore })
@@ -333,6 +350,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         continue;
       }
 
+      clearRefusal();
       const run = requireLifecycleApplied(claimed);
       const claim = {
         workerId,
