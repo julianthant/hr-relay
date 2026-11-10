@@ -140,7 +140,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
     const stoppedProcess = children.get(member.workerId);
     const retained = roots.inventory().roots.filter(row => row.profileId === profileId && row.owner.kind === "worker" && row.owner.workerId === member.workerId
       && (mode === "remove" || row.launch.state !== "closed" || row.native !== undefined));
-    if (retained.length !== 0 && (stoppedProcess === undefined || !(lifetime instanceof RuntimeLifetimeLock))) throw new WorkerControlRefusal("worker-removal-child-close-unproved");
+    if (retained.length !== 0 && (stoppedProcess === undefined || !(lifetime instanceof RuntimeLifetimeLock))) throw new WorkerPoolError("WORKER_REMOVAL_CHILD_CLOSE_UNPROVED");
     if (stoppedProcess !== undefined && lifetime instanceof RuntimeLifetimeLock) await lifetime.awaitOwnedChildClosed(stoppedProcess);
     for (const row of retained) {
       const profileDirectory = join(input.admission.captureBrowserRegistryContext().machineRoot, row.directory);
