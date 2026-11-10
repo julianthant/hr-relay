@@ -41,12 +41,18 @@ export function typedPickRow(table: CandidateTableWire, typed: string): Candidat
   if (table.typed === undefined || !new RegExp(table.typed.pattern, "u").test(value)) return undefined;
   return table.rows.find(row => row.eid === value || row.rowNumber === Number(value));
 }
+/** A typed value the server matches to a masked row: valid only by the served pattern. */
+export function serverMatchedTyped(table: CandidateTableWire, typed: string): string | undefined {
+  const value = typed.trim();
+  return table.typed?.serverMatched === true && new RegExp(table.typed.pattern, "u").test(value) ? value : undefined;
+}
 export function decisionAnswerValid(option: DecisionOptionWire, answer: LogDecisionAnswer): boolean {
   const input = option.input;
   switch (input?.kind) {
     case "candidate": {
       const picked = answer.candidate !== undefined && input.table.rows.some(row => row.id === answer.candidate);
-      const typed = answer.typed !== undefined && answer.typed.trim() !== "" && typedPickRow(input.table, answer.typed) !== undefined;
+      const typed = answer.typed !== undefined && answer.typed.trim() !== ""
+        && (typedPickRow(input.table, answer.typed) !== undefined || serverMatchedTyped(input.table, answer.typed) !== undefined);
       return picked !== typed;
     }
     case "text": {
