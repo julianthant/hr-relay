@@ -1,6 +1,6 @@
 import { windowsObserverPolicyPrelude } from "../windows-observer-policy.js";
 import { createPrivateDirectory, privatePathRejects } from "../private-path.js";
-import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
+import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, isRetainedSnapshot, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -114,16 +114,30 @@ export interface AuthorityImageOwner {
   serializeCommittedImage(): { readonly identity: DirectoryIdentity; readonly image: Uint8Array } | undefined;
 }
 
-type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: () => void }>;
-type ActiveObservation = { readonly statePath: string; owner: AuthorityImageOwner | undefined; snapshot?: ReadonlySnapshot };
+/** pointInTime: an owner image; later changes to the live files do not make it stale. */
+type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: () => void; pointInTime?: true }>;
+type ActiveObservation = { readonly statePath: string; owner: AuthorityImageOwner | undefined; snapshot?: ReadonlySnapshot; view?: ReadonlySnapshot };
 const activeObservation = new AsyncLocalStorage<ActiveObservation>();
 
 /** With an owner, every read of this active authority file in body uses one owner image disposed when body ends; every other path keeps guarded, freshness-checked copies. */
 export async function withActiveAuthorityObservation<T>(statePath: string, owner: AuthorityImageOwner | undefined, body: () => Promise<T>): Promise<T> {
-  if (owner === undefined) return body();
+  // A scope without an owner still hides an enclosing pass's image.
   const scope: ActiveObservation = { statePath: existsSync(statePath) ? realpathSync(statePath) : resolve(statePath), owner };
-  try { return await activeObservation.run(scope, body); }
-  finally { scope.snapshot?.dispose(); }
+  let result: T;
+  try { result = await activeObservation.run(scope, body); }
+  catch (error) {
+    try { releaseObservation(scope); }
+    catch (cleanup) { throw new AggregateError([error, cleanup], "authority-observation-failed", { cause: cleanup }); }
+    throw error;
+  }
+  releaseObservation(scope);
+  return result;
+}
+
+function releaseObservation(scope: ActiveObservation): void {
+  // A reader whose close is unproved still has the image open; it stays with that retained owner.
+  if (scope.view !== undefined && isRetainedSnapshot(scope.view)) return;
+  scope.snapshot?.dispose();
 }
 
 function snapshotMarker(sourcePath: string): string {
@@ -133,12 +147,12 @@ function snapshotMarker(sourcePath: string): string {
   }).join("|");
 }
 
-export function createReadonlyAuthoritySnapshot(sourcePath: string) {
+export function createReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySnapshot {
   const scope = activeObservation.getStore();
   if (scope?.owner !== undefined && existsSync(sourcePath) && realpathSync(sourcePath) === scope.statePath) {
     scope.snapshot ??= copyReadonlyAuthoritySnapshot(sourcePath, scope.owner);
     // The scope owns the image and disposes it when its pass ends.
-    if (scope.snapshot !== undefined) return Object.freeze({ path: scope.snapshot.path, assertUnchanged: scope.snapshot.assertUnchanged, dispose() {} });
+    if (scope.snapshot !== undefined) return scope.view ??= Object.freeze({ path: scope.snapshot.path, assertUnchanged: scope.snapshot.assertUnchanged, dispose() {}, pointInTime: true });
     // The file at the path is not the one the owner opened: judge it by today's guarded copy.
     scope.owner = undefined;
   }

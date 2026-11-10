@@ -22,6 +22,7 @@ type RetainedSourceOwners = Readonly<{
 }>;
 const retainedSourceClosures = new WeakMap<AuthoritySourceClosureUnprovedError, readonly RetainedSourceOwners[]>();
 const provedClosures = new WeakSet<AuthoritySourceClosureUnprovedError>();
+const retainedSnapshots = new WeakSet<object>();
 const recoveringClosures = new AsyncLocalStorage<{ active: boolean; failures: ReadonlySet<AuthoritySourceClosureUnprovedError> }>();
 
 export function createBrowserSourceRecovery() {
@@ -46,6 +47,7 @@ export function createBrowserSourceRecovery() {
 export function retainAuthoritySourceClosure(errors: readonly unknown[], owners: RetainedSourceOwners): AuthoritySourceClosureUnprovedError {
   const failure = new AuthoritySourceClosureUnprovedError(errors);
   retainedSourceClosures.set(failure, [owners]);
+  if (owners.snapshot !== undefined) retainedSnapshots.add(owners.snapshot);
   return failure;
 }
 
@@ -62,6 +64,9 @@ function sourceClosures(error: unknown, all = false): Set<AuthoritySourceClosure
   }
   return closures;
 }
+
+/** True when a closure failure retained this snapshot, so its files must outlive the code that made it. */
+export function isRetainedSnapshot(snapshot: object): boolean { return retainedSnapshots.has(snapshot); }
 
 export function hasUnprovedSourceClosure(error: unknown): boolean { return sourceClosures(error).size !== 0; }
 
