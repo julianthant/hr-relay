@@ -37,7 +37,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await rail.getByRole("button", { name: mockWorkflow(doc.parent).label, exact: true }).click();
         await queue.getByRole("button", { name: new RegExp(`^${doc.name.replaceAll("./", "\\.")} —`, "u") }).click();
         await logs.getByRole("button", { name: `Records ${doc.records.length}`, exact: true }).click();
-        const editor = logs.getByRole("region", { name: "OCR records", exact: true });
+        const editor = page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true });
         const body = editor.locator('[aria-label="Record review cards"]');
         await expect(editor.getByRole("combobox", { name: "Record", exact: true })).toHaveCount(0);
         await expect(editor.locator("[data-review-record-id]")).toHaveCount(doc.records.length);
@@ -86,7 +86,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           }).map(element => element.getAttribute("aria-label") ?? element.tagName);
         });
         expect(overflow).toEqual([]);
-        await logs.getByRole("button", { name: `Records ${doc.records.length}`, exact: true }).click();
+        await page.keyboard.press("Escape");
+        await expect(editor).toHaveCount(0);
       }
       await rail.getByRole("button", { name: mockWorkflow("oath-signature").label, exact: true }).click();
       const single = queue.getByRole("button", { name: /^single-oath.pdf —/u });

@@ -37,21 +37,20 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         }
         await dialog.locator('input[type="file"]').setInputFiles({ ...pdf, name: extraction ? "direct-contact.pdf" : "manual-direct-contact.pdf" });
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-        await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).check();
-        await expect(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true })).toHaveCount(1);
+        await dialog.getByRole("switch", { name: "Customize steps", exact: true }).check();
+        await expect(dialog.getByRole("switch", { name: "Dry run", exact: true })).toHaveCount(1);
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-        const steps = dialog.getByRole("region", { name: "Steps", exact: true });
-        await expect(steps.getByRole("listitem")).toHaveCount(6);
+        const steps = dialog.getByRole("region", { name: "Steps", exact: true }).last();
+        await expect(steps.locator(".ds-run-row")).toHaveCount(6);
         await expect(steps).toContainText("OCR");
-        await steps.getByRole("checkbox", { name: "Read emergency contact", exact: true }).setChecked(extraction);
-        await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
-        await expect(dialog).toContainText(extraction ? "6 / 6 included" : "4 / 6 included");
-        await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
+        await steps.getByRole("switch", { name: "Include Read emergency contact", exact: true }).setChecked(extraction);
+        await expect(dialog).toContainText(extraction ? "6 of 6 included" : "4 of 6 included");
+        await dialog.getByRole("button", { name: /^Start (dry|live) run$/u }).click();
         await expect(page.getByText("Run started", { exact: true }).last()).toBeVisible();
         if (extraction) {
           await logs.getByRole("button", { name: /^Records \d+$/u }).click();
         }
-        const records = logs.getByRole("region", { name: "OCR records", exact: true });
+        const records = page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true });
         await expect(records).toBeVisible();
         await expect(records.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue(extraction ? "10000001" : "");
         await expect(records.getByRole("textbox", { name: "Contact name", exact: true })).toBeVisible();
@@ -84,9 +83,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await info.attach(`${name}.a11y.yml`, { body: a11y, contentType: "text/yaml" });
           info.annotations.push({ type: `a11y-attachment-sha256:${name}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
         }
+        await page.keyboard.press("Escape");
+        await expect(records).toHaveCount(0);
         await logs.getByRole("button", { name: "Rerun", exact: true }).click();
         const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
-        await expect(rerun.getByRole("checkbox", { name: "Read emergency contact", exact: true })).toBeChecked({ checked: extraction });
+        await expect(rerun.getByRole("switch", { name: "Include Read emergency contact", exact: true })).toBeChecked({ checked: extraction });
         await rerun.getByRole("button", { name: "Continue", exact: true }).click();
                 await rerun.getByRole("button", { name: "Cancel", exact: true }).click();
       }
