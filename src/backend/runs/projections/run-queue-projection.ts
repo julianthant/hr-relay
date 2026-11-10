@@ -1,5 +1,6 @@
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { activityTypicalTime, successfulActivityTiming } from "../queries/activity-timing.js";
+import { createActivityAnalytics, failureStepOfTaskSpans } from "../queries/activity-analytics.js";
 import { isQueueMember, isQueueTopLevel, type QueueParent } from "../../../models/dashboard/queue-parent.js";
 import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
@@ -28,8 +29,10 @@ import {
   type QueueRecordMembers,
 } from "../../../models/dashboard/projection.js";
 import {
+  ACTIVITY_MEDIAN_ABSENT_REASON,
   ACTIVITY_SAMPLE_LIMIT,
   ActivityReportWireSchema,
+  activityMedian,
   type ActivityLedgerBlock,
   type ActivityReportWire,
   type ActivityWorkflowTotal,
@@ -265,7 +268,7 @@ const ACTIVITY_STATUS_BUCKET = {
   "awaiting-approval": "open",
 } as const satisfies Record<QueueSurfaceWire["status"], string>;
 
-type ActivityWorkflowCounts = Omit<ActivityWorkflowTotal, "workflowId" | "registration" | "needsAttention" | "typicalTime">;
+type ActivityWorkflowCounts = Omit<ActivityWorkflowTotal, "workflowId" | "registration" | "needsAttention" | "typicalTime" | "outcomes" | "days" | "failedAt" | "typicalMedian">;
 
 function emptyActivityWorkflowCounts(): ActivityWorkflowCounts {
   return {
@@ -1548,7 +1551,7 @@ export class RunQueueProjection {
     const end = z.iso.date().parse(to);
     if (start > end) throw new Error(`activity range ${start}..${end} ends before it starts`);
 
-    const inRange: { day: string; fold: SurfaceFold; authority: RunRecord }[] = [];
+    const inRange: { day: string; fold: SurfaceFold; authority: RunRecord; taskSpans: RunFoldRecord["taskSpans"] }[] = [];
     const personRows: RunRecord[] = [];
     const runs = listCanonicalRuns(this.#deps.reader, "live");
     const context = this.#readContext(runs);
@@ -1562,7 +1565,7 @@ export class RunQueueProjection {
       // Member containment, applied once: a member counted inside its
       // operation's rollup is not counted again at top level.
       if (!isQueueTopLevel({ parent: this.#parentFact(context, authority) })) continue;
-      inRange.push({ day, fold: this.#surfaceFold(row, authority, children.get(authority.envelope.runId) ?? [], context), authority });
+      inRange.push({ day, fold: this.#surfaceFold(row, authority, children.get(authority.envelope.runId) ?? [], context), authority, taskSpans: row?.taskSpans ?? [] });
     }
 
     const people = activityPeopleOf(
@@ -1570,8 +1573,8 @@ export class RunQueueProjection {
       this.#deps.authority.canonicalPerson === undefined ? undefined : (runId) => this.#deps.authority.canonicalPerson!(runId),
     );
 
-    const days = new Map<string, number>();
     const workflows = new Map<string, ActivityWorkflowCounts>();
+    const analytics = createActivityAnalytics();
     const statuses = new Map<string, { runs: number; sample: string[] }>();
     const outcomes = new Map<string, number>();
     const failures = new Map<string, { workflowId: string; code: string; runs: number; transient: number; sample: string[] }>();
@@ -1581,8 +1584,7 @@ export class RunQueueProjection {
     let unmeasured = 0;
     let terminalRuns = 0;
 
-    for (const { day, fold: { surface, warningVerdict }, authority } of inRange) {
-      days.set(day, (days.get(day) ?? 0) + 1);
+    for (const { day, fold: { surface, warningVerdict }, authority, taskSpans } of inRange) {
       const counts = workflows.get(surface.workflowId) ?? emptyActivityWorkflowCounts();
       counts.runs += 1;
       workflows.set(surface.workflowId, counts);
@@ -1613,18 +1615,19 @@ export class RunQueueProjection {
         completion[arm] += 1;
       }
 
+      const durationMs = authority.lifecycle.state === "terminal" && surface.endedAt.state === "present"
+        ? Math.max(0, Date.parse(surface.endedAt.value) - Date.parse(surface.startedAt))
+        : null;
+      const failureStep = surface.status === "failed"
+        ? failureStepOfTaskSpans(taskSpans, this.#deps.descriptors.resolve(surface.workflowId)?.timeline)
+        : undefined;
+      analytics.observe({ workflowId: surface.workflowId, day, status: surface.status, lifecycleState: authority.lifecycle.state, durationMs, ...(failureStep === undefined ? {} : { failureStep }) });
       if (authority.lifecycle.state !== "terminal") continue;
       terminalRuns += 1;
       outcomes.set(authority.lifecycle.outcome, (outcomes.get(authority.lifecycle.outcome) ?? 0) + 1);
       // A terminal row without an end instant has unknown duration, never a growing elapsed value.
-      if (surface.endedAt.state === "present") {
-        measured.push({
-          runId: surface.runId,
-          ms: Math.max(0, Date.parse(surface.endedAt.value) - Date.parse(surface.startedAt)),
-        });
-      } else {
-        unmeasured += 1;
-      }
+      if (durationMs !== null) measured.push({ runId: surface.runId, ms: durationMs });
+      else unmeasured += 1;
       const { failureId } = authority.lifecycle;
       if (failureId === undefined) continue;
       const failure = this.#deps.authority.getFailure(failureId);
@@ -1654,7 +1657,7 @@ export class RunQueueProjection {
       if (descriptor === undefined) {
         unregisteredCategoryRuns += counts.runs;
         return {
-          ...counts, needsAttention: counts.failed, typicalTime,
+          ...counts, ...analytics.workflow(workflowId), needsAttention: counts.failed, typicalTime,
           workflowId,
           registration: {
             state: "unregistered",
@@ -1664,7 +1667,7 @@ export class RunQueueProjection {
       }
       categories.set(descriptor.category, (categories.get(descriptor.category) ?? 0) + counts.runs);
       return {
-        ...counts, needsAttention: counts.failed, typicalTime,
+        ...counts, ...analytics.workflow(workflowId), needsAttention: counts.failed, typicalTime,
         workflowId,
         registration: {
           state: "registered",
@@ -1678,6 +1681,7 @@ export class RunQueueProjection {
     const sorted = [...measured].sort((a, b) => a.ms - b.ms);
     const longest = sorted.at(-1);
     const median = sorted.length === 0 ? undefined : sorted[Math.floor((sorted.length - 1) / 2)];
+    const typicalMedian = activityMedian(measured.map(entry => entry.ms));
 
     return ActivityReportWireSchema.parse({
       wireVersion: 1,
@@ -1689,7 +1693,9 @@ export class RunQueueProjection {
       inFlightRuns: inRange.length - terminalRuns,
       people,
       completion,
-      days: [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, runs]) => ({ day, runs })),
+      outcomeSplit: analytics.outcomeSplit(),
+      typicalMedian,
+      days: analytics.days(),
       workflows: workflowTotals,
       categories: [
         ...[...categories.entries()].sort(([a], [b]) => a.localeCompare(b))
@@ -1709,10 +1715,10 @@ export class RunQueueProjection {
         measuredRuns: measured.length,
         unmeasuredRuns: unmeasured,
         medianMs: median === undefined
-          ? { state: "absent", reason: "no terminal run in range carries both a start and an end instant" }
+          ? { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON }
           : { state: "present", value: median.ms },
         longestMs: longest === undefined
-          ? { state: "absent", reason: "no terminal run in range carries both a start and an end instant" }
+          ? { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON }
           : { state: "present", value: longest.ms, runId: longest.runId },
         totalMs: measured.reduce((total, entry) => total + entry.ms, 0),
       },

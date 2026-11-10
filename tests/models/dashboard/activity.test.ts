@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { ActivityFailureTotalSchema, ActivityWorkflowTotalSchema } from "../../../src/models/dashboard/activity.js";
 
+const day = { day: "2026-08-03", runs: 3, outcomes: { done: 1, failed: 1, attention: 0 }, typicalTime: { measuredRuns: 1, medianMs: { state: "present", value: 0 } } };
 const workflow = { workflowId: "fixture", registration: { state: "unregistered", reason: "No registry entry" }, runs: 3,
   completion: { readBack: 1, warnings: 0, warningsUnknown: 0 }, failed: 1, needsAttention: 1, cancelled: 0, partial: 0, open: 1,
-  typicalTime: { measure: "successful-root-run-mean", measuredRuns: 1, unmeasuredRuns: 0, meanMs: { state: "present", value: 0 } } };
+  typicalTime: { measure: "successful-root-run-mean", measuredRuns: 1, unmeasuredRuns: 0, meanMs: { state: "present", value: 0 } },
+  typicalMedian: { measuredRuns: 1, medianMs: { state: "present", value: 0 } },
+  outcomes: { done: 1, failed: 1, attention: 0 }, days: [day],
+  failedAt: [{ state: "unavailable", reason: "the failed run has no task span that records the step where it failed", runs: 1 }] };
 
 describe("Analytics outcome and failure rows", () => {
   it("requires exact failed attention and explicit successful-root mean coverage", () => {
