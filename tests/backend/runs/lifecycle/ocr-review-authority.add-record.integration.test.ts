@@ -115,20 +115,25 @@ it("durably creates, corrects and approves an operator-added record through nati
   const approval = f.approval([manual.recordId]);
   assert.equal(f.canonical.kernel.execute(approval).state, "applied");
   const frozen = () => ({ review: repositories.ocrReviews.latest(runId), run: repositories.runs.get(runId),
-    snapshots: repositories.ocrReviews.snapshots(runId), generation: f.database.getMeta().authorityGeneration });
+    snapshots: repositories.ocrReviews.snapshots(runId) });
   const before = frozen();
+  let generation = f.database.getMeta().authorityGeneration;
   for (const late of [add(f, 6), ...(["correct-ocr-record", "discard-ocr-record", "restore-ocr-record"] as const).map(type =>
     CommandRequestSchema.parse({ ...f.command(type, 6),
       ...(type === "correct-ocr-record" ? { payload: correctedOcrRecord(read(), manual.recordId, { "contact.name": "Late" }) } : { payload: { recordId: manual.recordId } }) }))]) {
     const refused = f.canonical.kernel.execute(late);
     assert.ok(refused.state === "rejected" && refused.code === "OCR_REVIEW_REFUSED");
-    assert.equal(repositories.commands.get(late.commandId), undefined);
+    assert.deepEqual(repositories.commands.get(late.commandId), late);
+    assert.deepEqual(repositories.commandAudits.findByCommand(late.commandId)?.result, refused);
     assert.deepEqual(frozen(), before);
+    generation += 2;
+    assert.equal(f.database.getMeta().authorityGeneration, generation);
   }
   for (const command of [...changes, approval]) {
     assert.equal(f.canonical.kernel.execute(command).state, "already-applied");
     assert.equal(f.sources.commandResult(runId, command.commandId).state, "recorded");
     assert.deepEqual(frozen(), before);
+    assert.equal(f.database.getMeta().authorityGeneration, generation);
   }
   const completed = await f.canonical.execute(f.parentRun, new AbortController().signal);
   assert.ok(completed.run?.lifecycle.state === "terminal" && completed.run.lifecycle.outcome === "done", JSON.stringify({
@@ -160,18 +165,26 @@ it("durably creates, corrects and approves an operator-added record through nati
   assert.deepEqual(readOcrSnapshotsAuthority(reopened.authority, retained), [snapshot]);
 }, scaledMs(60_000));
 
-it("refuses stale/foreign additions and missing or altered original creation evidence without mutating native authority", async () => {
+it("refuses stale/foreign additions and missing or altered original creation evidence without changing the review", async () => {
   const f = await world.fixture({ record: true, release: true, pageCount: 2 }), request = add(f), runId = f.run.envelope.runId;
   assert.equal(f.canonical.kernel.execute(request).state, "applied");
   const repositories = f.database.authority;
-  const observe = () => ({ meta: f.database.getMeta(), review: repositories.ocrReviews.latest(runId), run: repositories.runs.get(runId) });
+  const observe = () => ({ review: repositories.ocrReviews.latest(runId), run: repositories.runs.get(runId) });
   const before = observe();
-  assert.equal(f.canonical.kernel.execute(add(f)).state, "conflict");
+  const generation = f.database.getMeta().authorityGeneration;
+  const conflicted = add(f);
+  const conflict = f.canonical.kernel.execute(conflicted);
+  assert.equal(conflict.state, "conflict");
+  assert.deepEqual(repositories.commands.get(conflicted.commandId), conflicted);
+  assert.deepEqual(repositories.commandAudits.findByCommand(conflicted.commandId)?.result, conflict);
   for (const candidate of [add(f, 2, 99), { ...add(f, 2), target: { runId: randomUUID(), expectedRevision: 2 } }]) {
     const refused = f.canonical.kernel.execute(candidate);
     assert.ok(refused.state === "rejected" && refused.code === "OCR_REVIEW_REFUSED");
+    assert.deepEqual(repositories.commands.get(candidate.commandId), candidate);
+    assert.deepEqual(repositories.commandAudits.findByCommand(candidate.commandId)?.result, refused);
   }
   assert.deepEqual(observe(), before);
+  assert.equal(f.database.getMeta().authorityGeneration, generation + 6);
   assert.ok(readOcrReviewAuthority(repositories, f.canonical.lifecycle, runId));
   for (const invalid of [replaceOcrCommandRead(repositories, request.commandId, undefined),
     replaceOcrCommandRead(repositories, request.commandId, CommandRequestSchema.parse({ ...request, payload: { pages: [{ pageKind: "emergency-contact", sourcePage: 1 }] } })),
@@ -179,5 +192,6 @@ it("refuses stale/foreign additions and missing or altered original creation evi
     replaceOcrAuditRead(repositories, request.commandId, undefined)]) {
     assert.throws(() => readOcrReviewAuthority(invalid, f.canonical.lifecycle, runId), /OCR_REVIEW_REFUSED/u);
     assert.deepEqual(observe(), before);
+    assert.equal(f.database.getMeta().authorityGeneration, generation + 6);
   }
 });

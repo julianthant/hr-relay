@@ -24,7 +24,8 @@ describe("settings activation and target fences", () => {
     const result = harness.kernel.execute(command);
     assert.equal(result.state, "rejected");
     if (result.state === "rejected") assert.equal(result.code, "target-not-found");
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "rejected");
   });
 
   it("activates settings while refusing an absent retry target", async () => {
@@ -37,7 +38,8 @@ describe("settings activation and target fences", () => {
     const result = harness.kernel.execute(command);
     assert.equal(result.state, "rejected");
     if (result.state === "rejected") assert.equal(result.code, "target-not-found");
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "rejected");
   });
 
 

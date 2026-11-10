@@ -34,6 +34,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
         return ocr !== undefined && readOcrReviewAuthority(database.authority, input.reader, ocr.envelope.runId) !== undefined;
       }),
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
+      command: (commandId) => database.authority.commands.get(commandId),
       latestNotificationSource: (notificationId) => database.authority.notificationPublications.latest(notificationId),
       listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),

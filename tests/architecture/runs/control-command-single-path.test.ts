@@ -443,22 +443,30 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     while (callback !== undefined && !ts.isArrowFunction(callback)) callback = callback.parent;
     if (callback === undefined || !ts.isArrowFunction(callback) || !ts.isCallExpression(callback.parent)
       || callback.parent.expression.getText(kernel) !== "dependencies.authority.withAuthorityTransaction") return content;
-    const before: ts.CallExpression[] = [], after: ts.CallExpression[] = [];
+    // executeSync admits the command in its own transaction, returns a replay when it is settled, then runs the scope before the audit.
+    const effect = callback.parent;
+    let owner: ts.Node | undefined = effect.parent;
+    while (owner !== undefined && !ts.isArrowFunction(owner)) owner = owner.parent;
+    if (owner === undefined || !ts.isArrowFunction(owner) || !ts.isVariableDeclaration(owner.parent)
+      || owner.parent.name.getText(kernel) !== "executeSync") return content;
+    const transactions: ts.CallExpression[] = [], inserts: ts.CallExpression[] = [], audits: ts.CallExpression[] = [];
     function journal(node: ts.Node): void {
       if (ts.isCallExpression(node)) {
         const expression = node.expression.getText(kernel);
-        if (expression === "repositories.commands.insert") before.push(node);
-        if (expression === "repositories.commandAudits.insert") after.push(node);
+        if (expression === "dependencies.authority.withAuthorityTransaction") transactions.push(node);
+        if (expression === "repositories.commands.insert") inserts.push(node);
+        if (expression === "repositories.commandAudits.insert") audits.push(node);
       }
       ts.forEachChild(node, journal);
     }
-    journal(callback.body);
-    if (before.length !== 1 || after.length !== 1 || before[0].end >= calls[0].getStart(kernel)
-      || calls[0].end >= after[0].getStart(kernel)) return content;
-    const owned = callback.body.getText(kernel).replace(/\s+/gu, "");
-    if (!owned.includes("repositories.commands.assertIdentity(request,parentCommandId);")
-      || !owned.includes("repositories.commands.insert(journalRequest,parentCommandId)")
-      || !owned.includes('if(journal.state==="existing"){if(request.family==="assistant-model-preference")repositories.assistantModelPreference.get();returnreplay(dependencies,repositories,request,now);}')) return content;
+    journal(owner.body);
+    const admission = transactions[0];
+    if (transactions.length !== 2 || transactions[1] !== effect || inserts.length !== 1 || audits.length !== 1
+      || inserts[0].getStart(kernel) <= admission.getStart(kernel) || inserts[0].end >= admission.end
+      || calls[0].end >= audits[0].getStart(kernel) || audits[0].end >= effect.end) return content;
+    const admissionText = admission.getText(kernel).replace(/\s+/gu, "");
+    if (!admissionText.includes("repositories.commands.assertIdentity(request,parentCommandId);repositories.commands.insert(request,parentCommandId);if(repositories.commandAudits.findByCommand(request.commandId)===undefined)returnundefined;if(request.family===\"assistant-model-preference\")repositories.assistantModelPreference.get();returnreplay(dependencies,repositories,request,")
+      || !owner.body.getText(kernel).replace(/\s+/gu, "").includes("constreplayed=" + admissionText + ";if(replayed!==undefined)returnreplayed;admitted=true;constresult=dependencies.authority.withAuthorityTransaction(")) return content;
   }
   if (path === "src/backend/runs/commands/ocr-source-service.ts") {
     const owner = source.statements.filter(ts.isFunctionDeclaration).find(node => node.name?.text === "readOcrCommandResult");
@@ -621,6 +629,8 @@ describe("finite native delegation audit read ownership", () => {
           kernel.replace('request.family === "ocr-review" || request.family === "start"', 'request.family === "start"'),
           kernel.replace("() => executeCancel(dependencies, repositories, cancel, now, !held))", "() => executeCancel(dependencies, repositories, request, now, !held))"),
           kernel.replace("repositories.commands.insert(cancel);", ""),
+          kernel.replace("repositories.commands.insert(request, parentCommandId);", ""),
+          kernel.replace("if (replayed !== undefined) return replayed;", ""),
           ...stopHeldCancelMutants(kernel),
           kernel.replace("const journaledResetCancel =", "const resetCancel ="),
           kernel.replace("const application = withCanonicalRunCommandScope(repositories, cancel,", "repositories.commandAudits.findByCommand(cancel.commandId); const application = withCanonicalRunCommandScope(repositories, cancel,"),
@@ -1045,7 +1055,8 @@ describe("control-command-single-path", () => {
     const harness = await createHarness();
     const seen: string[] = [];
     for (const fixture of CURRENT_COMMAND_FIXTURES) {
-      const parsed = CommandRequestSchema.parse(fixture);
+      // Refusals are journaled, so each arm needs its own command id.
+      const parsed = { ...CommandRequestSchema.parse(fixture), commandId: nextCommandId() };
       const request = parsed.family === "worker-browser" && "workflowId" in parsed.target
         ? { ...parsed, target: { ...parsed.target, workflowId: "fixture-graph" } } : parsed;
       const key = `${request.family}/${request.type}`;
@@ -1080,7 +1091,7 @@ describe("control-command-single-path", () => {
         target: { runId: failed.envelope.runId, expectedVersion: failed.version } });
       const generation = h.database.getMeta().authorityGeneration;
       const result = h.kernel.execute(request);
-      assert.equal(h.database.getMeta().authorityGeneration, generation + 1);
+      assert.equal(h.database.getMeta().authorityGeneration, generation + 2);
       assert.ok(result.state === "applied");
       assert.equal(result.affectedTargets.length, 2);
       const target = result.affectedTargets[0]; assert.ok(target?.family === "run");
@@ -1179,8 +1190,9 @@ describe("control-command-single-path", () => {
     assert.throws(() => harness.kernel.execute(command), /injected active-run lookup failure/);
     assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), []);
     assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore + 1);
   });
 
   it("commands are idempotent: byte-exact replay returns already-applied; a different body on the same id fails loud", async () => {
@@ -1242,7 +1254,8 @@ describe("control-command-single-path", () => {
     assert.equal(wrong.state, "rejected");
     if (wrong.state === "rejected") assert.equal(wrong.code, "schema-mismatch");
     assert.equal(harness.database.authority.gateResults.get(`${runId}:approval`), undefined);
-    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(wrong.commandId)?.result.state, "rejected");
+    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore + 2);
   });
 
   it("notification stays read/unread/snooze", () => {

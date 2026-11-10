@@ -69,8 +69,9 @@ describe("D capture identity and served resolution", () => {
       const generation = f.db.getMeta().authorityGeneration;
       const stale = resolutionCommand({ target: { runId: f.record.runId, failureId: f.record.failureId, expectedVersion: 2 }, payload: { action: "reopen" } });
       assert.deepEqual(f.kernel.execute(stale), { state: "rejected", commandId: stale.commandId, code: "target-deleted", message: "The failure's run was deleted." });
-      assert.equal(f.db.getMeta().authorityGeneration, generation);
-      assert.equal(f.db.authority.commands.get(stale.commandId), undefined);
+      assert.equal(f.db.getMeta().authorityGeneration, generation + 2);
+      assert.equal(f.db.authority.commands.get(stale.commandId)?.commandId, stale.commandId);
+      assert.equal(f.db.authority.commandAudits.findByCommand(stale.commandId)?.result.state, "rejected");
     } finally { await f.dispose(); }
   });
 });

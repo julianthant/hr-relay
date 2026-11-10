@@ -177,7 +177,7 @@ afterAll(() => profiles.close());
       .map(({ name }) => name)
       .sort());
   });
-  it.each(cases)("increments once per outer authority mutation: $table", async mutation => {
+  it.each(cases)("records authority generation for one outer mutation: $table", async mutation => {
       const profile = await profiles.create(); heldProfiles.push(profile);
       const database = await openDatabase(profile.path);
       if (mutation.table !== "settings" && mutation.table !== "settings_snapshots" && database.authority.runtimeConfig.get() === undefined) {
@@ -187,7 +187,8 @@ afterAll(() => profiles.close());
       const before = database.getMeta().authorityGeneration;
       try {
         await mutation.mutate(database);
-        assert.equal(database.getMeta().authorityGeneration, before + 1, mutation.table);
+        const commits = mutation.table === "assistant_model_preference" ? 2 : 1;
+        assert.equal(database.getMeta().authorityGeneration, before + commits, mutation.table);
       } finally { mutation.cleanup?.(database); }
   });
 });

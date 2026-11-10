@@ -545,7 +545,7 @@ try {
   h.changeProtected(); const count = h.probes.length;
   assert.equal(h.kernel.execute(h.command(plan)).state, "rejected"); assert.equal(h.publications, 0); assert.equal(h.probes.length, count);
   assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
-  await h.plans.prepare?.(h.ingress, signal()); assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+  await h.plans.prepare?.(h.ingress, signal()); const resumed = { ...h.command(plan), commandId: "99999999-9999-4999-8999-999999999998" }; assert.equal(h.kernel.execute(resumed).state, "applied");
 
 } finally {
 await _afterEachFixture0();

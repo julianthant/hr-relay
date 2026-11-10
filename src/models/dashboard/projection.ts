@@ -22,6 +22,7 @@ import {
   TaskIdSchema,
   LocalDateSchema,
   NotificationIdSchema,
+  CommandIdSchema,
   PositiveIntSchema,
   ProjectionCursorSchema,
   RunIdSchema,
@@ -545,6 +546,33 @@ export function notificationWireOf(
       sourceEvent: sourceEvent ?? { state: "unavailable" },
     });
   }
+  if (record.trigger === "command") {
+    const snoozed = record.snooze.state === "snoozed" && Date.parse(record.snooze.until) > nowMs;
+    const link = record.links[0];
+    if (link?.kind !== "recovery" && link?.kind !== "command-result" && link?.kind !== "bulk-result") {
+      throw new Error("command notice requires a command link");
+    }
+    return NotificationWireSchema.parse({
+      kind: "command",
+      notificationId: record.notificationId,
+      actorId: record.actorId,
+      channel: "ping",
+      count: record.count,
+      publicationId: sha256Hex(`notification-publication:${record.notificationId}:${String(record.count)}:${record.lastSeenAt}`),
+      severity: link.kind === "recovery" ? "error" : "warning",
+      title: record.title,
+      summary: record.summary,
+      readState: record.status,
+      state: snoozed ? "snoozed" : record.status,
+      ...(snoozed && record.snooze.state === "snoozed" ? { snoozedUntil: record.snooze.until } : {}),
+      occurredAt: record.lastSeenAt,
+      revision: record.version,
+      context: context ?? { state: "unavailable" },
+      sourceEvent: sourceEvent ?? { state: "unavailable" },
+      priority: record.status === "unread" && !snoozed,
+      link,
+    });
+  }
   const severity = record.trigger === "failed" || record.trigger === "write-parked"
     ? "error"
     : record.trigger === "verified-done"
@@ -576,7 +604,7 @@ export function notificationWireOf(
 
 /** Compose public text from closed trigger codes, never private diagnostic prose. */
 export function notificationTitle(trigger: z.infer<typeof NotificationTriggerSchema>): string {
-  const titles = { failed: "Run failed", "gate-waiting": "Needs you", "write-parked": "Write parked", repeating: "Repeating failure", storage: "Storage needs attention", "verified-done": "Verified completion", "backfill-gap": "Notification history is incomplete" };
+  const titles: Record<typeof trigger, string> = { failed: "Run failed", "gate-waiting": "Needs you", "write-parked": "Write parked", repeating: "Repeating failure", storage: "Storage needs attention", "verified-done": "Verified completion", "backfill-gap": "Notification history is incomplete", command: "Command needs attention" };
   return titles[trigger];
 }
 const NotificationLinkWireSchema = z.discriminatedUnion("kind", [
@@ -614,7 +642,7 @@ const StandardNotificationWireSchema = z.strictObject({
   channel: z.enum(["ping", "inbox"]),
   count: PositiveIntSchema,
   publicationId: FingerprintSchema,
-  trigger: NotificationTriggerSchema.exclude(["backfill-gap"]),
+  trigger: NotificationTriggerSchema.exclude(["backfill-gap", "command"]),
   readState: z.enum(["read", "unread"]),
   notificationId: NotificationIdSchema,
   actorId: ActorIdSchema,
@@ -628,6 +656,32 @@ const StandardNotificationWireSchema = z.strictObject({
   context: NotificationDisplayContextSchema,
   sourceEvent: NotificationSourceEventWireSchema.optional(),
   link: NotificationLinkWireSchema.optional(),
+});
+
+/** A stored command notice: Priority while unread and not snoozed; recovery is an error, a refused command or incomplete batch a warning. */
+const CommandNotificationWireSchema = z.strictObject({
+  kind: z.literal("command"),
+  channel: z.literal("ping"),
+  count: PositiveIntSchema,
+  publicationId: FingerprintSchema,
+  readState: z.enum(["read", "unread"]),
+  notificationId: NotificationIdSchema,
+  actorId: ActorIdSchema,
+  severity: z.enum(["warning", "error"]),
+  title: z.string().min(1),
+  summary: z.string().min(1).max(1_000),
+  state: z.enum(["unread", "read", "snoozed"]),
+  snoozedUntil: IsoInstantSchema.optional(),
+  occurredAt: IsoInstantSchema,
+  revision: RowRevisionSchema,
+  context: NotificationDisplayContextSchema,
+  sourceEvent: NotificationSourceEventWireSchema.optional(),
+  priority: z.boolean(),
+  link: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("recovery"), commandId: CommandIdSchema }),
+    z.strictObject({ kind: z.literal("command-result"), commandId: CommandIdSchema }),
+    z.strictObject({ kind: z.literal("bulk-result"), bulkCommandId: CommandIdSchema }),
+  ]),
 });
 
 const BackfillGapNotificationWireSchema = z.strictObject({
@@ -646,9 +700,10 @@ const BackfillGapNotificationWireSchema = z.strictObject({
 
 export const NotificationWireSchema = z.discriminatedUnion("kind", [
   StandardNotificationWireSchema,
+  CommandNotificationWireSchema,
   BackfillGapNotificationWireSchema,
 ]).superRefine((row, context) => {
-  if (row.kind === "notification" && (row.state === "snoozed") !== (row.snoozedUntil !== undefined)) {
+  if (row.kind !== "backfill-gap" && (row.state === "snoozed") !== (row.snoozedUntil !== undefined)) {
     context.addIssue({ code: "custom", path: ["snoozedUntil"], message: "snoozed state requires its server expiry hint" });
   }
 });

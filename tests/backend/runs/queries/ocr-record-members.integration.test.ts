@@ -239,6 +239,7 @@ it("presents the hosted OCR run through its host: one visible row, the host serv
   const notification = notificationRecordOf({ seed: 7, title: "Records ready", lastSeenAt: f.run.createdAt });
   notification.links = [{ kind: "run", runId: f.run.envelope.runId }];
   const target = createNotificationTargetQuery({ get: () => notification, read: id => f.canonical.lifecycle.read(id), failure: () => undefined,
+    command: () => undefined, bulk: () => undefined,
     host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)) });
   assert.deepEqual(target(notification.notificationId, notification.actorId), { kind: "run", runId: parentRow.runId, day: clock.todayLocal() });
   const steps = detail.timeline.steps; assert.ok(steps);
