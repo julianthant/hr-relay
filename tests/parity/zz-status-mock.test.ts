@@ -678,6 +678,22 @@ for (const theme of THEMES) test(`logs cards @ ${theme} ${WIDTH}`, async ({ page
     await shot("logs-member-stop");
     await page.keyboard.press("Escape");
   }
+  if (wanted("timeline")) {
+    const stepButton = (state: string) => logs.locator(`nav[aria-label="Run timeline"] button[aria-label*="${state}"]`).first();
+    const hoverFrame = async (name: string, state: string, run: string) => {
+      await open(run);
+      await stepButton(state).hover();
+      await expect(page.getByRole("tooltip").first()).toBeVisible();
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: join(LOGS_OUT, `logs-step-${name}-${theme}-${WIDTH}.png`) });
+      await page.mouse.move(1, 1);
+    };
+    await hoverFrame("done", "Completed", "EID 10333015");
+    await hoverFrame("waiting", "Waiting", "EID 10333015");
+    await hoverFrame("pending", "Upcoming", "EID 10480021");
+    await logs.locator('nav[aria-label="Run timeline"] button').first().focus();
+    await expect(page.getByRole("tooltip").first()).toBeVisible();
+  }
   if (wanted("failed")) { await open("EID 10555001"); await shot("logs-failed"); }
   if (wanted("parked")) { await open("EID 10777012"); await shot("logs-parked"); }
   expect(errors).toEqual([]);
