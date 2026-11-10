@@ -451,6 +451,8 @@ export type AssistantToolTier = z.infer<typeof AssistantToolTierSchema>;
 /** `full-access` lets a session start a supported dry run without typed yes; live saves always ask. */
 export const AssistantApprovalModeSchema = z.enum(["ask", "full-access"]);
 export type AssistantApprovalMode = z.infer<typeof AssistantApprovalModeSchema>;
+/** The prepared M1 send: the composer's approval pick travels with the message, never through model arguments. */
+export const AssistantM1RequestSchema = AssistantRequestSchema.extend({ approvalMode: AssistantApprovalModeSchema.default("ask") });
 /** One accepted turn's claim on one session start; its command is the only one the claim admits. */
 export const AssistantSessionClaimSchema = z.strictObject({
   actionId: z.uuid(), acceptedTurn: AssistantAcceptedTurnSchema, approvalMode: AssistantApprovalModeSchema, dryRun: z.boolean(),

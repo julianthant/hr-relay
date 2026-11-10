@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { aggregateAssistantUsage, type AssistantCallUsage } from "../../models/dashboard/assistant-usage.js";
-import { ASSISTANT_M1_READ_RETRY_FAILURES, AssistantM1RespondEnvelopeSchema, AssistantReplySchema, type AssistantAcceptedTurn, type AssistantM1RespondEnvelope } from "../../models/dashboard/assistant.js";
+import { ASSISTANT_M1_READ_RETRY_FAILURES, AssistantM1RequestSchema, AssistantM1RespondEnvelopeSchema, AssistantReplySchema, type AssistantAcceptedTurn, type AssistantM1RespondEnvelope } from "../../models/dashboard/assistant.js";
 import type { AssistantM1Acceptance, AssistantM1HistoryRepository } from "../storage/sqlite/assistant-history.js";
 import { assistantSessionPart, resolveAssistantReply, type ServerReplyBinding } from "./replies.js";
 import type { DebugEventSchema } from "../../models/events/timeline.js";
@@ -400,9 +400,9 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
       revision: value.revision, delivery: value.delivery }, acceptedTurn: value.acceptedTurn, usage: value.usage, history: { state: "observed" } });
 
   async function respond(input: unknown, requestSignal: AbortSignal): Promise<AssistantM1RespondEnvelope> {
-    const parsed = AssistantRequestSchema.safeParse(input);
+    const parsed = AssistantM1RequestSchema.safeParse(input);
     if (!parsed.success) return noReply("ASSISTANT_INVALID");
-    const request = parsed.data, { conversationId, messageId } = request;
+    const request = parsed.data, { conversationId, messageId, approvalMode } = request;
     const controller = new AbortController(), signal = AbortSignal.any([requestSignal, controller.signal]);
     const calls: (AssistantCallUsage | undefined)[] = [];
     /** Set once a session start is attempted; a turn that may have started runs offers no retry. */
@@ -533,7 +533,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
             if (reads.sessions === undefined) throw new AssistantToolRefusal("ASSISTANT_UNAVAILABLE");
             const request = tool.request(parameters, context);
             effectful = true;
-            const runs = await reads.sessions.start(acceptance.acceptedTurn, request, "ask", signal, assertAuthority);
+            const runs = await reads.sessions.start(acceptance.acceptedTurn, request, approvalMode, signal, assertAuthority);
             sessionRuns.push(...runs);
             return { runs: runs.map(run => table.issue("R", run.envelope.runId, options.runReferenceLabel(run.envelope.runId, run.version), run.envelope.runId, run.version)) };
           };

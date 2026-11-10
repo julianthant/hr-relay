@@ -19,6 +19,7 @@ import { completedResponseStream, partialTextStream } from "../../support/helper
 import { assistantM1HistoryFixture } from "../../support/helpers/assistant-m1-history-fixture.js";
 import { debugTimelineFixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
 import { EXECUTOR_EID, personLookupQueuedRun } from "../../support/helpers/phase1f-executor-harness.js";
+import { sessionAuthorizationFixture } from "../../support/helpers/assistant-session-claims.js";
 import { createAssistantReferenceTable } from "../../../src/backend/assistant/references.js";
 
 const usage = { input_tokens: 4, output_tokens: 2, total_tokens: 6 };
@@ -288,5 +289,30 @@ it("offers no retry after a session start was attempted and refuses session tool
     w.offerSessions(); const posts = w.counts().posts;
     const unowned = result(await w.send()); assert.equal(unowned.state, "no-reply"); if (unowned.state !== "no-reply") assert.fail();
     assert.equal(unowned.reason, "ASSISTANT_UNAVAILABLE"); assert.equal(w.counts().posts, posts);
+  } finally { await w.close(); }
+});
+
+for (const [mode, allowed] of [["full-access", true], ["ask", true], ["full-access", false]] as const)
+  it(`passes the composer's ${mode} pick to the real session owner (Full access ${allowed ? "on" : "off"})`, async () => {
+    const w = await world(); try {
+      const owner = sessionAuthorizationFixture({ fullAccess: allowed, at: w.account.clock.now().toISOString(), current: () => ({ profileId: w.storage.profileId(), epoch: w.storage.epoch() }) });
+      w.offerSessions(owner.authorization);
+      w.script.push(call("start_session", { workflow: "separations", entries: ["4502"] }), message("Done"));
+      const envelope = await w.service().respond({ ...w.request(), approvalMode: mode }, new AbortController().signal);
+      if (mode === "full-access" && allowed) {
+        const answer = result(envelope); assert.equal(answer.state, "answered"); if (answer.state !== "answered") assert.fail();
+        assert.equal(owner.submitted.length, 1); assert.equal(owner.plans[0]?.dryRun, true); assert.equal(owner.claims.all()[0]?.claim.approvalMode, "full-access");
+        assert.equal(answer.reply.parts.at(-1)?.kind, "session");
+      } else assert.equal(owner.plans.length + owner.claims.all().length + owner.submitted.length, 0);
+    } finally { await w.close(); }
+  });
+it("keeps a session command from its effect once the turn's model changes during submit", async () => {
+  const w = await world(); try {
+    const owner = sessionAuthorizationFixture({ at: w.account.clock.now().toISOString(), current: () => ({ profileId: w.storage.profileId(), epoch: w.storage.epoch() }),
+      beforeEffect: () => { w.changeModel(); return Promise.resolve(); } });
+    w.offerSessions(owner.authorization);
+    w.script.push(call("start_session", { workflow: "person-lookup", entries: [String(EXECUTOR_EID)] }), message("Started"));
+    const refusal = result(await w.send()); assert.equal(refusal.state, "no-reply"); if (refusal.state !== "no-reply") assert.fail();
+    assert.equal(refusal.canRetry, false); assert.equal(owner.submitted.length, 0); assert.equal(owner.claims.all()[0]?.outcome.state, "unknown");
   } finally { await w.close(); }
 });

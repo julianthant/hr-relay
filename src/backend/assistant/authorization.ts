@@ -250,7 +250,8 @@ const sessionRefusal = () => new AssistantToolRefusal("ASSISTANT_PROPOSAL_REFUSE
 
 /** Starts sessions the accepted turn may start without typed yes: a transaction-free registered graph, or a supported dry run under full access. */
 export function createAssistantSessionAuthorization(ports: AssistantSessionPorts) {
-  const active = new Set<string>();
+  /** Each active claimed command's turn check, rerun at its effect hook. */
+  const active = new Map<string, () => void>();
   return Object.freeze({
     async start(acceptedTurn: AssistantAcceptedTurn, request: Readonly<{ workflowId: string; entries: readonly string[] }>, approvalMode: AssistantApprovalMode,
       signal: AbortSignal, assertCurrent: () => void): Promise<readonly RunRecord[]> {
@@ -262,6 +263,8 @@ export function createAssistantSessionAuthorization(ports: AssistantSessionPorts
       const support = workflowDryRunSupport(descriptor);
       const dryRun = !(support.state === "unsupported" && support.reason === "no-transaction-node");
       if (dryRun && (approvalMode !== "full-access" || support.state !== "supported")) throw sessionRefusal();
+      // A dry run exists only through Full access; turning it off stops the start at every later boundary.
+      const stillAllowed = () => { assertCurrent(); if (dryRun && !ports.fullAccessAllowed()) throw sessionRefusal(); };
       const parser = descriptor.surfaces.inputRun?.parser;
       const submissions = request.entries.map(entry => {
         const [parsed, ...rest] = parser === undefined ? [] : parseInputRunText(parser, entry);
@@ -270,7 +273,7 @@ export function createAssistantSessionAuthorization(ports: AssistantSessionPorts
       });
       const plan = { workflowId: descriptor.id, submissions, dryRun, browserMode: ports.browserMode(), captureBrowserScreenshots: true };
       await ports.plans.prepare?.(plan, signal);
-      assertCurrent();
+      stillAllowed();
       const planned = ports.plans.plan(plan);
       // A session touches no other run: no refusals, rerun, omitted steps or superseded rows.
       if (planned.workflowId !== descriptor.id || planned.dryRun !== dryRun || planned.planned.length !== submissions.length || planned.refused.length > 0
@@ -279,10 +282,10 @@ export function createAssistantSessionAuthorization(ports: AssistantSessionPorts
         requestDigest: sha256Hex(canonicalJsonStringify({ workflowId: descriptor.id, submissions, dryRun })), claimedAt: ports.clock.now().toISOString(),
         command: { commandId: randomUUID(), requestedAt: ports.clock.now().toISOString(), requestedBy: ports.actorId, source: "assistant", family: "start", type: "start-run",
           target: { workflowId: descriptor.id, startPlanId: planned.startPlanId, expectedVersion: planned.expectedVersion }, payload: planned.fingerprints } });
-      assertCurrent();
+      stillAllowed();
       if (!ports.claims.claim(claim)) throw sessionRefusal();
       const { commandId } = claim.command;
-      active.add(commandId);
+      active.set(commandId, stillAllowed);
       let result: CommandResult;
       try { result = await ports.submit(claim.command, assistantSessionAttribution(claim)); }
       catch (error) { ports.claims.settle(claim.actionId, { state: "unknown" }); throw error; }
@@ -305,8 +308,10 @@ export function createAssistantSessionAuthorization(ports: AssistantSessionPorts
       if (entry === undefined) return;
       const current = ports.current();
       if (command !== undefined && !same(entry.claim.command, command)) throw new AssistantAuthorizationError("assistant-command-binding-mismatch", "ASSISTANT_PROPOSAL_MISMATCH");
-      if (!active.has(commandId) || entry.outcome.state !== "claimed") throw new AssistantAuthorizationError("assistant-effect-custody-unproved", "ASSISTANT_UNKNOWN_NOT_REPLAYABLE");
+      const stillAllowed = active.get(commandId);
+      if (stillAllowed === undefined || entry.outcome.state !== "claimed") throw new AssistantAuthorizationError("assistant-effect-custody-unproved", "ASSISTANT_UNKNOWN_NOT_REPLAYABLE");
       if (entry.claim.acceptedTurn.profileId !== current.profileId || entry.claim.acceptedTurn.epoch !== current.epoch) throw new AssistantAuthorizationError("assistant-effect-not-authorized");
+      stillAllowed();
     },
   });
 }
