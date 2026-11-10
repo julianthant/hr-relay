@@ -228,7 +228,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
       authorityPath: join(stateRoot, "state.db"),
       backupDirectory,
       busyTimeoutMs: 5000,
-    }, clock, context.credentials),
+    }, clock, context.credentials, database),
   });
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
   const preflightAuthority = createPreflightAuthority({

@@ -25,6 +25,7 @@ import { hasUnprovedSourceClosure,retainUnprovedSourceOwners } from "../source-c
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { verifyBackupManifestAtPath } from "./backup-service.js";
+import { isAuthoritySourceChanged, withActiveAuthorityObservation, type AuthorityImageOwner } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import {
 BackupHealthSchema,ProtectedSettingsInspectionSchema,RestoreCandidateSchema,
@@ -491,6 +492,7 @@ function reconcileSpanAuthority(
       return current;
     });
   } catch (error) {
+    if (isAuthoritySourceChanged(error) || storageHealthCauseFromError(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
@@ -514,6 +516,7 @@ function reconcileSpanAuthority(
       busyTimeoutMs,
     );
   } catch (error) {
+    if (isAuthoritySourceChanged(error) || storageHealthCauseFromError(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
@@ -526,6 +529,9 @@ function reconcileSpanAuthority(
   }
   if (snapshot.authorityGeneration !== corpus.authorityGeneration
     || snapshot.authorityContentFingerprint !== corpus.authorityContentFingerprint) {
+    if (snapshot.authorityGeneration > corpus.authorityGeneration) {
+      throw new StorageDoctorObservationChangedError({ cause: { initial: authorityIdentityOf(corpus), final: authorityIdentityOf(snapshot) } });
+    }
     return { reconciliation: SpanAuthorityReconciliationSchema.parse({ state: "unavailable",
       cause: { code: "span-authority-unavailable", summary: "timeline and run authority changed between read snapshots; inspect again" },
     }) };
@@ -623,6 +629,7 @@ function inspectAuthorityIdentity(
       ),
     };
   } catch (error) {
+    if (isAuthoritySourceChanged(error)) throw new StorageDoctorObservationChangedError({ cause: error });
     return { state: "unavailable", cause: storageHealthCauseFromError(error) };
   }
 }
@@ -633,7 +640,7 @@ function authorityIdentityState(read: AuthorityIdentityRead): string {
 
 export class StorageDoctorObservationChangedError extends Error {
   constructor(options: ErrorOptions) {
-    super("authority changed while the storage doctor awaited external evidence (initial=available; final=available)", options);
+    super("authority changed while the storage doctor awaited external evidence; inspect again", options);
     this.name = "StorageDoctorObservationChangedError";
   }
 }
@@ -643,6 +650,10 @@ function authorityIdentityChanged(
   initial: AuthorityIdentityRead,
   final: AuthorityIdentityRead,
 ): Error {
+  if (initial.state === "unavailable" && initial.cause.code === "authority-locked"
+    || final.state === "unavailable" && final.cause.code === "authority-locked") {
+    return new StorageDoctorObservationChangedError({ cause: { initial, final } });
+  }
   if (initial.state === "available" && final.state === "available"
     && final.identity.authorityGeneration > initial.identity.authorityGeneration) {
     return new StorageDoctorObservationChangedError({ cause: { initial, final } });
@@ -774,7 +785,20 @@ function inspectCredentialPresence(admission: RuntimeAdmission, stateRoot: strin
   }
 }
 
-export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore): Promise<StorageDoctorReport> {
+export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore, owner?: AuthorityImageOwner): Promise<StorageDoctorReport> {
+  try {
+    const authorityPath = resolve(StorageDoctorOptionsSchema.parse(input).authorityPath);
+    // The process holding the authority open reads one image of it per pass, so concurrent writers such as peer heartbeats cannot invalidate the pass.
+    return await withActiveAuthorityObservation(authorityPath, owner, () => inspectAuthorityStorage(admission, input, clock, credentials));
+  }
+  catch (error) {
+    // A live write during any snapshot copy or read is a changed observation; real damage still reports unhealthy.
+    if (isAuthoritySourceChanged(error)) throw new StorageDoctorObservationChangedError({ cause: error });
+    throw error;
+  }
+}
+
+async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock, credentials: CredentialStore | undefined): Promise<StorageDoctorReport> {
   return withOperationProof(async () => {
     requireRuntimeAdmission(admission);
     const options = StorageDoctorOptionsSchema.parse(input);
@@ -793,6 +817,7 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
       authorityInspection = AuthorityDatabase.inspectExistingReadOnly(admission, authorityPath, options.busyTimeoutMs);
     } catch (error) {
       authorityCause = storageHealthCauseFromError(error);
+      if (isAuthoritySourceChanged(error) || authorityCause.code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     }
     const initialAuthorityRead: AuthorityIdentityRead = authorityInspection === undefined
       ? inspectAuthorityIdentity(admission, authorityPath, options.busyTimeoutMs)

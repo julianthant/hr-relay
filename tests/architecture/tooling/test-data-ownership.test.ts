@@ -108,6 +108,8 @@ const PROCESS_ENTRYPOINTS = [
   { file: 'storage-restore-attempt-worker.ts', consumers: ['tests/support/helpers/backend/storage-restore-world.ts'] },
   { file: "worker-composition-child.ts", consumers: ["tests/support/helpers/backend/worker-composition-world.ts"] },
   { file: "onboarding-native-orphan-owner.ts", consumers: ["tests/backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts"] },
+  { file: "owner-image-close-retention.ts", consumers: ["tests/architecture/storage/readonly-authority-snapshot.test.ts"] },
+  { file: "owner-image-heartbeat-peer.ts", consumers: ["tests/backend/storage/sqlite/storage-doctor.heartbeat-claim.integration.test.ts"] },
   { file: "onboarding-closure-hold-worker.ts", consumers: ["tests/backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts"] },
   { file: "profile-onboarding-abort-worker.ts", consumers: ["tests/backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts"] },
   { file: "worker-stub-cli.ts", consumers: ["tests/support/helpers/backend/dashboard-child-world.ts"] },
