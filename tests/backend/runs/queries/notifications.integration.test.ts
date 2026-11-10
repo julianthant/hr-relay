@@ -4,7 +4,10 @@ import { deriveBulkChildCommand } from "../../../../src/rules/commands/command-g
 import { BulkRunCommandAcceptanceRecordSchema, BulkRunCommandRequestSchema, CommandRequestSchema, CommandResultSchema, deriveBulkRunCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { projectNotificationTrigger } from "../../../../src/rules/notifications/notification-triggers.js";
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
-import { NOW, UUID_1, UUID_2, UUID_3, UUID_4, UUID_5, UUID_8 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
+import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
+import { WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
+import { NOW, UUID_1, UUID_2, UUID_3, UUID_4, UUID_5, UUID_8, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { failureRecordOf,notificationRecordOf,runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
 describe("notification destinations", () => {
@@ -67,6 +70,31 @@ describe("command destinations", () => {
     const settled = notice("command-refused");
     expect(createNotificationTargetQuery({ ...base, get: () => settled, command: () => ({ request, state: "refused", result: applied }) })(settled.notificationId, settled.actorId)).toEqual({ kind: "command-result", commandId, request, result: applied });
     expect(createNotificationTargetQuery({ ...base, get: () => settled, command: () => ({ request, state: "admitted" }) })(settled.notificationId, settled.actorId)).toMatchObject({ kind: "refused", reason: "target-unavailable" });
+  });
+
+  it("serves write-resolution commands in public form that the HTTP resolver maps back to the retained command", () => {
+    const intent = WriteIntentRecordSchema.parse({ ...WRITE_INTENT_ATTEMPTING, status: "parked", parkedCode: "unknown", message: "Fixture unknown",
+      authorityReason: deriveWriteAuthorityReason("post-click-verifier-unknown", "probe", "Fixture unknown") });
+    if (intent.status !== "parked") throw new Error("fixture is not parked");
+    const writeTarget = { runId: intent.runId, expectedVersion: 4, writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
+      writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest };
+    const conflict = CommandResultSchema.parse({ state: "conflict", commandId, currentVersion: 5, message: "changed" });
+    for (const type of ["recheck-write", "resolve-write-absent"] as const) {
+      const retained = CommandRequestSchema.parse({ commandId, requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
+        family: "run", type, target: writeTarget, payload: { occurrenceKeyDigest: intent.idempotencyKeyDigest } });
+      const repositories = { commands: { get: () => retained }, writeIntents: { get: () => undefined } };
+      const recovery = notice("command-unknown"), settled = notice("command-refused");
+      const served = [
+        createNotificationTargetQuery({ ...base, get: () => recovery, command: () => ({ request: retained, state: "admitted" }) })(recovery.notificationId, recovery.actorId),
+        createNotificationTargetQuery({ ...base, get: () => settled, command: () => ({ request: retained, state: "refused", result: conflict }) })(settled.notificationId, settled.actorId),
+      ];
+      expect(served.map(target => target.kind)).toEqual(["recovery", "command-result"]);
+      for (const target of served) {
+        expect(JSON.stringify(target)).not.toContain(intent.idempotencyKeyDigest);
+        if (target.kind !== "recovery" && target.kind !== "command-result") throw new Error("command target required");
+        expect(resolveWriteCommandTarget(target.request, repositories)).toEqual(retained);
+      }
+    }
   });
 
   it("maps applied, conflict, refused and errored children, plus runs with no child row", () => {

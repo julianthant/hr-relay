@@ -7,6 +7,7 @@ import type { RunRecord } from "../../../models/run/record.js";
 import type { FailureRecord } from "../../../models/trust/failure.js";
 import type { NotificationRecord } from "../../../models/notifications/notifications.js";
 import { NotificationTargetSchema, type NotificationTarget } from "../../../models/notifications/notification-target.js";
+import { publicWriteCommand } from "../commands/write-command-target.js";
 
 type CommandNotice = Readonly<{
   request: CommandRequest;
@@ -56,10 +57,10 @@ export function createNotificationTargetQuery(deps: {
 function commandTarget(link: { kind: "recovery" | "command-result"; commandId: string }, command: CommandNotice | undefined, refused: (reason: "target-unavailable") => NotificationTarget): NotificationTarget {
   if (command === undefined || command.request.commandId !== link.commandId) return refused("target-unavailable");
   if (command.result === undefined) {
-    if (link.kind === "recovery" && command.state === "admitted") return NotificationTargetSchema.parse({ kind: "recovery", commandId: link.commandId, request: command.request });
+    if (link.kind === "recovery" && command.state === "admitted") return NotificationTargetSchema.parse({ kind: "recovery", commandId: link.commandId, request: publicWriteCommand(command.request) });
     return refused("target-unavailable");
   }
-  return NotificationTargetSchema.parse({ kind: "command-result", commandId: link.commandId, request: command.request, result: command.result });
+  return NotificationTargetSchema.parse({ kind: "command-result", commandId: link.commandId, request: publicWriteCommand(command.request), result: command.result });
 }
 
 function bulkTarget(bulkCommandId: string, bulk: { acceptance: BulkRunCommandAcceptanceRecord; children: readonly CommandNotice[] } | undefined, refused: (reason: "target-unavailable") => NotificationTarget): NotificationTarget {
