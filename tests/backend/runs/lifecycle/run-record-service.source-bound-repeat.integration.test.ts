@@ -105,9 +105,11 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     assert.ok(warning.rerun); assert.equal(warning.rerun.warnings.length, 1);
     assert.ok(warning.planned.every((entry) => !Object.hasOwn(entry, "runId") && !Object.hasOwn(entry, "traceId")));
     const unacknowledged = h.command(warning);
-    assert.equal(h.kernel.execute(unacknowledged).state, "confirmation-required");
+    const confirmation = h.kernel.execute(unacknowledged);
+    assert.equal(confirmation.state, "confirmation-required");
     assert.equal(h.database.authority.startPlans.get(warning.startPlanId)?.consumedBy, undefined);
-    assert.equal(h.database.authority.commands.get(unacknowledged.commandId), undefined);
+    assert.deepEqual(h.database.authority.commands.get(unacknowledged.commandId), unacknowledged);
+    assert.deepEqual(h.database.authority.commandAudits.findByCommand(unacknowledged.commandId)?.result, confirmation);
     assert.deepEqual(effects(h), before);
     const accepted = h.proposal(source, warning.rerun.warningDigest);
     assert.deepEqual(effects(h), before, "warning Confirm only acknowledges a plan");
