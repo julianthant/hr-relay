@@ -60,7 +60,7 @@ import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { recoverFixedLayoutPublication,withDefaultLayoutSource,type FixedLayoutPublication } from "../../storage/admission/installation.js";
 import { file as layoutFile,hash as layoutHash } from "../../storage/maintenance/existing-data-backup-files.js";
 import { activateFixedLayoutProfiles,assertFixedLayoutSourceFence,createFixedLayoutDirectory,fixedLayoutEntries,FixedLayoutIntentSchema,FixedLayoutRefusedError,fixedLayoutOutputPaths,readFixedLayoutIntent,type FixedLayoutActivation } from "../../storage/maintenance/fixed-layout.js";
-import { bindErrorOrigin,serializeErrorCauses } from "../../../models/failures/error-origins.js";
+import { bindErrorOrigin,causeChainToken,serializeErrorCauses } from "../../../models/failures/error-origins.js";
 
 
 
@@ -115,11 +115,7 @@ const buildVersion = () => z.object({ version: z.string() }).parse(JSON.parse(re
 
 /** Error text can carry input, so the boot log gets a leading kebab-case token plus closed cause rows (class, code, SQLite result code, frames). */
 function logRefusalReason(stateRoot: string, refusal: Error & { code: string }, area: string, clock: Clock): void {
-  let reason = "unnamed-cause";
-  for (let cause: unknown = refusal.cause; cause instanceof Error; cause = cause.cause) {
-    const token = /^([a-z0-9]+(?:-[a-z0-9]+)+)(?:[: {]|$)/u.exec(cause.message)?.[1];
-    if (token !== undefined && token.length <= 128) { reason = token; break; }
-  }
+  const reason = causeChainToken(refusal.cause) ?? "unnamed-cause";
   // The refusal is already held for the person; a boot log that cannot be written must not turn it into a boot failure.
   try {
     const build = buildVersion(), now = clock.now();

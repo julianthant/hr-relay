@@ -2,6 +2,7 @@ import { type ApplicationUpdateHost } from "../../../runs/lifecycle/application-
 import type { ProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo.js";
 import { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import type { RuntimePreflightRunnerFactory } from "../../preflight/runtime-runners.js";
+import type { probeOwnedViteServer } from "../../host/local-vite-probe.js";
 import type { DashboardBuildCommand } from "./build-identity.js";
 import { createTrustNotifications } from "./notifications.js";
 import { z } from "zod";
@@ -55,6 +56,8 @@ export interface DashboardComposeInput {
   readonly applicationTransport?: Readonly<{ listener: DashboardHttpListener; accepts: (request: Request) => boolean }>;
   /** Test-only preflight probe override; production always checks the isolated frontend port. */
   readonly frontendPortOverride?: 0;
+  /** Test-only replacement for the dev-frontend ownership probe of profile requests. */
+  readonly frontendProbe?: typeof probeOwnedViteServer;
 
   readonly workerProcess?: Readonly<{
     spawn?: WorkerProcessSpawner;

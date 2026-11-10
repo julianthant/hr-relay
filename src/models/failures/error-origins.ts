@@ -92,6 +92,21 @@ function constructorName(error: Error): string {
   return CONSTRUCTOR_NAME.test(name) ? name : "Error";
 }
 
+/** A message's leading kebab-case token, at most 128 characters: the only message text a log may carry. */
+export function leadingKebabToken(message: string): string | undefined {
+  const token = /^([a-z0-9]+(?:-[a-z0-9]+)+)(?:[: {]|$)/u.exec(message)?.[1];
+  return token !== undefined && token.length <= 128 ? token : undefined;
+}
+
+/** The first leading kebab-case token along an error's cause chain, the error itself included. */
+export function causeChainToken(error: unknown): string | undefined {
+  for (let cause = error; cause instanceof Error; cause = cause.cause) {
+    const token = leadingKebabToken(cause.message);
+    if (token !== undefined) return token;
+  }
+  return undefined;
+}
+
 /** Serializes a cause chain to closed name/code/reason rows and build-relative frames; no message text passes. */
 export function serializeErrorCauses(error: unknown): readonly ErrorCause[] {
   if (error === undefined || error === null) return [{ ...row("unknown-cause"), stack: ORIGINS["unknown-cause"].name }];

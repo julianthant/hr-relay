@@ -3,7 +3,7 @@ import { CredentialMaintenanceHold } from "../../../storage/configuration/canoni
 import { PreflightAdmissionRefusal, PreflightObservationChangedError } from "../../../../rules/preflight/preflight-admission.js";
 import { AssistantAuthorizationError } from "../../../assistant/authorization.js";
 import { OcrReviewRefusedError } from "../../../processing/ocr/review-authority.js";
-import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
+import { ProfileRuntimeStartFailedError,ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { OcrSourceRefusedError } from "../../../runs/commands/ocr-source-service.js";
 import { StartupCrashRecoveryRefusedError } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ActivityPopulationError } from "../../../runs/queries/activity-population.js";
@@ -46,6 +46,7 @@ export function failureStatus(
     body: wireError(error.code, ERROR_CATALOG[error.code].text, false),
   };
   if (error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
+  if (error instanceof ProfileRuntimeStartFailedError) return { status: 500, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof DashboardReadFailedError) return { status: 500, body: wireError("DASHBOARD_READ_FAILED", ERROR_CATALOG.DASHBOARD_READ_FAILED.text, false) };
   if (error instanceof ActivitySnapshotError) return { status: 409, body: wireError(error.code, message, false) };
   if (error instanceof ActivityPopulationError) return { status: error.code === "ACTIVITY_POPULATION_RANGE_INVALID" || error.code === "ACTIVITY_POPULATION_BROWSE_INVALID" ? 400 : error.code === "ACTIVITY_POPULATION_SOURCE_MISMATCH" ? 500 : 409, body: wireError(error.code, message, false) };
