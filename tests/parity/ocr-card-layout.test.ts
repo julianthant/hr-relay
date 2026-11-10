@@ -148,7 +148,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       const contact = drawer.getByRole("region", { name: "Record person-1", exact: true });
       await expect(contact.getByRole("textbox", { name: "Notes", exact: true })).toHaveCount(0);
-      const street = contact.getByRole("textbox", { name: "Street", exact: true });
+      const street = contact.getByRole("textbox", { name: "Address", exact: true });
       const contactBody = street.locator('xpath=ancestor::*[@data-slot="card-content"]');
       const fieldContentWidth = await contactBody.evaluate(node => node.clientWidth - parseFloat(getComputedStyle(node).paddingLeft) - parseFloat(getComputedStyle(node).paddingRight));
       expect((await street.boundingBox())!.width).toBeCloseTo(fieldContentWidth, 0);
