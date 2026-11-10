@@ -33,9 +33,6 @@ export interface DashboardCommandService {
   submit(input: unknown): Promise<CommandResult>;
 
   executeBulk(input: unknown): Promise<BulkRunCommandResponse>;
-
-  /** Publishes an already-executed command's applied result exactly as `execute` does, without executing it again. */
-  publish(input: unknown, result: CommandResult): void;
 }
 
 // Derive child command IDs from bulk ID and run ID for exact replay.
@@ -49,35 +46,32 @@ const SPANLESS_RUN_TYPES = new Set([
 
 export function createDashboardCommandService(deps: DashboardCommandServiceDeps): DashboardCommandService {
   function executeOne(input: unknown, parentCommandId?: string): CommandResult {
-    const result = deps.kernel.execute(input, parentCommandId);
-    publish(input, result);
-    return result;
-  }
-  function publish(input: unknown, result: CommandResult): void {
-      if (result.state !== "applied") return;
+      const result = deps.kernel.execute(input, parentCommandId);
+      if (result.state !== "applied") return result;
       // The kernel already validated the request exhaustively; this re-parse
       // only recovers the typed view the emission step dispatches on.
       const request = CommandRequestSchema.parse(input);
       if (request.family === "application") {
         for (const target of request.payload.targets) deps.projection.refreshRun(target.runId);
-        return;
+        return result;
       }
 
       if (request.family === "start" || (request.family === "intake" && request.type === "enqueue-intake-manifest")
         || (request.family === "run" && (request.type === "retry" || request.type === "recover-run"))) {
         deps.projection.ingestFromTimeline();
-        return;
+        return result;
       }
 
       if (request.family === "gate" || request.family === "run" && request.type === "resolve-workbook-reference-row") {
         deps.projection.ingestFromTimeline();
-        return;
+        return result;
       }
       if (request.family === "ocr-review") deps.projection.refreshRun(request.target.runId);
 
       if (request.family === "run" && SPANLESS_RUN_TYPES.has(request.type)) {
         deps.projection.refreshRun(request.target.runId);
       }
+      return result;
   }
 
   // Choose sync or async execution by envelope family; malformed input still reaches kernel validation.
@@ -132,7 +126,6 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
   return Object.freeze({
     execute: executeOne,
     submit,
-    publish,
 
     // Whole-request refusals reach no target; each target outcome remains a separate vector entry.
     async executeBulk(input: unknown): Promise<BulkRunCommandResponse> {

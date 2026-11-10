@@ -1,4 +1,4 @@
-import { AssistantAttachmentRecordSchema, AssistantConversationRecordSchema, AssistantMessageRecordSchema, AssistantModelPreferenceRecordSchema } from "../../../models/dashboard/assistant.js";
+import { AssistantModelPreferenceRecordSchema } from "../../../models/dashboard/assistant.js";
 import { AssistantGrantRecordSchema, AssistantChatRecordSchema, AssistantActionRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { SavedWorkbookSchema, WorkbookTypeSchema, WorkbookOperationSchema } from "../../../models/dashboard/workbooks.js";
 import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
@@ -54,9 +54,6 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   assistant_grants: AssistantGrantRecordSchema,
   assistant_chats: AssistantChatRecordSchema,
   assistant_actions: AssistantActionRecordSchema,
-  assistant_conversations: AssistantConversationRecordSchema,
-  assistant_messages: AssistantMessageRecordSchema,
-  assistant_attachments: AssistantAttachmentRecordSchema,
   run_batches: RunSessionRecordSchema,
   deleted_runs: DeletedRunRecordSchema,
   runs: RunRecordSchema,

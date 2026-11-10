@@ -949,21 +949,18 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   effects: entry.actions.map((action) => COMMAND_EFFECT_BY_ACTION[CommandActionSchema.parse(action)]),
 }))));
 
-/** Run actions the assistant proposes through its own confirmed card. */
-const assistantRunAction = (family: string, action: string) => family === "run" && (action === "pause" || action === "resume" || action === "cancel");
-
 export function commandAssistantAvailability(isActive: (family: string, action: string) => boolean) {
   return COMMAND_FAMILY_REGISTRY.flatMap(family => family.actions.map(action => {
     const active = isActive(family.family, action);
     return {
       family: family.family, action, summary: COMMAND_ASSISTANT_METADATA[action], classification: COMMAND_EFFECT_BY_ACTION[action],
     availability: !active ? "unavailable" as const
-      : family.family === "notification" || assistantRunAction(family.family, action) ? "available" as const : "handoff" as const,
+      : family.family === "notification" ? "available" as const : "handoff" as const,
     argumentProjection: family.family === "notification" ? ["reference"] : [],
     subject: family.family === "notification" || family.family === "workflow-batch" || family.family === "settings" || family.family === "worker-browser"
       ? "none" as const : "unbound" as const,
     reason: !active ? "owner-unavailable" as const
-      : family.family === "notification" || assistantRunAction(family.family, action) ? "canonical-command" as const : "operator-interface-required" as const,
+      : family.family === "notification" ? "canonical-command" as const : "operator-interface-required" as const,
     };
   }));
 }

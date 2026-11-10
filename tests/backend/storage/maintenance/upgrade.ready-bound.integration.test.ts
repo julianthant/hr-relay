@@ -1,4 +1,4 @@
-import { assertUpgradedRunSettlementRows, removeEmptySchema23AssistantHistory, restoreSchema20CompletionFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { assertUpgradedRunSettlementRows, restoreSchema20CompletionFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { removeSchema16PersonPreferences, prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { restoreSchema19RunSettlementFixture, restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
@@ -60,7 +60,7 @@ const workbookReferenceValue = RunWorkbookReferenceSchema.parse({
 });
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 22 = 8, extractionEvidence = false,
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 = 8, extractionEvidence = false,
   workbookEvidence?: { owner: "run" | "terminal-run" | "plan" | "consumed-plan"; schemaHash: string; value?: JsonValue }) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
@@ -132,8 +132,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
-    if (sourceVersion === 22) removeEmptySchema23AssistantHistory(raw);
-    else if (sourceVersion === 20) restoreSchema20CompletionFixture(raw);
+    if (sourceVersion === 20) restoreSchema20CompletionFixture(raw);
     else if (sourceVersion === 19) restoreSchema19RunSettlementFixture(raw);
     else restoreSchema18WorkbookReferenceFixture(raw);
     if (sourceVersion < 18) removeEmptySchema18WorkbookCatalog(raw);
@@ -296,28 +295,6 @@ it("refuses a genuine canonical queued run despite stopped global process roles"
       { message: "credential-maintenance-custody-unproved" });
     assert.deepEqual(storageTree(f.stateRoot), before);
     assert.deepEqual(rawEight(f.path), rows);
-  } finally { await f.close(); }
-});
-
-it("automatically upgrades schema 22 with queued work intact", async () => {
-  const f = await readyBoundEight("queued", 22);
-  const tables = () => { const raw = new DatabaseSync(f.path, { readOnly: true });
-    try { return raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => String(row.name)); } finally { raw.close(); } };
-  try {
-    assert.deepEqual(tables(), [...migrationTableNames(22)].sort());
-    assert.equal(tables().includes("assistant_conversations"), false);
-    const before = rawEight(f.path, 22);
-    assert.ok(before.runs.length > 0); assert.ok(before.artifacts.length > 0);
-    assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
-    assert.deepEqual(tables(), [...migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION)].sort());
-    const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "assistant_conversations", "assistant_messages"].sort());
-    for (const [table, rows] of Object.entries(before)) {
-      if (table === "database_states") assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
-      else if (table === "database_upgrades") { assert.deepEqual(after[table].slice(0, rows.length), rows); assert.equal(after[table].length, rows.length + 1); }
-      else assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row })), table);
-    }
-    assert.deepEqual([after.assistant_conversations, after.assistant_messages], [[], []]);
   } finally { await f.close(); }
 });
 

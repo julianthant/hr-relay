@@ -1,11 +1,19 @@
+import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.js";
+import { debugTimelineFixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
 import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../support/helpers/admission-fixture.js";
+import { createProductionAssistantTools } from "../../../src/backend/assistant/tools.js";
+import { assistantKnowledgeArtifact, createAssistantContext } from "../../../src/backend/assistant/context.js";
+import { AssistantRequestSchema, AssistantResultSchema } from "../../../src/models/dashboard/assistant.js";
+import { createAssistantService, type AssistantFunctionContext } from "../../../src/backend/assistant/service.js";
 import { createAssistantAuthorization } from "../../../src/backend/assistant/authorization.js";
 
 
 
 
+import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
+import { z } from "zod";
 import { AuthorityBackupService, OfflineAuthorityRestoreService } from "../../../src/backend/storage/sqlite/index.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import assert from "node:assert/strict";
@@ -252,6 +260,146 @@ it("requires both grant and Settings CAS and keeps exact permission replay idemp
   assert.deepEqual(f.database.authority.assistantAuthorization.grant(), granted);
 });
 
+it.each(["every-action"] as const)("binds opaque notification references to actual canonical %s authorization without exposing local rows", async mode => {
+  const f = await fixture();
+  assert.equal(f.grant(mode).state, "applied");
+  const notification = NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: "a".repeat(64),
+    trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local-only title", summary: "Local-only content",
+    links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }], count: 1, version: 1,
+    lastSeenAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), updatedAt: f.clock.now().toISOString() });
+  const notices = Array.from({ length: 25 }, (_, index) => ({ ...notification, notificationId: index === 0 ? notification.notificationId : randomUUID(), dedupeFingerprint: index.toString(16).padStart(64, "0") }));
+  const pinned = NotificationRecordSchema.parse({ ...notification, notificationId: randomUUID(), dedupeFingerprint: "c".repeat(64), trigger: "backfill-gap", links: [] });
+  f.database.withAuthorityTransaction(({ notifications }) => { for (const row of [...notices, pinned]) notifications.create(row); });
+  const tools = createProductionAssistantTools({ knowledge: assistantKnowledgeArtifact(), database: f.database, kernel: f.kernel, authorization: f.authorization, actorId: "local-operator", clock: f.clock,
+    assertCurrent: () => f.runtime.assertCurrent(f.active.token) });
+  const request = AssistantRequestSchema.parse({ message: "mark notifications read" });
+  const projected = z.strictObject({ intent: z.literal("notification"), action: z.literal("notification-read-all"), count: z.number(), references: z.array(z.string()) }).parse(tools.projectInput(request).input);
+  const bytes = JSON.stringify(projected);
+  for (const privateValue of [notification.notificationId, notification.actorId, notification.title, notification.summary]) assert.equal(bytes.includes(privateValue), false);
+  assert.equal(projected.references.length, 1); assert.equal(projected.count, 25);
+  const knowledge = assistantKnowledgeArtifact();
+  const context: AssistantFunctionContext = { request, context: createAssistantContext(Buffer.from(knowledge.bytes), knowledge.policy),
+    assertCurrent: () => f.runtime.assertCurrent(f.active.token), assertRetainedCurrent: () => f.runtime.assertCurrent(f.active.token) };
+  const sets = await tools.bindFunctions(context, new AbortController().signal), fn = sets[0]?.functions[0]; assert.ok(fn);
+  const reference = projected.references[0]; assert.ok(reference);
+  const before = f.database.getMeta().authorityGeneration;
+  await assert.rejects(() => fn.invoke({ reference, expectedVersion: 1 }, new AbortController().signal, context));
+  assert.equal(f.database.getMeta().authorityGeneration, before);
+  const outcome = await fn.invoke({ reference }, new AbortController().signal, context);
+  assert.equal(outcome.kind, "complete");
+  assert.equal(f.database.authority.notifications.get(notification.notificationId)?.status, "unread");
+  if (outcome.kind === "complete" && mode === "every-action") {
+    const operator = AssistantResultSchema.parse(outcome.result);
+    assert.equal(operator.state, "action-proposal"); if (operator.state !== "action-proposal") throw new Error("operator proposal required");
+    assert.equal(operator.proposal.targetLabel, "25 current notifications");
+    const identity = { chatId: operator.proposal.chatId, actionId: operator.proposal.actionId, revision: operator.proposal.revision, decision: "confirm" as const };
+    assert.throws(() => tools.decideAction({ ...identity, chatId: randomUUID() }, new AbortController().signal));
+    assert.equal((await tools.decideAction(identity, new AbortController().signal)).state, "applied");
+    assert.equal(f.database.authority.notifications.get(notification.notificationId)?.status, "read");
+    const record = f.database.authority.assistantAuthorization.action(identity.actionId); assert.ok(record);
+    assert.equal(record.command.source, "assistant");
+    assert.equal(f.database.authority.commandAudits.findByCommand(record.command.commandId)?.request.source, "assistant");
+    assert.throws(() => tools.decideAction(identity, new AbortController().signal));
+  }
+  for (const row of notices) assert.equal(f.database.authority.notifications.get(row.notificationId)?.status, "read");
+  assert.deepEqual(f.database.authority.notifications.get(pinned.notificationId), pinned);
+  const after = f.database.getMeta().authorityGeneration;
+  await assert.rejects(() => fn.invoke({ reference }, new AbortController().signal, context));
+  assert.equal(f.database.getMeta().authorityGeneration, after);
+});
+
+it.each(["manifest", "row", "added", "session"] as const)("refuses a production notification reference changed at the %s boundary without an effect", async boundary => {
+  const f = await fixture(); assert.equal(f.grant("every-action").state, "applied");
+  const notification = NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: "a".repeat(64),
+    trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local-only title", summary: "Local-only content",
+    links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }], count: 1, version: 1,
+    lastSeenAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), updatedAt: f.clock.now().toISOString() });
+  f.database.withAuthorityTransaction(({ notifications }) => notifications.create(notification));
+  const tools = createProductionAssistantTools({ knowledge: assistantKnowledgeArtifact(), database: f.database, kernel: f.kernel, authorization: f.authorization, actorId: "local-operator", clock: f.clock,
+    assertCurrent: () => f.runtime.assertCurrent(f.active.token) });
+  const request = AssistantRequestSchema.parse({ message: "mark notifications read" });
+  const projection = z.object({ references: z.array(z.string()) }).parse(tools.projectInput(request).input);
+  const artifact = assistantKnowledgeArtifact();
+  const context: AssistantFunctionContext = { request, context: createAssistantContext(Buffer.from(artifact.bytes), artifact.policy), assertCurrent: () => f.runtime.assertCurrent(f.active.token) };
+  const functions = await tools.bindFunctions(context, new AbortController().signal), fn = functions[0]?.functions[0]; assert.ok(fn);
+  const reference = projection.references[0]; assert.ok(reference);
+  if (boundary === "manifest") { const prior = f.kernel.assistantManifest(); f.kernel.assistantManifest = () => ({ ...prior, revision: PositiveIntSchema.parse(prior.revision + 1) }); }
+  if (boundary === "row") f.database.withAuthorityTransaction(({ notifications }) => notifications.updateState({ notificationId: notification.notificationId, expectedVersion: 1,
+    status: "unread", snooze: { state: "not-snoozed" }, updatedAt: f.clock.now().toISOString() }));
+  if (boundary === "added") f.database.withAuthorityTransaction(({ notifications }) => notifications.create({ ...notification, notificationId: randomUUID(), dedupeFingerprint: "d".repeat(64) }));
+  if (boundary === "session") f.runtime.beginClose();
+  const before = f.database.getMeta().authorityGeneration;
+  await assert.rejects(() => fn.invoke({ reference }, new AbortController().signal, context));
+  assert.equal(f.database.getMeta().authorityGeneration, before);
+  assert.equal(f.database.authority.notifications.get(notification.notificationId)?.status, "unread");
+  if (boundary === "session") await f.runtime.close();
+});
+
+it.each(["cancel", "expired", "manifest", "grant", "target", "added", "restart"] as const)("keeps an issued confirmation bound through %s without an unauthorized effect", async change => {
+  const f = await fixture(); assert.equal(f.grant("every-action").state, "applied");
+  const notification = NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: "a".repeat(64),
+    trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary",
+    links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }], count: 1, version: 1,
+    lastSeenAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), updatedAt: f.clock.now().toISOString() });
+  f.database.withAuthorityTransaction(({ notifications }) => notifications.create(notification));
+  const toolsInput = { knowledge: assistantKnowledgeArtifact(), database: f.database, kernel: f.kernel, authorization: f.authorization, actorId: "local-operator", clock: f.clock,
+    assertCurrent: () => f.runtime.assertCurrent(f.active.token) };
+  const tools = createProductionAssistantTools(toolsInput), request = AssistantRequestSchema.parse({ message: "mark notifications read" });
+  const projection = z.object({ references: z.array(z.string()) }).parse(tools.projectInput(request).input);
+  const reference = projection.references[0]; assert.ok(reference);
+  const knowledge = assistantKnowledgeArtifact();
+  const context: AssistantFunctionContext = { request, context: createAssistantContext(Buffer.from(knowledge.bytes), knowledge.policy),
+    assertCurrent: toolsInput.assertCurrent, assertRetainedCurrent: toolsInput.assertCurrent };
+  const functions = await tools.bindFunctions(context, new AbortController().signal), fn = functions[0]?.functions[0]; assert.ok(fn);
+  const outcome = await fn.invoke({ reference }, new AbortController().signal, context);
+  assert.equal(outcome.kind, "complete"); if (outcome.kind !== "complete") throw new Error("operator result required");
+  const result = AssistantResultSchema.parse(outcome.result);
+  assert.equal(result.state, "action-proposal"); if (result.state !== "action-proposal") throw new Error("operator proposal required");
+  const decision = { chatId: result.proposal.chatId, actionId: result.proposal.actionId, revision: result.proposal.revision, decision: "confirm" as const };
+  if (change === "cancel") assert.equal((await tools.decideAction({ ...decision, decision: "cancel" }, new AbortController().signal)).state, "cancelled");
+  if (change === "expired") f.clock.advanceWall(60_001);
+  if (change === "manifest") { const prior = f.kernel.assistantManifest(); f.kernel.assistantManifest = () => ({ ...prior, revision: PositiveIntSchema.parse(prior.revision + 1) }); }
+  if (change === "grant") assert.equal(f.grant("every-action").state, "applied");
+  if (change === "target") f.database.withAuthorityTransaction(({ notifications }) => notifications.updateState({ notificationId: notification.notificationId, expectedVersion: 1,
+    status: "unread", snooze: { state: "not-snoozed" }, updatedAt: f.clock.now().toISOString() }));
+  if (change === "added") f.database.withAuthorityTransaction(({ notifications }) => notifications.create({ ...notification, notificationId: randomUUID(), dedupeFingerprint: "d".repeat(64) }));
+  const owner = change === "restart" ? createProductionAssistantTools(toolsInput) : tools;
+  const before = f.database.getMeta().authorityGeneration;
+  assert.throws(() => owner.decideAction(decision, new AbortController().signal));
+  assert.equal(f.database.getMeta().authorityGeneration, before);
+  assert.equal(f.database.authority.notifications.get(notification.notificationId)?.status, "unread");
+});
+
+it.each(["confirm", "cancel"] as const)("keeps stale collection confirmation refused but permits exact inert %s", async decision => {
+  const f = await fixture(); assert.equal(f.grant("every-action").state, "applied");
+  const notification = NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: "a".repeat(64),
+    trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary",
+    links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }], count: 1, version: 1,
+    lastSeenAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), updatedAt: f.clock.now().toISOString() });
+  f.database.withAuthorityTransaction(({ notifications }) => notifications.create(notification));
+  const tools = createProductionAssistantTools({ knowledge: assistantKnowledgeArtifact(), database: f.database, kernel: f.kernel, authorization: f.authorization, actorId: "local-operator", clock: f.clock,
+    assertCurrent: () => f.runtime.assertCurrent(f.active.token) });
+  const request = AssistantRequestSchema.parse({ message: "mark notifications read" });
+  const reference = z.object({ references: z.array(z.string()) }).parse(tools.projectInput(request).input).references[0]; assert.ok(reference);
+  const knowledge = assistantKnowledgeArtifact(), context: AssistantFunctionContext = { request, context: createAssistantContext(Buffer.from(knowledge.bytes), knowledge.policy),
+    assertCurrent: () => f.runtime.assertCurrent(f.active.token), assertRetainedCurrent: () => f.runtime.assertCurrent(f.active.token) };
+  return tools.bindFunctions(context, new AbortController().signal).then(async sets => {
+    const fn = sets[0]?.functions[0]; assert.ok(fn);
+    const result = await fn.invoke({ reference }, new AbortController().signal, context);
+    assert.equal(result.kind, "complete"); if (result.kind !== "complete" || result.result.state !== "action-proposal") throw new Error("prepared action required");
+    const proposal = result.result.proposal, action = f.database.authority.assistantAuthorization.action(proposal.actionId); assert.ok(action);
+    f.database.withAuthorityTransaction(({ notifications }) => notifications.create({ ...notification, notificationId: randomUUID(), dedupeFingerprint: "c".repeat(64) }));
+    const rows = f.database.authority.notifications.listByActor("local-operator");
+    const input = { chatId: proposal.chatId, actionId: proposal.actionId, revision: proposal.revision, decision };
+    if (decision === "confirm") assert.throws(() => tools.decideAction(input, new AbortController().signal));
+    else assert.equal((await tools.decideAction(input, new AbortController().signal)).state, "cancelled");
+    assert.equal(f.database.authority.assistantAuthorization.action(proposal.actionId)?.state, decision === "cancel" ? "cancelled" : "prepared");
+    assert.equal(f.database.authority.commands.get(action.command.commandId), undefined);
+    assert.equal(f.database.authority.commandAudits.findByCommand(action.command.commandId), undefined);
+    assert.deepEqual(f.database.authority.notifications.listByActor("local-operator"), rows);
+  });
+});
+
 it("keeps checkpoint recovery operator-only even when a manifest classifies the command", async () => {
   const f = await fixture();
   assert.equal(f.grant("every-action").state, "applied");
@@ -270,4 +418,47 @@ it("keeps checkpoint recovery operator-only even when a manifest classifies the 
   assert.equal(f.database.authority.commands.get(command.commandId), undefined);
   assert.equal(f.database.authority.commandAudits.findByCommand(command.commandId), undefined);
   assert.equal(f.database.authority.assistantAuthorization.actionByCommand(command.commandId), undefined);
+});
+
+it("answers a natural workflow question using production knowledge without private input or action functions", async () => {
+  const f = await fixture(), knowledge = assistantKnowledgeArtifact([{ id: "person-lookup", label: "Person Lookup" }]);
+  const tools = createProductionAssistantTools({ knowledge, database: f.database, kernel: f.kernel, authorization: f.authorization,
+    actorId: "local-operator", clock: f.clock, assertCurrent: () => f.runtime.assertCurrent(f.active.token) });
+  const payloads: unknown[] = [], debug = debugTimelineFixture();
+  const debugEvents = createDebugEventWriter({ repository: debug.repository, clock: f.clock, build: "synthetic", development: false });
+  const model = "synthetic-model", authority = { revision: 1, attemptGeneration: 1, availability: "available" as const };
+  const service = createAssistantService({ ...tools, context: createAssistantContext(Buffer.from(knowledge.bytes), knowledge.policy),
+    runtime: () => knowledge.policy, clock: f.clock,
+    modelPolicy: () => ({ policy: { model, eligible: true, consented: true, billing: "chatgpt-plan", verifiedUntil: "2026-10-22T12:00:00.000Z" }, isCurrent: () => true }),
+    debugEvents,
+    account: { async readAuthority() { return authority; }, revalidateAuthority() { return true; },
+      async listAssistantModels() { return { catalog: { models: [{ slug: model, displayName: "Synthetic" }] }, authority }; },
+      async inferAssistant(input) {
+        payloads.push(input); assert.deepEqual(input.tools, []);
+        const bytes = JSON.stringify(input);
+        for (const privateValue of ["Which workflows", "One short sentence", "PRIVATE_SUBJECT_CANARY", "PRIVATE_SUFFIX_CANARY"]) assert.equal(bytes.includes(privateValue), false);
+        assert.ok(bytes.includes("Person Lookup is a served workflow"));
+        return { responseId: "synthetic-response", model, output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Relay can run Person Lookup." }] }] };
+      } },
+  });
+  const result = await service.respond({ message: "Which workflows can Relay run? One short sentence.", subjectRef: "PRIVATE_SUBJECT_CANARY" }, new AbortController().signal);
+  assert.equal(result.state, "answered");
+  if (result.state !== "answered") throw new Error("workflow answer required");
+  assert.equal(result.text, "Relay can run Person Lookup."); assert.equal(result.citations.length, 1);
+  const citation = result.citations[0];
+  assert.deepEqual(citation, { path: knowledge.reference.files[0].path, revision: knowledge.policy.revision,
+    startLine: Object.keys(knowledge.topics).indexOf("workflow person-lookup") + 1,
+    endLine: Object.keys(knowledge.topics).indexOf("workflow person-lookup") + 1,
+    quote: `workflow person-lookup: ${knowledge.topics["workflow person-lookup"]}` });
+  assert.equal(payloads.length, 1); assert.equal(debug.records.length, 0);
+  const refused = await service.respond({ message: "Which workflows can Relay run? PRIVATE_SUFFIX_CANARY" }, new AbortController().signal);
+  assert.equal(refused.state, "refused"); if (refused.state === "refused") assert.equal(refused.code, "ASSISTANT_PROPOSAL_REFUSED");
+  assert.equal(payloads.length, 1); assert.equal(debug.records.length, 1);
+  const payload = debug.records[0].payload; assert.equal(payload.kind, "debug");
+  if (payload.kind !== "debug") throw new Error("local proposal diagnostic required");
+  const { build, pid, pinned, ...diagnostic } = payload.event;
+  assert.equal(build, "synthetic"); assert.equal(pid, process.pid); assert.equal(pinned, false);
+  assert.deepEqual(Object.keys(diagnostic).sort(), ["area", "category", "code", "correlationId", "phase", "reason"]);
+  assert.deepEqual({ ...diagnostic, correlationId: "generated" }, { category: "http", phase: "failed", correlationId: "generated", area: "assistant-proposal", reason: "input-projection", code: "ASSISTANT_PROPOSAL_REFUSED" });
+  assert.equal(JSON.stringify(debug.records).includes("PRIVATE"), false);
 });

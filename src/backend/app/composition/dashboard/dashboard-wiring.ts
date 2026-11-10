@@ -13,12 +13,11 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
+import { assistantKnowledgeArtifact,loadProductionAssistantContext } from "../../../assistant/context.js";
 import { createAssistantService } from "../../../assistant/service.js";
-import { createAssistantPlugins } from "../../../assistant/plugins/registry.js";
-import { createAssistantProposals } from "../../../assistant/proposals.js";
-import { assistantWorkflowFacts, loadAssistantWorkflowFacts, type AssistantWorkflowFacts } from "../../../assistant/plugins/workflows/facts.js";
-import { assistantSurfaceCoverage, createAssistantPluginDeps, startAssistantHistoryCleanup } from "./assistant.js";
-import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
+import { assistantSurfaceCoverage,createProductionAssistantTools } from "../../../assistant/tools.js";
+import { createAssistantWorkflowStarts } from "../../../assistant/workflow-start.js";
+import { createAssistantReadAllowlist } from "./assistant.js";
 import { CHATGPT_OCR_MODEL,createChatGptOcrPageReader } from "../../../processing/providers/chatgpt-ocr-adapter.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { createCommandKernel } from "../../../runs/commands/command-kernel.js";
@@ -66,7 +65,6 @@ import { composeStorage } from "./storage.js";
 import { GATE_PARK_WATCH_MS,composeDashboardTimeline } from "./timeline.js";
 import { WORKER_BIRTH_POLL_MS,WORKER_BIRTH_TIMEOUT_MS,composeWorkerProcessControl,productionWorkerLaunch,realWorkerProcessSpawner } from "./worker-process.js";
 import { composeWriteSafety,prepareWriteSafety } from "./write-safety.js";
-
 
 export async function composeDashboardRuntimeStartup(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody): Promise<DashboardRuntime> {
   const environment = prepareDashboardEnvironment(input, custody);
@@ -151,11 +149,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
 
   const workflowSources = z.record(z.string(), z.enum(["mock", "served", "hidden"])).parse(configuredWorkflowSources);
-  const servedDescriptors = DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served");
-  // The manifest identity hashes the facts from the running definitions; the on-disk pin is checked only when the assistant runs.
-  const factsSha256 = assistantWorkflowFacts(servedDescriptors).sha256;
-  let pinnedFacts: AssistantWorkflowFacts | undefined;
-  const assistantFacts = () => pinnedFacts ??= loadAssistantWorkflowFacts(repoRoot, servedDescriptors);
 
   let resolveQuit: () => void = () => undefined;
   const shutdownRequested = new Promise<void>(resolve => { resolveQuit = resolve; });
@@ -173,7 +166,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     preflight: runtimePreflight.admission,
     assistantSurface: () => { if (assistantSurface === undefined) throw new Error("assistant-surface-unavailable"); return assistantSurface; },
     workflowSources,
-    assistantFactsSha256: () => factsSha256,
     failureResolution: composeFailureResolution(database.authority).commands,
     lifecycle,
     authority: { evidenceSchemaHash: database.evidenceSchemaHash.bind(database), withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }) },
@@ -216,6 +208,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
 
   const assistantAuthorization = composeProfileAssistantAuthorization(profile.runtime, profile.token, kernel, clock);
+  const knowledge = assistantKnowledgeArtifact(DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served").map(descriptor => ({ id: descriptor.id, label: descriptor.label })));
 
 
   const commands = createDashboardCommandService({
@@ -245,24 +238,15 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     plannedBy: LOCAL_OPERATOR_ACTOR_ID,
   });
 
-  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
-    host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)) });
-  const notifications = composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget });
-  const dataQueries = composeDataQueries(runDetailDeps);
-  const ocrSources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent });
-  const assistantProposals = createAssistantProposals({ ocrSources: () => ocrSources, database, authorization: assistantAuthorization, plans: startPlans, commands, runs: lifecycle, descriptors,
-    rerunValues: request => dataQueries.rerunValues(request), served: workflowId => workflowSources[workflowId] === "served",
-    actorId: resolved.config.actor.id, clock, assertCurrent, kernel, workbooks: () => workbookLibrary,
-    attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) });
-  const assistantPluginDeps = createAssistantPluginDeps({ database, runDetail: runDetailDeps, assertCurrent, facts: assistantFacts,
-    search: () => shell.search, notifications: () => notifications,
-    workbooks: () => workbookLibrary, attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) });
+  const workflowStarts = createAssistantWorkflowStarts({ database, runs: lifecycle, plans: startPlans, commands,
+    authorization: assistantAuthorization, descriptors, served: workflowId => workflowSources[workflowId] === "served",
+    actorId: resolved.config.actor.id, clock, assertCurrent });
+  const assistantTools = createProductionAssistantTools({ database, kernel, authorization: assistantAuthorization, knowledge,
+    actorId: resolved.config.actor.id, clock, assertCurrent, workflowStarts,
+    reads: createAssistantReadAllowlist({ runDetail: runDetailDeps, assertCurrent }) });
   const assistant = createAssistantService({ debugEvents, account: { ...chatGptAccount, ...context.accountAuthority },
-    assertComposition: assertCurrent, actorId: resolved.config.actor.id, facts: assistantFacts,
-    owner: () => { assertCurrent(); return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch }; },
-    plugins: () => [...createAssistantPlugins(assistantPluginDeps), assistantProposals.plugin],
-    decideAction: (decision, signal) => assistantProposals.decideAction(decision, signal),
-    history: () => { assertCurrent(); return database.authority.assistantHistory; },
+    context: () => loadProductionAssistantContext(repoRoot, knowledge),
+    runtime: () => { assertCurrent(); return knowledge.policy; },
     modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
     readModelPreference: () => captureSelectedModel().view,
     readPermission: () => assistantAuthorization.permission(),
@@ -271,7 +255,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       await chatGptAccount.verifyAssistantCapability(captured.view.preference, captured.assertPreferenceCurrent, signal);
       captured.assertPreferenceCurrent();
     },
-    clock,
+    clock, ...assistantTools,
   });
 
 
@@ -325,6 +309,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     );
   }
 
+  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
+    host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)) });
   const chatGptOcrTest = createChatGptOcrTestService({ assertCurrent, dispatch: async (input, signal, source) => {
     const reader = createChatGptOcrPageReader({ account: chatGptAccount, artifacts: source, clock, model: CHATGPT_OCR_MODEL, assertCurrent });
     const { submitted } = await reader.readPage({ ...input, instruction: buildExtractionInstruction(input.formType) }, signal);
@@ -342,14 +328,14 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       signIn: async fields => { assertCurrent(); const result = await chatGptAccount.signIn(fields); assertCurrent(); return result; },
       signOut: async () => { assertCurrent(); const result = await chatGptAccount.signOut(); assertCurrent(); return result; },
     },
-    notifications,
+    notifications: composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget }),
     ...(staticBundle === undefined ? {} : { staticBundle }),
     requestIdentity: { identify: request => { assertCurrent(); return createSoloRequestIdentityCheckpoint(resolved.config.actor).identify(request); } },
     preflight: createPreflightReportService({ dashboard: preflightAuthority, runtime: runtimePreflight, clock }),
     ...shell,
     projection,
     runDetail: runDetailDeps,
-    data: dataQueries,
+    data: composeDataQueries(runDetailDeps),
     diagnosticBundles: trustReads.diagnosticBundles,
     commands,
     commandJournal: database.authority.commands,
@@ -361,7 +347,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     startPlans,
     applicationLifecycle,
     intake,
-    ocr: ocrSources,
+    ocr: createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
     ...settingsBoundary.routes,
@@ -374,9 +360,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   const assistantSurface = assistantSurfaceCoverage(app.routes);
 
-  // Unfinished sends become delivery-unknown before any history route serves; expired chats are reclaimed now and hourly.
-  database.authority.assistantHistory.settleInterrupted(clock.now().toISOString());
-  database.authority.assistantHistory.reclaimExpired(clock.now().toISOString());
   const startHttpServer = input.httpServerStarter ?? startDashboardHttpServer;
   const server: DashboardHttpServer = input.applicationTransport === undefined ? await startHttpServer({
     app,
@@ -395,13 +378,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const gateParkTimer = setInterval(() => void notificationObserver.observe(), GATE_PARK_WATCH_MS);
   gateParkTimer.unref();
   startupCleanups.push(() => clearInterval(gateParkTimer));
-  const historyTimer = startAssistantHistoryCleanup(() => { database.authority.assistantHistory.reclaimExpired(clock.now().toISOString()); }, error => {
-    const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "assistant-history-cleanup", code: "ASSISTANT_HISTORY_CLEANUP_FAILED",
-      reason: error instanceof RuntimeCustodyUncertainError || error instanceof AuthoritySourceClosureUnprovedError ? "custody-unproved" : "cleanup-failed" };
-    debugEvents.emit(event);
-    input.workerProcess?.faultSink?.(JSON.stringify(event));
-  });
-  startupCleanups.push(() => clearInterval(historyTimer));
 
-  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, historyTimer, custody });
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, custody });
 }

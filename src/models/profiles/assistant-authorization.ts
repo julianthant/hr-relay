@@ -19,8 +19,7 @@ export const AssistantPlanBindingSchema = z.strictObject({
 });
 export const AssistantStoredCommandSchema = CommandRequestSchema.superRefine((command, context) => {
   let admitted = command.family === "start" || command.family === "notification" || command.family === "workflow-batch"
-    || (command.family === "worker-browser" && command.type === "spawn-worker")
-    || (command.family === "run" && (command.type === "pause" || command.type === "resume" || command.type === "cancel"));
+    || (command.family === "worker-browser" && command.type === "spawn-worker");
   if (command.type === "apply-settings") admitted = command.payload.assistantPermission === undefined && Object.entries(command.payload.patch).every(([, operation]) =>
     ("clear" in operation || typeof operation.set === "boolean" || typeof operation.set === "number"));
   if (!admitted) context.addIssue({ code: "custom", message: "assistant-command-values-unbound" });
