@@ -36,7 +36,7 @@ afterEach_m0(_afterEachFixture1);
       await act_m0(async () => element.click());
     };
     try {
-      await act_m0(async () => root.render(createElement_m0(ActivityReport_m0, { source: "mock", range: '', onRange: () => {} })));
+      await act_m0(async () => root.render(createElement_m0(TooltipProvider_m1, null, createElement_m0(ActivityReport_m0, { source: "mock", range: '', onRange: () => {} }))));
       assert_m0.equal(host.querySelector('h1')?.textContent, 'Analytics');
       await click('button[aria-label="View completed runs (38)"]');
       assert_m0.equal(host.querySelectorAll('tbody tr').length, 20);

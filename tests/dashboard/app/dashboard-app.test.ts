@@ -874,6 +874,7 @@ describe_m2("dispatchBulk's rejection arm (the selection band's bulk post)", () 
           if (composed.state !== "ready") throw new Error("bulk fixture composition refused");
           void binding.executor.execute(composed.request, options);
         } }),
+        entries.map(entry => createElement_m2("button", { key: entry.inFlightKey, onClick: () => setRecoveryKey(entry.inFlightKey) }, `Review ${entry.label}`)), // stands in for the Priority notification's Review action
         createElement_m2(CommandRecovery, { entries, pendingKey: recoveryKey, onReview: setRecoveryKey, onReplay: entry => { setRecoveryKey(null); void binding.executor.replay(entry.inFlightKey, options); } }),
       );
     }
@@ -890,12 +891,12 @@ describe_m2("dispatchBulk's rejection arm (the selection band's bulk post)", () 
     if (!(confirm instanceof HTMLButtonElement)) throw new Error("missing bulk confirmation action");
     await act_m2(async () => confirm.click()); await settle();
     assert_m2.equal(bytes.length, 1);
-    assert_m2.ok(document.querySelector('[aria-label="Commands awaiting recovery"]'));
+    assert_m2.match(document.body.textContent ?? "", /cancel: outcome unknown/u);
     assert_m2.doesNotMatch(document.body.textContent ?? "", /private transport sentinel|Command confirmed/u);
     await settle(); assert_m2.equal(bytes.length, 1, "uncertainty never automatically retries");
     await click("Review cancel"); await click("Resend original request");
     assert_m2.deepEqual(bytes, [bytes[0], bytes[0]], "recovery preserves the full parent envelope bytes");
-    assert_m2.equal(document.querySelector('[aria-label="Commands awaiting recovery"]') === null, true, "confirmed replay clears recovery");
+    assert_m2.doesNotMatch(document.body.textContent ?? "", /cancel: outcome unknown/u, "confirmed replay clears recovery");
     assert_m2.doesNotMatch(document.body.textContent ?? "", /private server sentinel/u);
     assert_m2.equal(published[0]?.kind, "uncertain");
     assert_m2.equal(published.at(-1)?.kind, "confirmed", "success requires matching authoritative readback");
@@ -984,7 +985,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     };
     await edit("Task", "240");
     assert_m2.match(document.querySelector('[data-slot="toast"]')?.textContent ?? "", /Settings save unconfirmed/u);
-    const credentials = [...h.host.querySelectorAll<HTMLAnchorElement>("a")].find(button => button.textContent?.trim() === "Credentials");
+    const credentials = [...h.host.querySelectorAll<HTMLAnchorElement>("a")].find(button => button.textContent?.trim() === "Account");
     assert_m2.ok(credentials); await act_m2(async () => credentials.click()); await settle();
     await edit("UCPath username", "Synthetic credential");
     assert_m2.equal(commands.length, 2);
@@ -1016,10 +1017,11 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     assert_m2.equal(commands.length, 1);
     await h.deliver(DashboardDayWireSchema_m2.parse({ ...FIXTURE_DAY_WIRE_m2, snapshotCursor: "pc:200", queueSurfaces: FIXTURE_DAY_WIRE_m2.queueSurfaces.filter(entry => entry.runId !== candidate.runId) }));
     assert_m2.equal(h.host.querySelector(`[data-demo-row-id="${candidate.runId}"]`) === null, true);
-    const recovery = h.host.querySelector('[aria-label="Commands awaiting recovery"]');
-    assert_m2.ok(recovery);
-    const review = [...recovery.querySelectorAll("button")].find(entry => entry.textContent?.trim() === "Review Delete run (1 run)");
-    assert_m2.ok(review);
+    assert_m2.ok([...document.querySelectorAll('[data-slot="toast"]')].some(toast => toast.textContent?.includes("Delete run: outcome unknown")), "the lost response stays visible as a sticky toast");
+    const bell = h.host.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert_m2.ok(bell);
+    await act_m2(async () => bell.click()); await settle();
+    const review = [...h.host.querySelectorAll<HTMLButtonElement>("button.notification-item")].find(entry => entry.textContent?.includes("Delete run: outcome unknown"));
+    assert_m2.ok(review, "the Priority notification offers the original request for review");
     await act_m2(async () => review.click());
     assert_m2.ok([...document.querySelectorAll('[role="dialog"]')].some(dialog => dialog.textContent?.includes("Recover previous Delete run")));
     assert_m2.equal(commands.length, 1, "reviewing recovery must not dispatch a second command");
@@ -1090,6 +1092,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
 {
 
 const APP = readFileSync_m3(new FileURL("../../../src/dashboard/app/dashboard-app.tsx", import.meta.url), "utf8");
+const LAUNCHER_MODEL = readFileSync_m3(new FileURL("../../../src/dashboard/surfaces/assistant/assistant-controller-model.ts", import.meta.url), "utf8");
 const OVERLAY = readFileSync_m3(new FileURL("../../../src/dashboard/ds/primitives/base-toast.tsx", import.meta.url), "utf8");
 
 function sourceSlice(source: string, start: string, end: string, label: string): string {
@@ -1114,13 +1117,18 @@ describe_m3("shell and queue structural fidelity", () => {
     assert_m3.ok(toastEnd < tooltipEnd && tooltipEnd < rootEnd, "the root must close after both providers");
     assert_m3.match(
       APP.slice(rootStart, tooltipStart),
-      /"--ds-toast-inset-bottom": "calc\(2 \* \(var\(--ds-h-bar\) \+ var\(--ds-space-loose\)\) \+ var\(--ds-space-loose\)\)"/u,
-      "the outer root is the one place that sets the toast floor above the Sessions bar, the Logs footer and the docked launcher",
+      /"--ds-toast-inset-bottom": "calc\(2 \* \(var\(--ds-h-bar\) \+ var\(--ds-space-loose\)\)\)"/u,
+      "the outer root is the one place that sets the floor above the Sessions bar and the Logs footer",
     );
     assert_m3.match(
       OVERLAY,
-      /bottom-\[var\(--ds-toast-inset-bottom,16px\)\]/u,
-      "the fixed toast viewport must consume the shell-owned floor",
+      /fixed top-3 left-1\/2/u,
+      "the fixed toast viewport is top-centred, so it sits clear of the Sessions bar floor",
+    );
+    assert_m3.match(
+      LAUNCHER_MODEL,
+      /var\(--ds-toast-inset-bottom\)/u,
+      "the docked assistant launcher consumes the shell-owned floor",
     );
   });
 

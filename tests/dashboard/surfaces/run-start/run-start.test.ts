@@ -675,13 +675,13 @@ describe('mounted frontend reliability contracts', () => {
       }) }) }) });
     }
     await mount(createElement(Harness));
-    assert.match(document.body.textContent ?? '', /Choose what to run again/u);
+    assert.match(document.body.textContent ?? '', /Select steps for the new run/u);
     assert.equal(current!.view?.launchStage, 'Steps');
-    await press('Continue'); assert.match(document.body.textContent ?? '', /Values for the new run/u);
+    await press('Continue'); assert.match(document.body.textContent ?? '', /Reference spreadsheets/u);
     assert.equal(current!.view?.launchStage, 'Values');
     await press('Back'); assert.equal(current!.view?.launchStage, 'Steps');
-    await press('Continue'); await press('Continue'); await press('Preview plan');
-    assert.match(document.body.textContent ?? '', /Review the plan/u); assert.equal(current!.view?.launchStage, 'Confirm');
+    await press('Continue'); await press('Continue');
+    assert.match(document.body.textContent ?? '', /Screenshots/u); assert.equal(current!.view?.launchStage, 'Options');
     assert.deepEqual(requests, [], 'a local mock rerun must not ask a served planner to reconcile its stage');
   });
 });

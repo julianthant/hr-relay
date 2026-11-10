@@ -7,6 +7,8 @@ import { servedFixtureSources } from "../../parity/helpers/workflow-composition.
 import { workflowComposition as servedWorkflowComposition } from "../../../src/dashboard/app/workflow-sources.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { vi } from "vitest";
+import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
+import { disposeHttpRouteHarness, harness as backendHarness, type Harness as BackendHarness } from "../../support/helpers/backend/http-route-harness.js";
 import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m0 } from "../../parity/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert_m0 from "node:assert/strict";
@@ -18,7 +20,6 @@ import { DashboardApp as DashboardApp_m0 } from "../../../src/dashboard/app/dash
 import { createDashboardClient as createDashboardClient_m0,type DashboardClient as DashboardClient_m0 } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider as DashboardClientProvider_m0 } from "../../../src/dashboard/state/client-context.js";
 import { importWorkbook as importSpreadsheet_m0 } from '../../../src/rules/spreadsheets/workbook-io.js';
-import { registeredSpreadsheetWorkbook as registeredSpreadsheetWorkbook_m0,resetSpreadsheetMocks as resetSpreadsheetMocks_m0,useSpreadsheetMocks as useSpreadsheetMocks_m0,type RegisteredSpreadsheet as RegisteredSpreadsheet_m0 } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js";
 import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m1 } from "../../parity/helpers/workflow-composition.js";
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { createFixtureBff as createFixtureBff_m0 } from "../../support/helpers/dashboard/served-fixtures/fixture-bff.js";
@@ -46,11 +47,13 @@ import { FIXTURE_RUN_DETAILS } from "../../support/fixtures/dashboard/fixture-de
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 let root: Root_m0 | undefined;
-let registeredFiles: readonly RegisteredSpreadsheet_m0[] = [];
-function RegistryProbe() { registeredFiles = useSpreadsheetMocks_m0().files; return null; }
+let library: BackendHarness | undefined;
+const libraryHeaders = { host: "localhost", origin: "http://localhost", "content-type": "application/json" };
+const savedWorkbooks = async () => (await library!.app.request("http://localhost/api/v1/workbooks/list", { headers: libraryHeaders })).json() as Promise<readonly { workbook: { name: string; sheets: readonly { rows: readonly { cells: readonly { value: unknown }[] }[] }[] } }[]>;
 const _afterEachFixture0 = async () => {
   await act_m0(async () => root?.unmount()); root = undefined;
-  resetSpreadsheetMocks_m0(); vi.unstubAllGlobals();
+  await disposeHttpRouteHarness(); library = undefined;
+  vi.unstubAllGlobals();
   document.body.replaceChildren(); localStorage.clear(); window.history.replaceState(null, "", "/");
 };
 async function settle() { await act_m0(async () => { await new Promise(resolve => setTimeout(resolve, 35)); }); }
@@ -67,13 +70,14 @@ async function mount(overrides: Partial<DashboardClient_m0> = {}) {
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE_m0.day}`);
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "icon" });
   const { app } = createFixtureBff_m0();
+  library = await backendHarness();
   const client: DashboardClient_m0 = {
-    ...createDashboardClient_m0({baseUrl:"http://fixture",fetchImpl:async (url,init) => app.request(String(url),init)}),
+    ...createDashboardClient_m0({baseUrl:"http://fixture",fetchImpl:async (url,init) => { const { pathname, search } = new URL(String(url)); return pathname.startsWith("/api/v1/workbooks") ? library!.app.request(`http://localhost${pathname}${search}`, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), ...libraryHeaders } }) : app.request(String(url), init); }}),
     subscribeDay(input) { input.onDay(FIXTURE_DAY_WIRE_m0); input.onState({state:"live"}); return {close() {}}; },
     ...overrides,
   };
   const host=document.createElement("div"); document.body.append(host); root=createRoot_m0(host);
-  await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(Fragment_m0, null, createElement_m0(DashboardApp_m0, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m0, previewPreferences: preview }), createElement_m0(RegistryProbe))})));
+  await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(DashboardApp_m0, { workflowComposition: workflows => ({ ...PARITY_WORKFLOW_COMPOSITION_m0(workflows), spreadsheets: "served" as const }), previewPreferences: preview })})));
   await settle();
 }
 it_m0("command binding never renders implementation comment text", async () => {
@@ -145,8 +149,10 @@ try {
   await click(button("Import selected columns"));
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
   assert_m0.ok(document.body.textContent?.includes("Spreadsheet imported"));
-  const imported = registeredFiles.find(file => file.name === "Focus roster.csv"); assert_m0.ok(imported);
-  const workbook = registeredSpreadsheetWorkbook_m0(imported);
+  assert_m0.deepEqual(await savedWorkbooks(), [], "importing opens an unsaved draft");
+  await click(button("Save"));
+  const imported = (await savedWorkbooks()).find(record => record.workbook.name === "Focus roster.csv"); assert_m0.ok(imported);
+  const workbook = imported.workbook;
   assert_m0.equal(workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
   assert_m0.equal(String(workbook.sheets[0].rows[1].cells[1].value), "10800000");
   assert_m0.equal(uploads, 0); assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
@@ -162,12 +168,12 @@ try {
   let starts = 0;
   await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Settings"));
   const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link); await click(link);
-  const before = registeredFiles.map(file => file.id);
+  const before = (await savedWorkbooks()).map(record => record.workbook.name);
   await click(button("Import spreadsheet"));
   await chooseSpreadsheet();
   if (dismissal === "Escape") await key("Escape"); else await click(button(dismissal === "Cancel" ? "Cancel import" : dismissal));
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
-  assert_m0.deepEqual(registeredFiles.map(file => file.id), before);
+  assert_m0.deepEqual((await savedWorkbooks()).map(record => record.workbook.name), before);
   assert_m0.equal(starts, 0);
   const trigger = button(dismissal === "Cancel" ? "Import spreadsheet" : "Review import");
   assert_m0.equal(trigger.disabled, false, "the import can be opened after dismissal");
@@ -175,7 +181,7 @@ try {
   if (dismissal !== "Cancel") {
     await click(trigger);
     assert_m0.ok(document.querySelector('[role="dialog"]'), "the retained import can be reviewed again");
-    assert_m0.deepEqual(registeredFiles.map(file => file.id), before);
+    assert_m0.deepEqual((await savedWorkbooks()).map(record => record.workbook.name), before);
     assert_m0.equal(starts, 0);
   }
   assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
@@ -191,6 +197,7 @@ await _afterEachFixture0();
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+Element.prototype.scrollIntoView = () => {}; // jsdom lacks it; the search palette list needs it
 let root: Root_m1 | undefined;
 const _afterEachFixture0 = async () => {
   await act_m1(async () => root?.unmount());
@@ -344,12 +351,15 @@ afterEach_m1(_afterEachFixture0);
       queueSurfaces: FIXTURE_DAY_WIRE_m1.queueSurfaces.map(item => item === row ? { ...item, workflowId: "separations", title } : item) });
     await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&settings=general`, {
       subscribeDay(input) { input.onDay(linkedDay); input.onState({ state: "live" }); return { close() {} }; },
+      notificationSnapshot: async () => [NotificationWireSchema.parse({ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title, occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Canonical history", workflow: "Separations" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId: row.runId } })],
+      notificationStatus: async () => ({ state: "ready" as const, pending: 0 }),
+      notificationTarget: async () => ({ kind: "run" as const, runId: row.runId, day: linkedDay.day }),
     }, "sidebar", workflows => {
       const composition = PARITY_WORKFLOW_COMPOSITION_m1(workflows);
-      return { ...composition, dataSources: { ...composition.dataSources, separations: "served" } };
+      return { ...composition, inbox: "served" as const, dataSources: { ...composition.dataSources, separations: "served" } };
     });
     await editHeadlessPreference();
-    if (surface === "search") await click(button("Search runs"));
+    if (surface === "search") await click(button("Search"));
     else {
       const notifications = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert_m1.ok(notifications);
       await click(notifications);
@@ -358,7 +368,7 @@ afterEach_m1(_afterEachFixture0);
     const preference = shellPreferences.snapshot().value.selectedWorkflowId;
     const target = surface === "search"
       ? [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(item => item.textContent?.includes(title))
-      : [...document.querySelectorAll<HTMLButtonElement>('[aria-label="Notification updates"] button')].find(item => item.textContent === title);
+      : [...document.querySelectorAll<HTMLButtonElement>('.notification-item')].find(item => item.querySelector(".notification-item-title")?.textContent === title);
     assert_m1.ok(target);
     await click(target);
     assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
@@ -385,12 +395,15 @@ afterEach_m1(_afterEachFixture0);
     const selected = document.querySelector(`[data-demo-row-id="${FIXTURE_IDS_m1.runningRun}"]`);
     assert_m1.ok(selected, "selected run must belong to the visible queue");
   });
-  it_m1("Settings gear toggles the surface and competing keys resolve one takeover", async () => {
+  it_m1("Settings gear opens the surface, Back to dashboard closes it and competing keys resolve one takeover", async () => {
     await mount("?settings=keyboard&archive=&explore=missing");
     assert_m1.ok(document.querySelector('[aria-label="Settings"]'));
+    assert_m1.equal(document.querySelector('[aria-label="Session actions"]'), null);
     const cursor = Number(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"));
-    await click(button("Settings"));
+    await click(button("Back to dashboard"));
     assert_m1.equal(new URLSearchParams(location.search).has("settings"), false);
+    assert_m1.equal(new URLSearchParams(location.search).has("archive"),false);
+    assert_m1.equal(new URLSearchParams(location.search).has("explore"),false);
     await click(button("Settings"));
     assert_m1.equal(new URLSearchParams(location.search).has("settings"), true);
     assert_m1.equal(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"), cursor + 2);
@@ -398,9 +411,6 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(new URLSearchParams(location.search).has("settings"), false);
     await historyMove("forward");
     assert_m1.equal(new URLSearchParams(location.search).has("settings"), true);
-    await click(button("Settings"));
-    assert_m1.equal(new URLSearchParams(location.search).has("archive"),false);
-    assert_m1.equal(new URLSearchParams(location.search).has("explore"),false);
   });
 });
 
@@ -414,7 +424,7 @@ try {
 
   await mount("?settings=general");
   await editHeadlessPreference();
-  const general = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "Paths"); assert_m1.ok(general);
+  const general = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "Account"); assert_m1.ok(general);
   await click(general);
   await historyMove("back");
   assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="browser.headless"]')?.checked,false);
@@ -425,7 +435,7 @@ try {
   assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
   await historyMove("back");
   assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="browser.headless"]')?.checked,false);
-  await click(button("Settings"));
+  await click(button("Back to dashboard"));
   await click(button("Discard changes"));
   assert_m1.equal(new URLSearchParams(location.search).has("settings"),false);
 
@@ -441,7 +451,7 @@ try {
   assert_m1.match(document.body.textContent ?? "", /Archive page removed/u);
   assert_m1.equal(document.querySelector('[aria-label="Archive"]'), null);
   assert_m1.equal(document.querySelector('a[href="?settings=archive"]'), null);
-  assert_m1.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 10);
+  assert_m1.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 6);
   await click(button("Return to dashboard"));
   assert_m1.equal(parseRoute_m1(location.search).archive, undefined);
   assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
@@ -633,7 +643,7 @@ try {
   });
   await click(button("Settings"));
   await editHeadlessPreference();
-  const paths = [...document.querySelectorAll<HTMLAnchorElement>("a")].find(node => node.textContent === "Paths"); assert_m1.ok(paths);
+  const paths = [...document.querySelectorAll<HTMLAnchorElement>("a")].find(node => node.textContent === "Account"); assert_m1.ok(paths);
   await click(paths);
   await historyMove("back"); // Settings root retains its editor.
   await historyMove("back");

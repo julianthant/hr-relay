@@ -4,6 +4,7 @@ import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { notificationsSample } from "../../../../src/dashboard/surfaces/notifications/notifications-fixture.js";
+import { MOCK_SURFACES_FLAG } from "../../../../src/dashboard/app/mock-surfaces.js";
 import { useNotificationRailModel, type NotificationReads } from "../../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
 import type { NotificationDestination, NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 
@@ -16,6 +17,7 @@ afterEach(async () => {
   host?.remove();
   host = undefined;
   window.history.replaceState(null, "", "/");
+  Reflect.deleteProperty(window, MOCK_SURFACES_FLAG);
 });
 
 function Harness({ notifications, onOpenNotification }: {
@@ -82,12 +84,13 @@ describe("notification rail producer", () => {
     allowOpen = true;
     click("Open completed");
     assert.equal(model().dataset.notice, "");
-    assert.equal(model().dataset.open, "false");
+    assert.equal(model().dataset.open, "true");
     assert.equal(model().dataset.unread, "0");
     assert.equal(model().dataset.reads?.includes('"sample-completed":true'), true);
   });
 
   it("initializes the preview ping and clears it on opening notifications", () => {
+    Reflect.set(window, MOCK_SURFACES_FLAG, true);
     window.history.replaceState(null, "", "/?notificationsPreview=ping");
     mount(() => undefined);
     assert.equal(model().dataset.ping, "true");

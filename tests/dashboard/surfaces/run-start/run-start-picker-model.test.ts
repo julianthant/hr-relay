@@ -20,7 +20,7 @@ describe("shared run catalog", () => {
     expect(ids()).not.toContain("i9-lookup");
     expect(ids("OCR")).toEqual([]); expect(ids("i-9")).toEqual(["i9-check-start"]);
     expect(ids("I-9 Lookup")).toEqual([]); expect(ids("SharePoint")).toEqual([]);
-    expect(ids("Download")).toEqual(["crm-doc-download"]); expect(ids("Search")).toEqual(["person-lookup"]);
+    expect(ids("Onboarding Documents")).toEqual(["crm-doc-download"]); expect(ids("Search")).toEqual(["person-lookup"]);
     expect(catalog.filter(flow => flow.launch.state === "unavailable").map(flow => flow.id).sort()).toEqual(["i9-lookup"]);
     expect(catalog.find(flow => flow.id === "ocr")).toBeUndefined();
   });
@@ -33,7 +33,7 @@ describe("shared run catalog", () => {
     expect(buildWorkflowCatalog(served, false, servedFixtureSources(served)).map(entry => entry.id).sort()).toEqual(served.map(entry => entry.workflowId).sort());
   });
   it("matches categories, multiple words and served short codes", () => {
-    expect(runPickerGroups(catalog, "  ONBOARDING  ").map(group => group.label)).toEqual(["Onboarding"]);
+    expect(runPickerGroups(catalog, "  ONBOARDING  ").map(group => group.label)).toEqual(["Onboarding", "Utils"]);
     expect(ids("oath signature")).toEqual(["oath-signature"]);
     expect(runPickerGroups(buildWorkflowCatalog([{ ...served[0], code: "zz" }], false, servedFixtureSources([served[0]])), "zz")[0].entries[0].entry.id).toBe(served[0].workflowId);
   });

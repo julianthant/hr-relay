@@ -41,7 +41,7 @@ function workbookRequest(body: unknown) {
 }
 const rosterType = { id: 'roster', name: 'Roster', keyFieldId: 'eid', fields: ['eid'], defaultWorkbookId: null };
 function catalogEntry(record: SavedWorkbook) {
-  return WorkbookLibraryEntrySchema.parse({ libraryId: record.libraryId, version: record.version, name: record.workbook.name,
+  return WorkbookLibraryEntrySchema.parse({ libraryId: record.libraryId, version: record.version, name: record.workbook.name, updatedAt: record.savedAt,
     rowCount: 0, worksheets: record.workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name })),
     type: rosterType, metadata: { typeId: rosterType.id, sharePoint: null }, state: { libraryId: record.libraryId, revision: record.version,
       origin: { kind: 'local' }, removed: false, selectedVersionId: 'current', versions: [{ id: 'current', name: 'Current version',

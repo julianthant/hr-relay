@@ -19,14 +19,14 @@ function RowIcon({ row }: { row: PaletteRow }) {
 }
 
 /** Search Relay: quick actions, runs, workflows and spreadsheets in one palette. The input is its first row. */
-export function SearchPalette({ open, onOpenChange, query, onQuery, runs, workflows, sheets, startKey, onAction, onWorkflow, onRun, notice, onCloseAutoFocus }: {
+export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMatched, workflows, sheets, startKey, onAction, onWorkflow, onRun, notice, onCloseAutoFocus }: {
   open: boolean; onOpenChange: (open: boolean) => void; query: string; onQuery: (query: string) => void;
-  runs: readonly NavbarSearchResult[]; workflows: readonly { id: string; label: string }[]; sheets: readonly PaletteSheet[]; startKey?: string;
+  runs: readonly NavbarSearchResult[]; /** The served search already matched the query. */ runsMatched?: boolean; workflows: readonly { id: string; label: string }[]; sheets: readonly PaletteSheet[]; startKey?: string;
   onAction: (action: PaletteAction) => void; onWorkflow: (id: string) => void; onRun: (result: NavbarSearchResult) => void; notice: string;
   onCloseAutoFocus: (event: Event) => void;
 }) {
   const [filter, setFilter] = useState<PaletteFilter>("all");
-  const sections = useMemo(() => paletteSections({ query, filter, runs, workflows, sheets }), [query, filter, runs, workflows, sheets]);
+  const sections = useMemo(() => paletteSections({ query, filter, runs, runsMatched, workflows, sheets }), [query, filter, runs, runsMatched, workflows, sheets]);
   const [picked, setPicked] = useState("");
   const values = sections.flatMap(section => section.rows.map(paletteRowValue));
   const value = values.includes(picked) ? picked : values[0] ?? "";
