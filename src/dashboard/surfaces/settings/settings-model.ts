@@ -126,14 +126,13 @@ export function settingsCloseFocusTargetId(gearMounted: boolean): string {
 /** The approved Settings page list stays available while the current editor
  * projection loads or fails. Each page still reads its values and edit */
 export function buildSettingsNav(
-  sections: readonly SettingsSection[],
   editor?: EditableSettingsWire,
 ): readonly SettingsNavGroup[] {
   const groups: SettingsNavGroup[] = [];
   groups.push({ id: "personal", heading: "Personal", entries: [
     clientEntry("general", "General", "general"),
     clientEntry("account", "Account", "credentials"),
-    // Mock-only until the plan and limits are served.
+    // The plan and limits are not served yet: the Subscription page exists only in the design frames.
     ...(statusMock() === undefined ? [] : [clientEntry("subscription", "Subscription", "subscription")]),
   ] });
   const advanced = editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
@@ -144,16 +143,6 @@ export function buildSettingsNav(
     clientEntry("explorer", "Explorer", "explorer"),
     clientEntry("activity", "Analytics", "activity"),
   ] });
-  const statusEntries: SettingsNavEntry[] = [];
-  for (const section of sections) {
-    if (section.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID || section.id === "providers" || section.id === SETTINGS_UI_CATALOG_SECTION_ID) continue;
-    statusEntries.push(servedEntry(section.id, section.id === "storage" ? "Storage" : section.label));
-    if (section.id === "storage") statusEntries.push({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
-  }
-  if (!statusEntries.some(entry => entry.id === SETTINGS_PREFLIGHT_SECTION_ID)) {
-    statusEntries.unshift({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
-  }
-  if (statusMock() === undefined) groups.push({ id: "status", heading: "Status", entries: statusEntries });
   groups.push({
     id: "help",
     heading: "Help",

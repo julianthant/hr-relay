@@ -200,7 +200,7 @@ export function SettingsPage({
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const exitFocusTarget = useRef<HTMLElement | null>(null);
   const settingsDocument = editor.editor.state === "loaded" ? editor.editor.document : undefined;
-  const groups = useMemo(() => buildSettingsNav(sections, settingsDocument), [sections, settingsDocument]);
+  const groups = useMemo(() => buildSettingsNav(settingsDocument), [settingsDocument]);
   const mockStatus = statusMock();
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
