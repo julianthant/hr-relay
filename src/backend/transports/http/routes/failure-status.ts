@@ -55,6 +55,9 @@ export function failureStatus(
   const loginFailure = browserLoginFailure(error);
   if (loginFailure?.system === "sharepoint") return { status: 409, body: wireError(loginFailure.code, ERROR_CATALOG[loginFailure.code].text, false) };
   if (error instanceof ProtectedSubjectDisplayRefusedError) return { status: 409, body: wireError(error.code, message, false) };
+  if (preflightRunnerTimeout(error) !== undefined) {
+    return { status: 409, body: wireError("PREFLIGHT_TIMEOUT", ERROR_CATALOG.PREFLIGHT_TIMEOUT.text, false) };
+  }
   if (error instanceof PreflightAdmissionRefusal) return { status: 409, body: wireError(`PREFLIGHT_${error.reason.toUpperCase().replaceAll("-", "_")}`, message, false) };
   if (error instanceof TargetNotFoundError) {
     return { status: 404, body: wireError("TARGET_NOT_FOUND", message, false) };
@@ -91,9 +94,6 @@ export function failureStatus(
     if (changed instanceof PreflightObservationChangedError) {
       return { status: 409, body: wireError(`PREFLIGHT_${changed.reason.toUpperCase().replaceAll("-", "_")}`, errorText(changed), false) };
     }
-  }
-  if (preflightRunnerTimeout(error) !== undefined) {
-    return { status: 409, body: wireError("PREFLIGHT_TIMEOUT", ERROR_CATALOG.PREFLIGHT_TIMEOUT.text, false) };
   }
   return { status: 500, body: wireError("INTERNAL_FAILURE", message, false) };
 }

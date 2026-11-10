@@ -16,6 +16,11 @@ TargetNotFoundError,
 } from "../../../../../src/backend/runs/commands/refusals.js";
 import { StartStepOmissionRefusedError } from "../../../../../src/backend/runs/start/step-selection.js";
 import { failureStatus } from "../../../../../src/backend/transports/http/routes/failure-status.js";
+import { PreflightRunnerTimeoutError, requiredPreflightChecks } from "../../../../../src/models/preflight/preflight.js";
+import { PreflightCheckIdSchema, type PreflightCheckId } from "../../../../../src/models/preflight/preflight-contract.js";
+import { PREFLIGHT_CHECKS } from "../../../../../src/models/runtime/runtime-dependencies.js";
+import { createPreflightAdmission, PreflightAdmissionRefusal, PreflightAdmissionScopeSchema, PreflightObservationChangedError } from "../../../../../src/rules/preflight/preflight-admission.js";
+import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { CommandBrowserError, CommandBrowserClosureError } from "../../../../../src/backend/runtime/browser/command-browser.js";
 import { SharePointDownloadError } from "../../../../../src/backend/systems/sharepoint/driver/interpreter.js";
 import { BrowserLoginError } from "../../../../../src/backend/systems/browser-shared/login-contract.js";
@@ -181,6 +186,64 @@ describe("failureStatus", () => {
     assert.equal(status, 500);
     assert.equal(body.code, "INTERNAL_FAILURE");
     assert.equal(body.message, "the projection threw a string");
+  });
+
+  it("classifies a detector timeout ahead of the prepare refusal wrapper", async () => {
+    const timeout = new PreflightRunnerTimeoutError(PreflightCheckIdSchema.parse("config.valid"), 1_000);
+    const expected = { status: 409, body: { state: "error", code: "PREFLIGHT_TIMEOUT", message: ERROR_CATALOG.PREFLIGHT_TIMEOUT.text, retryable: false } };
+    const wrapped = (cause: unknown) => new PreflightAdmissionRefusal("unavailable", "Preflight detectors could not verify readiness.", { cause });
+    assert.deepEqual(failureStatus(timeout), expected);
+    assert.deepEqual(failureStatus(new Error("outer", { cause: timeout })), expected);
+    assert.deepEqual(failureStatus(new AggregateError([timeout], "runners")), expected);
+    assert.deepEqual(failureStatus(wrapped(new AggregateError([new Error("sibling"), timeout], "runners"))), expected);
+    const scope = PreflightAdmissionScopeSchema.parse({
+      configSnapshotId: "11111111-1111-4111-8111-111111111111",
+      configFingerprint: "a".repeat(64),
+      descriptorFingerprint: "b".repeat(64),
+      requestedCapabilities: ["dashboard.serve"],
+    });
+    const prepare = (fail: (check: PreflightCheckId) => Error) => createPreflightAdmission({
+      clock: manualClock(new Date("2026-08-10T12:00:00-07:00")),
+      scheduler: { schedule() { return { cancel() {} }; } },
+      runners() {
+        return requiredPreflightChecks(scope.requestedCapabilities).map(check => {
+          const spec = PREFLIGHT_CHECKS.find(candidate => candidate.id === check);
+          if (spec === undefined) throw new Error(`missing preflight check ${check}`);
+          return { check, kind: spec.runner, async run() {
+            if (check === "config.valid") throw fail(check);
+            return { check, state: "healthy" as const, summary: `${check} healthy` };
+          } };
+        });
+      },
+      validate() {},
+    }).prepare(scope, new AbortController().signal);
+    await assert.rejects(prepare(check => new PreflightRunnerTimeoutError(check, 1_000)), (error: unknown) => {
+      assert.deepEqual(failureStatus(error), expected);
+      return true;
+    });
+    const unavailable = failureStatus(new PreflightAdmissionRefusal("unavailable", "Preflight evidence is unavailable for this exact scope; re-check readiness."));
+    assert.equal(unavailable.status, 409);
+    assert.equal(unavailable.body.code, "PREFLIGHT_UNAVAILABLE");
+    assert.equal(unavailable.body.retryable, false);
+    const blocked = failureStatus(new PreflightAdmissionRefusal("blocked", "Readiness checks blocked this worker."));
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.body.code, "PREFLIGHT_BLOCKED");
+    assert.equal(blocked.body.retryable, false);
+    const changed = failureStatus(new AggregateError([new PreflightObservationChangedError()], "runners"));
+    assert.equal(changed.status, 409);
+    assert.equal(changed.body.code, "PREFLIGHT_OBSERVATION_CHANGED");
+    assert.equal(changed.body.message, ERROR_CATALOG.PREFLIGHT_OBSERVATION_CHANGED.text);
+    assert.equal(changed.body.retryable, false);
+    await assert.rejects(prepare(() => new Error("disk full")), (error: unknown) => {
+      const mapped = failureStatus(error);
+      assert.equal(mapped.status, 409);
+      assert.equal(mapped.body.code, "PREFLIGHT_UNAVAILABLE");
+      assert.equal(mapped.body.message, "Preflight detectors could not verify readiness.");
+      assert.equal(mapped.body.retryable, false);
+      return true;
+    });
+    assert.equal(failureStatus(new Error("boom")).status, 500);
+    assert.equal(failureStatus(new Error("boom")).body.code, "INTERNAL_FAILURE");
   });
 });
 
