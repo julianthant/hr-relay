@@ -6,7 +6,6 @@ import { BrowserSystemIdSchema } from "../../../rules/identity/ids.js";
 import { authenticateRootRun, authenticateRunPriority } from "./delegation-root-authority.js";
 import { z } from "zod";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
-import type { WorkerResetBinding } from "../../../models/run/worker-control.js";
 import type { DependencyRecord } from "../../../rules/workflow/dependencies.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
 import { ChildTerminalDependencySchema, RunResultRecordSchema, readRunPreviewResult, terminalEvidenceResult, DelegationTerminalDependencySchema, DelegationTerminalEvidenceSchema, delegationDependencyRecord } from "../../../models/run/result.js";
@@ -17,7 +16,7 @@ import { canonicalJsonStringify, type JsonValue } from "../../../rules/validatio
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { delegationInvocationCommandId } from "../../../rules/commands/lifecycle-command-id.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
-import { DependencyRecordSchema, delegationReadiness, type DelegationManifest, type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
+import { delegationReadiness, type DelegationManifest, type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
 import { DelegationAdmissionRequestSchema, DelegationInvocationRequestSchema, DelegationScopeEvidenceSchema, DelegationRetryRequestSchema, DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import type { AuthorityRepositories } from "./authority-database.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
@@ -888,19 +887,6 @@ export function prepareDelegationRetry(repositories: AuthorityRepositories, run:
       || receipt === undefined || canonicalJsonStringify(receipt) !== canonicalJsonStringify(delegationDependencyRecord(
         readDelegationEvidence(repositories, parent.envelope.runId, selectedChild.group.invocation.nodeId))))) throw new Error("delegation-retry-source-unavailable");
   }
-  let resetMember = run;
-  const visited = new Set<string>();
-  for (;;) {
-    if (visited.has(resetMember.envelope.runId)) throw new Error("delegation-ancestry-cycle");
-    visited.add(resetMember.envelope.runId);
-    if (repositories.workerControls.resetForRun(resetMember.envelope.runId) !== undefined) throw new Error("delegation-retry-reset-reserved");
-    if (resetMember.envelope.parent === undefined) break;
-    const edge = delegationEdgeForChild(repositories, resetMember.envelope.parent.runId, resetMember.envelope.runId);
-    if (edge.policy.cascadeCancel === "independent") break;
-    const ancestor = repositories.runs.get(resetMember.envelope.parent.runId);
-    if (ancestor === undefined) throw new Error("delegation-parent-unavailable");
-    resetMember = ancestor;
-  }
   const terminal = childTerminalSettlement(run, repositories);
   if (terminal === undefined || terminal.state === "satisfied" || selectedChild.child.dependency.state !== terminal.state
     || repositories.writeIntents.listByRun(run.envelope.runId).some(intent => intent.status === "attempting" || intent.status === "parked")) throw new Error("delegation-retry-terminal-proof-unavailable");
@@ -911,7 +897,6 @@ export function prepareDelegationRetry(repositories: AuthorityRepositories, run:
 export function authenticateCancellationSource(repositories: AuthorityRepositories, run: RunRecord,
   sourceInput: unknown) {
   const source = CancellationSourceSchema.parse(sourceInput);
-  if ("kind" in source) return authenticateResetCancellation(repositories, run, source).command;
   const command = repositories.commands.get(source.commandId);
   if (command?.family !== "run" || command.type !== "cancel" || command.target.runId !== source.rootRunId) throw new Error("delegation-cancellation-source-unavailable");
   const audit = authenticateOperatorSource(repositories, command);
@@ -943,8 +928,7 @@ export function delegationCancellationAvailability(repositories: AuthorityReposi
   if (retained === undefined) return { state: "unavailable" as const, reason: "source" as const };
   const request = z.object({ cancellationSource: CancellationSourceSchema }).parse(retained.request);
   const source = request.cancellationSource;
-  if (repositories.commands.get(source.commandId) === undefined || repositories.commandAudits.findByCommand(source.commandId) === undefined
-    || "kind" in source && repositories.workerControls.get(source.commandId) === undefined) return { state: "unavailable" as const, reason: "source" as const };
+  if (repositories.commands.get(source.commandId) === undefined || repositories.commandAudits.findByCommand(source.commandId) === undefined) return { state: "unavailable" as const, reason: "source" as const };
   const outcome = readDelegationCancellation(repositories, runId);
   return outcome.reason === undefined ? { state: "unavailable" as const, reason: "reason" as const }
     : { state: "available" as const, outcome: { ...outcome, reason: outcome.reason } };
@@ -956,76 +940,21 @@ export function readDelegationCancellation(repositories: AuthorityRepositories, 
   const request = z.object({ commandId: z.string(), runId: z.string(), expectedVersion: z.number(),
     cancellationSource: CancellationSourceSchema }).parse(retained.request);
   const source = authenticateCancellationSource(repositories, run, request.cancellationSource);
-  const reset = "kind" in request.cancellationSource ? authenticateResetCancellation(repositories, run, request.cancellationSource) : undefined;
   const audit = repositories.lifecycleJournal.findAuditByCommand(retained.commandId), authored = repositories.commandAudits.findByCommand(source.commandId);
   const appliedVersion = audit !== undefined && "kind" in audit && audit.kind === "run-lifecycle" && audit.result.kind === "run" ? audit.result.appliedVersion : undefined;
-  const expectedCommandId = reset === undefined ? lifecycleCommandId("operator-cancel", { commandId: source.commandId, runId })
-    : lifecycleCommandId(reset.member.state === "claimed" ? "reset-current-cancel" : "reset-cascade-cancel", { commandId: source.commandId, runId });
-  if (request.commandId !== expectedCommandId
+  if (request.commandId !== lifecycleCommandId("operator-cancel", { commandId: source.commandId, runId })
     || request.runId !== runId || audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
     || audit.result.kind !== "run" || audit.result.runId !== runId || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(retained)
     || authored?.result.state !== "applied" || canonicalJsonStringify(authored.request) !== canonicalJsonStringify(source)
-    || (reset === undefined ? !authored.versionChanges.some(change => change.target.family === "run" && change.target.runId === runId
-      && change.before === request.expectedVersion && change.after === appliedVersion)
-      : reset.control.phase.state !== "succeeded" || reset.control.auditedAt === undefined
-        || request.expectedVersion < reset.member.version || appliedVersion !== request.expectedVersion + 1
-        || reset.member.state === "queued" && request.expectedVersion !== reset.member.version)) throw new Error("delegation-child-cancellation-source-mismatch");
-  if (reset !== undefined && (reset.control.phase.state !== "succeeded" || reset.control.auditedAt !== authored.completedAt
-    || canonicalJsonStringify(reset.control.phase.application ?? null) !== canonicalJsonStringify({ result: authored.result,
-      versionChanges: authored.versionChanges, affectedDependencyIds: authored.affectedDependencyIds }))) throw new Error("delegation-reset-cancellation-audit-mismatch");
-  return { cancelledBy: reset === undefined ? runId === request.cancellationSource.rootRunId ? "operator" as const : "parent" as const : "kernel" as const, reason: source.reason };
-}
-
-export function authenticateResetCancellation(repositories: AuthorityRepositories, run: RunRecord, sourceInput: unknown) {
-  const source = CancellationSourceSchema.parse(sourceInput);
-  const control = repositories.workerControls.get(source.commandId), command = repositories.commands.get(source.commandId);
-  const reset = control?.reset;
-  if (!("kind" in source) || command?.family !== "worker-browser" || command.type !== "stop-worker" || control === undefined
-    || reset?.work.kind !== "current" || reset.work.current.runId !== source.rootRunId
-    || canonicalJsonStringify(command) !== canonicalJsonStringify(control.request)) throw new Error("delegation-reset-cancellation-source-unavailable");
-  const member = [reset.work.current, ...reset.work.cascade].find(member => member.runId === run.envelope.runId && member.attempt === run.envelope.attempt);
-  if (member === undefined) throw new Error("delegation-reset-cancellation-member-mismatch");
-  return { command, reset, control, member };
+    || !authored.versionChanges.some(change => change.target.family === "run" && change.target.runId === runId
+      && change.before === request.expectedVersion && change.after === appliedVersion)) throw new Error("delegation-child-cancellation-source-mismatch");
+  return { cancelledBy: runId === request.cancellationSource.rootRunId ? "operator" as const : "parent" as const, reason: source.reason };
 }
 
 export function delegationEdgeForChild(repositories: AuthorityRepositories, parentRunId: string, childRunId: string) {
   const selected = delegationGroupForChild(repositories,parentRunId,childRunId).group.children.find(member => member.history.some(runId => runId === childRunId));
   if (selected === undefined) throw new Error("delegation-child-membership-unavailable");
   return selected.dependency;
-}
-
-export function resetDependencySnapshot(repositories: AuthorityRepositories, reset: WorkerResetBinding, childRunId: string): DependencyRecord {
-  const run = repositories.runs.get(childRunId), member = reset.work.kind === "current" ? reset.work.cascade.find(member => member.runId === childRunId) : undefined;
-  if (run?.envelope.parent === undefined || member === undefined || run.envelope.attempt !== member.attempt) throw new Error("worker-reset-cascade-authority-unavailable");
-  const dependency = delegationEdgeForChild(repositories, run.envelope.parent.runId, childRunId);
-  const manifest = repositories.delegationManifests.get(dependency.manifestId);
-  if (manifest === undefined) throw new Error("delegation-manifest-unavailable");
-  const selected = authenticateDelegationGroup(repositories, manifest).children.find(child => child.dependency.dependencyId === dependency.dependencyId);
-  if (selected === undefined || selected.child.envelope.runId !== childRunId) throw new Error("worker-reset-cascade-changed");
-  if (dependency.state === "active") return dependency;
-  const terminal = childTerminalSettlement(run, repositories), evidence = terminal === undefined ? undefined : terminalEvidenceResult(terminal.result);
-  const cancellationId = lifecycleCommandId("reset-cascade-cancel", { commandId: reset.commandId, runId: childRunId });
-  if (dependency.state !== "cancelled" || evidence?.kind !== "lifecycle-evidence" || evidence.commandId !== cancellationId
-    || evidence.appliedVersion !== member.version + 1 || run.version !== member.version + 1) throw new Error("worker-reset-cascade-changed");
-  const retry = selected.history.length === 1 ? undefined : repositories.lifecycleJournal.getCommand(lifecycleCommandId("delegation-retry", {
-    dependencyId: dependency.dependencyId, previousRunId: selected.history[selected.history.length - 2] }));
-  if (selected.history.length > 1 && (retry === undefined || !("kind" in retry) || retry.kind !== "run-lifecycle" || retry.operation !== "delegation-retry")) throw new Error("delegation-retry-authority-unavailable");
-  const updatedAt = retry !== undefined && "kind" in retry && retry.kind === "run-lifecycle" ? retry.recordedAt : dependency.createdAt;
-  return DependencyRecordSchema.parse({ ...dependency, state: "active", version: dependency.version - 1, updatedAt });
-}
-
-export function assertResetCancellationAdmission(repositories: AuthorityRepositories, run: RunRecord,
-  source: z.infer<typeof CancellationSourceSchema>, request: Readonly<{ commandId: string; expectedVersion: number }>) {
-  const { reset, member, control } = authenticateResetCancellation(repositories, run, source);
-  const slot = repositories.workerSlots.get(reset.member.workerId), lease = repositories.workerLeases.get(reset.member.workerId);
-  const claim = runClaim(run);
-  if (!["executing", "uncertain"].includes(control.phase.state) || slot === undefined || slot.retiredAt !== null
-    || slot.membershipRevision !== reset.member.membershipRevision || slot.workflow !== reset.member.workflowId
-    || lease === undefined || lease.leaseGeneration !== reset.lifetime.leaseGeneration || lease.processId !== reset.lifetime.processId
-    || lease.lifecycle.startedAt !== reset.lifetime.startedAt || lease.controlRevision !== reset.reservedControlRevision || lease.controlCommandId !== reset.commandId
-    || request.commandId !== lifecycleCommandId(member.state === "claimed" ? "reset-current-cancel" : "reset-cascade-cancel", { commandId: reset.commandId, runId: member.runId })
-    || request.expectedVersion !== run.version || (member.state === "queued" ? run.lifecycle.state !== "queued" || run.version !== member.version
-      : claim?.workerId !== member.workerId || claim.claimGeneration !== member.claimGeneration || run.version < member.version)) throw new Error("delegation-reset-cancellation-authority-stale");
 }
 
 export function assertDelegationReplacement(repositories: AuthorityRepositories, original: RunRecord, previous: RunRecord, next: RunRecord): void {

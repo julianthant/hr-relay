@@ -56,9 +56,8 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
       assert.equal((await h.execute(source)).state, "failed"); delete h.world.onPrepare;
     } else {
       const active = h.database.authority.runtimeConfig.get(); assert.ok(active);
-      const { workerId, workerLifetime } = testWorkerLifetime(h.database, h.descriptor.id, 1);
-      const claimed = requireLifecycleApplied(h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id, workerId, workerLifetime,
-        runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
+      const { workerId } = testWorkerLifetime(h.database, h.descriptor.id, 1);
+      const claimed = requireLifecycleApplied(h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id, workerId, runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
           settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } }));
       const ended = h.database.authority.runs.transition({ now: h.clock.now().toISOString(), runId: claimed.envelope.runId, expectedVersion: claimed.version,
         claim: { workerId, claimGeneration: claimed.claimGeneration },

@@ -142,7 +142,6 @@ export const ERROR_CATALOG = Object.freeze({
   DUO_SETUP_FILES_BUSY: catalogEntry("The setup browser’s files are still in use. Select Reopen to check again.", EmptyParametersSchema),
   BROWSER_ROOT_UNAVAILABLE: catalogEntry("Browser ownership could not be verified. The browser and its files remain unavailable until stopped recovery succeeds.", EmptyParametersSchema),
   BROWSER_PROFILE_STILL_CLOSING: catalogEntry("The browser profile is still in use or closing. Wait for it to close before continuing.", EmptyParametersSchema),
-  LIVE_SMOKE_VERIFICATION_REFUSED: catalogEntry("Browser verification could not finish safely. Preserve its saved state and resolve the refusal before trying again.", EmptyParametersSchema),
   STARTUP_CRASH_RECOVERY_REFUSED: catalogEntry("Saved runs and writes could not be reconciled after interruption. Preserve their state and resolve the refusal before starting work.", EmptyParametersSchema),
   RUN_INTERRUPTED_BY_CRASH: catalogEntry("The run was interrupted by a crash and ended as failed. Review the result before starting another run.", EmptyParametersSchema),
   RUN_CRASH_WRITE_UNRESOLVED: catalogEntry("The run was interrupted by a crash with an unresolved write. The write remains held for operator resolution and will not be retried.", EmptyParametersSchema),
@@ -526,6 +525,54 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   WORKER_CRASHED: catalogEntry(
     "crashed",
+    EmptyParametersSchema,
+  ),
+  WORKER_START_FAILED: catalogEntry(
+    "The worker process could not be started.",
+    EmptyParametersSchema,
+  ),
+  WORKER_START_TIMED_OUT: catalogEntry(
+    "The worker did not report ready in time and was stopped. Retry the worker.",
+    EmptyParametersSchema,
+  ),
+  WORKER_REQUEST_TIMED_OUT: catalogEntry(
+    "The worker did not answer in time. Nothing was retried; try again.",
+    EmptyParametersSchema,
+  ),
+  WORKER_EXITED: catalogEntry(
+    "The worker stopped before it answered. Nothing was retried.",
+    EmptyParametersSchema,
+  ),
+  WORKER_EXIT_SETTLEMENT_FAILED: catalogEntry(
+    "Relay could not settle the runs of a worker that stopped. That worker cannot start until its runs are settled.",
+    EmptyParametersSchema,
+  ),
+  WORKER_EXIT_UNOBSERVED: catalogEntry(
+    "A worker process did not exit after it was stopped. Relay will not start beside it; quit Relay and wait for the process to end.",
+    EmptyParametersSchema,
+  ),
+  WORKER_ALREADY_RUNNING: catalogEntry(
+    "This worker is already running.",
+    EmptyParametersSchema,
+  ),
+  WORKER_TARGET_STALE: catalogEntry(
+    "The worker changed since this view was loaded. Refresh and try again.",
+    EmptyParametersSchema,
+  ),
+  WORKER_BUSY: catalogEntry(
+    "The worker is busy with a run or another control. Try again when it is idle.",
+    EmptyParametersSchema,
+  ),
+  WORKER_REQUEST_EXPIRED: catalogEntry(
+    "The worker request expired before it started. Nothing was done.",
+    EmptyParametersSchema,
+  ),
+  WORKER_IPC_PROTOCOL_INVALID: catalogEntry(
+    "A worker sent an invalid message and was stopped.",
+    EmptyParametersSchema,
+  ),
+  WORKER_IDENTITY_MISMATCH: catalogEntry(
+    "A worker reported a different person or sign-in and was stopped.",
     EmptyParametersSchema,
   ),
   COMMAND_OUTCOME_UNCERTAIN: catalogEntry(

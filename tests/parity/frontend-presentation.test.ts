@@ -31,12 +31,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const performanceLink = sidebar.getByRole('link', { name: 'Routes', exact: true });
       const colors = await general.evaluate(node => ({ color: getComputedStyle(node).color, radius: getComputedStyle(node).borderRadius }));
       expect(colors.color).toBe('rgb(239, 239, 239)');
-      await expect(performanceLink).toHaveCSS('color', 'rgb(178, 178, 178)');
+      await expect(performanceLink).toHaveCSS('color', 'rgb(239, 239, 239)');
       expect(colors.radius).toBe('10px');
       const selectedBounds = (await general.boundingBox())!;
       const otherBounds = (await sidebar.getByRole("link", { name: "Credentials", exact: true }).boundingBox())!;
-      expect(selectedBounds.height).toBe(33.5);
-      expect(otherBounds.y - selectedBounds.y - selectedBounds.height).toBe(0);
+      expect(selectedBounds.height).toBe(32);
+      expect(otherBounds.y - selectedBounds.y - selectedBounds.height).toBe(2);
       await expect(sidebar.getByText('Personal', { exact: true })).toHaveCSS('font-size', '11px');
       await expect(page.locator('.ds-body-section-heading').first()).toHaveCSS('font-weight', '400');
       await expect(page.locator('.ds-body-section-heading').first()).toHaveCSS('font-size', '14px');

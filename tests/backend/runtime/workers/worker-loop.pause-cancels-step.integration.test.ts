@@ -3,9 +3,6 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, it } from "vitest";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { WORK_CONTROL_POLL_MS, runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-loop.js";
-import { createWorkerResetControl, createWorkerResetObserver } from "../../../../src/backend/runtime/workers/worker-browser-control.js";
-import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
-import { workerPoolMember } from "../../../../src/models/run/worker-slot.js";
 import { lifecycleCommandId } from "../../../../src/rules/commands/lifecycle-command-id.js";
 import { RUN_ID, sequentialIdFactory, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
@@ -61,11 +58,14 @@ function controls(h: Harness) {
   };
   const checkpoint = (nodeId: string) => database.authority.runCheckpoints.latest(WORKFLOW_ID, run().envelope.itemId, nodeId);
   const endedOutcomes = (nodeId: string) => taskSpans("span.ended").flatMap(event => event.t === "span.ended" && event.spanPath.includes(`/${nodeId}#`) ? [event.outcome] : []);
-  const setDirective = (directive: "run" | "pause") => {
-    const lease = database.authority.workerLeases.get(workerId); assert.ok(lease);
-    const now = clock.now().toISOString();
-    assert.equal(database.authority.workerLeases.control({ workerId, expectedVersion: lease.version, now,
-      control: { directive, requestedAt: now, requestedBy: "local-operator" } }).state, "applied");
+  const setPaused = (paused: boolean) => {
+    database.authority.workerSlots.setPaused({ workerId, paused, now: clock.now().toISOString() });
+  };
+  const requestCancel = () => {
+    const requested = lifecycle.transition({ commandId: lifecycleCommandId("fixture-cancel-request", RUN_ID), runId: RUN_ID,
+      expectedVersion: run().version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() } });
+    assert.equal(requested.state, "applied");
+    assert.equal(run().cancelRequested, true);
   };
   const pauseRun = (commandId: string) => {
     const result = lifecycle.pause({ commandId, runId: RUN_ID, expectedVersion: run().version });
@@ -74,7 +74,7 @@ function controls(h: Harness) {
   const resume = () => assert.equal(lifecycle.resumePaused({ commandId: randomUUID(), runId: RUN_ID, expectedVersion: run().version }).state, "applied");
   const isPausedAndQueued = () => { const r = run(); return r.lifecycle.state === "queued" && r.pause?.state === "paused"; };
   const isTerminal = (outcome: "done" | "cancelled") => () => { const r = run(); return r.lifecycle.state === "terminal" && r.lifecycle.outcome === outcome; };
-  return { database, workerId, clock, lifecycle, run, taskSpans, blockedNode, checkpoint, endedOutcomes, setDirective, pauseRun, resume, isPausedAndQueued, isTerminal };
+  return { database, workerId, clock, lifecycle, run, taskSpans, blockedNode, checkpoint, endedOutcomes, setPaused, requestCancel, pauseRun, resume, isPausedAndQueued, isTerminal };
 }
 
 /** Fires the work-control poll and idle re-poll timers (never heartbeats) until the condition holds. */
@@ -136,14 +136,14 @@ describe("Pause and Stop cancel the current read step (ref workers-pause-cancels
     c.database.authority.runs.enqueue(personLookupQueuedRun({ runId: NEXT_RUN_ID, itemId: randomUUID() }));
     assert.ok(RUN_ID < NEXT_RUN_ID);
     const loop = runWorkerLoop({ ...h.deps, controlPoll: () => {
-      const lease = c.database.authority.workerLeases.get(c.workerId); assert.ok(lease);
-      return lease.control.directive;
+      const slot = c.database.authority.workerSlots.get(c.workerId); assert.ok(slot);
+      return slot.paused ? "pause" : "run";
     } });
     try {
       await fx.blocked;
       const node = c.blockedNode();
       const { claimGeneration } = c.run();
-      c.setDirective("pause");
+      c.setPaused(true);
       c.pauseRun(lifecycleCommandId("worker-pause", { workerId: c.workerId, runId: RUN_ID, claimGeneration }));
       await pump(h, c.isPausedAndQueued);
 
@@ -160,7 +160,7 @@ describe("Pause and Stop cancel the current read step (ref workers-pause-cancels
       assert.equal(c.database.authority.runs.get(NEXT_RUN_ID)?.lifecycle.state, "queued");
       assert.equal(fx.blockedInvocations(), 1);
 
-      c.setDirective("run");
+      c.setPaused(false);
       c.resume();
       const nextDone = () => { const next = c.database.authority.runs.get(NEXT_RUN_ID); return next?.lifecycle.state === "terminal" && next.lifecycle.outcome === "done"; };
       await pump(h, () => c.isTerminal("done")() && nextDone());
@@ -174,28 +174,13 @@ describe("Pause and Stop cancel the current read step (ref workers-pause-cancels
     const fx = blockingReadFixture();
     const h = await world.loopHarness({ sessions: fx.sessions, exitWhenIdle: false });
     const c = controls(h);
-    const slot = c.database.authority.workerSlots.get(c.workerId), lease = c.database.authority.workerLeases.get(c.workerId);
-    assert.ok(slot && lease);
-    const observer = createWorkerResetObserver({ database: c.database, workerId: c.workerId, leaseGeneration: lease.leaseGeneration,
-      clock: c.clock, scheduler: h.scheduler, onFailure: error => { h.stop.abort(error); } });
     c.database.authority.runs.enqueue(personLookupQueuedRun());
-    const loop = runWorkerLoop({ ...h.deps,
-      resetOwner: { member: workerPoolMember(slot), lifetime: { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt } },
-      pendingReset: observer, activeWorkReset: () => observer() !== undefined,
-      browserObservation: observation => { c.database.authority.workerControls.observe({ ...observation, leaseGeneration: lease.leaseGeneration }); },
-      resetControl: createWorkerResetControl({ database: c.database, workerId: c.workerId, leaseGeneration: lease.leaseGeneration, clock: c.clock, lifecycle: c.lifecycle }),
-    });
+    const loop = runWorkerLoop({ ...h.deps });
     try {
       await fx.blocked;
       const node = c.blockedNode();
       const startedBefore = c.taskSpans("span.started").length;
-      const now = c.clock.now().toISOString();
-      c.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
-        commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: now,
-        target: { workerId: c.workerId, membershipRevision: slot.membershipRevision,
-          controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
-      }, randomUUID(), now));
-      // The reset waits for the actual read callback, which settles when the poisoned browser closes.
+      c.requestCancel();
       await pump(h, () => c.endedOutcomes(node).includes("cancelled"));
       fx.closeBrowser();
       await pump(h, c.isTerminal("cancelled"));
@@ -205,7 +190,7 @@ describe("Pause and Stop cancel the current read step (ref workers-pause-cancels
       assert.equal(c.checkpoint(node), undefined);
       assert.equal(fx.blockedInvocations(), 1);
       assert.equal(c.taskSpans("span.started").length, startedBefore);
-    } finally { await finish(h, loop); observer.stop(); }
+    } finally { await finish(h, loop); }
   });
 
   it("row Cancel mid-read cancels the step at once", async () => {
@@ -218,11 +203,7 @@ describe("Pause and Stop cancel the current read step (ref workers-pause-cancels
       await fx.blocked;
       const node = c.blockedNode();
       const startedBefore = c.taskSpans("span.started").length;
-      const now = c.clock.now().toISOString();
-      const requested = c.lifecycle.transition({ commandId: lifecycleCommandId("fixture-cancel-request", RUN_ID), runId: RUN_ID,
-        expectedVersion: c.run().version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: now } });
-      assert.equal(requested.state, "applied");
-      assert.equal(c.run().cancelRequested, true);
+      c.requestCancel();
       await pump(h, c.isTerminal("cancelled"));
 
       assert.deepEqual(c.endedOutcomes(node), ["cancelled"]);

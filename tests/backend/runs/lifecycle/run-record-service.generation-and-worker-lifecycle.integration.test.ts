@@ -2,8 +2,7 @@ import { RunContinuationRefusedError } from "../../../../src/backend/storage/sql
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { runClaim } from "../../../../src/models/run/record.js";
-import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
-import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { seedCorruptWriteFenceFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
@@ -30,13 +29,14 @@ afterEach(cleanup);
 
 describe("canonical run-record service", () => {
 
-  it("refuses a new claim without physical lifetime before journal or publication", async () => {
+  it("refuses a new claim without an admitted slot before journal or publication", async () => {
     const { service, request, runtimeConfig, database, published } = await fixture();
     const run = created(service, { ...request, descriptorVersion: personLookupDescriptor.version,
       contractFingerprint: personLookupDescriptor.contractFingerprint });
-    const commandId = "99000000-0000-4000-8000-000000000099";
+    const commandId = "99000000-0000-4000-8000-000000000099", unadmitted = "person-lookup-worker-9";
+    assert.equal(database.authority.workerSlots.get(unadmitted), undefined);
     const before = database.getMeta().authorityGeneration, publications = published.length;
-    assert.deepEqual(service.claimNext({ commandId, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig }),
+    assert.deepEqual(service.claimNext({ commandId, workflow: WORKFLOW_ID, workerId: unadmitted, runtimeConfig }),
       { state: "refused", refusal: { reason: "none-eligible" } });
     assert.equal(database.getMeta().authorityGeneration, before);
     assert.equal(database.authority.lifecycleJournal.getCommand(commandId), undefined);
@@ -44,7 +44,7 @@ describe("canonical run-record service", () => {
     assert.equal(published.length, publications);
     assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
     assert.equal(runClaim(run), undefined);
-    assert.throws(() => database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW }),
+    assert.throws(() => database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: unadmitted, now: NOW }),
       /worker-claim-membership-unavailable/);
     assert.equal(database.getMeta().authorityGeneration, before);
     assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
@@ -145,8 +145,7 @@ describe("canonical run-record service", () => {
     });
     const claim = measure("claimNext", 1, () => service.claimNext({
       commandId: commandId(), workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig,
-      workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime,
-    }));
+      }));
     if (claim.state !== "applied" || claim.run.envelope.runId !== workerRun.envelope.runId) {
       throw new Error("coverage claim refused or selected the wrong run");
     }
@@ -163,12 +162,6 @@ describe("canonical run-record service", () => {
     const input = Plan1Input.parse({ emplId: "10800000", text: "same", mode: "ok" });
     const plan = planDelegationFanOut({ edgeId: childNode.edgeId, target: childNode.target, cardinality: childNode.cardinality,
       join: childNode.join, policy: childNode.policy, bound: input, deriveChildItemId: () => source.envelope.itemId });
-    const retainedLifetime = testWorkerLifetime(database, claim.run.envelope.workflow, 1).workerLifetime;
-    measure("workerTransition", 0, () => assert.throws(() => service.workerTransition({ commandId: commandId(),
-      runId: claim.run.envelope.runId, claim: { workerId: activeClaim.workerId, claimGeneration: activeClaim.claimGeneration },
-      lifecycle: { state: "validating", workerId: activeClaim.workerId, claimedAt: NOW, heartbeatAt: NOW,
-        workerLifetime: { ...retainedLifetime, membershipRevision: retainedLifetime.membershipRevision + 1 } },
-    }), /run-claim-lifetime-immutable/u));
     measure("admitDelegation", 0, () => assert.throws(() => service.admitDelegation({
       descriptor: plan1Parent.descriptor, owner: childNode, run: source,
       claim: { workerId: activeClaim.workerId, claimGeneration: activeClaim.claimGeneration },
@@ -213,8 +206,7 @@ describe("canonical run-record service", () => {
     const recoverable = created(service, { ...request, commandId: commandId(), matchKey: "coverage-requeue" });
     const recoveryClaim = service.claimNext({
       commandId: commandId(), workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig,
-      workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime,
-    });
+      });
     if (recoveryClaim.state !== "applied" || recoveryClaim.run.envelope.runId !== recoverable.envelope.runId) {
       throw new Error("coverage recovery claim refused or selected the wrong run");
     }
@@ -236,22 +228,14 @@ describe("canonical run-record service", () => {
     }));
     assert.deepEqual(purged, { state: "purged", evidenceClass: "diagnostic-bundle", purged: 0 });
 
-    const slot = database.authority.workerSlots.get(WORKER_ID), lease = database.authority.workerLeases.get(WORKER_ID);
-    assert.ok(slot !== undefined && lease !== undefined);
     const recoveryCommandId = commandId();
     assert.deepEqual(service.read(UUID_6), { state: "absent", runId: UUID_6 });
     assert.deepEqual(measure("recoverCrash", 0, () => service.recoverCrash({
       commandId: recoveryCommandId, runId: UUID_6, expectedVersion: 1,
       claim: { workerId: WORKER_ID, claimGeneration: 1 },
-      workerLifetime: { membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration }, now: NOW,
+      now: NOW,
     }, lifetime)), { state: "refused", refusal: { reason: "lost" } });
     assert.equal(database.authority.lifecycleJournal.getCommand(recoveryCommandId), undefined);
-    const reset = database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
-      commandId: commandId(), family: "worker-browser", type: "stop-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: NOW,
-      target: { workerId: WORKER_ID, membershipRevision: slot.membershipRevision, controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
-    }, commandId(), NOW));
-    database.authority.workerControls.transition(reset.commandId, "admitted", { state: "executing", startedAt: NOW });
-    measure("settleResetWork", 0, () => { service.settleResetWork(reset.reset); });
 
     const sourceText = readFileSync(join(process.cwd(), "src/backend/runs/lifecycle/run-record-service.ts"), "utf8");
     const sourceFile = ts.createSourceFile("run-record-service.ts", sourceText, ts.ScriptTarget.Latest, true);
@@ -287,7 +271,7 @@ describe("worker lifecycle service capability", () => {
     const { database, service, request, runtimeConfig } = await fixture();
     const run = created(service, request);
     const claimed = requireLifecycleApplied(service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID,
-      workerId: WORKER_ID, runtimeConfig, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime }));
+      workerId: WORKER_ID, runtimeConfig }));
     const requested = requireLifecycleApplied(service.transition({ commandId: UUID_6,
       runId: run.envelope.runId, expectedVersion: claimed.version,
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } }));
@@ -314,7 +298,7 @@ describe("worker lifecycle service capability", () => {
     const { database, service, request, runtimeConfig } = await fixture();
     const run = created(service, request);
     const claimed = requireLifecycleApplied(service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID,
-      workerId: WORKER_ID, runtimeConfig, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime }));
+      workerId: WORKER_ID, runtimeConfig }));
     const requested = requireLifecycleApplied(service.transition({ commandId: UUID_6,
       runId: run.envelope.runId, expectedVersion: claimed.version,
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } }));
@@ -395,7 +379,6 @@ describe("worker lifecycle service capability", () => {
       claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, endedAt: NOW }, personLookupDescriptor));
     assert.deepEqual(terminal.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: NOW });
     assert.equal(database.authority.runs.listByWorker(WORKER_ID).some(owned => runClaim(owned) !== undefined), false);
-    assert.doesNotThrow(() => database.assertWorkerLifecycleRelease(WORKER_ID));
   });
 });
 
@@ -412,8 +395,7 @@ for (const finishingGeneration of [2, 3]) {
       assert.equal(f.service.requeue({ commandId: id(), runId: running.envelope.runId,
         expectedVersion: running.version, cause: "recovery", claim: { workerId: held.workerId, claimGeneration: held.claimGeneration } }).state, "applied");
       const workerId = generation === 2 ? "person-lookup-worker-2" : WORKER_ID;
-      const claimed = requireLifecycleApplied(f.service.claimNext({ commandId: id(), workflow: WORKFLOW_ID, workerId, runtimeConfig: f.runtimeConfig,
-        workerLifetime: testWorkerLifetime(f.database, WORKFLOW_ID, generation === 2 ? 2 : 1).workerLifetime }));
+      const claimed = requireLifecycleApplied(f.service.claimNext({ commandId: id(), workflow: WORKFLOW_ID, workerId, runtimeConfig: f.runtimeConfig }));
       assert.equal(claimed.claimGeneration, generation);
       const claim = { workerId, claimGeneration: generation };
       requireLifecycleApplied(f.service.workerTransition({ commandId: id(), runId: claimed.envelope.runId,
@@ -456,11 +438,7 @@ it("competing connections cannot accept conflicting failure settlements", async 
     assert.equal(running.lifecycle.state, "running");
     const claim = runClaim(running); assert.ok(claim);
     const firstOwner = connections[0]; assert.ok(firstOwner?.pid !== undefined);
-    const member = f.database.authority.workerSlots.get(claim.workerId), lease = f.database.authority.workerLeases.get(claim.workerId);
-    assert.ok(member && lease && "workerLifetime" in running.lifecycle && running.lifecycle.workerLifetime);
-    assert.equal(lease.processId, firstOwner.pid);
-    assert.equal(running.lifecycle.workerLifetime.membershipRevision, member.membershipRevision);
-    assert.equal(running.lifecycle.workerLifetime.leaseGeneration, lease.leaseGeneration);
+    assert.ok(f.database.authority.workerSlots.get(claim.workerId));
     const firstRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000051");
     const secondRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000052");
     secondRequest.terminal.failure.failureId = UUID_5;

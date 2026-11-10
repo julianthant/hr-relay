@@ -406,10 +406,7 @@ describe("assistant action policy", () => {
     const spawn = commands().spawn;
     const controls = ["resume-worker", "retry-worker"].map((type) => ({
       ...envelope, family: "worker-browser", type,
-      target: type === "retry-worker"
-        ? { workflowId: "person-lookup", workerId: "worker-1", membershipRevision: 1,
-          expectedVersion: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 } }
-        : { workerId: "worker-1", expectedVersion: 1 },
+      target: { workflowId: "person-lookup", workerId: "worker-1", lifetimeId: null, expectedVersion: 0 },
     }));
     for (const command of [spawn, ...controls]) {
       for (const [mode, expected] of [

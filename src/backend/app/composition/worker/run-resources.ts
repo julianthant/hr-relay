@@ -14,6 +14,7 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { type BrowserSessionFactoryOptions, BrowserProfileAdmissionSchema, PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError } from "../../../runtime/browser/browser-session-factory.js";
 import { lstatSync } from "node:fs";
+import { join } from "node:path";
 import type { WorkerId } from "../../../../rules/identity/ids.js";
 import type { DebugEvent } from "../../../../models/events/timeline.js";
 import { createCensusGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
@@ -113,29 +114,29 @@ export function createRunResourcesFactory(input:Readonly<{
 
 export type BrowserProfileAuthority = Pick<BrowserSessionFactoryOptions, "slotOrdinal" | "admitProfile" | "duo" | "assertCurrent" | "browserRoots" | "browserOwner">;
 export function createBrowserProfileAuthority(input: Readonly<{duo?:DuoSigningSource;authority:AuthorityRepositories;admission:RuntimeAdmission;database:AuthorityDatabase;assertProfileOwner:(workerId:WorkerId)=>void}>): BrowserProfileAuthority {
+ const browserRoots=createBrowserRoots(input.admission),profileId=input.admission.profileBinding.profileId;
+ // The registry row says whether the directory was last signed in with this identity; the revision counts resets in this process.
+ const revisions=new Map<string,number>();
  return {
-    browserRoots:createBrowserRoots(input.admission),browserOwner:{database:input.database,profileId:input.admission.profileBinding.profileId},
+    browserRoots,browserOwner:{database:input.database,profileId},
     ...(input.duo===undefined?{}:{duo:input.duo}),assertCurrent:workerId=>input.assertProfileOwner(workerId),
-    slotOrdinal:(workerId,system)=>{
+    slotOrdinal:workerId=>{
      input.assertProfileOwner(workerId);
      const slot=input.authority.workerSlots.get(workerId);
      if(slot===undefined||slot.retiredAt!==null)throw new ProfileCustodyUnavailableError();
-     if(input.authority.workerControls.pending(`worker-pool:${slot.workflow}`).some(control=>control.request.type==="plan-worker-count"))throw new ProfileCustodyUnavailableError();
-     if(input.authority.workerControls.browsers(workerId).some(browser=>browser.system===system&&browser.health!=="closed"))throw new ProfileCustodyUnavailableError();
      return slot.ordinal;
     },
     admitProfile:profile=>{
      input.assertProfileOwner(profile.workerId);
      const slot=input.authority.workerSlots.get(profile.workerId);
      if(slot===undefined||slot.retiredAt!==null)throw new ProfileCustodyUnavailableError();
-     if(input.authority.workerControls.pending(`worker-pool:${slot.workflow}`).some(control=>control.request.type==="plan-worker-count"))throw new ProfileCustodyUnavailableError();
-     const observations=input.authority.workerControls.browsers(profile.workerId).filter(value=>value.system===profile.system);
-     if(observations.some(value=>value.health!=="closed"))throw new ProfileCustodyUnavailableError();
-     const previous=observations.at(-1);
-     const unobservedProfile=previous===undefined&&lstatSync(profile.profileDirectory,{throwIfNoEntry:false})!==undefined;
-     if(previous!==undefined&&previous.profileDirectory!==profile.profileDirectory)throw new ProfileCustodyUnavailableError();
-     const resetRequired=unobservedProfile||previous!==undefined&&(previous.instance!==profile.instance||previous.signInFingerprint!==profile.signInFingerprint);
-     return Promise.resolve(BrowserProfileAdmissionSchema.parse({...profile,profileRevision:previous===undefined?1:previous.profileRevision+(resetRequired?1:0),resetRequired}));
+     const machineRoot=input.admission.captureBrowserRegistryContext().machineRoot;
+     const row=browserRoots.inventory().roots.find(value=>value.profileId===profileId&&join(machineRoot,value.directory)===profile.profileDirectory);
+     const resetRequired=row===undefined?lstatSync(profile.profileDirectory,{throwIfNoEntry:false})!==undefined
+      :row.credentialFingerprint!==profile.signInFingerprint;
+     const profileRevision=(revisions.get(profile.profileDirectory)??1)+(resetRequired?1:0);
+     revisions.set(profile.profileDirectory,profileRevision);
+     return Promise.resolve(BrowserProfileAdmissionSchema.parse({...profile,profileRevision,resetRequired}));
     },
  };
 }

@@ -32,8 +32,6 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   // Read the shared SQLite cursor; process-local notifications cannot guarantee event delivery.
   const timelineTimer = setInterval(() => {
     projection.ingestFromTimeline();
-    // Lease transitions need authority polling because they need not emit spans.
-    database.reconcileWorkerControlMilestones(clock.now().toISOString());
     projection.reconcileWorkerAuthority();
   }, TIMELINE_POLL_MS);
   timelineTimer.unref();

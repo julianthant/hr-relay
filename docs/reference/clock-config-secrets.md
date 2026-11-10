@@ -565,7 +565,7 @@ Fresh workbook storage contains one General type seed. Incomplete-profile invent
 The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 and 20. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 23` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 24` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
@@ -778,7 +778,7 @@ Fresh machine initialization creates the fixed private process-lock directory be
 
 Worker bootstrap acquires genuine machine admission, captures selection and takes exact profile-database process custody before issuing a child or opening SQLite. Protected access, worker effects and browser actions repeat current-owner checks. Unproved closure propagates retained `RUNTIME_CUSTODY_UNCERTAIN`; actual child CLOSE, not only exit or a closed browser context, controls native release.
 
-Only explicit Log out or Delete account ends a completed profile session. Failed sign-in or resume preserves the prior selection while refusing access with its failure code. Restart, crash, tab closure and cookie loss retain that selection. A new local browser resumes through the existing loopback, origin and mutation guards; an already mounted runtime is revalidated and reused. Logout revokes access for every browser.
+Only explicit Log out or Delete account ends a completed profile session, with one boot exception: when startup holds the selected person, boot clears the selection so that person never blocks another person's sign-in, and their next sign-in shows the hold. Failed sign-in or resume preserves the prior selection while refusing access with its failure code. Restart, crash, tab closure and cookie loss retain that selection. A new local browser resumes through the existing loopback, origin and mutation guards; an already mounted runtime is revalidated and reused. Logout revokes access for every browser.
 
 Registry publication spools each selection change through the existing local timeline log with a closed reason code, fixed caller path and old/new generations. It records the attempt before the registry write and settlement after it, without profile IDs or credential values. An unavailable log refuses the transition; a failed publication retains its existing recovery evidence.
 

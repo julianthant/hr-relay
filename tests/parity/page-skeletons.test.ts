@@ -218,7 +218,6 @@ test("OCR page skeleton fills the fixed PDF frame until its image arrives", asyn
   async function openReview() {
     await page.goto(`${server.baseUrl}/?day=2026-08-03`);
     await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Oath Upload", exact: true }).click();
-    await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
     await logs.getByRole("button", { name: /^Records \d+$/u }).click();
   }
   try {

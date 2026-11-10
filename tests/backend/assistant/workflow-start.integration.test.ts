@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../support/helpers/backend/unused-worker-pool.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it, vi } from "vitest";
@@ -52,8 +53,7 @@ async function fixture(descriptor: AnyWorkflowDescriptor = personLookupDescripto
   const kernel = createCommandKernel({ authority: f.database, lifecycle: f.service, descriptors, clock: f.clock, ids: { uuid: randomUUID }, appVersion: "0.1.0",
     configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     assistantRevalidate: command => authorization.assertEffect(command.commandId, command), workflowSources: { [descriptor.id]: "served" },
-    writeResolution: { recheck: unavailable, resolveAbsent: unavailable }, workerRuntime: { pool: { planPoolWorkerCount: unavailable,
-      spawnPoolWorker: unavailable, refreshPoolBrowser: unavailable, reopenPoolBrowser: unavailable, stopPoolWorker: unavailable, pausePoolWorker: unavailable, resumePoolWorker: unavailable } },
+    writeResolution: { recheck: unavailable, resolveAbsent: unavailable }, workerRuntime: { pool: unusedWorkerPool(unavailable) },
   });
   let current = true;
   const assertCurrent = () => { if (!current) throw new Error("session stale"); };

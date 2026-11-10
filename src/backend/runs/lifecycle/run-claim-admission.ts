@@ -48,7 +48,6 @@ export function delegatedCandidateEligible(repositories: AuthorityRepositories, 
     if (manifest.policy.cascadeCancel === "independent") independentChildren.add(child.envelope.runId);
   }
   for (const run of ancestry) {
-    if (repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return false;
     if (run.envelope.parent === undefined) break;
     if (independentChildren.has(run.envelope.runId)) break;
   }
