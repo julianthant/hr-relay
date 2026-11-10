@@ -1426,6 +1426,11 @@ th.ds-text-caps {
 .ds-search-field--menu [data-slot="search-field-group"] { height: 28px; min-height: 28px; max-height: 28px; box-sizing: border-box; padding-inline: 10px 4px; }
 .ds-search-field--menu [data-slot="search-field-search-icon"] { width: 14px; height: 14px; }
 .ds-search-field--menu [data-slot="search-field-input"] { font-size: 13px; line-height: 18px; }
+/* A menu's flat search row (search palette look): 36px, a 16px magnifier, 13px text, a hairline under it, no field fill or focus edge. */
+.ds-menu-search-row { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; height: 36px; margin: -4px -4px 4px; padding: 0 12px; border-bottom: 1px solid var(--ui-stroke); border-radius: 16px 16px 0 0; background: var(--ui-field); color: var(--ui-muted); }
+.ds-menu-search-row svg { width: 16px; height: 16px; flex: none; }
+.ds-menu-search-row input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; box-shadow: none; background: transparent; color: var(--ui-primary); font: inherit; font-size: 13px; line-height: 18px; }
+.ds-menu-search-row input::placeholder { color: var(--ui-muted); opacity: 1; }
 /* Sidebar search (Codex): 36px, no border, a 15px corner, a fill one step above the sidebar; icon and text sit on the row icon and text x. */
 .ds-search-field--sidebar { --field: color-mix(in srgb, var(--ds-fg) 7%, transparent); --field-hover: var(--field); --field-focus: var(--field); --field-border: transparent; --field-border-hover: transparent; --field-border-focus: transparent; --border-width-field: 0px; }
 [data-demo-theme="dark"] .ds-search-field--sidebar { --field-border: transparent; }

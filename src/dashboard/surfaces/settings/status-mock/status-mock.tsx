@@ -1,7 +1,7 @@
-import { Check, ChevronDown, LoaderCircle, X } from "lucide-react";
+import { Check, ChevronDown, LoaderCircle, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { RunList, RunListRow } from "../../run-start/run-list.js";
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, IconButton, SearchInput, Select, dsIcon, useToasts } from "../../../ds/ui.js";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, IconButton, Select, dsIcon, useToasts } from "../../../ds/ui.js";
 import { DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../../ds/primitives/dropdown-menu.js";
 import { DATASETS, initialSheets, missingRequired, samplesOf, withMapping, type Sheet, type Worksheet } from "../../spreadsheets/design/sheets-v2-model.js";
 import { AccountSettings, type AccountValues } from "../account/account-settings.js";
@@ -23,14 +23,19 @@ export function StatusMockReadiness({ frame }: { frame: "run-a" | "run-b" }) {
 export interface StatusMockPicks { readonly keys: readonly string[]; readonly versions: Readonly<Record<string, number>>; readonly sheets: readonly Sheet[] }
 
 const sheetKey = (sheet: Sheet, worksheet: Worksheet) => `${sheet.id}/${worksheet.name}`;
-const librarySheets = () => initialSheets("many").filter(sheet => !sheet.run).toSorted((a, b) => Number(b.pinned) - Number(a.pinned) || a.name.localeCompare(b.name));
+/** The picker's library: the Spreadsheets library plus three more pins, so the empty search lists something (`unpinned` clears every pin). */
+const PICKER_PINS = ["hires", "parking", "keys"];
+const librarySheets = (unpinned = false) => initialSheets("many").filter(sheet => !sheet.run)
+  .map(sheet => unpinned ? { ...sheet, pinned: false } : PICKER_PINS.includes(sheet.id) ? { ...sheet, pinned: true } : sheet)
+  .toSorted((a, b) => Number(b.pinned) - Number(a.pinned) || a.name.localeCompare(b.name));
 const FRAME_PICKS: Readonly<Record<string, readonly string[]>> = {
   "run-sheets": ["hires/Aug 3 hires", "hires/Aug 10 hires", "roster/Roster"], "run-sheets-open": ["hires/Aug 3 hires", "hires/Aug 10 hires", "roster/Roster"], "run-sheets-add": ["hires/Aug 3 hires", "hires/Aug 10 hires", "roster/Roster"],
+  "run-sheets-search": ["hires/Aug 3 hires", "hires/Aug 10 hires", "roster/Roster"], "run-sheets-nopins": ["hires/Aug 3 hires", "roster/Roster"],
   "run-sheets-fix": ["hires/Aug 3 hires", "hires/Aug 10 hires", "hires/Aug 17 hires", "roster/Roster"],
 };
 /** The spreadsheets a run starts with: the last ones used, or the frame's own. */
 export function statusMockDefaultPicks(frame?: string): StatusMockPicks {
-  return { keys: (frame && FRAME_PICKS[frame]) || ["roster/Roster", "i9/Sheet1"], versions: {}, sheets: librarySheets() };
+  return { keys: (frame && FRAME_PICKS[frame]) || ["roster/Roster", "i9/Sheet1"], versions: {}, sheets: librarySheets(frame === "run-sheets-nopins") };
 }
 const currentVersion = (sheet: Sheet) => sheet.versions[0].n;
 const ticked = (picks: StatusMockPicks, sheet: Sheet) => sheet.worksheets.filter(worksheet => picks.keys.includes(sheetKey(sheet, worksheet)));
@@ -46,7 +51,10 @@ export function StatusMockRosterPicker({ picks, onPicks }: { picks: StatusMockPi
   const [query, setQuery] = useState("");
   const picked = picks.sheets.filter(sheet => ticked(picks, sheet).length > 0);
   const needle = query.trim().toLowerCase();
-  const available = picks.sheets.filter(sheet => ticked(picks, sheet).length === 0 && sheet.name.toLowerCase().includes(needle));
+  const unpicked = picks.sheets.filter(sheet => ticked(picks, sheet).length === 0);
+  /** An empty search lists the pinned spreadsheets; typing searches all of them by spreadsheet and worksheet name, A-Z. */
+  const available = needle === "" ? unpicked.filter(sheet => sheet.pinned)
+    : unpicked.filter(sheet => [sheet.name, ...sheet.worksheets.map(worksheet => worksheet.name)].some(name => name.toLowerCase().includes(needle))).toSorted((a, b) => a.name.localeCompare(b.name));
   const setKeys = (keys: readonly string[]) => onPicks({ ...picks, keys });
   const add = (sheet: Sheet) => setKeys([...picks.keys, sheetKey(sheet, sheet.worksheets.find(worksheet => missingRequired(sheet, worksheet).length === 0) ?? sheet.worksheets[0])]);
   const remove = (sheet: Sheet) => setKeys(picks.keys.filter(key => !key.startsWith(`${sheet.id}/`)));
@@ -92,8 +100,11 @@ export function StatusMockRosterPicker({ picks, onPicks }: { picks: StatusMockPi
     <div><DropdownMenu onOpenChange={open => { if (open) setQuery(""); }}>
       <DropdownMenuTrigger asChild><Button variant="outline" className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden />}>Add spreadsheet</Button></DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[320px] max-h-[320px] overflow-y-auto">
-        <div className="px-0.5 pb-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find a spreadsheet" placeholder="Find a spreadsheet" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery("")} /></div>
-        {available.length === 0 && <p className="m-0 px-2 py-2 text-[13px] text-ui-muted">{picked.length === picks.sheets.length ? "Every spreadsheet is added." : "No spreadsheets match."}</p>}
+        <div className="ds-menu-search-row" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}>
+          <Search aria-hidden /><input aria-label="Find a spreadsheet" placeholder="Find a spreadsheet" value={query} onChange={event => setQuery(event.target.value)} autoComplete="off" spellCheck={false} />
+        </div>
+        {needle === "" && available.length > 0 && <DropdownMenuGroup><DropdownMenuLabel>Pinned</DropdownMenuLabel></DropdownMenuGroup>}
+        {available.length === 0 && <p className="m-0 px-2 py-2 text-[13px] leading-[18px] text-ui-muted">{needle === "" ? "Pin spreadsheets in Spreadsheets to list them here. Search finds the rest." : "No spreadsheets match."}</p>}
         {available.map(sheet => <DropdownMenuItem key={sheet.id} disabled={uncoverable(sheet)} onClick={() => add(sheet)}>
           <DropdownMenuItemCopy title={sheet.name} description={uncoverable(sheet) ? `No worksheet has ${STATUS_MOCK_REQUIRED_FIELDS.replace(", ", " and ")}` : sheet.worksheets.map(worksheet => worksheet.name).join(", ")} />
         </DropdownMenuItem>)}

@@ -62,14 +62,14 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     } else if (id === "run-person-lookup" || id === "run-person-lookup-many") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Person Lookup", exact: true }).last().click();
       await page.getByRole("button", { name: "Start run", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+      const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
       await expect(dialog.getByText("Workflow preview")).toBeVisible();
       await dialog.getByRole("textbox").first().fill(id === "run-person-lookup" ? "10000001" : "10000001; 10000002; Lee, Jordan");
       await expect(dialog.getByText("Parsed input")).toBeVisible();
     } else if (id === "run-options-many") {
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
       await page.getByRole("button", { name: "Start run", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+      const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
       await dialog.getByRole("textbox").first().fill("48216, 48220");
       await dialog.getByRole("button", { name: "Continue", exact: true }).click();
       await expect(dialog.getByRole("switch", { name: "Priority", exact: true })).not.toBeChecked();
@@ -80,7 +80,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
         await expect(page.getByRole("dialog").getByText(/\d+ of \d+ included/)).toBeVisible();
       } else {
         await page.getByRole("button", { name: "Start run", exact: true }).click();
-        const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+        const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
         await dialog.getByRole("textbox").first().fill("10555001");
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
         await dialog.getByRole("switch", { name: "Customize steps", exact: true }).dispatchEvent("click");
@@ -105,11 +105,13 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
       // The way the operator opens it: Emergency Contact in the rail, then Start a run, then choose the scan.
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await page.getByRole("button", { name: "Start run", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+      const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
       await dialog.locator('input[type="file"]').setInputFiles({ name: "Scan_0412.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") });
       await expect(dialog.getByText("Scan_0412.pdf").first()).toBeVisible();
       if (id === "run-sheets-open") await dialog.getByRole("button", { name: "Onboarding hires worksheets, 2 worksheets" }).click();
-      if (id === "run-sheets-add") await dialog.getByRole("button", { name: "Add spreadsheet" }).click();
+      if (id === "run-sheets-add" || id === "run-sheets-search" || id === "run-sheets-nopins") await dialog.getByRole("button", { name: "Add spreadsheet" }).click();
+      if (id === "run-sheets-search") await page.getByRole("textbox", { name: "Find a spreadsheet" }).fill("sheet");
+      if (id === "run-sheets-nopins") await expect(page.getByText("Pin spreadsheets in Spreadsheets to list them here.")).toBeVisible();
       if (id === "run-sheets-fix") await expect(dialog.getByText("Aug 17 hires · Employee ID")).toBeVisible();
       if (id === "run-sheets") await expect(dialog.getByRole("button", { name: "Onboarding hires worksheets, 2 worksheets" })).toBeVisible();
       if (id === "run-b" || id === "run-options") {
@@ -229,7 +231,7 @@ test("run dialog keys", async ({ page }) => {
   await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
   await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Separations", exact: true }).last().click();
   await page.getByRole("button", { name: "Start run", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+  const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
   const box = dialog.getByRole("textbox").first();
   await expect(dialog.getByText("Enter to continue")).toHaveCount(0);
   // Disabled (nothing typed yet): Enter does nothing and the textbox keeps its content.
@@ -259,7 +261,7 @@ test("run dialog priority", async ({ page }) => {
     await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: workflow, exact: true }).last().click();
     await page.getByRole("button", { name: "Start run", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     await dialog.getByRole("textbox").first().fill(text);
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     const box = dialog.getByRole("switch", { name: "Priority", exact: true });
@@ -287,7 +289,7 @@ test("customize steps every workflow", async ({ page }) => {
     await page.getByRole("button", { name: "Close assistant", exact: true }).evaluate(el => (el as HTMLElement).click(), undefined, { timeout: 3000 }).catch(() => undefined);
     await rail.getByRole("button", { name, exact: true }).last().click();
     await page.getByRole("button", { name: "Start run", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     await expect(dialog.getByText("Workflow preview"), `${name}: redesigned dialog`).toBeVisible();
     const file = dialog.locator('input[type="file"]');
     if (await file.count()) await file.setInputFiles({ name: "Scan_0412.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") });
@@ -321,7 +323,7 @@ for (const theme of THEMES) test(`run input every workflow @ ${theme} ${WIDTH}`,
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     await rail.getByRole("button", { name, exact: true }).last().click();
     await page.getByRole("button", { name: "Start run", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     await expect(dialog.getByText("Workflow preview")).toBeVisible();
     await settle(page);
     await page.screenshot({ path: join(OUT, `run-input-${name.toLowerCase().replace(/[^a-z0-9]+/gu, "-")}-${theme}-${WIDTH}.png`) });
