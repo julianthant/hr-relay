@@ -317,10 +317,10 @@ afterEach(_afterEachFixture0);
   it.each(["audit","mismatch"] as const)("rolls back the genuine audit and acknowledged effects after %s",async fault=>{
     const f=await fixture();const k=kernel(f,fault);const generation=f.db.getMeta().authorityGeneration;
     expect(()=>k.instance.execute(f.command)).toThrow(fault === "audit" ? "kernel-after-audit-fault" : "acknowledged-effects-mismatch");
-    expect(f.db.authority.commands.get(UUID_5)).toBeUndefined();expect(f.db.authority.commandAudits.findByCommand(UUID_5)).toBeUndefined();
+    expect(f.db.authority.commands.get(UUID_5)).toEqual(f.command);expect(f.db.authority.commandAudits.findByCommand(UUID_5)).toBeUndefined();
     expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)).toEqual(f.parked);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);
-    expect(f.db.authority.runs.get(f.run.envelope.runId)).toEqual(f.run);expect(f.db.getMeta().authorityGeneration).toBe(generation);
+    expect(f.db.authority.runs.get(f.run.envelope.runId)).toEqual(f.run);expect(f.db.getMeta().authorityGeneration).toBe(generation + 1);
   });
   it("replays the immutable complete command outcome after restart without repeating settlement",async ()=>{
     const f=await fixture();let k=kernel(f);
@@ -331,10 +331,10 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.runs.get(f.run.envelope.runId)?.version).toBe(6);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
-  it("refuses a forged original attempt before preparing or inserting any audit",async ()=>{
+  it("refuses a forged original attempt before preparing and stores the rejected audit",async ()=>{
     const f=await fixture();const k=kernel(f);const request=CommandRequestSchema.parse({...f.command,target:{...f.command.target,writeAttemptId:UUID_8}});
     expect(k.instance.execute(request).state).toBe("rejected");expect(k.preparations()).toBe(0);
-    expect(f.db.authority.commands.get(UUID_5)).toBeUndefined();expect(f.db.authority.commandAudits.findByCommand(UUID_5)).toBeUndefined();
+    expect(f.db.authority.commands.get(UUID_5)).toEqual(request);expect(f.db.authority.commandAudits.findByCommand(UUID_5)?.result.state).toBe("rejected");
   });
 });
 describe("native immutable parked positive settlement",()=>{
@@ -410,7 +410,7 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)).toEqual(f.parked);expect(f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)).toBeUndefined();
     expect(f.db.authority.commandAudits.findByCommand(command.commandId)).toBeUndefined();expect(f.db.authority.timelineEvents.page({limit:100})).toEqual([]);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);expect(f.db.authority.runs.get(f.run.envelope.runId)).toEqual(f.run);
-    expect(f.db.getMeta().authorityGeneration).toBe(generation);
+    expect(f.db.authority.commands.get(command.commandId)).toEqual(command);expect(f.db.getMeta().authorityGeneration).toBe(generation + 1);
   });
   it("replays the exact recheck request after restart and run advancement without repeating publication or continuation",async ()=>{
     const f=await fixture();const command=positive(f).command;let k=kernel(f,undefined,true);
