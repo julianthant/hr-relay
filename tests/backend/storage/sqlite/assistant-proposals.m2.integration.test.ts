@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { it } from "vitest";
-import { AssistantM2ProposalSnapshotSchema, AssistantSessionClaimSchema, assistantM2ProposalDigest, type AssistantM2ProposalSnapshot } from "../../../../src/models/dashboard/assistant.js";
+import { AssistantAcceptedTurnSchema, AssistantM2ProposalSnapshotSchema, AssistantSessionClaimSchema, assistantM2ProposalDigest, type AssistantM2ProposalSnapshot } from "../../../../src/models/dashboard/assistant.js";
 import { assistantM1HistoryFixture } from "../../../support/helpers/assistant-m1-history-fixture.js";
 
 const T = "2026-11-09T12:00:00.000Z", hex = (digit: string) => digit.repeat(64);
 const fingerprints = { descriptorFingerprint: hex("a"), configFingerprint: hex("b"), ingressSchemaHash: hex("c"), canonicalInputSchemaHash: hex("d"), inputFingerprint: hex("e") };
+
+const usage = { state: "measured", callCount: 1, inputTokens: 1, outputTokens: 1, totalTokens: 2 } as const;
+const options = { browserMode: "headless", captureBrowserScreenshots: true, priority: "interactive" } as const;
+type Bound = Readonly<{ proposalId: string; proposalRevision: number; renderedMessageId: string; renderedDigest: string }>;
 
 function world() {
   const storage = assistantM1HistoryFixture({ now: T, acceptedAt: T });
@@ -13,16 +17,34 @@ function world() {
   const before = storage.history.conversation(chat, T);
   const proposals = storage.proposals();
   assert.deepEqual(storage.history.conversation(chat, T), before, "M2 statements keep the populated M1 chat");
-  const snapshot = (conversationId = chat, rows = 2): AssistantM2ProposalSnapshot => {
-    const draft = { id: randomUUID(), profileId: storage.profileId(), conversationId, revision: 1, renderedMessageId: randomUUID(), sourceMessageId: randomUUID(),
-      label: "Start Person Lookup", dryRun: false, createdAt: T, rows: Array.from({ length: rows }, (_, index) => ({ id: randomUUID(), ordinal: index + 1, title: `Row ${String(index + 1)}`,
+  /** One genuine accepted operator message; `proposalAnswer` binds it to a shown proposal. */
+  const accept = (conversationId: string = chat, proposalAnswer: Bound | null = null) => {
+    const accepted = storage.history.accept({ ...storage.input(conversationId), proposalAnswer: AssistantAcceptedTurnSchema.shape.proposalAnswer.parse(proposalAnswer) });
+    assert.equal(accepted.state, "accepted"); if (accepted.state !== "accepted") assert.fail();
+    return accepted;
+  };
+  const reply = (accepted: ReturnType<typeof accept>) => {
+    const id = randomUUID();
+    assert.ok(storage.history.settle(accepted, { delivery: "answered", usage, reply: { id, kind: "answer", parts: [{ kind: "text", runs: [{ kind: "plain", text: "Proposed" }] }], modelText: "Proposed" } }, T));
+    return id;
+  };
+  /** A proposing turn's reply in `conversationId`, then the snapshot rendered in it. */
+  const snapshot = (conversationId = chat, rows = 2, shownOptions: typeof options = options): AssistantM2ProposalSnapshot => {
+    const source = accept(conversationId);
+    const draft = { id: randomUUID(), profileId: storage.profileId(), conversationId, revision: 1, renderedMessageId: reply(source), sourceMessageId: source.acceptedTurn.messageId,
+      label: "Start Person Lookup", dryRun: false, options: shownOptions, createdAt: T, rows: Array.from({ length: rows }, (_, index) => ({ id: randomUUID(), ordinal: index + 1, title: `Row ${String(index + 1)}`,
         display: { kind: "request" as const }, operation: { kind: "workflow-start" as const, workflowId: "person-lookup", submission: { line: String(index) }, expected: fingerprints } })) };
     return AssistantM2ProposalSnapshotSchema.parse({ ...draft, renderedDigest: assistantM2ProposalDigest(draft) });
   };
-  return { storage, chat, proposals, snapshot };
+  const bound = (shown: AssistantM2ProposalSnapshot): Bound => ({ proposalId: shown.id, proposalRevision: shown.revision, renderedMessageId: shown.renderedMessageId, renderedDigest: shown.renderedDigest });
+  /** The operator's answer: a genuine accepted message bound to `shown`. */
+  const answer = (shown: AssistantM2ProposalSnapshot, overrides: Partial<Bound> = {}) => {
+    const accepted = accept(shown.conversationId, { ...bound(shown), ...overrides });
+    return { ...bound(shown), ...overrides, answerMessageId: accepted.acceptedTurn.messageId, accepted };
+  };
+  const finish = (accepted: ReturnType<typeof accept>) => { reply(accepted); };
+  return { storage, chat, proposals, snapshot, accept, reply, answer, bound, finish };
 }
-const answer = (shown: AssistantM2ProposalSnapshot, overrides: Partial<{ proposalRevision: number; renderedDigest: string; renderedMessageId: string }> = {}) => ({
-  proposalId: shown.id, proposalRevision: shown.revision, renderedMessageId: shown.renderedMessageId, renderedDigest: shown.renderedDigest, answerMessageId: randomUUID(), ...overrides });
 
 it("binds a snapshot digest to everything shown and refuses a changed or reordered row", () => {
   const w = world(), shown = w.snapshot();
@@ -36,19 +58,69 @@ it("issues one open proposal per chat, answers only the exact shown snapshot onc
   const issued = w.proposals.issue(first);
   assert.deepEqual(issued.lifecycle, { state: "open" }); assert.deepEqual(issued.rows.map(row => row.result.state), ["not-started", "not-started"]);
   assert.equal(w.proposals.open(w.chat)?.snapshot.id, first.id); assert.equal(w.proposals.needsYou(T), 1);
-  for (const wrong of [{ proposalRevision: 2 }, { renderedDigest: hex("f") }, { renderedMessageId: randomUUID() }]) assert.equal(w.proposals.claimAnswer(answer(first, wrong)), false);
+  for (const wrong of [{ proposalRevision: 2 }, { renderedDigest: hex("f") }, { renderedMessageId: randomUUID() }]) {
+    const attempt = w.answer(first, wrong);
+    assert.equal(w.proposals.claimAnswer(attempt), false); w.finish(attempt.accepted);
+  }
   const second = w.snapshot();
   w.proposals.issue(second);
   assert.deepEqual(w.proposals.read(first.id)?.lifecycle, { state: "superseded" });
-  assert.equal(w.proposals.claimAnswer(answer(first)), false);
-  const yes = answer(second);
+  const late = w.answer(first); assert.equal(w.proposals.claimAnswer(late), false); w.finish(late.accepted);
+  const third = w.snapshot(); w.proposals.issue(third);
+  const yes = w.answer(third);
   assert.equal(w.proposals.claimAnswer(yes), true);
-  assert.equal(w.proposals.claimAnswer({ ...yes, answerMessageId: randomUUID() }), false);
-  assert.deepEqual(w.proposals.read(second.id)?.lifecycle, { state: "answered", answerMessageId: yes.answerMessageId });
+  assert.equal(w.proposals.claimAnswer(yes), false);
+  assert.deepEqual(w.proposals.read(third.id)?.lifecycle, { state: "answered", answerMessageId: yes.answerMessageId });
   assert.equal(w.proposals.needsYou(T), 0);
-  const third = w.snapshot(); w.proposals.issue(third); w.proposals.supersede(w.chat);
-  assert.equal(w.proposals.claimAnswer(answer(third)), false); assert.equal(w.proposals.open(w.chat), undefined);
+  w.finish(yes.accepted);
+  const fourth = w.snapshot(); w.proposals.issue(fourth); w.proposals.supersede(w.chat);
+  const after = w.answer(fourth); assert.equal(w.proposals.claimAnswer(after), false); assert.equal(w.proposals.open(w.chat), undefined);
   assert.equal(w.proposals.needsYou(T), 0);
+});
+
+it("answers only with the live accepted message right after the rendered reply, in the same chat and bound to that proposal", () => {
+  const w = world(), shown = w.snapshot();
+  w.proposals.issue(shown);
+  const claim = (answerMessageId: string) => w.proposals.claimAnswer({ ...w.bound(shown), answerMessageId });
+  assert.equal(claim(randomUUID()), false, "nonexistent message");
+  assert.equal(claim(shown.renderedMessageId), false, "a reply is not an accepted operator message");
+  const other = w.storage.create(), foreign = w.accept(other, w.bound(shown));
+  assert.equal(claim(foreign.acceptedTurn.messageId), false, "another chat's accepted message");
+  const unbound = w.accept();
+  assert.equal(claim(unbound.acceptedTurn.messageId), false, "an accepted message that answered nothing");
+  w.finish(unbound);
+  assert.equal(w.proposals.read(shown.id)?.lifecycle.state, "open");
+
+  const later = w.snapshot(); w.proposals.issue(later);
+  const localId = randomUUID();
+  w.storage.history.apply({ operation: "local", conversationId: w.chat, expectedRevision: w.storage.revision(w.chat), messageId: localId, text: "Note" }, T);
+  assert.equal(claim(localId), false, "an unrecorded local message");
+  const intervened = w.answer(later);
+  assert.equal(w.proposals.claimAnswer(intervened), false, "a message between the rendered reply and the answer");
+  w.finish(intervened.accepted);
+
+  const settled = w.snapshot(); w.proposals.issue(settled);
+  const finished = w.answer(settled); w.finish(finished.accepted);
+  assert.equal(w.proposals.claimAnswer(finished), false, "an answer no longer sending");
+});
+
+it("issues only a snapshot rendered in its chat's latest reply to its source message", () => {
+  const w = world(), shown = w.snapshot();
+  w.finish(w.accept());
+  assert.throws(() => w.proposals.issue(shown), /rendered-message-invalid/u);
+  const elsewhere = w.snapshot(w.storage.create()), moved = { ...elsewhere, id: randomUUID(), conversationId: w.chat };
+  assert.throws(() => w.proposals.issue(AssistantM2ProposalSnapshotSchema.parse({ ...moved, renderedDigest: assistantM2ProposalDigest(moved) })), /rendered-message-invalid/u);
+  const current = w.snapshot(), unsourced = { ...current, id: randomUUID(), sourceMessageId: randomUUID() };
+  assert.throws(() => w.proposals.issue(AssistantM2ProposalSnapshotSchema.parse({ ...unsourced, renderedDigest: assistantM2ProposalDigest(unsourced) })), /rendered-message-invalid/u);
+  assert.equal(w.proposals.issue(current).lifecycle.state, "open");
+});
+
+it("binds the reviewed start options into the digest", () => {
+  const w = world(), shown = w.snapshot();
+  for (const changed of [{ ...options, browserMode: "headed" }, { ...options, captureBrowserScreenshots: false }, { ...options, priority: "bulk" }])
+    assert.equal(AssistantM2ProposalSnapshotSchema.safeParse({ ...shown, options: changed }).success, false);
+  assert.equal(AssistantM2ProposalSnapshotSchema.safeParse({ ...shown, options: { ...options, instance: 1 } }).success, false);
+  assert.equal(AssistantM2ProposalSnapshotSchema.safeParse({ ...shown }).success, true);
 });
 
 it("claims each row for one command once, keeps UNKNOWN terminal and refuses a row before its claim", () => {
@@ -56,7 +128,7 @@ it("claims each row for one command once, keeps UNKNOWN terminal and refuses a r
   assert.ok(a && b && c);
   w.proposals.issue(shown);
   assert.throws(() => w.proposals.claimRow(shown.id, a.id, randomUUID()), /not-answered/u);
-  assert.equal(w.proposals.claimAnswer(answer(shown)), true);
+  assert.equal(w.proposals.claimAnswer(w.answer(shown)), true);
   const commandA = randomUUID(), commandB = randomUUID();
   assert.equal(w.proposals.claimRow(shown.id, a.id, commandA), true);
   assert.equal(w.proposals.claimRow(shown.id, a.id, randomUUID()), false);
@@ -79,7 +151,7 @@ it("enforces immutability in SQL, cascades with chat deletion and refuses anothe
   assert.throws(() => w.storage.database.prepare("UPDATE assistant_proposal_rows SET state='applied' WHERE proposal_id=?").run(shown.id), /assistant-proposal-row-immutable/u);
   assert.throws(() => w.storage.database.prepare("INSERT INTO assistant_proposals(id,conversation_id,revision,rendered_message_id,rendered_digest,state,answer_message_id,snapshot_json,created_at) VALUES(?,?,1,?,?,'open',NULL,'{}',?)")
     .run(randomUUID(), w.chat, randomUUID(), hex("1"), T), /UNIQUE/u);
-  const foreign = { ...shown, id: randomUUID(), renderedMessageId: randomUUID(), profileId: randomUUID() };
+  const foreign = { ...w.snapshot(), id: randomUUID(), profileId: randomUUID() };
   assert.throws(() => w.proposals.issue(AssistantM2ProposalSnapshotSchema.parse({ ...foreign, renderedDigest: assistantM2ProposalDigest(foreign) })), /not-owned/u);
   w.storage.database.prepare("DELETE FROM assistant_conversations WHERE id=?").run(w.chat);
   assert.equal(w.proposals.read(shown.id), undefined);

@@ -11,7 +11,7 @@ import { OcrFormTypeSchema } from "../ocr/form-registry.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { z } from "zod";
 import { CommandIdSchema, FingerprintSchema, IsoInstantSchema, LocalDateSchema, PositiveIntSchema, RunIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
-import { StartPlanWireSchema } from "./start-plan.js";
+import { StartPlanRequestSchema, StartPlanWireSchema } from "./start-plan.js";
 import { AssistantModelPreferenceSchema, AssistantModelSlugSchema } from "../config/assistant-model-preference.js";
 
 export const ASSISTANT_DEFAULT_MODEL = "gpt-6.1-sol";
@@ -470,14 +470,18 @@ export type AssistantSessionOutcome = z.infer<typeof AssistantSessionOutcomeSche
 /** One reviewed row's closed operation; Relay issues its command only after typed yes. */
 export const AssistantM2ProposalOperationSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("workflow-start"), workflowId: WorkflowIdSchema, submission: JsonValueSchema, expected: StartPlanWireSchema.shape.fingerprints }),
-  z.strictObject({ kind: z.literal("rerun"), runId: RunIdSchema, expectedVersion: PositiveIntSchema }),
+  z.strictObject({ kind: z.literal("rerun"), runId: RunIdSchema, expectedVersion: PositiveIntSchema, selectedStepKeys: StartPlanRequestSchema.shape.selectedStepKeys.unwrap() }),
   z.strictObject({ kind: z.literal("run-action"), runId: RunIdSchema, expectedVersion: PositiveIntSchema, action: z.enum(["pause", "resume", "cancel"]) }),
 ]);
 export const AssistantM2ProposalRowSchema = AssistantProposalRowSchema.safeExtend({ id: z.uuid(), ordinal: PositiveIntSchema, operation: AssistantM2ProposalOperationSchema });
 export type AssistantM2ProposalRow = z.infer<typeof AssistantM2ProposalRowSchema>;
+/** The reviewed start options every row's fresh plan must use and echo. */
+export const AssistantM2ProposalOptionsSchema = StartPlanRequestSchema.pick({ browserMode: true, captureBrowserScreenshots: true })
+  .extend({ priority: StartPlanWireSchema.shape.priority });
+export type AssistantM2ProposalOptions = z.infer<typeof AssistantM2ProposalOptionsSchema>;
 const AssistantM2ProposalShape = z.strictObject({
   id: z.uuid(), profileId: z.uuid(), conversationId: z.uuid(), revision: PositiveIntSchema, renderedMessageId: z.uuid(), renderedDigest: FingerprintSchema,
-  sourceMessageId: z.uuid(), label: ReplyLabelSchema, dryRun: z.boolean(), createdAt: IsoInstantSchema,
+  sourceMessageId: z.uuid(), label: ReplyLabelSchema, dryRun: z.boolean(), options: AssistantM2ProposalOptionsSchema, createdAt: IsoInstantSchema,
   rows: z.array(AssistantM2ProposalRowSchema).min(1).max(ASSISTANT_START_ROWS_MAX),
 });
 /** Digest of everything the operator saw, in order; yes binds to it. */

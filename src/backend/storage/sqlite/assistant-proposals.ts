@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { ASSISTANT_START_ROWS_MAX, AssistantM2ProposalRecordSchema, AssistantM2ProposalSnapshotSchema, AssistantM2RowResultSchema, AssistantSessionClaimSchema, AssistantSessionOutcomeSchema,
   type AssistantM2ProposalRecord, type AssistantM2ProposalSnapshot } from "../../../models/dashboard/assistant.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { assistantM1MessageFromRow } from "./assistant-history.js";
 
 /** Candidate migration (renumbered when staging merges); installed only by the stopped activation owner. */
 export const ASSISTANT_M2_PROPOSAL_STATEMENTS = Object.freeze([
@@ -64,6 +65,19 @@ export function createAssistantProposalRepository(ports: Ports) {
     const row = database.prepare("SELECT profile_id FROM assistant_conversations WHERE id=?").get(conversationId);
     if (z.object({ profile_id: z.uuid() }).safeParse(row).data?.profile_id !== ports.profileId()) conflict("conversation-not-owned");
   };
+  const message = (id: string) => {
+    const raw = database.prepare("SELECT * FROM assistant_messages WHERE id=?").get(id);
+    return raw === undefined ? undefined : assistantM1MessageFromRow(raw);
+  };
+  /** The accepted operator message that answered `snapshot`: its own live accepted turn, bound to exactly this proposal. */
+  const answeredBy = (snapshot: AssistantM2ProposalSnapshot, answerMessageId: string) => {
+    const answer = message(answerMessageId), recording = answer?.payload.recording;
+    if (answer?.conversationId !== snapshot.conversationId || recording?.kind !== "accepted-turn") return undefined;
+    const turn = recording.acceptedTurn;
+    return turn.messageId === answer.id && turn.conversationId === snapshot.conversationId && turn.profileId === ports.profileId()
+      && canonicalJsonStringify(turn.proposalAnswer) === canonicalJsonStringify({ proposalId: snapshot.id, proposalRevision: snapshot.revision,
+        renderedMessageId: snapshot.renderedMessageId, renderedDigest: snapshot.renderedDigest }) ? answer : undefined;
+  };
   const record = (raw: unknown): AssistantM2ProposalRecord => {
     const row = ProposalRowSchema.parse(raw), snapshot = AssistantM2ProposalSnapshotSchema.parse(JSON.parse(row.snapshot_json));
     if (snapshot.id !== row.id || snapshot.conversationId !== row.conversation_id || snapshot.revision !== row.revision || snapshot.renderedMessageId !== row.rendered_message_id
@@ -74,6 +88,7 @@ export function createAssistantProposalRepository(ports: Ports) {
       return { rowId: result.id, result: parsed };
     });
     if (canonicalJsonStringify(results.map(entry => entry.rowId)) !== canonicalJsonStringify(snapshot.rows.map(entry => entry.id))) conflict("rows-invalid");
+    if (row.state === "answered" && (row.answer_message_id === null || answeredBy(snapshot, row.answer_message_id) === undefined)) conflict("answer-invalid");
     return AssistantM2ProposalRecordSchema.parse({ snapshot, rows: results,
       lifecycle: row.state === "answered" ? { state: "answered", answerMessageId: row.answer_message_id } : { state: row.state } });
   };
@@ -123,6 +138,11 @@ export function createAssistantProposalRepository(ports: Ports) {
       if (snapshot.profileId !== ports.profileId()) conflict("not-owned");
       return ports.mutate("assistant_proposals", () => {
         owned(snapshot.conversationId);
+        // The rendered message is this chat's latest message: the reply of the turn that proposed it.
+        const rendered = message(snapshot.renderedMessageId), latest = z.object({ ordinal: z.number().int() })
+          .parse(database.prepare("SELECT MAX(ordinal) AS ordinal FROM assistant_messages WHERE conversation_id=?").get(snapshot.conversationId)).ordinal;
+        if (rendered?.conversationId !== snapshot.conversationId || rendered.payload.recording.kind !== "reply"
+          || rendered.payload.recording.acceptedMessageId !== snapshot.sourceMessageId || rendered.ordinal !== latest) conflict("rendered-message-invalid");
         const superseded = database.prepare("UPDATE assistant_proposals SET state='superseded' WHERE conversation_id=? AND state='open'").run(snapshot.conversationId);
         database.prepare(`INSERT INTO assistant_proposals(id,conversation_id,revision,rendered_message_id,rendered_digest,state,answer_message_id,snapshot_json,created_at)
           VALUES(?,?,?,?,?,'open',NULL,?,?)`).run(snapshot.id, snapshot.conversationId, snapshot.revision, snapshot.renderedMessageId, snapshot.renderedDigest,
@@ -141,9 +161,13 @@ export function createAssistantProposalRepository(ports: Ports) {
         return raw === undefined ? undefined : record(raw);
       });
     },
-    /** Moves the exact reviewed open proposal to answered once; false when it is no longer open or no longer what was shown. */
+    /** Moves the exact reviewed open proposal to answered once, by the live accepted message right after its rendered reply; false otherwise. */
     claimAnswer(input: Readonly<{ proposalId: string; proposalRevision: number; renderedMessageId: string; renderedDigest: string; answerMessageId: string }>): boolean {
       return ports.mutate("assistant_proposals", () => {
+        const shown = find(input.proposalId), answer = shown === undefined ? undefined : answeredBy(shown.snapshot, z.uuid().parse(input.answerMessageId));
+        const rendered = shown === undefined ? undefined : message(shown.snapshot.renderedMessageId);
+        if (shown === undefined || answer === undefined || rendered === undefined || answer.delivery !== "sending" || answer.ordinal !== rendered.ordinal + 1) return { result: false, changes: 0 };
+        owned(shown.snapshot.conversationId);
         const updated = database.prepare(`UPDATE assistant_proposals SET state='answered',answer_message_id=?
           WHERE id=? AND state='open' AND revision=? AND rendered_message_id=? AND rendered_digest=?`)
           .run(z.uuid().parse(input.answerMessageId), z.uuid().parse(input.proposalId), input.proposalRevision, z.uuid().parse(input.renderedMessageId), input.renderedDigest);
