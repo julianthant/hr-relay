@@ -25,7 +25,7 @@ function BrowserRow({ browser }: { browser: WorkerBrowser }) {
     <span className="flex min-w-0 items-center gap-1"><Monitor aria-hidden className="size-3 shrink-0 text-ui-muted" /><span aria-hidden={browser.name !== undefined} className="break-words">{browser.label}</span>{browser.name !== undefined && <span className="sr-only">{browser.name}</span>}</span>
     <span className={cn("shrink-0", BROWSER_TONE[browser.state])}>{BROWSER_WORD[browser.state]}{browser.reason !== undefined && <span className="sr-only">. {browser.reason}</span>}</span>
   </>;
-  return <li className="flex min-h-8 min-w-0 items-center rounded-md bg-ui-table text-caption">{detail === ""
+  return <li className="flex min-h-8 min-w-0 items-center rounded-md bg-[var(--ds-worker-chip-bg)] text-caption">{detail === ""
     ? <div className="flex min-w-0 flex-1 items-center justify-between gap-2 px-2 py-1">{row}</div>
     : <Tooltip content={detail}><div tabIndex={0} className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ui-info">{row}</div></Tooltip>}</li>;
 }
@@ -42,7 +42,7 @@ export function WorkerCard({ worker, countdown, operation, onControl, onCheck }:
   const note = cardNote(worker);
   const wide = worker.browsers.length > MAX_SYSTEMS;
   const icon = (label: string, control: SessionControl, Glyph: typeof Pause) => <IconActionButton tone="muted" label={label} disabled={locked} icon={<Glyph aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, control)} />;
-  return <article aria-label={`${worker.label} · ${worker.workflow}`} className={cn("flex shrink-0 flex-col rounded-lg border border-ui-stroke bg-ui-panel px-4 py-3", wide ? "w-[32rem]" : "w-[22rem]")}>
+  return <article aria-label={`${worker.label} · ${worker.workflow}`} className={cn("flex shrink-0 flex-col rounded-lg bg-[var(--ds-worker-card-bg)] px-4 py-3", wide ? "w-[32rem]" : "w-[22rem]")}>
     <header className="flex items-start justify-between gap-3"><h3 className="m-0 min-w-0 truncate text-control font-medium" title={worker.workflow}>{worker.workflow}</h3><span title={note} className={cn("inline-flex shrink-0 items-center gap-1.5 pt-0.5 text-caption", sessionStateColor(worker.state))}>{worker.state === "idle" && countdown ? <IdleRefreshRing countdown={countdown} /> : <span aria-hidden className="size-1.5 rounded-full bg-current" />}{SESSION_STATE_LABELS[worker.state]}{note !== undefined && <span className="sr-only">. {note}</span>}</span></header>
     <p className="mb-0 mt-1 truncate text-caption text-ui-secondary" title={worker.subject}>{worker.subject ?? "No run assigned"}</p>
     <Browsers worker={worker} wide={wide} />

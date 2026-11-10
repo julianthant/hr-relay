@@ -422,6 +422,8 @@
   /* A context menu's FLOOR. It holds verbs, so it is narrow — but it must not
    be narrower than its own longest verb or the menu re-flows around whichever */
   --ds-w-menu: 216px;
+  --ds-worker-card-bg: color-mix(in srgb, var(--ds-fg) 3%, var(--ui-panel)); /* a worker card is its own surface one step above the Sessions panel, with no edge */
+  --ds-worker-chip-bg: color-mix(in srgb, var(--ds-fg) 6%, var(--ui-panel)); /* its system chips sit one step further */
   --ds-w-session-card: 290px; /* one worker card in the Session Panel drawer */
   /* One cell of a wrapping CHIP ROW. Chips carry facts of wildly different
    lengths, so a plain `flex-wrap` leaves every line ending somewhere else and */
