@@ -169,9 +169,10 @@ it("refuses incomplete, foreign, altered and stale native bulk selections", asyn
   const discard = f.command("discard-ocr-record", 2, selectedIndex);
   const result = f.canonical.kernel.execute(discard);
   assert.ok(result.state === "rejected" && result.code === "OCR_REVIEW_REFUSED");
-  assert.equal(f.database.authority.commands.get(discard.commandId), undefined);
-  assert.equal(f.database.authority.commandAudits.findByCommand(discard.commandId), undefined);
-  assert.deepEqual(custody(), baseline);
+  assert.deepEqual(f.database.authority.commands.get(discard.commandId), discard);
+  assert.deepEqual(f.database.authority.commandAudits.findByCommand(discard.commandId)?.result, result);
+  const settled = { ...baseline, meta: { ...baseline.meta, authorityGeneration: generation + 2 } };
+  assert.deepEqual(custody(), settled);
   const repositories = f.database.authority, sourceRunId = f.run.envelope.runId;
   const earlier = repositories.ocrReviews.revision(sourceRunId, 1); assert.ok(earlier);
   assert.notEqual(earlier.revision, snapshot.revision);
@@ -192,7 +193,8 @@ it("refuses incomplete, foreign, altered and stale native bulk selections", asyn
     if (response.response.state !== "produced") assert.fail("Invalid selection protocol unavailable");
     assert.deepEqual(ReadApprovedOcrRecords.output.parse(response.response.value.value), { state: "refused", code: "OCR_REVIEW_REFUSED" }, change);
   }
-  assert.deepEqual(custody(), baseline);
+  assert.deepEqual(custody(), settled);
   assert.deepEqual(await read(), accepted);
-  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  assert.equal(f.database.getMeta().authorityGeneration, generation + 2);
+  baseline = structuredClone(custody());
 });

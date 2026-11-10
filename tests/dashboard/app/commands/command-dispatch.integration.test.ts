@@ -572,7 +572,8 @@ afterEach_m0(_afterEachFixture0);
 
     // Deleting parent deletes tree leaves-first
     if (parentDelete.state === "ready") {
-      const deleted = harness.kernel.execute(CommandRequestSchema_m0.parse(parentDelete.request));
+      const admittedRefusal = CommandRequestSchema_m0.parse(parentDelete.request);
+      const deleted = harness.kernel.execute({ ...admittedRefusal, commandId: randomUUID() });
       assert_m0.equal(deleted.state, "applied");
       if (deleted.state === "applied") {
         assert_m0.deepEqual(
