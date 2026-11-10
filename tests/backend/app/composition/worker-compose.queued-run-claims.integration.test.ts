@@ -53,6 +53,22 @@ it("returns a typed changed-observation report at boot with no browser or claim 
   assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
 });
 
+it("returns a blocked preflight refusal at drain boot without claiming or opening browsers", async () => {
+  const { repoRoot, stateRoot } = await repoRootWithState(); const clock = manualClock(new Date(NOW));
+  seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+  const sessions = happySessionHarness();
+  const input = composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 });
+  const report = await composeWorkerRuntime({ ...input,
+    preflightRunnerFactory: selected => healthyRuntimePreflightRunners(selected).map(runner => runner.check !== "authority.health" ? runner : {
+      ...runner, async run() { return { check: runner.check, state: "unhealthy" as const, summary: "Fixture blocked", impact: "Claim blocked" }; },
+    }) });
+  assert.equal(report.stopped, "preflight-refused");
+  assert.equal(report.preflightRefusal?.code, "PREFLIGHT_BLOCKED");
+  assert.equal(report.closure, "proved");
+  assert.equal(sessions.opens("ucpath"), 0); assert.equal(sessions.opens("crm"), 0);
+  assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+});
+
 function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, patch: unknown) {
   patch = settingsSetOperations(patch);
   const patchFingerprint = deriveSettingsPatchFingerprint(patch);

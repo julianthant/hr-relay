@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { join } from "node:path";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { createPreflightAdmission, PreflightAdmissionScopeSchema, PreflightObservationChangedError } from "../../../../src/rules/preflight/preflight-admission.js";
@@ -20,7 +21,7 @@ import { NOW, UUID_1 } from "../../../support/fixtures/phase1c-contract-fixtures
 
 const cleanups: (() => void | Promise<void>)[] = [];
 const { fixture } = createCredentialDoctorFixtures(cleanups);
-afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+afterEach(async () => { vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 const context = { signal: new AbortController().signal, timeoutMs: 10_000, deadlineMonotonicMs: 10_000, redaction: "presence-only" as const };
 
 function notify(f: Awaited<ReturnType<typeof fixture>>) {
@@ -53,6 +54,23 @@ it("maps only the real doctor observation race into the preflight refusal type",
   const checking = runner.run(context);
   notify(f);
   await assert.rejects(checking, PreflightObservationChangedError);
+});
+
+for (const method of ["inspectExistingReadOnly", "inspectSpanRunAuthorityReadOnly"] as const) it(`treats a transient SQLite lock in ${method} as changed observation`, async () => {
+  const f = await fixture();
+  vi.spyOn(AuthorityDatabase, method).mockImplementationOnce(() => { throw new Error("database is locked"); });
+  await assert.rejects(new AuthorityHealthPreflightRunner(f.admission, f.options, undefined, f.credentialStore).run(context), PreflightObservationChangedError);
+  assert.equal((await doctorAuthorityStorage(f.admission, f.options, undefined, f.credentialStore)).authority.state, "healthy");
+});
+
+it("rejects split corpus/run read snapshots as changed observation", async () => {
+  const f = await fixture();
+  const inspect = AuthorityDatabase.inspectSpanRunAuthorityReadOnly.bind(AuthorityDatabase);
+  vi.spyOn(AuthorityDatabase, "inspectSpanRunAuthorityReadOnly").mockImplementationOnce((...args) => {
+    const snapshot = inspect(...args);
+    return { ...snapshot, authorityGeneration: snapshot.authorityGeneration + 1 };
+  });
+  await assert.rejects(new AuthorityHealthPreflightRunner(f.admission, f.options, undefined, f.credentialStore).run(context), PreflightObservationChangedError);
 });
 
 async function racingClaim(world: ReturnType<typeof createWorkerDirectiveTestWorld>, racedObservations: number) {

@@ -1,3 +1,4 @@
+import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "../../helpers/backend/unused-worker-pool.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
@@ -111,7 +112,7 @@ export async function createIntakeAuthority(profileFixture: () => Promise<BoundP
     submit: async request => runtime.kernel.execute(request),
     executeBulk: forbidden,
   };
-  registerCommandsRoutes(app, { clock, commands, commandJournal: { get: id => database.authority.commands.get(id) },
+  registerCommandsRoutes(app, { clock, commands, resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority), commandJournal: { get: id => database.authority.commands.get(id) },
     protectedCommandAcceptedAt: forbidden, bulkCommandAcceptances: { withTransaction: work => database.withAuthorityTransaction(repositories => work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })) },
     intake: { prepare: request => runtime.intake.prepare(request) }, resolveIdentityGateAnswer: forbidden,
   });
