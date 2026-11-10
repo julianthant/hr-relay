@@ -47,6 +47,16 @@ describe("closed error origins", () => {
     assert.equal(serializeErrorCauses(Object.assign(new Error("x"), { code: "private value" }))[0]?.code, "INTERNAL_FAILURE");
   });
 
+  it("names a raw SQLite error by its integer result code and drops its message", async () => {
+    const { DatabaseSync } = await import("node:sqlite");
+    const database = new DatabaseSync(":memory:");
+    let failure: unknown;
+    try { database.exec("SELECT * FROM private_canary"); } catch (error) { failure = error; } finally { database.close(); }
+    const [cause] = serializeErrorCauses(failure);
+    assert.deepEqual({ name: cause?.name, code: cause?.code, reason: cause?.reason }, { name: "Error", code: "ERR_SQLITE_ERROR", reason: "sqlite-errcode-1" });
+    assert.equal(PRIVATE.test(JSON.stringify(cause)), false);
+  });
+
   it("names a worker lifecycle refusal only from its closed reason list", () => {
     assert.deepEqual(serializeErrorCauses(new WorkerControlRefusal("worker-removal-child-close-unproved")).map(({ name, code, reason }) => ({ name, code, reason })),
       [{ name: "WorkerControlRefusal", code: "INTERNAL_FAILURE", reason: "worker-removal-child-close-unproved" }]);
