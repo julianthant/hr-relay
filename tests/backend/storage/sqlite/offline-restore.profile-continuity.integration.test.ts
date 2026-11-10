@@ -623,7 +623,7 @@ describe("profile restore continuity", () => {
         const result=session.logOut(active.token,{at:'2026-10-21T12:01:00.000Z'});if(result.state!=='cancelling'||!source)throw new Error('logout-not-cancelling');
         ${barrier}
         const operation=LogoutOperationSchema.parse(JSON.parse(readFileSync(join(machine.stateRoot,'machine','operations',result.operationId+'.json'),'utf8')));
-        const stopped=await source.settlePendingLogout(machine,operation,[],{browserClosure:profileBrowserClosure,recover:reconcileStoppedLogout});await stopped.complete();stopped.dispose();
+        const stopped=await source.settlePendingLogout(machine,operation,{browserClosure:profileBrowserClosure,recover:reconcileStoppedLogout});await stopped.complete();stopped.dispose();
       }finally{await session?.closeOnboarding();session?.close();source?.close();machine.release();await lifetime.close();}process.stdout.write('OWNER_DONE');`;
       const restore = `const lifetime=await RuntimeLifetimeLock.acquire(port);const machine=acquireEntrypointAdmission(workspace,'exclusive',lifetime);try {
         const child=machine.admitProfile(profileId);const root=child.stateRoot,path=join(root,'state.db');

@@ -302,9 +302,9 @@ afterEach(_afterEachFixture0);
         else if (damage === "corrupt") writeFileSync(source, privateText);
         else copyFileSync(p.authorityPath, source);
       }
-      const original = AuthorityDatabase.inspectTimelineReadOnly.bind(AuthorityDatabase);
-      const spy = vi.spyOn(AuthorityDatabase, "inspectTimelineReadOnly").mockImplementation((admission, path, timeout, recovery) => {
-        const result = original(admission, path, timeout, recovery);
+      const original = AuthorityDatabase.inspectPreservedRecoveryEvidenceReadOnly.bind(AuthorityDatabase);
+      const spy = vi.spyOn(AuthorityDatabase, "inspectPreservedRecoveryEvidenceReadOnly").mockImplementation((admission, path, timeout) => {
+        const result = original(admission, path, timeout);
         if (damage === "changed-during-read" && path === name) writeFileSync(path, privateText);
         return result;
       });
