@@ -1,5 +1,5 @@
 .hub-sheets-library { color:var(--ui-primary); font-family:var(--font-sans); font-size:13px; }
-.hub-sheets-library h1 { font-size:27px; line-height:33px; font-weight:650; letter-spacing:-.02em; margin:0 0 4px; }
+.hub-sheets-library h1 { font-size:var(--ds-text-body-page); line-height:var(--ds-lh-body-page); font-weight:400; letter-spacing:-.02em; margin:0 0 4px; }
 .hub-sheets-intro { font-size:12.6px; line-height:19px; color:var(--ui-muted); margin:0 0 30px; }
 .hub-sheets-toolbar { display:flex; justify-content:space-between; gap:12px; margin:14px 0; }
 .hub-sheets-library .hub-sheets-button { min-height:32px; height:auto; padding:5px 12px; border:1px solid var(--ui-stroke); border-radius:8px; background:var(--ui-panel); color:var(--ui-primary); font-size:12px; line-height:18px; font-weight:500; display:inline-block; white-space:nowrap; transition:background-color 120ms ease,color 120ms ease,border-color 120ms ease,opacity 120ms ease; }

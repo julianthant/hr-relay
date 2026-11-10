@@ -144,7 +144,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByLabel("Open XLSX or CSV", { exact: true }).setInputFiles({ name: "typed-records.csv", mimeType: "text/csv", buffer: Buffer.from("Employee ID,Legal Name,Personal Email\n10000001,Jordan Lee,jordan@example.com\n") });
       await page.getByRole("button", { name: "Import selected columns", exact: true }).click();
       await expect(toasts.filter({ hasText: "Spreadsheet imported" })).toBeVisible();
-      await toasts.click(); await expect(toasts).toHaveCount(0);
+      await toasts.filter({ hasText: "Spreadsheet imported" }).click(); await expect(toasts.filter({ hasText: "Spreadsheet imported" })).toHaveCount(0);
+      // The fixture BFF serves no workbook catalog, so the served library raises its sticky unavailable toast.
+      await toasts.filter({ hasText: "Spreadsheet unavailable" }).click(); await expect(toasts).toHaveCount(0);
       await page.getByRole("textbox", { name: "A2", exact: true }).fill("10000002");
       await expect(page.getByText(/Edited copy/u)).toBeVisible(); await expect(toasts).toHaveCount(0);
       await page.getByRole("button", { name: "Export copy", exact: true }).click();
@@ -153,7 +155,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect((await download).suggestedFilename()).toBe("typed-records-edited.xlsx");
       await expect(toasts.filter({ hasText: "Spreadsheet copy exported" })).toBeVisible();
       await expect(toasts).not.toContainText("10000002");
-      await expect(page.getByText(/Saved copy/u)).toBeVisible();
+      await expect(page.getByText(/Edited copy/u)).toBeVisible(); // a served export keeps the edits unsaved
       expect(errors).toEqual([]);
     } finally { release(); await server.close(); }
   });

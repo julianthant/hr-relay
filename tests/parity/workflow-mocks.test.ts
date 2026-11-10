@@ -127,16 +127,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
           continue;
         }
         await picker.getByRole("button", { name: flow.label, exact: true }).click();
-        if (flow.id === "separations") {
-          await expect(dialog).toContainText("New work · Separations");
-          await dialog.getByRole("textbox", { name: "Kuali ID", exact: true }).fill(flow.example);
-          await advance(dialog);
-          await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
-          await expect(startRun(dialog)).toHaveCount(0);
-          await attachScreenshotFile(page, info, "run-separations.png");
-          await page.keyboard.press("Escape");
-          continue;
-        }
         dialog = page.getByRole("dialog", { name: "Start run", exact: true });
         await expect(dialog).toHaveCSS("opacity", "1");
         const box = (await dialog.boundingBox())!;

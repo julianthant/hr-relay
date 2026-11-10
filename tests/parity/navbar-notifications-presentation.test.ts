@@ -1,6 +1,7 @@
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { seedMockRuns } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
+import { installServedSurfaces } from "./helpers/app-driver.js";
 
 
 import { expect, type Page, type TestInfo } from "@playwright/test";
@@ -112,7 +113,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(search).toContainText("No matches");
       await input.fill("");
       await search.getByRole("group", { name: "Filter results", exact: true }).getByRole("button", { name: "Runs", exact: true }).click();
-      await expect(options).toHaveCount(FIXTURE_DAY_WIRE.queueSurfaces.length + seedMockRuns().length);
+      await expect(options).toHaveCount(FIXTURE_DAY_WIRE.queueSurfaces.length + seedMockRuns().filter(run => run.workflowId !== "ocr").length);
       await input.press('End');
       await expect(options.last()).toHaveAttribute('aria-selected', 'true');
       await expect(input).toHaveAttribute('aria-activedescendant', (await options.last().getAttribute('id'))!);
@@ -160,6 +161,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await calendar.getByRole("button", { name: "Today", exact: true }).click();
       await expect(dateField.getByRole("spinbutton", { name: /^month/u })).toHaveText("08");
       await expect(dateField.getByRole("spinbutton", { name: /^day/u })).toHaveText("03");
+      await installServedSurfaces(page);
+      await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "General", exact: true }).click();
       const themeToggle = page.getByRole("button", { name: `Switch to ${theme.attribute === "dark" ? "light" : "dark"} theme`, exact: true });

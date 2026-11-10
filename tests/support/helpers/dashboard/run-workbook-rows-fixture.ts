@@ -105,7 +105,7 @@ async function startWorkbookRowsFixture(page: Page) {
           traceId: traceOf(9700 + index), runNumber: { state: 'present', value: index + 1 }, workflowId: workflow.id, descriptorVersion: workflow.start.version, descriptorHash: command.payload.descriptorFingerprint,
           configFingerprint: command.payload.configFingerprint, actorId: command.requestedBy, title: entry.title, dryRun: plan!.dryRun,
           subtitle: { state: 'present', value: entry.subtitle }, pipeline: workflow.start.steps.map(step => ({ id: step.key, label: step.label, state: 'pending' })),
-          lineage: { state: 'root' }, containment: 'root', rowRevision: 1,
+          rowRevision: 1,
           session: { state: 'present', itemScope: workflow.id === 'person-lookup' ? 'session' : 'workflow', sessionId: uuidOf(9900), presentation: { layout: 'items', groupInQueue: false, version: 1, startedAt: seed.startedAt },
             origin: { kind: 'start-plan', startPlanId: command.target.startPlanId, actorId: command.requestedBy } } }));
       }

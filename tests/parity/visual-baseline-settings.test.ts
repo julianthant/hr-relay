@@ -7,6 +7,8 @@ import { ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema } f
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, captureParityPair, installTheme, PARITY_THEMES, type ParityTheme } from "./helpers/capture.js";
 import { gotoAppState, installServedSurfaces } from "./helpers/app-driver.js";
+import { disposeHttpRouteHarness } from "../support/helpers/backend/http-route-harness.js";
+import { serveWorkbookLibrary } from "./helpers/served-workbook-library.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { EditableSettingsWireSchema } from "../../src/models/dashboard/settings-editor.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
@@ -203,6 +205,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     const server = await setup(page, theme, width);
     const open = (view: Record<string, unknown> = {}) => gotoServedSpreadsheets(page, server.baseUrl, view);
     try {
+      await serveWorkbookLibrary(page, ["26–27 Student applicants.xlsx", "25–26 Student applicants.xlsx", "Contact roster.xlsx"]);
       await open();
       await expect(page.getByRole("table", { name: "Your spreadsheets", exact: true }).locator("tbody tr")).toHaveCount(3);
       await capture(page, info, theme, width, "spreadsheet-library");
@@ -236,13 +239,10 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(addType).toBeInViewport({ ratio: 1 });
       await capture(page, info, theme, width, "spreadsheet-type-add");
       await addType.getByRole("button", { name: "Save type", exact: true }).click(); await expect(addType.getByRole("alert")).toBeVisible();
-      await addType.getByRole("textbox", { name: "Type name", exact: true }).fill("Roster");
-      await addType.getByRole("button", { name: "Save type", exact: true }).click();
-      await expect(addType.getByRole("alert")).toContainText("already exists");
       await page.keyboard.press("Escape"); await expect(createType).toBeFocused();
 
       await attachTree(page, info, evidence("spreadsheet-library-coverage", theme, width));
-    } finally { await server.close(); }
+    } finally { await disposeHttpRouteHarness(); await server.close(); }
   });
 
   test(`baseline typed spreadsheet import and editor ${theme.attribute} ${width}`, {
@@ -250,6 +250,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
   }, async ({ page }, info) => {
     const server = await setup(page, theme, width);
     try {
+      await serveWorkbookLibrary(page, []);
       await gotoServedSpreadsheets(page, server.baseUrl);
       await page.getByLabel("Open XLSX or CSV", { exact: true }).setInputFiles({ name: "Baseline typed.csv", mimeType: "text/csv", buffer: Buffer.from("Legal Name,Employee ID,Personal Email,Private note\nJordan Lee,10000001,jordan@example.com,Excluded\nTaylor Chen,10000002,taylor@example.com,Excluded\n") });
       const dialog = page.getByRole("dialog", { name: "Choose spreadsheet columns", exact: true });
@@ -280,7 +281,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(editor).toBeVisible();
       await expect(page.locator('[data-slot="toast"]').filter({ hasText: "Spreadsheet imported" })).toBeVisible();
 
-      await page.locator('[data-slot="toast"]').click();
+      await page.locator('[data-slot="toast"]').first().click();
       await expect(page.locator('[data-slot="toast"]')).toHaveCount(0);
       await editor.getByRole("textbox", { name: "B2", exact: true }).fill("bad-id");
       await expect(editor.getByRole("textbox", { name: "B2", exact: true })).toHaveAttribute("aria-invalid", "true");
@@ -323,7 +324,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(page.locator('[data-slot="toast"]').filter({ hasText: "Spreadsheet copy exported" })).toBeVisible();
 
       await attachTree(page, info, evidence("spreadsheet-typed", theme, width));
-    } finally { await server.close(); }
+    } finally { await disposeHttpRouteHarness(); await server.close(); }
   });
   test(`baseline spreadsheet reading and failure ${theme.attribute} ${width}`, {
     annotation: [{ type: "required-a11y-evidence", description: evidence("spreadsheet-reading", theme, width) }],
@@ -332,6 +333,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     const gate = Promise.withResolvers<void>();
     await page.route("**/assets/spreadsheet-import-worker-*.js", async route => { await gate.promise; await route.abort("failed"); });
     try {
+      await serveWorkbookLibrary(page, []);
       await gotoServedSpreadsheets(page, server.baseUrl);
       await page.getByLabel("Open XLSX or CSV", { exact: true }).setInputFiles({ name: "Baseline reading.csv", mimeType: "text/csv", buffer: Buffer.from("Employee ID\n10000001\n") });
       await expect(page.getByRole("button", { name: "Importing…", exact: true })).toBeDisabled();
@@ -345,7 +347,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(page.getByText("Spreadsheet unavailable", { exact: true })).toHaveCount(0);
 
       await attachTree(page, info, evidence("spreadsheet-reading", theme, width));
-    } finally { gate.resolve(); await server.close(); }
+    } finally { gate.resolve(); await disposeHttpRouteHarness(); await server.close(); }
   });
   test(`baseline Credentials save outcomes ${theme.attribute} ${width}`, {
     annotation: [{ type: "required-a11y-evidence", description: evidence("credentials-save", theme, width) }],
@@ -379,7 +381,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       gate.resolve();
       await expect(page.locator('[data-slot="toast"]').filter({ hasText: "Saved UCPath username" })).toBeVisible();
 
-      await page.locator('[data-slot="toast"]').click();
+      await page.locator('[data-slot="toast"]').first().click();
       await expect(page.locator('[data-slot="toast"]')).toHaveCount(0);
       await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 

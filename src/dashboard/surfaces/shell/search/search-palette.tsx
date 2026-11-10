@@ -28,6 +28,19 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
   const [filter, setFilter] = useState<PaletteFilter>("all");
   const sections = useMemo(() => paletteSections({ query, filter, runs, runsMatched, workflows, sheets }), [query, filter, runs, runsMatched, workflows, sheets]);
   useEffect(() => { if (!open) setFilter("all"); }, [open]);
+  // cmdk leaves aria-activedescendant unset until the selection first moves
+  const watchSelection = (root: HTMLElement | null) => {
+    if (!root) return;
+    const sync = () => {
+      const input = root.querySelector("[cmdk-input]");
+      const selected = root.querySelector('[cmdk-item][aria-selected="true"]');
+      if (input && selected) input.setAttribute("aria-activedescendant", selected.id);
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ["aria-selected"] });
+    return () => observer.disconnect();
+  };
   const choose = (row: PaletteRow) => {
     if (row.kind === "run") onRun(row.result);
     else { onOpenChange(false); if (row.kind === "action") onAction(row.id); else if (row.kind === "workflow") onWorkflow(row.id); else onAction("spreadsheets"); }
@@ -37,7 +50,7 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
       <DialogPrimitive.Overlay className={cn("search-palette-scrim", dsLayer.modal)} />
       <DialogPrimitive.Content aria-describedby={undefined} className={cn("search-palette ds-menu-surface font-ui", dsLayer.modal)} onCloseAutoFocus={onCloseAutoFocus}>
         <DialogPrimitive.Title className="sr-only">Search Relay</DialogPrimitive.Title>
-        <Command shouldFilter={false} loop label="Search Relay" className="flex min-h-0 flex-1 flex-col">
+        <Command ref={watchSelection} shouldFilter={false} loop label="Search Relay" className="flex min-h-0 flex-1 flex-col">
           <Command.Input autoFocus aria-label="Search Relay" placeholder="Search Relay" value={query} onValueChange={onQuery} className="search-palette-input" />
           <Command.List label="Results" className="search-palette-list">
             {sections.length === 0 && <p role="status" className="search-palette-empty">No matches</p>}

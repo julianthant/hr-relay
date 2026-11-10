@@ -39,7 +39,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await logs.getByRole("searchbox", { name: "Search logs", exact: true }).fill("Expected job end date");
       await expect(logs).toContainText("06/30/2027");
 
-      await logs.getByRole("searchbox", { name: "Search logs", exact: true }).fill("");
+      await logs.getByRole("button", { name: "Clear search", exact: true }).click();
       await page.getByRole("button", { name: "Start run", exact: true }).click();
       const launcher = page.getByRole("dialog", { name: "Start run", exact: true });
       await launcher.getByRole("navigation", { name: "Workflow", exact: true }).getByRole("button", { name: "Onboarding", exact: true }).click();

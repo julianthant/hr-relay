@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { importWorkbook as importSpreadsheet } from '../../src/rules/spreadsheets/workbook-io.js';
 import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
+import { installServedSurfaces } from './helpers/app-driver.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
@@ -21,11 +22,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
     const captureSemanticEvidence = async (name: string) => { await attachShellA11y(page, info, `${name}-${theme.attribute}-${width}.a11y.yml`); };
     try {
+      await installServedSurfaces(page);
+      // The fixture BFF serves no workbook library: an empty one keeps the served library quiet.
+      await page.route('**/api/v1/workbooks/**', route => route.fulfill({ json: [] }));
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?fixture=hub-integration&settings=performance`);
       const personal = page.locator('.settings-nav-group').filter({ has: page.getByText('Personal', { exact: true }) });
       const help = page.locator('.settings-nav-group').filter({ has: page.getByText('Help', { exact: true }) });
-      await expect(personal.getByRole('link')).toHaveText(['General', 'Account', 'Subscription']);
+      await expect(personal.getByRole('link')).toHaveText(['General', 'Account']);
       await expect(page.locator('.settings-nav-group').filter({ has: page.getByText('Advanced', { exact: true }) })).toHaveCount(0);
       await expect(page.getByRole('textbox', { name: 'Task', exact: true })).toBeVisible();
 
@@ -37,7 +41,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.goBack(); await expect(page).toHaveURL(/settings=account/u);
       await page.goForward(); await expect(page).toHaveURL(/settings=keyboard/u);
       await page.reload(); await expect(help.getByRole('link', { name: 'Keyboard', exact: true })).toHaveAttribute('aria-current', 'page');
-      await page.getByRole('link', { name: 'Spreadsheets', exact: true }).click();
+      // The reload dropped the fixture query: load the served Spreadsheets page directly.
+      await page.goto(`${server.baseUrl}/?fixture=hub-integration&settings=spreadsheets`);
       await page.getByLabel('Open XLSX or CSV', { exact: true }).setInputFiles(new URL('../support/fixtures/spreadsheet/color-filtered-roster.xlsx', import.meta.url).pathname);
       const dialog = page.getByRole('dialog', { name: 'Choose spreadsheet columns', exact: true });
       await expect(dialog).toBeVisible(); await expect(page.getByText('Spreadsheet unavailable', { exact: true })).toHaveCount(0);
@@ -73,8 +78,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       await captureSemanticEvidence('xlsx-imported');
       await editor.getByRole('button', { name: 'Spreadsheets', exact: true }).click();
-      await page.getByRole('table', { name: 'Your spreadsheets', exact: true }).getByRole('button', { name: 'Open color-filtered-roster.xlsx', exact: true }).click();
+      const closing = page.getByRole('dialog', { name: 'Close edited spreadsheet?', exact: true });
+      await closing.getByRole('button', { name: 'Keep editing', exact: true }).click();
       await expect(editor.getByRole('textbox', { name: 'A2', exact: true })).toHaveValue('Jordan Updated');
+      await editor.getByRole('button', { name: 'Spreadsheets', exact: true }).click();
+      await closing.getByRole('button', { name: 'Discard copy', exact: true }).click();
+      await expect(page.getByRole('table', { name: 'Your spreadsheets', exact: true }).getByRole('button', { name: 'Open color-filtered-roster.xlsx', exact: true })).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }

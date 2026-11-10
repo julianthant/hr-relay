@@ -5,6 +5,8 @@ import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { installServedSurfaces } from "./helpers/app-driver.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
+import { disposeHttpRouteHarness } from "../support/helpers/backend/http-route-harness.js";
+import { serveWorkbookLibrary } from "./helpers/served-workbook-library.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
 import { buildSettingsNav } from "../../src/dashboard/surfaces/settings/settings-model.js";
 import { settingsSearchIndex } from "../../src/dashboard/surfaces/settings/navigation/settings-search-model.js";
@@ -99,9 +101,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(field).toBeFocused();
         await expect(button).toHaveCount(0);
       }
+      await serveWorkbookLibrary(page, ["Student applicants.xlsx"]);
       await page.goto(`${server.baseUrl}/?fixture=hub-integration&settings=spreadsheets`);
       await expect(page.getByRole("searchbox", { name: "Find a spreadsheet", exact: true })).toHaveCount(0);
-      const libraryOpen = page.getByRole("button", { name: "Open 26–27 Student applicants.xlsx", exact: true });
+      const libraryOpen = page.getByRole("button", { name: "Open Student applicants.xlsx", exact: true });
       await libraryOpen.focus(); await libraryOpen.press("Enter");
       await expect(page.getByRole("region", { name: "Spreadsheet editor", exact: true })).toBeVisible();
       await page.getByRole("navigation", { name: "Breadcrumb", exact: true }).getByRole("button", { name: "Spreadsheets", exact: true }).click();
@@ -109,7 +112,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]);
       expect(writes).toEqual([]);
-    } finally { await server.close(); }
+    } finally { await disposeHttpRouteHarness(); await server.close(); }
   });
 }
 

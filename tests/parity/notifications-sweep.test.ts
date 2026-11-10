@@ -100,11 +100,11 @@ for (const theme of THEMES) test(`sweep @ ${theme}`, async ({ page }) => {
   const index = cut.findIndex(Boolean);
   expect(index).toBeGreaterThanOrEqual(0);
   await labels.nth(index).hover();
-  await expect(page.getByText(cut[index], { exact: true }).and(page.locator(".log-step-card-title"))).toBeVisible();
+  await expect(page.getByText(cut[index], { exact: true }).and(page.locator(".log-step-card-title")).first()).toBeVisible();
   await shot(page, "timeline-tooltip", theme);
   await page.mouse.move(1, 1);
   await labels.nth(index).focus();
-  await expect(page.getByText(cut[index], { exact: true }).and(page.locator(".log-step-card-title"))).toBeVisible();
+  await expect(page.getByText(cut[index], { exact: true }).and(page.locator(".log-step-card-title")).first()).toBeVisible();
   await page.mouse.move(1, 1);
 
   // The step strip fits the log column at 1280 and 1024: no clipped or scrolling last column.
@@ -133,7 +133,7 @@ for (const theme of THEMES) test(`sweep @ ${theme}`, async ({ page }) => {
       await expect(page.getByRole("tooltip").getByText("emergency-contacts.pdf", { exact: true })).toBeVisible();
     }
     // The single-action pill wraps to at most two lines at 1024 (no own timestamp).
-    const pill = await page.getByText("Split pages and recognize the form blocks", { exact: true }).evaluate(node => Math.round(node.closest("span")!.getBoundingClientRect().height));
+    const pill = await page.getByLabel("Selected run logs").getByText("Split pages and recognize the form blocks", { exact: true }).evaluate(node => Math.round(node.closest("span")!.getBoundingClientRect().height));
     console.log(`PILL ${theme} ${width} ${pill}`);
     if (width === 1024) expect(pill).toBeLessThan(60);
     await page.screenshot({ path: `${OUT}/timeline-strip-${theme}-${width}.png` });

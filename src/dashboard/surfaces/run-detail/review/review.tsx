@@ -153,7 +153,7 @@ export function RecordReview({ runId, subject, cards, readOnly, discarded, selec
   }} onKeyDown={event => {
     if (!discarded || disabled || actionsDisabled || onRestore === undefined || event.defaultPrevented || event.repeat || event.altKey || event.shiftKey
       || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z"
-      || (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]'))) return;
+      || (event.target instanceof HTMLElement && (event.target.closest('input, textarea, select, [contenteditable="true"]') || event.currentTarget.contains(event.target.closest('[role="dialog"]'))))) return;
     event.preventDefault();
     onRestore();
     requestAnimationFrame(() => focusRecord(focusId.current, "[data-ocr-review-heading]", true));

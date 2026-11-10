@@ -4,6 +4,7 @@ import { test } from "./helpers/fixtures.js";
 import { createHash } from 'node:crypto';
 import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
+import { installServedSurfaces } from './helpers/app-driver.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920, 2560]) {
@@ -14,6 +15,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920, 
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => { if (request.method() !== 'GET') writes.push(new URL(request.url()).pathname); });
     try {
+      await installServedSurfaces(page);
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?fixture=hub-integration&settings=spreadsheets`);
       const content = 'Student applicants,,,,,\nOctober,,,,,\nLegal Name,UCPath ID,Personal Email,Transaction #,I9 Profile,Private note\nJordan Lee,10000001,jordan@example.com,T1234,123456,Excluded value\nTaylor Chen,Pending,taylor@example.com,T5678,1234567,Excluded value';
@@ -49,14 +51,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920, 
       await page.getByRole('menuitem', { name: 'Edit column mappings', exact: true }).click();
       await expect(eid).toHaveAttribute('data-value', 'eid'); await expect(dialog.getByRole('combobox', { name: 'Header row', exact: true })).toHaveAttribute('data-value', '1');
       await submit.click();
-      await editor.getByRole('button', { name: 'Spreadsheets', exact: true }).click();
-      const library = page.getByRole('table', { name: 'Your spreadsheets', exact: true });
-      await expect(library.getByRole('button', { name: 'Open Fictional roster.csv', exact: true })).toHaveCount(1);
-      await library.getByRole('button', { name: 'Open Fictional roster.csv', exact: true }).click();
       await expect(editor.getByRole('textbox', { name: 'E2', exact: true })).toHaveValue('123456');
-      await page.goBack(); await expect(library).toBeVisible();
-      await page.goForward(); await expect(editor).toBeVisible();
+      await editor.getByRole('button', { name: 'Spreadsheets', exact: true }).click();
+      const closing = page.getByRole('dialog', { name: 'Close edited spreadsheet?', exact: true });
+      await closing.getByRole('button', { name: 'Keep editing', exact: true }).click();
       await expect(editor.getByRole('textbox', { name: 'B2', exact: true })).toHaveValue('10000001');
+      await editor.getByRole('button', { name: 'Spreadsheets', exact: true }).click();
+      await closing.getByRole('button', { name: 'Discard copy', exact: true }).click();
+      await expect(page.getByRole('table', { name: 'Your spreadsheets', exact: true }).getByRole('button', { name: 'Open Fictional roster.csv', exact: true })).toHaveCount(0);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }
   });

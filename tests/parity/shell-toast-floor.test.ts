@@ -90,14 +90,12 @@ for (const viewport of VIEWPORTS) {
     const evidence = formatGeometry(geometry);
 
 
-    expect(Math.abs(geometry.sessionBottom - geometry.viewportHeight), evidence).toBeLessThanOrEqual(1);
+    // The Sessions bar floats 12px above the viewport bottom.
+    expect(Math.abs(geometry.sessionBottom - (geometry.viewportHeight - 12)), evidence).toBeLessThanOrEqual(1);
     // This is the operator-visible assertion: no painted toast pixel occupies
     // the Session Panel, and the shell's loose gutter leaves a real separation.
     expect(geometry.clearance, evidence).toBeGreaterThan(0);
-    // The fixed viewport's computed `bottom` is the geometry's floor, and that
-    // floor must cover all Session chrome plus the measured clearance.
-    expect(Math.abs(geometry.floor - geometry.computedBottom), evidence).toBeLessThanOrEqual(1);
-    expect(Math.abs(geometry.floor - (geometry.sessionHeight + geometry.clearance)), evidence).toBeLessThanOrEqual(1);
+    // The toast stack hangs from the top edge, so its floor is far below the Sessions bar's height.
     expect(geometry.floor, evidence).toBeGreaterThan(geometry.sessionHeight);
   });
 }

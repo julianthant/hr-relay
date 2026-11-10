@@ -1,6 +1,7 @@
 
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
+import { installServedSurfaces } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -15,7 +16,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 });
-      await installTheme(page, theme);
+      await installTheme(page, theme); await installServedSurfaces(page);
       const writes: string[] = [], errors: string[] = [];
       page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
       page.on("pageerror", error => errors.push(error.message));

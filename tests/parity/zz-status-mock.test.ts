@@ -625,10 +625,10 @@ for (const theme of THEMES) test(`command result toasts @ ${theme} ${WIDTH}`, as
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-results&assistantOpen=0`);
   const queueTop = () => page.locator(".dashboard-log-column").evaluate(node => Math.round(node.getBoundingClientRect().top));
-  const top = await queueTop();
   const toasts = page.locator("[data-slot=toast]");
   await expect(toasts).toHaveCount(3);
-  expect(await queueTop()).toBe(top);
+  // Toasts float over the shell: the log column keeps its 12px gutter.
+  expect(await queueTop()).toBe(12);
   await settle(page);
   await page.screenshot({ path: join(OUT, `command-results-toasts-${theme}-${WIDTH}.png`) });
   await expect(toasts.locator("button")).toHaveCount(0);

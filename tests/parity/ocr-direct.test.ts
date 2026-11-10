@@ -7,6 +7,7 @@ import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
+import { setSwitchChecked } from "./helpers/switch-choice.js";
 
 const pdf = { name: "direct-contact.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") };
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
@@ -43,7 +44,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         const steps = dialog.getByRole("region", { name: "Steps", exact: true }).last();
         await expect(steps.locator(".ds-run-row")).toHaveCount(6);
         await expect(steps).toContainText("OCR");
-        await steps.getByRole("switch", { name: "Include Read emergency contact", exact: true }).setChecked(extraction);
+        await setSwitchChecked(steps.getByRole("switch", { name: "Include Read emergency contact", exact: true }), extraction);
         await expect(dialog).toContainText(extraction ? "6 of 6 included" : "4 of 6 included");
         await dialog.getByRole("button", { name: /^Start (dry|live) run$/u }).click();
         await expect(page.getByText("Run started", { exact: true }).last()).toBeVisible();
@@ -68,10 +69,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await records.getByRole("button", { name: "Discard", exact: true }).click();
           await expect(page.getByText("Review discarded", { exact: true })).toBeVisible();
           const toastEvents = await page.evaluate(() => {
-            const notice = [...document.querySelectorAll('[role="status"]')].find(item => item.textContent?.includes("Review discarded"));
-            return [notice, notice?.querySelector('button[aria-label="Dismiss"]')].map(item => item ? getComputedStyle(item).pointerEvents : "missing");
+            const notice = [...document.querySelectorAll('[data-slot="toast"]')].find(item => item.textContent?.includes("Review discarded"));
+            return [notice?.closest('[data-slot="toast-viewport"]'), notice].map(item => item ? getComputedStyle(item).pointerEvents : "missing");
           });
-          expect(toastEvents).toEqual(["none", "auto"]);
+          expect(toastEvents).toEqual(["none", "none"]);
           await expect(records.getByRole("button", { name: /Undo/u })).toHaveCount(0);
           const heading = records.locator("[data-ocr-review-heading]").first();
           await expect(heading).toBeFocused();
