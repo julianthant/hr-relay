@@ -64,7 +64,7 @@ async function claimWhilePeerHeartbeats(duringPass: boolean) {
   const doctor = new AuthorityHealthPreflightRunner(a.profile.admission, {
     stateRootTrustAnchor: a.profile.workspace, stateRoot: a.stateRoot, authorityPath: a.path,
     backupDirectory: join(a.stateRoot, "backups", "authority"), busyTimeoutMs: 250,
-  }, a.clock, boundProfileCredentials(a.profile.admission));
+  }, a.clock, boundProfileCredentials(a.profile.admission), a.database);
   const counts = { observations: 0, reprepared: [] as number[] };
   const renew = () => requireLifecycleApplied(h.deps.lifecycle.renewClaim({
     commandId: randomUUID(), runId: peerRun.envelope.runId, claim: held,
