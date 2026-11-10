@@ -32,7 +32,7 @@ import type { PlannedRun, StartPlanRecord, StartRefusal } from "../../../models/
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { bindRunWorkbookReference, parseRunWorkbookReference, type WorkbookReferenceLookup } from "../../../models/dashboard/workbooks.js";
 import type { WorkbookLibraryService } from "../../workbooks/workbook-library-service.js";
-import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import type { z } from "zod";
 import { workbookInputBinding } from "../workbooks.js";

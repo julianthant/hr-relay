@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { WorkbookLibraryError } from './workbook-library-error.js';
 import { EditableWorkbookWireSchema, WorkbookOperationReceiptSchema, type EditableWorkbookWire, type WorkbookType, type WorkbookOperation, type WorkbookOperationReceipt } from '../../models/dashboard/workbooks.js';
 import { canonicalJsonStringify } from '../../rules/validation/canonical-json.js';
 
@@ -61,20 +62,18 @@ function syncByCapturedKeys(workbook: EditableWorkbookWire, incoming: EditableWo
   const next = structuredClone(incoming), relocated: WorkbookOwnership = {}, movedWitnesses: WorkbookRowKeyWitness[] = [];
   const sheets = new Map<string, { old: EditableWorkbookWire['sheets'][number]; current: EditableWorkbookWire['sheets'][number] }>();
   const addressSchema = z.tuple([z.string(), z.string(), z.string()]);
-  let invalidAddress = false;
   const indexes = new Map<string, Map<string, number>>();
   for (const sheet of workbook.sheets) indexes.set(sheet.id, new Map<string, number>(sheet.rows.map((row, index) => [row.id, index])));
   const owners = Object.entries(ownership).flatMap(([id, owner]) => {
     let decoded: unknown;
-    try { decoded = JSON.parse(id); } catch { invalidAddress = true; return []; }
+    try { decoded = JSON.parse(id); } catch (cause) { throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT', { cause }); }
     const parsed = addressSchema.safeParse(decoded);
-    if (!parsed.success) { invalidAddress = true; return []; }
+    if (!parsed.success) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT', { cause: parsed.error });
     const [sheetId, rowId, fieldId] = parsed.data;
     const sheet = workbook.sheets.find(sheet => sheet.id === sheetId);
     const rowIndex = indexes.get(sheetId)?.get(rowId) ?? -1;
     return sheet !== undefined && rowIndex >= (sheet.headerRow ?? 1) ? [{ sheetId, rowId, fieldId, owner }] : [];
   });
-  if (invalidAddress) return undefined;
   for (const current of next.sheets) {
     const sources = workbook.sheets.filter(sheet => sheet.name === current.name);
     if (sources.length === 0) {

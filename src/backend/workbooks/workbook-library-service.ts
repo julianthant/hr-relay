@@ -4,24 +4,18 @@ import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Clock } from "../../rules/time/clock.js";
-import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
+import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
 import type { WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
 import { RunWorkbookNamedReferenceSchema } from "../../models/dashboard/workbooks.js";
 import { deriveSchemaHash, schemaBoundValueSchema, type SchemaBoundCanonicalValue } from "../../models/validation/schema-bound-value.js";
 import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadSchema, encodeWorkbookReference } from "../../models/processing/workbooks/read-reference.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
+import { WorkbookLibraryError } from "./workbook-library-error.js";
 import { workbookKey, workbookMatches } from "./master-changes.js";
 import { projectWorkbookCompatibility, workbookFieldCoverage, WorkbookActiveSnapshotRequestSchema, WorkbookResultsSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema, type WorkflowWorkbookSelectionRecord, type WorkbookLibraryActionRecord, type WorkbookLibraryActionResult, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema, type WorkflowWorkbookRequirementInput } from "../../models/dashboard/workbook-library.js";
 import { MAX_WORKBOOK_GRID_CELLS, MAX_WORKBOOK_POPULATED_CELLS, populatedSpreadsheetValue } from "../../rules/spreadsheets/workbook-size.js";
 import type { EditableWorkbookWire } from "../../models/dashboard/workbooks.js";
-
-export class WorkbookLibraryError extends Error {
-  constructor(readonly code: Extract<ErrorCatalogCode, `WORKBOOK_${string}`>, options?: ErrorOptions) {
-    super(ERROR_CATALOG[code].text, options);
-    this.name = "WorkbookLibraryError";
-  }
-}
 
 export interface WorkbookLibraryRepository {
   lastUsed(workflowId: string): WorkflowWorkbookSelectionRecord | undefined;

@@ -45,7 +45,8 @@ import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/re
 import { createDashboardApp } from "../../../transports/http/routes/api.js";
 import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { createSharePointWorkbookSync } from "../../../workbooks/sharepoint-sync.js";
-import { WorkbookLibraryError,createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.js";
+import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import { DESCRIPTORS,READABLE_WORKFLOW_MODULES } from "../../registries/workflow-registry.js";
 import { RuntimeCustodyUncertainError,composeProfileAssistantAuthorization } from "../storage-compose.js";
 import { composeActivity } from "./activity.js";

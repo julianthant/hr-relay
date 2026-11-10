@@ -72,7 +72,8 @@ import { lifecycleCommandId,type RelatedRunChange,type RunMutationOutcome,type R
 import { dryRunRefusalMessage,resolveInstances,supportsDryRun } from "../start/plan.js";
 import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
 import { bindRunWorkbookReference, parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
-import { createWorkbookReferenceCapture, WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
+import { createWorkbookReferenceCapture } from "../../workbooks/workbook-library-service.js";
 
 /* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
 

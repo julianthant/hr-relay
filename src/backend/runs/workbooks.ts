@@ -22,8 +22,8 @@ import { deriveStableUuid, lifecycleCommandId } from "../../rules/identity/ident
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { localDatePart, type Clock } from "../../rules/time/clock.js";
-import { WorkbookLibraryError, snapshotRetainedWorkbookReference, writeRecordedRunWorkbook, readRetainedWorkbookReference,
-  verifyRetainedNamedWorkbookReference } from "../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../workbooks/workbook-library-error.js";
+import { snapshotRetainedWorkbookReference, writeRecordedRunWorkbook, readRetainedWorkbookReference, verifyRetainedNamedWorkbookReference } from "../workbooks/workbook-library-service.js";
 import type { AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
 import { WorkbookReferenceReadRequestSchema } from "../../models/processing/workbooks/read-reference.js";
 import { OnboardingCanonicalInput, OnboardingCanonicalValueSchema, OnboardingInput } from "../../models/workflows/onboarding/input.js";

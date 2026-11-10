@@ -6,7 +6,8 @@ import { applyMasterChange, WorkbookOwnershipSchema, workbookMatches, type Workb
 import { WorkbookSnapshotRequestSchema, WorkbookReferenceSnapshotSchema, WorkbookNamedReferenceSnapshotSchema, WorkbookTypeSchema, WorkbookMetadataSchema, WorkbookNamedVersionSchema, WorkbookOperationSchema, WorkbookOperationReceiptSchema, decodeEditableWorkbook } from "../../../models/dashboard/workbooks.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { WorkbookLibraryError, type WorkbookLibraryRepository } from "../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
+import { type WorkbookLibraryRepository } from "../../workbooks/workbook-library-service.js";
 import { decodeSavedWorkbook, encodeSavedWorkbook, SavedWorkbookSchema, type SavedWorkbook } from "../../../models/dashboard/workbooks.js";
 import { WorkbookOperationRecordSchema } from "../../../models/dashboard/workbooks.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";

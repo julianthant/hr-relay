@@ -8,7 +8,7 @@ import { ERROR_CATALOG } from '../../../../../src/models/failures/error-catalog.
 import { Hono } from 'hono';
 import type { DashboardApp } from '../../../../../src/backend/transports/http/routes/api-types.js';
 import { registerWorkbookRoutes } from '../../../../../src/backend/transports/http/routes/workbooks.js';
-import { WorkbookLibraryError } from '../../../../../src/backend/workbooks/workbook-library-service.js';
+import { WorkbookLibraryError } from '../../../../../src/backend/workbooks/workbook-library-error.js';
 import { fixtureDescriptor } from '../../../../support/fixtures/descriptor-fixtures.js';
 
 import assert from "node:assert/strict";

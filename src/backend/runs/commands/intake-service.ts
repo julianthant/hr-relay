@@ -1,4 +1,4 @@
-import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 
 import { z } from "zod";
 import { CsvError } from "csv-parse/sync";

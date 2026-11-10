@@ -11,7 +11,8 @@ import { taskStoreRegistry } from "../../../src/backend/app/registries/task-regi
 import { createRunResourcesFactory } from "../../../src/backend/app/composition/worker/run-resources.js";
 import { composeWorkerArtifactProjector } from "../../../src/backend/app/composition/worker/artifact-output.js";
 import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { createWorkbookLibraryService, WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-error.js";
+import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { createDeterministicCrmOnboardingDriver } from "../../../src/backend/systems/crm/driver/fake.js";
 import { executeClaimedRun } from "../../../src/backend/runtime/execution/run-executor.js";
 import { WorkerSessionManager } from "../../../src/backend/runtime/workers/worker-sessions.js";

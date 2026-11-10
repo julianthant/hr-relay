@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { WorkbookImportRequestSchema, WorkbookRevisionSchema, WorkbookOperatorOperationRequestSchema, WorkbookTypeSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, decodeEditableWorkbook, encodeSavedWorkbook } from "../../../../models/dashboard/workbooks.js";
-import { WorkbookLibraryError, type WorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.js";
+import { type WorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import type { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import type { DashboardApp } from "./api-types.js";
 import { WorkbookLibraryActionSchema } from "../../../../models/dashboard/workbook-library.js";

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createWorkbookLibraryAdapter } from "../../../../src/backend/processing/providers/workbook-library-adapter.js";
 import type { WorkbookLibraryRepository } from "../../../../src/backend/workbooks/workbook-library-service.js";
-import { WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-error.js";
 import { ReadWorkbookReference, WorkbookReferenceReadResponseSchema } from "../../../../src/models/processing/workbooks/read-reference.js";
 import { ReadI9CheckRequests } from "../../../../src/models/workflows/i9-check-start/read-requests.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";

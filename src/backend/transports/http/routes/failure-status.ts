@@ -14,7 +14,7 @@ import { CommandBrowserClosureError,CommandBrowserError } from "../../../runtime
 import { ProfileBrowserRootRefusalError } from "../../../storage/admission/admission-identity.js";
 import { browserLoginFailure } from "../../../systems/browser-shared/login-contract.js";
 import { SharePointDownloadError } from "../../../systems/sharepoint/driver/interpreter.js";
-import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.js";
 
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";

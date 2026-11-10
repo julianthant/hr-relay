@@ -33,7 +33,7 @@ import { createOcrReviewAdapter } from "../../../processing/providers/ocr-review
 import { createApprovedOcrRecordReader } from "../../../runs/lifecycle/approved-ocr-records.js";
 import { WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES } from "../../registries/workflow-registry.js";
 import { searchPartitionDay } from "../../../../models/dashboard/search-calendar.js";
-import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.js";
 import { createOcrApprovedSnapshotAdapter } from "../../../processing/providers/ocr-approved-snapshot-adapter.js";
 import type { AnyWorkflowDescriptor } from "../../../../workflow-kit/workflow.js";
 

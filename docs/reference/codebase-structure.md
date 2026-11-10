@@ -112,6 +112,7 @@ Paths in this table are relative to `src/backend/`.
 | `systems/sharepoint/driver/interpreter.ts` | Canonical workbook URLs, account authentication and GUID-pinned workbook reads through an owned command browser. The workbook composition injects its bounded browser transport. |
 | `systems/browser-shared/command-session.ts` | Command input, browser scope and callback contracts shared by runtime acquisition and workbook composition. The runtime retains native custody and private Duo cleanup handles. |
 | `processing/providers/sharepoint-browser-transport.ts` | Serializable same-origin Fetch streaming for SharePoint JSON proofs and workbook bytes, with exact response checks, byte bounds and reader cleanup. |
+| `workbooks/workbook-library-error.ts` | Shared workbook failure class, used by library services, stored-data validation and transport adapters. Error codes and display text remain in `models/failures/error-catalog.ts`. |
 | `workbooks/workflow-workbook-service.ts` | Creates a table workbook or patches a captured reference through the admitted library provider, composed in `app/composition/worker/run-resources.ts`. Original records and operation receipts supply replay proof. |
 | `runs/workbooks.ts` | Authenticates captured workbook references, run-bound patches, native receipt events, Logs row choices and live-revalidated resolution commands. |
 
