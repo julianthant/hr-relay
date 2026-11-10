@@ -244,7 +244,7 @@ function DialogSurface({
           </div>
           {!hideClose && (
             <DialogPrimitive.Close asChild>
-              <IconButton label="Close" size="sm" icon={<X aria-hidden className={dsIcon.md} />} />
+              <IconButton label="Close" size="md" icon={<X aria-hidden className={dsIcon.md} />} />
             </DialogPrimitive.Close>
           )}
         </header>
@@ -466,7 +466,7 @@ function DrawerSurface({
             )}
           </div>
           <DialogPrimitive.Close asChild>
-            <IconButton label="Close" size="sm" icon={<X aria-hidden className={dsIcon.md} />} />
+            <IconButton label="Close" size="md" icon={<X aria-hidden className={dsIcon.md} />} />
           </DialogPrimitive.Close>
         </header>
         {children}
