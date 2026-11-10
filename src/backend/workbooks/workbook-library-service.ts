@@ -168,10 +168,10 @@ export function readRetainedWorkbookReference(repository: WorkbookLibraryReposit
   if (command.typeId !== request.typeId || snapshot.versionId === undefined || snapshot.versionName === undefined
     || snapshot.type.keyFieldId === null || request.fields.some(field => !snapshot.type.fields.includes(field))) throw new WorkbookLibraryError("WORKBOOK_INVALID");
   const { readRows } = verifyRetainedNamedWorkbookReference(repository, { request, snapshot });
-  return WorkbookReferenceReadSchema.parse({ state: "read", referenceDigest: sha256Hex(canonicalJsonStringify(bound)),
-    reference: encodeWorkbookReference({ request: { ...request, libraryId: snapshot.libraryId, versionId: snapshot.versionId, keys: command.keys },
-      snapshot: { ...snapshot, rows: readRows(command.keys) } }),
-  });
+  const referenceDigest = sha256Hex(canonicalJsonStringify(bound));
+  const reference = encodeWorkbookReference({ request: { ...request, libraryId: snapshot.libraryId, versionId: snapshot.versionId, keys: command.keys },
+    snapshot: { ...snapshot, rows: readRows(command.keys) } });
+  return WorkbookReferenceReadSchema.parse({ state: "read", referenceDigest, reference, sources: [{ referenceDigest, reference }] });
 }
 
 export function verifyRetainedNamedWorkbookReference(repository: WorkbookLibraryRepository,

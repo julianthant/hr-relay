@@ -168,6 +168,20 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(lifecycle.requeue({ commandId: randomUUID(), runId: latest.envelope.runId,
       expectedVersion: latest.version, claim, cause: "recovery" }).state, "applied");
   });
+  it("selects a General spreadsheet row from its captured key, fields and worksheet", async () => {
+    const f = await fixture("duplicate", { general: true });
+    assert.equal(f.library.metadata(f.id).typeId, "general");
+    const parked = f.park(f.start());
+    const choice = f.choice(parked);
+    assert.equal(choice.type, "resolve-workbook-reference-row");
+    if (choice.type !== "resolve-workbook-reference-row") throw new Error("unexpected row command");
+    assert.equal(choice.payload.sheetId, "people"); assert.equal(choice.payload.rowId, "people-person");
+    assert.equal(f.kernel.execute(choice).state, "applied");
+    const queued = f.database.authority.runs.get(parked.envelope.runId); assert.ok(queued);
+    assert.equal(queued.lifecycle.state, "queued");
+    const gate = f.database.authority.gateResults.get(`${queued.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(gate);
+    assert.equal(OnboardingRosterChoiceSchema.parse(gate.result.value).decision, "selected");
+  });
   it("shows an unavailable row choice after the selected source changes and refuses the stale command", async () => {
     const f = await fixture("duplicate"), parked = f.park(f.start());
     const command = f.choice(parked);
@@ -373,16 +387,22 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(f.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "parked-gate");
   });
 
-  it.each(["revision", "key", "sheet", "type", "fields", "names"] as const)("refuses stale %s authority without resuming or writing", async change => {
+  it("keeps the captured row when only the library type label changes", async () => {
     const f = await fixture(), run = f.park(f.start()), command = f.choice(run);
-    if (change === "type") {
-      f.repository.putType({ id: "other-roster", name: "Other roster", keyFieldId: "email",
-        fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
-      const record = f.library.read(f.id); assert.ok(record);
-      const receipt = f.library.operatorOperation(f.id, randomUUID(), { kind: "metadata", expectedVersion: record.version,
-        metadata: { typeId: "other-roster", sharePoint: null } });
-      assert.equal(receipt.state, "applied"); assert.equal(f.repository.metadata(f.id).typeId, "other-roster");
-    } else f.edit(workbook => {
+    f.repository.putType({ id: "other-roster", name: "Other roster", keyFieldId: "email",
+      fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
+    const record = f.library.read(f.id); assert.ok(record);
+    const receipt = f.library.operatorOperation(f.id, randomUUID(), { kind: "metadata", expectedVersion: record.version,
+      metadata: { typeId: "other-roster", sharePoint: null } });
+    assert.equal(receipt.state, "applied"); assert.equal(f.repository.metadata(f.id).typeId, "other-roster");
+    const changed = f.library.read(f.id); assert.ok(changed);
+    assert.ok(command.type === "resolve-workbook-reference-row");
+    assert.equal(f.kernel.execute({ ...command, target: { ...command.target, workbookVersion: changed.version } }).state, "applied");
+    assert.equal(f.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "queued");
+  });
+  it.each(["revision", "key", "sheet", "fields", "names"] as const)("refuses stale %s authority without resuming or writing", async change => {
+    const f = await fixture(), run = f.park(f.start()), command = f.choice(run);
+    f.edit(workbook => {
       if (change === "revision") workbook.name = "Changed.xlsx";
       if (change === "key") workbook.sheets[0].rows[1].cells[0].value = "other@example.test";
       if (change === "sheet") workbook.sheets[0].id = "replacement-sheet";

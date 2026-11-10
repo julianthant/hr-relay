@@ -56,7 +56,9 @@ it("reads EID-learned emails from an explicit older version after editable-head 
   assert.equal(reference.snapshot.versionId, "older"); assert.equal(reference.snapshot.versionName, "Earlier named roster");
   assert.deepEqual(reference.snapshot.rows.map(row => [row.key, row.state]), [["one@example.test", "matched"], ["two@example.test", "matched"], ["other@example.test", "missing"]]);
   assert.equal(reference.snapshot.rows[0]?.matches[0]?.values.firstName, "Legal");
-  assert.deepEqual(resolveCrmDocumentRows(CRM_DOCUMENT_RECORDS_FIXTURE, reference).map(person => person.resolution.state), ["resolved", "resolved"]);
+  assert.equal(output.sources.length, 1);
+  assert.equal(output.sources[0]?.referenceDigest, output.referenceDigest);
+  assert.deepEqual(resolveCrmDocumentRows(CRM_DOCUMENT_RECORDS_FIXTURE, [{ referenceDigest: output.referenceDigest, reference }]).map(person => person.resolution.state), ["resolved", "resolved"]);
   assert.deepEqual(f.bound.value.snapshot.rows.map(row => row.key), ["two@example.test"]);
 });
 

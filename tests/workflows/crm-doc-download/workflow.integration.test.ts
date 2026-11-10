@@ -24,6 +24,7 @@ import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { CrmReadOnboardingRecord } from "../../../src/models/systems/crm/read-onboarding-record.js";
 import { CrmReadOnboardingDates } from "../../../src/models/systems/crm/read-onboarding-dates.js";
 import { ReadCrmWorksheetArchives } from "../../../src/models/workflows/crm-doc-download/read-worksheet-archives.js";
+import { decodeWorkbookReference } from "../../../src/models/processing/workbooks/read-reference.js";
 import { ReadCrmDocumentRows, CrmDocumentRowsSchema, CrmDocumentRowChoiceSchema } from "../../../src/models/workflows/crm-doc-download/read-document-rows.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { deriveGateResultCheckpointFingerprint } from "../../../src/models/workflow/gates.js";
@@ -41,7 +42,7 @@ import { duoCeremonyGatesOver } from "../../support/helpers/duo-ceremony-fixture
 import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
 import { CRM_DOCUMENT_RECORDS_FIXTURE, crmDocumentWorkbookFixture } from "../../support/fixtures/crm-doc-download.js";
 
-async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-failed" | "cancelled", descriptor: AnyWorkflowDescriptor = crmDocDownloadModule.descriptor) {
+async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-failed" | "cancelled" | "split", descriptor: AnyWorkflowDescriptor = crmDocDownloadModule.descriptor) {
   const f = await foundationFixture(), controller = new AbortController();
   const world = createCommandKernelTestWorld();
   let manager: WorkerSessionManager | undefined, resources: ReturnType<typeof createRunResourcesFactory> | undefined;
@@ -52,24 +53,43 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
     } });
     h.clock.setWall(f.clock.now());
     const library = createWorkbookLibraryService({ repository: h.database.authority.workbooks, clock: f.clock, sync: unexpectedWorkbookSync });
-    const workbook = crmDocumentWorkbookFixture(mode === "ambiguous");
-    const selectedSheet = workbook.sheets[0], secondSheet = workbook.sheets[1]; assert.ok(selectedSheet && secondSheet);
-    selectedSheet.rows.push(...structuredClone(secondSheet.rows.slice(1)));
-    if (mode === "ambiguous") { const row = secondSheet.rows[1]; assert.ok(row); selectedSheet.rows.push({ ...structuredClone(row), id: "duplicate-two" }); }
-    if (mode === "missing") { const row = workbook.sheets[0]?.rows[1]; assert.ok(row); row.cells[0] = { value: "missing@example.test" }; }
-    const saved = library.create(workbook), libraryId = saved.libraryId;
-    library.putType({ id: ONBOARDING_ROSTER_TYPE_ID, name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
-    library.operatorOperation(libraryId, "type", { kind: "metadata", expectedVersion: saved.version, metadata: { typeId: ONBOARDING_ROSTER_TYPE_ID, sharePoint: null } });
+    let libraryId: string, workbookReferences: { entry: number; libraryId: string; versionId: string; sheetId: string; expectedVersion: number }[];
+    if (mode === "split") {
+      const base = crmDocumentWorkbookFixture(false);
+      const july = base.sheets.find(sheet => sheet.id === "july"), august = base.sheets.find(sheet => sheet.id === "august");
+      assert.ok(july && august);
+      const first = library.create({ name: "First.xlsx", themes: [], hasFormulas: false, sheets: [july] });
+      const roster = structuredClone(july); roster.id = "roster"; roster.name = "Roster";
+      const shared = roster.rows[1]; assert.ok(shared); shared.cells[1] = { value: "Other" };
+      const covered = structuredClone(august.rows[1]); assert.ok(covered); roster.rows.push(covered);
+      const second = library.create({ name: "Second.xlsx", themes: [], hasFormulas: false, sheets: [roster] });
+      assert.equal(library.metadata(first.libraryId).typeId, "general");
+      assert.equal(library.metadata(second.libraryId).typeId, "general");
+      const reference = (id: string, sheetId: string) => ({ entry: 1, libraryId: id, versionId: "original", sheetId, expectedVersion: library.read(id).version });
+      libraryId = first.libraryId;
+      workbookReferences = [reference(first.libraryId, july.id), reference(second.libraryId, roster.id)];
+    } else {
+      const workbook = crmDocumentWorkbookFixture(mode === "ambiguous");
+      const selectedSheet = workbook.sheets[0], secondSheet = workbook.sheets[1]; assert.ok(selectedSheet && secondSheet);
+      selectedSheet.rows.push(...structuredClone(secondSheet.rows.slice(1)));
+      if (mode === "ambiguous") { const row = secondSheet.rows[1]; assert.ok(row); selectedSheet.rows.push({ ...structuredClone(row), id: "duplicate-two" }); }
+      if (mode === "missing") { const row = workbook.sheets[0]?.rows[1]; assert.ok(row); row.cells[0] = { value: "missing@example.test" }; }
+      const saved = library.create(workbook);
+      libraryId = saved.libraryId;
+      library.putType({ id: ONBOARDING_ROSTER_TYPE_ID, name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
+      library.operatorOperation(libraryId, "type", { kind: "metadata", expectedVersion: saved.version, metadata: { typeId: ONBOARDING_ROSTER_TYPE_ID, sharePoint: null } });
+      workbookReferences = [{ entry: 1, libraryId, versionId: "original", sheetId: selectedSheet.id, expectedVersion: library.read(libraryId).version }];
+    }
     const planner = createStartPlanService({ authority: h.database, authorityRead: h.database, clock: f.clock, ids: h.plannerIds,
       descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, planTtlMs: 600000, workbooks: library, plannedBy: "local-operator",
       configFingerprint: f.snapshot.fingerprint, configSnapshotId: f.snapshot.configSnapshotId });
     const planned = planner.plan({ workflowId: descriptor.id, submissions: [{ people: "10000001;two@example.test" }], dryRun: false,
-      workbookReferences: [{ entry: 1, libraryId, versionId: "original", sheetId: selectedSheet.id,
-        expectedVersion: library.read(libraryId).version }],
+      workbookReferences,
     });
     const plan = h.database.authority.startPlans.get(planned.startPlanId); assert.ok(plan);
     assert.equal(plan.planned.length, 1); assert.deepEqual(plan.refused, []);
     const entry = plan.planned[0]; assert.ok(entry?.workbookReferences);
+    if (mode === "split") assert.equal(entry.workbookReferences.length, 2);
     const start = h.kernel.execute({ ...world.startCommand(plan), requestedAt: f.clock.now().toISOString() });
     const runId = singleAppliedRunId(start);
     const current = library.read(libraryId), edited = structuredClone(current.workbook), firstName = edited.sheets[0]?.rows[1]?.cells[1]; assert.ok(firstName);
@@ -78,7 +98,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
     const slot = f.db.authority.workerSlots.list(descriptor.id).find(slot => slot.poolIndex === 1); assert.ok(slot);
     const claimed = ports.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: slot.workerId });
     assert.equal(claimed.state, "applied"); if (claimed.state !== "applied") throw new Error("CRM fixture claim failed");
-    let downloads = 0;
+    let downloads = 0, capturedDigests: string[] = [];
     const sessions = sessionFactoryHarness({ crm: () => {
       const driver = createDeterministicCrmOnboardingDriver({ record: CrmReadOnboardingRecord.example, dates: CrmReadOnboardingDates.example,
         documents: CRM_DOCUMENT_RECORDS_FIXTURE.records.map((person, index) => ({ identity: person.identity, totalDocuments: 1,
@@ -87,7 +107,14 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       return { ...driver, async findDocumentRecord(request: Parameters<typeof driver.findDocumentRecord>[0]) {
         const captured = f.db.authority.runs.get(runId); assert.ok(captured); assert.equal(captured.lifecycle.state, "running");
         const reader = createRunWorkbookService({ database: f.db, clock: f.clock }), command = { typeId: ONBOARDING_ROSTER_TYPE_ID, keys: ["one@example.test"] };
-        assert.equal(reader.read(captured, command).reference.snapshot.versionId, "original");
+        const read = reader.read(captured, command);
+        if (mode === "split") {
+          assert.equal(read.sources.length, 2);
+          assert.equal(read.referenceDigest, read.sources[0]?.referenceDigest);
+          assert.notEqual(read.sources[0]?.referenceDigest, read.sources[1]?.referenceDigest);
+          capturedDigests = read.sources.map(source => source.referenceDigest);
+          assert.deepEqual(read.sources.map(source => decodeWorkbookReference(source.reference).snapshot.rows.flatMap(row => row.matches).map(match => match.values.firstName)), [["Legal"], ["Other"]]);
+        } else assert.equal(read.reference.snapshot.versionId, "original");
         for (const changed of [
           { ...captured, claimGeneration: Number(captured.claimGeneration) + 1 },
           { ...captured, envelope: { ...captured.envelope, traceId: "cd-000001-9999" } },
@@ -122,6 +149,40 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       providers: selected.providers, artifacts, artifactProjector: composeWorkerArtifactProjector({ admission: f.profile.admission, database: f.db, artifacts, clock: f.clock }) },
       context = { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration }, signal: controller.signal };
     let result = await executeClaimedRun(execution, context);
+    if (mode === "split") {
+      assert.equal(result.state, "parked-gate"); assert.equal(downloads, 0);
+      const parked = f.db.authority.runs.get(runId); assert.ok(parked);
+      const checkpoint = f.db.authority.runCheckpoints.latest(descriptor.id, entry.itemId, "document-rows"); assert.ok(checkpoint);
+      const rows = ReadCrmDocumentRows.output.parse(checkpoint.output.value);
+      assert.deepEqual(rows.sourceDigests, capturedDigests);
+      assert.notEqual(rows.referenceDigest, capturedDigests[0]);
+      const [shared, covered] = rows.people; assert.ok(shared && covered);
+      assert.equal(shared.resolution.state, "resolve-required"); assert.equal(covered.resolution.state, "resolved");
+      if (shared.resolution.state !== "resolve-required" || covered.resolution.state !== "resolved") throw new Error("split resolution changed");
+      assert.deepEqual(shared.resolution.candidates.map(candidate => [candidate.referenceDigest, candidate.row.names.legalName.firstName]), [
+        [capturedDigests[0], "Legal"], [capturedDigests[1], "Other"],
+      ]);
+      assert.equal(covered.resolution.selected.referenceDigest, capturedDigests[1]);
+      assert.equal(covered.resolution.selected.row.names.legalName.firstName, "Second");
+      const choices = buildRunWorkbookSection(f.db.authority, parked).referenceChoices; assert.equal(choices?.length, 1); assert.ok(choices);
+      const choice = choices[0]; assert.ok(choice?.resolution.state === "available");
+      const other = choice.resolution.candidates.find(candidate => candidate.values.some(cell => cell.fieldId === "firstName" && cell.value === "Other"));
+      assert.ok(other?.referenceDigest !== undefined && other.workbookVersion !== undefined);
+      assert.notEqual(other.referenceDigest, choice.referenceDigest);
+      const omitted = CommandRequestSchema.parse({ commandId: world.nextCommandId(), family: "run", type: "resolve-workbook-reference-row",
+        source: "run-detail", requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: choice.resolution.target,
+        payload: { sheetId: other.sheetId, rowId: other.rowId } });
+      assert.equal(h.kernel.execute(omitted).state, "rejected");
+      assert.equal(h.kernel.execute({ ...omitted, commandId: world.nextCommandId(), payload: { sheetId: other.sheetId, rowId: other.rowId,
+        referenceDigest: other.referenceDigest, workbookVersion: other.workbookVersion } }).state, "applied");
+      const queued = f.db.authority.runs.get(runId); assert.ok(queued?.lifecycle.state === "queued");
+      const resolved = buildRunWorkbookSection(f.db.authority, queued).referenceChoices?.[0]; assert.ok(resolved?.resolution.state === "resolved");
+      const event = f.db.authority.timelineEvents.get(resolved.native.eventId); assert.ok(event?.payload.kind === "workbook-reference-row-selected");
+      assert.equal(event.payload.referenceDigest, other.referenceDigest);
+      assert.equal(resolved.referenceDigest, capturedDigests[0]);
+      assert.equal(resolved.resolution.selected.referenceDigest, other.referenceDigest);
+      return;
+    }
     if (mode === "ambiguous") {
       assert.equal(result.state, "parked-gate"); assert.equal(downloads, 0);
       const parked = f.db.authority.runs.get(runId); assert.ok(parked);
@@ -231,6 +292,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
 
 it("crm-doc-download/worksheet-archives — executes registered CRM sessions, run-bound references and both PDFs in the selected worksheet ZIP", () => runCrm("complete"));
 it("retains multiple operator row choices and resumes the same batch to publish both exact PDFs in one worksheet archive", () => runCrm("ambiguous"));
+it("reads two complete General sources without joining rows and records the chosen source", () => runCrm("split"));
 it.each(["missing", "download-failed", "cancelled"] as const)("publishes no collection for %s", mode => runCrm(mode));
 
 it("authenticates batch choices in the retained reference step proof", () => {

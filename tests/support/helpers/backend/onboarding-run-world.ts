@@ -50,7 +50,7 @@ export function createOnboardingRunWorld() {
   const managers: Awaited<ReturnType<typeof sessionManagerFor>>[] = [];
   const fixtureProfiles = createProfileFixtureSet();
   const world = createCommandKernelTestWorld(fixtureProfiles.create);
-  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other" } = {}) {
+  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; general?: boolean } = {}) {
     const h = await world.createHarness(undefined, { descriptors: [descriptor], publishQueued: (run, publication) => {
       assert.ok(publication);
       createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
@@ -72,11 +72,11 @@ export function createOnboardingRunWorld() {
     const saved = library.create({ name: "Synthetic.xlsx", themes: [], hasFormulas: false,
       sheets: [sheet("people", match === "missing" ? "other@example.test" : key), sheet("archive", "other@example.test")] });
     repository.putType({ id: "onboarding-roster", name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
-    library.operatorOperation(saved.libraryId, "declare-type", { kind: "metadata", expectedVersion: 1,
+    if (options.general !== true) library.operatorOperation(saved.libraryId, "declare-type", { kind: "metadata", expectedVersion: 1,
       metadata: { typeId: "onboarding-roster", sharePoint: null } });
     const second = options.second === undefined ? undefined : library.create({ name: "Other roster.xlsx", themes: [], hasFormulas: false,
       sheets: [sheet("people", options.second === "same" ? (match === "missing" ? "other@example.test" : key) : "elsewhere@example.test"), sheet("archive", "other@example.test")] });
-    if (second !== undefined) library.operatorOperation(second.libraryId, "declare-type", { kind: "metadata", expectedVersion: 1,
+    if (second !== undefined && options.general !== true) library.operatorOperation(second.libraryId, "declare-type", { kind: "metadata", expectedVersion: 1,
       metadata: { typeId: "onboarding-roster", sharePoint: null } });
     const config = h.database.authority.runtimeConfig.get(); assert.ok(config);
     let snapshots = 0;
@@ -84,12 +84,14 @@ export function createOnboardingRunWorld() {
       descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, planTtlMs: 600_000,
       workbooks: { createReferenceCapture: () => { const capture = library.createReferenceCapture(); return value => { snapshots++; return capture(value); }; } }, configFingerprint: config.configFingerprint,
       configSnapshotId: config.configSnapshotId, plannedBy: "local-operator" });
+    const version = library.read(saved.libraryId).version;
     const selection = { entry: 1, libraryId: saved.libraryId,
-      versionId: library.libraryVersion(saved.libraryId).version.id, sheetId: "people", expectedVersion: 2,
+      versionId: library.libraryVersion(saved.libraryId).version.id, sheetId: "people", expectedVersion: version,
       ...(options.selectedRow ? { selectedRow: { sheetId: "people", rowId: "people-person" } } : {}) };
     const request = { workflowId: descriptor.id, submissions: [{ email: key, mode: options.mode ?? "new-hire", configuredJobEndDate: "06/30/2027" }],
       dryRun: options.dryRun ?? false, workbookReferences: second === undefined ? [selection]
-        : [selection, { entry: 1, libraryId: second.libraryId, versionId: library.libraryVersion(second.libraryId).version.id, sheetId: "people", expectedVersion: 2 }] };
+        : [selection, { entry: 1, libraryId: second.libraryId, versionId: library.libraryVersion(second.libraryId).version.id, sheetId: "people",
+          expectedVersion: library.read(second.libraryId).version }] };
     const plan = (value: unknown = request) => {
       const wire = planner.plan(value), record = h.database.authority.startPlans.get(wire.startPlanId); assert.ok(record); return record;
     };

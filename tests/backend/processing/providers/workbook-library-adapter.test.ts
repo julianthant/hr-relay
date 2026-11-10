@@ -23,7 +23,9 @@ const options = { signal: new AbortController().signal, deadlineMonotonicMs: Inf
 it("workbooks/read-reference — reads through the captured-run port without giving the caller a library or version selector", async () => {
   const calls: unknown[] = [];
   const adapter = createWorkbookLibraryAdapter({ repository, clock, runId, references: { runId, write: forbidden,
-    read: input => { calls.push(input); return ReadWorkbookReference.output.parse({ state: "read", referenceDigest: "a".repeat(64), reference: ReadI9CheckRequests.example.reference }); } } });
+    read: input => { calls.push(input); const reference = ReadI9CheckRequests.example.reference; return ReadWorkbookReference.output.parse({
+      state: "read", referenceDigest: "a".repeat(64), reference, sources: [{ referenceDigest: "a".repeat(64), reference }],
+    }); } } });
   const response = await adapter.invoke(request, options);
   assert.equal(response.response.state, "produced");
   if (response.response.state !== "produced") assert.fail("Captured version read refused");

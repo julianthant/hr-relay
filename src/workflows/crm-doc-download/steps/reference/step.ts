@@ -1,5 +1,5 @@
 import { CrmDocDownloadInput } from "../../../../models/workflows/crm-doc-download/input.js";
-import { ReadCrmDocumentRows, CrmDocumentRowsSchema, CrmDocumentRowChoiceSchema, CRM_DOCUMENT_ROW_CHOICE_GATE_ID } from "../../../../models/workflows/crm-doc-download/read-document-rows.js";
+import { ReadCrmDocumentRows, CrmDocumentReferenceSourceSchema, CrmDocumentRowsSchema, CrmDocumentRowChoiceSchema, CRM_DOCUMENT_ROW_CHOICE_GATE_ID } from "../../../../models/workflows/crm-doc-download/read-document-rows.js";
 import { decodeWorkbookReference } from "../../../../models/processing/workbooks/read-reference.js";
 import { defineStep, defineStepEntries, reuseTask, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
@@ -72,8 +72,10 @@ export function buildReference(author: WorkflowAuthor<typeof CrmDocDownloadInput
     (input: z.output<typeof CrmDocumentRecordsSchema>) => ({ typeId: ONBOARDING_ROSTER_TYPE_ID, keys: crmDocumentReferenceKeys(input) }));
   const reference = author.task(call.identity, [search.records], ({ outputs }) => call.bind({ input: outputs["document-records"] }));
   const rows = author.task(entries.task("document-rows", ReadCrmDocumentRows, { replay: "checkpoint" }), [search.records, reference], ({ outputs }) => ({
-    records: outputs["document-records"], reference: ReadCrmDocumentRows.input.shape.reference.parse(decodeWorkbookReference(outputs["workbook-reference"].reference)),
-    referenceDigest: outputs["workbook-reference"].referenceDigest,
+    records: outputs["document-records"],
+    sources: outputs["workbook-reference"].sources.map(source => CrmDocumentReferenceSourceSchema.parse({
+      referenceDigest: source.referenceDigest, reference: decodeWorkbookReference(source.reference),
+    })),
   }));
   const choice = author.gate({ ...entries.operatorGate(CRM_DOCUMENT_ROW_CHOICE_GATE_ID, { label: "Choose worksheet rows", result: CrmDocumentRowChoiceSchema }),
     when: { kind: "equals", of: { from: "node", nodeId: "document-rows", path: "state" }, value: "resolve-required" },
@@ -81,7 +83,8 @@ export function buildReference(author: WorkflowAuthor<typeof CrmDocDownloadInput
   return { reference, rows, choice, steps: [[group, [reference, rows, choice]]] as const,
     result: author.result(CrmDocumentRowsSchema, [rows, choice], ({ outputs }) => {
       const selected = outputs[CRM_DOCUMENT_ROW_CHOICE_GATE_ID] ?? outputs["document-rows"];
-      return CrmDocumentRowsSchema.parse({ referenceDigest: selected.referenceDigest, state: selected.state, people: selected.people });
+      return CrmDocumentRowsSchema.parse({ referenceDigest: selected.referenceDigest, sourceDigests: selected.sourceDigests,
+        state: selected.state, people: selected.people });
     }) };
 }
 
