@@ -152,6 +152,11 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_PROPOSAL_REFUSED: catalogEntry("The current planner refused this proposal. Review it in Run.", EmptyParametersSchema),
   ASSISTANT_PROPOSAL_EXPIRED: catalogEntry("This card expired. Ask again for a new one.", EmptyParametersSchema),
   ASSISTANT_PROPOSAL_CHANGED: catalogEntry("This changed after you reviewed it. Ask again for a new proposal.", EmptyParametersSchema),
+  ASSISTANT_ROW_INVALID_STATE: catalogEntry("The run can't do this in its current state. Nothing was changed.", EmptyParametersSchema),
+  ASSISTANT_ROW_TARGET_GONE: catalogEntry("The run no longer exists. Nothing was changed.", EmptyParametersSchema),
+  ASSISTANT_ROW_POLICY_REFUSED: catalogEntry("Relay's safety rules refused this. Nothing was changed.", EmptyParametersSchema),
+  ASSISTANT_ROW_STORAGE_UNAVAILABLE: catalogEntry("Relay's storage could not take this right now. Nothing was changed.", EmptyParametersSchema),
+  ASSISTANT_ROW_UNAVAILABLE: catalogEntry("This action is not available yet. Nothing was changed.", EmptyParametersSchema),
 
   RUN_LOG_DISPLAY_VALUE_UNMAPPED: catalogEntry(
     "A retained value has no declared display text. Update the workflow declaration before reading these Logs.",

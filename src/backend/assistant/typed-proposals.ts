@@ -3,9 +3,9 @@ import { z } from "zod";
 import { ASSISTANT_START_ROWS_MAX, AssistantAcceptedTurnSchema, AssistantM2ProposalSnapshotSchema, assistantM2ProposalDigest, type AssistantAcceptedTurn, type AssistantInline,
   type AssistantM2ProposalOptions, type AssistantM2ProposalRecord, type AssistantM2ProposalRow, type AssistantM2ProposalSnapshot, type AssistantReplyPart } from "../../models/dashboard/assistant.js";
 import type { RerunValuesResponse } from "../../models/dashboard/rerun-values.js";
-import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../models/failures/error-catalog.js";
+import { ERROR_CATALOG, ErrorCatalogCodeSchema, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 import { parseInputRunText, toRawSubmission } from "../../models/workflow/ingress.js";
-import { AssistantCommandAttributionSchema, CommandRequestSchema, StartCommandRequestSchema, type CommandRequest, type CommandResult } from "../../rules/commands/commands.js";
+import { AssistantCommandAttributionSchema, CommandRequestSchema, StartCommandRequestSchema, type CommandRejectionCodeSchema, type CommandRequest, type CommandResult } from "../../rules/commands/commands.js";
 import { FingerprintSchema, IsoInstantSchema } from "../../rules/identity/ids.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
@@ -88,6 +88,19 @@ function reviewedBinding(planned: Readonly<{ fingerprints: Record<string, string
   const runs = stored.runs.map(run => ({ input: run.input, rawInput: run.rawInput, workbookReferences: run.workbookReferences ?? null }));
   return FingerprintSchema.parse(createHash("sha256").update(canonicalJsonStringify(JsonValueSchema.parse(stable({ fingerprints, rerun: planned.rerun ?? null, runs })))).digest("hex"));
 }
+/** The operator's reason for each canonical command rejection: a fixed catalog sentence per category, never the kernel's own message. */
+const ROW_REJECTION: Readonly<Record<z.infer<typeof CommandRejectionCodeSchema>, ErrorCatalogCode>> = {
+  OCR_REVIEW_REFUSED: "OCR_REVIEW_REFUSED", RUN_CONTINUATION_REFUSED: "RUN_CONTINUATION_REFUSED",
+  "invalid-state": "ASSISTANT_ROW_INVALID_STATE", "target-not-found": "ASSISTANT_ROW_TARGET_GONE", "target-deleted": "ASSISTANT_ROW_TARGET_GONE",
+  "policy-refused": "ASSISTANT_ROW_POLICY_REFUSED", "capability-unavailable": "ASSISTANT_ROW_UNAVAILABLE",
+  "replan-required": "ASSISTANT_PROPOSAL_CHANGED", "schema-mismatch": "ASSISTANT_PROPOSAL_CHANGED", "patch-fingerprint-mismatch": "ASSISTANT_PROPOSAL_CHANGED",
+  "envelope-fingerprint-mismatch": "ASSISTANT_PROPOSAL_CHANGED", "command-divergent": "ASSISTANT_PROPOSAL_CHANGED", "write-id-reused": "ASSISTANT_PROPOSAL_CHANGED",
+  "authority-unavailable": "ASSISTANT_ROW_STORAGE_UNAVAILABLE", "authority-unjournaled": "ASSISTANT_ROW_STORAGE_UNAVAILABLE", "authority-uncertain": "ASSISTANT_ROW_STORAGE_UNAVAILABLE",
+  "directory-integrity": "ASSISTANT_ROW_STORAGE_UNAVAILABLE", "lock-unavailable": "ASSISTANT_ROW_STORAGE_UNAVAILABLE",
+  // Edit and workbook categories; start and run commands do not produce them.
+  "not-editable": "ASSISTANT_PROPOSAL_REFUSED", "invalid-value": "ASSISTANT_PROPOSAL_REFUSED", "cross-field-invalid": "ASSISTANT_PROPOSAL_REFUSED",
+  "document-too-large": "ASSISTANT_PROPOSAL_REFUSED", "active-version-blockers": "ASSISTANT_PROPOSAL_REFUSED",
+};
 /** Workflows whose one input is an attached PDF of a fixed OCR form. */
 const PDF_START_WORKFLOWS = new Set(["emergency-contact"]);
 type StartOptions = Omit<AssistantM2ProposalOptions, "priority"> & Partial<Pick<AssistantM2ProposalOptions, "priority">>;
@@ -269,7 +282,7 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
     if (result.state === "applied" && runIds.length === 1) ports.store.settleRow(snapshot.id, row.id, { state: "applied", commandId, runIds });
     // Rejected, conflicting or confirmation-required commands did not apply; anything else is not proved either way.
     else if (result.state === "rejected" || result.state === "conflict" || result.state === "confirmation-required") {
-      const code = result.state === "conflict" ? "ASSISTANT_READ_STALE" : result.state === "rejected" ? ErrorCatalogCodeSchema.safeParse(result.code).data ?? "ASSISTANT_PROPOSAL_REFUSED" : "ASSISTANT_PROPOSAL_REFUSED";
+      const code = result.state === "conflict" ? "ASSISTANT_READ_STALE" : result.state === "rejected" ? ROW_REJECTION[result.code] : "ASSISTANT_PROPOSAL_REFUSED";
       ports.store.settleRow(snapshot.id, row.id, { state: "refused", code, commandId });
     } else ports.store.settleRow(snapshot.id, row.id, { state: "unknown", commandId });
   }

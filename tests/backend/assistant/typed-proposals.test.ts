@@ -108,12 +108,19 @@ it("reruns an unchanged reviewed run and refuses one whose config or workbooks c
   }
 });
 
-it("shows each refused command's own reason", async () => {
-  const w = world(), { record } = await w.propose("propose_workflow_start", { workflow: "person-lookup", entries: entries(2), dryRun: false });
-  w.f.knobs.submit = command => command === w.f.submitted[0]?.command ? { state: "conflict", commandId: command.commandId, currentVersion: 2, message: "moved" } : undefined;
+it("keeps each refused command's own category and shows its fixed reason, never the kernel message", async () => {
+  const w = world(), { record } = await w.propose("propose_workflow_start", { workflow: "person-lookup", entries: entries(5), dryRun: false });
+  const scripted = [{ state: "conflict", currentVersion: 2 }, { state: "rejected", code: "invalid-state" }, { state: "rejected", code: "policy-refused" },
+    { state: "rejected", code: "RUN_CONTINUATION_REFUSED" }];
+  w.f.knobs.submit = command => { const next = scripted[w.f.submitted.length - 1]; return next === undefined ? undefined : { ...next, commandId: command.commandId, message: "kernel detail" }; };
   const reply = await w.answer(w.yes(record));
-  assert.deepEqual(w.states(record.snapshot.id), ["refused", "applied"]);
-  assert.ok(reply.parts.some(part => part.kind === "text" && part.runs.some(item => item.kind === "failure" && item.code === "ASSISTANT_READ_STALE")));
+  assert.deepEqual(w.states(record.snapshot.id), ["refused", "refused", "refused", "refused", "applied"]);
+  const codes = ["ASSISTANT_READ_STALE", "ASSISTANT_ROW_INVALID_STATE", "ASSISTANT_ROW_POLICY_REFUSED", "RUN_CONTINUATION_REFUSED"] as const;
+  assert.deepEqual(w.f.ports.store.read(record.snapshot.id)?.rows.slice(0, 4).map(row => row.result.state === "refused" ? row.result.code : row.result.state), [...codes]);
+  const lines = reply.parts.flatMap(part => part.kind === "text" && part.runs.some(item => item.kind === "failure") ? [part.runs] : []);
+  assert.deepEqual(lines.map(runs => runs.flatMap(item => item.kind === "failure" ? [item.code] : [])), codes.map(code => [code]));
+  assert.deepEqual(lines.map(runs => runs.at(-1)), codes.map(code => ({ kind: "plain", text: `: ${ERROR_CATALOG[code].text}` })));
+  assert.doesNotMatch(JSON.stringify(reply), /kernel detail/u);
 });
 
 it("renders the files, people and EIDs Relay resolved, and the reviewed run options", () => {
