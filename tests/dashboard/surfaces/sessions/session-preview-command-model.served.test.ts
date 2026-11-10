@@ -54,8 +54,10 @@ function effectOf(day: DashboardDayWire, command: CommandRequest): DashboardDayW
       workerCards: base.workerCards.slice(0, desired).map(card => ({ ...card, directive: "run", controls: basis(LIFETIME) })),
       workerPools: [{ workflowId: command.target.workflowId, desiredWorkers: desired, version: command.target.expectedVersion + 1, plannedBy: "local-operator", plannedAt: now }] });
   }
-  if (command.type === "remove-worker") return DashboardDayWireSchema.parse({ ...day, workerPools: day.workerPools.map(pool => ({ ...pool, desiredWorkers: pool.desiredWorkers - 1, version: pool.version + 1 })),
-    workerAuthority: { state: "present", members: [] }, workerCards: [] });
+  if (command.type === "remove-worker") return DashboardDayWireSchema.parse({ ...day, workerPools: day.workerPools.map(pool => pool.workflowId === command.target.workflowId
+    ? { ...pool, desiredWorkers: pool.desiredWorkers - 1, version: pool.version + 1 } : pool),
+    workerAuthority: { state: "present", members: day.workerAuthority.members.filter(member => member.workerId !== command.target.workerId) },
+    workerCards: day.workerCards.filter(card => card.workerId !== command.target.workerId) });
   const workerId = command.type === "spawn-worker" ? command.payload.workerId : command.target.workerId;
   return DashboardDayWireSchema.parse({ ...day, workerCards: day.workerCards.map(card => card.workerId !== workerId ? card
     : command.type === "pause-worker" ? { ...card, directive: "pause" } : command.type === "resume-worker" ? { ...card, directive: "run" }
@@ -63,20 +65,22 @@ function effectOf(day: DashboardDayWire, command: CommandRequest): DashboardDayW
 }
 function harness(initial = dayWith()) {
   let day = initial; const sent: CommandRequest[] = []; const gets: string[] = []; let audit: unknown = { state: "unavailable" }; let auditFor: ((commandId: string) => unknown) | undefined;
+  let read: (snapshot: DashboardDayWire) => DashboardDayWire | Promise<DashboardDayWire> = snapshot => snapshot;
   let effect: (command: CommandRequest) => unknown = command => { day = effectOf(day, command); return applied(command); };
   const client = createDashboardClient({ baseUrl: "http://sessions.test", fetchImpl: async (url, init) => {
     if (init?.method === "POST") { assert.equal(typeof init.body, "string");
       if (typeof init.body !== "string") throw new Error("JSON body missing");
-      const command = CommandRequestSchema.parse(JSON.parse(init.body)); sent.push(command); return Response.json(await effect(command)); }
+      const command = CommandRequestSchema.parse(JSON.parse(init.body)); sent.push(command);
+      const reply = await effect(command); return reply instanceof Response ? reply : Response.json(reply); }
     if (String(url).includes("/api/v1/worker-commands/")) return Response.json(auditFor ? auditFor(String(url).split("/").pop() ?? "") : audit);
-    gets.push(String(url)); return Response.json(day);
+    gets.push(String(url)); return Response.json(await read(day));
   } });
   let scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
   const executor = new CommandExecutor(() => scope);
   const binding = (): SessionCommandBinding => ({ client, executor, scope, day: day.day, nowIso: now,
     dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request: scope.dayRequest, day: { state: "loaded", value: day }, connection: { state: "connecting" }, refresh() {} } });
   const port = createSessionPreviewPort(() => ({ binding: binding(), catalog }));
-  return { port, client, executor, sent, gets, binding, day: () => day, setDay: (next: DashboardDayWire) => { day = next; },
+  return { port, client, executor, sent, gets, binding, day: () => day, setDay: (next: DashboardDayWire) => { day = next; }, setRead: (next: typeof read) => { read = next; },
     effect: (next: typeof effect) => { effect = next; }, audit: (next: unknown) => { audit = next; auditFor = undefined; }, auditBy: (next: (commandId: string) => unknown) => { auditFor = next; }, scope: () => scope, setScope: (next: CommandExecutionScope) => { scope = next; } };
 }
 
@@ -120,6 +124,94 @@ it("never confirms a pending reply from a served effect that another command cou
   h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: h.day().workerCards.map(card => ({ ...card, directive: "pause" })) }));
   assert.equal(sessionCommandEffect(h.day(), command), true, "an unrelated pause shows the same directive");
   assert.equal((await h.port.check(request)).state, "uncertain"); assert.equal(h.sent.length, 1);
+});
+
+it("removes two idle workers from the same workflow while the first removal is in flight", async () => {
+  const h = harness(dayWith(2));
+  const [first, second] = h.day().workerCards;
+  assert.equal(first.workflowId, second.workflowId);
+  let release!: () => void;
+  const firstRemoval = new Promise<void>(resolve => { release = resolve; });
+  h.effect(async command => {
+    if ("workerId" in command.target && command.target.workerId === first.workerId) await firstRemoval;
+    h.setDay(effectOf(h.day(), command));
+    return applied(command);
+  });
+  const pending = h.port.send({ id: uuidOf(8120), target: first.workerId, action: "remove" });
+  const duplicate = await h.port.send({ id: uuidOf(8121), target: first.workerId, action: "remove" });
+  const removedSecond = await h.port.send({ id: uuidOf(8122), target: second.workerId, action: "remove" });
+  release();
+  const removedFirst = await pending;
+  assert.equal(duplicate.state, "refused");
+  assert.equal(removedSecond.state, "confirmed");
+  assert.equal(removedSecond.data?.state, "ready");
+  if (removedSecond.data?.state === "ready") assert.deepEqual(removedSecond.data.workers.map(worker => worker.id), [first.workerId]);
+  assert.equal(removedFirst.state, "confirmed");
+  assert.equal(removedFirst.data?.state, "ready");
+  if (removedFirst.data?.state === "ready") assert.deepEqual(removedFirst.data.workers, []);
+  assert.equal(h.sent.length, 2);
+});
+
+it.each([
+  { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_BUSY" }, code: "WORKER_BUSY" },
+  { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE" },
+] as const)("shows the $code catalog summary on the retained Remove card", async ({ status, result, code }) => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness();
+  h.effect(command => Response.json({ ...result, commandId: command.commandId }, { status }));
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Remove worker"]'); assert(button);
+    await act(async () => button.click());
+    const card = document.querySelector("article"); assert(card);
+    assert.ok(card.textContent?.includes(ERROR_CATALOG[code].text), card.textContent ?? "");
+    assert.equal(h.sent.length, 1);
+    assert.equal(h.gets.length, 0);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("removes the card when a lost Remove reply is confirmed by its audit and served readback", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness();
+  const binding = h.binding();
+  h.effect(command => {
+    h.setDay(effectOf(h.day(), command));
+    h.audit({ state: "recorded", request: command, result: applied(command) });
+    throw new Error("connection reset");
+  });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding, open: true, onOpenChange() {} })));
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Remove worker"]'); assert(button);
+    await act(async () => button.click());
+    assert.equal(document.querySelectorAll("article").length, 0);
+    assert.equal(h.sent.length, 1);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("keeps both removed cards gone when their readbacks arrive out of order", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(dayWith(2));
+  const binding = h.binding();
+  let release!: () => void;
+  const firstRead = new Promise<void>(resolve => { release = resolve; });
+  h.setRead(async day => { if (day.workerCards.length === 1) await firstRead; return day; });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding, open: true, onOpenChange() {} })));
+    const [first, second] = document.querySelectorAll<HTMLButtonElement>('button[aria-label="Remove worker"]');
+    assert(first && second);
+    await act(async () => first.click());
+    await act(async () => second.click());
+    assert.equal(document.querySelectorAll("article").length, 0);
+    await act(async () => release());
+    assert.equal(document.querySelectorAll("article").length, 0);
+    assert.equal(h.sent.length, 2);
+  } finally { release(); await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
 
 it.each(["actor", "client", "request"])("retains original uncertain attempt across %s replacement and A to B to A", async kind => {
@@ -172,6 +264,14 @@ it.each(["stop", "retry", "remove"] as const)("confirms %s once the served membe
   });
   const request: SessionPreviewRequest = { id: uuidOf(8600), target: h.day().workerCards[0].workerId, action };
   assert.equal((await h.port.send(request)).state, "uncertain", "the applied reply is not yet served");
+  if (action === "remove") {
+    const day = h.day();
+    const card = day.workerCards[0];
+    h.setDay(DashboardDayWireSchema.parse({ ...day, workerCards: [], unavailableWorkerCards: [{
+      member: card.member, workerId: card.workerId, availability: { state: "unavailable", reason: "worker-card-unavailable" },
+    }] }));
+    assert.equal((await h.port.check(request)).state, "uncertain", "an unavailable card still has a standing member");
+  }
   assert(effected); h.setDay(effected);
   const result = await h.port.check(request); assert.equal(result.state, "confirmed"); assert.equal(h.sent.length, 1);
   assert.equal(result.data?.state, "ready");

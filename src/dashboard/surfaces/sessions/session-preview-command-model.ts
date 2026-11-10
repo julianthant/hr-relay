@@ -51,7 +51,7 @@ export function sessionCommandEffect(day: DashboardDayWire, request: DashboardCo
   const card = day.workerCards.find(card => card.workerId === (request.type === "spawn-worker" ? request.payload.workerId : request.target.workerId));
   const lifetimeId = card?.controls?.basis.state === "present" ? card.controls.basis.value.lifetimeId : null;
   switch (request.type) {
-    case "remove-worker": return card === undefined;
+    case "remove-worker": return !day.workerAuthority.members.some(member => member.workerId === request.target.workerId);
     case "spawn-worker": return lifetimeId !== null;
     case "retry-worker": case "stop-worker": return lifetimeId !== null && lifetimeId !== request.target.lifetimeId;
     case "pause-worker": return card?.directive === "pause";
@@ -209,7 +209,7 @@ const label = (request: SessionPreviewRequest) => request.action === 'add' ? 'Wo
 
 export function useSessionPreviewCommands(initial: SessionsViewState, catalog: readonly WorkflowCatalogEntry[], port: SessionPreviewCommandPort, source?: Readonly<{ snapshot: object; scope: object; actorId: string; onRefused?: (problem: string) => void }>) {
   const sourceKey = source?.snapshot ?? port;
-  const [readback, setReadback] = useState<{ key: object; data: SessionsViewState }>(() => ({ key: sourceKey, data: initial }));
+  const [readback, setReadback] = useState<{ key: object; data: SessionsViewState; removed: readonly string[] }>(() => ({ key: sourceKey, data: initial, removed: [] }));
   const data = readback.key === sourceKey ? readback.data : initial;
   const epoch = useRef<object>({});
   const identity = useRef(source?.scope ?? port);
@@ -226,6 +226,16 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
   const retain = useCallback((operation: SessionPreviewOperation) => {
     operationsRef.current = { ...operationsRef.current, [operation.request.target]: operation };
     setOperations(operationsRef.current);
+  }, []);
+  const acceptReadback = useCallback((key: object, request: SessionPreviewRequest, result: SessionPreviewResult) => {
+    const data = result.data;
+    if (data === undefined || key !== latestSource.current) return;
+    setReadback(previous => {
+      const knownRemoved = previous.key === key ? previous.removed : [];
+      const removed = request.action === "remove" && result.state === "confirmed" ? [...knownRemoved, request.target] : knownRemoved;
+      return { key, removed, data: data.state === "ready" && removed.length > 0
+        ? { ...data, workers: data.workers.filter(worker => !removed.includes(worker.id)) } : data };
+    });
   }, []);
   // A control another mount sent is still in flight: follow it to its settled outcome instead of resending.
   useEffect(() => {
@@ -251,11 +261,13 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     const { request } = operation;
     if (port.audited === undefined || operation.state !== 'uncertain' || reconciling.current.has(request.id)) return;
     const attemptEpoch = epoch.current;
+    const snapshot = latestSource.current;
     reconciling.current.set(request.id, port.audited(request).then(result => {
       if (!live.current || attemptEpoch !== epoch.current || result.id !== request.id || result.state === 'uncertain' || operationsRef.current[request.target] !== operation) return;
+      acceptReadback(snapshot, request, result);
       settleProven(request, result);
     }, () => undefined).finally(() => { reconciling.current.delete(request.id); }));
-  }, [port, settleProven]);
+  }, [port, acceptReadback, settleProven]);
   // A later served day may follow a settlement whose reply never arrived.
   useEffect(() => { for (const operation of Object.values(operationsRef.current)) reconcile(operation); }, [sourceKey, reconcile]);
     const perform = useCallback(async (request: SessionPreviewRequest, checking = false) => {
@@ -274,14 +286,14 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     if (attemptEpoch !== epoch.current) { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('DASHBOARD_AUTHORITY_REPLACED') }; }
     if (!result || !['confirmed', 'refused', 'uncertain'].includes(result.state) || result.state !== 'confirmed' && typeof result.message !== 'string') { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('COMMAND_READBACK_MISMATCH') }; }
     if (result.id !== request.id) { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('COMMAND_RESULT_IDENTITY_MISMATCH') }; }
-    if (result.data !== undefined && snapshot === latestSource.current && attemptEpoch === epoch.current) setReadback({ key: snapshot, data: result.data });
+    if (attemptEpoch === epoch.current) acceptReadback(snapshot, request, result);
     if (result.state === 'confirmed' && request.action === 'refresh') idle.current?.(request, result.data);
     if (checking && result.state === 'refused') { settleProven(request, result); return; }
     retain({ request, state: result.state, ...(diagnostic === undefined ? {} : { diagnostic }), message: result.state === 'confirmed' ? request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` : result.message });
     // A lost reply is read back at once; the audit is committed before the server replies.
     const retained = operationsRef.current[request.target];
     if (result.state === 'uncertain' && !checking && retained !== undefined) reconcile(retained);
-  }, [port, retain, settleProven, reconcile]);
+  }, [port, acceptReadback, retain, settleProven, reconcile]);
   const keepAlive = useIdleSessionRefresh(data, operations, perform);
   idle.current = keepAlive.confirmed;
   return { data, operations, idleCountdowns: keepAlive.countdowns,

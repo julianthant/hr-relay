@@ -137,6 +137,22 @@ describe("the composed worker pool through the kernel", () => {
     assert.equal(refused.message, "WORKER_EXITED");
   });
 
+  it("closes and retires only the selected idle members when removals overlap", async () => {
+    const h = await openControlHarness({ reply: () => ({ state: "done", result: { closed: true } }) });
+    const [first, second, survivor] = await planWorkers(h, 3);
+    const commands = launchCommands(h);
+    const requests = [first, second].map(member => ({
+      ...envelope(h), type: "remove-worker", target: memberTarget(h, member.workerId),
+    }));
+    const results = await Promise.all(requests.map(request => commands.submit(request)));
+    assert.deepEqual(results.map(result => result.state), ["applied", "applied"], JSON.stringify(results));
+    assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
+    assert.deepEqual(h.database.authority.workerSlots.active(WORKFLOW).map(slot => slot.workerId), [survivor.workerId]);
+    assert.deepEqual(h.children.map(child => child.sent.map(message => message.kind === "worker-request" ? message.request.type : message.kind)),
+      [["close-for-removal", "worker-stop"], ["close-for-removal", "worker-stop"], []]);
+    assert.equal(view(h, survivor.workerId).state, "running");
+  });
+
   it("settles a browser refresh in flight when its worker exits as an audited WORKER_EXITED rejection", async () => {
     const h = await openControlHarness({ answers: false });
     await planWorkers(h, 1); await settleMicrotasks();
