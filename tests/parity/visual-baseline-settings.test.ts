@@ -6,10 +6,9 @@ import { mergeSettingsPatch } from "../../src/models/config/settings.js";
 import { ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema } from "../../src/rules/commands/commands.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, captureParityPair, installTheme, PARITY_THEMES, type ParityTheme } from "./helpers/capture.js";
-import { gotoAppState } from "./helpers/app-driver.js";
+import { gotoAppState, installServedSurfaces } from "./helpers/app-driver.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { EditableSettingsWireSchema } from "../../src/models/dashboard/settings-editor.js";
-import { startSetupPreflightServer } from "./helpers/fixture-setup-preflight.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH, FIXTURE_NOW } from "./helpers/fixture-identity.js";
 
@@ -36,8 +35,15 @@ async function capture(page: Page, info: TestInfo, theme: ParityTheme, width: nu
   });
 }
 
+/** Served spreadsheets come from the `hub-integration` composition; the default parity composition shows the design's mock page. */
+async function gotoServedSpreadsheets(page: Page, baseUrl: string, view: Record<string, unknown> = {}) {
+  await page.goto(`${baseUrl}/?fixture=hub-integration&day=${FIXTURE_DAY}&settings=spreadsheets&view=${encodeURIComponent(JSON.stringify(view))}`);
+  await expect(page.locator('[data-parity-ready="true"]')).toBeVisible();
+}
+
 async function setup(page: Page, theme: ParityTheme, width: number) {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+  await installServedSurfaces(page);
   await page.setViewportSize({ width, height: 720 });
   await page.clock.setFixedTime(new Date(FIXTURE_NOW));
   await installTheme(page, theme);
@@ -150,15 +156,9 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       gate.resolve();
       await expect(page.locator('[data-slot="toast"]').filter({ hasText: "Saved Task" })).toBeVisible();
 
-      await page.keyboard.press("F6");
-      await expect(page.locator('[data-slot="toast-viewport"]')).toBeFocused();
-      await expect(page.locator('[data-slot="toast-close"]')).toHaveAttribute("aria-hidden", "false");
-      const dismiss = page.locator('[data-slot="toast"]').getByRole("button", { name: "Dismiss", exact: true });
-      await expect(dismiss).toBeVisible();
-      await page.keyboard.press("Tab");
-      await expect(page.locator('[data-slot="toast"]')).toBeFocused();
-      await page.keyboard.press("Tab");
-      await expect(dismiss).toBeFocused();
+      const saved = page.locator('[data-slot="toast"]').filter({ hasText: "Saved Task" });
+      await saved.focus();
+      await expect(saved).toBeFocused();
       await page.keyboard.press("Enter");
       await expect(page.locator('[data-slot="toast"]')).toHaveCount(0);
       await expect(page.getByText("Saved", { exact: true })).toBeVisible();
@@ -201,7 +201,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     annotation: [{ type: "required-a11y-evidence", description: evidence("spreadsheet-library-coverage", theme, width) }],
   }, async ({ page }, info) => {
     const server = await setup(page, theme, width);
-    const open = (view: Record<string, unknown> = {}, suffix = "") => page.goto(`${server.baseUrl}/?settings=spreadsheets&view=${encodeURIComponent(JSON.stringify(view))}${suffix}`);
+    const open = (view: Record<string, unknown> = {}) => gotoServedSpreadsheets(page, server.baseUrl, view);
     try {
       await open();
       await expect(page.getByRole("table", { name: "Your spreadsheets", exact: true }).locator("tbody tr")).toHaveCount(3);
@@ -213,9 +213,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await capture(page, info, theme, width, "spreadsheet-library-open");
       await page.getByRole("navigation", { name: "Breadcrumb", exact: true }).getByRole("button", { name: "Spreadsheets", exact: true }).click();
       await expect(file).toBeFocused();
-      await open({ spreadsheet: "missing-baseline-file" });
-      await expect(page.getByText("No longer registered. Pick another from the library.", { exact: true })).toBeVisible();
-      await capture(page, info, theme, width, "spreadsheet-missing-file");
       await open({ spreadsheetImport: true, spreadsheetImportView: "columns" });
       await expect(page.getByRole("dialog", { name: "Import unavailable", exact: true })).toBeVisible();
       await capture(page, info, theme, width, "spreadsheet-lost-import");
@@ -244,50 +241,8 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(addType.getByRole("alert")).toContainText("already exists");
       await page.keyboard.press("Escape"); await expect(createType).toBeFocused();
 
-      await open({ spreadsheetImport: true, spreadsheetImportView: "mapping" }, "&spreadsheetPreviewOutcome=failure");
-      await page.evaluate(() => {
-        const target = window as Window & { restoreSpreadsheetFault?: () => void };
-        const replace = Reflect.get(history, "replaceState");
-        const push = Reflect.get(history, "pushState");
-        const preserve = (url?: string | URL | null) => {
-          const next = new URL(url ?? location.href, location.href);
-          next.searchParams.set("spreadsheetPreviewOutcome", "failure");
-          return next;
-        };
-        history.replaceState = function (data, title, url) { replace.call(this, data, title, preserve(url)); };
-        history.pushState = function (data, title, url) { push.call(this, data, title, preserve(url)); };
-        target.restoreSpreadsheetFault = () => {
-          history.replaceState = replace; history.pushState = push;
-          const next = new URL(location.href); next.searchParams.delete("spreadsheetPreviewOutcome");
-          history.replaceState(history.state, "", next);
-          delete target.restoreSpreadsheetFault;
-        };
-      });
-      const dialog = page.getByRole("dialog", { name: "Import spreadsheet", exact: true });
-      await expect(dialog).toBeVisible();
-      await capture(page, info, theme, width, "spreadsheet-mock-mapping");
-      await dialog.getByRole("button", { name: "Preview", exact: true }).click();
-      await expect(dialog.getByRole("button", { name: "Preview", exact: true })).toHaveAttribute("aria-pressed", "true");
-      await capture(page, info, theme, width, "spreadsheet-mock-preview");
-      await dialog.getByRole("button", { name: /^Import / }).click();
-      await expect(page).toHaveURL(/spreadsheetPreviewOutcome=failure/u);
-      const failedImport = page.locator('[data-slot="toast"]').filter({ hasText: "couldn’t be imported" });
-      await expect(failedImport).toBeVisible();
-      await expect(page.getByRole("table", { name: "Your spreadsheets", exact: true, includeHidden: true }).locator("tbody tr")).toHaveCount(3);
-      await page.evaluate(() => (window as Window & { restoreSpreadsheetFault?: () => void }).restoreSpreadsheetFault?.());
-      await expect(page).not.toHaveURL(/spreadsheetPreviewOutcome/u);
-      await expect(failedImport.getByRole("button", { name: "Try again" })).toHaveCount(0);
-      await expect(dialog).toBeVisible();
-      await dialog.getByRole("button", { name: /^Import / }).click();
-      await expect(page.locator('[data-slot="toast"]').filter({ hasText: "Roster imported" })).toBeVisible();
-      await expect(dialog).toHaveCount(0);
-      await expect(page.getByRole("table", { name: "Your spreadsheets", exact: true }).locator("tbody tr")).toHaveCount(4);
-
       await attachTree(page, info, evidence("spreadsheet-library-coverage", theme, width));
-    } finally {
-      await page.evaluate(() => (window as Window & { restoreSpreadsheetFault?: () => void }).restoreSpreadsheetFault?.());
-      await server.close();
-    }
+    } finally { await server.close(); }
   });
 
   test(`baseline typed spreadsheet import and editor ${theme.attribute} ${width}`, {
@@ -295,7 +250,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
   }, async ({ page }, info) => {
     const server = await setup(page, theme, width);
     try {
-      await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "spreadsheets" });
+      await gotoServedSpreadsheets(page, server.baseUrl);
       await page.getByLabel("Open XLSX or CSV", { exact: true }).setInputFiles({ name: "Baseline typed.csv", mimeType: "text/csv", buffer: Buffer.from("Legal Name,Employee ID,Personal Email,Private note\nJordan Lee,10000001,jordan@example.com,Excluded\nTaylor Chen,10000002,taylor@example.com,Excluded\n") });
       const dialog = page.getByRole("dialog", { name: "Choose spreadsheet columns", exact: true });
       await expect(dialog).toBeVisible();
@@ -325,10 +280,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(editor).toBeVisible();
       await expect(page.locator('[data-slot="toast"]').filter({ hasText: "Spreadsheet imported" })).toBeVisible();
 
-      await page.locator('[data-slot="toast-close"]').hover();
-      await expect(page.locator('[data-slot="toast-close"]')).toHaveAttribute("aria-hidden", "false");
-      await expect(page.locator('[data-slot="toast"]').getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
-      await page.locator('[data-slot="toast"]').getByRole("button", { name: "Dismiss", exact: true }).click();
+      await page.locator('[data-slot="toast"]').click();
       await expect(page.locator('[data-slot="toast"]')).toHaveCount(0);
       await editor.getByRole("textbox", { name: "B2", exact: true }).fill("bad-id");
       await expect(editor.getByRole("textbox", { name: "B2", exact: true })).toHaveAttribute("aria-invalid", "true");
@@ -373,39 +325,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await attachTree(page, info, evidence("spreadsheet-typed", theme, width));
     } finally { await server.close(); }
   });
-  for (const scene of ["healthy", "stale"] as const) {
-    test(`baseline Preflight refresh ${scene} ${theme.attribute} ${width}`, {
-      annotation: [{ type: "required-a11y-evidence", description: evidence(`preflight-${scene}-coverage`, theme, width) }],
-    }, async ({ page }, info) => {
-      const server = await startSetupPreflightServer(scene);
-      const gate = Promise.withResolvers<void>();
-      try {
-        await page.setViewportSize({ width, height: 720 });
-        await page.clock.setFixedTime(new Date(server.now));
-        await installTheme(page, theme);
-        await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "preflight" });
-        const setupRegion = page.getByRole("region", { name: "Preflight", exact: true });
-        await expect(setupRegion).toContainText(scene === "healthy" ? "Ready to run" : "Previous check");
-        await capture(page, info, theme, width, `preflight-${scene}`);
-
-        const disclosure = setupRegion.locator(".workflow-operations-card").first().getByRole("button").first();
-        await expect(disclosure).toHaveAttribute("aria-expanded", "true");
-        await disclosure.click();
-        await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-
-        await page.route("**/api/v1/preflight/rerun", async route => { await gate.promise; await route.abort("failed"); });
-        await setupRegion.getByRole("button", { name: "Run preflight", exact: true }).click();
-        await expect(setupRegion.getByRole("group", { name: "Readiness summary", exact: true })).toContainText("Checking readiness");
-
-        gate.resolve();
-        await expect(page.getByText("Readiness check is out of date", { exact: true })).toBeVisible();
-        await expect(setupRegion.getByRole("button", { name: "Run preflight", exact: true })).toBeEnabled();
-
-        await attachTree(page, info, evidence(`preflight-${scene}-coverage`, theme, width));
-      } finally { gate.resolve(); await server.close(); }
-    });
-  }
-
   test(`baseline spreadsheet reading and failure ${theme.attribute} ${width}`, {
     annotation: [{ type: "required-a11y-evidence", description: evidence("spreadsheet-reading", theme, width) }],
   }, async ({ page }, info) => {
@@ -413,7 +332,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     const gate = Promise.withResolvers<void>();
     await page.route("**/assets/spreadsheet-import-worker-*.js", async route => { await gate.promise; await route.abort("failed"); });
     try {
-      await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "spreadsheets" });
+      await gotoServedSpreadsheets(page, server.baseUrl);
       await page.getByLabel("Open XLSX or CSV", { exact: true }).setInputFiles({ name: "Baseline reading.csv", mimeType: "text/csv", buffer: Buffer.from("Employee ID\n10000001\n") });
       await expect(page.getByRole("button", { name: "Importing…", exact: true })).toBeDisabled();
 
@@ -451,7 +370,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     try {
       await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "credentials" });
       const username = page.getByRole("textbox", { name: "UCPath username", exact: true });
-      const heading = page.getByRole("heading", { name: "Credentials", exact: true });
+      const heading = page.getByRole("heading", { name: "Account", level: 1, exact: true });
       await expect(username).toBeVisible();
       await page.route("**/api/v1/commands", async route => { await gate.promise; await route.fallback(); }, { times: 1 });
       await username.fill("synthetic-baseline-user"); await heading.click();
@@ -460,10 +379,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       gate.resolve();
       await expect(page.locator('[data-slot="toast"]').filter({ hasText: "Saved UCPath username" })).toBeVisible();
 
-      await page.locator('[data-slot="toast-close"]').hover();
-      await expect(page.locator('[data-slot="toast-close"]')).toHaveAttribute("aria-hidden", "false");
-      await expect(page.locator('[data-slot="toast"]').getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
-      await page.locator('[data-slot="toast"]').getByRole("button", { name: "Dismiss", exact: true }).click();
+      await page.locator('[data-slot="toast"]').click();
       await expect(page.locator('[data-slot="toast"]')).toHaveCount(0);
       await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 

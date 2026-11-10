@@ -1,3 +1,4 @@
+import { setSwitchChecked } from "./helpers/switch-choice.js";
 import { workflowReferenceId } from "./helpers/workflow-reference-id.js";
 import { capturePresentationReference } from "./helpers/presentation-reference.js";
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
@@ -64,7 +65,7 @@ for (const theme of PARITY_THEMES) test(`OnBase document type selection and revi
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       const review = recordsDialog(page).getByRole("region", { name: "OCR records", exact: true });
       if (type === "Oath") await expect(review.getByRole("textbox", { name: "Printed name", exact: true })).toBeVisible();
-      else if (type === "Emergency Contact") await expect(review.getByRole("textbox", { name: "Contact name", exact: true })).toBeVisible();
+      else if (type === "Emergency Contact") await expect(review.getByRole("group", { name: "Emergency contact", exact: true }).getByRole("textbox", { name: "Name", exact: true })).toBeVisible();
       else {
         const section = type.endsWith("1") ? 1 : 2;
         await expect(review.getByRole("textbox", { name: `Section ${section} page`, exact: true })).toBeVisible();
@@ -106,7 +107,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await page.setViewportSize({ width, height: 720 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
-      await expect(rail.getByRole("button")).toHaveCount(14);
+      await expect(rail.getByRole("button")).toHaveCount(13);
       for (const flow of MOCK_WORKFLOWS.filter(item => item.id !== "ocr")) {
         await rail.getByRole("button", { name: "Onboarding", exact: true }).click();
         await page.getByRole("button", { name: "Start run", exact: true }).click();
@@ -154,10 +155,10 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await expect(dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true })).toHaveCount(0);
         await expect(dialog.getByText("Always on", { exact: true })).toBeVisible();
         const priority = dialog.getByRole("switch", { name: "Priority", exact: true });
-        await expect(priority).toBeChecked(); await priority.uncheck();
+        await expect(priority).toBeChecked(); await setSwitchChecked(priority, false);
         await dialog.getByRole("radio", { name: "Headless", exact: true }).press("Space");
         await expect(dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true })).toHaveCount(0);
-        await dialog.getByRole("switch", { name: "Customize steps", exact: true }).check();
+        await setSwitchChecked(dialog.getByRole("switch", { name: "Customize steps", exact: true }), true);
 
         if (flow.id === "onboarding") await attachScreenshotFile(page, info, "run-shared-options.png");
         await advance(dialog);
@@ -176,7 +177,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
             const box = stepRegion.getByRole("switch", { name: `${step.label} (required)`, exact: true });
             await expect(box).toBeDisabled(); await expect(box).toBeChecked();
           }
-        } else await stepRegion.getByRole("switch", { name: `Include ${optional.label}`, exact: true }).uncheck();
+        } else await setSwitchChecked(stepRegion.getByRole("switch", { name: `Include ${optional.label}`, exact: true }), false);
         if (optional !== undefined) for (const field of manualReadFields(flow.id, optional.key)) {
           const value = field.date ? "10/06/2026" : field.options ? field.options[0] : /employee id/iu.test(field.label) ? "10000001" : field.token === "$name" ? "Jordan Lee" : "None";
           const group = stepRegion.getByRole("group", { name: `Manual values for ${optional.label}`, exact: true });
@@ -292,17 +293,17 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await dialog.getByRole("textbox", { name: "Emails", exact: true }).fill("jordan.lee@example.com");
     await advance(dialog);
     await dialog.getByRole("radio", { name: "Rehire", exact: true }).press("Space");
-    await dialog.getByRole("switch", { name: "Customize steps", exact: true }).click();
+    await setSwitchChecked(dialog.getByRole("switch", { name: "Customize steps", exact: true }), true);
     await advance(dialog);
     await expect(dialog.getByRole("region", { name: "Steps", exact: true }).last()).toBeVisible();
     const stepChecks = dialog.getByRole("region", { name: "Steps", exact: true }).last().getByRole("switch");
     for (const checkbox of await stepChecks.all()) {
       if (await checkbox.isDisabled()) await expect(checkbox).toBeChecked();
-      else await checkbox.uncheck();
+      else await setSwitchChecked(checkbox, false);
     }
     await expect(startRun(dialog)).toBeDisabled();
     await dialog.getByRole("button", { name: "2 Options", exact: true }).click();
-    await dialog.getByRole("switch", { name: "Customize steps", exact: true }).uncheck();
+    await setSwitchChecked(dialog.getByRole("switch", { name: "Customize steps", exact: true }), false);
     await expect(dialog).toContainText("8 of 8 steps");
     await expect(dialog.getByText("Workflow plan", { exact: true })).toHaveCount(0);
     await startRun(dialog).click();

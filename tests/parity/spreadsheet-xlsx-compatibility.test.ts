@@ -22,10 +22,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     const captureSemanticEvidence = async (name: string) => { await attachShellA11y(page, info, `${name}-${theme.attribute}-${width}.a11y.yml`); };
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
-      await page.goto(`${server.baseUrl}/?settings=performance`);
+      await page.goto(`${server.baseUrl}/?fixture=hub-integration&settings=performance`);
       const personal = page.locator('.settings-nav-group').filter({ has: page.getByText('Personal', { exact: true }) });
       const help = page.locator('.settings-nav-group').filter({ has: page.getByText('Help', { exact: true }) });
-      await expect(personal.getByRole('link')).toHaveText(['General', 'Account']);
+      await expect(personal.getByRole('link')).toHaveText(['General', 'Account', 'Subscription']);
       await expect(page.locator('.settings-nav-group').filter({ has: page.getByText('Advanced', { exact: true }) })).toHaveCount(0);
       await expect(page.getByRole('textbox', { name: 'Task', exact: true })).toBeVisible();
 

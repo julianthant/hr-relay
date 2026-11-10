@@ -9,6 +9,7 @@ import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { installServedSurfaces } from "./helpers/app-driver.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const a11yName = `settings-save-toast-${theme.attribute}-${width}.a11y.yml`;
@@ -52,8 +53,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     let release: () => void = () => {};
     const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
     try {
+      await installServedSurfaces(page);
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
-      await page.goto(`${server.baseUrl}/?settings=performance`);
+      await page.goto(`${server.baseUrl}/?fixture=hub-integration&settings=performance`);
       const label = "Task";
       const task = page.getByRole("textbox", { name: "Task", exact: true });
       const toasts = page.locator('[data-slot="toast"]');
@@ -76,7 +78,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       // The save lock disables controls while the command settles; focus returns to the edited field afterwards.
       await expect(task).toBeFocused();
       const focusBeforeHover = await page.evaluate(() => ({ tag: document.activeElement?.tagName, id: document.activeElement?.id }));
-      await saved.locator('[data-slot="toast-close"]').hover();
+      await saved.hover();
       expect(await page.evaluate(() => ({ tag: document.activeElement?.tagName, id: document.activeElement?.id }))).toEqual(focusBeforeHover);
       await task.focus(); await expect(task).toBeFocused();
       expect(read().revision).toBe(2);
@@ -86,9 +88,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const tree = await page.locator("body").ariaSnapshot();
       info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(tree).digest("hex") });
       await info.attach(a11yName, { body: tree, contentType: "text/yaml" });
-      await expect(saved.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
-      await saved.getByRole("button", { name: "Dismiss", exact: true }).click(); await expect(toasts).toHaveCount(0);
-      await page.getByRole("link", { name: "Routes", exact: true }).click();
+      await saved.click(); await expect(toasts).toHaveCount(0);
+      await page.getByRole("link", { name: "General", exact: true }).click();
       await page.getByRole("searchbox", { name: "Search settings", exact: true }).fill("backoff");
       await page.getByRole("link", { name: "Backoff base Performance", exact: true }).click();
       await page.getByRole("searchbox", { name: "Search settings", exact: true }).fill("");
@@ -110,8 +111,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("heading", { name: "Account", exact: true }).click();
       await expect(toasts.filter({ hasText: "Saved UCPath username" })).toBeVisible();
       await expect(toasts).not.toContainText("synthetic-toast-user");
-      await toasts.locator('[data-slot="toast-close"]').hover(); await expect(toasts.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
-      await toasts.getByRole("button", { name: "Dismiss", exact: true }).click(); await expect(toasts).toHaveCount(0);
+      await toasts.click(); await expect(toasts).toHaveCount(0);
 
       await page.route("**/api/v1/commands", route => route.fulfill({ status: 403, json: { state: "error", code: "OPERATOR_MUTATION_ORIGIN_REFUSED", message: "private-server-sentinel", retryable: false } }), { times: 1 });
       await username.fill("private-refused-sentinel");
@@ -125,8 +125,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("button", { name: "Retry edit", exact: true }).click();
       await expect(toasts.filter({ hasText: "Saved UCPath username" })).toHaveCount(1);
       const savedUsername = toasts.filter({ hasText: "Saved UCPath username" });
-      await savedUsername.locator('[data-slot="toast-close"]').hover();
-      await savedUsername.getByRole("button", { name: "Dismiss", exact: true }).click();
+      await savedUsername.click();
       await expect(toasts).toHaveCount(0);
 
       await page.getByRole("link", { name: "Keyboard", exact: true }).click();
@@ -139,15 +138,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(toasts.filter({ hasText: "Saved Search runs shortcut" })).toBeVisible();
       await expect(page.locator(".shortcut-reference-row").filter({ hasText: "Search runs" }).locator("kbd")).toHaveText("g");
       expect(await page.evaluate(() => localStorage.getItem("hr-gpt-shortcuts-v2"))).toBeNull();
-      await toasts.locator('[data-slot="toast-close"]').hover(); await expect(toasts.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
-      await toasts.getByRole("button", { name: "Dismiss", exact: true }).click(); await expect(toasts).toHaveCount(0);
+      await toasts.click(); await expect(toasts).toHaveCount(0);
 
       await page.getByRole("link", { name: "Spreadsheets", exact: true }).click();
       await page.getByLabel("Open XLSX or CSV", { exact: true }).setInputFiles({ name: "typed-records.csv", mimeType: "text/csv", buffer: Buffer.from("Employee ID,Legal Name,Personal Email\n10000001,Jordan Lee,jordan@example.com\n") });
       await page.getByRole("button", { name: "Import selected columns", exact: true }).click();
       await expect(toasts.filter({ hasText: "Spreadsheet imported" })).toBeVisible();
-      await toasts.locator('[data-slot="toast-close"]').hover(); await expect(toasts.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
-      await toasts.getByRole("button", { name: "Dismiss", exact: true }).click(); await expect(toasts).toHaveCount(0);
+      await toasts.click(); await expect(toasts).toHaveCount(0);
       await page.getByRole("textbox", { name: "A2", exact: true }).fill("10000002");
       await expect(page.getByText(/Edited copy/u)).toBeVisible(); await expect(toasts).toHaveCount(0);
       await page.getByRole("button", { name: "Export copy", exact: true }).click();

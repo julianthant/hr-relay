@@ -15,7 +15,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920, 
     page.on('request', request => { if (request.method() !== 'GET') writes.push(new URL(request.url()).pathname); });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
-      await page.goto(`${server.baseUrl}/?settings=spreadsheets`);
+      await page.goto(`${server.baseUrl}/?fixture=hub-integration&settings=spreadsheets`);
       const content = 'Student applicants,,,,,\nOctober,,,,,\nLegal Name,UCPath ID,Personal Email,Transaction #,I9 Profile,Private note\nJordan Lee,10000001,jordan@example.com,T1234,123456,Excluded value\nTaylor Chen,Pending,taylor@example.com,T5678,1234567,Excluded value';
       await page.getByLabel('Open XLSX or CSV', { exact: true }).setInputFiles({ name: 'Fictional roster.csv', mimeType: 'text/csv', buffer: Buffer.from(content) });
       const dialog = page.getByRole('dialog', { name: 'Choose spreadsheet columns', exact: true });

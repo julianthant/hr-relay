@@ -80,9 +80,11 @@ for (const viewport of VIEWPORTS) {
 
     await page.getByRole("button", { name: "Run next" }).first().click();
     const toast = page.locator("[data-ds-toast-viewport='default']");
-    await expect(toast.locator("[data-slot='toast']")).toBeVisible();
-    await expect(toast.locator("[data-slot='toast']")).not.toHaveAttribute("data-starting-style", "");
-    await expect(toast.locator("[data-slot='toast']")).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+    // Run next raises the outcome toast and a command-result toast; the first painted card is measured.
+    const card = toast.locator("[data-slot='toast']").first();
+    await expect(card).toBeVisible();
+    await expect(card).not.toHaveAttribute("data-starting-style", "");
+    await expect(card).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
 
     const geometry = await measureToastFloor(page);
     const evidence = formatGeometry(geometry);

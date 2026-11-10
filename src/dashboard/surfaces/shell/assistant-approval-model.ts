@@ -2,9 +2,12 @@ import { useSyncExternalStore } from "react";
 import { mockParam } from "../../app/mock-surfaces.js";
 
 /** Settings > General > Permissions > Full access: when on, the composer's approval menu offers Full access. `assistantFullAccess=1` starts it on. */
-let allowed = mockParam("assistantFullAccess") === "1";
+let allowed: boolean | undefined;
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+
+/** Read on first use: the parity harness sets its flag after the modules load. */
+const current = () => allowed ??= mockParam("assistantFullAccess") === "1";
 
 export function setFullAccessAllowed(next: boolean): void {
   allowed = next;
@@ -12,5 +15,5 @@ export function setFullAccessAllowed(next: boolean): void {
 }
 
 export function useFullAccessAllowed(): boolean {
-  return useSyncExternalStore(subscribe, () => allowed, () => false);
+  return useSyncExternalStore(subscribe, current, () => false);
 }

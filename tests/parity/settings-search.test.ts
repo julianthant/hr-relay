@@ -3,6 +3,7 @@ import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
+import { installServedSurfaces } from "./helpers/app-driver.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
 import { buildSettingsNav } from "../../src/dashboard/surfaces/settings/settings-model.js";
@@ -15,6 +16,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET") writes.push(new URL(request.url()).pathname); });
     try {
+      await installServedSurfaces(page);
       await page.setViewportSize({ width, height: 900 });
       await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?settings=general`);
@@ -25,7 +27,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(clear).toBeVisible();
       await expect(page.locator(".settings-search-result")).toHaveCount(2);
       await expect(page.getByRole("link", { name: "Backoff base Performance" })).toBeVisible();
-      await expect.poll(() => search.evaluate(element => getComputedStyle(element.parentElement!).boxShadow)).toBe("none");
+      await expect.poll(() => search.evaluate(element => getComputedStyle(element.parentElement!).boxShadow)).toMatch(/ 0px 0px 0px 1px inset$/u);
       await search.press("ArrowDown");
       await expect(page.getByRole("link", { name: "Backoff base Performance" })).toBeFocused();
       await page.keyboard.press("Enter");
@@ -88,7 +90,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         const field = page.getByLabel(label, { exact: true });
         await expect(field).toBeVisible();
         await field.fill(value);
-        await expect.poll(() => field.evaluate(element => getComputedStyle(element.parentElement!).boxShadow)).toBe("none");
+        await expect.poll(() => field.evaluate(element => getComputedStyle(element.parentElement!).boxShadow)).toMatch(/ 0px 0px 0px 1px inset$/u);
         const button = field.locator("xpath=../..").getByRole("button", { name: "Clear search" });
         await expect(button).toBeVisible();
         await expect(button.locator("svg")).toHaveCSS("width", "14px");
@@ -97,7 +99,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(field).toBeFocused();
         await expect(button).toHaveCount(0);
       }
-      await page.goto(`${server.baseUrl}/?settings=spreadsheets`);
+      await page.goto(`${server.baseUrl}/?fixture=hub-integration&settings=spreadsheets`);
       await expect(page.getByRole("searchbox", { name: "Find a spreadsheet", exact: true })).toHaveCount(0);
       const libraryOpen = page.getByRole("button", { name: "Open 26–27 Student applicants.xlsx", exact: true });
       await libraryOpen.focus(); await libraryOpen.press("Enter");
@@ -119,6 +121,7 @@ test(`Every indexed setting in ${section} resolves to a visible destination, inc
   test.setTimeout(90000);
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
+    await installServedSurfaces(page);
     await page.emulateMedia({ reducedMotion: "reduce" });
     for (const result of indexedTargets.filter(result => result.entry.id === section)) {
       await page.goto(`${server.baseUrl}/?${new URLSearchParams({ settings: result.entry.id, settingsTarget: result.target! })}`);
