@@ -47,8 +47,7 @@ function workbookSchema<Value extends z.ZodType>(value: Value) {
         || (sheet.headerRow !== undefined && sheet.headerRow > sheet.rows.length)) ctx.addIssue({ code: "custom", message: "invalid sheet dimensions or identity" });
       if (sheet.columnBindings !== undefined && (sheet.columnBindings.length !== sheet.width
         || !unique(sheet.columnBindings.map(binding => binding.id))
-        || !unique(sheet.columnBindings.flatMap(binding => binding.fieldId === null ? [] : [binding.fieldId]))
-        || sheet.columnBindings.some(binding => binding.basis === "unmapped" && binding.fieldId !== null))) ctx.addIssue({ code: "custom", message: "invalid column bindings" });
+        || !unique(sheet.columnBindings.flatMap(binding => binding.fieldId === null || binding.basis === "unmapped" ? [] : [binding.fieldId])))) ctx.addIssue({ code: "custom", message: "invalid column bindings" });
     }
     const sizeIssue = workbookSizeIssue(populatedCells, cells);
     if (sizeIssue) ctx.addIssue({ code: "custom", message: sizeIssue });
@@ -197,8 +196,8 @@ const WorkbookSelectedRowReferenceRequestBaseSchema = z.strictObject({ typeId: W
   versionId: WorkbookIdSchema.optional(), selectedRow: z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema }).optional(),
   keys: z.array(z.string().min(1)), fields: z.array(FieldSchema) });
 export const WorkbookSelectedRowReferenceRequestSchema = WorkbookSelectedRowReferenceRequestBaseSchema.refine(request => request.selectedRow === undefined
-  || (request.libraryId !== undefined && request.versionId !== undefined && request.keys.length === 1),
-{ message: 'selected workbook rows require an explicit library, version and one lookup key' });
+  || (request.libraryId !== undefined && request.versionId !== undefined && request.keys.length >= 1),
+{ message: 'selected workbook rows require an explicit library and version' });
 export const WorkbookSelectedRowReferenceSnapshotSchema = z.strictObject({ libraryId: WorkbookIdSchema, version: z.number().int().positive(),
   versionId: WorkbookIdSchema.optional(), versionName: NameSchema.optional(),
   worksheets: z.array(z.strictObject({ sheetId: WorkbookIdSchema, name: NameSchema })).min(1),

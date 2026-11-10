@@ -50,7 +50,7 @@ export function createOnboardingRunWorld() {
   const managers: Awaited<ReturnType<typeof sessionManagerFor>>[] = [];
   const fixtureProfiles = createProfileFixtureSet();
   const world = createCommandKernelTestWorld(fixtureProfiles.create);
-  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean } = {}) {
+  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other" } = {}) {
     const h = await world.createHarness(undefined, { descriptors: [descriptor], publishQueued: (run, publication) => {
       assert.ok(publication);
       createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
@@ -74,6 +74,10 @@ export function createOnboardingRunWorld() {
     repository.putType({ id: "onboarding-roster", name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
     library.operatorOperation(saved.libraryId, "declare-type", { kind: "metadata", expectedVersion: 1,
       metadata: { typeId: "onboarding-roster", sharePoint: null } });
+    const second = options.second === undefined ? undefined : library.create({ name: "Other roster.xlsx", themes: [], hasFormulas: false,
+      sheets: [sheet("people", options.second === "same" ? (match === "missing" ? "other@example.test" : key) : "elsewhere@example.test"), sheet("archive", "other@example.test")] });
+    if (second !== undefined) library.operatorOperation(second.libraryId, "declare-type", { kind: "metadata", expectedVersion: 1,
+      metadata: { typeId: "onboarding-roster", sharePoint: null } });
     const config = h.database.authority.runtimeConfig.get(); assert.ok(config);
     let snapshots = 0;
     const planner = createStartPlanService({ authority: h.database, authorityRead: h.database, clock: h.clock, ids: h.plannerIds,
@@ -84,7 +88,8 @@ export function createOnboardingRunWorld() {
       versionId: library.libraryVersion(saved.libraryId).version.id, sheetId: "people", expectedVersion: 2,
       ...(options.selectedRow ? { selectedRow: { sheetId: "people", rowId: "people-person" } } : {}) };
     const request = { workflowId: descriptor.id, submissions: [{ email: key, mode: options.mode ?? "new-hire", configuredJobEndDate: "06/30/2027" }],
-      dryRun: options.dryRun ?? false, workbookReferences: [selection] };
+      dryRun: options.dryRun ?? false, workbookReferences: second === undefined ? [selection]
+        : [selection, { entry: 1, libraryId: second.libraryId, versionId: library.libraryVersion(second.libraryId).version.id, sheetId: "people", expectedVersion: 2 }] };
     const plan = (value: unknown = request) => {
       const wire = planner.plan(value), record = h.database.authority.startPlans.get(wire.startPlanId); assert.ok(record); return record;
     };
@@ -121,21 +126,24 @@ export function createOnboardingRunWorld() {
       const current = h.database.authority.runs.get(run.envelope.runId); assert.ok(current);
       return buildRunWorkbookSection(h.database.authority, current);
     };
-    const choice = (run: RunRecord) => {
+    const choice = (run: RunRecord, index = 0) => {
       const resolution = section(run).referenceChoices?.[0]?.resolution;
       assert.ok(resolution?.state === "available");
+      const candidate = resolution.candidates[index]; assert.ok(candidate);
       return CommandRequestSchema.parse({ commandId: world.nextCommandId(), requestedAt: h.clock.now().toISOString(),
         requestedBy: "local-operator", source: "run-detail", family: "run", type: "resolve-workbook-reference-row",
-        target: resolution.target, payload: { sheetId: resolution.candidates[0].sheetId, rowId: resolution.candidates[0].rowId } });
+        target: resolution.target, payload: { sheetId: candidate.sheetId, rowId: candidate.rowId,
+          ...(candidate.referenceDigest === undefined || candidate.workbookVersion === undefined ? {}
+            : { referenceDigest: candidate.referenceDigest, workbookVersion: candidate.workbookVersion }) } });
     };
-    return { ...h, profilePath, key, library, repository, id: saved.libraryId, selection, request, plan, start, edit, park, section, choice,
+    return { ...h, profilePath, key, library, repository, id: saved.libraryId, secondId: second?.libraryId, selection, request, plan, start, edit, park, section, choice,
       snapshots: () => snapshots };
   }
 
   type ExecutionFault = "gate-missing" | "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
 
   async function executionFixture(corruptAssertedSubject = false, options: {
-    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean;
+    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other";
     personMatch?: z.output<typeof SearchPersonMatchOutputSchema>;
     hire?: Omit<Parameters<typeof deterministicHireOperations>[0], "now">;
     i9?: Partial<Omit<Parameters<typeof createDeterministicI9Driver>[0], "now">>;

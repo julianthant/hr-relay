@@ -147,8 +147,7 @@ export const WorkbookActiveSnapshotRequestSchema = z.strictObject({
     || new Set(request.writableFields).size !== request.writableFields.length
     || request.writableFields.some(field => !request.fields.includes(field))
     || request.mode === "all" && request.keys.length !== 0
-    || request.selectedRow !== undefined && (request.mode !== "keys" || request.keys.length !== 1
-      || request.selectedRow.sheetId !== request.sheetId)) {
+    || request.selectedRow !== undefined && (request.mode !== "keys" || request.selectedRow.sheetId !== request.sheetId)) {
     context.addIssue({ code: "custom", message: "invalid selected workbook source request" });
   }
 });

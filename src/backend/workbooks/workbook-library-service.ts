@@ -14,7 +14,7 @@ import { sha256Hex } from "../../rules/validation/sha256.js";
 import { WorkbookLibraryError } from "./workbook-library-error.js";
 import { workbookKey, workbookMatches } from "./master-changes.js";
 import { projectWorkbookCompatibility, workbookFieldCoverage, WorkbookActiveSnapshotRequestSchema, WorkbookResultsSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema, type WorkflowWorkbookSelectionRecord, type WorkbookLibraryActionRecord, type WorkbookLibraryActionResult, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema, type WorkflowWorkbookRequirementInput } from "../../models/dashboard/workbook-library.js";
-import { MAX_WORKBOOK_GRID_CELLS, MAX_WORKBOOK_POPULATED_CELLS, populatedSpreadsheetValue } from "../../rules/spreadsheets/workbook-size.js";
+import { MAX_SELECTED_WORKBOOK_SOURCES, MAX_WORKBOOK_GRID_CELLS, MAX_WORKBOOK_POPULATED_CELLS, populatedSpreadsheetValue } from "../../rules/spreadsheets/workbook-size.js";
 import type { EditableWorkbookWire } from "../../models/dashboard/workbooks.js";
 
 export interface WorkbookLibraryRepository {
@@ -80,7 +80,7 @@ export function createWorkbookReferenceCapture(repository: WorkbookLibraryReposi
       if (sheet === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
       for (const row of sheet.rows) for (const cell of row.cells) if (populatedSpreadsheetValue(cell.value)) selectedPopulatedCells++;
       selectedGridCells = sheet.rows.length * sheet.width;
-      if (sources.size >= 32 || populatedCells + selectedPopulatedCells > MAX_WORKBOOK_POPULATED_CELLS
+      if (sources.size >= MAX_SELECTED_WORKBOOK_SOURCES || populatedCells + selectedPopulatedCells > MAX_WORKBOOK_POPULATED_CELLS
         || gridCells + selectedGridCells > MAX_WORKBOOK_GRID_CELLS) throw new WorkbookLibraryError("WORKBOOK_CAPTURE_LIMIT_EXCEEDED");
       const currentSheet = current.workbook.sheets.find(candidate => candidate.id === sheet.id);
       source = { name: entry.name, currentVersion: current.version, selectedVersionId: entry.state.selectedVersionId,

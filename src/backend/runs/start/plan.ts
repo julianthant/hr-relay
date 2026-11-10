@@ -33,8 +33,9 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { bindRunWorkbookReference, parseRunWorkbookReference, type WorkbookReferenceLookup } from "../../../models/dashboard/workbooks.js";
 import type { WorkbookLibraryService } from "../../workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
+import { MAX_SELECTED_WORKBOOK_SOURCES } from "../../../rules/spreadsheets/workbook-size.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import type { z } from "zod";
+import { z } from "zod";
 import { workbookInputBinding } from "../workbooks.js";
 
 
@@ -181,7 +182,9 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       || lookups.some(lookup => lookup.typeId !== requirement?.id)) {
       refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
     }
-    if (references.length !== (requirement === undefined ? 0 : 1)) {
+    const sourceIdentity = (selection: typeof references[number]) => JSON.stringify([selection.libraryId, selection.versionId, selection.sheetId]);
+    if ((requirement === undefined ? references.length !== 0 : references.length < 1 || references.length > MAX_SELECTED_WORKBOOK_SOURCES)
+      || new Set(references.map(sourceIdentity)).size !== references.length) {
       refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
     }
     let workbookReferences: SchemaBoundCanonicalValue[] | undefined;
@@ -193,10 +196,10 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
           if (lookup === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
           if (selection.selectedRow !== undefined) {
             const capability = descriptor.surfaces.inputRun?.workbookRows;
+            const fields = z.record(z.string(), z.unknown()).safeParse(parsed).data;
+            const inputKey = z.string().safeParse(capability === undefined || fields === undefined ? undefined : fields[capability.inputField]).data;
             if (capability === undefined || requirement === undefined || capability.typeId !== requirement.id
-              || "mode" in lookup || lookup.keys.length !== 1
-              || parsed === null || typeof parsed !== "object"
-              || Reflect.get(parsed, capability.inputField) !== lookup.keys[0]) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+              || "mode" in lookup || inputKey === undefined || !lookup.keys.includes(inputKey)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
           }
           if (requirement === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
           const reference = { ...lookup, libraryId: selection.libraryId, versionId: selection.versionId,

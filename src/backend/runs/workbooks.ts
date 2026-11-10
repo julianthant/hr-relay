@@ -28,7 +28,7 @@ import type { AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
 import { WorkbookReferenceReadRequestSchema } from "../../models/processing/workbooks/read-reference.js";
 import { OnboardingCanonicalInput, OnboardingCanonicalValueSchema, OnboardingInput } from "../../models/workflows/onboarding/input.js";
 import { ONBOARDING_ROSTER_GATE_ID, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterChoiceSchema } from "../../models/workflows/onboarding/roster.js";
-import { bindOnboardingRoster, onboardingRosterRow } from "../../rules/onboarding/roster.js";
+import { bindOnboardingRosterSources, onboardingRosterRow } from "../../rules/onboarding/roster.js";
 import { deriveGateResultCheckpointFingerprint, type GateResultRecord } from "../../models/workflow/gates.js";
 import { readRunCheckpoint, readContinuationGate, validateRunContinuation } from "../storage/sqlite/run-continuation.js";
 import { rejectCommandRequest } from "./commands/command-refusal.js";
@@ -54,15 +54,18 @@ const onboardingInputBinding = Object.freeze({
   bind(input: unknown, references: readonly SchemaBoundCanonicalValue[] | undefined, capturedAt: string) {
     if (input === null || typeof input !== "object" || Array.isArray(input)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
     const email = OnboardingInput.shape.email.parse(Reflect.get(input, "email"));
-    const reference = references?.[0];
-    if (reference === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-    const retained = parseRunWorkbookReference(reference);
-    if ("mode" in retained.request) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-    const selection = "selectedRow" in retained.request ? retained.request.selectedRow : undefined;
-    const selectedEmail = selection === undefined ? email : OnboardingInput.shape.email.parse(retained.snapshot.rows
-      .flatMap(row => row.matches).find(match => match.sheetId === selection.sheetId && match.rowId === selection.rowId)?.values.email);
-    if (selectedEmail !== email) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-    return { ...input, email: selectedEmail, roster: bindOnboardingRoster(reference, selectedEmail, capturedAt) };
+    if (references === undefined || references.length === 0) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    if (references.length === 1) {
+      const retained = parseRunWorkbookReference(references[0]);
+      if ("mode" in retained.request) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+      const selection = "selectedRow" in retained.request ? retained.request.selectedRow : undefined;
+      const selectedEmail = selection === undefined ? email : OnboardingInput.shape.email.parse(retained.snapshot.rows
+        .flatMap(row => row.matches).find(match => match.sheetId === selection.sheetId && match.rowId === selection.rowId)?.values.email);
+      if (selectedEmail !== email) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+      return { ...input, email: selectedEmail, roster: bindOnboardingRosterSources(references, selectedEmail, capturedAt) };
+    }
+    if (references.some(reference => "selectedRow" in parseRunWorkbookReference(reference).request)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    return { ...input, email, roster: bindOnboardingRosterSources(references, email, capturedAt) };
   },
 });
 const ocrInputBinding = Object.freeze({
@@ -100,14 +103,19 @@ function references(run: RunRecord): readonly Readonly<{ value: Reference; diges
     value: parseRunWorkbookReference(bound),
     digest: sha256Hex(canonicalJsonStringify(bound)), bound,
   }));
-  if (new Set(parsed.map(reference => reference.value.request.typeId)).size !== parsed.length) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  const identity = (reference: Reference) => {
+    const versionId = "versionId" in reference.snapshot ? reference.snapshot.versionId : "";
+    return JSON.stringify([reference.snapshot.libraryId, versionId, reference.snapshot.worksheets.map(sheet => sheet.sheetId)]);
+  };
+  if (new Set(parsed.map(reference => identity(reference.value))).size !== parsed.length) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   return parsed;
 }
 
 function referenceFor(run: RunRecord, typeId: string) {
-  const found = references(run).find(reference => reference.value.request.typeId === typeId);
-  if (found === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-  return found;
+  const found = references(run).filter(reference => reference.value.request.typeId === typeId);
+  const only = found[0];
+  if (found.length !== 1 || only === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+  return only;
 }
 
 function referenceOfOperation(run: RunRecord, entry: WorkbookOperationRecord) {
@@ -183,7 +191,8 @@ function liveCandidates(repositories: AuthorityRepositories, reference: Referenc
     const capturedSheet = reference.snapshot.worksheets[0];
     const state = repositories.workbooks.libraryState(reference.snapshot.libraryId);
     if (record === undefined || capturedSheet === undefined
-      || state.removed || state.selectedVersionId !== reference.snapshot.versionId) {
+      || state.removed || state.selectedVersionId !== reference.snapshot.versionId
+      || repositories.workbooks.metadata(reference.snapshot.libraryId).typeId !== reference.snapshot.type.id) {
       throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
     }
     const sheet = encodeSavedWorkbook(record).workbook.sheets.find(item => item.id === capturedSheet.sheetId);
@@ -254,11 +263,13 @@ function onboardingReference(run: RunRecord) {
   if (run.envelope.workflow !== "onboarding") throw new WorkbookLibraryError("WORKBOOK_INVALID");
   const input = parseCanonicalInputSnapshot(OnboardingCanonicalInput, run.input.parsed);
   const roster = OnboardingCanonicalValueSchema.parse(input).roster;
-  const reference = referenceFor(run, ONBOARDING_ROSTER_TYPE_ID);
+  const group = references(run).filter(reference => reference.value.request.typeId === ONBOARDING_ROSTER_TYPE_ID);
+  if (group.length === 0) throw new WorkbookLibraryError("WORKBOOK_INVALID");
   const binding = roster.state === "resolved" ? roster.row.binding : roster.binding;
-  if (canonicalJsonStringify(bindOnboardingRoster(reference.bound, input.email, binding.capturedAt))
+  if (canonicalJsonStringify(bindOnboardingRosterSources(group.map(reference => reference.bound), input.email, binding.capturedAt))
     !== canonicalJsonStringify(roster)) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
-  return { roster, reference, binding };
+  const reference = group.find(candidate => candidate.digest === binding.referenceDigest) ?? group[0];
+  return { roster, reference, group, binding };
 }
 
 function referenceNative(run: RunRecord, record: TimelineEventRecord | undefined) {
@@ -328,7 +339,7 @@ function pendingReferenceNative(repositories: AuthorityRepositories, run: RunRec
 }
 
 export function authenticateOnboardingRosterChoice(repositories: AuthorityRepositories, run: RunRecord, gate: GateResultRecord) {
-  const { roster, reference, binding } = onboardingReference(run);
+  const { roster, reference, group, binding } = onboardingReference(run);
   const row = schemaBoundValueSchema(OnboardingRosterChoiceSchema, deriveSchemaHash(OnboardingRosterChoiceSchema, "output")).parse(gate.result).value.row;
   const command = "commandId" in gate ? repositories.commands.get(gate.commandId) : undefined;
   const audit = "commandId" in gate ? repositories.commandAudits.findByCommand(gate.commandId) : undefined;
@@ -347,12 +358,15 @@ export function authenticateOnboardingRosterChoice(repositories: AuthorityReposi
     || gate.checkpointFingerprint !== deriveGateResultCheckpointFingerprint(gate.result)
     || command?.family !== "run" || command.type !== "resolve-workbook-reference-row"
     || command.target.runId !== gate.runId || command.target.gateId !== gate.gateId || command.target.expectedVersion !== gate.expectedVersion
-    || command.requestedBy !== gate.resolvedBy || command.target.referenceDigest !== reference.digest
+    || command.requestedBy !== gate.resolvedBy || command.target.referenceDigest !== binding.referenceDigest
     || command.target.libraryId !== binding.workbookId || command.target.typeId !== binding.workbookType || command.target.key !== binding.rowKey.email
-    || row.binding.referenceDigest !== reference.digest || row.binding.workbookId !== binding.workbookId || row.binding.workbookType !== binding.workbookType
-    || row.binding.rowKey.email !== binding.rowKey.email || row.binding.workbookVersion !== command.target.workbookVersion
+    || row.binding.referenceDigest !== (command.payload.referenceDigest ?? reference.digest)
+    || !group.some(candidate => candidate.digest === row.binding.referenceDigest && candidate.value.snapshot.libraryId === row.binding.workbookId
+      && candidate.value.snapshot.worksheets.some(sheet => sheet.sheetId === row.binding.sheetId))
+    || row.binding.workbookType !== binding.workbookType
+    || row.binding.rowKey.email !== binding.rowKey.email
+    || row.binding.workbookVersion !== (command.payload.workbookVersion ?? command.target.workbookVersion)
     || row.binding.capturedAt !== gate.resolvedAt || row.binding.sheetId !== command.payload.sheetId || row.binding.rowId !== command.payload.rowId
-    || !reference.value.snapshot.worksheets.some(sheet => sheet.sheetId === row.binding.sheetId)
     || audit?.result.state !== "applied" || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)) {
     throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   }
@@ -486,6 +500,7 @@ const FIELD_LABELS: Readonly<Record<string, string>> = { email: "Email", firstNa
   "roster.livedFirstName": "Lived first name", "roster.livedLastName": "Lived last name", "roster.livedMiddleName": "Lived middle name" };
 
 type PickCandidate = Readonly<{ sheetId: string; rowId: string; label: string; rowNumber?: number;
+  referenceDigest?: string; workbookVersion?: number;
   values?: z.infer<typeof WorkbookReferenceRowCandidateWireSchema>["values"] }>;
 
 /** D3 / D11: confirm one served candidate row. A typed row number is offered only when every candidate's row number is known and unique. */
@@ -498,7 +513,8 @@ export function rowPickDecision(type: "pick-row" | "workbook-row", title: string
     input: { kind: "candidate", table: {
       title,
       columns: [{ id: "row", label: "Row" }, ...fields.map(fieldId => ({ id: fieldId, label: FIELD_LABELS[fieldId] ?? fieldId }))],
-      rows: candidates.map(candidate => ({ id: `${candidate.sheetId}/${candidate.rowId}`, name: candidate.label, sheetId: candidate.sheetId, rowId: candidate.rowId,
+      rows: candidates.map(candidate => ({ id: candidate.referenceDigest === undefined ? `${candidate.sheetId}/${candidate.rowId}` : `${candidate.referenceDigest}/${candidate.sheetId}/${candidate.rowId}`,
+        name: candidate.label, sheetId: candidate.sheetId, rowId: candidate.rowId,
         ...(candidate.rowNumber === undefined ? {} : { rowNumber: candidate.rowNumber }),
         cells: [{ columnId: "row", value: candidate.label }, ...(candidate.values ?? []).map(({ fieldId, value }) => ({ columnId: fieldId, value: value === null ? "" : typeof value === "object" ? value.value : String(value) }))] })),
       ...(typed ? { typed: { label: "Enter row number", placeholder: "Row number", pattern: "^[1-9]\\d*$" } } : {}),
@@ -593,7 +609,7 @@ function resolveCrmReference(repositories: AuthorityRepositories, run: RunRecord
 function buildReferenceChoices(repositories: AuthorityRepositories, run: RunRecord, answer: DecisionAnswerer | undefined) {
   if (crmReferenceWorkflows.has(run.envelope.workflow)) return buildCrmReferenceChoices(repositories, run, answer);
   if (run.envelope.workflow !== "onboarding") return [];
-  const { roster, reference, binding } = onboardingReference(run);
+  const { roster, reference, group, binding } = onboardingReference(run);
   if (roster.state === "resolved") return [];
   const base = { libraryId: binding.workbookId, typeId: binding.workbookType, referenceDigest: reference.digest,
     key: binding.rowKey.email, reason: roster.reason };
@@ -614,29 +630,39 @@ function buildReferenceChoices(repositories: AuthorityRepositories, run: RunReco
     const label = `${sheet.name} · ${legalName.lastName}, ${legalName.firstName}`;
     return [{ ...base, native: choice.gate.runId === run.envelope.runId ? choice.native : queuedReferenceNative(repositories, run),
       resolution: { state: "resolved", workbookVersion: row.binding.workbookVersion, resolvedAt: choice.gate.resolvedAt,
-      selected: { sheetId: row.binding.sheetId, rowId: row.binding.rowId, label, values },
+      selected: { sheetId: row.binding.sheetId, rowId: row.binding.rowId, label, values,
+        ...(group.length > 1 ? { referenceDigest: row.binding.referenceDigest, workbookVersion: row.binding.workbookVersion } : {}) },
       ...(answer === undefined || "source" in choice.gate ? {} : { answer: answer(choice.gate.commandId, { id: "confirm", label }, choice.gate.resolvedAt) }) } }];
   }
   const native = pendingReferenceNative(repositories, run);
   if (run.lifecycle.state !== "parked-gate" || run.lifecycle.gateId !== ONBOARDING_ROSTER_GATE_ID) {
     return [{ ...base, native, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } }];
   }
-  let live: ReturnType<typeof liveCandidates>;
-  try { live = liveCandidates(repositories, reference.value, binding.rowKey.email); }
-  catch (cause) {
+  let picks: PickCandidate[];
+  let anchorVersion: number | undefined;
+  try {
+    picks = group.flatMap(member => {
+      const live = liveCandidates(repositories, member.value, binding.rowKey.email);
+      if (member.digest === reference.digest) anchorVersion = live.version;
+      const versionName = "versionName" in member.value.snapshot ? member.value.snapshot.versionName : undefined;
+      return live.candidates.map(match => {
+        onboardingRosterRow({ ...binding, workbookId: member.value.snapshot.libraryId, referenceDigest: member.digest, workbookVersion: live.version }, match);
+        return { sheetId: match.sheetId, rowId: match.rowId,
+          label: group.length > 1 && versionName !== undefined ? `${versionName} · ${match.label}` : match.label,
+          rowNumber: match.rowNumber,
+          ...(group.length > 1 ? { referenceDigest: member.digest, workbookVersion: live.version } : {}),
+          values: member.value.request.fields.map(fieldId => ({ fieldId, value: match.values[fieldId] })) };
+      });
+    });
+  } catch (cause) {
     if (!expectedSourceChange(cause)) throw cause;
     return [{ ...base, native, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } }];
   }
-  const picks = live.candidates.map(match => {
-    onboardingRosterRow({ ...binding, workbookVersion: live.version }, match);
-    return { sheetId: match.sheetId, rowId: match.rowId, label: match.label, rowNumber: match.rowNumber,
-      values: reference.value.request.fields.map(fieldId => ({ fieldId, value: match.values[fieldId] })) };
-  });
   const candidates = picks.map(({ rowNumber: _rowNumber, ...candidate }) => candidate);
-  if (candidates.length === 0) return [{ ...base, native, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } }];
+  if (candidates.length === 0 || anchorVersion === undefined) return [{ ...base, native, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } }];
   const target = { runId: run.envelope.runId, expectedVersion: run.version, libraryId: binding.workbookId,
     typeId: binding.workbookType, referenceDigest: reference.digest, key: binding.rowKey.email,
-    workbookVersion: live.version, gateId: ONBOARDING_ROSTER_GATE_ID };
+    workbookVersion: anchorVersion, gateId: ONBOARDING_ROSTER_GATE_ID };
   const action = ActionDescriptorWireSchema.parse({
     kind: "command", key: "resolve-workbook-reference-row", command: "resolve-workbook-reference-row", label: "Choose a roster row",
     intent: "primary", icon: "resolve", placement: ["review"], expectedVersion: run.version, referenceTarget: target,
@@ -705,23 +731,27 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
       }
       if (crmReferenceWorkflows.has(run.envelope.workflow)) return resolveCrmReference(repositories, run, command, capturedAt);
       if (command.target.gateId !== ONBOARDING_ROSTER_GATE_ID) rejectCommandRequest(command, "invalid-state", "The roster gate changed. Reload its row choice.");
-      const { roster, reference, binding } = onboardingReference(run);
-      if (roster.state !== "resolve-required" || command.target.libraryId !== binding.workbookId || command.target.typeId !== binding.workbookType
-        || command.target.referenceDigest !== reference.digest || command.target.key !== binding.rowKey.email) {
+      const { roster, group, binding } = onboardingReference(run);
+      const chosen = group.find(member => member.digest === (command.payload.referenceDigest ?? (group.length === 1 ? group[0]?.digest : undefined)));
+      if (roster.state !== "resolve-required" || chosen === undefined || command.target.libraryId !== binding.workbookId || command.target.typeId !== binding.workbookType
+        || command.target.referenceDigest !== binding.referenceDigest || command.target.key !== binding.rowKey.email
+        || (command.payload.referenceDigest === undefined) !== (group.length === 1)) {
         rejectCommandRequest(command, "invalid-state", "The captured roster reference changed.");
       }
       let live: ReturnType<typeof liveCandidates>;
-      try { live = liveCandidates(repositories, reference.value, binding.rowKey.email); }
+      try { live = liveCandidates(repositories, chosen.value, binding.rowKey.email); }
       catch (cause) {
         if (!(cause instanceof WorkbookLibraryError)) throw cause;
         rejectCommandRequest(command, "invalid-state", cause.message);
       }
       const selected = live.candidates.find(candidate => candidate.sheetId === command.payload.sheetId && candidate.rowId === command.payload.rowId);
-      if (live.version !== command.target.workbookVersion || selected === undefined) {
+      const expectedVersion = command.payload.workbookVersion ?? command.target.workbookVersion;
+      if (live.version !== expectedVersion || selected === undefined || group.length > 1 && command.payload.workbookVersion === undefined) {
         rejectCommandRequest(command, "invalid-state", "The live roster row changed. Reload its row choice.");
       }
       try {
-        const row = onboardingRosterRow({ ...binding, workbookVersion: live.version, capturedAt }, selected);
+        const row = onboardingRosterRow({ ...binding, workbookId: chosen.value.snapshot.libraryId, referenceDigest: chosen.digest,
+          workbookVersion: live.version, capturedAt }, selected);
         return { schemaHash: deriveSchemaHash(OnboardingRosterChoiceSchema, "output"), value: { decision: "selected" as const, row } };
       } catch (cause) {
         if (!(cause instanceof z.ZodError)) throw cause;
@@ -736,8 +766,8 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
           || Number(run.claimGeneration) !== Number(captured.claimGeneration)
           || canonicalJsonStringify(run.envelope) !== canonicalJsonStringify(captured.envelope)
           || canonicalJsonStringify(run.input) !== canonicalJsonStringify(captured.input)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-        const reference = referenceFor(run, command.typeId);
-        if ("mode" in reference.value.request || command.referenceDigest !== reference.digest) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const reference = references(run).find(candidate => candidate.value.request.typeId === command.typeId && candidate.digest === command.referenceDigest);
+        if (reference === undefined || "mode" in reference.value.request) throw new WorkbookLibraryError("WORKBOOK_INVALID");
         const operationId = deriveStableUuid("run-workbook-write-request", canonicalJsonStringify({ runId: run.envelope.runId, writeId: command.writeId }));
         const previous = repositories.workbooks.runOperations(run.envelope.runId).find(entry => entry.operation.operationId === operationId);
         if (previous !== undefined && previous.libraryId !== reference.value.snapshot.libraryId) throw new WorkbookLibraryError("WORKBOOK_OPERATION_CONFLICT");
@@ -773,17 +803,17 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
             sheetId: reference.value.snapshot.worksheets[0]?.sheetId, keyFieldId: declaration.keyFieldId,
             requiredFields: [...reference.value.request.fields], writableFields: [...declaration.writableFields] } });
         const libraryState = repositories.workbooks.libraryState(reference.value.snapshot.libraryId);
-        if (libraryState.removed || libraryState.selectedVersionId !== source.authority.versionId)
-          throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+        if (libraryState.removed) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
         if (command.values.some(cell => !source.authority.writableFields.includes(cell.fieldId))) throw new WorkbookLibraryError("WORKBOOK_INVALID");
         const admitted = "selectedRow" in reference.value.request ? reference.value.request.selectedRow : undefined;
-        let chosen = admitted ?? (run.envelope.workflow !== "onboarding" && row.state === "matched" ? row.matches[0] : undefined);
+        const matched = run.envelope.workflow !== "onboarding" && row.state === "matched" ? row.matches[0] : undefined;
+        let chosen = admitted ?? (matched === undefined ? undefined : { sheetId: matched.sheetId, rowId: matched.rowId });
         let expectedVersion = reference.value.snapshot.version;
         if (run.envelope.workflow === "onboarding") {
           const roster = onboardingReference(run);
           const binding = roster.roster.state === "resolved" ? roster.roster.row.binding
             : authenticateOnboardingRosterExecution(repositories, run)?.row.binding;
-          if (roster.reference.digest !== reference.digest || binding === undefined
+          if (binding === undefined || binding.referenceDigest !== reference.digest
             || binding.referenceDigest !== command.referenceDigest || binding.workbookId !== reference.value.snapshot.libraryId
             || binding.workbookType !== command.typeId
             || binding.rowKey.email !== command.key) throw new WorkbookLibraryError("WORKBOOK_INVALID");

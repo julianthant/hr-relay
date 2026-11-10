@@ -556,7 +556,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     runOperations: runId => storage(() => deps.read(() => database.prepare("SELECT * FROM workbook_operations WHERE json_extract(request_json,'$.source.kind') IN ('run','run-reference') AND json_extract(request_json,'$.source.runId')=? ORDER BY sequence").all(runId)
       .map(raw => { const row = z.object({ workbook_id: z.string() }).parse(raw); return operationRecord(row.workbook_id, raw); }))),
   };
-  return Object.freeze(repository);
+  return repository;
 }
 
 export function validateWorkbookLibrary(database: DatabaseSync, master = true, catalog = true): number {

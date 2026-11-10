@@ -35,7 +35,8 @@ const patch = { kind: "patch-reference" as const, writeId: "result", typeId: "sy
 function buildDescriptor(full = false) { return defineWorkflowDescriptor({ id: "workbook-consumer", code: "wc", version: 1, contractFingerprint: "a".repeat(64),
   label: "Workbook consumer", icon: "Search", category: "operations", canonicalInput: defineCanonicalInput(input, input, [{ eid: patch.key }]),
   inputSubject: "eid", surface: { shape: "single" }, enqueue: "allow-parallel", actions: STANDARD_WORKFLOW_ACTIONS,
-  surfaces: {}, details: [], requiredWorkbookFields: ['eid', 'roster.notes', 'roster.backgroundEntered', 'roster.hired'],
+  surfaces: { inputRun: { placeholder: "Employee ID", parser: { split: { kind: "whole-text" }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "eid" }] },
+    workbookRows: { typeId: patch.typeId, inputField: "eid" } } }, details: [], requiredWorkbookFields: ['eid', 'roster.notes', 'roster.backgroundEntered', 'roster.hired'],
   workbookReference: { id: patch.typeId, keyFieldId: 'eid', mode: full ? 'all' : 'keys', writableFields: ['roster.notes'] },
   ...(full ? {} : { referenceKeys: (value: { eid: string }) => [value.eid, 'missing'] }), identity: { matchKey: value => value.eid },
   plannedOutputs: (_value, references) => [{ kind: 'workbook', name: 'Reference report.xlsx', rowSubject: 'record',
@@ -228,6 +229,46 @@ it("rolls back a confirmed Start when the real preference insert fails", async (
   expect(f.database.getMeta().authorityGeneration).toBe(generation);
 });
 
+it("admits an ordered set of complete sources and does not join partial files", async () => {
+  const f = await fixture();
+  const other = f.library.create({ name: "Other.xlsx", themes: [], hasFormulas: false, sheets: [{
+    id: "people", name: "People", width: 4, hidden: [], headerRow: 1,
+    columnBindings: ["eid", "roster.notes", "roster.backgroundEntered", "roster.hired"].map((fieldId, index) => ({ id: `other-${index}`,
+      sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+    rows: [{ id: "people-header", cells: ["EID", "Result", "Date", "Flag"].map(value => ({ value })) },
+      { id: "people-person", cells: [{ value: "10800002" }, { value: null }, { value: null }, { value: false }] }],
+  }] });
+  f.library.operatorOperation(other.libraryId, "declare-other", { kind: "metadata", expectedVersion: 1,
+    metadata: { typeId: patch.typeId, sharePoint: null } });
+  const second = { entry: 1, libraryId: other.libraryId, versionId: "original", sheetId: "people", expectedVersion: 2 };
+  const wire = f.planner.plan({ ...f.request, workbookReferences: [f.selection, second] });
+  expect(wire.planned).toHaveLength(1);
+  expect(wire.planned[0]?.outputs).toMatchObject([{ rows: { count: 1 } }]);
+  expect(wire.planned[0]?.workbookReferences).toHaveLength(2);
+  const duplicatePerson = f.library.create({ name: "Same person.xlsx", themes: [], hasFormulas: false, sheets: [{
+    id: "people", name: "July", width: 4, hidden: [], headerRow: 1,
+    columnBindings: ["eid", "roster.notes", "roster.backgroundEntered", "roster.hired"].map((fieldId, index) => ({ id: `same-${index}`,
+      sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+    rows: [{ id: "people-header", cells: ["EID", "Result", "Date", "Flag"].map(value => ({ value })) },
+      { id: "people-person", cells: [{ value: patch.key }, { value: null }, { value: null }, { value: false }] }],
+  }] });
+  f.library.operatorOperation(duplicatePerson.libraryId, "declare-same", { kind: "metadata", expectedVersion: 1,
+    metadata: { typeId: patch.typeId, sharePoint: null } });
+  const duplicated = f.planner.plan({ ...f.request, workbookReferences: [f.selection, { ...second, libraryId: duplicatePerson.libraryId }] });
+  expect(duplicated.planned[0]?.outputs).toMatchObject([{ rows: { count: 2 } }]);
+  const partial = f.library.create({ name: "Partial.xlsx", themes: [], hasFormulas: false, sheets: [{
+    id: "people", name: "People", width: 1, hidden: [], rows: [{ id: "header", cells: [{ value: "EID" }] }, { id: "person", cells: [{ value: patch.key }] }],
+  }] });
+  const refused = f.planner.plan({ ...f.request, workbookReferences: [f.selection, { ...second, libraryId: partial.libraryId }] });
+  expect(refused.planned).toEqual([]);
+  expect(f.repository.lastUsed(descriptor.id)).toBeUndefined();
+  const record = f.database.authority.startPlans.get(wire.startPlanId); assert.ok(record);
+  f.start(record);
+  expect(f.repository.lastUsed(descriptor.id)?.sources).toEqual([
+    { libraryId: f.id, sheetId: "people" }, { libraryId: other.libraryId, sheetId: "people" },
+  ]);
+});
+
 it("requires exactly one valid explicit source selection", async () => {
   const f = await fixture();
   for (const workbookReferences of [[], [f.selection, f.selection], [{ ...f.selection, libraryId: "absent" }]]) {
@@ -286,7 +327,7 @@ it("executes the registered workbook task through its real provider using the ca
   expect(f.repository.types().find(value => value.id === patch.typeId)).toEqual(type);
   expect(f.runs.write(run, command)).toEqual(receipt);
   const beforeNext = f.library.read(f.id);
-  expect(() => f.runs.write(run, { ...patch, writeId: "next-result" })).toThrow(expect.objectContaining({ code: "WORKBOOK_VERSION_CONFLICT" }));
+  expect(f.runs.write(run, { ...patch, writeId: "next-result", referenceDigest: command.referenceDigest })).toMatchObject({ state: "resolve-required", reason: "version-conflict" });
   expect(f.library.read(f.id)).toEqual(beforeNext);
 });
 
@@ -318,9 +359,9 @@ it.each(["revision", "key", "worksheet", "operator-cell"] as const)("refuses a n
     if (change === "operator-cell") workbook.sheets[0].rows[1].cells[1].value = "operator";
   });
   const before = f.library.read(f.id);
-  expect(() => f.runs.write(run, patch)).toThrow(expect.objectContaining({ code: "WORKBOOK_VERSION_CONFLICT" }));
+  expect(f.runs.write(run, { ...patch, referenceDigest: f.runReferenceDigest(run) })).toMatchObject({ state: "resolve-required", reason: "version-conflict" });
   expect(f.library.read(f.id)).toEqual(before);
-  expect(f.repository.runOperations(run.envelope.runId)).toEqual([]);
+  expect(f.repository.runOperations(run.envelope.runId)).toHaveLength(1);
 });
 
 it("refuses a missing key without a captured or gate-selected row", async () => {
