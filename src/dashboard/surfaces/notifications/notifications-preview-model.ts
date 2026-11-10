@@ -37,7 +37,7 @@ function runItem(row: QueueSurfaceWire, read: boolean, input: PreviewInput): Not
   const parked = row.status === "blocked";
   const partial = row.status === "partial";
   const instant = waiting && row.gateOpenedAt.state === "present" ? row.gateOpenedAt.value : row.endedAt.state === "present" ? row.endedAt.value : undefined;
-  return { id: `queue:${input.day}:${row.runId}`, subject: row.title, workflow: input.workflowLabel(row.workflowId), read,
+  return { id: `queue:${input.day}:${row.runId}`, subject: row.title, workflow: input.workflowLabel(row.workflowId), read, priority: false,
     title: failed ? "Run failed" : waiting ? "Approval waiting" : parked ? "Write parked" : partial ? "Run completed with issues" : "Run completed",
     detail: row.liveMessage.state === "present" ? row.liveMessage.value : partial && row.warnings.state === "present" ? row.warnings.first : failed ? "Review the failed step in the log." : waiting ? "This run is waiting for your review." : partial ? "Some steps did not complete. Review the log." : parked ? "Review the parked write in the log before continuing." : "Completed successfully.",
     tone: failed ? "danger" : waiting || parked || partial ? "warning" : "positive", age: instant ? age(instant, input.nowIso) : "",
@@ -51,7 +51,7 @@ function mockItem(run: MockRun, read: boolean, input: PreviewInput): Notificatio
   const row = mockQueueSurfaces([run], input.anchorIso, input.runs)[0];
   const host = input.runs.find(item => item.id === run.parentId) ?? run;
   const instant = input.eventTimes?.[run.id] ?? (waiting && row.gateOpenedAt.state === "present" ? row.gateOpenedAt.value : row.endedAt.state === "present" ? row.endedAt.value : undefined);
-  return { id: `preview:${input.day}:${run.id}`, subject: host.title, workflow: mockWorkflow(host.workflowId).label, read,
+  return { id: `preview:${input.day}:${run.id}`, subject: host.title, workflow: mockWorkflow(host.workflowId).label, read, priority: false,
     title: waiting ? "Records ready for approval" : run.discarded ? "Records discarded" : records ? "Records approved" : "Run completed",
     detail: waiting && row.liveMessage.state === "present" ? row.liveMessage.value : records ? `${count} ${count === 1 ? "record" : "records"} · ${mockRunStatus(run)}` : mockRunStatus(run),
     tone: waiting ? "warning" : run.discarded ? "info" : "positive", age: instant ? age(instant, input.nowIso) : "",

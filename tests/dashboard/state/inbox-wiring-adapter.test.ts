@@ -8,6 +8,8 @@ import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { CommandExecutor, type CommandExecutionScope } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import { NotificationWireSchema, type NotificationWire } from "../../../src/models/dashboard/projection.js";
+import { NotificationTargetSchema } from "../../../src/models/notifications/notification-target.js";
+import { CommandIdSchema } from "../../../src/rules/identity/ids.js";
 import { NotificationPublicationWireSchema, type NotificationPublicationWire } from "../../../src/models/dashboard/subscription.js";
 import { NotificationCommandRequestSchema, CommandResultSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
 import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
@@ -26,6 +28,12 @@ function row(kind = "storage-degraded", overrides: Record<string, unknown> = {})
   return NotificationWireSchema.parse({ kind: "notification", notificationId: id, actorId: "local-operator", channel: kind === "verified-done" ? "inbox" : "ping", count: 1, publicationId: "a".repeat(64), severity: "warning", title: kind === "verified-done" ? "Run completed" : "Notification", state: "unread", readState: "unread", trigger: triggers[kind], revision: 1, occurredAt: now,
     context: { state: "available", subject: "Exact subject", workflow: "Person Lookup" }, sourceEvent: { state: "available", kind },
     link: kind === "storage-degraded" ? { kind: "storage" } : ["run-failed", "subject-mismatch", "repeating-failure"].includes(kind) ? { kind: "failure", runId, failureId } : { kind: "run", runId }, ...overrides });
+}
+const commandId = "00000000-0000-4000-8000-000000000444";
+function commandRow(sourceKind: "command-refused" | "command-unknown" | "bulk-incomplete", overrides: Record<string, unknown> = {}): NotificationWire {
+  const link = sourceKind === "bulk-incomplete" ? { kind: "bulk-result", bulkCommandId: commandId } : { kind: sourceKind === "command-unknown" ? "recovery" : "command-result", commandId };
+  return NotificationWireSchema.parse({ kind: "command", notificationId: id, actorId: "local-operator", channel: "ping", count: 1, publicationId: "c".repeat(64), severity: sourceKind === "command-unknown" ? "error" : "warning", title: "Command notice", summary: "Served summary.", state: "unread", readState: "unread", revision: 1, occurredAt: now, priority: true,
+    context: { state: "available", subject: "Exact subject", workflow: "Person Lookup" }, sourceEvent: { state: "available", kind: sourceKind }, link, ...overrides });
 }
 function publication(notification: NotificationWire, n = 1) { return NotificationPublicationWireSchema.parse({ sourceId: String(n).repeat(64), actorId: notification.actorId, durable: "created", notification }); }
 async function harness(enabled = true, initiallyFailed = false) {
@@ -252,3 +260,67 @@ it("requires exact collection readback membership and one version advance for ev
   assert.equal(CommandResultSchema.safeParse({ ...reply, affectedTargets: [] }).success, false);
   assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, CommandResultSchema.parse({ ...reply, affectedTargets: [], noChange: "no-matching-notifications" }))).state, "mismatch");
 });
+
+it("maps command notices with policy tone, served detail and priority, and counts unread danger and warning as needs you", () => {
+  const conflict = "This changed before Relay got to it, so nothing was done. Check it and try again.";
+  const unknown = commandRow("command-unknown", { summary: "Relay could not confirm whether this finished. Open it to check before trying again." });
+  const refused = commandRow("command-refused", { notificationId: "00000000-0000-4000-8000-000000000112", readState: "read", state: "read", priority: false, summary: conflict });
+  const bulk = commandRow("bulk-incomplete", { notificationId: "00000000-0000-4000-8000-000000000113", summary: "Some items in this batch were not done. Open it to see each one." });
+  const positive = row("verified-done", { notificationId: "00000000-0000-4000-8000-000000000114" });
+  const readDanger = row("run-failed", { notificationId: "00000000-0000-4000-8000-000000000115", readState: "read", state: "read" });
+  const info = row("storage-degraded", { notificationId: "00000000-0000-4000-8000-000000000116", severity: "info", sourceEvent: { state: "unavailable" } });
+  const warning = row("gate-opened", { notificationId: "00000000-0000-4000-8000-000000000117" });
+  const projection = inboxProjection([unknown, refused, bulk, positive, readDanger, info, warning], now);
+  assert.equal(projection.state.state, "ready");
+  if (projection.state.state !== "ready") throw new Error("inbox unavailable");
+  const [unknownItem, refusedItem, bulkItem, positiveItem] = projection.state.items;
+  assert.equal(unknownItem.tone, "danger");
+  assert.equal(unknownItem.priority, true);
+  assert.equal(unknownItem.detail, "Relay could not confirm whether this finished. Open it to check before trying again.");
+  assert.equal(unknownItem.action, "Open");
+  assert.equal(unknownItem.read, false);
+  assert.deepEqual(unknownItem.destination, { kind: "refused", reason: "target-unavailable" });
+  assert.equal(refusedItem.tone, "warning");
+  assert.equal(refusedItem.priority, false);
+  assert.equal(refusedItem.detail, conflict);
+  assert.equal(refusedItem.read, true);
+  assert.equal(bulkItem.tone, "warning");
+  assert.equal(bulkItem.priority, true);
+  assert.equal(bulkItem.detail, "Some items in this batch were not done. Open it to see each one.");
+  assert.equal(bulkItem.action, "Open");
+  assert.equal(positiveItem.priority, false);
+  assert.equal(projection.needsYou, 3);
+  const fallback = inboxProjection([
+    commandRow("command-refused", { sourceEvent: { state: "unavailable" }, severity: "error", summary: "Served summary." }),
+    commandRow("command-unknown", { notificationId: "00000000-0000-4000-8000-000000000118", sourceEvent: { state: "unavailable" }, severity: "warning", summary: "Served summary." }),
+  ], now);
+  if (fallback.state.state !== "ready") throw new Error("inbox unavailable");
+  assert.equal(fallback.state.items[0].tone, "danger");
+  assert.equal(fallback.state.items[1].tone, "warning");
+  assert.equal(fallback.state.items[0].detail, "Served summary.");
+  assert.equal(notificationPolicy(commandRow("command-refused"))?.detail, "Relay did not do this, so nothing changed.");
+  assert.equal(notificationPolicy(commandRow("command-unknown"))?.tone, "danger");
+  assert.equal(notificationPolicy(commandRow("bulk-incomplete"))?.tone, "warning");
+});
+
+it("matches recovery and command-result targets by command id and bulk results by bulk command id", () => {
+  const parsed = CommandIdSchema.parse(commandId);
+  const other = CommandIdSchema.parse("00000000-0000-4000-8000-000000000555");
+  const request = NotificationCommandRequestSchema.parse({ commandId: parsed, requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read", target: { notificationId: id, actorId: "local-operator", expectedVersion: 1 } });
+  const result = CommandResultSchema.parse({ state: "rejected", commandId: parsed, code: "policy-refused", message: "Relay did not do this, so nothing changed." });
+  const recovery = { kind: "recovery" as const, commandId: parsed, request };
+  const commandResult = { kind: "command-result" as const, commandId: parsed, request, result };
+  const bulk = (bulkCommandId: typeof parsed) => NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId, type: "retry", requestedCount: 1, results: [], notAttempted: [] });
+  assert.equal(notificationTargetMatches(commandRow("command-unknown"), recovery), true);
+  assert.equal(notificationTargetMatches(commandRow("command-unknown"), { ...recovery, commandId: other }), false);
+  assert.equal(notificationTargetMatches(commandRow("command-refused"), commandResult), true);
+  assert.equal(notificationTargetMatches(commandRow("command-refused"), { ...commandResult, commandId: other }), false);
+  assert.equal(notificationTargetMatches(commandRow("bulk-incomplete"), bulk(parsed)), true);
+  assert.equal(notificationTargetMatches(commandRow("bulk-incomplete"), bulk(other)), false);
+  assert.equal(notificationTargetMatches(commandRow("command-refused"), recovery), false);
+  assert.equal(notificationTargetMatches(commandRow("command-unknown"), commandResult), false);
+  assert.equal(notificationTargetMatches(commandRow("bulk-incomplete"), recovery), false);
+  assert.equal(notificationTargetMatches(row(), recovery), false);
+  assert.equal(notificationTargetMatches(commandRow("command-unknown"), { kind: "storage" }), false);
+});
+

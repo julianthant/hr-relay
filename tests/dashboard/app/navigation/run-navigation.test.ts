@@ -7,10 +7,12 @@ import { FIXTURE_DAY_WIRE } from "../../../parity/helpers/fixture-queue.js";
 import { FIXTURE_RUN_DETAILS } from "../../../parity/helpers/fixture-detail.js";
 import { FIXTURE_FAILURE_SECTIONS } from "../../../support/fixtures/dashboard/run-detail/receipts-failures.js";
 import { FIXTURE_IDS } from "../../../support/fixtures/dashboard/fixture-queue.js";
-import { FingerprintSchema, RunIdSchema, FailureIdSchema } from "../../../../src/rules/identity/ids.js";
+import { CommandIdSchema, FingerprintSchema, RunIdSchema, FailureIdSchema } from "../../../../src/rules/identity/ids.js";
 import { LocalDateSchema } from "../../../../src/rules/identity/ids.js";
 import { RowRevisionSchema } from "../../../../src/models/dashboard/primitives.js";
 import type { NotificationTarget } from "../../../../src/models/notifications/notification-target.js";
+import { NotificationTargetSchema } from "../../../../src/models/notifications/notification-target.js";
+import { CommandResultSchema, NotificationCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 
 const runId = RunIdSchema.parse(FIXTURE_IDS.failedRun);
 const row = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.runId === runId)!;
@@ -82,5 +84,19 @@ describe("notification composition and canonical navigation", () => {
     expect((await resolveRunNavigation(clients(), { ...target, kind: "failure", failureId: FailureIdSchema.parse(FIXTURE_IDS.doneRun) }, origin, () => true)).state).toBe("refused");
     const absent = clients(); absent.runDetail.mockResolvedValue({ ...detail, availableSections: ["logs"] });
     expect((await resolveRunNavigation(absent, { ...target, kind: "failure", failureId }, origin, () => true)).state).toBe("refused");
+  });
+  it("refuses command targets without reading a run", async () => {
+    const client = clients();
+    const commandId = CommandIdSchema.parse("00000000-0000-4000-8000-000000000444");
+    const request = NotificationCommandRequestSchema.parse({ commandId, requestedAt: "2026-08-03T17:00:00.000Z", requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read", target: { notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", expectedVersion: 1 } });
+    const result = CommandResultSchema.parse({ state: "rejected", commandId, code: "policy-refused", message: "Relay did not do this, so nothing changed." });
+    const targets = [
+      NotificationTargetSchema.parse({ kind: "recovery", commandId, request }),
+      NotificationTargetSchema.parse({ kind: "command-result", commandId, request, result }),
+      NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId: commandId, type: "pause", requestedCount: 1, results: [], notAttempted: [] }),
+    ];
+    for (const commandTarget of targets) expect((await resolveRunNavigation(client, commandTarget, origin, () => true)).state).toBe("refused");
+    expect(client.dashboardDay).not.toHaveBeenCalled();
+    expect(client.runDetail).not.toHaveBeenCalled();
   });
 });
