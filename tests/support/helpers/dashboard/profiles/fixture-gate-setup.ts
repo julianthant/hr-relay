@@ -1,4 +1,3 @@
-import { IDENTITY_REVIEW_TEXT } from "../../../../../src/backend/runs/decisions/decision-catalog.js";
 import { identityReviewReason, identityReviewWire } from "../identity-review-wire.js";
 import { IDENTITY_REVIEW_TEXT } from "../../../../../src/backend/runs/decisions/decision-catalog.js";
 import { ActionDescriptorWireSchema } from "../../../../../src/models/dashboard/actions.js";
@@ -55,7 +54,6 @@ hdh: false,
     expectedVersion: number,
   ): unknown[] {
     const disagreements = packet.comparisons.filter(({ agrees }) => !agrees);
-    const first = disagreements[0];
     return [
       {
         key: "resolve-gate-approved",
@@ -72,9 +70,8 @@ hdh: false,
         resolution: "approved",
         confirm: {
           title: "Approve this identity",
-          body: first === undefined
-            ? IDENTITY_REVIEW_TEXT.confirm.agreed
-            : `${IDENTITY_REVIEW_TEXT.reason[first.field === "eid" ? "eid" : first.field]} ${IDENTITY_REVIEW_TEXT.confirm.disagreed}`,
+          body: disagreements.length === 0 ? IDENTITY_REVIEW_TEXT.confirm.agreed
+            : `${identityReviewReason(packet)} ${IDENTITY_REVIEW_TEXT.confirm.disagreed}`,
           confirmLabel: "Approve",
           tone: disagreements.length === 0 ? "neutral" : "destructive",
         },

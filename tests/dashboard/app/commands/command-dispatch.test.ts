@@ -286,7 +286,7 @@ describe("composeCommandRequest — the ceremonies reach the identity-answer end
 
   it("composes a PICKED candidate from a name-mismatch review by the picked option's ref", () => {
     const detail = gateDetail(NAME_MISMATCH);
-    const picked = detail.options[0]!;
+    const picked = detail.options[0];
     const composed = composeCommandRequest(
       APPROVE,
       { runId: runId(1), expectedVersion: 3 },

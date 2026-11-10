@@ -12,6 +12,7 @@ import { answeredRow, decisionAnswerValid, serverMatchedTyped, type LogDecisionA
 import { identityCeremonyFor } from "../surfaces/run-detail/identity/identity-ceremony.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
 import type { NativeRunEventWire, IdentityGateDetailWire, ParkedWriteDetailWire, RunDetailSectionResponse, RunDetailWire } from "../../models/dashboard/run-detail.js";
 import { appendLogPage, logRowsOf, type NotePage } from "../surfaces/run-detail/logs-model.js";
 import type { LogEntry, LogScreenshot, LogStep } from "../surfaces/run-detail/logs/log-feed-model.js";
@@ -367,7 +368,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         entries: [{ kind: "decision", id: gate.gateRef, time: fmtActionClock(gate.parkedAt), decision: { title: gateOpen(detail) && gate.decision !== undefined ? gate.decision.title : gate.label, state: "review",
           message: gate.reason,
           comparison: gate.comparisons.map(comparison => ({ label: comparison.label, expected: comparison.request, observed: comparison.ucpath })),
-          ...(ceremony.kind === "confirm" ? { field: { label: "Approving employee", value: `${ceremony.option.displayName} · ${ceremony.option.maskedEid}`,
+          ...(ceremony.kind === "confirm" ? { field: { label: "Approving employee", value: `${ceremony.option.displayName} · ${directIdentifierDisplay(ceremony.option.maskedEid)}`,
             outcome: ceremony.option.origin } } : {}),
           ...(gateOpen(detail) && gate.decision !== undefined ? { served: gate.decision } : {}),
           ...(detail.gate.state === "resolved" && detail.gate.answer !== undefined ? { answered: detail.gate.answer } : {}) } }] });

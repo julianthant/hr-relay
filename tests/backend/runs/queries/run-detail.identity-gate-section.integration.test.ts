@@ -536,7 +536,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
   });
 });
 
-const SEARCH_EID = "10555123";
+const SEARCH_EID = "10800001";
 
 async function chooseWorld() {
   const w = await world();
@@ -591,10 +591,10 @@ describe("resolving an identity answer", () => {
     assert.equal(value.approvalShape, "choose-a-candidate");
     const byMask = (masked: string): string => value.options.find(option => option.maskedEid === masked)?.ref ?? "";
     const checked = resolvedValue(accepted(resolveIdentityGateAnswer(depsOf(w),
-      answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: byMask("••••3507") }), undefined)));
+      answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: byMask(`••••${EID.slice(-4)}`) }), undefined)));
     assert.deepEqual(checked, { decision: "approved", eid: EID, chosenFrom: "checked", evidenceDigest: digest });
     const searched = accepted(resolveIdentityGateAnswer(depsOf(w),
-      answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: byMask("••••5123") }), undefined));
+      answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: byMask(`••••${SEARCH_EID.slice(-4)}`) }), undefined));
     assert.deepEqual(resolvedValue(searched), { decision: "approved", eid: SEARCH_EID, chosenFrom: "name-search", evidenceDigest: digest });
     assert.equal(searched.family === "gate" ? searched.payload.result.schemaHash : undefined, RESULT_SCHEMA_HASH);
     assert.equal(digest, deriveIdentityEvidenceDigest(packet));

@@ -101,7 +101,7 @@ describe("identityDraftProblem — only a served candidate can be sent", () => {
     const ceremony = identityCeremonyFor(detail);
     assert.match(identityDraftProblem(ceremony, { decision: "approved", optionRef: "" }) ?? "", /Pick which candidate/);
     assert.match(identityDraftProblem(ceremony, { decision: "approved", optionRef: UNSERVED_REF }) ?? "", /Pick which candidate/);
-    assert.equal(identityDraftProblem(ceremony, { decision: "approved", optionRef: detail.options[1]!.ref }), undefined);
+    assert.equal(identityDraftProblem(ceremony, { decision: "approved", optionRef: detail.options[1].ref }), undefined);
     assert.match(identityDraftProblem(ceremony, { decision: "approved", typedEid: "1234" }) ?? "", /8-digit/);
     assert.equal(identityDraftProblem(ceremony, { decision: "approved", typedEid: "10203262" }), undefined);
   });
@@ -125,7 +125,7 @@ describe("composeCommandRequest — the ceremonies reach the identity-answer end
 
   it("composes a CHOSEN candidate by the served gateRef and the picked option's ref, never an EID", () => {
     const detail = gateDetail(CHOOSE);
-    const picked = detail.options[1]!;
+    const picked = detail.options[1];
     const composed = composeCommandRequest(
       APPROVE,
       { runId: runId(1), expectedVersion: 3 },
@@ -139,7 +139,7 @@ describe("composeCommandRequest — the ceremonies reach the identity-answer end
   it("composes the one-click candidate from the served ref", () => {
     const detail = gateDetail(ONE_CLICK);
     const parsed = parsedGateAnswer(composeCommandRequest(APPROVE, { runId: runId(1), expectedVersion: 3 }, { ...COMMAND_CONTEXT, gate: available(detail) }));
-    assert.deepEqual(parsed.payload, { decision: "approved", gateRef: detail.gateRef, optionRef: detail.options[0]!.ref });
+    assert.deepEqual(parsed.payload, { decision: "approved", gateRef: detail.gateRef, optionRef: detail.options[0].ref });
   });
 
   it("composes a typed 8-digit Employee ID as typedEid and refuses a malformed one", () => {

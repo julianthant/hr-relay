@@ -319,7 +319,7 @@ function identityGateRef(runId: string, gateId: string, version: number, evidenc
   return deriveStableUuid("identity-gate-ref", canonicalJsonStringify([runId, gateId, version, evidenceDigest]));
 }
 const identityOptionRef = (gateRef: string, eid: string): string => deriveStableUuid("identity-gate-option", canonicalJsonStringify([gateRef, eid]));
-const maskedEid = (eid: string): string => `••••${eid.slice(-4)}`;
+const maskedEid = (eid: string): string => `••••${directIdentifierDisplay(eid.slice(-4))}`;
 
 function readIdentityGate(
   deps: RunDetailQueryDeps,
@@ -489,7 +489,7 @@ function identityComparisons(packet: IdentityEvidencePacket): readonly Readonly<
     employment: [value.oneActiveJob, jobs.disposition === "single-active-job" ? value.oneActiveJob
       : jobs.disposition === "no-active-job" ? value.noActiveJob
         : jobs.disposition === "concurrent-active-jobs" ? `${String(jobs.activeRowCount)} active jobs` : value.unknownJob],
-    "name-search": [packet.documentName, nameSearch.status === "resolved" ? `${nameSearch.candidate.name} · ${maskedEid(nameSearch.candidate.eid)}`
+    "name-search": [packet.documentName, nameSearch.status === "resolved" ? `${nameSearch.candidate.name} · ••••${directIdentifierDisplay(nameSearch.candidate.eid.slice(-4))}`
       : nameSearch.status === "ambiguous" ? `${String(nameSearch.candidateEids.length)} people` : value.noMatch],
   };
   return packet.comparisons.map(({ field, agrees }) => ({ label: label[field], request: cells[field][0], ucpath: cells[field][1], agrees }));
