@@ -486,9 +486,12 @@ export function Tooltip({
   collisionBoundary,
   open,
   shortcut,
+  variant,
   children,
 }: {
   content: ReactNode;
+  /** `card` is the rich-content surface (256px card, 12px corners) instead of the one-line hint. */
+  variant?: "card";
   /** The key chord, drawn as a chip after the text. */
   shortcut?: ReactNode;
   side?: "top" | "right" | "bottom" | "left";
@@ -506,7 +509,7 @@ export function Tooltip({
           sideOffset={8}
           collisionBoundary={collisionBoundary}
           collisionPadding={8}
-          className={cn("ds-tooltip", dsLayer.tooltip)}
+          className={cn("ds-tooltip", variant === "card" && "ds-tooltip--card", dsLayer.tooltip)}
         >
           {content}{shortcut && <kbd className="ds-tooltip-key">{shortcut}</kbd>}
         </TooltipPrimitive.Content>

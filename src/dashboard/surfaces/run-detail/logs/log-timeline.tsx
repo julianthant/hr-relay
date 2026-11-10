@@ -30,7 +30,7 @@ export function LogTimeline({ stages, onJump }: { stages: readonly LogTimelineSt
         const style = LOG_TIMELINE_STYLES[stage.state];
         const label = stage.statusLabel ?? style.label;
         return <li key={stage.id} className="min-w-0 flex-1">
-          <Tooltip side="bottom" content={<StepCard stage={stage} label={label} />}><button type="button" aria-label={`${stage.label} · ${label}${stage.time ? ` · ${stage.time}` : ""}${stage.durationLabel ? ` · ${stage.durationLabel}` : ""}`} aria-disabled={!stage.stepId || undefined}
+          <Tooltip side="bottom" variant="card" content={<StepCard stage={stage} label={label} />}><button type="button" aria-label={`${stage.label} · ${label}${stage.time ? ` · ${stage.time}` : ""}${stage.durationLabel ? ` · ${stage.durationLabel}` : ""}`} aria-disabled={!stage.stepId || undefined}
             onClick={() => { if (stage.stepId) onJump(stage.stepId); }}
             className="group flex w-full flex-col gap-1 rounded-sm bg-transparent px-0.5 py-1 text-left cursor-pointer aria-disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-info">
             <span className={cn("flex min-w-0 items-center gap-1.5 text-caption", style.color)}><span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", stage.state === "pending" ? "border border-ui-stroke-control" : "bg-current")} /><span className="truncate">{stage.label}</span></span>
