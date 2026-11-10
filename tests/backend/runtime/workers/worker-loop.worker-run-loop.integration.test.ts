@@ -28,7 +28,7 @@ describe("worker run loop", () => {
     assert.equal(claims, 1); assert.equal(h.sessions.opens("ucpath"), 0); assert.equal(h.sessions.opens("crm"), 0);
     assert.ok(h.emitter.events().some(event => event.t === "span.ended" && event.kind === "worker" && event.outcome === "failed"));
   });
-  for (const code of ["PREFLIGHT_BLOCKED", "PREFLIGHT_OBSERVATION_CHANGED"] as const) it(`keeps a standing worker alive after ${code} and claims when readiness returns`, async () => {
+  for (const code of ["PREFLIGHT_BLOCKED", "PREFLIGHT_OBSERVATION_CHANGED", "PREFLIGHT_TIMEOUT"] as const) it(`keeps a standing worker alive after ${code} and claims when readiness returns`, async () => {
     const h = await loopHarness();
     h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
     let claims = 0;

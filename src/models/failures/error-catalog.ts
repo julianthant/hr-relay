@@ -998,6 +998,10 @@ export const ERROR_CATALOG = Object.freeze({
     "Storage changed before the next run could be claimed. Re-check readiness; use Sessions for any queued run instead of starting it again.",
     EmptyParametersSchema,
   ),
+  PREFLIGHT_TIMEOUT: catalogEntry(
+    "A readiness check took too long. Check again.",
+    EmptyParametersSchema,
+  ),
   RUN_QUEUED_WORKER_UNAVAILABLE: catalogEntry(
     "Your run is queued. Worker startup did not complete; review this run and Sessions. Do not start the run again.",
     EmptyParametersSchema,

@@ -1,6 +1,7 @@
 import { ERROR_CATALOG,createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { CredentialMaintenanceHold } from "../../../storage/configuration/canonical-credential-store.js";
 import { PreflightAdmissionRefusal, PreflightObservationChangedError } from "../../../../rules/preflight/preflight-admission.js";
+import { preflightRunnerTimeout } from "../../../../models/preflight/preflight.js";
 import { AssistantAuthorizationError } from "../../../assistant/authorization.js";
 import { OcrReviewRefusedError } from "../../../processing/ocr/review-authority.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
@@ -90,6 +91,9 @@ export function failureStatus(
     if (changed instanceof PreflightObservationChangedError) {
       return { status: 409, body: wireError(`PREFLIGHT_${changed.reason.toUpperCase().replaceAll("-", "_")}`, errorText(changed), false) };
     }
+  }
+  if (preflightRunnerTimeout(error) !== undefined) {
+    return { status: 409, body: wireError("PREFLIGHT_TIMEOUT", ERROR_CATALOG.PREFLIGHT_TIMEOUT.text, false) };
   }
   return { status: 500, body: wireError("INTERNAL_FAILURE", message, false) };
 }
