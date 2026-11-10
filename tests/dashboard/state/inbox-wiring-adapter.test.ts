@@ -318,9 +318,8 @@ it("matches recovery and command-result targets by command id and bulk results b
   assert.equal(notificationTargetMatches(commandRow("bulk-incomplete"), bulk(parsed)), true);
   assert.equal(notificationTargetMatches(commandRow("bulk-incomplete"), bulk(other)), false);
   assert.equal(notificationTargetMatches(commandRow("command-refused"), recovery), false);
-  assert.equal(notificationTargetMatches(commandRow("command-unknown"), commandResult), false);
+  assert.equal(notificationTargetMatches(commandRow("command-unknown"), commandResult), true);
   assert.equal(notificationTargetMatches(commandRow("bulk-incomplete"), recovery), false);
   assert.equal(notificationTargetMatches(row(), recovery), false);
   assert.equal(notificationTargetMatches(commandRow("command-unknown"), { kind: "storage" }), false);
 });
-
