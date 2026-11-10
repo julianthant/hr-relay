@@ -142,7 +142,7 @@ it.each(["correct-ocr-record", "discard-ocr-record", "restore-ocr-record"] as co
   const settled = { ...frozen, generation: frozen.generation + 2 };
   assert.deepEqual(observe(), settled);
   assert.equal(repositories.lifecycleJournal.getCommand(lifecycleCommandId("operator-ocr-review", delayed.commandId)), undefined);
-  assert.throws(() => f.sources.commandResult(runId, delayed.commandId), /OCR_SOURCE_REFUSED/u);
+  assert.deepEqual(f.sources.commandResult(runId, delayed.commandId), { state: "unavailable" });
   const historical = f.sources.commandResult(runId, correction.commandId); assert.ok(historical.state === "recorded");
   assert.deepEqual(historical.request, CommandRequestSchema.parse(correction));
   assert.equal(historical.result.state, "applied");
