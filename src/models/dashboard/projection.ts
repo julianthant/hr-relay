@@ -171,6 +171,16 @@ export const StepInterruptWireSchema = z.strictObject({
 });
 export type StepInterruptWire = z.infer<typeof StepInterruptWireSchema>;
 
+/** Served when a queued run's workflow has no live worker. The sentence is fixed and value-free. */
+export const QUEUE_NOT_STARTING_NO_WORKER = Object.freeze({
+  code: "NO_WORKER",
+  summary: "No worker is running for this workflow.",
+} as const);
+export const QueueNotStartingWireSchema = z.strictObject({
+  code: z.literal(QUEUE_NOT_STARTING_NO_WORKER.code),
+  summary: z.literal(QUEUE_NOT_STARTING_NO_WORKER.summary),
+});
+
 const QueueBaseFields = {
   runId: RunIdSchema,
   itemId: ItemIdSchema,
@@ -229,6 +239,8 @@ const QueueBaseFields = {
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
   status: QueueStatusSchema,
+    /* Set on a queued row whose workflow has no live worker; absent while one is alive. */
+  notStarting: QueueNotStartingWireSchema.optional(),
     /* Who cancelled a cancelled run: the operator, or Relay when the profile logged out or the queue went stale. */
   cancelledBy: z.enum(["operator", "logout", "stale-queue"]).optional(),
   outcome: QueueBusinessOutcomeSchema.optional(),

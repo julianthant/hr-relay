@@ -22,6 +22,7 @@ import {
   WorkerCardUnavailableReasonSchema,
   notificationWireOf,
   notificationSourceEventOf,
+  QUEUE_NOT_STARTING_NO_WORKER,
   QueueSurfaceWireSchema,
   TERMINAL_QUEUE_STATUSES,
   type DashboardDayWire,
@@ -1206,6 +1207,18 @@ export class RunQueueProjection {
     return chips.length === 0 ? { state: "absent", reason: "this run has no applicable detail values" } : { state: "present", value: chips };
   }
 
+  /** A queued row names NO_WORKER when every active slot of its workflow is exited. */
+  #notStarting(workflowId: string, status: QueueSurfaceWire["status"]): QueueSurfaceWire["notStarting"] {
+    if (status !== "queued") return undefined;
+    const slots = this.#deps.authority.listWorkerSlots?.();
+    const views = this.#deps.authority.workerMembers?.();
+    if (slots === undefined || views === undefined) return undefined;
+    const active = slots.filter(slot => slot.workflow === workflowId && slot.retiredAt === null);
+    const exited = active.some(slot => views.some(view => view.member.workerId === slot.workerId && view.state === "exited"));
+    const live = active.some(slot => views.some(view => view.member.workerId === slot.workerId && view.state !== "exited"));
+    return exited && !live ? QUEUE_NOT_STARTING_NO_WORKER : undefined;
+  }
+
   #surfaceFold(row: RunFoldRecord | undefined, authority: RunRecord, children: readonly RunRecord[], context: QueueReadContext): SurfaceFold {
     const queued = authority.envelope;
     context.runs.set(queued.runId, authority);
@@ -1236,6 +1249,7 @@ export class RunQueueProjection {
       ...(pauseUnavailable || authority.pause?.state === "requested" ? {} : { command: authority.pause?.state === "paused" ? "resume" as const : "pause" as const }) };
     const claim = runClaim(authority);
     const interrupt = claim === undefined ? undefined : stepInterruptOf(authority, this.#deps.authority.writeInFlight?.(queued.runId) === true);
+    const notStarting = this.#notStarting(queued.workflow, status);
     const base = {
       runId: queued.runId,
       itemId: queued.itemId,
@@ -1277,6 +1291,7 @@ export class RunQueueProjection {
       outcome: this.#resultOutcome(authority, receipt, descriptor?.outcomeProjection),
       facts: this.#facts(authority, descriptor, status, receipt),
       status,
+      ...(notStarting === undefined ? {} : { notStarting }),
       ...(status === "cancelled" ? { cancelledBy: cancelledBy(authority) } : {}),
       liveMessage: interrupt?.step === "finish-write" ? { state: "present", value: "Finishing the save first" }
         : pauseControl.state === "pause-pending" ? { state: "present", value: "Restarts this step on Resume" }
