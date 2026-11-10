@@ -11,16 +11,16 @@ import type { RunRecordService } from "../../../runs/lifecycle/run-record-servic
 import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 
 export interface NotificationHealthReading { freeBytes: number; walBytes: number; integrityFailed: boolean; backupFailed: boolean; leaseExpired: boolean }
-const inspected = new WeakMap<AuthorityDatabase, { key: string; integrityFailed: boolean }>();
+const inspected = new WeakMap<AuthorityDatabase, { dataVersion: number; authorityGeneration: number; totalChanges: number; integrityFailed: boolean }>();
 /** No backup writer, credential reader, or unrelated outbox is called by this observation. */
 export async function readNotificationHealth(input: { admission: RuntimeAdmission; database: AuthorityDatabase; reader: Pick<RunRecordService, "list">; stateRoot: string; clock: Clock }): Promise<NotificationHealthReading> {
   const { stateRoot, clock } = input;
   const filesystem = statfsSync(stateRoot, { bigint: true });
   const wal = join(stateRoot, "state.db-wal");
-  const opening = JSON.stringify(input.database.changeKey());
+  const opening = input.database.changeKey();
   const prior = inspected.get(input.database);
   let integrityFailed: boolean;
-  if (prior !== undefined && prior.key === opening) integrityFailed = prior.integrityFailed;
+  if (prior !== undefined && prior.dataVersion === opening.dataVersion && prior.authorityGeneration === opening.authorityGeneration && prior.totalChanges === opening.totalChanges) integrityFailed = prior.integrityFailed;
   else {
     integrityFailed = false;
     try { AuthorityDatabase.inspectExistingReadOnly(input.admission, join(stateRoot, "state.db")); } catch { integrityFailed = true; }
@@ -34,8 +34,9 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
     }
   }
   const leaseExpired = listCanonicalRuns(input.reader, "live").some(run => "heartbeatAt" in run.lifecycle && clock.nowMs() - Date.parse(run.lifecycle.heartbeatAt) > 60_000);
-  // The live-run page cache writes on this connection, so remember the key those writes leave behind.
-  inspected.set(input.database, { key: JSON.stringify(input.database.changeKey()), integrityFailed });
+  const settled = input.database.changeKey();
+  // dataVersion stays the pre-await value so a same-connection write cannot hide an external commit.
+  inspected.set(input.database, { dataVersion: opening.dataVersion, authorityGeneration: settled.authorityGeneration, totalChanges: settled.totalChanges, integrityFailed });
   return { freeBytes: Number(filesystem.bavail * filesystem.bsize), walBytes: existsSync(wal) ? statSync(wal).size : 0, integrityFailed, backupFailed, leaseExpired };
 }
 
@@ -61,6 +62,11 @@ export function createNotificationHealthObserver(input: { database: AuthorityDat
         { identity: sha256Hex(`notification-health:${concern}:${String(occurrence)}`), occurredAt: at });
       }
       database.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern, active, occurrence, observedAt: at, samples: concern === "wal-growth" ? samples : [], createdAt: previous?.createdAt ?? at }));
+    }
+    const remembered = inspected.get(database);
+    if (remembered !== undefined) {
+      const after = database.changeKey();
+      inspected.set(database, { dataVersion: remembered.dataVersion, authorityGeneration: after.authorityGeneration, totalChanges: after.totalChanges, integrityFailed: remembered.integrityFailed });
     }
   };
 }

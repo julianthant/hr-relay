@@ -1,5 +1,6 @@
 import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { QUEUED_RUN } from "../../../../support/fixtures/phase1f-run-fixtures.js";
@@ -40,6 +41,27 @@ describe("canonical notification producers", () => {
       await read();
       expect(inspect).toHaveBeenCalledTimes(2);
     } finally { inspect.mockRestore(); await f.close(); }
+  });
+
+  it("inspects once across idle observations and again after an external commit or a store write", async () => {
+    const f = await fixture();
+    const inspect = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
+    const other = new DatabaseSync(f.path);
+    try {
+      const observe = createNotificationHealthObserver({ database: f.db, clock: f.clock, inbox: f.inbox, read: () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock }) });
+      await observe();
+      f.clock.advanceWall(60_000);
+      await observe();
+      expect(inspect).toHaveBeenCalledTimes(1);
+      other.prepare("UPDATE notification_states SET updated_at=? WHERE id=?").run("2000-01-01T00:00:00.000Z", "disk-space");
+      f.clock.advanceWall(60_000);
+      await observe();
+      expect(inspect).toHaveBeenCalledTimes(2);
+      f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: false, occurrence: 0, observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), samples: [] }));
+      f.clock.advanceWall(60_000);
+      await observe();
+      expect(inspect).toHaveBeenCalledTimes(3);
+    } finally { inspect.mockRestore(); other.close(); await f.close(); }
   });
   it("observes a claimed run's heartbeat expiry strictly after sixty seconds", async () => {
     const f = await fixture();
