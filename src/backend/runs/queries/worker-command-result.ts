@@ -1,3 +1,4 @@
+import { publicWriteCommand } from "../commands/write-command-target.js";
 import { WorkerBrowserCommandRequestSchema } from "../../../rules/commands/commands.js";
 import { CommandIdSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -13,7 +14,7 @@ export function createWorkerCommandResultQuery(database: AuthorityDatabase) {
       const audit = database.authority.commandAudits.findByCommand(id);
       if (audit === undefined) return { state: "unavailable" };
       if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(request.data)) throw new Error("worker-command-result-request-mismatch");
-      return WorkerCommandResultWireSchema.parse({ state: "recorded", request: request.data, result: audit.result });
+      return WorkerCommandResultWireSchema.parse({ state: "recorded", request: publicWriteCommand(request.data), result: audit.result });
     });
   };
 }

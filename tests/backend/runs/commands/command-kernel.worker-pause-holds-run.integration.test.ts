@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { createCommandKernelTestWorld, type Harness } from "../../../support/helpers/backend/command-kernel-harness.js";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
@@ -141,8 +142,8 @@ describe("worker pause holds the run the worker claimed", () => {
     const result = await w.resumeWorker(w.harness);
     assert.equal(result.state, "rejected");
     if (result.state !== "rejected") throw new Error("resume was admitted while the pause was settling");
-    assert.equal(result.code, "invalid-state");
-    assert.equal(result.message, "worker-pause-settling");
+    assert.equal(result.code, "WORKER_PAUSE_SETTLING");
+    assert.equal(result.message, ERROR_CATALOG.WORKER_PAUSE_SETTLING.text);
     assert.deepEqual(w.slot(), slotBefore);
     assert.equal(w.slot().paused, true);
     assert.deepEqual(w.run(held.runId), runBefore);
@@ -253,8 +254,8 @@ describe("worker pause holds the run the worker claimed", () => {
     const refused = await kernel.executeWorkerPool(workerCommand("resume-worker", target));
     assert.equal(refused.state, "rejected");
     if (refused.state !== "rejected") throw new Error("resume was admitted while the descendant child's pause was settling");
-    assert.equal(refused.code, "invalid-state");
-    assert.equal(refused.message, "worker-pause-settling");
+    assert.equal(refused.code, "WORKER_PAUSE_SETTLING");
+    assert.equal(refused.message, ERROR_CATALOG.WORKER_PAUSE_SETTLING.text);
     assert.equal(database.authority.workerSlots.get(workerId)?.paused, true);
 
     acknowledge(claim);
@@ -290,6 +291,25 @@ describe("worker pause holds the run the worker claimed", () => {
     assert.equal(result.state, "applied", JSON.stringify(result));
     assert.equal(w.run(held.runId).cancelRequested, true);
     assert.equal(w.harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "attempting");
+  });
+
+  it("serves a catalog refusal while a worker-paused run has an UNKNOWN write", async () => {
+    const w = await world();
+    const held = (w.startRun("10800000"), w.claim());
+    const intent = await attemptingOwnedWrite({ database: w.harness.database, fence: async input => w.harness.database.authority.writeIntents.fenceAttempt(input) }, held.run);
+    assert.equal((await w.pauseWorker(w.harness)).state, "applied");
+    w.harness.database.authority.writeIntents.parkAttempt({ writeIntentId: intent.writeIntentId, generation: intent.generation, expectedVersion: intent.version,
+      code: "unknown", message: "synthetic-unresolved-submit", now: NOW,
+      authorityReason: deriveWriteAuthorityReason("post-click-verifier-unknown", "probe", "synthetic-unresolved-submit") });
+    const before = w.run(held.runId);
+    const result = await w.resumeWorker(w.harness);
+    assert.equal(result.state, "rejected");
+    if (result.state !== "rejected") throw new Error("UNKNOWN write admitted resume");
+    assert.equal(result.code, "WORKER_PAUSE_SETTLING");
+    assert.equal(result.message, ERROR_CATALOG.WORKER_PAUSE_SETTLING.text);
+    assert.deepEqual(w.run(held.runId), before);
+    assert.equal(w.slot().paused, true);
+    assert.equal(w.harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
   });
 
   it("a parked write still refuses stop-worker", async () => {

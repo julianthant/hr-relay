@@ -18,7 +18,7 @@ export function createApplicationLifecycle(input: Readonly<{
   let quitting = false;
   let scheduled: ReturnType<typeof setTimeout> | undefined;
   const snapshot = () => input.database.withAuthorityReadSnapshot(() => {
-    const facts = input.database.readProfileResourceCustody();
+    const facts = input.database.readApplicationActivity();
     const active = facts.runs.filter(run => run.lifecycle.state !== "terminal");
     const admission = input.database.authority.runs.admission();
     const blocked = active.some(run => run.lifecycle.state === "parked-write")
@@ -37,7 +37,7 @@ export function createApplicationLifecycle(input: Readonly<{
     scheduled = undefined;
     try {
       snapshot();
-      const ready = input.database.withAuthorityReadSnapshot(() => input.database.readProfileResourceCustody().runs
+      const ready = input.database.withAuthorityReadSnapshot(() => input.database.readApplicationActivity().runs
         .every(run => run.lifecycle.state === "terminal" || run.lifecycle.state === "parked-write" || runClaim(run) === undefined && run.pause?.state === "paused"));
       if (!ready) { scheduled = setTimeout(observeQuit, 50); return; }
       quitting = true;
