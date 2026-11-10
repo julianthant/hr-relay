@@ -9,7 +9,7 @@ import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
-import { existsSync, statSync, lstatSync, mkdtempSync, realpathSync, rmSync, writeFileSync, type BigIntStats } from "node:fs";
+import { existsSync, statSync, lstatSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync, type BigIntStats } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { fileStatus, sameDirectory, type DirectoryIdentity } from "../file-identity.js";
@@ -174,12 +174,32 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySna
   return Object.freeze({ path: snapshot.path, assertUnchanged: () => snapshot.assertUnchanged(), dispose() { if (!proof.active) snapshot.dispose(); } });
 }
 
+const leakedReadonlyAuthorityCopy = /^relay-readonly-authority-(\d+)-/u;
+
+export function sweepLeakedReadonlyAuthorityCopies(root = realpathSync(tmpdir())): void {
+  for (const name of readdirSync(root)) {
+    const pid = Number(leakedReadonlyAuthorityCopy.exec(name)?.[1]);
+    if (!Number.isInteger(pid) || pid === process.pid || pidAlive(pid)) continue;
+    try { rmSync(join(root, name), { recursive: true }); }
+    catch { /* A stuck copy must not stop BFF start. */ }
+  }
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !(error instanceof Error && "code" in error && error.code === "ESRCH");
+  }
+}
+
 function copyReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySnapshot;
 function copyReadonlyAuthoritySnapshot(sourcePath: string, owner: AuthorityImageOwner): ReadonlySnapshot | undefined;
 function copyReadonlyAuthoritySnapshot(sourcePath: string, owner?: AuthorityImageOwner): ReadonlySnapshot | undefined {
   const directory = process.platform === "win32"
-    ? join(realpathSync(tmpdir()), `relay-readonly-authority-${randomUUID()}`)
-    : mkdtempSync(join(realpathSync(tmpdir()), "relay-readonly-authority-"));
+    ? join(realpathSync(tmpdir()), `relay-readonly-authority-${process.pid}-${randomUUID()}`)
+    : mkdtempSync(join(realpathSync(tmpdir()), `relay-readonly-authority-${process.pid}-`));
   if (process.platform === "win32") createPrivateDirectory(directory, { mode: 0o700 });
   const path = join(directory, "authority.sqlite");
   const sources: Array<{ path: string; suffix: string; stats: BigIntStats | undefined }> = [];
