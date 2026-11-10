@@ -448,7 +448,7 @@ function runDecisionStep(decision: RunDetailWire["decision"], lastTime: string |
 }
 
 function gateOpen(detail: RunDetailWire): boolean {
-  return detail.gate.state === "open" && detail.captures !== undefined && detail.captures.state !== "error";
+  return detail.gate.state === "open" && detail.gate.nodeId !== undefined && detail.captures !== undefined && detail.captures.state !== "error";
 }
 
 export type RunWiringState = Readonly<{ state: "loading" | "loaded" | "failed"; snapshot?: RunLogSnapshot; error?: string; diagnostic?: unknown }>;
