@@ -19,13 +19,12 @@ function emitter(database: AuthorityDatabase) {
 }
 
 function traceSql(work: () => void): string[] {
-  const statements: string[] = [];
-  const exec = DatabaseSync.prototype.exec, prepare = DatabaseSync.prototype.prepare;
-  vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql: string) { statements.push(sql); return exec.call(this, sql); });
-  vi.spyOn(DatabaseSync.prototype, "prepare").mockImplementation(function (this: DatabaseSync, sql: string) { statements.push(sql); return prepare.call(this, sql); });
-  try { work(); }
-  finally { vi.restoreAllMocks(); }
-  return statements;
+  const exec = vi.spyOn(DatabaseSync.prototype, "exec"), prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  try {
+    work();
+    return [exec, prepare].flatMap(spy => spy.mock.calls.map(([sql], index) => ({ sql, order: spy.mock.invocationCallOrder[index] ?? 0 })))
+      .sort((left, right) => left.order - right.order).map(call => call.sql);
+  } finally { vi.restoreAllMocks(); }
 }
 
 function underWriteLock(statements: readonly string[]): string[] {
