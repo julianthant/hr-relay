@@ -12,7 +12,7 @@ import { disposeHttpRouteHarness, harness as backendHarness, type Harness as Bac
 import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m0 } from "../../parity/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert_m0 from "node:assert/strict";
-import { act as act_m0,createElement as createElement_m0,Fragment as Fragment_m0 } from "react";
+import { act as act_m0,createElement as createElement_m0 } from "react";
 import { createRoot as createRoot_m0,type Root as Root_m0 } from "react-dom/client";
 import { it as it_m0 } from "vitest";
 import { RUN_START_DOOR_ID as RUN_START_DOOR_ID_m0 } from "../../../src/dashboard/app/dashboard-app-model.js";
