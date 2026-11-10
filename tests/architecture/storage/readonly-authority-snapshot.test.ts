@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import childProcesses, { spawnSync } from "node:child_process";
+import childProcesses, { fork, spawnSync } from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 import { it, vi } from "vitest";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
@@ -478,7 +478,7 @@ it("removes the owner image directory when the scope exits and a later proof rea
 
 for (const mode of ["reader", "doctor"] as const) it(`keeps the owner image and refuses admission when a pinned ${mode} close fails`, async () => {
   const fixture = await createBoundProfileFixture({ sharedMachine: true });
-  const child = childProcesses.fork(fileURLToPath(new URL("../../support/helpers/owner-image-close-retention.ts", import.meta.url)),
+  const child = fork(fileURLToPath(new URL("../../support/processes/owner-image-close-retention.ts", import.meta.url)),
     [String(fixture.lifetime.port), fixture.workspace, fixture.admission.profileBinding.profileId, fixture.path, mode],
     { execArgv: ["--import", testProcessImport()], stdio: ["ignore", "inherit", "inherit", "ipc"] });
   let directory: string | undefined;

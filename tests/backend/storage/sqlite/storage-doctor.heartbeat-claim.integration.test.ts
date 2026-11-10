@@ -89,7 +89,7 @@ async function claimWhilePeerHeartbeats(mode: HeartbeatMode) {
     assert.ok(first);
     const renew = () => { first.renew(); heartbeats += 1; resolveHeartbeat?.(); };
     if (otherProcess) {
-      child = fork(fileURLToPath(new URL("../../../support/helpers/owner-image-heartbeat-peer.ts", import.meta.url)),
+      child = fork(fileURLToPath(new URL("../../../support/processes/owner-image-heartbeat-peer.ts", import.meta.url)),
         [String(a.profile.lifetime.port)],
         { execArgv: ["--import", testProcessImport()], stdio: ["ignore", "inherit", "inherit", "ipc"] });
       const peerProcess = child;
