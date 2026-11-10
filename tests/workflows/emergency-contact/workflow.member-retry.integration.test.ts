@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, it } from "vitest";
+import { afterAll, afterEach, beforeEach, it } from "vitest";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { aggregateMemberRetryAvailable } from "../../../src/backend/runs/queries/run-retry.js";
 import { assertDelegationRetryUnwritten, delegationAccountingExecution } from "../../../src/backend/storage/sqlite/delegation-authority.js";
@@ -25,6 +25,7 @@ import { testAdmittedWorker, testWorkerLifetime } from "../../support/fixtures/r
 
 const world = createEmergencyContactRetryWorld();
 afterEach(world.cleanup);
+afterAll(world.releaseTemplates);
 type Fixture = Awaited<ReturnType<typeof world.fixture>>;
 let fixture: Fixture;
 beforeEach(async context => {

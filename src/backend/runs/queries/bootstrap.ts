@@ -5,14 +5,14 @@ import { PreflightReportSchema } from "../../../models/preflight/preflight.js";
 import { z } from "zod";
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire, type WorkflowStartWire, type WorkflowStartReadiness } from "../../../models/dashboard/bootstrap.js";
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../models/dashboard/settings.js";
-import { BrowserSystemIdSchema, LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../rules/identity/ids.js";
+import { BrowserSystemIdSchema, LOCAL_OPERATOR_ACTOR_ID, WorkflowIdSchema, type Fingerprint } from "../../../rules/identity/ids.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import { projectStartSteps, startStepWireControl } from "../start/step-selection.js";
 import type { RunQueueProjection } from "../projections/run-queue-projection.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import type { WorkbookLibraryService, WorkbookReferenceWorkflow } from "../../workbooks/workbook-library-service.js";
 
-import type { WorkbookReferenceSlot } from "../../../models/dashboard/workbook-library.js";
+import type { WorkbookCompatibility } from "../../../models/dashboard/workbook-library.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 
 interface BootstrapModuleView {
@@ -35,7 +35,7 @@ export interface BootstrapQueryDeps {
   readonly projection: Pick<RunQueueProjection, "generation">;
   /** Probes the authority store; throws when it cannot be reached. */
   readonly authorityMeta: () => { schemaVersion: number; authorityGeneration: number };
-  readonly workbookReferences: (workflows: readonly WorkbookReferenceWorkflow[]) => ReturnType<WorkbookLibraryService["references"]>;
+  readonly workbookCompatibility: (workflows: readonly WorkbookReferenceWorkflow[]) => ReturnType<WorkbookLibraryService["compatibility"]>;
   /** The one retained report produced by the composed preflight authority. */
   readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
 }
@@ -61,27 +61,33 @@ export function projectWorkflowStartSteps(descriptor: AnyWorkflowDescriptor): Wo
   });
 }
 
-export function projectWorkflowStartReadiness(workflow: WorkbookReferenceWorkflow, references: readonly WorkbookReferenceSlot[]): WorkflowStartReadiness {
-  for (const typeId of workflow.requiredWorkbookTypeIds) {
-    const slot = references.find(slot => slot.workflowId === workflow.id && slot.typeId === typeId);
-    if (slot === undefined) throw new Error(`WORKBOOK_REFERENCE_SLOT_UNAVAILABLE: ${workflow.id}/${typeId}`);
-    if (slot.type === null || slot.current.state === "unavailable") return {
-      scope: "default-workbook-references", state: "unavailable",
-      reason: ERROR_CATALOG[slot.current.state === "unavailable" ? slot.current.code : "WORKBOOK_TYPE_UNAVAILABLE"].text,
-      fixAction: { kind: "review-workbook-reference", workflowId: slot.workflowId, typeId: slot.typeId },
-    };
-    if (slot.current.state === "bound") continue;
-    return {
-      scope: "default-workbook-references", state: "blocked", reason: `${workflow.label} needs ${slot.type.name}.`,
-      fixAction: { kind: "import-workbook", workflowId: slot.workflowId, typeId: slot.typeId },
-    };
+export function projectWorkflowStartReadiness(workflow: WorkbookReferenceWorkflow, compatibility: WorkbookCompatibility): WorkflowStartReadiness {
+  if (workflow.workbookReference === undefined) return { scope: "workbook-sources", state: "ready" };
+  const workflowId = WorkflowIdSchema.parse(workflow.id);
+  const projection = compatibility.workflows.find(candidate => candidate.workflowId === workflow.id);
+  if (projection === undefined) throw new Error(`WORKBOOK_COMPATIBILITY_UNAVAILABLE: ${workflow.id}`);
+  if (JSON.stringify(projection.requiredWorkbookFields) !== JSON.stringify(workflow.requiredWorkbookFields)
+    || JSON.stringify(projection.workbookReference ?? null) !== JSON.stringify(workflow.workbookReference ?? null)) {
+    throw new Error(`WORKBOOK_COMPATIBILITY_DECLARATION_MISMATCH: ${workflow.id}`);
   }
-  return { scope: "default-workbook-references", state: "ready" };
+  if (projection.sources.length > 0) return { scope: "workbook-sources", state: "selection-needed",
+    fixAction: { kind: "choose-workbook-sources", workflowId } };
+  if (compatibility.libraries.length === 0) return { scope: "workbook-sources", state: "unavailable",
+    reasonCode: "WORKBOOK_LIBRARY_EMPTY", reason: ERROR_CATALOG.WORKBOOK_LIBRARY_EMPTY.text,
+    fixAction: { kind: "import-workbook", workflowId } };
+  const coverages = compatibility.libraries.flatMap(library => library.sheets.flatMap(sheet =>
+    sheet.workflows.filter(coverage => coverage.workflowId === workflow.id)));
+  const reasonCode = coverages.some(coverage => coverage.reasonCode === "WORKBOOK_FIELDS_DUPLICATE")
+    && coverages.every(coverage => coverage.reasonCode !== "WORKBOOK_FIELDS_MISSING")
+      ? "WORKBOOK_FIELDS_DUPLICATE" as const : "WORKBOOK_FIELDS_MISSING" as const;
+  return { scope: "workbook-sources", state: "unavailable", reasonCode, reason: ERROR_CATALOG[reasonCode].text,
+    fixAction: { kind: "review-workbook-fields", workflowId,
+      requiredFields: [...projection.requiredWorkbookFields] } };
 }
 
 export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire {
   const preflight = PreflightReportSchema.parse(deps.preflightReport());
-  const workbookReferences = deps.workbookReferences(deps.modules.map(module => module.descriptor));
+  const workbookCompatibility = deps.workbookCompatibility(deps.modules.map(module => module.descriptor));
   let storageAuthority: "healthy" | "unavailable" = "healthy";
   try {
     deps.authorityMeta();
@@ -116,7 +122,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       checkedAt: preflight.checkedAt,
     })),
 
-    workbookReferences,
+    workbookCompatibility,
     workflows: deps.modules.map(({ descriptor, role, intake }) => ({
       id: descriptor.id,
       code: descriptor.code,
@@ -127,7 +133,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       role,
 
       start: {
-        readiness: projectWorkflowStartReadiness(descriptor, workbookReferences),
+        readiness: projectWorkflowStartReadiness(descriptor, workbookCompatibility),
         ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
         enqueue: descriptor.enqueue,
         // The modal's Options and Confirm facts use the envelope's descriptor version.
@@ -139,7 +145,8 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         ...(descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: descriptor.surfaces.uploadRun }),
 
         spreadsheetIntake: intake !== undefined,
-        requiredWorkbookTypeIds: [...descriptor.requiredWorkbookTypeIds],
+        requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
+        ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
       },
     })),
     systemInstances: [...systems.values()].sort().map((system) => ({

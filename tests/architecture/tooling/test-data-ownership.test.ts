@@ -18,6 +18,7 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/helpers/predecessor-profile-credentials.ts",
   "tests/support/helpers/exclusive-session-leases.ts",
   "tests/support/helpers/backend/storage-restore-world.ts",
+  "tests/support/helpers/backend/emergency-contact-retry-world.ts",
   'tests/support/helpers/backend/dashboard-port-world.ts',
   "tests/support/helpers/credential-persistence-fixtures.ts",
   "tests/support/helpers/credential-source-retention.ts",
@@ -37,6 +38,7 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts",
   "tests/support/fixtures/storage/retained-historical-data.ts",
   "tests/support/fixtures/storage/historical-run-schema.ts",
+  "tests/support/fixtures/storage/older-build-authority.ts",
 ]);
 const SHARED_ROOTS = ["tests/support/fixtures", "tests/support/helpers"];
 const CROSS_TIER_ROOTS = ["tests", "scripts", "src"];
@@ -70,6 +72,8 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/helpers/predecessor-profile-credentials.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "authenticateDocument" },
   { importer: "tests/support/helpers/exclusive-session-leases.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/backend/storage-restore-world.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/backend/emergency-contact-retry-world.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/backend/emergency-contact-retry-world.ts", module: "node:sqlite", symbol: "backup" },
   { importer: "tests/support/helpers/credential-source-retention.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/credential-source-retention.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: 'tests/support/helpers/backend/dashboard-port-world.ts', module: 'src/backend/storage/configuration/credential-store.js', symbol: 'createCredentialStore' },
@@ -86,6 +90,7 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/helpers/backend/http-route-harness.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/storage/native-authority/retained-database-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/storage/historical-run-schema.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/fixtures/storage/older-build-authority.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/storage/historical-flat-profile-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/storage/retained-historical-data.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "authenticateDocument" },

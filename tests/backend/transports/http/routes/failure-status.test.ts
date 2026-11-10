@@ -24,7 +24,7 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { CommandBrowserError, CommandBrowserClosureError } from "../../../../../src/backend/runtime/browser/command-browser.js";
 import { SharePointDownloadError } from "../../../../../src/backend/systems/sharepoint/driver/interpreter.js";
 import { BrowserLoginError } from "../../../../../src/backend/systems/browser-shared/login-contract.js";
-import { WorkbookLibraryError } from "../../../../../src/backend/workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../../../src/backend/workbooks/workbook-library-error.js";
 
 
 const RETIRED_MARKERS = [

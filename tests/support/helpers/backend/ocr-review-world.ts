@@ -19,13 +19,14 @@ import { OcrInputSchema } from "../../../../src/models/workflows/ocr/input.js";
 import { OcrApprovalReferenceSchema, OcrResultSchema } from "../../../../src/models/workflows/ocr/result.js";
 import { OcrApprovedSnapshotSchema, ocrReviewDigest, ocrSnapshotDigest } from "../../../../src/models/ocr/review.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/page-accounting.js";
+import { bindCanonicalManualOcrReading, bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { buildOcrSourceManifest, ocrPageInputs } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { ExtractPdfPages, type ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { defineServiceStore, defineTaskStoreRegistry, defineWorkflowStore, type RegisteredTaskStore } from "../../../../src/workflow-kit/task-registry.js";
 import { submittedPage, READING_ID, READ_AT } from "../../fixtures/ocr/source-pages.js";
 import { canonicalChildExecution } from "./canonical-child-execution.js";
+import type { BoundProfileStorageFixture } from "../admission-fixture.js";
 import { createRunExecutorTestWorld } from "./run-executor-world.js";
 import { boundProfileAdmission } from "../synthetic-database-admission.js";
 import type { z } from "zod";
@@ -54,8 +55,8 @@ interface ReviewedPageFacts {
   readonly correctedContactName: string;
 }
 
-export function createOcrReviewWorld() {
-  const world = createRunExecutorTestWorld();
+export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfileStorageFixture>) {
+  const world = profileFixture === undefined ? createRunExecutorTestWorld() : createRunExecutorTestWorld(profileFixture);
   return {
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number;
@@ -71,6 +72,7 @@ export function createOcrReviewWorld() {
       manualPageFailure?: (sourcePage: number) => boolean;
       onSpan?: (event: Parameters<SpanEmitter["emit"]>[0]) => void;
       onTransactionSettled?: (run: RunRecord) => void;
+      adoptExisting?: boolean; ids?: { readonly uuid: () => string };
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       if (options.reviewedPages !== undefined) assert.equal(options.reviewedPages.length, options.pageCount);
@@ -123,17 +125,21 @@ export function createOcrReviewWorld() {
       const harness = await world.executorHarness({ descriptor: root.descriptor, stores,
         ...(sessions === undefined ? {} : { sessions }),
         ...(options.screenshotCapture === undefined ? {} : { screenshotCapture: options.screenshotCapture }),
+        ...(options.adoptExisting === true ? { existingProfile: true } : {}),
+        ...(options.ids === undefined ? {} : { ids: options.ids }),
       });
       options.onHarness?.(harness);
       const { database, path, clock } = harness.authority;
       const workbooks = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
-      const roster = workbooks.create({ name: "OCR roster", themes: [], hasFormulas: false, sheets: [{
+      const roster = options.adoptExisting === true ? undefined : workbooks.create({ name: "OCR roster", themes: [], hasFormulas: false, sheets: [{
         id: "people", name: "People", width: 2, hidden: [], headerRow: 1,
         columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" })),
         rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }],
       }] });
-      database.authority.workbooks.putType({ id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null });
-      workbooks.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
+      if (roster !== undefined) {
+        database.authority.workbooks.putType({ id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null });
+        workbooks.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
+      }
       const admission = boundProfileAdmission(path);
       const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
       const artifactReader = createServerVerifiedArtifactReader({ admission }); await artifactReader.ready;
@@ -160,6 +166,59 @@ export function createOcrReviewWorld() {
           }) } } }; } });
       const sources = createOcrSourceService({ database, reader: canonical.lifecycle, clock, artifacts, artifactReader,
         assertCurrent: () => admission.assertProfileRuntime() });
+      if (options.adoptExisting === true) {
+        const parentRun = database.authority.runs.listByWorkflow(root.descriptor.id)[0];
+        assert.ok(parentRun);
+        const run = root === ocrRoot ? parentRun : database.authority.runs.listChildren(parentRun.envelope.runId).find(child => child.envelope.workflow === "ocr");
+        assert.ok(run);
+        const pageRuns: typeof parentRun[] = [];
+        const walkPages = (runId: string) => {
+          for (const child of database.authority.runs.listChildren(runId)) {
+            if (child.envelope.workflow === "ocr-page") pageRuns.push(child);
+            walkPages(child.envelope.runId);
+          }
+        };
+        walkPages(run.envelope.runId);
+        const readings = pageRuns.flatMap(pageRun => {
+          const parsed = OcrPageWorkflowInputSchema.parse(pageRun.input.parsed.value);
+          if (parsed.reading.kind !== "manual") return [];
+          const reading = bindCanonicalManualOcrReading(parsed.page, parsed.reading.actorId, parsed.reading.extraction);
+          const corrected = reading.extraction.record; assert.ok(corrected);
+          return [{ reading, corrected }];
+        }).sort((left, right) => left.reading.input.sourcePage - right.reading.input.sourcePage);
+        const first = readings[0]; assert.ok(first);
+        const { reading, corrected } = first;
+        rendered.value = { pageCount: readings.length, pages: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, image: reading.input.image })) };
+        const pageBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGvwAAAAASUVORK5CYII=", "base64");
+        const command = (type: "correct-ocr-record" | "discard-ocr-record" | "restore-ocr-record", expectedRevision: number, recordIndex = 0) => {
+          const review = database.authority.ocrReviews.latest(run.envelope.runId); assert.ok(review);
+          const record = review.records[recordIndex], correctedRecord = readings[recordIndex]?.corrected; assert.ok(record && correctedRecord);
+          return { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
+            family: "ocr-review" as const, type, target: { runId: run.envelope.runId, expectedRevision },
+            payload: type === "correct-ocr-record" ? { recordId: record.recordId, fields: correctedRecord, assertedEid: "10800000" } : { recordId: record.recordId } };
+        };
+        const approval = (selectedRecordIds?: readonly string[]) => {
+          const review = database.authority.ocrReviews.latest(run.envelope.runId); assert.ok(review);
+          const current = database.authority.runs.get(run.envelope.runId); assert.ok(current);
+          const commandId = randomUUID();
+          const snapshot = OcrApprovedSnapshotSchema.parse({ snapshotId: commandId, sourceRunId: current.envelope.runId,
+            revision: review.revision, reviewDigest: ocrReviewDigest(review), selectedRecordIds: selectedRecordIds ?? review.records.map(record => record.recordId),
+            records: selectedRecordIds === undefined ? review.records : selectedRecordIds.map(id => review.records.find(record => record.recordId === id)),
+            approvedBy: "local-operator", approvedAt: clock.now().toISOString() });
+          return { commandId, requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
+            family: "gate" as const, type: "resolve-gate" as const, target: { runId: current.envelope.runId, gateId: "approve-records", expectedVersion: current.version },
+            payload: { result: { schemaHash: deriveSchemaHash(OcrApprovalReferenceSchema, "output"), value: {
+              snapshotId: commandId, sourceRunId: current.envelope.runId, revision: review.revision, digest: ocrSnapshotDigest(snapshot),
+            } }, ocrApproval: { expectedRevision: review.revision, reviewDigest: ocrReviewDigest(review), selectedRecordIds: snapshot.selectedRecordIds } } };
+        };
+        const result: Awaited<ReturnType<typeof canonical.execute>> = { run: database.authority.runs.get(parentRun.envelope.runId), outcomes: [] };
+        return { harness, database, path, clock, admission, artifacts, artifactReader, sources, canonical, run, parentRun, result, approval,
+          reading, corrected, pageBytes, command, root, resolve, stores, signerReads, pageReads, readResult: () => {
+            const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
+              "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);
+            return OcrResultSchema.parse(checkpoint.output.value);
+          } };
+      }
       const upload = await sources.upload({ actorId: "local-operator", fileName: "source.pdf", mediaType: "application/pdf",
         bytes: new TextEncoder().encode("%PDF-1.7\nSynthetic renderer fixture\n%%EOF") });
       const pageBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGvwAAAAASUVORK5CYII=", "base64");
@@ -193,8 +252,13 @@ export function createOcrReviewWorld() {
       const request = OcrInputSchema.parse({ document: upload.artifact, readingId: READING_ID,
         formType, roster: null, approval: options.release === true ? "release" : "review-only",
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
+      assert.ok(roster);
       const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading }), { dryRun: options.dryRun ?? false,
-          ...(options.retainedProducer === true || !root.descriptor.requiredWorkbookTypeIds.includes("ocr-roster") ? {} : { workbookReferences: [{ entry: 1, typeId: "ocr-roster", libraryId: roster.libraryId }] }) });
+          ...(options.retainedProducer === true || root.descriptor.workbookReference?.id !== "ocr-roster" ? {} : {
+            workbookReferences: [{ entry: 1, libraryId: roster.libraryId,
+              versionId: database.authority.workbooks.libraryState(roster.libraryId).selectedVersionId,
+              sheetId: "people", expectedVersion: workbooks.read(roster.libraryId).version }],
+          }) });
       const signal = new AbortController().signal;
       const lookupAdmitted = () => database.authority.dependencies.groups(parentRun.envelope.runId)
         .some(({ group }) => group.invocation.nodeId === "lookup-identities");

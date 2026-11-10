@@ -45,6 +45,7 @@ export function restoreSchema23WorkerCustodyFixture(database: DatabaseSync): voi
 
 export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  database.exec("DROP TABLE IF EXISTS workflow_workbook_selections");
   if (database.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='worker_leases'").get() === undefined) restoreSchema22WorkerCustodyFixture(database);
   const trigger = SQLITE_MIGRATIONS.find(migration => migration.version === 20)?.statements
     .find(statement => statement.startsWith("CREATE TRIGGER runs_completion_immutable"));

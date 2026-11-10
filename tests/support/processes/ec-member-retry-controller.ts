@@ -30,6 +30,7 @@ if (serialized === undefined) {
   const f = await world.fixture({ failures: boundary === "settlement" || boundary === "parent-requested" ? 2 : 1, onFencedSave: () => {
     if (armed && boundary === "fence") process.kill(process.pid, "SIGKILL");
   } });
+  await world.releaseSources();
   f.control.failAccounting = mode?.endsWith("-failed") === true;
   await f.canonical.execute(f.parentRun, new AbortController().signal);
   const parent = f.current(); assert.ok(parent.completion);
