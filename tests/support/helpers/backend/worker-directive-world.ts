@@ -22,7 +22,8 @@ export function createWorkerDirectiveTestWorld() {
     sharedMachine?: true;
   }> = {}) {
     const authority = options.sharedMachine === true
-      ? await openAuthorityHarness(() => createBoundProfileFixture({ sharedMachine: true }))
+      // Another process writes this store, so the claimer waits on its lock like a production worker (5000 ms).
+      ? await openAuthorityHarness(() => createBoundProfileFixture({ sharedMachine: true }), 5000)
       : await openAuthorityHarness();
     disposers.push(authority.dispose);
     const sessions = options.sessions ?? happySessionHarness();
