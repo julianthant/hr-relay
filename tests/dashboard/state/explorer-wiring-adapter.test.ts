@@ -5,9 +5,9 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, it } from "vitest";
-import { formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
+import { failureCodeFromTaskCode, formatErrorCatalogFailure, operatorFailureSentence } from "../../../src/models/failures/error-catalog.js";
 import { buildWorkflowExplorer } from "../../../src/backend/runs/queries/explorer.js";
-import { WorkflowExplorerWireSchema, ExplorerWorkflowWireSchema, ExplorerTaskWireSchema, type ExplorerWorkflowWire, type WorkflowExplorerWire } from "../../../src/models/dashboard/explorer.js";
+import { WorkflowExplorerWireSchema, ExplorerWorkflowWireSchema, ExplorerNodeWireSchema, ExplorerTaskWireSchema, type ExplorerWorkflowWire, type WorkflowExplorerWire } from "../../../src/models/dashboard/explorer.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
@@ -36,19 +36,44 @@ function lineageWorkflow(): ExplorerWorkflowWire {
   const sourceTask = { ...task, taskId: "crm/source-value", title: "Source contract", binding, fields: [field("value", "output")] };
   const destinationTask = { ...task, taskId: "crm/destination-value", title: "Destination contract", binding, fields: ["direct", "derived", "run", "config", "constant", "child"].map(path => field(path, "input")) };
   const node = (id: string, label: string, tasks: unknown[], dependsOn: string[] = []) => ({ ...base.nodes[0], id, label, purpose: { state: "authored", text: `${label} purpose` }, tasks, dependsOn, shape: { kind: "task", replay: "checkpoint" }, details: [], editableFields: [], coveragePoints: [] });
-  const nodes = [
+  const nodes = ExplorerNodeWireSchema.array().parse([
     { ...node("parallel-owner", "Declared parallel", []), shape: { kind: "parallel", join: "all-settled", branches: [{ id: "left", nodes: ["source-node"] }, { id: "right", nodes: ["destination-node"] }] } },
     node("source-node", "Declared source", [sourceTask]),
     { ...node("destination-node", "Declared destination", [destinationTask], ["source-node"]), shape: { kind: "task", replay: "checkpoint", condition: { kind: "is-present", of: { from: "input", path: "run" } } } },
-  ];
+  ]);
+  const title = "Fictional declaration group";
   const workflow = ExplorerWorkflowWireSchema.parse({ ...base, nodes, edges: [],
-    timeline: [{ key: base.timeline[0].key, label: "Fictional declaration group", nodes: nodes.map(node => node.id) }],
-    definitionPreview: { state: "compiled", groups: [{ key: base.timeline[0].key, label: "Fictional declaration group", entries: [{ id: "parallel-owner", kind: "parallel", nodeIds: nodes.map(node => node.id), dependsOn: [], taskIds: [sourceTask.taskId, destinationTask.taskId] }] }], systemsFirstUse: ["crm"] } });
+    timeline: [{ key: base.timeline[0].key, label: title, nodes: nodes.map(node => node.id) }],
+    reviewSpec: { ...base.reviewSpec, runOptions: { ...base.reviewSpec.runOptions, omittableSteps: [] },
+      sessionStep: { ...base.reviewSpec.sessionStep, requirements: [], unavailableDelegations: [] },
+      steps: [{ id: base.timeline[0].key, title, pages: { state: "unavailable", reason: "The synthetic graph has no authored page metadata." },
+        decisions: nodes.flatMap(node => [
+          { id: `${node.id}/succeeded`, nodeId: node.id, kind: node.shape.kind, outcome: "succeeded", action: "continue",
+            label: { state: "authored", text: "The declared activity succeeds; continue." } },
+          ...(node.shape.kind === "parallel" ? [{ id: `${node.id}/failed`, nodeId: node.id, kind: "parallel", outcome: "failed", action: "continue",
+            label: { state: "authored", text: "Wait for every parallel result, including failed reads, then continue." } }] : []),
+          ...(node.shape.kind === "task" && node.shape.condition !== undefined ? [{ id: `${node.id}/skipped`, nodeId: node.id, kind: "condition", outcome: "skipped", action: "continue",
+            label: { state: "authored", text: "The conditional task does not apply; continue." } }] : []),
+          ...node.tasks.flatMap(task => task.errorCodes.map(code => ({ id: `${node.id}/${task.taskId}/${code}`, nodeId: node.id, taskId: task.taskId,
+            kind: "failure", outcome: code, action: "stop", failureCode: failureCodeFromTaskCode(code),
+            label: { state: "authored", text: operatorFailureSentence(failureCodeFromTaskCode(code)) } }))),
+        ]) }] },
+    definitionPreview: { state: "compiled", groups: [{ key: base.timeline[0].key, label: title, entries: [{ id: "parallel-owner", kind: "parallel", nodeIds: nodes.map(node => node.id), dependsOn: [], taskIds: [sourceTask.taskId, destinationTask.taskId] }] }], systemsFirstUse: ["crm"] } });
   return workflow;
 }
 function partText(parts: readonly import("../../../src/models/workflow/explorer-preview.js").FlowPart[]): string[] {
   return parts.flatMap(part => part.kind === "form" || part.kind === "detail" ? [part.title, ...partText(part.parts)] : part.kind === "note" || part.kind === "action" ? [part.text] : []);
 }
+
+it("keeps the synthetic lineage review bound to its graph and declared task failures", () => {
+  const workflow = lineageWorkflow();
+  assert.deepEqual(workflow.reviewSpec.steps.map(step => step.id), workflow.timeline.map(group => group.key));
+  const step = workflow.reviewSpec.steps[0]; assert.ok(step);
+  const failure = step.decisions.find(decision => decision.kind === "failure"); assert.ok(failure);
+  assert.ok(workflow.nodes.some(node => node.id === failure.nodeId && node.tasks.some(task => task.taskId === failure.taskId && task.errorCodes.some(code => code === failure.outcome))));
+  assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...workflow, reviewSpec: { ...workflow.reviewSpec,
+    steps: [{ ...step, decisions: step.decisions.filter(decision => decision.id !== failure.id) }] } }).success, false);
+});
 
 describe("Explorer registered projection", () => {
   it("requires canonical preview metadata and projects every compiled declaration in exact order without run values", () => {

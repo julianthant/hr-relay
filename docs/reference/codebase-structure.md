@@ -93,6 +93,7 @@ Paths in this table are relative to `src/backend/`.
 | `profiles/` | Control-authenticated registry, credential inventory and session authority. `profile-session.ts` owns private draft/session publication, `profile-onboarding.ts` owns issued draft attempts and verified method receipts, and `onboarding-duo.ts` defines the provider capability contract. Browser enrollment lives in `runtime/browser/onboarding-duo-provider.ts`. `profile-errors.ts` owns shared profile refusals. Native verifier publication and its cryptography live in `storage/configuration/verifier-store.ts` and `storage/configuration/synthetic-verifier.ts`. Browser-safe schemas live in `models/profiles/`. |
 | `runs/lifecycle/startup-crash-recovery.ts` | Startup process-closure receipts, dead-worker run reconciliation and previous-day pristine queue cancellation before work admission. |
 | `runs/` | Commands, start plans, lifecycle, recovery, queries, projections, exports, provenance, notifications, settings, explanation, and trust readers. |
+| `runs/queries/explorer.ts` and `explorer-review-spec.ts` | Definition-derived Explorer catalog and operator review: run options, scoped session requirements, ordered page/source cards and declared outcomes. |
 | `runs/commands/command-refusal.ts` | Shared command rejection construction; runtime recovery imports it directly. |
 | `runs/trust/` | Canonical run readers and receipt services. |
 | `runs/start/recovery-plan.ts` | Server-derived checkpoint recovery admission and completed-transaction validation. `models/run/recovery-plan.ts` owns its internal plan; ordinary Rerun remains in `rerun.ts` and `rerun-values.ts`. |
@@ -137,6 +138,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/workflows/person-lookup/result.ts` | Person Lookup terminal result schema shared by its definition, retained CRM proof and OCR outcome fold. |
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. `person-preferences.ts` owns the strict person appearance/shell values and neutral defaults; snapshot preference fingerprints are independent of execution config fingerprints. |
 | `src/models/workflow/explorer-preview.ts` | Browser-safe read-only Explorer flow parts the timeline renders. |
+| `src/models/workflow/review-spec.ts` | Strict step-owned Explorer page, line, field-source and branch-label declarations. `src/models/dashboard/explorer-review-spec.ts` owns their generated wire shape. |
 | `src/models/workflow/dry-run.ts` | Browser-safe preview stage accounting, typed sample provenance and reserved sample detection. |
 | `src/workflow-kit/fingerprints.ts` | Pure, browser-safe workflow contract and task implementation fingerprints, and `WORKFLOW_KIT_VERSION`. `backend/runtime/build-id.ts` owns the worker-scoped app build id. |
 | `src/models/events/` | Timeline, stored confirmed-action, and confirmation-proof schemas. |
@@ -162,6 +164,8 @@ lookup keys while the native run owner supplies the exact retained library and n
 
 `src/workflows/onbase/` registers a child-only per-person Emergency Contact PDF import with source-page and import-document step proofs. Its system store and semantic driver live in `src/backend/systems/onbase/`; `src/backend/storage/sqlite/exclusive-session-leases.ts` owns the durable identity-session lease and its migration. The browser factory holds that lease through proven browser closure; uncertainty and process loss do not expire it.
 Its task implementations live in `tasks/read-source-page.ts`, `stage-import.ts`, `match-import.ts`, `upload-import.ts` and `verify-import.ts`, matching each contract's task ID for implementation fingerprints.
+The corresponding contract files live under `src/models/systems/onbase/` with those same task names;
+`import-document.ts` owns their shared import schemas, policy, examples and saved-document validation.
 
 `src/workflows/person-lookup/` and `src/workflows/separations/` each contain `workflow.ts`,
 `task-registry.ts`, `index.ts`, and `tasks/`. The workflow definition is browser-safe. The index declares
@@ -199,6 +203,8 @@ The local `ocr.approved-snapshot` and `ocr.review` capabilities are issued by
 `steps/hire-review/step.ts` owns the reviewed write sequence and its proof recipe. Other step definitions own their typed entries and proofs. `tasks/` contains one implementation per pure workflow task ID; `src/rules/onboarding/` validates the reviewed path and cross-checks receipts before constructing master commands. `roster.ts` binds captured legal/lived names and declares the EID, I-9 profile, transaction and status output fields. `src/backend/runs/workbooks.ts` owns native row-choice authentication and the shared run-bound patch/ownership/receipt seam. System drivers own the three independently fenced effects and fresh saved-detail reads; UNKNOWN submissions remain parked.
 
 `src/workflows/i9-check/` is child-only: it reads UCPath for one OCR-derived person and returns a retention row. Its three groups have typed tasks and retained proofs under `steps/<key>/step.ts`.
+Its pure contracts live in `src/models/workflows/i9-check/read-match-outcome.ts` and
+`read-retention-row.ts`; `check.ts` owns their shared identity/retention schemas and policy.
 `src/workflows/i9-check-start/` is the public PDF parent, with document review, roster-reference and retention step definitions and proofs. It delegates original PDFs to admitted OCR, authenticates corrected approved selections, retains each source coordinate, and runs the existing person child once per approved EID. It publishes one results workbook and the configured tracker through the shared workbook and xlsx services. Pure batch derivations live in `src/rules/i9-check/batch.ts`; canonical document/person/result shapes live in `src/models/workflows/i9-check/`, and parent task contracts mirror their IDs in `src/models/workflows/i9-check-start/`.
 Shared workbook publication and captured-version reads use `src/models/processing/workbooks/{read-result,read-reference}.ts` and the processing workbook store. `src/backend/runs/workbooks.ts` authenticates the run's retained reference before late-discovered keys can be read; callers cannot select another library or version. Captured-reference writes require an explicit planning declaration. Onboarding declares its roster for name binding, row choice and verified result patches through the captured reference. SharePoint imports remain unexposed. The I-9 parent remains on its static mock source pending activation.
 `src/workflows/i9-lookup/workflow.ts` is child-only; Onboarding declares its parent edge in the registered workflow definition. It uses
