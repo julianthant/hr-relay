@@ -104,16 +104,23 @@ describe("operator assistant model preference", () => {
     assert.equal((await h.kernel.executeAssistantModelPreference({ ...first, payload: second.payload })).state, "rejected");
     assert.deepEqual(h.database.authority.assistantModelPreference.get(), latest);
   });
-  it("refuses stale CAS and foreign profile without any command or preference effects", async () => {
+  it("stores a stale preference revision and refuses a foreign profile before journaling", async () => {
     const h = await harness(async () => () => true as const), profileId = h.profile.admission.profileBinding.profileId;
-    for (const command of [request(profileId, 1), request(randomUUID())]) {
-      const generation = h.database.getMeta().authorityGeneration;
-      assert.notEqual((await h.kernel.executeAssistantModelPreference(command)).state, "applied");
-      assert.equal(h.database.authority.commands.get(command.commandId), undefined);
-      assert.equal(h.database.authority.commandAudits.findByCommand(command.commandId), undefined);
-      assert.equal(h.database.authority.assistantModelPreference.get(), undefined);
-      assert.equal(h.database.getMeta().authorityGeneration, generation);
-    }
+    const stale = request(profileId, 1);
+    const staleGeneration = h.database.getMeta().authorityGeneration;
+    const staleResult = await h.kernel.executeAssistantModelPreference(stale);
+    assert.equal(staleResult.state, "conflict");
+    assert.equal(h.database.authority.commands.get(stale.commandId)?.commandId, stale.commandId);
+    assert.equal(h.database.authority.commandAudits.findByCommand(stale.commandId)?.result.state, "conflict");
+    assert.equal(h.database.authority.assistantModelPreference.get(), undefined);
+    assert.equal(h.database.getMeta().authorityGeneration, staleGeneration + 2);
+    const foreign = request(randomUUID());
+    const foreignGeneration = h.database.getMeta().authorityGeneration;
+    assert.notEqual((await h.kernel.executeAssistantModelPreference(foreign)).state, "applied");
+    assert.equal(h.database.authority.commands.get(foreign.commandId), undefined);
+    assert.equal(h.database.authority.commandAudits.findByCommand(foreign.commandId), undefined);
+    assert.equal(h.database.authority.assistantModelPreference.get(), undefined);
+    assert.equal(h.database.getMeta().authorityGeneration, foreignGeneration);
   });
   it("preserves preparation and in-transaction currentness failures without effects", async () => {
     const failure = new Error("synthetic currentness failure");
@@ -123,10 +130,10 @@ describe("operator assistant model preference", () => {
     const second = await harness(async () => { let checks = 0; return () => { if (++checks === 3) throw failure; return true as const; }; });
     const guarded = request(second.profile.admission.profileBinding.profileId), generation = second.database.getMeta().authorityGeneration;
     await assert.rejects(second.kernel.executeAssistantModelPreference(guarded), error => error === failure);
-    assert.equal(second.database.authority.commands.get(guarded.commandId), undefined);
+    assert.equal(second.database.authority.commands.get(guarded.commandId)?.commandId, guarded.commandId);
     assert.equal(second.database.authority.commandAudits.findByCommand(guarded.commandId), undefined);
     assert.equal(second.database.authority.assistantModelPreference.get(), undefined);
-    assert.equal(second.database.getMeta().authorityGeneration, generation);
+    assert.equal(second.database.getMeta().authorityGeneration, generation + 1);
   });
   it("does not admit a preference record without the exact already-inserted command audit", async () => {
     const h = await harness(), profileId = h.profile.admission.profileBinding.profileId, generation = h.database.getMeta().authorityGeneration;
@@ -184,16 +191,21 @@ describe("operator assistant model preference", () => {
     assert.equal(h.database.authority.assistantModelPreference.get(), undefined);
     assert.equal(h.database.getMeta().authorityGeneration, generation);
   });
-  it.each([2, 3])("rechecks exact true at in-transaction invocation %s and rolls back all effects", async invalidAt => {
+  it.each([2, 3])("rechecks exact true at in-transaction invocation %s and rolls back preference effects", async invalidAt => {
     let calls = 0;
     const h = await harness(async () => new Proxy((): true => true, { apply: () => ++calls === invalidAt ? false : true }));
     const command = request(h.profile.admission.profileBinding.profileId), generation = h.database.getMeta().authorityGeneration;
     await assert.rejects(h.kernel.executeAssistantModelPreference(command));
     assert.equal(calls, invalidAt);
-    assert.equal(h.database.authority.commands.get(command.commandId), undefined);
     assert.equal(h.database.authority.commandAudits.findByCommand(command.commandId), undefined);
     assert.equal(h.database.authority.assistantModelPreference.get(), undefined);
-    assert.equal(h.database.getMeta().authorityGeneration, generation);
+    if (invalidAt === 2) {
+      assert.equal(h.database.authority.commands.get(command.commandId), undefined);
+      assert.equal(h.database.getMeta().authorityGeneration, generation);
+    } else {
+      assert.equal(h.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+      assert.equal(h.database.getMeta().authorityGeneration, generation + 1);
+    }
   });
   it("preserves committed outcome and primary cause as an unknown error after post-commit refusal", async () => {
     const failure = new CommandIdentityConflictError();

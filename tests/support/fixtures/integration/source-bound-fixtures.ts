@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 
 import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../../helpers/admission-fixture.js";
 import { duoCeremonyGatesOver } from "../../helpers/duo-ceremony-fixtures.js";
-import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel, type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService, workerRunLifecyclePort, runContinuationPort, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { createDurableChildRunExecutor } from "../../../../src/backend/runtime/execution/durable-child-executor.js";
@@ -37,7 +37,8 @@ const retainedSourceBoundFixtureOwners = new Set<object>();
 
 export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig, protectedSecrets?: ProtectedSecretSource,
   profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture,
-  childDescriptors: readonly AnyWorkflowDescriptor[] = []) {
+  childDescriptors: readonly AnyWorkflowDescriptor[] = [],
+  commandNotices?: CommandKernelDependencies["commandNotices"]) {
   bindWorkflowDelegationTargets([descriptor, ...childDescriptors]);
   const held: { profile?: BoundProfileStorageFixture; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; primary?: unknown } = {};
   retainedSourceBoundFixtureOwners.add(held);
@@ -73,6 +74,7 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: resolution,
     workerRuntime: {pool:unusedWorkerPool(unused)},
+    ...(commandNotices === undefined ? {} : { commandNotices }),
   });
   const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors, clock,
     ...(protectedSecrets === undefined ? {} : { protectedSecrets }),

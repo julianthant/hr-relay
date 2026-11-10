@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { createCommandKernel, type CommandKernel, type SettingsApplicationExecutor, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel, type CommandKernel, type CommandKernelDependencies, type SettingsApplicationExecutor, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
@@ -45,6 +45,7 @@ interface HarnessOptions {
   readonly profile?: BoundProfileStorageFixture;
   readonly prepareAssistantModelPreference?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["prepareAssistantModelPreference"];
   readonly failureResolution?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["failureResolution"];
+  readonly commandNotices?: CommandKernelDependencies["commandNotices"];
   readonly afterAuthorityCommit?: () => void;
   readonly descriptors?: readonly AnyWorkflowDescriptor[];
 }
@@ -208,6 +209,7 @@ export function createCommandKernelTestWorld(profileFixture: () => Promise<Bound
       ...(options.profile === undefined ? {} : { authorityProfileId: options.profile.admission.profileBinding.profileId }),
       ...(options.prepareAssistantModelPreference === undefined ? {} : { prepareAssistantModelPreference: options.prepareAssistantModelPreference }),
       ...(options.failureResolution === undefined ? {} : { failureResolution: options.failureResolution }),
+      ...(options.commandNotices === undefined ? {} : { commandNotices: options.commandNotices }),
       lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: options.publishQueued ?? (() => {}) }),
       appVersion: "0.1.0",
       configIdentity: { configFingerprint: database.authority.runtimeConfig.get()!.configFingerprint, configSnapshotId: database.authority.runtimeConfig.get()!.configSnapshotId },
