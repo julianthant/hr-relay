@@ -10,8 +10,9 @@
   - /url: "#dashboard-main-region"
 - complementary "Workspace":
   - heading "Relay" [level=2]
-  - button "Notifications, 0 unread"
-  - button "Search runs"
+  - button "Collapse sidebar" [expanded]
+  - button "Notifications, 1 unread"
+  - button "Search"
   - navigation "Workflows":
     - heading "Search" [level=3]
     - list:
@@ -49,8 +50,6 @@
         - button "CRM Document Download"
       - listitem:
         - button "OCR"
-      - listitem:
-        - button "SharePoint Download"
     - heading "OnBase" [level=3]
     - list:
       - listitem:
@@ -60,10 +59,6 @@
       - listitem:
         - button "Old Kronos Reports"
 - main:
-  - status: Relay quits after runs pause A save in progress finishes first. Other steps restart on Resume.
-  - region "Commands awaiting recovery":
-    - text: Command outcome unknown. Review the original request to recover its result.
-    - button "Review Quit requested (1 run)"
   - heading "Person Lookup queue" [level=1]
   - region "Queue":
     - text: Active 1
@@ -74,7 +69,7 @@
       - button "Cancel run"
   - region "Action panel":
     - group "Action panel controls":
-      - button "Start a run"
+      - button "Start run"
       - button "Filter queue by status": Status
       - combobox "Sort the queue": Newest first
       - button "Attention first" [pressed]
@@ -89,7 +84,6 @@
         - button "Choose date Dashboard date*"
   - region "Selected run logs":
     - heading "Battistessa, Johnnie" [level=2]
-    - text: Pausing
     - navigation "Run timeline":
       - list:
         - listitem:
@@ -98,7 +92,6 @@
       - region "Search for employee":
         - time: 10:05:00
         - heading "Search for employee" [level=3]
-        - time: 10:05:00
         - paragraph: Read employee search
     - group:
       - searchbox "Search logs"
@@ -106,7 +99,6 @@
     - status
     - button "Copy logs"
     - button "Go to latest action"
-- button "Assistant"
 - status
 - region "Session Panel":
   - group "Session actions":
@@ -114,7 +106,14 @@
     - button "Add workers"
     - button "Settings"
     - button "Log out"
+    - button "Assistant": Ask
 - region "Notifications":
+  - 'status "Quit: outcome unknown"':
+    - 'heading "Quit: outcome unknown" [level=2]'
+    - paragraph: 1 run
   - status "Command result":
     - heading "Command result" [level=2]
     - paragraph: The command outcome is uncertain. Check its result before taking further action.
+  - status "Relay quits after runs pause":
+    - heading "Relay quits after runs pause" [level=2]
+    - paragraph: A save in progress finishes first. Other steps restart on Resume.

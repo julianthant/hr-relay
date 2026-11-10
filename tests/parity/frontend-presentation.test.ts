@@ -338,7 +338,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const firstFooter = (await first.locator("footer").boundingBox())!;
       const secondFooter = (await second.locator("footer").boundingBox())!;
       expect(Math.abs(firstFooter.y - secondFooter.y)).toBeLessThanOrEqual(1);
-      expect(await first.evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe(theme.attribute === "dark" ? "rgb(34, 34, 34)" : "rgb(255, 255, 255)");
+      expect(await first.evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe(theme.attribute === "dark" ? "rgb(24, 24, 27)" : "rgb(253, 253, 253)");
       await expect(first.getByRole("button", { name: "Remove worker", exact: true })).toHaveCount(0);
       await expect(first.getByRole("button", { name: "Pause", exact: true })).toHaveText("");
       await expect(first.getByRole("button", { name: "Stop", exact: true })).toHaveText("");
