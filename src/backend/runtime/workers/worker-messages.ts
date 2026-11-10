@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WorkerRefusalStandingSchema } from "../../../models/preflight/preflight-contract.js";
 import { WorkerBrowserObservationSchema } from "../../../models/run/worker-control.js";
 import { ErrorCatalogCodeSchema } from "../../../models/failures/error-catalog.js";
 import { BrowserSessionIdSchema, BrowserSystemIdSchema, IsoInstantSchema, RunIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
@@ -24,8 +25,11 @@ export const WorkerActivitySchema = z.strictObject({
   state: z.enum(["idle", "busy", "waiting", "paused"]), runId: RunIdSchema.optional(),
   /** What a waiting worker's browser is doing. */
   waiting: z.enum(["acquiring", "authenticating", "closing"]).optional(),
+  /** Set while an idle worker waits out a preflight refusal. */
+  refusal: WorkerRefusalStandingSchema.optional(),
 }).refine(activity => (activity.state === "busy") === (activity.runId !== undefined), "worker-activity-run-binding-invalid")
-  .refine(activity => activity.waiting === undefined || activity.state === "waiting", "worker-activity-waiting-invalid");
+  .refine(activity => activity.waiting === undefined || activity.state === "waiting", "worker-activity-waiting-invalid")
+  .refine(activity => activity.refusal === undefined || activity.state === "idle", "worker-activity-refusal-invalid");
 export type WorkerActivity = z.infer<typeof WorkerActivitySchema>;
 
 export type WorkerChildBrowserObservation = z.infer<typeof WorkerBrowserObservationSchema>;

@@ -23,6 +23,7 @@ import {
   WorkerCardUnavailableReasonSchema,
   notificationWireOf,
   notificationSourceEventOf,
+  QUEUE_NOT_STARTING_NO_WORKER,
   QueueSurfaceWireSchema,
   TERMINAL_QUEUE_STATUSES,
   type DashboardDayWire,
@@ -167,6 +168,8 @@ export interface RunQueueProjectionDeps {
     heldDuoSystems?(workerId: string): readonly string[];
     /** Whether the run holds an `attempting` (fenced, unsettled) write intent. */
     writeInFlight?(runId: string): boolean;
+    /** Absent in fixtures that have no SQLite generation. Present, an unchanged key skips the live-run read. */
+    changeKey?(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }>;
 
     listWorkerPools(): readonly WorkerPoolRecord[];
     listRunBatches(): readonly RunSessionRecord[];
@@ -313,6 +316,7 @@ export class RunQueueProjection {
 
   #workerAuthorityFingerprint: string;
   #publishedBatchVersions: ReadonlyMap<string, number> = new Map();
+  #storedCanonical: { key: string; storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
   #cursorValue = 0;
   #generationValue: number;
   #health: RunQueueProjectionHealth = { state: "live" };
@@ -814,27 +818,37 @@ export class RunQueueProjection {
   }
 
   /** Capture shared authority at a snapshot/reconcile boundary, including the batch revisions row patches may expose. */
-  #captureSharedAuthorityFingerprint(canonicalRuns = listCanonicalRuns(this.#deps.reader, "live")): string {
-    const pools = this.#deps.authority.listWorkerPools().map((pool) => ({
-      workflowId: pool.workflow,
-      desiredWorkers: pool.desiredWorkers,
-      version: pool.version,
-      plannedBy: pool.plannedBy,
-      plannedAt: pool.plannedAt,
-    }));
-    const batches = this.#deps.authority.listRunBatches().map(({ sessionId, version }) => ({ sessionId, version })).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
-    const runs = canonicalRuns.map((run) => ({
-      envelope: run.envelope, displayName: run.displayName, runNumber: run.runNumber,
-      sessionId: run.sessionId, appVersion: run.appVersion,
-      lifecycle: run.lifecycle.state === "claimed" || run.lifecycle.state === "validating" || run.lifecycle.state === "running"
-        ? { ...run.lifecycle, heartbeatAt: undefined } : run.lifecycle,
-      cancelRequested: run.cancelRequested,
-      // Served step interrupts change with the pause request and the write fence.
-      pause: run.pause,
-      ...(runClaim(run) === undefined ? {} : { writeInFlight: this.#deps.authority.writeInFlight?.(run.envelope.runId) }),
-    }));
+  #captureSharedAuthorityFingerprint(canonicalRuns?: readonly RunRecord[]): string {
+    const key = this.#deps.authority.changeKey?.();
+    const keyText = key === undefined ? undefined : `${key.authorityGeneration}:${key.dataVersion}:${key.totalChanges}`;
+    const stored = canonicalRuns === undefined && keyText !== undefined && this.#storedCanonical?.key === keyText ? this.#storedCanonical : undefined;
+    let built: { storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined = stored;
+    if (built === undefined) {
+      const source = canonicalRuns ?? listCanonicalRuns(this.#deps.reader, "live");
+      const pools = this.#deps.authority.listWorkerPools().map((pool) => ({
+        workflowId: pool.workflow,
+        desiredWorkers: pool.desiredWorkers,
+        version: pool.version,
+        plannedBy: pool.plannedBy,
+        plannedAt: pool.plannedAt,
+      }));
+      const batches = this.#deps.authority.listRunBatches().map(({ sessionId, version }) => ({ sessionId, version })).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+      const runs = source.map((run) => ({
+        envelope: run.envelope, displayName: run.displayName, runNumber: run.runNumber,
+        sessionId: run.sessionId, appVersion: run.appVersion,
+        lifecycle: run.lifecycle.state === "claimed" || run.lifecycle.state === "validating" || run.lifecycle.state === "running"
+          ? { ...run.lifecycle, heartbeatAt: undefined } : run.lifecycle,
+        cancelRequested: run.cancelRequested,
+        // Served step interrupts change with the pause request and the write fence.
+        pause: run.pause,
+      }));
+      built = { storeJson: JSON.stringify({ pools, batches, runs }), claimedIds: source.filter((run) => runClaim(run) !== undefined).map((run) => run.envelope.runId), batches };
+      if (canonicalRuns === undefined && keyText !== undefined) this.#storedCanonical = { key: keyText, ...built };
+    }
     const workers = this.#deps.authority.workerMembers?.().map(view => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version }));
-    const fingerprint = JSON.stringify({ members: this.#deps.authority.listWorkerSlots?.(), workers, pools, batches, runs });
+    const writeInFlight = built.claimedIds.map((id) => [id, this.#deps.authority.writeInFlight?.(id)]);
+    const fingerprint = JSON.stringify({ members: this.#deps.authority.listWorkerSlots?.(), workers, writeInFlight }) + built.storeJson;
+    const batches = built.batches;
     this.#publishedBatchVersions = new Map(batches.map(({ sessionId, version }) => [sessionId, version]));
     return fingerprint;
   }
@@ -1208,6 +1222,33 @@ export class RunQueueProjection {
     return chips.length === 0 ? { state: "absent", reason: "this run has no applicable detail values" } : { state: "present", value: chips };
   }
 
+  /** A queued row names NO_WORKER when every active slot of its workflow is exited. */
+  #notStarting(workflowId: string, status: QueueSurfaceWire["status"]): QueueSurfaceWire["notStarting"] {
+    if (status !== "queued") return undefined;
+    const slots = this.#deps.authority.listWorkerSlots?.();
+    const views = this.#deps.authority.workerMembers?.();
+    if (slots === undefined || views === undefined) return undefined;
+    const active = slots.filter(slot => slot.workflow === workflowId && slot.retiredAt === null);
+    const viewOf = (workerId: string) => views.find(view => view.member.workerId === workerId);
+    const live = active.filter(slot => {
+      const view = viewOf(slot.workerId);
+      return view !== undefined && view.state !== "exited";
+    });
+    if (live.length === 0) {
+      const exited = active.some(slot => viewOf(slot.workerId)?.state === "exited");
+      return exited ? QUEUE_NOT_STARTING_NO_WORKER : undefined;
+    }
+    const ordered = [...live].sort((left, right) => left.workerId < right.workerId ? -1 : left.workerId > right.workerId ? 1 : 0);
+    const refusals = ordered.flatMap(slot => {
+      const refusal = viewOf(slot.workerId)?.activity?.refusal;
+      return refusal === undefined ? [] : [refusal];
+    });
+    if (refusals.length !== ordered.length) return undefined;
+    const refusal = refusals[0];
+    if (refusal === undefined) return undefined;
+    return { code: refusal.code, summary: refusal.summary ?? operatorFailureSentence(refusal.code) };
+  }
+
   #surfaceFold(row: RunFoldRecord | undefined, authority: RunRecord, children: readonly RunRecord[], context: QueueReadContext): SurfaceFold {
     const queued = authority.envelope;
     context.runs.set(queued.runId, authority);
@@ -1238,6 +1279,7 @@ export class RunQueueProjection {
       ...(pauseUnavailable || authority.pause?.state === "requested" ? {} : { command: authority.pause?.state === "paused" ? "resume" as const : "pause" as const }) };
     const claim = runClaim(authority);
     const interrupt = claim === undefined ? undefined : stepInterruptOf(authority, this.#deps.authority.writeInFlight?.(queued.runId) === true);
+    const notStarting = this.#notStarting(queued.workflow, status);
     const base = {
       runId: queued.runId,
       itemId: queued.itemId,
@@ -1279,6 +1321,7 @@ export class RunQueueProjection {
       outcome: this.#resultOutcome(authority, receipt, descriptor?.outcomeProjection),
       facts: this.#facts(authority, descriptor, status, receipt),
       status,
+      ...(notStarting === undefined ? {} : { notStarting }),
       ...(status === "cancelled" ? { cancelledBy: cancelledBy(authority) } : {}),
       liveMessage: interrupt?.step === "finish-write" ? { state: "present", value: "Finishing the save first" }
         : pauseControl.state === "pause-pending" ? { state: "present", value: "Restarts this step on Resume" }
