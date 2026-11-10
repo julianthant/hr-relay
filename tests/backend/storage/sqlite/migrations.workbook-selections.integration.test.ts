@@ -1,3 +1,4 @@
+import { applyOlderBuildStatements } from '../../../support/fixtures/storage/older-build-authority.js';
 import { installRetainedMergeFixture } from '../../../support/fixtures/storage/retained-workbook-merge.js';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
@@ -13,10 +14,13 @@ import { WriteIntentRecordSchema, WriteAttemptRecordSchema } from '../../../../s
 import { sha256Hex } from '../../../../src/rules/validation/sha256.js';
 
 const at = '2026-11-02T00:00:00.000Z';
-function fixture(version = 23) {
+function fixture(version: 23 | 25 = 23) {
   const database = new DatabaseSync(':memory:');
   database.exec('PRAGMA foreign_keys=ON');
-  for (const migration of SQLITE_MIGRATIONS.filter(migration => migration.version <= version)) {
+  applyOlderBuildStatements(database, version === 25 ? 24 : 23);
+  if (version === 25) {
+    const migration = SQLITE_MIGRATIONS.find(migration => migration.version === 25);
+    if (!migration) throw new Error('selection migration missing');
     for (const statement of migration.statements) database.exec(statement);
   }
   const transaction = <T>(work: () => T): T => {

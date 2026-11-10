@@ -4,6 +4,7 @@ import { insertNativeCommand } from "../../../../src/backend/storage/sqlite/comm
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema } from "../../../../src/models/run/record.js";
 import { assertUpgradedRunSettlementRows, restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { replantOlderBuildAuthority } from "../../../support/fixtures/storage/older-build-authority.js";
 import { removeSchema16PersonPreferences, prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { restoreSchema19RunSettlementFixture, restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
@@ -141,6 +142,11 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("BEGIN EXCLUSIVE");
     raw.exec("DROP TABLE IF EXISTS workflow_workbook_selections");
     if (sourceVersion < 24) restoreSchema22WorkerCustodyFixture(raw);
+    if (sourceVersion === 23) {
+      const claimIndex = SQLITE_MIGRATIONS.find(migration => migration.version === 23);
+      if (claimIndex === undefined) throw new Error("schema 23 migration missing");
+      for (const statement of claimIndex.statements) raw.exec(statement);
+    }
     if (sourceVersion >= 21) raw.exec(`UPDATE database_states SET schema_version=${String(sourceVersion)}; PRAGMA user_version=${String(sourceVersion)}`);
     else if (sourceVersion === 20) restoreSchema20CompletionFixture(raw);
     else if (sourceVersion === 19) restoreSchema19RunSettlementFixture(raw);
@@ -713,6 +719,7 @@ it.each(workbookFormats.flatMap(format => (['run', 'terminal-run', 'plan', 'cons
   const f = await readyBoundEight(owner.includes('run') ? 'queued' : 'idle', 24, false,
     { owner, schemaHash: deriveSchemaHash(schema, 'output'), value: JsonValueSchema.parse(schema.parse(value)) });
   try {
+    const originalFingerprint = replantOlderBuildAuthority(f.path, 24);
     const before = rawEight(f.path, 24);
     const result = await (owner === 'run'
       ? upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)
@@ -735,14 +742,64 @@ it.each(workbookFormats.flatMap(format => (['run', 'terminal-run', 'plan', 'cons
     assert.ok(manifestName);
     const manifest = AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(f.stateRoot, "backups", "authority", manifestName), "utf8")));
     assert.equal(manifest.schemaVersion, 24);
+    assert.equal(manifest.authorityContentFingerprint, originalFingerprint);
     assert.equal(manifest.sha256, digest(join(f.stateRoot, "backups", "authority", manifest.backupFileName)));
     assert.deepEqual(rawEight(join(f.stateRoot, "backups", "authority", manifest.backupFileName), 24), before);
     const fresh = f.machine.admitProfile(f.binding.profileId);
     try {
+      const verified = verifyStoppedBackupManifestAtPath(fresh, join(f.stateRoot, "backups", "authority", manifestName));
+      assert.equal(verified.manifest.schemaVersion, 24);
+      assert.equal(verified.manifest.authorityContentFingerprint, originalFingerprint);
       const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: 'selection-upgrade-readback' }, systemClock,
         undefined, undefined, undefined, createCredentialStore({ admission: fresh, stateRoot: f.stateRoot }));
       try { assert.equal(database.authority.workbooks.lastUsed('person-lookup'), undefined); }
       finally { database.close(); }
+    } finally { fresh.release(); }
+  } finally { await f.close(); }
+});
+
+it("upgrades a frozen schema 23 older-build store through its original fingerprint, a verified backup and strict readback", async () => {
+  const f = await readyBoundEight("idle", 23);
+  try {
+    const originalFingerprint = replantOlderBuildAuthority(f.path, 23);
+    const before = rawEight(f.path, 23);
+    const result = await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock);
+    assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 23, toSchemaVersion: 25, credentials: "unchanged" });
+    const after = rawEight(f.path, 25);
+    for (const [table, rows] of Object.entries(before)) {
+      if (table === "worker_slots") continue;
+      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: 25 })));
+      else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else assert.deepEqual(after[table], rows, table);
+    }
+    assert.deepEqual(after.workflow_workbook_selections, []);
+    const present = new DatabaseSync(f.path, { readOnly: true });
+    try {
+      assert.equal(present.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE name IN ('worker_leases','worker_controls','browser_sessions')").get()?.count, 0);
+    } finally { present.close(); }
+    const manifests = readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json"));
+    assert.equal(manifests.length, 1);
+    const manifestName = manifests[0];
+    assert.ok(manifestName);
+    const manifest = AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(f.stateRoot, "backups", "authority", manifestName), "utf8")));
+    assert.equal(manifest.schemaVersion, 23);
+    assert.equal(manifest.authorityContentFingerprint, originalFingerprint);
+    assert.equal(manifest.sha256, digest(join(f.stateRoot, "backups", "authority", manifest.backupFileName)));
+    assert.deepEqual(rawEight(join(f.stateRoot, "backups", "authority", manifest.backupFileName), 23), before);
+    const fresh = f.machine.admitProfile(f.binding.profileId);
+    try {
+      const verified = verifyStoppedBackupManifestAtPath(fresh, join(f.stateRoot, "backups", "authority", manifestName));
+      assert.equal(verified.manifest.schemaVersion, 23);
+      assert.equal(verified.manifest.authorityContentFingerprint, originalFingerprint);
+      const credentials = createCredentialStore({ admission: fresh, stateRoot: f.stateRoot });
+      const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "older-build-readback" }, systemClock,
+        undefined, undefined, undefined, credentials);
+      try {
+        assert.equal(database.authority.workbooks.lastUsed("person-lookup"), undefined);
+        const replay = executeSettingsCommand({ authority: database, clock: systemClock, ids: { uuid: randomUUID },
+          settings: createSettingsApplicationExecutor(() => { throw new Error("older-build-readback-reapplied"); }, credentials) }, f.command);
+        assert.deepEqual(replay, { ...f.saved, state: "already-applied" });
+      } finally { database.close(); }
     } finally { fresh.release(); }
   } finally { await f.close(); }
 });
