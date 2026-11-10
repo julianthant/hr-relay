@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import {
+  CommandIdSchema,
   ErrorCodeSchema,
   FailureFingerprintSchema,
   FailureIdSchema,
@@ -97,6 +98,9 @@ export const NotificationTriggerEventSchema = z.discriminatedUnion("kind", [
     workflowId: WorkflowIdSchema,
   }),
   BackfillGapTriggerEventSchema,
+  z.strictObject({ kind: z.literal("command-refused"), commandId: CommandIdSchema, outcome: z.enum(["rejected", "conflict"]) }),
+  z.strictObject({ kind: z.literal("command-unknown"), commandId: CommandIdSchema }),
+  z.strictObject({ kind: z.literal("bulk-incomplete"), bulkCommandId: CommandIdSchema }),
 ]);
 export type NotificationTriggerEvent = z.infer<typeof NotificationTriggerEventSchema>;
 
@@ -138,6 +142,11 @@ export function deriveNotificationDedupeFingerprint(input: unknown): string {
           requestedCursor: event.requestedCursor,
           projectionGeneration: String(event.projectionGeneration),
         };
+      case "command-refused":
+      case "command-unknown":
+        return { kind: event.kind, commandId: event.commandId };
+      case "bulk-incomplete":
+        return { kind: event.kind, bulkCommandId: event.bulkCommandId };
     }
   })();
   return FingerprintSchema.parse(sha256Hex(
@@ -213,6 +222,32 @@ export function projectNotificationTrigger(input: unknown): NotificationProjecti
           title: "Notification history is incomplete",
           summary: "The dashboard could not backfill part of the event stream. Resnapshot and reconcile the affected work before relying on dashboard history.",
           links: [],
+        };
+      case "command-refused":
+        return {
+          trigger: "command",
+          channel: "ping",
+          title: "Not done",
+          summary: event.outcome === "conflict"
+            ? "This changed before Relay got to it, so nothing was done. Check it and try again."
+            : "Relay did not do this, so nothing changed.",
+          links: [{ kind: "command-result", commandId: event.commandId }],
+        };
+      case "command-unknown":
+        return {
+          trigger: "command",
+          channel: "ping",
+          title: "Result unknown",
+          summary: "Relay could not confirm whether this finished. Open it to check before trying again.",
+          links: [{ kind: "recovery", commandId: event.commandId }],
+        };
+      case "bulk-incomplete":
+        return {
+          trigger: "command",
+          channel: "ping",
+          title: "Batch not fully done",
+          summary: "Some items in this batch were not done. Open it to see each one.",
+          links: [{ kind: "bulk-result", bulkCommandId: event.bulkCommandId }],
         };
     }
   })();

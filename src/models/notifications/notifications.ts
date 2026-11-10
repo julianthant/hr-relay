@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   ActorIdSchema,
+  CommandIdSchema,
   FailureIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
@@ -17,12 +18,16 @@ export const NotificationTriggerSchema = z.enum([
   "storage",
   "verified-done",
   "backfill-gap",
+  "command",
 ]);
 
 const NotificationLinkSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("run"), runId: RunIdSchema }),
   z.strictObject({ kind: z.literal("failure"), failureId: FailureIdSchema, runId: RunIdSchema }),
   z.strictObject({ kind: z.literal("storage"), diagnosticFingerprint: FingerprintSchema }),
+  z.strictObject({ kind: z.literal("recovery"), commandId: CommandIdSchema }),
+  z.strictObject({ kind: z.literal("command-result"), commandId: CommandIdSchema }),
+  z.strictObject({ kind: z.literal("bulk-result"), bulkCommandId: CommandIdSchema }),
 ]);
 
 const NotificationSnoozeSchema = z.discriminatedUnion("state", [
@@ -124,15 +129,6 @@ export function requireMutableNotification(input: unknown): NotificationRecord {
   return record;
 }
 
-/** Closed destinations resolved afresh from authority when the operator opens a row. */
-export const NotificationTargetSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("run"), runId: RunIdSchema, day: z.iso.date() }),
-  z.strictObject({ kind: z.literal("failure"), runId: RunIdSchema, failureId: FailureIdSchema, day: z.iso.date() }),
-  z.strictObject({ kind: z.literal("archive"), runId: RunIdSchema, reportDigest: FingerprintSchema }),
-  z.strictObject({ kind: z.literal("storage") }),
-  z.strictObject({ kind: z.literal("refused"), reason: z.enum(["wrong-actor", "notification-unavailable", "pinned", "run-unavailable", "failure-unavailable", "archive-unavailable", "target-unavailable"]) }),
-]);
-export type NotificationTarget = z.infer<typeof NotificationTargetSchema>;
 export const NotificationObservationStatusSchema = z.strictObject({
   state: z.enum(["ready", "failed", "stopped"]),
   code: z.enum(["NOTIFICATION_OBSERVATION_FAILED", "NOTIFICATION_RECEIPT_MISSING"]).optional(),

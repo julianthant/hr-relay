@@ -68,9 +68,11 @@ describe("Rerun source eligibility at planning and final consumption", () => {
       assert.equal(result.state, "rejected");
       if (result.state !== "rejected") throw new Error("ineligible source created work");
       assert.equal(result.code, "invalid-state");
-      assert.equal(snapshot(h, source), before);
+      assert.deepEqual(h.database.authority.commands.get(command.commandId), command);
+      assert.deepEqual(h.database.authority.commandAudits.findByCommand(command.commandId)?.result, result);
+      const prior = JSON.parse(before) as { generation: number };
+      assert.equal(snapshot(h, source), canonicalJsonStringify({ ...JSON.parse(before), generation: prior.generation + 2 }));
       assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
-      assert.equal(h.database.authority.commands.get(command.commandId), undefined);
     });
   }
 });

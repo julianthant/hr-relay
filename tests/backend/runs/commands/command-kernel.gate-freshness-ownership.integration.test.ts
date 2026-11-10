@@ -150,8 +150,9 @@ describe("gate resolution", () => {
     if (result.state === "rejected") assert.equal(result.code, expectedCode);
     assert.deepEqual(harness.database.authority.runs.get(runId), beforeRun);
     assert.equal(harness.database.authority.gateResults.get(`${runId}:${command.target.gateId}`), undefined);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "rejected");
+    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration + 2);
     assert.deepEqual(harness.database.authority.timelineEvents.page({}), beforeEvents);
     return result;
   }
@@ -304,9 +305,10 @@ describe("gate resolution", () => {
       assert.match(refusal.message, /only its registered source may settle it/);
     }
     assert.equal(harness.database.authority.gateResults.get(`${runId}:approval`), undefined);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "rejected");
     assert.equal(harness.database.authority.runs.get(runId)?.lifecycle.state, "parked-gate");
-    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration);
+    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration + 2);
     assert.deepEqual(harness.database.authority.timelineEvents.page({}), beforeEvents);
   });
 });

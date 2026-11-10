@@ -18,6 +18,7 @@ export function composeNotificationPublications(input: NotificationWiringInput &
         presentation: runDetailDeps,
         read: id => lifecycle.read(id), descriptor: id => descriptors.resolve(id),
         receipt: id => database.authority.evidenceReceipts.findByRun(id),
+        command: id => database.authority.commands.get(id),
         checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
       }), notificationSourceEventOf(publication.notification, { actorId: publication.notification.actorId, notificationId: publication.notification.notificationId, adopted: false, event: publication.event })),
     })) };
@@ -29,6 +30,7 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
       presentation: runDetailDeps,
       read: id => lifecycle.read(id), descriptor: id => descriptors.resolve(id),
         receipt: id => database.authority.evidenceReceipts.findByRun(id),
+        command: id => database.authority.commands.get(id),
       checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
     }), notificationSourceEventOf(record, database.authority.notificationPublications.latest(record.notificationId))))), target: (id, actor) => database.withAuthorityReadSnapshot(() => notificationTarget(id, actor)), status: notificationObserver.status };
 }
