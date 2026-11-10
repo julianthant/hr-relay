@@ -217,7 +217,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
           reading, corrected, pageBytes, command, root, resolve, stores, signerReads, pageReads, readResult: () => {
             const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
               "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);
-            return OcrResultSchema.parse(checkpoint.output.value);
+            return ReadOcrResult.output.parse(checkpoint.output.value);
           } };
       }
       const upload = await sources.upload({ actorId: "local-operator", fileName: "source.pdf", mediaType: "application/pdf",
@@ -255,7 +255,11 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
       assert.ok(roster);
       const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading }), { dryRun: options.dryRun ?? false,
-          ...(options.retainedProducer === true || !root.descriptor.requiredWorkbookTypeIds.includes("ocr-roster") ? {} : { workbookReferences: [{ entry: 1, typeId: "ocr-roster", libraryId: roster.libraryId }] }) });
+          ...(options.retainedProducer === true || root.descriptor.workbookReference?.id !== "ocr-roster" ? {} : {
+            workbookReferences: [{ entry: 1, libraryId: roster.libraryId,
+              versionId: database.authority.workbooks.libraryState(roster.libraryId).selectedVersionId,
+              sheetId: "people", expectedVersion: workbooks.read(roster.libraryId).version }],
+          }) });
       const signal = new AbortController().signal;
       const lookupAdmitted = () => database.authority.dependencies.groups(parentRun.envelope.runId)
         .some(({ group }) => group.invocation.nodeId === "lookup-identities");

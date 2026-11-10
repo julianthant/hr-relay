@@ -29,7 +29,7 @@ const documentsStep = { key: "documents", label: "Documents" } as const;
 const parent = composeWorkflowModule(compileFixtureWorkflow(defineWorkflow({
   id: "ocr-selection-parent", version: 1, code: "osp", label: "Selection parent", icon: "FileScan", category: "documents",
   input: OcrInputSchema, canonicalInput: defineCanonicalInput(OcrInputSchema, OcrCanonicalInputSchema, [OCR_INPUT_EXAMPLE]),
-  requiredWorkbookTypeIds: [OCR_ROSTER_TYPE_ID], referenceLookups: () => [{ mode: "all", typeId: OCR_ROSTER_TYPE_ID, fields: [...OCR_ROSTER_FIELDS] }],
+  requiredWorkbookFields: [...OCR_ROSTER_FIELDS], workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] },
   inputSubject: "document", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {}, details: [], role: defineWorkflowRole({ kind: "composition" }), scenarios: ["ocr/approved-records"],
   identity: { matchKey: input => input.document.sha256 }, presentation: { title: () => "Selection parent" },

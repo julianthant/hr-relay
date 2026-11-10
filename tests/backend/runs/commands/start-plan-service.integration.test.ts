@@ -39,7 +39,7 @@ afterEach(async () => {
 });
 
 async function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-start", initialize = true,
-  workbooksFor?: (database: AuthorityDatabase) => Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion" | "types">) {
+  workbooksFor?: (database: AuthorityDatabase) => Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion" | "types" | "createReferenceCapture">) {
   const profile = await profileFixtures.create(); profiles.push(profile);
   const database = AuthorityDatabase.open(profile.admission,
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, CLOCK,
@@ -297,7 +297,8 @@ it("plans one dry-run Emergency Contact PDF start against a header-only ocr-rost
   library.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
   const wire = h.service.plan({ workflowId: descriptor.id, dryRun: true, selectedStepKeys: descriptor.timeline.map(step => step.key),
     submissions: [{ document: OCR_INPUT_EXAMPLE.document, fileName: "scan.pdf", readingId: OCR_INPUT_EXAMPLE.readingId, roster: null, reading: { kind: "subscription" } }],
-    workbookReferences: [{ entry: 1, typeId: "ocr-roster", libraryId: roster.libraryId }] });
+    workbookReferences: [{ entry: 1, libraryId: roster.libraryId, versionId: library.libraryVersion(roster.libraryId).version.id, sheetId: "people",
+      expectedVersion: library.read(roster.libraryId).version }] });
   assert.equal(wire.refused.length, 0, JSON.stringify(wire.refused));
   assert.equal(wire.planned.length, 1);
 });

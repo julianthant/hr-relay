@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { WorkbookIdSchema, WorkbookCellValuesSchema } from "../../dashboard/workbooks.js";
 import { defineTaskContract } from "../../task/task-contract.js";
-import { taskId } from "../../../rules/identity/ids.js";
+import { FingerprintSchema, taskId } from "../../../rules/identity/ids.js";
 
 const text = z.string().min(1).refine(value => value.trim().length > 0);
 export const WorkbookTableSchema = z.strictObject({
@@ -13,7 +13,7 @@ export const WorkbookTableSchema = z.strictObject({
     || (table.rows.length + 1) * table.columns.length > 100_000) ctx.addIssue({ code: "custom", message: "Invalid table row identity, width, or cell count" });
 });
 export const WorkbookReferenceWriteSchema = z.strictObject({ kind: z.literal("patch-reference"),
-  writeId: z.string().regex(/^[a-z][a-z\d-]{0,79}$/u), typeId: WorkbookIdSchema, key: z.string().min(1),
+  writeId: z.string().regex(/^[a-z][a-z\d-]{0,79}$/u), typeId: WorkbookIdSchema, referenceDigest: FingerprintSchema, key: z.string().min(1),
   values: z.array(z.strictObject({ fieldId: WorkbookCellValuesSchema.keyType, value: WorkbookCellValuesSchema.valueType })).min(1)
     .refine(values => new Set(values.map(cell => cell.fieldId)).size === values.length, "Workbook fields must be unique") });
 export const WorkflowWorkbookCommandSchema = z.union([z.strictObject({ name: text, table: WorkbookTableSchema }), WorkbookReferenceWriteSchema]);

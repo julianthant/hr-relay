@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe,expect,it } from "vitest";
 import { z } from "zod";
 import { DESCRIPTORS, descriptorSetHash as descriptorSetHash_m0,INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
-import { projectWorkbookReferences } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { projectWorkbookCompatibilityFromRepository } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { buildBootstrap,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { FrontendBootstrapWireSchema,WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
@@ -21,7 +21,6 @@ import { AT,makeWorld,type DashboardWorld } from "../../../support/helpers/backe
 
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
-import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { PreflightReportSchema } from "../../../../src/models/preflight/preflight.js";
 
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
@@ -82,7 +81,7 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
     projection: world.projection,
     actorLabel: () => "Fixture Operator",
     authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
-    workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
+    workbookCompatibility: workflows => projectWorkbookCompatibilityFromRepository(world.database.authority.workbooks, workflows),
 
     preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
   };
@@ -95,8 +94,8 @@ describe("bootstrap start-surface block", () => {
       // Re-parsed on purpose: the producer's own `.parse` is what makes this a
       // statement about the WIRE rather than about an object literal.
       const wire = FrontendBootstrapWireSchema.parse(buildBootstrap(depsOf(world)));
-      expect(wire.workbookReferences.map(slot => ({ workflowId: slot.workflowId, typeId: slot.typeId })))
-        .toEqual(DESCRIPTORS.flatMap(descriptor => descriptor.requiredWorkbookTypeIds.map(typeId => ({ workflowId: descriptor.id, typeId }))));
+      expect(wire.workbookCompatibility.workflows.map(workflow => workflow.workflowId))
+        .toEqual(DESCRIPTORS.map(descriptor => descriptor.id));
       const served = new Map(
         WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)
           .map((entry) => [String(entry.id), entry.start] as const),
@@ -119,17 +118,16 @@ describe("bootstrap start-surface block", () => {
           enqueue: descriptor.enqueue,
           version: descriptor.version,
 
-          readiness: descriptor.requiredWorkbookTypeIds.length === 0
-            ? { scope: "default-workbook-references", state: "ready" }
-            : wire.workbookReferences.find(slot => slot.workflowId === descriptor.id)?.current.state === "unavailable"
-              ? { scope: "default-workbook-references", state: "unavailable",
-                reason: ERROR_CATALOG.WORKBOOK_TYPE_UNAVAILABLE.text,
-                fixAction: { kind: "review-workbook-reference", workflowId: descriptor.id, typeId: descriptor.requiredWorkbookTypeIds[0] } }
-              : { scope: "default-workbook-references", state: "blocked",
-              reason: `${descriptor.label} needs ${wire.workbookReferences.find(slot => slot.workflowId === descriptor.id)?.type?.name}.`,
-              fixAction: { kind: "import-workbook", workflowId: descriptor.id,
-                typeId: descriptor.requiredWorkbookTypeIds[0] } },
-          spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookTypeIds: [...descriptor.requiredWorkbookTypeIds],
+          readiness: descriptor.requiredWorkbookFields.length === 0
+            ? { scope: "workbook-sources", state: "ready" }
+            : wire.workbookCompatibility.workflows.find(workflow => workflow.workflowId === descriptor.id)?.sources.length
+              ? { scope: "workbook-sources", state: "selection-needed",
+                fixAction: { kind: "choose-workbook-sources", workflowId: descriptor.id } }
+              : { scope: "workbook-sources", state: "unavailable", reasonCode: "WORKBOOK_LIBRARY_EMPTY",
+                reason: "Import a Library spreadsheet before selecting a workflow source.",
+                fixAction: { kind: "import-workbook", workflowId: descriptor.id } },
+          spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
+          ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
           steps: projectStartSteps(descriptor).map((step) => ({
             key: step.key,
             label: step.label,
@@ -266,7 +264,7 @@ function depsOf(
       if (!storage.authorityReachable) throw new Error("authority database is unreadable");
       return { schemaVersion: 13, authorityGeneration: 4 };
     },
-    workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
+    workbookCompatibility: workflows => projectWorkbookCompatibilityFromRepository(world.database.authority.workbooks, workflows),
 
     preflightReport: () => PreflightReportSchema.parse({
       configFingerprint: "a".repeat(64),

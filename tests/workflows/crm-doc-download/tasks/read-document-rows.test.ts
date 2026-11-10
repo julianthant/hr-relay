@@ -10,7 +10,7 @@ import { CRM_DOCUMENT_RECORDS_FIXTURE, crmDocumentReferenceFixture } from "../..
 it("records every resolved reference fact and withholds identities and names from provider disclosure", async () => {
   const f = createSeparationTaskFixtures().taskContext();
   const output = await readCrmDocumentRowsTask.impl.run({ input: ReadCrmDocumentRows.input.parse({
-    records: CRM_DOCUMENT_RECORDS_FIXTURE, reference: crmDocumentReferenceFixture(), referenceDigest: "a".repeat(64),
+    records: CRM_DOCUMENT_RECORDS_FIXTURE, sources: [{ referenceDigest: "a".repeat(64), reference: crmDocumentReferenceFixture() }],
   }), ctx: f.ctx });
   assert.equal(output.state, "resolved");
   const leaves = evidenceLeaves(output);
@@ -26,14 +26,16 @@ it("retains missing rows explicitly and refuses corrupt names without successful
   const reference = crmDocumentReferenceFixture(), first = reference.snapshot.rows[0]; assert.ok(first);
   first.state = "missing"; first.matches = [];
   const f = createSeparationTaskFixtures().taskContext();
-  const input = ReadCrmDocumentRows.input.parse({ records: CRM_DOCUMENT_RECORDS_FIXTURE, reference, referenceDigest: "a".repeat(64) });
+  const input = ReadCrmDocumentRows.input.parse({ records: CRM_DOCUMENT_RECORDS_FIXTURE, sources: [{ referenceDigest: "a".repeat(64), reference }] });
   const output = await readCrmDocumentRowsTask.impl.run({ input, ctx: f.ctx });
   assert.equal(output.state, "resolve-required");
   assert.deepEqual(output.people[0]?.resolution, { state: "resolve-required", reason: "row-missing", candidates: [] });
   const invalid = crmDocumentReferenceFixture(), match = invalid.snapshot.rows[0]?.matches[0]; assert.ok(match);
   match.values.firstName = null;
   const bad = createSeparationTaskFixtures().taskContext();
-  await assert.rejects(readCrmDocumentRowsTask.impl.run({ input: ReadCrmDocumentRows.input.parse({ ...input, reference: invalid }), ctx: bad.ctx }),
+  await assert.rejects(readCrmDocumentRowsTask.impl.run({ input: ReadCrmDocumentRows.input.parse({
+    ...input, sources: [{ referenceDigest: "a".repeat(64), reference: invalid }],
+  }), ctx: bad.ctx }),
     error => error instanceof TaskRefusal && error.code === "CRM_DOCUMENT_REFERENCE_UNAVAILABLE");
   assert.deepEqual(bad.records, []);
 });

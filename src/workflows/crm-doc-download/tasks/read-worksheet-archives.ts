@@ -35,7 +35,7 @@ export async function packageCrmWorksheetArchives(artifacts: ContentAddressedArt
     const bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
     signal.throwIfAborted();
     archives.push(CrmWorksheetArchiveSchema.parse({ relativePath: worksheet.relativePath, artifact: await artifacts.put(bytes, { mediaType: "application/zip" }),
-      worksheetId: worksheet.worksheetId, worksheetName: worksheet.worksheetName,
+      referenceDigest: worksheet.referenceDigest, worksheetId: worksheet.worksheetId, worksheetName: worksheet.worksheetName,
       people: worksheet.people.map(person => ({ identity: person.source.identity, rowId: person.source.reference.rowId, folderName: person.folderName,
         documentCount: person.source.documents.length })) }));
   }

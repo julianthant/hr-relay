@@ -12,8 +12,9 @@ import { crmDocumentPackageWorksheetsDefinition } from "./steps/package-workshee
 export const crmDocDownloadWorkflow = defineWorkflow({
   id: "crm-doc-download", version: 1, code: "cd", label: "CRM Document Download", icon: "FileText", category: "documents",
   summary: "Download verified CRM PDFs and package one archive in each person's worksheet folder using the selected spreadsheet version's legal and lived names.",
-  requiredWorkbookTypeIds: [ONBOARDING_ROSTER_TYPE_ID],
-  referenceLookups: input => [{ typeId: ONBOARDING_ROSTER_TYPE_ID, keys: input.people.flatMap(person => person.kind === "email" ? [person.value] : []), fields: [...ONBOARDING_ROSTER_NAME_FIELDS] }],
+  requiredWorkbookFields: [...ONBOARDING_ROSTER_NAME_FIELDS],
+  workbookReference: { id: ONBOARDING_ROSTER_TYPE_ID, keyFieldId: "email", mode: "keys", writableFields: [] },
+  referenceKeys: input => input.people.flatMap(person => person.kind === "email" ? [person.value] : []),
   plannedOutputs: () => [{ kind: "worksheet-archives", state: "after-row-choice" }],
   input: CrmDocDownloadInput, canonicalInput: CrmDocDownloadCanonicalInput, inputSubject: "none",
   surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,

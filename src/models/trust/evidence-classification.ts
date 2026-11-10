@@ -611,7 +611,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...ocrPrivateLeaves(taskOutput("ocr/read-approved-records"), "sources"),
   ...open(taskOutput("workbooks/read-reference"), "state", "reference.snapshot.version", "reference.request.fields", "reference.snapshot.type.fields"),
   ...population(taskOutput("workbooks/read-reference"), "reference.snapshot.rows", "reference.snapshot.worksheets"),
-  ...["referenceDigest", "reference.request.typeId", "reference.request.libraryId", "reference.request.versionId", "reference.request.keys",
+  ...["referenceDigest", "sources", "reference.request.typeId", "reference.request.libraryId", "reference.request.versionId", "reference.request.keys",
     "reference.snapshot.libraryId", "reference.snapshot.versionId", "reference.snapshot.versionName", "reference.snapshot.type.id", "reference.snapshot.type.name",
     "reference.snapshot.type.keyFieldId", "reference.snapshot.type.defaultWorkbookId"].map(path =>
     ({ scope: taskOutput("workbooks/read-reference"), path, classification: "sensitive-hr", transform: "drop" })),
@@ -620,6 +620,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...[taskOutput("workflow:crm-doc-download/read-document-rows"), workflowResult("crm-doc-download-reference")].flatMap(scope => [
     ...population(scope, "people"), ...open(scope, "state"),
     { scope, path: "referenceDigest", classification: "sensitive-hr", transform: "drop" },
+    { scope, path: "sourceDigests", classification: "sensitive-hr", transform: "drop" },
   ]),
   ...[taskOutput("workflow:crm-doc-download/read-worksheet-archives"), workflowResult("crm-doc-download"), workflowResult("crm-doc-download-package-worksheets")].flatMap(scope => [
     ...population(scope, "worksheets", "collection.files"),
@@ -633,6 +634,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...["crm-doc-download", "crm-doc-download-reference", "crm-doc-download-package-worksheets"].flatMap(id => [
     ...open(gateResult(id, "document-row-choice"), "state", "decision"), ...population(gateResult(id, "document-row-choice"), "people"),
     { scope: gateResult(id, "document-row-choice"), path: "referenceDigest", classification: "sensitive-hr", transform: "drop" },
+    { scope: gateResult(id, "document-row-choice"), path: "sourceDigests", classification: "sensitive-hr", transform: "drop" },
 
   ]),
   ...open(taskOutput("extraction/extract-pdf-pages"), "pageCount"),

@@ -8,11 +8,16 @@ import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/modu
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../parity/helpers/fixture-start.js";
 import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 
-const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows));
+const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
 const catalog = buildWorkflowCatalog(served, true, servedFixtureSources([]));
 const ids = (query = "") => runPickerGroups(catalog, query).flatMap(group => group.entries.flatMap(node => [node.entry.id, ...node.members.map(child => child.entry.id)]));
 
 describe("shared run catalog", () => {
+  it("refuses a missing compatibility projection for a workflow that requires a workbook", () => {
+    const required = parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows).find(entry => entry.start.workbookReference !== undefined);
+    expect(required).toBeDefined();
+    expect(() => launchWorkflows([required!], { workflows: [], libraries: [] })).toThrow(/WORKBOOK_COMPATIBILITY_UNAVAILABLE/u);
+  });
   it("omits only parent-only previews from the picker while retaining the complete catalog", () => {
     const visible = ["crm-doc-download", "emergency-contact", "i9-check-start", "kronos-pay-rule", "oath-signature", "oath-upload", "old-kronos-reports", "onbase", "onboarding", "person-lookup", "separations", "work-study"];
     expect(ids().sort()).toEqual(visible);

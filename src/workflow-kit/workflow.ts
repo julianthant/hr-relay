@@ -4,7 +4,8 @@ import type { RunRecord } from "../models/run/record.js";
 import { WorkbookReferenceLookupSchema, type WorkbookReferenceLookup, type RunWorkbookReference } from "../models/dashboard/workbooks.js";
 import { PlannedRunOutputSchema, type PlannedRunOutput } from "../models/dashboard/run-outputs.js";
 import type { RunContinuation } from "../models/run/continuation.js";
-import { WorkbookIdSchema } from "../models/dashboard/workbooks.js";
+import { WorkbookRequirementDeclarationSchema, type WorkflowWorkbookRequirement } from "../models/dashboard/workbook-library.js";
+import { deepFreeze } from "../rules/validation/immutability.js";
 import { delegationInvocationCommandId } from "../rules/commands/lifecycle-command-id.js";
 import type { RerunValueMappingSpec } from "../models/workflow/rerun-values.js";
 import { validateRerunValueMappings } from "../models/validation/rerun-values.js";
@@ -206,8 +207,9 @@ export interface WorkflowDescriptor<
   /** Build-manifest derived (ref workflow-model ); stamped on every run, checkpoint, and span. */
   readonly contractFingerprint: Fingerprint;
   /** Existing references or linked masters this workflow directly needs. */
-  readonly requiredWorkbookTypeIds: readonly string[];
-  readonly referenceLookups?: (input: z.output<InputSchema>) => readonly WorkbookReferenceLookup[];
+  readonly requiredWorkbookFields: readonly string[];
+  readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
+  readonly referenceKeys?: (input: z.output<InputSchema>) => readonly string[];
   readonly plannedOutputs?: (input: z.output<InputSchema>, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
   readonly code: string;
   readonly label: string;
@@ -263,8 +265,9 @@ export interface AnyWorkflowDescriptor {
   readonly id: WorkflowId;
   readonly version: number;
   readonly contractFingerprint: Fingerprint;
-  readonly requiredWorkbookTypeIds: readonly string[];
-  readonly referenceLookups?: (input: never) => readonly WorkbookReferenceLookup[];
+  readonly requiredWorkbookFields: readonly string[];
+  readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
+  readonly referenceKeys?: (input: never) => readonly string[];
   readonly plannedOutputs?: (input: never, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
   readonly code: string;
   readonly label: string;
@@ -333,11 +336,12 @@ export interface WorkflowDescriptorSpec<
 > extends Omit<
   WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D>,
   "id" | "contractFingerprint" | "input" | "result" | "nodes" | "scenarios" | "timeline"
-  | "timelineDeclared" | "nodePurposes" | "stepOmissions" | "requiredWorkbookTypeIds"
+  | "timelineDeclared" | "nodePurposes" | "stepOmissions" | "requiredWorkbookFields" | "workbookReference"
 > {
   readonly id: string;
   readonly contractFingerprint: string;
-  readonly requiredWorkbookTypeIds?: readonly string[];
+  readonly requiredWorkbookFields?: readonly string[];
+  readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
   /** Parsed into branded `ScenarioId`s by the factory, the way contracts do. */
   readonly scenarios: readonly [string, ...string[]];
    // Optional; declaring it demands every node exactly once.
@@ -360,7 +364,8 @@ export interface WorkflowDescriptorSpec<
 }
 
 export interface WorkflowProjections {
-  readonly requiredWorkbookTypeIds: readonly string[];
+  readonly requiredWorkbookFields: readonly string[];
+  readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
   readonly steps: readonly StepProjection[];
   readonly gates: readonly GateProjectionDefinition[];
   /** Browser systems only — service and `workflow:<id>` stores contribute none. */
@@ -482,7 +487,8 @@ export function bindWorkflowDelegationTargets(descriptors: readonly AnyWorkflowD
 
 // Lookups use ingress; run callbacks use bound canonical input.
 export interface WorkflowPlanning {
-  readonly requiredWorkbookTypeIds: readonly string[];
+  readonly requiredWorkbookFields: readonly string[];
+  readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
   readonly plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
   readonly parseInput: (raw: unknown) => Readonly<{ input: unknown; lookups: readonly WorkbookReferenceLookup[] }>;
   readonly parseCanonicalInput: (value: unknown) => unknown;
@@ -1018,10 +1024,21 @@ function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSur
   }
 }
 
-export function parseRequiredWorkbookTypeIds(value: unknown): readonly string[] {
-  const ids = WorkbookIdSchema.array().parse(value === undefined ? [] : value);
-  if (new Set(ids).size !== ids.length) throw new Error("requiredWorkbookTypeIds must be unique");
-  return Object.freeze(ids);
+export function parseWorkbookRequirement(requiredWorkbookFields: unknown, workbookReference: unknown): Readonly<{
+  requiredWorkbookFields: readonly string[];
+  workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
+}> {
+  const parsed = WorkbookRequirementDeclarationSchema.parse({
+    requiredWorkbookFields: requiredWorkbookFields === undefined ? [] : requiredWorkbookFields,
+    ...(workbookReference === undefined ? {} : { workbookReference }),
+  });
+  return deepFreeze({ requiredWorkbookFields: parsed.requiredWorkbookFields,
+    ...(parsed.workbookReference === undefined ? {} : { workbookReference: parsed.workbookReference }) });
+}
+
+function requireReferenceKeys<Input>(callback: ((input: Input) => readonly string[]) | undefined, input: Input): readonly string[] {
+  if (callback === undefined) throw new Error("workbook reference keys declaration unavailable");
+  return callback(input);
 }
 
 export function defineWorkflowDescriptor<
@@ -1036,7 +1053,11 @@ export function defineWorkflowDescriptor<
 ): WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D> {
   const id = WorkflowIdSchema.parse(spec.id);
   const contractFingerprint = FingerprintSchema.parse(spec.contractFingerprint);
-  const requiredWorkbookTypeIds = parseRequiredWorkbookTypeIds(spec.requiredWorkbookTypeIds);
+  const { requiredWorkbookFields, workbookReference } = parseWorkbookRequirement(spec.requiredWorkbookFields, spec.workbookReference);
+  const referenceKeys = spec.referenceKeys;
+  if (workbookReference?.mode === "all" && referenceKeys !== undefined
+    || workbookReference?.mode === "keys" && referenceKeys === undefined
+    || workbookReference === undefined && referenceKeys !== undefined) throw new Error("invalid workbook reference keys declaration");
   // The ONE code declaration site. Uniqueness across the registry is
   // the composition root's — a descriptor cannot see its siblings.
   if (!WorkflowCodeSchema.safeParse(spec.code).success) {
@@ -1296,7 +1317,8 @@ export function defineWorkflowDescriptor<
     ...(spec.protectedInputs === undefined ? {} : { protectedInputs: Object.freeze(ProtectedInputDeclarationSchema.array().max(1).parse(spec.protectedInputs)) }),
     id,
     contractFingerprint,
-    requiredWorkbookTypeIds,
+    requiredWorkbookFields,
+    ...(workbookReference === undefined ? {} : { workbookReference }),
     surfaces,
     input: spec.flow.input,
     result: spec.flow.result,
@@ -1310,7 +1332,8 @@ export function defineWorkflowDescriptor<
     nodePurposes: deriveNodePurposes(id, nodes, spec.nodePurposes),
   });
   PROJECTIONS.set(descriptor, { ownDryRun: dryRun, support: dryRun, projections: Object.freeze({
-    requiredWorkbookTypeIds,
+    requiredWorkbookFields,
+    ...(workbookReference === undefined ? {} : { workbookReference }),
     steps,
     gates,
     systems,
@@ -1321,11 +1344,15 @@ export function defineWorkflowDescriptor<
     contracts: Object.freeze(contracts),
   }) });
   PLANNING.set(descriptor, Object.freeze({
-    requiredWorkbookTypeIds,
+    requiredWorkbookFields,
+    ...(workbookReference === undefined ? {} : { workbookReference }),
     plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => PlannedRunOutputSchema.array().parse(spec.plannedOutputs?.(spec.canonicalInput.parse(parsed), references) ?? []),
     parseInput: (raw: unknown) => {
       const input = spec.flow.input.parse(raw);
-      return { input, lookups: WorkbookReferenceLookupSchema.array().parse(spec.referenceLookups?.(input) ?? []) };
+      const lookups = workbookReference === undefined ? [] : [workbookReference.mode === "all"
+        ? { mode: "all" as const, typeId: workbookReference.id, fields: [...requiredWorkbookFields] }
+        : { typeId: workbookReference.id, keys: [...requireReferenceKeys(referenceKeys, input)], fields: [...requiredWorkbookFields] }];
+      return { input, lookups: WorkbookReferenceLookupSchema.array().parse(lookups) };
     },
     parseCanonicalInput: (value: unknown) => spec.canonicalInput.parse(value),
     matchKey: (parsed: unknown) => spec.identity.matchKey(spec.canonicalInput.parse(parsed)),
