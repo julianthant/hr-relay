@@ -99,7 +99,9 @@ describe("command destinations", () => {
       notAttempted: [UUID_5],
     });
     const replayed = { ...children[0], result: CommandResultSchema.parse({ state: "already-applied", commandId: children[0].request.commandId, affectedTargets: [{ family: "run", runId: UUID_1 }] }) };
-    expect(createNotificationTargetQuery({ ...base, get: () => row, bulk: () => ({ acceptance, children: [replayed, ...children.slice(1)] }) })(row.notificationId, row.actorId)).toMatchObject({ results: [{ replayed: false, detail: "cancel recorded" }] });
+    const replay = createNotificationTargetQuery({ ...base, get: () => row, bulk: () => ({ acceptance, children: [replayed, ...children.slice(1)] }) })(row.notificationId, row.actorId);
+    if (replay.kind !== "bulk-result") throw new Error("bulk result required");
+    expect(replay.results[0]).toMatchObject({ replayed: false, detail: "cancel recorded" });
     expect(createNotificationTargetQuery({ ...base, get: () => row })(row.notificationId, row.actorId)).toMatchObject({ kind: "refused", reason: "target-unavailable" });
   });
 });

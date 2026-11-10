@@ -73,7 +73,7 @@ async function world(wrap?: RepositoryWrap): Promise<{ harness: Harness; inbox: 
   const inbox = createNotificationInbox({
     authority: harness.database,
     clock: harness.clock,
-    ids: sequentialIdFactory("n"),
+    ids: sequentialIdFactory("1"),
     actorId: "local-operator",
   });
   return { harness, inbox, path: profile.path };

@@ -210,7 +210,7 @@ describe("operator assistant model preference", () => {
   it("preserves committed outcome and primary cause as an unknown error after post-commit refusal", async () => {
     const failure = new CommandIdentityConflictError();
     let calls = 0;
-    const h = await harness(async () => () => { if (++calls === 4) throw failure; return true as const; });
+    const h = await harness(async () => () => { if (++calls === 5) throw failure; return true as const; });
     const command = request(h.profile.admission.profileBinding.profileId);
     await assert.rejects(h.kernel.executeAssistantModelPreference(command), error => error instanceof Error
       && !(error instanceof CommandIdentityConflictError) && error.cause === failure);
