@@ -99,22 +99,22 @@ vi.mock("node:fs", async (importOriginal) => {
 afterEach(cleanup);
 
 describe("composed dashboard runtime over an owned loopback socket", () => {
-  it("unwinds an initial preflight refresh rejection and keeps authority admission recoverable", async () => {
+  it("unwinds a failure at the initial preflight and keeps authority admission recoverable", async () => {
   const controllerLock=await runtimeLifetimeLock();
     const repoRoot = await readyRoot(controllerLock);
     copyRuntimePackageFixture(repoRoot);
     mkdirSync(profileStateRoot(repoRoot), { recursive: true });
     const path = join(profileStateRoot(repoRoot), "state.db");
-    const primary = new Error("injected preflight clock failure");
+    const primary = new Error("injected initial preflight failure");
     const baseClock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const clock = { ...baseClock, monotonicMs: () => { throw primary; } };
 
     await assert.rejects(composeDashboardRuntime({ lifetimeLock: controllerLock,
       isolation: rebuildRuntimeIsolation,
       env: {},
-      clock,
+      clock: baseClock,
       repoRoot,
-    }), (error: unknown) => error instanceof AggregateError && error.errors.includes(primary));
+      onInitialPreflight: () => { throw primary; },
+    }), (error: unknown) => error === primary);
 
     await assertRuntimeLifetimeHeld(controllerLock);
     const database = openFixtureDatabase({ path, busyTimeoutMs: 250, migrationOwner: "startup-unwind-test" }, baseClock);
