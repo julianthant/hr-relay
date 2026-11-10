@@ -8,15 +8,14 @@ import { readAssistantAttachment, type AssistantFile, type AssistantPorts } from
 import { useFullAccessAllowed } from './assistant-approval-model.js';
 import './composer-input.css';
 import type { AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
-import { ASSISTANT_EFFORT_LABELS, assistantModelLabel } from '../../../models/config/assistant-model-preference.js';
 
 export function ComposerInput({ onSend, onAttachFile, disabled = false, initialText = '', autoFocus = false, draft, preview = true, onEdit, settlementKey, modelPreference }: AssistantPorts & {
   modelPreference?: AssistantModelPreferenceView['preference']; settlementKey?: string; preview?: boolean; onEdit?: (value: string) => void; onSend: (value: ComposerValue) => Promise<boolean>; disabled?: boolean; initialText?: string; autoFocus?: boolean; draft?: ComposerDraftPort;
 }) {
   const composer = useComposer({ onSend, initialText, draft, settlementKey });
   const id = useId();
-  const displayedModel = preview ? ASSISTANT_MODEL : modelPreference === undefined ? 'Model unavailable' : assistantModelLabel(modelPreference.slug);
-  const displayedEffort = preview ? composer.effort : modelPreference === undefined ? undefined : ASSISTANT_EFFORT_LABELS[modelPreference.effort];
+  const displayedModel = preview ? ASSISTANT_MODEL : modelPreference?.slug ?? 'Model unavailable';
+  const displayedEffort = preview ? composer.effort : modelPreference?.effort ?? 'Effort unavailable';
   // Without a served model there is no effort to show; only "Model unavailable" fits the panel toolbar.
   const focusMessageOnClose = useRef(false);
   const [error, setError] = useState<string | null>(null);

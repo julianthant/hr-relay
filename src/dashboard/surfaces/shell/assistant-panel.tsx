@@ -1,6 +1,6 @@
 import { ASSISTANT_UNKNOWN_NOTICE, assistantConfirmRefusal, type AssistantMockProposal } from "../assistant/assistant-model.js";
 import type { useAssistantController } from "../assistant/assistant-controller-model.js";
-import { Fragment, useEffect, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
+import { useEffect, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
 import { ArrowDown, Check, History, Paperclip, Plus, X } from "lucide-react";
 import { assistantFrame, ASSISTANT_FRAMES } from "../assistant/assistant-mock-frames.js";
 import { AssistantMockThread } from "./assistant-mock-thread.js";
@@ -11,7 +11,7 @@ import { ComposerInput } from './composer-input.js';
 import { useAssistantPanel, type AssistantConversationPort, type AssistantFile, type AssistantPorts } from './assistant-panel-model.js';
 import { assistantActivity, type AssistantTurnPhase } from './assistant-launcher-model.js';
 import './assistant-panel.css';
-import { type AssistantModelPreferenceView, type AssistantProposalRow } from '../../../models/dashboard/assistant.js';
+import { type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 
 export function AssistantReply({ children }: { children: React.ReactNode }) {
   return <div className="hub-assistant-line"><div className="hub-message">{children}</div></div>;
@@ -21,43 +21,29 @@ export function AssistantFileChip({ file }: { file: AssistantFile }) {
 }
 const HIDDEN_PROPOSAL_FACTS = new Set(['Input', 'Runs', 'Expires', 'Browser', 'Captures', 'Configuration', 'Options', 'Mode']);
 const MODE_LABEL = { 'dry-run': 'Dry run', 'read-only': 'Read only', 'local-change': 'Local change' } as const;
-/** The served card's planned rows; the server derives each row's display from the planned input. */
-function proposalRows(proposal: AssistantMockProposal): readonly AssistantProposalRow[] {
-  const issued = proposal.issued;
-  return issued?.effect === 'workflow-start' ? issued.startPlan.planned : issued?.effect === 'run-action' ? [issued.row] : [];
-}
-function ProposalRows({ rows }: { rows: readonly AssistantProposalRow[] }) {
-  return <>
-    {rows.map((row, index) => <Fragment key={index}>{row.display.kind === 'person'
-      ? row.display.name === undefined ? <><dt>EID</dt><dd>{row.display.employeeId}</dd></>
-        : row.display.employeeId === undefined ? <><dt>Name</dt><dd>{row.display.name}</dd></>
-        : <><dt>Person</dt><dd className="hub-person"><span>{row.display.name}</span> <span>EID {row.display.employeeId}</span></dd></>
-      : row.display.kind === 'document' ? <><dt>Document</dt><dd>{row.display.documentNumber}</dd></>
-      : row.display.kind === 'file' ? <><dt>File</dt><dd>{row.display.fileName}</dd></>
-      : <><dt>Request</dt><dd>{row.title}</dd></>}</Fragment>)}
-    {rows.length > 1 && <><dt>Total</dt><dd>{rows.length}</dd></>}
-  </>;
+function proposalPeople(proposal: AssistantMockProposal): readonly { name: string; id?: string }[] {
+  if (proposal.startPlan) return [{ name: proposal.person?.name ?? proposal.startPlan.planned[0]?.title ?? '', ...(proposal.person?.employeeId ? { id: proposal.person.employeeId } : {}) }];
+  return proposal.subjects.map(subject => ({ name: subject.name, id: subject.id }));
 }
 export function ProposalCard({ proposal, disposition, refusal, onCancel, onConfirm }: { proposal: AssistantMockProposal; disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown'; refusal?: string; onCancel: () => void; onConfirm: () => void }) {
-  const rows = proposalRows(proposal), only = rows.length === 1 ? rows[0] : undefined;
-  const target = only === undefined ? proposal.issued?.targetLabel : only.display.kind === 'person' ? only.display.name ?? only.display.employeeId ?? only.title : only.display.kind === 'document' ? only.display.documentNumber : only.display.kind === 'file' ? only.display.fileName : only.title;
-  // An unknown outcome is one plain line, carried by the transcript message.
-  if (disposition === 'unknown') return null;
+  const people = proposalPeople(proposal);
+  const peopleLabel = people.length === 1 ? (people[0]?.name ?? '') : `${String(people.length)} people`;
   if (disposition === 'confirmed' || disposition === 'cancelled') {
-    const done = disposition === 'confirmed', start = proposal.issued?.effect === 'workflow-start', named = rows.length > 0 || proposal.issued?.effect === 'spreadsheet';
-    return <div className="hub-resolved" aria-label="Resolved proposal"><span>{done ? <Check aria-hidden /> : <X aria-hidden />}</span><span className="hub-resolved-title">{proposal.workflow.label}{named ? <> · {target}</> : null}</span><span className="hub-resolved-status" role="status">{done ? (start ? 'Started' : 'Done') : start ? 'Not started' : 'Not done'}</span></div>;
+    const done = disposition === 'confirmed';
+    return <div className="hub-resolved" aria-label="Resolved proposal"><span>{done ? <Check aria-hidden /> : <X aria-hidden />}</span><span className="hub-resolved-title">{proposal.workflow.label}{people.length ? ` · ${peopleLabel}` : ''}</span><span className="hub-resolved-status" role="status">{done ? (proposal.startPlan ? 'Started' : 'Done') : 'Not started'}</span></div>;
   }
   const options = [MODE_LABEL[proposal.mode], ...proposal.values.filter(value => !HIDDEN_PROPOSAL_FACTS.has(value.label)).map(value => value.value)];
-  const busy = disposition === 'confirming';
+  const busy = disposition === 'confirming', unknown = disposition === 'unknown';
   return <article className="hub-card hub-proposal" aria-label={`Proposed ${proposal.workflow.label}`}>
     <div className="hub-card-body"><h3>{proposal.workflow.label}</h3><dl className="hub-facts">
-      {proposal.issued?.effect === 'spreadsheet' ? proposal.issued.facts.map(fact => <Fragment key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></Fragment>) : <>
-        <ProposalRows rows={rows} />
-        <dt>Options</dt><dd>{options.join(' · ')}</dd></>}
+      {proposal.person ? <><dt>Name</dt><dd>{proposal.person.name ?? 'Not provided'}</dd><dt>EID</dt><dd>{proposal.person.employeeId ?? 'Not provided'}</dd></>
+        : proposal.startPlan ? <><dt>Request</dt><dd>{proposal.startPlan.planned[0]?.title}</dd></>
+        : people.length > 0 && <><dt>Name</dt><dd>{people.map(person => <div key={`${person.name}:${person.id ?? ''}`}>{person.name}</div>)}</dd><dt>EID</dt><dd>{people.map(person => <div key={`${person.name}:${person.id ?? ''}`}>{person.id}</div>)}</dd></>}
+      <dt>Options</dt><dd>{options.join(' · ')}</dd>
     </dl></div>
-    <footer className="hub-card-footer"><span className="hub-footer-status" role="status">{busy ? <span className="hub-spinner" aria-hidden /> : null}{refusal ?? ''}</span><span className="hub-footer-actions">
+    <footer className="hub-card-footer"><span className="hub-footer-status" role={unknown ? 'alert' : 'status'}>{busy ? <span className="hub-spinner" aria-hidden /> : null}{refusal ?? ''}</span><span className="hub-footer-actions">
       <Button size="sm" variant="ghost" disabled={disposition !== 'review'} onClick={onCancel}>Cancel</Button>
-      <Button size="sm" variant="primary" disabled={proposal.action === undefined || busy || Boolean(refusal)} onClick={onConfirm}>Confirm</Button></span></footer>
+      <Button size="sm" variant="primary" disabled={proposal.action === undefined || Boolean(refusal)} onClick={onConfirm}>Confirm</Button></span></footer>
   </article>;
 }
 export function AssistantPanel({ producer, accountClient, onAttachFile, onRegisterSpreadsheet, onRunWorkflow, onOpenSettings,

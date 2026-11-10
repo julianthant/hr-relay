@@ -22,7 +22,7 @@ export function HubShell(props: HubShellProps) {
   const client = useDashboardClient();
   const history = useAssistantHistory(client, props.source === 'served', props.authority);
   return <HubShellBody key={history.store?.profileId ?? (history.pending ? 'loading' : 'session')} {...props} history={history.store}
-    preferenceChanged={history.preferenceChanged} modelPreference={history.preference} historyPending={history.pending || history.blocked || props.source === 'served' && history.store === undefined} historyNotice={history.notice || (history.pending ? 'Loading chat history…' : '')} />;
+    preferenceChanged={history.preferenceChanged} modelPreference={history.preference} historyPending={history.pending || props.source === 'served' && history.store === undefined} historyNotice={history.notice || (history.pending ? 'Loading chat history…' : '')} />;
 }
 function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLogoutOpenChange, chatsPort, onRunWorkflow, source = "mock", authority, commands, subjectRef, history, historyPending, historyNotice, modelPreference, preferenceChanged }: HubShellProps & { history?: AssistantHistory; historyPending: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
   const panelPosition = useHubPanelPosition(4);
