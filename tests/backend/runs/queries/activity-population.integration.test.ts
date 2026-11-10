@@ -7,7 +7,7 @@ import { createActivityPopulationService, ActivityPopulationError } from "../../
 import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-database-admission.js";
-import { runRecordOf, uuidOf, failureRecordOf, cleanReceiptOf, receiptWithWarningsOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { runRecordOf, uuidOf, traceOf, failureRecordOf, cleanReceiptOf, receiptWithWarningsOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { RunResultRecordSchema, deriveRunResultDigest, deriveTerminalDependencyDigest, createRunTerminalEvidenceResult, deriveTerminalFailureDigest } from "../../../../src/models/run/result.js";
@@ -20,6 +20,10 @@ import { createTransactionHistory } from "../../../../src/backend/storage/sqlite
 import { RunEvidenceReceiptSchema } from "../../../../src/models/trust/evidence.js";
 
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { queryActivitySummaries } from "../../../../src/backend/runs/queries/activity-summaries.js";
+import { createActivityAnalytics } from "../../../../src/backend/runs/queries/activity-analytics.js";
+import { TimelineAppendSchema } from "../../../../src/models/events/timeline.js";
+import { deriveRunStatus } from "../../../../src/rules/runs/run-status.js";
 
 const range = { from: "2026-10-01", to: "2026-10-01" };
 const at = "2026-10-01T12:00:00.000Z";
@@ -39,12 +43,14 @@ async function fixture() {
     let state = search.rebuild({ restart: true, limit: 500 }, database.getMeta().authorityGeneration, at);
     while (state.state === "building") state = search.rebuild({ restart: false, limit: 500 }, database.getMeta().authorityGeneration, at);
   };
-  const add = (seed: number, options: Omit<Parameters<typeof runRecordOf>[0], "seed" | "enqueuedAt"> = {}, failureCode = "FIXTURE_FAILURE") => {
+  const add = (seed: number, options: Omit<Parameters<typeof runRecordOf>[0], "seed"> = {}, failureCode = "FIXTURE_FAILURE") => {
     const lifecycle = options.lifecycle;
+    const requestedEnqueue = options.enqueuedAt;
     const missingTiming = lifecycle !== undefined && typeof lifecycle === "object" && lifecycle !== null && "endedAt" in lifecycle && typeof lifecycle.endedAt === "string" && lifecycle.endedAt < at;
-    const isCancelled = lifecycle !== undefined && typeof lifecycle === "object" && lifecycle !== null && "outcome" in lifecycle && lifecycle.outcome === "cancelled";
-    const source = runRecordOf({ seed, enqueuedAt: missingTiming ? "2026-10-01T11:00:00.000Z" : at, dryRun: true, displayName: `Person ${seed}`, ...options, ...(isCancelled ? { lifecycle: { state: "queued" } } : {}) });
-    let record = RunRecordSchema.parse({ ...source, envelope: { ...source.envelope, enqueuedAt: at } });
+    const settledByTransition = lifecycle !== undefined && typeof lifecycle === "object" && lifecycle !== null && "outcome" in lifecycle
+      && (lifecycle.outcome === "cancelled" || lifecycle.outcome === "discarded" || lifecycle.outcome === "superseded");
+    const source = runRecordOf({ seed, enqueuedAt: missingTiming ? "2026-10-01T11:00:00.000Z" : at, dryRun: true, displayName: `Person ${seed}`, ...options, ...(settledByTransition ? { lifecycle: { state: "queued" } } : {}) });
+    let record = RunRecordSchema.parse({ ...source, envelope: { ...source.envelope, enqueuedAt: requestedEnqueue ?? at } });
     let result;
     let failure;
     if (record.lifecycle.state === "terminal" && record.lifecycle.outcome === "done") {
@@ -76,7 +82,7 @@ async function fixture() {
       raw.prepare(`INSERT INTO run_results (${Object.keys(settlement).join(",")}) VALUES (${Object.keys(settlement).map(() => "?").join(",")})`)
         .run(...Object.values(settlement));
     }
-    if (isCancelled) {
+    if (settledByTransition) {
       publish();
       const outcome = testRunService(database, clock).transition({ commandId: uuidOf(seed + 1000), runId: record.envelope.runId, expectedVersion: record.version, lifecycle });
       expect(outcome.state).toBe("applied");
@@ -130,6 +136,140 @@ describe("selected Analytics population", () => {
     expect(f.service.readSelected(range, selected.snapshot.token, { metric: "failed", page: 0 }).browse?.rows.map(row => row.runId)).toEqual([uuidOf(10)]);
     const browse = f.service.readSelected(range, selected.snapshot.token, { metric: "timed", page: 0 }).browse;
     expect(browse?.rows.map(row => row.runId)).toEqual([uuidOf(1), uuidOf(2)]);
+  });
+
+  it("serves a failed step, a mixed-outcome day and the median duration", async () => {
+    const f = await fixture();
+    const searching = personLookupDescriptor.timeline.find(category => category.label === "Search for person");
+    const nodeId = searching?.nodes[0]?.id;
+    expect(nodeId).toBeTruthy();
+    if (nodeId === undefined) throw new Error("person lookup search step has no node");
+    const day2 = "2026-10-02T12:00:00.000Z";
+    f.add(43, { lifecycle: done(1000) });
+    const failure = failureRecordOf({ seed: 40, code: "SESSION_LOST" });
+    const failed = f.add(40, { lifecycle: { state: "terminal", outcome: "failed", endedAt: new Date(Date.parse(at) + 4000).toISOString(), failureId: failure.failureId } }, "SESSION_LOST");
+    f.add(42, { lifecycle: { state: "parked-gate", gateId: "operator-review", parkedAt: at, resumeAt: nodeId } });
+    f.add(41, { enqueuedAt: day2, lifecycle: { state: "terminal", outcome: "done", endedAt: new Date(Date.parse(day2) + 3000).toISOString() } });
+    f.add(44, { enqueuedAt: day2, lifecycle: { state: "terminal", outcome: "done", endedAt: new Date(Date.parse(day2) + 9000).toISOString() } });
+    f.publish();
+    const spanPath = `${traceOf(40)}/${nodeId}#1.1`;
+    const startedAt = new Date(Date.parse(at) + 1000).toISOString();
+    const endedAt = new Date(Date.parse(at) + 4000).toISOString();
+    const span = { workflow: "person-lookup", pid: 1, runId: failed.envelope.runId, attempt: 1, traceId: failed.envelope.traceId, spanPath };
+    for (const [seed, event] of [[9100, { t: "span.started", kind: "task", name: "SESSION_LOST", ts: startedAt, ...span }], [9101, { t: "span.ended", kind: "task", outcome: "failed", ts: endedAt, ...span }]] as const) {
+      f.database.authority.timelineEvents.append(TimelineAppendSchema.parse({
+        schemaVersion: 1, eventId: uuidOf(seed), workflow: "person-lookup", scope: { kind: "run", runId: failed.envelope.runId },
+        occurredAt: event.ts, recordedAt: event.ts, retentionDate: "2026-10-01", source: { kind: "native" },
+        payload: { kind: "span", event },
+      }));
+    }
+    const report = queryActivitySummaries(f.database, { from: "2026-10-01", to: "2026-10-02", generatedAt: at }, {
+      descriptors: { resolve: workflow => workflow === "person-lookup" ? personLookupDescriptor : undefined },
+      ledger: { foldActivityRange: () => ({ systems: [] }) },
+      timeZone: "UTC",
+    });
+    expect(report.outcomeSplit).toEqual({ done: 3, failed: 1, attention: 1 });
+    expect(report.days).toEqual([
+      { day: "2026-10-01", runs: 3, outcomes: { done: 1, failed: 1, attention: 1 }, typicalTime: { measuredRuns: 2, medianMs: { state: "present", value: 1000 } } },
+      { day: "2026-10-02", runs: 2, outcomes: { done: 2, failed: 0, attention: 0 }, typicalTime: { measuredRuns: 2, medianMs: { state: "present", value: 3000 } } },
+    ]);
+    expect(report.typicalMedian).toEqual({ measuredRuns: 4, medianMs: { state: "present", value: 3000 } });
+    expect(report.durations.medianMs).toEqual({ state: "present", value: 3000 });
+    expect(report.workflows.map(row => row.failedAt)).toEqual([[{ state: "known", nodeId, title: "Search for person", runs: 1 }]]);
+  });
+
+  it("counts operator attention and excludes cancelled, discarded, superseded, and a queued child wait", async () => {
+    const f = await fixture();
+    f.add(60, { lifecycle: { state: "parked-write", writeIntentId: uuidOf(60), intentGeneration: 1, parkedAt: at, code: "operator-required", message: "operator must confirm the write" } });
+    f.add(61, { lifecycle: { state: "terminal", outcome: "interrupted", endedAt: at } });
+    f.add(62, { lifecycle: { state: "parked-gate", gateId: "operator-review", parkedAt: at, resumeAt: "searching" } });
+    f.add(63, { lifecycle: cancelled(0) });
+    f.add(64, { lifecycle: { state: "terminal", outcome: "discarded", endedAt: at } });
+    f.add(65, { lifecycle: { state: "terminal", outcome: "superseded", endedAt: at } });
+    f.add(66);
+    f.publish();
+    const report = queryActivitySummaries(f.database, { ...range, generatedAt: at }, {
+      descriptors: { resolve: () => undefined },
+      ledger: { foldActivityRange: () => ({ systems: [] }) },
+      timeZone: "UTC",
+    });
+    const attention = { done: 0, failed: 0, attention: 3 };
+    const day = { day: "2026-10-01", runs: 7, outcomes: attention };
+    expect(report.outcomeSplit).toEqual(attention);
+    expect(report.days).toEqual([expect.objectContaining(day)]);
+    expect(report.workflows).toEqual([expect.objectContaining({ workflowId: "person-lookup", outcomes: attention, days: [expect.objectContaining(day)] })]);
+    const blockedOnChild = deriveRunStatus({ lifecycle: { state: "queued" }, delegationWait: { nodeId: "searching", state: "blocked" } });
+    expect(blockedOnChild).toBe("blocked");
+    const counted = createActivityAnalytics();
+    counted.observe({ workflowId: "person-lookup", day: "2026-10-01", status: blockedOnChild, lifecycleState: "queued", durationMs: null });
+    counted.observe({ workflowId: "person-lookup", day: "2026-10-01", status: "partial", lifecycleState: "terminal", durationMs: null });
+    expect(counted.outcomeSplit()).toEqual({ done: 0, failed: 0, attention: 1 });
+    expect(counted.workflow("person-lookup").outcomes).toEqual({ done: 0, failed: 0, attention: 1 });
+    expect(counted.workflow("person-lookup").days).toEqual([expect.objectContaining({ day: "2026-10-01", runs: 2, outcomes: { done: 0, failed: 0, attention: 1 } })]);
+    expect(counted.days()).toEqual([expect.objectContaining({ day: "2026-10-01", runs: 2, outcomes: { done: 0, failed: 0, attention: 1 } })]);
+  });
+
+  it("uses the latest failed span, a recorded name, and leaves an unreadable step unavailable", async () => {
+    const f = await fixture();
+    const failed = (seed: number) => {
+      const failure = failureRecordOf({ seed, code: "FIXTURE_FAILURE" });
+      return f.add(seed, { workflow: "retired-workflow", lifecycle: { state: "terminal", outcome: "failed", endedAt: at, failureId: failure.failureId } });
+    };
+    const latest = failed(70);
+    const recorded = failed(71);
+    const idOnly = failed(72);
+    const pathOnly = failed(73);
+    const codeOnly = failed(74);
+    failed(75);
+    const noNode = failed(76);
+    f.publish();
+    const taskPath = (traceId: string, nodeId: string) => `${traceId}/${nodeId}#1.1`;
+    const appendSpan = (record: ReturnType<typeof failed>, eventSeed: number, span: { spanPath: string; name: string; endedAt: string; outcome: "failed" | "done" }) => {
+      const identity = { workflow: record.envelope.workflow, pid: 1, runId: record.envelope.runId, attempt: 1, traceId: record.envelope.traceId, spanPath: span.spanPath };
+      const events = [
+        { t: "span.started" as const, kind: "task" as const, name: span.name, ts: "2026-10-01T07:00:00.000Z", ...identity },
+        { t: "span.ended" as const, kind: "task" as const, outcome: span.outcome, ts: span.endedAt, ...identity },
+      ];
+      for (const [index, event] of events.entries()) {
+        f.database.authority.timelineEvents.append(TimelineAppendSchema.parse({
+          schemaVersion: 1, eventId: uuidOf(eventSeed + index), workflow: record.envelope.workflow,
+          scope: { kind: "run", runId: record.envelope.runId }, occurredAt: event.ts, recordedAt: event.ts,
+          retentionDate: "2026-10-01", source: { kind: "native" }, payload: { kind: "span", event },
+        }));
+      }
+    };
+    const earlyPath = taskPath(latest.envelope.traceId, "early-step");
+    const laterPath = taskPath(latest.envelope.traceId, "later-step");
+    appendSpan(latest, 9300, { spanPath: earlyPath, name: "Earlier step", endedAt: "2026-10-01T12:00:00.000Z", outcome: "failed" });
+    appendSpan(latest, 9310, { spanPath: laterPath, name: "Later step", endedAt: "2026-10-01T08:00:00.000-07:00", outcome: "failed" });
+    appendSpan(latest, 9320, { spanPath: taskPath(latest.envelope.traceId, "finished-step"), name: "Finished step", endedAt: "2026-10-01T16:00:00.000Z", outcome: "done" });
+    appendSpan(recorded, 9330, { spanPath: taskPath(recorded.envelope.traceId, "recorded-step"), name: "Recorded step", endedAt: at, outcome: "failed" });
+    appendSpan(idOnly, 9340, { spanPath: taskPath(idOnly.envelope.traceId, "id-only"), name: "id-only", endedAt: at, outcome: "failed" });
+    const pathNamed = taskPath(pathOnly.envelope.traceId, "path-only");
+    appendSpan(pathOnly, 9350, { spanPath: pathNamed, name: pathNamed, endedAt: at, outcome: "failed" });
+    appendSpan(codeOnly, 9360, { spanPath: taskPath(codeOnly.envelope.traceId, "code-only"), name: "SESSION_LOST", endedAt: at, outcome: "failed" });
+    appendSpan(noNode, 9370, { spanPath: "unscoped/step", name: "Recorded step", endedAt: at, outcome: "failed" });
+    const report = queryActivitySummaries(f.database, { ...range, generatedAt: at }, {
+      descriptors: { resolve: () => undefined },
+      ledger: { foldActivityRange: () => ({ systems: [] }) },
+      timeZone: "UTC",
+    });
+    const failedSplit = { done: 0, failed: 7, attention: 0 };
+    const day = { day: "2026-10-01", runs: 7, outcomes: failedSplit };
+    expect(report.outcomeSplit).toEqual(failedSplit);
+    expect(report.days).toEqual([expect.objectContaining(day)]);
+    expect(report.workflows).toEqual([expect.objectContaining({
+      workflowId: "retired-workflow",
+      outcomes: failedSplit,
+      days: [expect.objectContaining(day)],
+      failedAt: [
+        { state: "known", nodeId: "later-step", title: "Later step", runs: 1 },
+        { state: "known", nodeId: "recorded-step", title: "Recorded step", runs: 1 },
+        { state: "unavailable", reason: "the failed run has no task span that records the step where it failed", runs: 1 },
+        { state: "unavailable", reason: "the failed task span does not name a workflow node", runs: 1 },
+        { state: "unavailable", reason: "the failed task span has no readable step title", runs: 3 },
+      ],
+    })]);
   });
 
   it("keeps failure codes distinct per workflow with catalog prose and registered or absent labels", async () => {
