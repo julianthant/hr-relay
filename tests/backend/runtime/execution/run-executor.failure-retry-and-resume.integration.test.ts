@@ -252,6 +252,5 @@ describe("failure, retry, and resume", () => {
       runId: RUN_ID, expectedVersion: requested.version, claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, endedAt: now }, harness.deps.descriptor));
     assert.deepEqual(terminal.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: now });
     assert.equal(database.authority.runs.listByWorker(claim.workerId).some(owned => runClaim(owned) !== undefined), false);
-    assert.doesNotThrow(() => database.assertWorkerLifecycleRelease(claim.workerId));
   });
 });

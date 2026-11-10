@@ -5,10 +5,10 @@ import { BrowserRootSchema, BrowserRootsSchema, type BrowserRootsDocument } from
 
 function document(): BrowserRootsDocument {
   const profileId = randomUUID();
-  return BrowserRootsSchema.parse({ schemaVersion: 2, installationId: randomUUID(), revision: 0, nextHandle: 2, nextGeneration: 2,
+  return BrowserRootsSchema.parse({ schemaVersion: 3, installationId: randomUUID(), revision: 0, nextHandle: 2, nextGeneration: 2,
     roots: [{ handle: 1, profileId, profileRoot: `profiles/${profileId}/browsers`, directory: `profiles/${profileId}/browsers/w1/crm`,
-      owner: { kind: "worker", workerId: "person-lookup-worker-1", workflowId: "person-lookup", ordinal: 1,
-        membershipRevision: 1, leaseGeneration: 1 }, sessionGeneration: 0, credentialFingerprint: "a".repeat(64),
+      owner: { kind: "worker", workerId: "person-lookup-worker-1", workflowId: "person-lookup", ordinal: 1 },
+        sessionGeneration: 0, credentialFingerprint: "a".repeat(64),
       launch: { launchId: randomUUID(), generation: 1, state: "unknown" } }] });
 }
 
@@ -24,8 +24,9 @@ it("bounds retained roots at 64 without discarding unknown launches", () => {
 });
 
 const invalidDocuments: ReadonlyArray<readonly [string, (value: BrowserRootsDocument) => unknown]> = [
-  ["future document", value => ({ ...value, schemaVersion: 3 })],
-  ["prior document", value => ({ ...value, schemaVersion: 1 })],
+  ["future document", value => ({ ...value, schemaVersion: 4 })],
+  ["prior document", value => ({ ...value, schemaVersion: 2 })],
+  ["first document", value => ({ ...value, schemaVersion: 1 })],
   ["handle reuse", value => ({ ...value, nextHandle: 1 })],
   ["unknown document field", value => ({ ...value, pruned: true })],
   ["unsafe revision", value => ({ ...value, revision: Number.MAX_SAFE_INTEGER + 1 })],

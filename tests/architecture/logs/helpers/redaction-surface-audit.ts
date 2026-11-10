@@ -28,6 +28,7 @@ import { DiagnosticBundleWireSchema } from "../../../../src/models/dashboard/dia
 import { WorkflowExplorerWireSchema } from "../../../../src/models/dashboard/explorer.js";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { OcrCommandResultWireSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
+import { WorkerCommandResultWireSchema } from "../../../../src/models/dashboard/worker-command-result.js";
 import { CrossDateSearchPageSchema } from "../../../../src/models/dashboard/search.js";
 import { SettingsFactsWireSchema } from "../../../../src/models/dashboard/settings.js";
 import { EditableSettingsPathSchema, EditableSettingsWireSchema } from "../../../../src/models/dashboard/settings-editor.js";
@@ -757,6 +758,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/workbook-intake", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookIntakeResultSchema },
   { id: "wire/intake-command-result", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: IntakeCommandResultWireSchema },
   { id: "wire/ocr-command-result", egress: "operator-loopback", module: "src/models/dashboard/run-detail.ts", schema: OcrCommandResultWireSchema },
+  { id: "wire/worker-command-result", egress: "operator-loopback", module: "src/models/dashboard/worker-command-result.ts", schema: WorkerCommandResultWireSchema },
 
   { id: "wire/rerun-values", egress: "operator-loopback", module: "src/models/dashboard/rerun-values.ts", schema: RerunValuesResponseSchema },
   { id: "wire/rerun-warning", egress: "operator-loopback", module: "src/models/dashboard/rerun-warning.ts", schema: RerunWarningWireSchema },
@@ -1219,25 +1221,14 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/intake-command-result", path: "result.message", origin: "captured-hr-value" },
   { surface: "wire/intake-command-result", path: "result.workerStartup.message", origin: "repository-authored" },
   { surface: "wire/intake-command-result", path: "result.workerStartup.detail", origin: "external-text" },
+  { surface: "wire/worker-command-result", path: "request.reason", origin: "operator-authored" },
+  { surface: "wire/worker-command-result", path: "result.entries", origin: "protected-value" },
+  { surface: "wire/worker-command-result", path: "result.message", origin: "captured-hr-value" },
+  { surface: "wire/worker-command-result", path: "result.workerStartup.message", origin: "repository-authored" },
+  { surface: "wire/worker-command-result", path: "result.workerStartup.detail", origin: "external-text" },
 
   {"surface": "wire/dashboard-day", "path": "workerAuthority.reason", "origin": "external-text"},
-  {"surface": "wire/dashboard-day", "path": "workerOperations[].phase.acknowledgement.evidence.value", "origin": "captured-hr-value"},
-  {"surface": "wire/dashboard-day", "path": "workerOperations[].phase.application.result.entries", "origin": "repository-authored"},
-  {"surface": "wire/dashboard-day", "path": "workerOperations[].phase.application.result.message", "origin": "external-text"},
-  { surface: "wire/dashboard-day", path: "workerOperations[].phase.application.result.workerStartup.message", origin: "repository-authored" },
-  { surface: "wire/dashboard-day", path: "workerOperations[].phase.application.result.workerStartup.detail", origin: "external-text" },
-  {"surface": "wire/dashboard-day", "path": "workerOperations[].phase.message", "origin": "external-text"},
-  {"surface": "wire/dashboard-day", "path": "workerOperations[].request.reason", "origin": "operator-authored"},
-  {"surface": "wire/dashboard-day", "path": "workerOperations[].scope", "origin": "repository-authored"},
   {"surface": "wire/stream-envelope", "path": "payload.workerAuthority.reason", "origin": "external-text"},
-  {"surface": "wire/stream-envelope", "path": "payload.workerOperations[].phase.acknowledgement.evidence.value", "origin": "captured-hr-value"},
-  {"surface": "wire/stream-envelope", "path": "payload.workerOperations[].phase.application.result.entries", "origin": "repository-authored"},
-  {"surface": "wire/stream-envelope", "path": "payload.workerOperations[].phase.application.result.message", "origin": "external-text"},
-  { surface: "wire/stream-envelope", path: "payload.workerOperations[].phase.application.result.workerStartup.message", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.workerOperations[].phase.application.result.workerStartup.detail", origin: "external-text" },
-  {"surface": "wire/stream-envelope", "path": "payload.workerOperations[].phase.message", "origin": "external-text"},
-  {"surface": "wire/stream-envelope", "path": "payload.workerOperations[].request.reason", "origin": "operator-authored"},
-  {"surface": "wire/stream-envelope", "path": "payload.workerOperations[].scope", "origin": "repository-authored"},
   { surface: "wire/run-detail-section", path: "payload.rows[].displayFields[].causal.declaration", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.rows[].displayFields[].causal.origin.path[]", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.rows[].displayFields[].causal.origin.spanPath", origin: "repository-authored" },
@@ -1577,8 +1568,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/dashboard-day", path: "workerCards[].lastBrowsers[].observation.instance", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "workerCards[].lastBrowsers[].observation.reason", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "workerCards[].controls.basis.reason", origin: "repository-authored" },
-  { surface: "wire/dashboard-day", path: "workerCards[].controls.operation.message", origin: "repository-authored" },
-  { surface: "wire/dashboard-day", path: "workerCards[].controls.ownership.reason", origin: "repository-authored" },
 
 
   { surface: "wire/stream-envelope", path: "payload.notifications[].summary", origin: "repository-authored" },
@@ -1634,8 +1623,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/stream-envelope", path: "payload.workerCards[].lastBrowsers[].observation.instance", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.workerCards[].lastBrowsers[].observation.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.workerCards[].controls.basis.reason", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.workerCards[].controls.operation.message", origin: "repository-authored" },
-  { surface: "wire/stream-envelope", path: "payload.workerCards[].controls.ownership.reason", origin: "repository-authored" },
 
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].runNumber.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].session.reason", origin: "repository-authored" },
@@ -2003,6 +1990,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/rerun-values.ts", state: "audited", reason: "the read-only Rerun response carries explicit descriptor coordinates and target-valid captured values; the reader withholds protected content and never grants repeat consent" },
     { module: "src/models/dashboard/rerun-warning.ts", state: "audited", reason: "Steps preview serves the same protected public Rerun plan as start-plan, without new input values or execution authority" },
     { module: "src/models/dashboard/start-plan.ts", state: "audited", reason: "the start-plan wire answers a plan with planned-row titles, match keys and refusal messages; the request and its omission facts never echo back" },
+    { module: "src/models/dashboard/worker-command-result.ts", state: "audited", reason: "An actual worker command receipt (request and its audited result) is served only on operator loopback; nothing is retained beyond the command journal and audit." },
     { module: "src/models/dashboard/workbooks.ts", state: "audited", reason: "workbook values, source metadata and actual intake command receipts are served only on operator loopback and workbook revisions are retained in local authority" },
     { module: "src/models/dashboard/workbook-library.ts", state: "audited", reason: "the operator library serves retained workbook bytes and explicit version and source identities on loopback; named versions and action receipts remain in local authority" },
     { module: "src/models/dashboard/run-outputs.ts", state: "audited", reason: "workflow-authored output plans describe captured worksheet and person membership only to the local operator; the plan does not itself produce files" },

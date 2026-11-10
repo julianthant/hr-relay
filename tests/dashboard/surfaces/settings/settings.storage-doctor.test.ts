@@ -72,7 +72,7 @@ async function expandChecks(dom: HTMLElement): Promise<void> {
 }
 
 function assertRunHistoryAbsent(dom: HTMLElement): void {
-  assert.equal(dom.querySelectorAll(".diagnostic-check-entry").length, 11);
+  assert.equal(dom.querySelectorAll(".diagnostic-check-entry").length, 10);
   assert.doesNotMatch(dom.textContent ?? "", /Timekeeper name|Historical Activity pseudonym/u);
   assert.equal(dom.querySelector('[aria-label="Storage health checks"] [role="list"]')?.children.length, 3);
   assert.ok(dom.textContent?.includes("Clear run history"));

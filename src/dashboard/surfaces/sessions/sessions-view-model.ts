@@ -3,7 +3,7 @@ import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import type { QueueSurfaceWire } from "../shell/shell-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { SYSTEM_NAME } from "../shared/status/system-chip-model.js";
-import { workerBrowserView, workerDirectiveNote, workerElapsedSeconds, workerRetryProblem } from "./session-panel-model.js";
+import { workerBrowserView, workerDirectiveNote, workerElapsedSeconds } from "./session-panel-model.js";
 
 type WorkerCardWire = DashboardDayWire["workerCards"][number];
 type UnavailableWorkerCard = NonNullable<DashboardDayWire["unavailableWorkerCards"]>[number];
@@ -37,8 +37,8 @@ export function sessionsUnavailable(diagnostic?: unknown): SessionsViewState {
   return { state: "unavailable", reason: formatErrorCatalogFailure(createErrorCatalogFailure("SESSIONS_UNAVAILABLE", {})).text,
     ...(diagnostic === undefined ? {} : { diagnostic }) };
 }
-/** One plain sentence for how a settled lease ended; a deliberate stop is not an error. */
-const SETTLED_LINE: Readonly<Record<NonNullable<WorkerCardWire["stopReason"]>, string>> = { operator: "You stopped this worker.", shutdown: "Relay shut down.", crashed: "Worker stopped unexpectedly." };
+/** One plain sentence for why a worker is not running; a deliberate stop is not an error. */
+const SETTLED_LINE: Readonly<Record<NonNullable<WorkerCardWire["stopReason"]>, string>> = { operator: "You stopped this worker.", shutdown: "Relay shut down.", crashed: "Worker stopped unexpectedly.", "not-started": "Worker didn't start." };
 export const SESSION_STATE_LABELS: Readonly<Record<SessionWorkerState, string>> = {
   running: "Running", starting: "Starting", idle: "Idle", waiting: "Waiting", paused: "Paused", stopped: "Stopped", failed: "Failed", unavailable: "Unavailable",
 };
@@ -77,7 +77,7 @@ export function sessionTimelineSummary(nodes: readonly SessionNode[]): { complet
 }
 
 export function sessionWorkerLifetimeKey(card: WorkerCardWire): string {
-  return JSON.stringify([card.member, card.controls?.basis.state === "present" ? card.controls.basis.value.leaseGeneration : undefined,
+  return JSON.stringify([card.member, card.controls?.basis.state === "present" ? card.controls.basis.value.lifetimeId : undefined,
     card.browsers.map(browser => [browser.sessionId, browser.observation?.state === "present" ? [browser.observation.instance, browser.observation.configFingerprint, browser.observation.browserMode] : undefined]).sort()]);
 }
 export function sessionWorkerAuthorityKey(card: WorkerCardWire): string {
@@ -115,7 +115,7 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
     const settledLine = card.stopReason === undefined ? undefined : failureLine ?? SETTLED_LINE[card.stopReason];
     // A settled worker whose run left the day says what happened in the top line and why the step is unknown below the bar.
     const recordGone = settled && row === undefined;
-    const problem = workerRetryProblem(card) ?? (recordGone ? failureLine ?? "Its run is no longer on record." : settledLine ?? (card.state === "idle" && lastRun?.outcome !== undefined ? LAST_RUN_LINE[lastRun.outcome] : undefined));
+    const problem = recordGone ? failureLine ?? "Its run is no longer on record." : settledLine ?? (card.state === "idle" && lastRun?.outcome !== undefined ? LAST_RUN_LINE[lastRun.outcome] : undefined);
     const state = card.state === "failed" && (card.stopReason === "operator" || card.stopReason === "shutdown") ? "stopped" : card.state;
     const note = workerDirectiveNote(card) ?? (card.waitingActivity === undefined ? undefined : WAITING_LINE[card.waitingActivity]);
     workers.push({ id: card.workerId, label: `Worker ${card.member.ordinal}`, workflowId: card.workflowId, workflow: registration.label,

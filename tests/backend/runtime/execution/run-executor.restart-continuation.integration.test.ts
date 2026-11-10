@@ -68,12 +68,12 @@ async function runAttempt(
   authority: AuthorityHarness,
   run: Record<string, unknown>,
 ): Promise<{ state: string; runId: string }> {
-  const { workerId, workerLifetime } = testAdmittedWorker(authority.database, authority.clock, {
+  const { workerId } = testAdmittedWorker(authority.database, authority.clock, {
     path: authority.path, workflow: WORKFLOW_ID, poolIndex: 1, browserSystems: ["ucpath", "crm"],
   });
   authority.database.authority.runs.enqueue(run);
   const claimed = authority.database.authority.runs.claimNext({
-    workerLifetime, workflow: WORKFLOW_ID,
+    workflow: WORKFLOW_ID,
     workerId: workerId,
     now: authority.clock.now().toISOString(),
   });

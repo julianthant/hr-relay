@@ -99,8 +99,6 @@ export function transitionRunRecord(current: RunRecord, candidate: RunRecord, no
 }
 
 export function transitionStoredRun(current: PredecessorRunRecord, candidate: PredecessorRunRecord, now: string, schema: z.ZodType<PredecessorRunRecord>): PredecessorRunRecord {
-  if ("workerId" in current.lifecycle && "workerId" in candidate.lifecycle
-    && canonicalJsonStringify(current.lifecycle.workerLifetime ?? null) !== canonicalJsonStringify(candidate.lifecycle.workerLifetime ?? null)) throw new Error("run-claim-lifetime-immutable");
   const violation = runTransitionViolation(current.lifecycle, candidate.lifecycle);
   if (violation !== undefined) throw new Error(`run ${current.envelope.runId}: ${violation}`);
   const { pause: candidatePause, ...withoutPause } = candidate;

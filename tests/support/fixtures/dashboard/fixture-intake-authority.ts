@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../helpers/backend/unused-worker-pool.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
@@ -70,7 +71,7 @@ export async function createIntakeAuthority(profileFixture: () => Promise<BoundP
       appVersion: "0.1.0", authority: database, clock, ids: kernelIds,
       configIdentity: { configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: UUID_1 }, descriptors,
       writeResolution: { recheck: forbidden, resolveAbsent: forbidden },
-      workerRuntime: { pool: { planPoolWorkerCount: forbidden, spawnPoolWorker: forbidden, refreshPoolBrowser: forbidden, reopenPoolBrowser: forbidden, stopPoolWorker: forbidden, pausePoolWorker: forbidden, resumePoolWorker: forbidden } },
+      workerRuntime: { pool: unusedWorkerPool(forbidden) },
       intakeParser: parser, intakeProjections: projections });
     const projection = createRunQueueProjection({
       timeline: database.authority.timelineEvents, reader: sqliteRunReader(database, clock), stateRoot: root,
@@ -81,8 +82,6 @@ export async function createIntakeAuthority(profileFixture: () => Promise<BoundP
         listNotifications: () => [], listNotificationCheckpoints: () => [],
         listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
         listGateResults: runId => database.authority.gateResults.listByRun(runId),
-        listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
-        getWorkerLease: workerId => database.authority.workerLeases.get(workerId),
         listWorkerPools: () => database.authority.workerPools.list(),
         listRunBatches: () => database.authority.runSessions.list(), getRunBatch: id => database.authority.runSessions.get(id),
         getFailure: failureId => database.authority.failures.get(failureId),

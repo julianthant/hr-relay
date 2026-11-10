@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { readXlsx } from "@shbernal/ts-xlsx";
@@ -141,15 +142,7 @@ async function surface(): Promise<Surface> {
       recheck: () => { throw new Error("unused"); },
       resolveAbsent: () => { throw new Error("unused"); },
     },
-    workerRuntime: { pool: {
-      planPoolWorkerCount: async () => { throw new Error("unused worker plan"); },
-      spawnPoolWorker: async () => { throw new Error("unused worker spawn"); },
-      refreshPoolBrowser: async () => { throw new Error("unused browser refresh"); },
-      reopenPoolBrowser: async () => { throw new Error("unused browser reopen"); },
-      stopPoolWorker: async () => { throw new Error("unused worker stop"); },
-      pausePoolWorker: async () => { throw new Error("unused worker pause"); },
-      resumePoolWorker: async () => { throw new Error("unused worker resume"); },
-    } },
+    workerRuntime: { pool: unusedWorkerPool() },
     intakeParser: parser,
     intakeProjections: projections,
   });
@@ -170,8 +163,6 @@ async function surface(): Promise<Surface> {
       listNotificationCheckpoints: () => [],
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),
-      listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
-      getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),

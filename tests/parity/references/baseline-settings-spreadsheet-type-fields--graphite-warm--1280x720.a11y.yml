@@ -12,7 +12,130 @@
     - heading "Edit spreadsheet type" [level=2]
   - text: Type name
   - textbox "Type name": Roster
-  - paragraph: "Columns: Email, Legal name, Preferred name, Phone, PID, TSN, Employee ID, College of residence, Supervisor email, Supervisor name, Work location, Position number, Initiator, Start date, Offer accepted, Campus forms pending, Background terms accepted, Background entered, Background cleared, Entered in UCPath, Transaction number, Ready for payroll approval, AD submitted, AD username, Ready for signing, Oath added to UCPath, Hired, I-9, JOL and employee data form, Notes"
+  - group "Columns (30)":
+    - text: Columns (30)
+    - paragraph: Name each column and choose which fields are required.
+    - textbox "Column 1 name": Email
+    - checkbox "Required column 1"
+    - text: Required column 1
+    - button "Remove column 1": Remove
+    - textbox "Column 2 name": Legal name
+    - checkbox "Required column 2"
+    - text: Required column 2
+    - button "Remove column 2": Remove
+    - textbox "Column 3 name": Lived name
+    - checkbox "Required column 3"
+    - text: Required column 3
+    - button "Remove column 3": Remove
+    - textbox "Column 4 name": Phone
+    - checkbox "Required column 4"
+    - text: Required column 4
+    - button "Remove column 4": Remove
+    - textbox "Column 5 name": UCSD PID
+    - checkbox "Required column 5"
+    - text: Required column 5
+    - button "Remove column 5": Remove
+    - textbox "Column 6 name": TSN
+    - checkbox "Required column 6"
+    - text: Required column 6
+    - button "Remove column 6": Remove
+    - textbox "Column 7 name": Employee ID
+    - checkbox "Required column 7"
+    - text: Required column 7
+    - button "Remove column 7": Remove
+    - textbox "Column 8 name": College of residence
+    - checkbox "Required column 8"
+    - text: Required column 8
+    - button "Remove column 8": Remove
+    - textbox "Column 9 name": Supervisor email
+    - checkbox "Required column 9"
+    - text: Required column 9
+    - button "Remove column 9": Remove
+    - textbox "Column 10 name": Supervisor name
+    - checkbox "Required column 10"
+    - text: Required column 10
+    - button "Remove column 10": Remove
+    - textbox "Column 11 name": Work Location
+    - checkbox "Required column 11"
+    - text: Required column 11
+    - button "Remove column 11": Remove
+    - textbox "Column 12 name": Position Number
+    - checkbox "Required column 12"
+    - text: Required column 12
+    - button "Remove column 12": Remove
+    - textbox "Column 13 name": Initiator
+    - checkbox "Required column 13"
+    - text: Required column 13
+    - button "Remove column 13": Remove
+    - textbox "Column 14 name": Start date
+    - checkbox "Required column 14"
+    - text: Required column 14
+    - button "Remove column 14": Remove
+    - textbox "Column 15 name": Offer accepted
+    - checkbox "Required column 15"
+    - text: Required column 15
+    - button "Remove column 15": Remove
+    - textbox "Column 16 name": Campus forms pending
+    - checkbox "Required column 16"
+    - text: Required column 16
+    - button "Remove column 16": Remove
+    - textbox "Column 17 name": Background terms accepted
+    - checkbox "Required column 17"
+    - text: Required column 17
+    - button "Remove column 17": Remove
+    - textbox "Column 18 name": Background entered
+    - checkbox "Required column 18"
+    - text: Required column 18
+    - button "Remove column 18": Remove
+    - textbox "Column 19 name": Background cleared
+    - checkbox "Required column 19"
+    - text: Required column 19
+    - button "Remove column 19": Remove
+    - textbox "Column 20 name": Entered in UCPath
+    - checkbox "Required column 20"
+    - text: Required column 20
+    - button "Remove column 20": Remove
+    - textbox "Column 21 name": Transaction Number
+    - checkbox "Required column 21"
+    - text: Required column 21
+    - button "Remove column 21": Remove
+    - textbox "Column 22 name": Ready for payroll approval
+    - checkbox "Required column 22"
+    - text: Required column 22
+    - button "Remove column 22": Remove
+    - textbox "Column 23 name": AD submitted
+    - checkbox "Required column 23"
+    - text: Required column 23
+    - button "Remove column 23": Remove
+    - textbox "Column 24 name": AD username
+    - checkbox "Required column 24"
+    - text: Required column 24
+    - button "Remove column 24": Remove
+    - textbox "Column 25 name": Ready for signing
+    - checkbox "Required column 25"
+    - text: Required column 25
+    - button "Remove column 25": Remove
+    - textbox "Column 26 name": Oath added to UCPath
+    - checkbox "Required column 26"
+    - text: Required column 26
+    - button "Remove column 26": Remove
+    - textbox "Column 27 name": Hired
+    - checkbox "Required column 27"
+    - text: Required column 27
+    - button "Remove column 27": Remove
+    - textbox "Column 28 name": I-9 status
+    - checkbox "Required column 28"
+    - text: Required column 28
+    - button "Remove column 28": Remove
+    - textbox "Column 29 name": JOL and employee data form
+    - checkbox "Required column 29"
+    - text: Required column 29
+    - button "Remove column 29": Remove
+    - textbox "Column 30 name": Notes
+    - checkbox "Required column 30"
+    - text: Required column 30
+    - button "Remove column 30": Remove
+    - button "Add column"
   - contentinfo:
     - button "Cancel"
     - button "Save type"

@@ -1,3 +1,4 @@
+import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { runCredentialSourceRetentionCase } from "../../../support/helpers/credential-source-retention.js";
 import assert from "node:assert/strict";
 import { copyFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
@@ -22,6 +23,7 @@ for (const failure of ["none", "artifact", "artifact-and-close"] as const) it(`o
   copyFileSync("package.json", join(f.workspace, "package.json"));
   const initialized = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
     credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
+  initialized.database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, "person-lookup", 1, clock.now().toISOString()));
   await initialized.account.close(); initialized.database.close();
   let artifactFailure: unknown;
   const closeFailure = new Error("synthetic actual database close failure");

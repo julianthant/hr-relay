@@ -17,7 +17,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     page.on("pageerror", error => errors.push(error.message));
     const interrupted = StorageDoctorWireSchema.parse({ ...FIXTURE_STORAGE_DOCTOR,
       recovery: { state: "interrupted", findings: [{ marker: "authority-restore", state: "interrupted" }] },
-      counts: { state: "available", values: { pendingCommands: 3, unresolvedWriteIntents: 2, leases: 4, providerReservations: 1, artifactOutbox: 5 } },
+      counts: { state: "available", values: { pendingCommands: 3, unresolvedWriteIntents: 2, providerReservations: 1, artifactOutbox: 5 } },
       protectedSettings: { state: "available", entries: ProtectedSettingsNameSchema.options.map((name, index) => ({ name, present: index === 0 })) },
       authorityUpgrades: { state: "available", phases: [{ phase: "settled", fromSchemaVersion: 26, toSchemaVersion: 27, recordedAt: FIXTURE_STORAGE_DOCTOR.checkedAt }] },
     });
@@ -41,7 +41,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole("heading", { name: "Data store and recovery", exact: true })).toBeVisible();
       await expect(run).toBeEnabled();
       await expect(primary.getByRole("listitem")).toHaveCount(3);
-      await expect(surface.locator(".diagnostic-check-entry")).toHaveCount(13);
+      await expect(surface.locator(".diagnostic-check-entry")).toHaveCount(10);
       await expect(surface.getByRole("group", { name: "Work in progress", exact: true })).toContainText("Pending actions");
       await expect(surface.getByRole("group", { name: "Connections", exact: true })).toContainText("Not checked");
       await expect(surface.getByRole("button", { name: "Technical details", exact: true })).toHaveCount(0);

@@ -5,7 +5,6 @@ import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
 import { NativeCommandRequestSchema, NativeCommandAuditSchema } from "./command-record-row.js";
 import { WorkerSlotRecordSchema } from "../../../models/run/worker-slot.js";
 import { RunSearchIndexRecordSchema } from "../../../models/dashboard/search-index.js";
-import { WorkerControlRecordSchema, WorkerBrowserObservationSchema } from "../../../models/run/worker-control.js";
 import { NotificationHealthSchema } from "./notification-publications.js";
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
 import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../../models/artifacts/generated-artifact.js";
@@ -28,7 +27,6 @@ import { RunRecordSchema } from "../../../models/run/record.js";
 import { RunResultRecordSchema } from "../../../models/run/result.js";
 import { StartPlanRecordSchema } from "../../../models/run/start-plan.js";
 import { WorkbookLibraryStateSchema, WorkbookLibraryActionRecordSchema, WorkbookLibrarySnapshotSchema } from "../../../models/dashboard/workbook-library.js";
-import { WorkerLeaseRecordSchema } from "../../../models/run/worker.js";
 import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
 import { DiagnosticAttachmentSchema, DiagnosticBundleSchema } from "../../../models/trust/diagnostic.js";
@@ -69,9 +67,6 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   write_attempts: WriteAttemptRecordSchema,
   worker_pools: WorkerPoolRecordSchema,
   worker_slots: WorkerSlotRecordSchema,
-  worker_leases: WorkerLeaseRecordSchema,
-  worker_controls: WorkerControlRecordSchema,
-  browser_sessions: WorkerBrowserObservationSchema,
   auth_leases: DuoCeremonyLeaseRecordSchema,
   exclusive_session_leases: ExclusiveSessionLeaseSchema,
   ocr_review_revisions: OcrReviewRevisionSchema,

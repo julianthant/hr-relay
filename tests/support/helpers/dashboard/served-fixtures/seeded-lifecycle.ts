@@ -1,10 +1,9 @@
-import { randomUUID } from "node:crypto";
 import { currentBuildId } from "../../../../../src/backend/runtime/build-id.js";
 
 
-import { admitDirectWorker } from "../../../../../src/backend/storage/sqlite/worker-slots.js";
+import { WorkerActivitySchema, type WorkerActivity } from "../../../../../src/backend/runtime/workers/worker-messages.js";
 import type { Clock } from "../../../../../src/rules/time/clock.js";
-import { testWorkerLifetime } from "../../../fixtures/run-lifecycle-fixtures.js";
+import { admitFixtureSlot, testWorkerLifetime } from "../../../fixtures/run-lifecycle-fixtures.js";
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../../run-integration-world.js";
 import { fenceWriteFixture } from "../../write-fence-fixture.js";
 import { browserSessionSpanPath,workerSpanPath } from "../../../../../src/backend/logs/span-emitter.js";
@@ -64,7 +63,8 @@ interface SeedWorld {
   readonly database: AuthorityDatabase;
   readonly authorityPath: string;
   readonly clock: Clock;
-  readonly workers: Set<string>;
+  /** Seeded pool members by worker id, with the activity each last reported. */
+  readonly workers: Map<string, WorkerActivity>;
   readonly spans: ReturnType<typeof createTimelineEmitter>;
   readonly notes: ReturnType<typeof createNoteTimelineWriter>;
 }
@@ -145,22 +145,14 @@ function enqueueRun(world: SeedWorld, spec: SeedSpec): RunRecord {
 /** Enqueue → claim → validating → running, through production transitions only. */
 function startRunning(world: SeedWorld, spec: SeedSpec, poolIndex: number, nodeId: string): RunRecord {
   if (!world.database.authority.workerSlots.list(WORKFLOW_ID).some(member => member.poolIndex === poolIndex && member.retiredAt === null)) {
-    const slot = world.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-      commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex,
-      expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0,
-      processId: process.pid, now: SEEDED_NOW,
-    }, randomUUID()));
-    const started = world.database.authority.workerLeases.start({ workerId: slot.workerId, workflow: WORKFLOW_ID,
-      browserSystems: ["crm", "ucpath"], processId: process.pid, requestedBy: "local-operator", now: SEEDED_NOW });
-    world.workers.add(slot.workerId);
-    if (started.state !== "started") throw new Error("seeded worker lifetime did not start");
+    const slot = world.database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, WORKFLOW_ID, poolIndex, SEEDED_NOW));
+    world.workers.set(slot.workerId, { state: "idle" });
   }
-  const { workerId, workerLifetime } = testWorkerLifetime(world.database, WORKFLOW_ID, poolIndex);
+  const { workerId } = testWorkerLifetime(world.database, WORKFLOW_ID, poolIndex);
   enqueueRun(world, spec);
   const claimed = world.database.authority.runs.claimNext({
     workflow: WORKFLOW_ID,
-    workerId, workerLifetime,
-    now: SEEDED_NOW,
+    workerId, now: SEEDED_NOW,
   });
   if (claimed.state !== "claimed") {
     throw new Error(`seed ${String(spec.seed)} was not claimed by ${workerId}: ${claimed.state}`);
@@ -170,7 +162,7 @@ function startRunning(world: SeedWorld, spec: SeedSpec, poolIndex: number, nodeI
     throw new Error(`claimNext took ${runId}, not the just-enqueued ${uuidOf(spec.seed)}`);
   }
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-  const claimFields = { workerId, workerLifetime, claimedAt: SEEDED_NOW, heartbeatAt: SEEDED_NOW };
+  const claimFields = { workerId, claimedAt: SEEDED_NOW, heartbeatAt: SEEDED_NOW };
 
   world.spans.emit({
     t: "run.claimed",
@@ -205,11 +197,8 @@ function startRunning(world: SeedWorld, spec: SeedSpec, poolIndex: number, nodeI
 }
 
 function reportWorker(world: SeedWorld, workerId: string, runId?: string): void {
-  const lease = world.database.authority.workerLeases.get(workerId);
-  if (lease === undefined) throw new Error("seeded worker lifetime is absent");
-  world.database.authority.workerLeases.reportLifecycle({ workerId, leaseGeneration: lease.leaseGeneration, now: SEEDED_NOW,
-    lifecycle: { ...(runId === undefined ? { state: "idle" } : { state: "busy", runId }),
-      startedAt: lease.lifecycle.startedAt, heartbeatAt: SEEDED_NOW } });
+  if (!world.workers.has(workerId)) throw new Error("seeded worker lifetime is absent");
+  world.workers.set(workerId, WorkerActivitySchema.parse(runId === undefined ? { state: "idle" } : { state: "busy", runId }));
 }
 
 

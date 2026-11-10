@@ -67,7 +67,7 @@ it("starts the actual dashboard from the same token-owned context and proves res
       mode: "every-action", state: "grant-required", policyRevision: 0,
       settingsRevision: context.settings.read().record.revision, settingsSchemaHash: SETTINGS_SCHEMA_HASH });
     assert.equal(context.database.authority.assistantAuthorization.grant(), undefined);
-    assert.throws(() => f.runtime.bindSupervisor(f.active.token, { memberEvidence: () => undefined, drainOwnedChildren: async () => undefined }), /owner-mismatch/u);
+    assert.throws(() => f.runtime.bindSupervisor(f.active.token, { snapshot: () => [], stopAll: async () => [] }), /owner-mismatch/u);
     await dashboard.stop(); dashboard = undefined;
     assert.throws(() => context.database.getMeta(), /closed/u);
     assert.throws(() => context.admission.assertLive());

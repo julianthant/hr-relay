@@ -127,7 +127,6 @@ export function delegationRefreshEligible(repositories: AuthorityRepositories, p
   const accounting = authorization === undefined ? undefined : workflowDelegationAccounting(authorization, parent);
   authenticateDelegationRefresh(repositories, parent);
   if (repositories.ocrReviews.snapshots(parent.envelope.runId).length !== 0 || parent.cancelRequested === true
-    || repositories.workerControls.resetForRun(parent.envelope.runId) !== undefined
     || repositories.writeIntents.listByRun(parent.envelope.runId).length !== 0
     || repositories.gateResults.listByRun(parent.envelope.runId).length !== 0) return false;
   if (parent.lifecycle.state === "queued" && parent.delegationRefresh !== undefined) return true;

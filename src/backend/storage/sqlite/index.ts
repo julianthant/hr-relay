@@ -40,8 +40,6 @@ export {
   OfflineRestoreReportSchema,
   OfflineRestoreRequestSchema,
   RestoreCandidateSchema,
-  RecoveryProcessLockStateSchema,
-  RecoveryRuntimeLockSnapshotSchema,
   SpanAuthorityRunRootSchema,
   StorageDoctorReportSchema,
   StorageHealthCauseSchema,

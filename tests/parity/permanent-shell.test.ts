@@ -27,7 +27,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const workspace = page.getByRole("complementary", { name: "Workspace" });
       const railBounds = (await workspace.boundingBox())!;
       expect(railBounds.x).toBe(0); expect(railBounds.y).toBe(0); expect(railBounds.width).toBe(width === 1024 ? 176 : 232);
-      await expect(rail.getByRole("button")).toHaveCount(15);
+      await expect(rail.getByRole("button")).toHaveCount(14);
       const typeStyle = (node: Element) => ({ size: getComputedStyle(node).fontSize, weight: getComputedStyle(node).fontWeight });
       expect(await rail.getByRole("button", { name: "Person Lookup", exact: true }).evaluate(typeStyle)).toEqual(await rail.getByRole("button", { name: "I-9 Lookup", exact: true }).evaluate(typeStyle));
       const bar = workspace.locator(".workspace-rail-header");

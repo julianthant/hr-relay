@@ -10,7 +10,7 @@
   - /url: "#dashboard-main-region"
 - complementary "Workspace":
   - heading "Relay" [level=2]
-  - button "Notifications, 1 unread"
+  - button "Notifications, 0 unread"
   - button "Search runs"
   - navigation "Workflows":
     - heading "Search" [level=3]
@@ -32,9 +32,9 @@
       - listitem:
         - button "Emergency Contact"
       - listitem:
-        - button "Oath Signature": Oath Signature 1
+        - button "Oath Signature"
       - listitem:
-        - button "Oath Upload": Oath Upload 1
+        - button "Oath Upload"
     - heading "Work Study" [level=3]
     - list:
       - listitem:
@@ -54,7 +54,7 @@
     - heading "OnBase" [level=3]
     - list:
       - listitem:
-        - button "OnBase": OnBase 1
+        - button "OnBase"
     - heading "Timekeeping" [level=3]
     - list:
       - listitem:

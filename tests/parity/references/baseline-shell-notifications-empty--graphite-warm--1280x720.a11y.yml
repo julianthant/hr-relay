@@ -25,7 +25,7 @@
 - main:
   - heading "Person Lookup queue" [level=1]
   - region "Queue":
-    - text: Needs you 3
+    - text: Needs you 4
     - button "Morrow, Bea — review · 16m 0s":
       - text: Morrow, Bea Review Waiting on identity review 9:47 AM
       - button "Attempts for Morrow, Bea": "#1"
@@ -59,6 +59,12 @@
       - button "Attempts for Rehire eligibility sweep": "#1"
       - text: PL33065442 45m 0s
       - button "Cancel group"
+    - button "EID 10555001 — failed":
+      - text: EID 10555001 Failed 9:33 AM
+      - button "Attempts for EID 10555001": "#1"
+      - text: PL39484305 6m 0s
+      - button "Rerun"
+      - button "Delete run"
     - button "EID 10777012 — write parked":
       - text: EID 10777012 Write parked A write to UCPath is parked pending proof 9:44 AM
       - button "Attempts for EID 10777012": "#1"
@@ -123,13 +129,7 @@
       - text: PL61636475
       - button "Run next"
       - button "Cancel run"
-    - text: "Finished today 6 Today: 2 completed 2 with warnings 1 failed 1 cancelled"
-    - button "EID 10555001 — failed":
-      - text: EID 10555001 Failed 9:33 AM
-      - button "Attempts for EID 10555001": "#1"
-      - text: PL39484305 6m 0s
-      - button "Rerun"
-      - button "Delete run"
+    - text: "Finished today 5 Today: 2 completed 2 with warnings 1 cancelled"
     - button "EID 10333015 — done with warnings":
       - text: EID 10333015 3 Done 9:24 AM
       - button "Attempts for EID 10333015": "#1"

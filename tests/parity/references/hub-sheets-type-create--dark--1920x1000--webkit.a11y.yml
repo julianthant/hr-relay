@@ -12,7 +12,22 @@
     - heading "Create spreadsheet type" [level=2]
   - text: Type name
   - textbox "Type name"
-  - paragraph: "Columns: First Name, Last Name, Employee ID"
+  - group "Columns (3)":
+    - text: Columns (3)
+    - paragraph: Name each column and choose which fields are required.
+    - textbox "Column 1 name": First Name
+    - checkbox "Required column 1"
+    - text: Required column 1
+    - button "Remove column 1": Remove
+    - textbox "Column 2 name": Last Name
+    - checkbox "Required column 2"
+    - text: Required column 2
+    - button "Remove column 2": Remove
+    - textbox "Column 3 name": Employee ID
+    - checkbox "Required column 3"
+    - text: Required column 3
+    - button "Remove column 3": Remove
+    - button "Add column"
   - contentinfo:
     - button "Cancel"
-    - button "Save type" [disabled]
+    - button "Save type"

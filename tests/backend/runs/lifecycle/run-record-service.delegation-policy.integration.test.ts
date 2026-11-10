@@ -5,7 +5,7 @@ import { syntheticDatabasePath } from "../../../support/helpers/synthetic-databa
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { bindWorkflowDelegationTargets, descriptorRuntimeNodes, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
-import type { RunRecord } from "../../../../src/models/run/record.js";
+import { runClaim, type RunRecord } from "../../../../src/models/run/record.js";
 import assert from "node:assert/strict";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -20,11 +20,12 @@ import { delegatedCandidateEligible } from "../../../../src/backend/runs/lifecyc
 import { authenticateDescendantHome } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { createDurableChildRunExecutor } from "../../../../src/backend/runtime/execution/durable-child-executor.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
-import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
+import { reconcileExitedWorker } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { terminalEvidenceResult } from "../../../../src/models/run/result.js";
+import { RunResultRecordSchema, terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
 import { childContinuationModules, childContinuationRoot, childPolicyModules, childUnawaitedModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { plan1Stores, plan1Contract, plan1TransientFailureStores } from "../../../support/fixtures/plan1-operation-workflows.js";
@@ -37,7 +38,7 @@ import { createProfileRegistry } from "../../../../src/backend/profiles/registry
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
 
-function terminal(run: RunRecord, outcome: "cancelled" | "done"): void {
+function terminal(run: RunRecord, outcome: "cancelled" | "done" | "failed"): void {
   assert.ok(run.lifecycle.state === "terminal");
   assert.equal(run.lifecycle.outcome, outcome);
 }
@@ -70,11 +71,22 @@ async function fixture(policy: "cascade" | "independent", unawaited = false, con
   return { ...h.authority, deps: h.deps, execution, root, currentRoot, child, cancel, modules };
 }
 
+/** The parent's OS exit event: its claimed runs settle while the in-process execution still holds the old claim. */
+function exitWorker(f: Awaited<ReturnType<typeof fixture>>, workerId: string): void {
+  reconcileExitedWorker({ machine: f.profile.machine, admission: f.profile.admission, database: f.database, clock: f.clock,
+    lifecycle: f.execution.lifecycle, lock: parentLock(f), workerId });
+}
+
+function parentLock(f: Awaited<ReturnType<typeof fixture>>): RuntimeLifetimeLock {
+  const lock = f.profile.machine.lifetime; assert.ok(lock instanceof RuntimeLifetimeLock);
+  return lock;
+}
+
 function interruptNextOwnedRun(f: Awaited<ReturnType<typeof fixture>>, expected: RunRecord): RunRecord {
   const owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);
   const active = f.database.authority.runtimeConfig.get(); assert.ok(active);
   const claimed = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
-    workerId: owner.workerId, workerLifetime: owner.workerLifetime, runtimeConfig: { generation: active.generation,
+    workerId: owner.workerId, runtimeConfig: { generation: active.generation,
       settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } });
   assert.ok(claimed.state === "applied" && "run" in claimed);
   assert.equal(claimed.run.envelope.runId, expected.envelope.runId);
@@ -272,7 +284,7 @@ async function executeAfterCompletedChild(f: Awaited<ReturnType<typeof fixture>>
   assert.ok(runtime);
   await f.deps.sessions.closeAll("parked");
   const claimed = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
-    workerId: owner.workerId, workerLifetime: owner.workerLifetime, runtimeConfig: { generation: runtime.generation,
+    workerId: owner.workerId, runtimeConfig: { generation: runtime.generation,
       settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
   assert.ok(claimed.state === "applied" || claimed.state === "applied-already");
   assert.ok("run" in claimed);
@@ -315,12 +327,12 @@ it("requests cancellation on both a claimed anchor and claimed member without se
   const runtimeConfig = { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
     settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint };
   const parent = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
-    workerId: parentOwner.workerId, workerLifetime: parentOwner.workerLifetime, runtimeConfig });
+    workerId: parentOwner.workerId, runtimeConfig });
   assert.ok(parent.state === "applied" && "run" in parent);
   const outcome = await executeClaimedParent(f, parent.run, () => {
     const member = f.child();
     const claimed = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
-      workerId: childOwner.workerId, workerLifetime: childOwner.workerLifetime, runtimeConfig });
+      workerId: childOwner.workerId, runtimeConfig });
     assert.equal(claimed.state, "applied");
     assert.ok("run" in claimed);
     assert.equal(claimed.run.envelope.runId, member.envelope.runId);
@@ -344,7 +356,7 @@ it("requests cancellation on both a claimed anchor and claimed member without se
   terminal(f.currentRoot(), "cancelled");
 });
 
-it("freshly claims an independent queued child after its other physical parent's reset", async () => {
+it("freshly claims an independent queued child after its other physical parent's worker exits", async () => {
   const f = await fixture("independent", true);
   const parentOwner = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.root.envelope.workflow,
     poolIndex: 1, browserSystems: [] });
@@ -355,27 +367,16 @@ it("freshly claims an independent queued child after its other physical parent's
   const runtimeConfig = { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
     settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint };
   const parent = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
-    workerId: parentOwner.workerId, workerLifetime: parentOwner.workerLifetime, runtimeConfig });
+    workerId: parentOwner.workerId, runtimeConfig });
   assert.ok(parent.state === "applied" && "run" in parent);
   let childClaim: { run: RunRecord; claim: { workerId: string; claimGeneration: number } } | undefined;
-  let reset: ReturnType<typeof admitWorkerReset> | undefined;
   const outcome = await executeClaimedParent(f, parent.run, () => {
-    const owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);
-    reset = f.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
-      commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard",
-      requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: {
-        workerId: owner.workerId, membershipRevision: owner.member.membershipRevision,
-        controlBasis: { leaseGeneration: owner.lease.leaseGeneration, controlRevision: owner.lease.controlRevision },
-      },
-    }, randomUUID(), f.clock.now().toISOString()));
+    exitWorker(f, parentOwner.workerId);
     const claimed = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
-      workerId: childOwner.workerId, workerLifetime: childOwner.workerLifetime, runtimeConfig });
+      workerId: childOwner.workerId, runtimeConfig });
     assert.ok(claimed.state === "applied" && "run" in claimed);
     assert.equal(claimed.run.envelope.parent?.runId, f.root.envelope.runId);
     childClaim = { run: claimed.run, claim: { workerId: childOwner.workerId, claimGeneration: claimed.run.claimGeneration } };
-    assert.equal(f.database.authority.workerControls.resetForRun(f.root.envelope.runId)?.commandId, reset.commandId);
-    assert.equal(f.database.authority.workerControls.resetForWorker(childOwner.workerId), undefined);
-    assert.equal(f.database.authority.workerControls.resetForRun(childClaim.run.envelope.runId), undefined);
     f.execution.lifecycle.assertCurrentExecution({ runId: childClaim.run.envelope.runId, claim: childClaim.claim });
     const generation = f.database.getMeta().authorityGeneration;
     assert.equal(f.execution.lifecycle.renewClaim({ commandId: randomUUID(), runId: childClaim.run.envelope.runId,
@@ -385,12 +386,10 @@ it("freshly claims an independent queued child after its other physical parent's
   });
   const failure = outcome.state === "failed" ? f.database.authority.failures.get(outcome.failureId) : undefined;
   const code = ErrorCatalogCodeSchema.safeParse(failure?.code);
-  assert.deepEqual(outcome, { state: "abandoned", runId: f.root.envelope.runId, reason: "run lifecycle lost" },
+  assert.deepEqual(outcome, { state: "abandoned", runId: f.root.envelope.runId, reason: "lost original execution claim" },
     new Error(failure === undefined ? undefined : JSON.stringify({ code: code.success ? code.data : "UNCLASSIFIED", codeSha256: sha256Hex(failure.code) })));
-  assert.ok(reset && childClaim);
-  f.database.authority.workerControls.transition(reset.commandId, "admitted", { state: "executing", startedAt: f.clock.now().toISOString() });
-  f.execution.lifecycle.settleResetWork(reset.reset);
-  terminal(f.currentRoot(), "cancelled");
+  assert.ok(childClaim);
+  terminal(f.currentRoot(), "failed");
   f.execution.lifecycle.assertCurrentExecution({ runId: childClaim.run.envelope.runId, claim: childClaim.claim });
   const current = f.child();
   const cancelled = f.execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard",
@@ -408,71 +407,31 @@ it("freshly claims an independent queued child after its other physical parent's
 });
 
 for (const policy of ["cascade", "independent"] as const) {
-  it(`fences the actual parent after child await on a physical reset with ${policy} policy`, async () => {
+  it(`fences the actual parent after child await when its worker exits with ${policy} policy`, async () => {
     const f = await fixture(policy);
     let retained: RunRecord | undefined;
-    let reset: ReturnType<typeof admitWorkerReset> | undefined;
     let childResult: ReturnType<typeof f.database.authority.runResults.get>;
     const outcome = await executeAfterCompletedChild(f, () => {
       retained = f.currentRoot();
       childResult = f.database.authority.runResults.get(f.child().envelope.runId);
       assert.ok(childResult);
-      const owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);
-      reset = f.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
-        commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard",
-        requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: {
-          workerId: owner.workerId, membershipRevision: owner.member.membershipRevision,
-          controlBasis: { leaseGeneration: owner.lease.leaseGeneration, controlRevision: owner.lease.controlRevision },
-        },
-      }, randomUUID(), f.clock.now().toISOString()));
+      exitWorker(f, testWorkerLifetime(f.database, f.root.envelope.workflow, 1).workerId);
     });
-    assert.deepEqual(outcome, { state: "abandoned", runId: f.root.envelope.runId, reason: "run lifecycle lost" });
-    assert.ok(retained && reset?.reset);
-    assert.deepEqual(f.currentRoot(), retained);
-    assert.equal(f.database.authority.runResults.get(f.root.envelope.runId), undefined);
+    assert.deepEqual(outcome, { state: "abandoned", runId: f.root.envelope.runId, reason: "lost original execution claim" });
+    assert.ok(retained);
+    terminal(f.currentRoot(), "failed");
+    assert.equal(f.currentRoot().claimGeneration, retained.claimGeneration);
+    // Only the exit settlement terminalizes the parent: its failed evidence binds the retained claim, never a fresh one.
+    const evidence = terminalEvidenceResult(RunResultRecordSchema.parse(f.database.authority.runResults.get(f.root.envelope.runId)));
+    assert.equal(evidence?.kind, "failed-evidence");
+    const held = runClaim(retained); assert.ok(held);
+    assert.deepEqual(evidence.authorization.claim, { workerId: held.workerId, claimGeneration: held.claimGeneration });
     assert.deepEqual(f.database.authority.runResults.get(f.child().envelope.runId), childResult);
     assert.equal(f.database.authority.runs.listChildren(f.root.envelope.runId).length, 1);
     assert.equal(f.database.authority.writeIntents.listByRun(f.root.envelope.runId).length, 0);
-    const resetWorkerId = reset.reset.member.workerId;
-    assert.throws(() => f.database.assertWorkerLifecycleRelease(resetWorkerId), /worker-lifecycle-release-unproved/u);
-    assert.equal(f.database.authority.workerControls.resetForWorker(reset.reset.member.workerId)?.commandId, reset.commandId);
-    f.database.authority.workerControls.transition(reset.commandId, "admitted", { state: "executing", startedAt: f.clock.now().toISOString() });
-    f.execution.lifecycle.settleResetWork(reset.reset);
-    terminal(f.currentRoot(), "cancelled");
     assert.deepEqual(f.database.authority.runResults.get(f.child().envelope.runId), childResult);
   });
 }
-
-it("admits delegation and fresh child work on its actual home while another member reset is pending", async () => {
-  const f = await fixture("cascade");
-  const home = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.root.envelope.workflow,
-    poolIndex: 1, browserSystems: [] });
-  const unrelated = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.root.envelope.workflow,
-    poolIndex: 2, browserSystems: [] });
-  const control = f.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
-    commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard",
-    requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: {
-      workerId: unrelated.workerId, membershipRevision: unrelated.member.membershipRevision,
-      controlBasis: { leaseGeneration: unrelated.lease.leaseGeneration, controlRevision: unrelated.lease.controlRevision },
-    },
-  }, randomUUID(), f.clock.now().toISOString()));
-  assert.ok(control.reset);
-  assert.equal(f.database.authority.workerControls.resetForWorker(home.workerId), undefined);
-  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
-  const child = f.child();
-  assert.equal(child.lifecycle.state, "queued");
-  assert.equal(f.database.authority.workerControls.get(control.commandId)?.phase.state, "admitted");
-  const executed = await f.execution.step(f.root, world.SIGNAL);
-  assert.equal(executed.run.envelope.runId, child.envelope.runId);
-  assert.equal(executed.claim.workerId, home.workerId);
-  assert.equal(executed.outcome.state, "done");
-  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "done");
-  assert.ok(f.database.authority.runResults.get(child.envelope.runId));
-  assert.equal(f.database.authority.workerControls.get(control.commandId)?.phase.state, "admitted");
-  assert.equal(f.database.authority.workerControls.resetForWorker(home.workerId), undefined);
-  f.database.authority.workerControls.transition(control.commandId, "admitted", { state: "executing", startedAt: f.clock.now().toISOString() });
-  f.execution.lifecycle.settleResetWork(control.reset);
-});
 
 it("refuses the real child return after its registered profile session epoch advances", async () => {
   const f = await fixture("independent");
@@ -511,17 +470,10 @@ it("refuses the real child return after its registered profile session epoch adv
   assert.deepEqual(database.authority.runResults.get(childId), childResult);
   assert.equal(database.authority.runs.listChildren(f.root.envelope.runId).length, 1);
   assert.equal(database.authority.writeIntents.listByRun(f.root.envelope.runId).length, 0);
-  assert.throws(() => database.assertWorkerLifecycleRelease(retainedOwner.workerId), /worker-lifecycle-release-unproved/u);
-  const reset = database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
-    commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard",
-    requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: {
-      workerId: retainedOwner.workerId, membershipRevision: retainedOwner.member.membershipRevision,
-      controlBasis: { leaseGeneration: retainedOwner.lease.leaseGeneration, controlRevision: retainedOwner.lease.controlRevision },
-    },
-  }, randomUUID(), f.clock.now().toISOString()));
-  database.authority.workerControls.transition(reset.commandId, "admitted", { state: "executing", startedAt: f.clock.now().toISOString() });
-  lifecycle.settleResetWork(reset.reset);
-  terminal(currentRoot(), "cancelled");
+  assert.equal(lifecycle.recoverCrash({ commandId: randomUUID(), runId: retainedRun.envelope.runId, expectedVersion: retainedRun.version,
+    claim: { workerId: retainedOwner.workerId, claimGeneration: retainedRun.claimGeneration }, now: f.clock.now().toISOString() },
+  parentLock(f)).state, "applied");
+  terminal(currentRoot(), "failed");
   assert.deepEqual(database.authority.runResults.get(childId), childResult);
   assert.equal(registry.read().activeProfileId, f.profile.admission.profileBinding.profileId);
 });
@@ -587,7 +539,7 @@ it("refuses a real awaited child outcome after canonical cancellation revokes th
   assert.ok(runtime);
   await f.deps.sessions.closeAll("parked");
   const claimed = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
-    workerId: owner.workerId, workerLifetime: owner.workerLifetime, runtimeConfig: { generation: runtime.generation,
+    workerId: owner.workerId, runtimeConfig: { generation: runtime.generation,
       settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
   assert.ok(claimed.state === "applied" || claimed.state === "applied-already");
   assert.ok("run" in claimed);
@@ -621,32 +573,6 @@ it("refuses a real awaited child outcome after canonical cancellation revokes th
   assert.deepEqual(f.database.authority.runResults.get(f.child().envelope.runId), childResult);
   assert.equal(f.database.authority.runs.listChildren(f.root.envelope.runId).length, 1);
   assert.equal(f.database.authority.writeIntents.listByRun(f.root.envelope.runId).length, 0);
-});
-
-it("fences an independent queued descendant with its actual physical home reset reservation", async () => {
-  const f = await fixture("independent");
-  const first = await f.execution.step(f.root, world.SIGNAL);
-  assert.equal(first.outcome.state, "yielded-delegation");
-  const owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);
-  const reset = f.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
-    commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard",
-    requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: {
-      workerId: owner.workerId, membershipRevision: owner.member.membershipRevision,
-      controlBasis: { leaseGeneration: owner.lease.leaseGeneration, controlRevision: owner.lease.controlRevision },
-    },
-  }, randomUUID(), f.clock.now().toISOString()));
-  assert.equal(f.database.authority.workerControls.resetForWorker(owner.workerId)?.commandId, reset.commandId);
-  const runtime = f.database.authority.runtimeConfig.get();
-  assert.ok(runtime);
-  const generation = f.database.getMeta().authorityGeneration, child = f.child();
-  const next = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
-    workerId: owner.workerId, workerLifetime: owner.workerLifetime, runtimeConfig: { generation: runtime.generation,
-      settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
-  assert.deepEqual(next, { state: "refused", refusal: { reason: "none-eligible" } });
-  assert.equal(f.database.getMeta().authorityGeneration, generation);
-  assert.equal(f.child().version, child.version);
-  assert.equal(f.database.authority.runResults.get(child.envelope.runId), undefined);
-  assert.equal(f.database.authority.workerSlots.list(child.envelope.workflow).length, 0);
 });
 
 it("refuses a truly interrupted child without inventing a terminal result or replacing completed siblings", async () => {
@@ -696,7 +622,7 @@ it("reuses native group authentication only within a current execution observati
   const child = f.child(), owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);
   const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
   const claimed = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
-    workerId: owner.workerId, workerLifetime: owner.workerLifetime, runtimeConfig: { generation: runtime.generation,
+    workerId: owner.workerId, runtimeConfig: { generation: runtime.generation,
       settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
   assert.ok(claimed.state === "applied" && "run" in claimed);
   assert.equal(claimed.run.envelope.runId, child.envelope.runId);

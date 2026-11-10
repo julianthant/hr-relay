@@ -34,7 +34,7 @@ import { createCredentialStore } from "../../../../src/backend/storage/configura
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService,OfflineRestoreFailure,resumeAutomaticAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { DuoCredentialRecordSchema } from "../../../../src/models/config/duo-credential-store.js";
 import { deriveSettingsPatchFingerprint,initialSettingsFileRecord,SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
@@ -82,7 +82,7 @@ async function world(clock: Clock = systemClock) {
     if (result.state !== "cancelling") throw new Error("fixture logout did not produce its actual operation");
     const operation = LogoutOperationSchema.parse(JSON.parse(readFileSync(join(fixture.machine.stateRoot, "machine", "operations", `${result.operationId}.json`), "utf8")));
     const database = sources.get(profileId); assert.ok(database);
-    const stopped = await database.settlePendingLogout(fixture.machine, operation, [], { browserClosure: profileBrowserClosure, recover: reconcileStoppedLogout });
+    const stopped = await database.settlePendingLogout(fixture.machine, operation, { browserClosure: profileBrowserClosure, recover: reconcileStoppedLogout });
     await stopped.complete();
     completed.set(operation.operationId, { profileId, epoch: operation.sessionGeneration + 1 });
     stopped.dispose();
@@ -172,9 +172,8 @@ describe("profile restore continuity", () => {
       assert.equal(intent.status, "attempting"); assert.equal(run.lifecycle.state, "running");
       assert.equal(run.envelope.attempt, intent.runAttempt);
       assert.deepEqual(database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), WRITE_ATTEMPT);
-      const membership = database.authority.workerSlots.get(claim.workerId), lease = database.authority.workerLeases.get(claim.workerId);
-      assert.ok(membership); assert.ok(lease); assert.equal(claim.claimGeneration, run.claimGeneration);
-      assert.notEqual(lease.lifecycle.state, "stopped");
+      const membership = database.authority.workerSlots.get(claim.workerId);
+      assert.ok(membership); assert.equal(claim.claimGeneration, run.claimGeneration);
       await drill.takeBackup(database, paths);
       closeDatabase(); drill.corrupt(paths);
       const corrupted = readFileSync(paths.authorityPath);
@@ -194,7 +193,6 @@ describe("profile restore continuity", () => {
         assert.deepEqual(current.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), WRITE_ATTEMPT);
         assert.deepEqual(current.authority.runs.get(run.envelope.runId), run);
         assert.deepEqual(current.authority.workerSlots.get(claim.workerId), membership);
-        assert.deepEqual(current.authority.workerLeases.get(claim.workerId), lease);
         assert.equal(current.authority.writeIntents.get(intent.writeIntentId)?.status, "attempting");
         assert.equal(current.authority.runs.get(run.envelope.runId)?.envelope.attempt, intent.runAttempt);
       } finally { current.close(); }
@@ -454,14 +452,13 @@ describe("profile restore continuity", () => {
 
   it("refuses old-build worker evidence during a held operation", async () => {
     const f = await world();
-    let worker: ReturnType<typeof acquireRuntimeProcessLock> | undefined;
     try {
       const manifestPath = await f.backup(), operation = f.operation(), bytes = readFileSync(f.path);
-      worker = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "workers", workerId: "synthetic-restore-worker", pid: process.pid });
+      plantOldBuildArtifact(f.processLockRoot, "workers");
       await assert.rejects(f.restore().restore({ manifestPath }, operation));
       assert.deepEqual(readFileSync(f.path), bytes);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
-    } finally { worker?.release(); await f.close(); }
+    } finally { await f.close(); }
   });
 
   it("retains suspect and exact restore intent when replacement outcome is unobservable", async () => {
@@ -613,7 +610,6 @@ describe("profile restore continuity", () => {
         import { profileBrowserClosure } from './src/backend/runtime/browser/profile-browser-closure.ts';
         import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
         import { reconcileStoppedLogout } from './src/backend/runs/lifecycle/startup-crash-recovery.ts';
-                import { acquireRuntimeProcessLock, observeRuntimeLockSnapshot } from "./src/backend/storage/sqlite/runtime-process-locks.ts";
         const port=${String(port)},workspace=${JSON.stringify(f.workspace)},profileId=${JSON.stringify(f.profileId)},manifestPath=${JSON.stringify(manifestPath)};
         const ready=${JSON.stringify(ready)},release=${JSON.stringify(release)},processLockRoot=${JSON.stringify(f.processLockRoot)};
       `;
@@ -627,7 +623,7 @@ describe("profile restore continuity", () => {
         const result=session.logOut(active.token,{at:'2026-10-21T12:01:00.000Z'});if(result.state!=='cancelling'||!source)throw new Error('logout-not-cancelling');
         ${barrier}
         const operation=LogoutOperationSchema.parse(JSON.parse(readFileSync(join(machine.stateRoot,'machine','operations',result.operationId+'.json'),'utf8')));
-        const stopped=await source.settlePendingLogout(machine,operation,[],{browserClosure:profileBrowserClosure,recover:reconcileStoppedLogout});await stopped.complete();stopped.dispose();
+        const stopped=await source.settlePendingLogout(machine,operation,{browserClosure:profileBrowserClosure,recover:reconcileStoppedLogout});await stopped.complete();stopped.dispose();
       }finally{await session?.closeOnboarding();session?.close();source?.close();machine.release();await lifetime.close();}process.stdout.write('OWNER_DONE');`;
       const restore = `const lifetime=await RuntimeLifetimeLock.acquire(port);const machine=acquireEntrypointAdmission(workspace,'exclusive',lifetime);try {
         const child=machine.admitProfile(profileId);const root=child.stateRoot,path=join(root,'state.db');
