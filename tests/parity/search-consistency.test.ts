@@ -47,14 +47,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         }
       }
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      const searchButton = page.getByRole("button", { name: "Search runs", exact: true });
+      const searchButton = page.getByRole("button", { name: "Search", exact: true });
       await searchButton.click();
-      await expectSearchCorners(page);
-      const runSearch = page.locator('input[aria-label="Search runs"]');
-      await runSearch.fill("no matching synthetic run");
-      await expect(page.getByText("No runs match your search.", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Clear search", exact: true }).click();
-      await expect(runSearch).toHaveValue("");
+      const palette = page.getByRole("dialog", { name: "Search Relay", exact: true });
+      await palette.getByRole("combobox", { name: "Search Relay", exact: true }).fill("no matching synthetic run");
+      await expect(palette).toContainText("No matches");
       await page.keyboard.press("Escape");
       await expect(searchButton).toBeFocused();
       await page.getByRole("button", { name: "Start run", exact: true }).click();
