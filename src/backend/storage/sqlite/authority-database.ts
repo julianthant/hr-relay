@@ -15,7 +15,6 @@ import { createHash,randomUUID } from "node:crypto";
 import { existsSync,statSync } from "node:fs";
 import { basename,dirname,join } from "node:path";
 import { DatabaseSync,backup as sqliteBackup } from "node:sqlite";
-import { configureWritableConnection } from "./connection-policy.js";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { ArtifactRefSchema,type ArtifactRef } from "../../../models/artifacts/artifacts.js";
@@ -2035,6 +2034,15 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artif
       }
       // Table scans return rows in storage order, which a rebuild can change; inventories compare this list, so order it by content.
       return Object.freeze([...references.values()].sort((a, b) => a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0).map(reference => Object.freeze(reference)));
+}
+
+export function configureWritableConnection(database: DatabaseSync, busyTimeoutMs: number): void {
+  database.exec("PRAGMA foreign_keys = ON");
+  // Enable secure deletion so freed SQLite pages do not retain deleted run bytes.
+  database.exec("PRAGMA secure_delete = ON");
+  database.exec("PRAGMA journal_mode = WAL");
+  database.exec("PRAGMA synchronous = FULL");
+  database.exec(`PRAGMA busy_timeout = ${String(busyTimeoutMs)}`);
 }
 
 export class AuthorityDatabase implements Disposable {

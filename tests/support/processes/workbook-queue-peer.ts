@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { configureWritableConnection } from '../../../src/backend/storage/sqlite/connection-policy.js';
+import { configureWritableConnection } from '../../../src/backend/storage/sqlite/authority-database.js';
 import { createWorkbookLibraryRepository } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
 const [path, id, request] = process.argv.slice(2);
 const database = new DatabaseSync(path); configureWritableConnection(database, 5000);
