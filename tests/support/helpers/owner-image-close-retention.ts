@@ -17,6 +17,12 @@ function isDatabaseClose(value: unknown): value is DatabaseSync["close"] {
   return typeof value === "function";
 }
 
+function carries(error: unknown, target: unknown): boolean {
+  if (error === target) return true;
+  if (error instanceof AggregateError && error.errors.some(inner => carries(inner, target))) return true;
+  return error instanceof Error && error.cause !== undefined && carries(error.cause, target);
+}
+
 const entry = process.argv[1];
 
 if (entry !== undefined && import.meta.url === pathToFileURL(entry).href) {
@@ -24,7 +30,7 @@ if (entry !== undefined && import.meta.url === pathToFileURL(entry).href) {
   const workspace = z.string().min(1).parse(process.argv[3]);
   const profileId = z.string().min(1).parse(process.argv[4]);
   const path = z.string().min(1).parse(process.argv[5]);
-  // reader: one pinned read; doctor: a full owner doctor pass whose first image reader fails to close.
+  // reader: one pinned read; doctor: a full owner doctor pass whose first direct image reader fails to close.
   const mode = z.enum(["reader", "doctor"]).parse(process.argv[6] ?? "reader");
   if (process.send === undefined) throw new Error("owner-image close retention requires ipc");
   const send = process.send.bind(process);
@@ -44,9 +50,13 @@ if (entry !== undefined && import.meta.url === pathToFileURL(entry).href) {
     DatabaseSync.prototype.close = function closePinnedReader(this: DatabaseSync) {
       const location = this.location();
       if (location?.endsWith(`${sep}authority.sqlite`) === true) {
-        directory = dirname(location);
-        owner.database = this;
-        throw cleanup;
+        // doctor: only the first direct reader's close fails, so no later failure can stand in for it.
+        const selected = mode === "reader" || new Error().stack?.includes("closeSnapshotReader") === true;
+        if (owner.database === undefined && selected) {
+          directory = dirname(location);
+          owner.database = this;
+          throw cleanup;
+        }
       }
       close.call(this);
     };
@@ -75,6 +85,7 @@ if (entry !== undefined && import.meta.url === pathToFileURL(entry).href) {
     let releaseFailure: unknown;
     try { admission.release(); } catch (error) { releaseFailure = error; }
     assert.equal(hasUnprovedSourceClosure(releaseFailure), true);
+    assert.equal(carries(releaseFailure, cleanup), true, "release refused for another reason");
     send({ type: "proved", directory }, () => { setInterval(() => {}, 1000); });
   } catch (error) {
     const message = error instanceof Error ? error.message : "owner-image-close-retention-failed";

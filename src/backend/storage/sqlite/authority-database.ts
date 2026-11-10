@@ -1796,6 +1796,14 @@ function closeSnapshotReader(database: DatabaseSync, snapshot: ReturnType<typeof
   try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); }
 }
 
+/** A direct reader's unproved close stays registered with the admission that ran it, even when a caller folds the error into a report. */
+function withDirectReaderAdmission<T>(admission: RuntimeAdmission, read: () => T): T {
+  try { return read(); } catch (error) {
+    if (hasUnprovedSourceClosure(error)) { admission.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission }); }
+    throw error;
+  }
+}
+
 type AuthorityReadIdentitySnapshot = Readonly<{
   authorityGeneration: number;
   authorityContentFingerprint: string;
@@ -2505,7 +2513,7 @@ export class AuthorityDatabase implements Disposable {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     admission.assertStoppedRestoreProjection(options.path);
     if (options.openMode !== "read-write") throw new Error("profile-restore-projection-mode-refused");
-    const inspection = inspectExistingDatabaseReadOnly(options.path, options.busyTimeoutMs);
+    const inspection = withDirectReaderAdmission(admission, () => inspectExistingDatabaseReadOnly(options.path, options.busyTimeoutMs));
     if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-restore-projection-schema-refused");
     admission.assertStoppedRestoreProjection(options.path);
     return new AuthorityDatabase(admission, options, clock, undefined, undefined, undefined, undefined, "stopped-restore-projection");
@@ -2541,7 +2549,7 @@ export class AuthorityDatabase implements Disposable {
   static inspectExistingReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
     return withOperationProof(() => {
       requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
-      return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
+      return withDirectReaderAdmission(admission, () => inspectExistingDatabaseReadOnly(path, busyTimeoutMs));
     });
   }
 
@@ -2858,7 +2866,7 @@ export class AuthorityDatabase implements Disposable {
     busyTimeoutMs = 250,
   ): AuthorityReadIdentitySnapshot {
     requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
-    return inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs);
+    return withDirectReaderAdmission(admission, () => inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs));
   }
 
   static inspectSpanRunAuthorityReadOnly(
@@ -2868,7 +2876,7 @@ export class AuthorityDatabase implements Disposable {
     busyTimeoutMs = 250,
   ): SpanAuthorityReadSnapshot {
     requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
-    return inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs);
+    return withDirectReaderAdmission(admission, () => inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs));
   }
 
   static inspectTimelinePageReadOnly(admission: RuntimeAdmission, path: string, input: unknown) {
@@ -2904,7 +2912,7 @@ export class AuthorityDatabase implements Disposable {
         possibleExternalWrite: boolean; attemptIds: readonly string[]; confirmations: readonly string[] }>[];
       deleted: readonly DeletedRunRecord[];
     }> | undefined;
-    const identity = inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs, (database) => {
+    const identity = withDirectReaderAdmission(admission, () => inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs, (database) => {
       const metrics = z.object({ records: z.number().int().nonnegative(), bytes: z.number().int().nonnegative(),
         largest: z.number().int().nonnegative(), runs: z.number().int().nonnegative() }).parse(database.prepare(`
         SELECT count(*) AS records, COALESCE(sum(length(CAST(payload_json AS BLOB))),0) AS bytes,
@@ -2949,7 +2957,7 @@ export class AuthorityDatabase implements Disposable {
       });
       const deleted = database.prepare("SELECT * FROM deleted_runs").all().map((row) => deletedRunFromRow(row).receipt);
       recoveryEvidence = { runs, deleted };
-    });
+    }));
     if (timeline === undefined || (includeRecoveryEvidence && recoveryEvidence === undefined)) throw new Error("timeline-read-snapshot-missing");
     return { ...identity, ...timeline, recoveryEvidence };
   }
