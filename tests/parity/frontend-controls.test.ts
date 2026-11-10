@@ -3,7 +3,7 @@ import { attachShellA11y } from "./helpers/shell-proof.js";
 import { expect } from '@playwright/test';
 import { test } from "./helpers/fixtures.js";
 
-import { useServedSurfaces } from './helpers/app-driver.js';
+import { installServedSurfaces } from './helpers/app-driver.js';
 import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
@@ -67,7 +67,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.keyboard.press('Escape'); await expect(dialog).toBeVisible(); await expect(page.getByRole('listbox')).toHaveCount(0);
       await expect(add).toBeEnabled(); await captureSemanticEvidence('workers');
       await cancel.click();
-      await useServedSurfaces(page);
+      await installServedSurfaces(page);
       await page.goto(`${server.baseUrl}/?settings=general`);
       expect(writes).toEqual([]);
       const signInWrite = { method: 'POST', url: `${server.baseUrl}/api/v1/settings/chatgpt-account/sign-in` };

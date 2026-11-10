@@ -1,7 +1,6 @@
 import { chatGptStatusFixture } from "../support/helpers/chatgpt-status-fixture.js";
 import { expect } from '@playwright/test';
 import { test } from "./helpers/fixtures.js";
-import { z } from 'zod';
 import { ERROR_CATALOG } from '../../src/models/failures/error-catalog.js';
 import { ASSISTANT_START_PROPOSAL } from '../support/fixtures/dashboard/assistant-start.js';
 import { createServer as createHttpServer } from 'node:http';

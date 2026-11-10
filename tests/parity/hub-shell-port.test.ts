@@ -3,7 +3,7 @@ import { test } from "./helpers/fixtures.js";
 import { resolve } from "node:path";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { captureParityPair } from "./helpers/capture.js";
-import { assertMonotonicFrozen, installFrozenMonotonic, useServedSurfaces } from "./helpers/app-driver.js";
+import { assertMonotonicFrozen, installFrozenMonotonic, installServedSurfaces } from "./helpers/app-driver.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
@@ -19,7 +19,6 @@ async function assertCentered(page: Page, selector: string) {
 async function capture(page: Page, info: TestInfo, state: string, theme: string) {
   if (["rename", "delete-confirm", "logout"].includes(state)) await assertCentered(page, ".hub-modal");
   await assertMonotonicFrozen(page);
-  if (state) return;
   const name = `hub-shell-${state}-${theme}.a11y.yml`;
   info.annotations.push({ type: "required-a11y-evidence", description: name });
   await attachShellA11y(page, info, name);
@@ -173,7 +172,7 @@ for (const theme of ["light", "dark"] as const) {
           affectedTargets: [{ family: "settings", revision }], settingsRevision: revision,
           settingsFingerprint: document.settingsFingerprint, restartRequired: false }) });
       });
-      await useServedSurfaces(page);
+      await installServedSurfaces(page);
       await page.goto(`${server.baseUrl}/?settings=general`);
       const animations = page.getByRole("switch", { name: "Animations", exact: true });
       await expect(animations).toBeEnabled();

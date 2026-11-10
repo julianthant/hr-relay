@@ -86,7 +86,7 @@ export async function gotoAppState(page: Page, baseUrl: string, route: AppRoute)
 
 
 /** Later navigations on this page read served surfaces only: the parity entry's mock-surface flag stays off. */
-export async function useServedSurfaces(page: Page): Promise<void> {
+export async function installServedSurfaces(page: Page): Promise<void> {
   await page.addInitScript(() => { Object.defineProperty(window, "relayMockSurfaces", { value: false, writable: false, configurable: false }); });
 }
 
