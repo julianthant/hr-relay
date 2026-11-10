@@ -1,6 +1,10 @@
 import { OnboardingReadWritePlan } from "../../../src/models/workflows/onboarding/read-write-plan.js";
 import { ONBOARDING_ROSTER_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
 import { createOnboardingRunWorld } from "../../support/helpers/backend/onboarding-run-world.js";
+import { buildRunGate } from "../../../src/backend/runs/queries/run-trust.js";
+import type { RunDetailQueryDeps } from "../../../src/backend/runs/queries/run-detail.js";
+import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { GateDecisionWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { UCPATH_HIRE_PROOF_EXAMPLE } from "../../../src/models/ui/ucpath-hire.js";
 import { I9CreateRemoteRecord } from "../../../src/models/systems/i9/create-remote-record.js";
 import { createOnboardingWriteWorld } from "../../support/helpers/backend/onboarding-write-world.js";
@@ -323,6 +327,19 @@ describe("onboarding roster names in a real run", () => {
     assert.deepEqual(f.calls.map(call => call.system), ["crm"]);
     assert.deepEqual(f.database.authority.writeIntents.listByRun(root.envelope.runId), []);
     assert.deepEqual(f.repository.runOperations(root.envelope.runId), []);
+  });
+
+  it("serves the split legal and preferred names at the hire review before approval", async () => {
+    const f = await runWorld.executionFixture(false, { match: "unique", legalName: "Fixture  Marie Hire", livedName: "Fix Hire" }), root = f.start();
+    const parked = await f.rawExecution.execute(root, new AbortController().signal);
+    assert.ok(parked.run?.lifecycle.state === "parked-gate" && parked.run.lifecycle.gateId === "hire-review");
+    const reader = testRunService(f.database, f.clock);
+    const deps = { runReader: reader, authority: { listGateResults: (runId: string) => f.database.authority.gateResults.listByRun(runId) },
+      canonical: { reader, database: f.database, descriptors: { resolve: (id: string) => id === descriptor.id ? descriptor : undefined } } };
+    const gate = GateDecisionWireSchema.parse(buildRunGate(deps as unknown as RunDetailQueryDeps, root.envelope.runId, undefined, parked.run));
+    assert.ok(gate.state === "open" && gate.decision !== undefined);
+    assert.deepEqual(gate.decision.options.map(option => option.id), ["new-hire"]);
+    assert.equal(gate.decision.context, "Legal name: first Fixture, middle Marie, last Hire. Preferred name: first Fix, no middle name, last Hire.");
   });
 
   it("files a resolved roster name and patches only the Employee ID and Transaction Number cells", async () => {
