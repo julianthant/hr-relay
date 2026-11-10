@@ -117,6 +117,8 @@ async function runAdmittedEnvironmentBootstrap(
     return lifetime.lock;
   };
   if (repoRoot !== workspace && dependencies.acquireAdmission === undefined && !(lifetime.lock instanceof WorkerRuntimeLifetimeLock)) {
+    const { sweepLeakedReadonlyAuthorityCopies } = await import("../../storage/sqlite/readonly-authority-snapshot.js");
+    sweepLeakedReadonlyAuthorityCopies();
     const { prepareApplicationDataWorkspace } = await import("../composition/storage-compose.js");
     try { await prepareApplicationDataWorkspace(repoRoot, workspace, rootLifetime(), hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay))); }
     catch (error) {

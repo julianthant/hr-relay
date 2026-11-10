@@ -33,9 +33,11 @@ it("binds first-run outcomes to the complete canonical local report", () => {
 it("accepts signup-only evidence on active and error responses without inventing active authority", () => {
   const active = { state: "active", profileId, epoch: 7, duoState: "ready", firstRunCheck: passed };
   assert.deepEqual(PublicProfileStateSchema.parse(active), active);
+  // A first run with failing checks still mounts the dashboard.
+  const failedActive = { ...active, firstRunCheck: { ...passed, state: "failed", report: failedReport } };
+  assert.deepEqual(PublicProfileStateSchema.parse(failedActive), failedActive);
   for (const firstRunCheck of [
     { ...passed, profileId: "00000000-0000-4000-8000-000000000002" }, { ...passed, epoch: 8 },
-    { ...passed, state: "failed", report: failedReport },
     { scope: "local-startup", profileId, epoch: 7, state: "unavailable", code: "PROFILE_FIRST_RUN_CHECK_UNAVAILABLE" },
   ]) assert.equal(PublicProfileStateSchema.safeParse({ ...active, firstRunCheck }).success, false);
   assert.equal(PublicProfileStateSchema.parse({ state: "error", code: "INTERNAL_FAILURE", firstRunCheck: passed }).state, "error");
