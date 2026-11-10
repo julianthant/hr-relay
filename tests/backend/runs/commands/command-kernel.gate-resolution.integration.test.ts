@@ -195,8 +195,9 @@ describe("gate resolution", () => {
     if (result.state === "rejected") assert.equal(result.code, expectedCode);
     assert.deepEqual(harness.database.authority.runs.get(runId), beforeRun);
     assert.equal(harness.database.authority.gateResults.get(`${runId}:${command.target.gateId}`), undefined);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "rejected");
+    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration + 2);
     assert.deepEqual(harness.database.authority.timelineEvents.page({}), beforeEvents);
     return result;
   }
@@ -275,7 +276,7 @@ describe("gate resolution", () => {
     } finally { await world.dispose(); }
   });
 
-  it("rolls back gate result, resume and command when the required SQLite event cannot persist", async () => {
+  it("rolls back the gate result when its event cannot persist, then applies the admitted command", async () => {
     const harness = await createHarness();
     const staged = stageIdentityGateRun(harness);
     const gate = descriptorRuntimeNodes(identityCheckDescriptor)
@@ -290,8 +291,9 @@ describe("gate resolution", () => {
     assert.throws(() => harness.kernel.execute(command), /injected gate event failure/);
     assert.deepEqual(harness.database.authority.runs.get(staged.runId), before);
     assert.equal(harness.database.authority.gateResults.get(`${staged.runId}:identity-approval`), undefined);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(harness.database.getMeta().authorityGeneration, generation);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.equal(harness.database.getMeta().authorityGeneration, generation + 1);
     assert.deepEqual(harness.database.authority.timelineEvents.page({}), history);
     raw.exec("DROP TRIGGER injected_gate_event_failure");
     assert.equal(harness.kernel.execute(command).state, "applied");

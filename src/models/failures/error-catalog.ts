@@ -1002,6 +1002,10 @@ export const ERROR_CATALOG = Object.freeze({
     "A readiness check took too long. Check again.",
     EmptyParametersSchema,
   ),
+  BULK_CHILD_ERRORED: catalogEntry(
+    "Relay hit an error on this item and stopped the batch here. Nothing changed for this item.",
+    EmptyParametersSchema,
+  ),
   RUN_QUEUED_WORKER_UNAVAILABLE: catalogEntry(
     "Your run is queued. Worker startup did not complete; review this run and Sessions. Do not start the run again.",
     EmptyParametersSchema,

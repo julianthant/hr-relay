@@ -22,8 +22,9 @@ function readOcrCommandResult(repositories: AuthorityRepositories, reader: Pick<
   if (command === undefined || command.commandId !== commandId || (command.family !== "ocr-review" && command.family !== "gate")
     || command.target.runId !== runId || command.requestedBy !== "local-operator" || command.source !== "dashboard") return { state: "unavailable" as const };
   const audit = repositories.commandAudits.findByCommand(commandId);
-  if (audit === undefined) return { state: "unavailable" as const };
-  if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command) || audit.result.state !== "applied"
+  // A refused command settles with an audit but records no OCR change.
+  if (audit === undefined || audit.result.state !== "applied") return { state: "unavailable" as const };
+  if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
     || audit.result.commandId !== command.commandId) throw new OcrSourceRefusedError();
   if (command.family === "ocr-review") {
     const revision = repositories.ocrReviews.revision(runId, command.target.expectedRevision + 1);

@@ -159,6 +159,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   startupCleanups.push(() => applicationLifecycle.dispose());
   const kernel = createCommandKernel({
+    commandNotices: notificationInbox,
     ensureReceipt: runId => trustReads.trust.ensureReceipt(runId),
     readableDescriptors: { resolve: workflowId => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor },
     workbookRows: createRunWorkbookService({ database, clock }),
@@ -212,6 +213,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
 
   const commands = createDashboardCommandService({
+    commandNotices: notificationInbox,
     quitAccepted: applicationLifecycle.quitAccepted,
     kernel,
     projection,
@@ -312,7 +314,9 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   void workers.startActive();
 
   const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
-    host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)) });
+    host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)),
+    command: commandId => database.authority.commands.readForNotice(commandId),
+    bulk: bulkCommandId => { const acceptance = database.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: database.authority.commands.listBulkChildren(bulkCommandId) }; } });
   const chatGptOcrTest = createChatGptOcrTestService({ assertCurrent, dispatch: async (input, signal, source) => {
     const reader = createChatGptOcrPageReader({ account: chatGptAccount, artifacts: source, clock, model: CHATGPT_OCR_MODEL, assertCurrent });
     const { submitted } = await reader.readPage({ ...input, instruction: buildExtractionInstruction(input.formType) }, signal);
