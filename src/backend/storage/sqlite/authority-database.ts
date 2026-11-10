@@ -3006,6 +3006,8 @@ export class AuthorityDatabase implements Disposable {
     // Inside a transaction serialize() would include uncommitted writes.
     if (this.#database.isTransaction) throw new Error("authority-image-inside-transaction");
     if (this.#openedFileIdentity === undefined) return undefined;
+    // Drop cached pages so the image is read from the files and shows damage written beneath this connection.
+    this.#database.exec("PRAGMA shrink_memory");
     // shortcut: holds the whole image in memory once; move to a chunked owner backup if state.db reaches hundreds of MB.
     return Object.freeze({ identity: this.#openedFileIdentity, image: this.#database.serialize() });
   }
