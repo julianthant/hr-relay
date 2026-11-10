@@ -14,10 +14,11 @@ import { createStartPlanService, type StartPlanService } from '../../src/backend
 import { createWorkbookLibraryService } from '../../src/backend/workbooks/workbook-library-service.js';
 import { projectWorkflowStartSteps } from '../../src/backend/runs/queries/bootstrap.js';
 import { descriptorSetHash } from '../../src/backend/app/registries/workflow-registry.js';
-import { ReadWorkbookResult } from '../../src/models/processing/workbooks/read-result.js';
+import { ReadWorkbookReference } from '../../src/models/processing/workbooks/read-reference.js';
 import { defineCanonicalInput } from '../../src/models/workflow/canonical-input.js';
 import { STANDARD_WORKFLOW_ACTIONS } from '../../src/models/workflow/presentation.js';
 import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from '../../src/models/dashboard/bootstrap.js';
+import { projectWorkbookCompatibility } from '../../src/models/dashboard/workbook-library.js';
 import { RunWorkbookNamedReferenceSchema } from '../../src/models/dashboard/workbooks.js';
 import { StartPlanWireSchema, type StartPlanWire } from '../../src/models/dashboard/start-plan.js';
 import { EidSchema } from '../../src/rules/identity/ids.js';
@@ -31,13 +32,13 @@ const descriptor = defineWorkflowDescriptor({ id: 'reference-fixture', code: 'rf
   label: 'Reference fixture', icon: 'Search', category: 'operations', canonicalInput: defineCanonicalInput(input, input, [{ eid: '10800000' }]),
   inputSubject: 'eid', surface: { shape: 'single' }, enqueue: 'allow-parallel', actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: { inputRun: { placeholder: 'Enter employee IDs', parser: { split: { kind: 'delimited', delimiters: [';', '\n'] }, rules: [{ when: { kind: 'pattern', pattern: 'eid' }, emit: 'eid' }] } } },
-  details: [], requiredWorkbookTypeIds: [typeId], referenceLookups: value => [{ typeId, keys: [value.eid], fields: ['eid', 'fullName'] }],
+  details: [], requiredWorkbookFields: ['eid', 'fullName'], workbookReference: { id: typeId, keyFieldId: 'eid', mode: 'keys', writableFields: [] }, referenceKeys: value => [value.eid],
   plannedOutputs: (_value, references) => [{ kind: 'workbook', name: 'Reference report.xlsx', rowSubject: 'person',
     rows: { state: 'known', count: references.flatMap(reference => reference.snapshot.rows.flatMap(row => row.matches)).length } }],
   identity: { matchKey: value => value.eid }, presentation: { title: value => value.eid }, scenarios: ['reference/preview'],
-  flow: flow(input).step('read-result', ReadWorkbookResult, { dependsOn: [], replay: 'always-rerun',
-    bind: ({ input }) => ({ kind: 'patch-reference', writeId: 'result', typeId, key: input.eid, values: [{ fieldId: 'fullName', value: 'Reviewed' }] }) })
-    .build({ schema: ReadWorkbookResult.output, dependsOn: ['read-result'], derive: ({ outputs }) => outputs['read-result'] }),
+  flow: flow(input).step('read-reference', ReadWorkbookReference, { dependsOn: [], replay: 'checkpoint',
+    bind: ({ input }) => ({ typeId, keys: [input.eid] }) })
+    .build({ schema: ReadWorkbookReference.output, dependsOn: ['read-reference'], derive: ({ outputs }) => outputs['read-reference'] }),
 });
 
 for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
@@ -45,30 +46,34 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
   test(`named reference planning ${theme} ${width}`, { annotation: [{ type: 'required-a11y-evidence', description: evidence }] }, async ({ page }, info) => {
     let planner: StartPlanService | undefined;
     const requirePlanner = () => { if (!planner) throw new Error('reference-planner-uninitialized'); return planner; };
-    const h = await harness({ startPlans: () => ({ plan: request => requirePlanner().plan(request), previewWarnings: request => requirePlanner().previewWarnings(request) }) });
+    const h = await harness({ workbookWorkflows: [descriptor], startPlans: () => ({ plan: request => requirePlanner().plan(request), previewWarnings: request => requirePlanner().previewWarnings(request) }) });
     const hash = descriptorSetHash([...FIXTURE_BOOTSTRAP.workflows.map(workflow => WorkflowBootstrapPrimitiveSchema.parse(workflow).descriptorFingerprint), descriptor.contractFingerprint]);
-    const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_BOOTSTRAP, descriptorHash: hash, workflows: [...FIXTURE_BOOTSTRAP.workflows,
-      { id: descriptor.id, code: descriptor.code, label: descriptor.label, categoryId: descriptor.category, descriptorFingerprint: descriptor.contractFingerprint,
-        availability: { state: 'available' }, role: { kind: 'standalone' }, start: { readiness: { scope: 'default-workbook-references', state: 'blocked', reason: 'Import Applicant roster.',
-          fixAction: { kind: 'import-workbook', workflowId: descriptor.id, typeId } }, enqueue: descriptor.enqueue, version: descriptor.version,
-          steps: projectWorkflowStartSteps(descriptor), inputRun: descriptor.surfaces.inputRun, spreadsheetIntake: false, requiredWorkbookTypeIds: [typeId] } }] });
-    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' },
-      profile: { bootstrap, descriptorHash: hash, day: { ...FIXTURE_DAY_WIRE, descriptorHash: hash } } });
+    let server: Awaited<ReturnType<typeof startFixtureServer>> | undefined;
     try {
       const repository = h.database.authority.workbooks;
       const library = createWorkbookLibraryService({ repository, clock: h.clock, sync: unexpectedWorkbookSync });
       const saved = library.create({ name: 'Applicants.xlsx', hasFormulas: false, themes: [], sheets: [{ id: 'people', name: 'People', width: 2, hidden: [], headerRow: 1,
         columnBindings: ['eid', 'fullName'].map((fieldId, index) => ({ id: `col-${index}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: 'manual' })),
         rows: [['eid', 'fullName'], ['10800000', 'Earlier person']].map((cells, index) => ({ id: `row-${index}`, cells: cells.map(value => ({ value })) })) }] });
-      repository.putType({ id: typeId, name: 'Applicant roster', keyFieldId: 'eid', fields: ['eid', 'fullName'], defaultWorkbookId: null });
-      library.operatorOperation(saved.libraryId, 'declare-type', { kind: 'metadata', expectedVersion: 1, metadata: { typeId, sharePoint: null } });
       const current = library.read(saved.libraryId), changed = structuredClone(current.workbook);
       changed.sheets[0].rows[1].cells[1].value = 'Current person'; library.save(saved.libraryId, current.version, changed);
       const state = repository.libraryState(saved.libraryId);
       await library.libraryAction(saved.libraryId, { operationId: 'fall-hires', expectedVersion: library.read(saved.libraryId).version, expectedRevision: state.revision,
         change: { kind: 'create-version', name: 'Fall hires', from: { kind: 'version', versionId: 'original' }, useNow: false } }, new AbortController().signal);
       const version = repository.libraryState(saved.libraryId).versions.find(version => version.name === 'Fall hires'); expect(version).toBeDefined();
-      repository.putType({ ...repository.types().find(type => type.id === typeId), defaultWorkbookId: saved.libraryId });
+      const compatibility = projectWorkbookCompatibility([descriptor], [{ libraryId: saved.libraryId,
+        versionId: repository.libraryState(saved.libraryId).selectedVersionId, origin: { kind: 'local' }, removed: false,
+        sheets: library.libraryVersion(saved.libraryId).workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name,
+          mappings: (sheet.columnBindings ?? []).map((binding, column) => ({ fieldId: binding.fieldId!, column, basis: 'manual' as const })) })) }]);
+      const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_BOOTSTRAP, descriptorHash: hash, workbookCompatibility: compatibility,
+        workflows: [...FIXTURE_BOOTSTRAP.workflows,
+          { id: descriptor.id, code: descriptor.code, label: descriptor.label, categoryId: descriptor.category, descriptorFingerprint: descriptor.contractFingerprint,
+            availability: { state: 'available' }, role: { kind: 'standalone' }, start: { readiness: { scope: 'workbook-sources', state: 'selection-needed',
+              fixAction: { kind: 'choose-workbook-sources', workflowId: descriptor.id } }, enqueue: descriptor.enqueue, version: descriptor.version,
+              steps: projectWorkflowStartSteps(descriptor), inputRun: descriptor.surfaces.inputRun, spreadsheetIntake: false,
+              requiredWorkbookFields: [...descriptor.requiredWorkbookFields], workbookReference: descriptor.workbookReference } }] });
+      server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' },
+        profile: { bootstrap, descriptorHash: hash, day: { ...FIXTURE_DAY_WIRE, descriptorHash: hash } } });
       const config = h.database.authority.runtimeConfig.get(); if (!config) throw new Error('reference-config-missing');
       planner = createStartPlanService({ authority: h.database, authorityRead: h.database, clock: h.clock, ids: systemIdFactory,
         descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, workbooks: library, planTtlMs: 600_000,
@@ -93,10 +98,14 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
       await dialog.getByRole('navigation', { name: 'Workflow', exact: true }).getByRole('button', { name: /Reference fixture/u }).click();
       await dialog.getByRole('textbox', { name: 'Employee IDs', exact: true }).fill('10800000');
       await dialog.getByRole('button', { name: 'Continue', exact: true }).click();
-      const reference = dialog.getByRole('button', { name: /Applicants.xlsx.*Reference spreadsheet/u });
+      const reference = dialog.getByRole('button', { name: 'Reference spreadsheet', exact: true });
       await expect(reference).toBeVisible(); expect((await reference.boundingBox())!.height).toBe(28);
+      await reference.click();
+      await page.getByRole('menuitemradio', { name: 'Applicants.xlsx', exact: true }).click();
       await dialog.getByRole('button', { name: /Reference version/u }).click();
       await page.getByRole('menuitemradio', { name: 'Fall hires', exact: true }).click();
+      await dialog.getByRole('button', { name: 'Reference worksheet', exact: true }).click();
+      await page.getByRole('menuitemradio', { name: 'People', exact: true }).click();
       await expect(dialog.locator(':scope > header')).toBeInViewport({ ratio: 1 });
       expect(await dialog.evaluate(node => node.scrollTop)).toBe(0);
       await assertMonotonicFrozen(page);
@@ -107,9 +116,9 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
       await expect(dialog.getByRole('group', { name: 'Run outputs', exact: true })).toContainText('Reference report.xlsx');
       await expect(dialog.getByRole('group', { name: 'Run outputs', exact: true })).toContainText('1 person');
       expect(requests).toHaveLength(1);
-      expect(requests[0]).toMatchObject({ workbookReferences: [{ entry: 1, typeId, libraryId: saved.libraryId, versionId: version!.id }] });
+      expect(requests[0]).toMatchObject({ workbookReferences: [{ entry: 1, libraryId: saved.libraryId, versionId: version!.id, sheetId: 'people', expectedVersion: 2 }] });
       const request = requests[0] as { workbookReferences: object[] };
-      expect(Object.keys(request.workbookReferences[0]).sort()).toEqual(['entry', 'libraryId', 'typeId', 'versionId']);
+      expect(Object.keys(request.workbookReferences[0]).sort()).toEqual(['entry', 'expectedVersion', 'libraryId', 'sheetId', 'versionId']);
       if (!planned) throw new Error('reference-plan-not-retained');
       const retained = h.database.authority.startPlans.get(planned.startPlanId); if (!retained) throw new Error('reference-plan-missing');
       const bound = RunWorkbookNamedReferenceSchema.parse(retained.planned[0].workbookReferences?.[0].value);
@@ -119,6 +128,6 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
       await dialog.getByRole('group', { name: 'Run outputs', exact: true }).scrollIntoViewIfNeeded();
       await expect(dialog.locator(':scope > header')).toBeInViewport({ ratio: 1 });
       await capturePresentationReference(page, info, 'confirm-output', hash); await attachShellA11y(page, info, evidence);
-    } finally { await server.close(); await disposeHttpRouteHarness(); }
+    } finally { await server?.close(); await disposeHttpRouteHarness(); }
   });
 }

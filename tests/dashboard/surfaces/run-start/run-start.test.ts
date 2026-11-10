@@ -370,7 +370,9 @@ const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
       start.inputRun === undefined
         ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
         : { state: "present", surface: start.inputRun },
-    spreadsheetIntake: start.spreadsheetIntake, requiredWorkbookTypeIds: start.requiredWorkbookTypeIds,
+    spreadsheetIntake: start.spreadsheetIntake, requiredWorkbookFields: start.requiredWorkbookFields,
+    workbookReference: start.workbookReference,
+    referenceSources: FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility.workflows.find(workflow => workflow.workflowId === entry.id)?.sources ?? [],
   };
 });
 

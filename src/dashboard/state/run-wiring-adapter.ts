@@ -678,12 +678,15 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       const choice = reference.resolution;
       const option = choice.state === "available" ? servedOption(choice.decision, picked) : undefined;
       const named = option === undefined ? undefined : answeredRow(option, answer);
-      const candidate = choice.state === "available" ? choice.candidates.find(candidate => candidate.sheetId === named?.sheetId && candidate.rowId === named?.rowId) : undefined;
+      const candidate = choice.state === "available" ? choice.candidates.find(candidate => candidate.sheetId === named?.sheetId && candidate.rowId === named?.rowId
+        && (candidate.referenceDigest === undefined || named?.id === `${candidate.referenceDigest}/${candidate.sheetId}/${candidate.rowId}`)) : undefined;
       if (choice.state !== "available" || choice.action.kind !== "command" || option === undefined || option.send.via !== "action" || option.send.actionKey !== choice.action.key
         || !decisionAnswerValid(option, answer) || candidate === undefined) return;
       const composed = composeCommandRequest(choice.action, { runId: row.runId, expectedVersion: row.rowRevision }, {
         actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, workbookReferenceChoice: reference,
-        workbookReferenceAnswer: { sheetId: candidate.sheetId, rowId: candidate.rowId } });
+        workbookReferenceAnswer: { sheetId: candidate.sheetId, rowId: candidate.rowId,
+          ...(candidate.referenceDigest === undefined || candidate.workbookVersion === undefined ? {}
+            : { referenceDigest: candidate.referenceDigest, workbookVersion: candidate.workbookVersion }) } });
       if (composed.state === "ready") dispatchIfDecisionCurrent.current(CommandRequestSchema.parse(composed.request));
       return;
     }

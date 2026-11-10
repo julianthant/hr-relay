@@ -90,7 +90,7 @@ export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", in
     const descriptor = h.descriptor;
     if (descriptor.surfaces.inputRun === undefined) throw new Error("launch fixture requires typed input");
     return { workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category,
-    role: { kind: "standalone" }, enqueue: descriptor.enqueue, version: descriptor.version, spreadsheetIntake: false, requiredWorkbookTypeIds: [...descriptor.requiredWorkbookTypeIds],
+    role: { kind: "standalone" }, enqueue: descriptor.enqueue, version: descriptor.version, spreadsheetIntake: false, requiredWorkbookFields: [...descriptor.requiredWorkbookFields], referenceSources: [],
     inputRun: { state: "present", surface: descriptor.surfaces.inputRun },
     steps: projectStartSteps(descriptor).map((step) => ({ ...step, control: startStepWireControl(step.control) })) };
   }

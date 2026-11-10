@@ -100,7 +100,9 @@ describe("clear all run history", () => {
     expect(await f.diagnostic(child)).toBe(file);
     const library = createWorkbookLibraryService({ repository: f.database.authority.workbooks, clock: capturedInstantClock(NOW), sync: unexpectedWorkbookSync });
     const workbook = library.create({ name: "Retained.xlsx", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Sheet", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "Retained" }] }] }] });
-    const retained = ["settings", "settings_snapshots", "artifacts", "workbook_types", "workbook_library", "workbook_library_history", "workbook_operations", "workbook_creations", "workbook_library_state", "write_intents", "write_attempts"];
+    const selection = f.database.authority.workbooks.rememberLastUsed({ workflowId: 'person-lookup', acceptedCommandId: randomUUID(), usedAt: NOW,
+      sources: [{ libraryId: workbook.libraryId, sheetId: 'sheet' }] });
+    const retained = ["workflow_workbook_selections", "settings", "settings_snapshots", "artifacts", "workbook_types", "workbook_library", "workbook_library_history", "workbook_operations", "workbook_creations", "workbook_library_state", "write_intents", "write_attempts"];
     const credentialFile = join(f.profile.stateRoot, "credentials", "protected.json"), credentials = readFileSync(credentialFile);
     const account = f.profile.machine.readProfileRegistry();
     const before = retained.map(table => [table, f.rows(table)]);
@@ -115,6 +117,7 @@ describe("clear all run history", () => {
     expect(f.rows("deleted_runs").every(row => row.cleanup_state === "complete")).toBe(true);
     expect(retained.map(table => [table, f.rows(table)])).toEqual(before);
     expect(library.read(workbook.libraryId)).toEqual(workbook);
+    expect(f.database.authority.workbooks.lastUsed('person-lookup')).toEqual(selection);
     expect(readFileSync(credentialFile)).toEqual(credentials);
     expect(f.profile.machine.readProfileRegistry()).toEqual(account);
     using raw = new DatabaseSync(f.profile.path, { readOnly: true });

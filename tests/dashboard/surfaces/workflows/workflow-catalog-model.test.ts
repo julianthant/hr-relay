@@ -86,7 +86,7 @@ afterEach_m0(_afterEachFixture2);
     assert_m0.ok(document.querySelector('[aria-label="Read result preview"]'));
   });
   it_m0("opens served Separations on the registered definition instead of the mock timeline", async () => {
-    const registered = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows));
+    const registered = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows), FIXTURE_START_PICKER_BOOTSTRAP_m1.workbookCompatibility);
     const catalog = buildWorkflowCatalog_m0(registered, true, WORKFLOW_SOURCES_m1);
     const host = document.createElement("div");
     document.body.append(host);
@@ -104,7 +104,7 @@ afterEach_m0(_afterEachFixture2);
 {
 
 
-const served = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows));
+const served = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows), FIXTURE_START_PICKER_BOOTSTRAP_m1.workbookCompatibility);
 const catalog = buildWorkflowCatalog_m1(served, true, servedFixtureSources_m1([]));
 const noop = () => {};
 
