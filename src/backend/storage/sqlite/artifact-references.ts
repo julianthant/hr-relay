@@ -3,6 +3,8 @@ import { ArtifactRefSchema, type ArtifactRef } from "../../../models/artifacts/a
 import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
+const ArtifactReferenceContainerSchema = z.record(z.string(), z.unknown());
+
 /** Returns a one-walk matcher: the digests of the candidates a value names by artifact id, sha256, digest or sourceSha256 anywhere inside it. */
 export function deletionArtifactReferenceMatcher(candidates: Iterable<ArtifactRef>): (value: unknown) => ReadonlySet<string> {
   const byId = new Map<string, string[]>(), byDigest = new Set<string>();
@@ -46,7 +48,7 @@ export function artifactReferencesIn(input: unknown): readonly ArtifactRef[] {
     if (attachment.success) add(ArtifactRefSchema.parse({ id: attachment.data.artifactId, sha256: attachment.data.digest,
       bytes: attachment.data.byteLength, mediaType: attachment.data.mediaType }));
     if (Array.isArray(value)) { for (const member of value) visit(member); return; }
-    const record = z.record(z.string(), z.unknown()).parse(value);
+    const record = ArtifactReferenceContainerSchema.parse(value);
     if (typeof record.preparationJson === "string") visit(JSON.parse(record.preparationJson));
     for (const member of Object.values(record)) visit(member);
   };

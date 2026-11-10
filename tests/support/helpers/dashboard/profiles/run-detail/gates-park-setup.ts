@@ -1,3 +1,4 @@
+import { publicWriteTarget } from "../../../../../../src/backend/runs/commands/write-command-target.js";
 import { parkedWriteDecision } from "../../../../../../src/backend/runs/queries/run-detail/gate-park.js";
 import { ActionDescriptorWireSchema } from "../../../../../../src/models/dashboard/actions.js";
 import { traceOf } from "../../../../fixtures/dashboard/fixture-identity.js";
@@ -77,9 +78,9 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
     parkedCode: "unknown", message: "Fixture verification unknown", authorityReason: PARKED_WRITE_REASON,
   });
 
-  const PARKED_WRITE_TARGET = { writeIntentId: PARKED_WRITE_INTENT.writeIntentId,
+  const PARKED_WRITE_TARGET = publicWriteTarget({ writeIntentId: PARKED_WRITE_INTENT.writeIntentId,
     intentGeneration: PARKED_WRITE_INTENT.generation, writeAttemptId: PARKED_WRITE_ATTEMPT.writeAttemptId,
-    bindingProofDigest: PARKED_WRITE_BINDING_DIGEST, occurrenceKeyDigest: PARKED_WRITE_INTENT.idempotencyKeyDigest };
+    bindingProofDigest: PARKED_WRITE_BINDING_DIGEST, occurrenceKeyDigest: PARKED_WRITE_INTENT.idempotencyKeyDigest });
 
   const PARKED_WRITE_SYSTEM = "ucpath";
 

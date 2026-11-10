@@ -667,7 +667,7 @@
       "file": "tests/architecture/storage/readonly-authority-snapshot.test.ts",
       "status": "active",
       "owner": "docs/reference/stores.md",
-      "invariant": "Authority inspection and backup readers include committed WAL through a private verified copy in a separate process, without source writes or releasing live SQLite process locks; unsafe companions and changed source identities or held copy descriptors refuse.",
+      "invariant": "Authority inspection and backup readers include committed WAL through a private verified copy in a separate process, without source writes or releasing live SQLite process locks; unsafe companions and changed source identities or held copy descriptors refuse. A process that holds the authority open may give its own doctor pass one image serialized from that open connection, bound to the file identity it opened; no observer opens a SQLite connection on a source.",
       "replacementRequired": true
     },
     {
