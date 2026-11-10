@@ -8,15 +8,17 @@
 
 - region "Relay assistant":
   - button "Action proof" [disabled]
-  - button "Chats" [disabled]
+  - button "History" [disabled]
   - button "New chat"
   - button "Close assistant" [disabled]
   - log "Assistant conversation":
     - text: do it Review this proposal. No action has been applied.
     - article "Proposed Start Person Lookup":
       - heading "Start Person Lookup" [level=3]
-      - term: Person
-      - definition: Sample, Avery EID 10101010
+      - term: Name
+      - definition: Avery Sample
+      - term: EID
+      - definition: "10101010"
       - term: Options
       - definition: Read only
       - status
@@ -29,6 +31,6 @@
     - group "Message controls":
       - button "Add files"
       - button "Ask before every action" [disabled]
-      - 'button "Model: Model unavailable" [disabled]': Model unavailable
+      - 'button "Model: Model unavailable, Effort unavailable effort" [disabled]': Model unavailable Effort unavailable
       - button "Voice input" [disabled]
       - button "Send message" [disabled]

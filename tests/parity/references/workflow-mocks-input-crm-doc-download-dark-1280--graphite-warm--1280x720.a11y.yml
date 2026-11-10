@@ -7,10 +7,10 @@
 # capturedAt: 2026-08-03
 
 - region "Notifications"
-- dialog "Start a run":
+- dialog "Start run":
   - banner:
-    - heading "Start a run" [level=2]
-    - paragraph: CRM Doc Download · Workflow preview
+    - heading "Start run" [level=2]
+    - paragraph: Onboarding Documents · Workflow preview
     - button "Close"
   - complementary:
     - group:
@@ -47,7 +47,7 @@
       - heading "Utils" [level=3]
       - list:
         - listitem:
-          - button "CRM Doc Download"
+          - button "Onboarding Documents"
       - heading "OnBase" [level=3]
       - list:
         - listitem:
@@ -60,20 +60,29 @@
     - listitem:
       - button "1 Input": Input
     - listitem:
-      - button "2 Options" [disabled]: Options
-    - listitem:
-      - button "3 Confirm" [disabled]: Confirm
-  - heading "Run input" [level=3]
-  - paragraph: Each entry starts one run.
+      - button "2 Options": Options
   - region "Input":
-    - text: Employee IDs or emails
-    - textbox "Employee IDs or emails":
-      - /placeholder: 10000001, jordan.lee@example.com
-      - text: "10000001"
-    - paragraph: Separate values with a comma or a new line.
+    - region "Input":
+      - heading "Input" [level=4]
+      - paragraph: Employee IDs or emails. Separate values with a comma or Shift+Enter.
+      - textbox "Employee IDs or emails":
+        - /placeholder: 10000001, jordan.lee@example.com
+        - text: "10000001"
     - list "Parsed inputs":
       - listitem: 1 10000001
+    - region "Reference spreadsheets":
+      - heading "Reference spreadsheets" [level=4]
+      - paragraph: Spreadsheets this run looks people up in. Needs Employee ID and Name.
+      - text: Contact roster Roster
+      - button "Contact roster worksheets, Roster": Roster
+      - combobox "Contact roster version": v6
+      - button "Remove Contact roster"
+      - text: I-9 tracker Sheet1
+      - button "I-9 tracker worksheets, Sheet1": Sheet1
+      - combobox "I-9 tracker version": v3
+      - button "Remove I-9 tracker"
+    - button "Add spreadsheet"
   - contentinfo:
-    - text: 1 runCRM Doc Download
+    - text: Onboarding Documents3 of 3 stepsPriority Enter to continue
     - button "Cancel"
     - button "Continue"

@@ -1,15 +1,15 @@
 # run-reference-library-confirm-output--graphite-warm--1024x1000
 # adapter: fixture
 # fixture: run-reference-library.spec.ts:named reference planning dark 1024
-# descriptorHash: eab1f14290dd12875d56473270e52fa5b75f18230f6e159434bfc1922f0c345b
+# descriptorHash: 0820786c9a25968a49762d1ae6a49a4f6ac16f17becb52a764126830bffab418
 # appVersion: 0.1.0
 # viewport: 1024x1000  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
 - region "Notifications"
-- dialog "Start a run":
+- dialog "Start run":
   - banner:
-    - heading "Start a run" [level=2]
+    - heading "Start run" [level=2]
     - paragraph: New work · Reference fixture
     - button "Close"
   - complementary:
@@ -47,7 +47,7 @@
       - heading "Utils" [level=3]
       - list:
         - listitem:
-          - button "CRM Doc Download"
+          - button "Onboarding Documents"
       - heading "OnBase" [level=3]
       - list:
         - listitem:
@@ -77,7 +77,7 @@
       - definition: Reference fixture · v1
       - term: Steps
       - definition: 1 / 1 included
-      - term: Reference · Applicant roster
+      - term: Reference · Applicants.xlsx
       - definition: Applicants.xlsx · Fall hires
       - term: Queue
       - definition: Interactive

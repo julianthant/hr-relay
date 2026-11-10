@@ -18,13 +18,8 @@
       - text: Personal
       - link "General":
         - /url: "?settings=general"
-      - link "Credentials":
-        - /url: "?settings=credentials"
-      - text: Advanced
-      - link "Paths":
-        - /url: "?settings=paths"
-      - link "Routes":
-        - /url: "?settings=routes"
+      - link "Account":
+        - /url: "?settings=account"
       - text: Data
       - link "Spreadsheets":
         - /url: "?settings=spreadsheets"
@@ -32,11 +27,6 @@
         - /url: "?settings=explorer"
       - link "Analytics":
         - /url: "?settings=activity"
-      - text: Status
-      - link "Storage":
-        - /url: "?settings=storage"
-      - link "Preflight":
-        - /url: "?settings=preflight"
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
@@ -57,7 +47,7 @@
     - heading "Work" [level=2]
     - group "Work":
       - text: Task
-      - paragraph: Maximum time for one worker task after a session is ready.
+      - paragraph: Maximum time for one task in a ready session.
       - textbox "Task": "180"
       - text: seconds Transaction
       - paragraph: Maximum time allowed for a transaction operation.
@@ -88,10 +78,4 @@
       - button "OCR processing Concurrency, patience, validation, and backoff."
       - button "Browser recovery Health checks, refreshes, and close verification."
 - status
-- region "Session Panel":
-  - group "Session actions":
-    - button "Sessions 2 running·1 starting·1 idle"
-    - button "Add workers"
-    - button "Settings" [pressed]
-    - button "Log out"
 - region "Notifications"

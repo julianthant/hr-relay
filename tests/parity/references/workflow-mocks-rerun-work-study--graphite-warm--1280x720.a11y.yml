@@ -16,26 +16,25 @@
     - listitem:
       - button "1 Steps": Steps
     - listitem:
-      - button "2 Values" [disabled]: Values
+      - button "2 Values": Values
     - listitem:
       - button "3 Options" [disabled]: Options
-    - listitem:
-      - button "4 Confirm" [disabled]: Confirm
-  - heading "Choose what to run again" [level=3]
-  - text: 2 / 2 included
+  - heading "Steps" [level=3]
+  - text: 2 of 2 included
   - paragraph: Select steps for the new run. Statuses show the source outcome.
   - region "Steps":
-    - heading "Steps" [level=4]
-    - list:
-      - listitem:
-        - checkbox "Sign in to UCPath" [checked] [disabled]
-        - text: Sign in to UCPath UCPath · required Completed
-      - listitem:
-        - checkbox "Submit work-study transaction" [checked] [disabled]
-        - text: Submit work-study transaction Form action · required Completed
-        - checkbox "Enter reading values manually for submit work-study transaction"
-        - text: Enter reading values manually for submit work-study transaction
+    - region "Steps":
+      - img "Required"
+      - text: Sign in to UCPath UCPath · required Completed
+      - switch "Sign in to UCPath (required)" [checked] [disabled]
+      - text: Sign in to UCPath (required)
+      - img "Required"
+      - text: Submit work-study transaction Form action · required Completed
+      - switch "Enter manually for Submit work-study transaction"
+      - text: Enter manually for Submit work-study transaction
+      - switch "Submit work-study transaction (required)" [checked] [disabled]
+      - text: Submit work-study transaction (required)
   - contentinfo:
-    - text: Source run · new runWork-Study
+    - text: Work-Study2 of 2 stepsPriority Enter to continue
     - button "Cancel"
     - button "Continue"

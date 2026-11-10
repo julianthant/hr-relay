@@ -10,39 +10,34 @@
 - dialog "Rerun":
   - banner:
     - heading "Rerun" [level=2]
-    - paragraph: CRM Doc Download · Workflow preview
+    - paragraph: Onboarding Documents · Workflow preview
     - button "Close"
   - list "Run configuration path":
     - listitem:
       - button "1 Steps": Steps
     - listitem:
-      - button "2 Values" [disabled]: Values
+      - button "2 Values": Values
     - listitem:
       - button "3 Options" [disabled]: Options
-    - listitem:
-      - button "4 Confirm" [disabled]: Confirm
-  - heading "Choose what to run again" [level=3]
-  - text: 2 / 3 included
+  - heading "Steps" [level=3]
+  - text: 2 of 3 included
   - paragraph: Select steps for the new run. Statuses show the source outcome.
   - region "Steps":
-    - heading "Steps" [level=4]
-    - list:
-      - listitem:
-        - checkbox "Find CRM record"
-        - text: Find CRM record CRM Skipped
-        - group "Manual values for Find CRM record":
-          - paragraph: Enter the values this step would read. Use “None” for an absent value. These values are operator supplied.
-          - text: Employee ID
-          - textbox "Employee ID": "10000001"
-          - text: Roster email
-          - textbox "Roster email": None
-      - listitem:
-        - checkbox "Download documents" [checked]
-        - text: Download documents CRM Completed
-      - listitem:
-        - checkbox "Archive downloaded documents" [checked]
-        - text: Archive downloaded documents Completed
+    - region "Steps":
+      - text: Find CRM record CRM Skipped
+      - switch "Include Find CRM record"
+      - text: Include Find CRM record
+      - group "Manual values for Find CRM record":
+        - text: Employee ID
+        - textbox "Employee ID": "10000001"
+        - text: Roster email
+        - textbox "Roster email": None
+      - text: Download documents CRM Completed
+      - switch "Include Download documents" [checked]
+      - text: Include Download documents Archive downloaded documents Completed
+      - switch "Include Archive downloaded documents" [checked]
+      - text: Include Archive downloaded documents
   - contentinfo:
-    - text: Source run · new runCRM Doc Download
+    - text: Onboarding Documents2 of 3 stepsPriority Enter to continue
     - button "Cancel"
     - button "Continue"

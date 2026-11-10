@@ -8,10 +8,18 @@
 
 - region "Relay assistant":
   - button "Action proof" [disabled]
-  - button "Chats" [disabled]
+  - button "History" [disabled]
   - button "New chat"
   - button "Close assistant" [disabled]
-  - log "Assistant conversation": do it Review this proposal. No action has been applied. Couldn't finish this.
+  - log "Assistant conversation":
+    - text: do it Review this proposal. No action has been applied.
+    - article "Proposed Mark a notification read":
+      - heading "Mark a notification read" [level=3]
+      - term: Options
+      - definition: Local change · Local notification
+      - alert: Action outcome is unknown. Do not retry this action.
+      - button "Cancel" [disabled]
+      - button "Confirm" [disabled]
   - group "Message composer":
     - text: Message Relay
     - textbox "Message Relay" [disabled]:
@@ -19,6 +27,6 @@
     - group "Message controls":
       - button "Add files" [disabled]
       - button "Ask before every action" [disabled]
-      - 'button "Model: Model unavailable" [disabled]': Model unavailable
+      - 'button "Model: Model unavailable, Effort unavailable effort" [disabled]': Model unavailable Effort unavailable
       - button "Voice input" [disabled]
       - button "Send message" [disabled]
