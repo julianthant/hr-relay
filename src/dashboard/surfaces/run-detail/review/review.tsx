@@ -9,6 +9,7 @@ import { Badge, Button, Card, CardBody, Checkbox, Field, IconButton, Input, Sele
 import { LogSkeleton, LoadingRegion } from "../../shared/loading/loading.js";
 import { cn } from "../../../lib/utils.js";
 import { displayExtractedDate } from "../../../lib/date-format.js";
+import { ocrReviewAddsRecords } from "../../../../models/ocr/form-registry.js";
 import { ocrReviewCards } from "./review-model.js";
 import { reviewFieldBlocks, reviewFieldGroups, reviewFieldPresentation, REVIEW_RELATIONSHIPS, type RecordReviewProps, type ReviewField, type ReviewRecordView, type ReviewSourcePage } from "./review-record-model.js";
 
@@ -38,7 +39,7 @@ export function RunReview({ selection, focus }: { selection: LogSelection; focus
         if (record.manualEntry && current !== undefined && record.page !== current.page) resource.edit(record.id, "sourcePage", String(record.page));
         else resource.include([{ id: record.id, selected: record.selected }]);
       }}
-      onAdd={resource.readOnly || review?.revision.seed.review.formType === "emergency-contact" ? undefined : resource.add}
+      onAdd={resource.readOnly || (review !== undefined && !ocrReviewAddsRecords(review.revision.seed.review.formType)) ? undefined : resource.add}
       onApprove={review?.approval === undefined ? undefined : resource.approve}
       approvalError={ready !== selected?.length ? "Resolve the selected records before approval." : undefined}
       onDiscard={resource.readOnly ? undefined : () => resource.include(cards.filter(card => card.record.selected).map(card => ({ id: card.record.id, selected: false })), true)}
