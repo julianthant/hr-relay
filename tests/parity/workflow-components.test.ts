@@ -55,14 +55,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await expect(logs.getByRole("tab")).toHaveCount(0);
       await expect(logs.getByRole("button", { name: /^Review records/u })).toHaveCount(0);
-      await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
-      const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
-      const record = drawer.getByRole("region", { name: "Record person-1", exact: true });
       await expect(logs.getByRole("heading", { level: 2 })).toHaveText("emergency-contacts.pdf");
-      await expect(logs.getByRole("navigation", { name: "Run timeline", exact: true })).toHaveCount(0);
-      await expect(logs.getByRole("searchbox", { name: "Search logs", exact: true })).toHaveCount(0);
-      await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toHaveAttribute("aria-pressed", "true");
+      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      const drawer = page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true });
+      const record = drawer.getByRole("region", { name: "Record person-1", exact: true });
       const source = record.getByRole("region", { name: "Source PDF", exact: true });
       const sourceBox = (await source.boundingBox())!, fieldsBox = (await record.locator("[data-review-fields]").boundingBox())!;
       expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(fieldsBox.x);
@@ -92,7 +88,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await attachShellA11y(page, info, `contact-review-${theme.attribute}-${width}.a11y.yml`);
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click();
       await expect(record.getByRole("textbox")).toHaveCount(0);
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      await page.keyboard.press("Escape"); await expect(drawer).toHaveCount(0);
       await logs.getByRole("button", { name: /^Linked runs \(/u }).click();
       await page.getByRole("dialog", { name: "Linked runs", exact: true }).getByRole("button", { name: /Jordan Lee/u }).click();
       await expect(logs).toContainText("Sam Lee"); await expect(logs).toContainText("10000009");
@@ -100,10 +96,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(logs.getByRole("button", { name: /^Records/u })).toHaveCount(0);
 
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
-      await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click();
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      await page.keyboard.press("Escape"); await expect(drawer).toHaveCount(0);
       await logs.getByRole("button", { name: /^Linked runs \(/u }).click();
       await page.getByRole("dialog", { name: "Linked runs", exact: true }).getByRole("button", { name: /Jordan Lee/u }).click();
       await expect(logs).toContainText("Verify onboarding and oath date");
@@ -111,7 +106,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await logs.getByRole("button", { name: /^Linked runs \(/u }).click();
       await expect(page.getByRole("dialog", { name: "Linked runs", exact: true })).toContainText("Parent"); await page.keyboard.press("Escape");
       await rail.getByRole("button", { name: "OnBase", exact: true }).click();
-      await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       await drawer.getByRole("button", { name: "Discard", exact: true }).click();
       await expect(drawer).toContainText("Discarded"); await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toHaveCount(0);
@@ -120,10 +114,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(discardedHeading).toBeFocused();
       await discardedHeading.press("Control+z");
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      await page.keyboard.press("Escape"); await expect(drawer).toHaveCount(0);
       await rail.getByRole("button", { name: "I-9 Check", exact: true }).click();
       await expect(logs.getByRole("textbox")).toHaveCount(0); await expect(logs.getByRole("tab")).toHaveCount(0);
-      await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       await expect(drawer).toContainText("Section 2 page");
       const i9 = drawer.getByRole("region", { name: "Record person-1", exact: true });
@@ -151,9 +144,8 @@ for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme
     for (const [label, field] of [["Oath Upload", "Officer signed"], ["Emergency Contact", "Contact name"], ["OnBase", "Contact name"], ["I-9 Check", "Section 2 page"]]) {
       await rail.getByRole("button", { name: label, exact: true }).click();
       await expect(logs.getByRole("tab")).toHaveCount(0);
-      await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
-      const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
+      const drawer = page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true });
       await expect(drawer).toContainText(field);
       const record = drawer.getByRole("region", { name: "Record person-1", exact: true });
       await expect(record.getByRole("textbox", { name: "Employee ID", exact: true })).toBeVisible();
@@ -162,7 +154,7 @@ for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
 
       if (label === "Oath Upload") await attachShellA11y(page, info, `ocr-${label}-${theme.attribute}.a11y.yml`);
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click(); await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toBeFocused();
+      await page.keyboard.press("Escape"); await expect(drawer).toHaveCount(0); await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toBeFocused();
     }
     expect(writes).toEqual([]);
   } finally { await server.close(); }

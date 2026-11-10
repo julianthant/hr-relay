@@ -91,7 +91,7 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
       await dialog.getByRole('textbox', { name: 'Employee IDs', exact: true }).fill('10800000');
       await dialog.getByRole('button', { name: 'Continue', exact: true }).click();
       const reference = dialog.getByRole('button', { name: /Applicants.xlsx.*Reference spreadsheet/u });
-      await expect(reference).toBeVisible(); expect((await reference.boundingBox())!.height).toBe(36);
+      await expect(reference).toBeVisible(); expect((await reference.boundingBox())!.height).toBe(28);
       await dialog.getByRole('button', { name: /Reference version/u }).click();
       await page.getByRole('menuitemradio', { name: 'Fall hires', exact: true }).click();
       await expect(dialog.locator(':scope > header')).toBeInViewport({ ratio: 1 });
