@@ -20,18 +20,22 @@ const descriptor = DESCRIPTORS.find(workflow => workflow.id === "person-lookup")
 const surface = descriptor.surfaces.inputRun; assert.ok(surface?.typedInput);
 const personLookup: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, version: descriptor.version,
   steps: projectStartSteps(descriptor), inputRun: { state: "present", surface } };
-const [firstMode] = surface.typedInput.modes; assert.ok(firstMode);
-const other: RunStartWorkflow = { ...personLookup, workflowId: "other-typed",
-  inputRun: { state: "present", surface: { ...surface, typedInput: { ...surface.typedInput, initialMode: null, controls: [],
-    modes: [{ ...firstMode, value: "other-mode", defaults: [] }] } } } };
+const onboardingDescriptor = DESCRIPTORS.find(workflow => workflow.id === "onboarding"); assert.ok(onboardingDescriptor);
+const onboardingSurface = onboardingDescriptor.surfaces.inputRun; assert.ok(onboardingSurface?.typedInput);
+const onboarding: RunStartWorkflow = { ...personLookup, workflowId: onboardingDescriptor.id, version: onboardingDescriptor.version,
+  steps: projectStartSteps(onboardingDescriptor), inputRun: { state: "present", surface: onboardingSurface } };
 
 describe("typed draft belongs to its workflow", () => {
-  it("restored view state selecting another typed workflow never sees the default workflow's mode", async () => {
+  it("Person Lookup default with restored Onboarding selection renders Onboarding's unchosen Hire mode", async () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     await act(async () => root?.render(createElement(DashboardClientProvider, { client: h.stubClient({}),
-      children: createElement(ViewNavigationContext.Provider, { value: { view: { launchServed: "other-typed" }, start: true, setStart() {}, update() {} },
-        children: createElement(RunStartDialog, { open: true, onOpenChange() {}, catalog: buildWorkflowCatalog([personLookup, other], false, servedFixtureSources([personLookup, other])),
+      children: createElement(ViewNavigationContext.Provider, { value: { view: { launchServed: "onboarding" }, start: true, setStart() {}, update() {} },
+        children: createElement(RunStartDialog, { open: true, onOpenChange() {}, catalog: buildWorkflowCatalog([personLookup, onboarding], false, servedFixtureSources([personLookup, onboarding])),
           panelWorkflowId: personLookup.workflowId, actorId: h.ACTOR_ID, onApplied() {}, onOpenIntake() {} }) }) })));
-    assert.equal(host.textContent?.includes("Page unavailable"), false);
+    const dialog = document.body.querySelector('[role="dialog"]'); assert.ok(dialog);
+    assert.ok(dialog.textContent?.includes("Hire mode"));
+    assert.equal(document.body.querySelector<HTMLInputElement>('input[type="radio"][value="new-hire"]')?.checked, false);
+    assert.equal(document.body.querySelector<HTMLInputElement>('input[type="radio"][value="rehire"]')?.checked, false);
+    assert.equal(document.body.textContent?.includes("Page unavailable"), false);
   });
 });
