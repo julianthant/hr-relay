@@ -188,6 +188,7 @@ export const ASSISTANT_FAILURES = Object.freeze({
   ASSISTANT_SUBJECT_REQUIRED: ERROR_CATALOG.ASSISTANT_SUBJECT_REQUIRED.text,
   ASSISTANT_PROPOSAL_REFUSED: ERROR_CATALOG.ASSISTANT_PROPOSAL_REFUSED.text,
   ASSISTANT_PROPOSAL_EXPIRED: ERROR_CATALOG.ASSISTANT_PROPOSAL_EXPIRED.text,
+  ASSISTANT_PROPOSAL_CHANGED: ERROR_CATALOG.ASSISTANT_PROPOSAL_CHANGED.text,
   ASSISTANT_SPREADSHEET_REFUSED: ERROR_CATALOG.ASSISTANT_SPREADSHEET_REFUSED.text,
   ASSISTANT_AUTHORITY_INVALID: ERROR_CATALOG.ASSISTANT_AUTHORITY_INVALID.text,
   ASSISTANT_MODEL_PROPOSAL_REFUSED: ERROR_CATALOG.ASSISTANT_MODEL_PROPOSAL_REFUSED.text,
@@ -469,8 +470,8 @@ export const AssistantSessionOutcomeSchema = z.discriminatedUnion("state", [
 export type AssistantSessionOutcome = z.infer<typeof AssistantSessionOutcomeSchema>;
 /** One reviewed row's closed operation; Relay issues its command only after typed yes. */
 export const AssistantM2ProposalOperationSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("workflow-start"), workflowId: WorkflowIdSchema, submission: JsonValueSchema, expected: StartPlanWireSchema.shape.fingerprints }),
-  z.strictObject({ kind: z.literal("rerun"), runId: RunIdSchema, expectedVersion: PositiveIntSchema, selectedStepKeys: StartPlanRequestSchema.shape.selectedStepKeys.unwrap() }),
+  z.strictObject({ kind: z.literal("workflow-start"), workflowId: WorkflowIdSchema, submission: JsonValueSchema, reviewed: FingerprintSchema }),
+  z.strictObject({ kind: z.literal("rerun"), runId: RunIdSchema, expectedVersion: PositiveIntSchema, selectedStepKeys: StartPlanRequestSchema.shape.selectedStepKeys.unwrap(), reviewed: FingerprintSchema }),
   z.strictObject({ kind: z.literal("run-action"), runId: RunIdSchema, expectedVersion: PositiveIntSchema, action: z.enum(["pause", "resume", "cancel"]) }),
 ]);
 export const AssistantM2ProposalRowSchema = AssistantProposalRowSchema.safeExtend({ id: z.uuid(), ordinal: PositiveIntSchema, operation: AssistantM2ProposalOperationSchema });

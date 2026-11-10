@@ -33,7 +33,7 @@ function world() {
     const source = accept(conversationId);
     const draft = { id: randomUUID(), profileId: storage.profileId(), conversationId, revision: 1, renderedMessageId: reply(source), sourceMessageId: source.acceptedTurn.messageId,
       label: "Start Person Lookup", dryRun: false, options: shownOptions, createdAt: T, rows: Array.from({ length: rows }, (_, index) => ({ id: randomUUID(), ordinal: index + 1, title: `Row ${String(index + 1)}`,
-        display: { kind: "request" as const }, operation: { kind: "workflow-start" as const, workflowId: "person-lookup", submission: { line: String(index) }, expected: fingerprints } })) };
+        display: { kind: "request" as const }, operation: { kind: "workflow-start" as const, workflowId: "person-lookup", submission: { line: String(index) }, reviewed: "e".repeat(64) } })) };
     return AssistantM2ProposalSnapshotSchema.parse({ ...draft, renderedDigest: assistantM2ProposalDigest(draft) });
   };
   const bound = (shown: AssistantM2ProposalSnapshot): Bound => ({ proposalId: shown.id, proposalRevision: shown.revision, renderedMessageId: shown.renderedMessageId, renderedDigest: shown.renderedDigest });

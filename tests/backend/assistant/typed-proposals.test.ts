@@ -4,8 +4,9 @@ import { it } from "vitest";
 import { createAssistantReferenceTable } from "../../../src/backend/assistant/references.js";
 import { assistantProposalParts, isTypedYes } from "../../../src/backend/assistant/typed-proposals.js";
 import type { AssistantProposalDraft, AssistantToolContext } from "../../../src/backend/assistant/plugins/plugin.js";
-import { AssistantAcceptedTurnSchema, type AssistantReplyPart } from "../../../src/models/dashboard/assistant.js";
+import { AssistantAcceptedTurnSchema, AssistantM2ProposalOperationSchema, type AssistantReplyPart } from "../../../src/models/dashboard/assistant.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
+import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { assistantM1HistoryFixture } from "../../support/helpers/assistant-m1-history-fixture.js";
 import { typedProposalFixture } from "../../support/helpers/assistant-typed-proposals.js";
@@ -51,7 +52,7 @@ it("proposes 1 to 20 rows from per-row fresh plans with the reviewed options and
     const draft: AssistantProposalDraft = await w.tool("propose_workflow_start").prepare({ workflow: "person-lookup", entries: entries(n), dryRun: false }, w.context());
     assert.equal(draft.rows.length, n);
     assert.deepEqual(draft.options, { browserMode: "headless", captureBrowserScreenshots: true, priority: "interactive" });
-    assert.ok(draft.rows.every(row => row.operation.kind === "workflow-start" && row.operation.expected.inputFingerprint === w.f.knobs.inputFingerprint));
+    assert.equal(new Set(draft.rows.map(row => row.operation.kind === "workflow-start" ? row.operation.reviewed : "")).size, n);
   }
   await assert.rejects(w.tool("propose_workflow_start").prepare({ workflow: "person-lookup", entries: entries(21), dryRun: false }, w.context()));
   await assert.rejects(w.tool("propose_workflow_start").prepare({ workflow: "person-lookup", entries: ["10000001", "10000001"], dryRun: false }, w.context()), /ASSISTANT_PROPOSAL_REFUSED/u);
@@ -59,8 +60,9 @@ it("proposes 1 to 20 rows from per-row fresh plans with the reviewed options and
   assert.equal(w.f.submitted.length, 0);
 });
 
-it("runs each reviewed row under its own claim and command after the typed yes, once", async () => {
+it("runs each reviewed row under its own claim and command after the typed yes, once, even hours after the proposal", async () => {
   const w = world(), { record } = await w.propose("propose_workflow_start", { workflow: "person-lookup", entries: entries(2), dryRun: false });
+  w.f.clock.advanceWall(3 * 3_600_000);
   const attempt = w.yes(record), reply = await w.answer(attempt);
   assert.equal(w.f.submitted.length, 2);
   assert.deepEqual(w.f.submitted.map(entry => entry.attribution), record.snapshot.rows.map(row => ({ kind: "assistant", requestedBy: "local-operator", profileId: w.storage.profileId(),
@@ -79,11 +81,52 @@ it("refuses a row whose fresh plan no longer matches what was reviewed while the
   const w = world(), { record } = await w.propose("propose_workflow_start", { workflow: "person-lookup", entries: entries(3), dryRun: false });
   let plans = 0;
   const plan = w.f.ports.plans.plan.bind(w.f.ports.plans);
-  w.f.ports.plans.plan = input => { w.f.knobs.inputFingerprint = ++plans === 2 ? "f".repeat(64) : "e".repeat(64); return plan(input); };
+  w.f.ports.plans.plan = input => { w.f.knobs.workbookVersion = ++plans === 2 ? 2 : 1; return plan(input); };
   const reply = await w.answer(w.yes(record));
   assert.deepEqual(w.states(record.snapshot.id), ["applied", "refused", "applied"]);
   assert.equal(w.f.submitted.length, 2);
   assert.deepEqual(reply.parts.map(part => part.kind), ["answered", "session", "text", "session"]);
+  assert.deepEqual(reply.parts[2], { kind: "text", runs: [{ kind: "plain", text: "Not done: " }, { kind: "value", value: record.snapshot.rows[1]?.title }, { kind: "plain", text: " — " },
+    { kind: "failure", code: "ASSISTANT_PROPOSAL_CHANGED", text: "Failed" }, { kind: "plain", text: `: ${ERROR_CATALOG.ASSISTANT_PROPOSAL_CHANGED.text}` }] });
+  assert.match(reply.modelText, /Row 2: not done \(ASSISTANT_PROPOSAL_CHANGED\)\./u);
+  assert.doesNotMatch(reply.modelText, /Lookup \d/u);
+});
+
+it("reruns an unchanged reviewed run and refuses one whose config or workbooks changed, with no command", async () => {
+  for (const drift of ["none", "config", "workbook"] as const) {
+    const w = world(), run = w.f.run(), token = w.table.issue("R", run.envelope.runId, "Lookup", run.envelope.runId, run.version);
+    const { record } = await w.propose("propose_rerun", { run: token, dryRun: false });
+    const [row] = record.snapshot.rows;
+    assert.ok(row?.operation.kind === "rerun" && /^[0-9a-f]{64}$/u.test(row.operation.reviewed));
+    w.f.clock.advanceWall(3_600_000);
+    if (drift === "config") w.f.knobs.configFingerprint = "f".repeat(64);
+    if (drift === "workbook") w.f.knobs.workbookVersion = 2;
+    const reply = await w.answer(w.yes(record));
+    assert.deepEqual(w.states(record.snapshot.id), [drift === "none" ? "applied" : "refused"], drift);
+    assert.equal(w.f.submitted.length, drift === "none" ? 1 : 0, drift);
+    if (drift !== "none") assert.ok(reply.parts.some(part => part.kind === "text" && part.runs.some(item => item.kind === "failure" && item.code === "ASSISTANT_PROPOSAL_CHANGED")), drift);
+  }
+});
+
+it("shows each refused command's own reason", async () => {
+  const w = world(), { record } = await w.propose("propose_workflow_start", { workflow: "person-lookup", entries: entries(2), dryRun: false });
+  w.f.knobs.submit = command => command === w.f.submitted[0]?.command ? { state: "conflict", commandId: command.commandId, currentVersion: 2, message: "moved" } : undefined;
+  const reply = await w.answer(w.yes(record));
+  assert.deepEqual(w.states(record.snapshot.id), ["refused", "applied"]);
+  assert.ok(reply.parts.some(part => part.kind === "text" && part.runs.some(item => item.kind === "failure" && item.code === "ASSISTANT_READ_STALE")));
+});
+
+it("renders the files, people and EIDs Relay resolved, and the reviewed run options", () => {
+  const operation = AssistantM2ProposalOperationSchema.parse({ kind: "run-action", runId: randomUUID(), expectedVersion: 1, action: "pause" });
+  const parts = assistantProposalParts({ label: "Start Emergency Contact", dryRun: true, options: { browserMode: "headed", captureBrowserScreenshots: false, priority: "interactive" }, rows: [
+    { title: "Emergency Contact PDF", display: { kind: "file", fileName: "first.pdf", formType: "emergency-contact" }, operation },
+    { title: "Emergency Contact PDF", display: { kind: "file", fileName: "second.pdf", formType: "emergency-contact" }, operation },
+    { title: "Avery Example", display: { kind: "person", name: "Example, Avery", employeeId: "10000001" }, operation },
+  ] });
+  assert.deepEqual(parts[1], { kind: "bullets", items: [[{ kind: "value", value: "first.pdf" }], [{ kind: "value", value: "second.pdf" }],
+    [{ kind: "value", value: "Example, Avery" }, { kind: "plain", text: " · EID " }, { kind: "value", value: "10000001" }]] });
+  assert.deepEqual(parts[2], { kind: "text", runs: [{ kind: "plain", text: "Runs in a visible browser, screenshots off." }] });
+  assert.deepEqual(parts[0], { kind: "text", runs: [{ kind: "bold", text: "Start Emergency Contact (dry run)" }] });
 });
 
 it("keeps a row whose submit failed UNKNOWN, never reclaims it and runs the next row", async () => {

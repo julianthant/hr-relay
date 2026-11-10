@@ -151,6 +151,7 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_SPREADSHEET_REFUSED: catalogEntry("The Spreadsheets library refused this change. Review the workbook in Spreadsheets.", EmptyParametersSchema),
   ASSISTANT_PROPOSAL_REFUSED: catalogEntry("The current planner refused this proposal. Review it in Run.", EmptyParametersSchema),
   ASSISTANT_PROPOSAL_EXPIRED: catalogEntry("This card expired. Ask again for a new one.", EmptyParametersSchema),
+  ASSISTANT_PROPOSAL_CHANGED: catalogEntry("This changed after you reviewed it. Ask again for a new proposal.", EmptyParametersSchema),
 
   RUN_LOG_DISPLAY_VALUE_UNMAPPED: catalogEntry(
     "A retained value has no declared display text. Update the workflow declaration before reading these Logs.",

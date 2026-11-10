@@ -1,12 +1,12 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { ASSISTANT_START_ROWS_MAX, AssistantAcceptedTurnSchema, AssistantM2ProposalSnapshotSchema, assistantM2ProposalDigest, type AssistantAcceptedTurn,
+import { ASSISTANT_START_ROWS_MAX, AssistantAcceptedTurnSchema, AssistantM2ProposalSnapshotSchema, assistantM2ProposalDigest, type AssistantAcceptedTurn, type AssistantInline,
   type AssistantM2ProposalOptions, type AssistantM2ProposalRecord, type AssistantM2ProposalRow, type AssistantM2ProposalSnapshot, type AssistantReplyPart } from "../../models/dashboard/assistant.js";
 import type { RerunValuesResponse } from "../../models/dashboard/rerun-values.js";
-import { ErrorCatalogCodeSchema } from "../../models/failures/error-catalog.js";
+import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../models/failures/error-catalog.js";
 import { parseInputRunText, toRawSubmission } from "../../models/workflow/ingress.js";
 import { AssistantCommandAttributionSchema, CommandRequestSchema, StartCommandRequestSchema, type CommandRequest, type CommandResult } from "../../rules/commands/commands.js";
-import { IsoInstantSchema } from "../../rules/identity/ids.js";
+import { FingerprintSchema, IsoInstantSchema } from "../../rules/identity/ids.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 import { workflowDryRunSupport, type AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
@@ -29,11 +29,26 @@ export function isTypedYes(text: string): boolean {
   return TYPED_YES.has(text.normalize("NFKC").toLowerCase().replace(/[.,!]/gu, " ").replace(/\s+/gu, " ").trim());
 }
 
-/** How a proposal reads in its reply: what will happen, one bullet per row, and the yes it waits for. */
+/** One row as the operator reviews it: the resolved file, person (name and EID) or document Relay bound, never model wording. */
+function rowRuns(row: Pick<AssistantM2ProposalRow, "title" | "subtitle" | "display">): AssistantInline[] {
+  const { display } = row, value = (text: string): AssistantInline => ({ kind: "value", value: text });
+  if (display.kind === "file") return [value(display.fileName)];
+  if (display.kind === "person") {
+    const name = display.name ?? row.title;
+    return [value(name), ...(display.employeeId === undefined || display.employeeId === name ? [] : [{ kind: "plain" as const, text: " · EID " }, value(display.employeeId)])];
+  }
+  if (display.kind === "document") return [value(row.title), ...(display.documentNumber === row.title ? [] : [{ kind: "plain" as const, text: " · Document " }, value(display.documentNumber)])];
+  return [value(row.title), ...(row.subtitle === undefined ? [] : [{ kind: "plain" as const, text: ` · ${row.subtitle}` }])];
+}
+
+/** How a proposal reads in its reply: what will happen, one bullet per row, the reviewed run options, and the yes it waits for. */
 export function assistantProposalParts(draft: AssistantProposalDraft): AssistantReplyPart[] {
+  const options = draft.options === null ? [] : [{ kind: "text" as const, runs: [{ kind: "plain" as const,
+    text: `Runs in a ${draft.options.browserMode === "headed" ? "visible" : "hidden"} browser, screenshots ${draft.options.captureBrowserScreenshots ? "on" : "off"}.` }] }];
   return [
     { kind: "text", runs: [{ kind: "bold", text: draft.dryRun ? `${draft.label} (dry run)` : draft.label }] },
-    { kind: "bullets", items: draft.rows.map(row => [{ kind: "value", value: row.title }, ...(row.subtitle === undefined ? [] : [{ kind: "plain" as const, text: ` · ${row.subtitle}` }])]) },
+    { kind: "bullets", items: draft.rows.map(rowRuns) },
+    ...options,
     { kind: "text", runs: [{ kind: "plain", text: "Reply yes to go ahead." }] },
   ];
 }
@@ -45,8 +60,8 @@ export interface AssistantTypedProposalPorts {
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   served(workflowId: string): boolean;
   readonly plans: Pick<StartPlanService, "prepare" | "plan">;
-  /** The stored plan's planned canonical and raw inputs, in order. */
-  plannedInputs(startPlanId: string): readonly Readonly<{ input: unknown; rawInput: unknown }>[] | undefined;
+  /** The stored plan's capture instant and its planned canonical inputs, raw inputs and bound workbook references, in order. */
+  plannedInputs(startPlanId: string): PlannedInputs | undefined;
   readonly runs: Pick<RunRecordService, "read">;
   readonly rerunValues: (request: unknown) => RerunValuesResponse;
   readonly attachment: AssistantPluginDeps["attachment"];
@@ -60,8 +75,19 @@ export interface AssistantTypedProposalPorts {
   readonly actorId: string;
 }
 
-function refuse(): never { throw new AssistantToolRefusal("ASSISTANT_PROPOSAL_REFUSED"); }
+export type PlannedInputs = Readonly<{ capturedAt: string; runs: readonly Readonly<{ input: unknown; rawInput: unknown; workbookReferences: unknown }>[] }>;
+
+function refuse(code: "ASSISTANT_PROPOSAL_REFUSED" | "ASSISTANT_PROPOSAL_CHANGED" | "ASSISTANT_READ_STALE" = "ASSISTANT_PROPOSAL_REFUSED"): never { throw new AssistantToolRefusal(code); }
 const same = (left: unknown, right: unknown) => canonicalJsonStringify(JsonValueSchema.parse(left)) === canonicalJsonStringify(JsonValueSchema.parse(right));
+/** Digest of what one fresh plan binds (descriptor, config, schemas, rerun source, inputs and workbook references) with the plan's own capture instant
+ * (an OCR roster's `readAt`, for one) masked, so unchanged sources planned again later give the same digest and any changed one does not. */
+function reviewedBinding(planned: Readonly<{ fingerprints: Record<string, string>; rerun?: unknown }>, stored: PlannedInputs) {
+  const { inputFingerprint: _input, ...fingerprints } = planned.fingerprints;
+  const stable = (value: unknown): unknown => value === stored.capturedAt ? "captured-at" : Array.isArray(value) ? value.map(stable)
+    : value !== null && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, stable(item)])) : value;
+  const runs = stored.runs.map(run => ({ input: run.input, rawInput: run.rawInput, workbookReferences: run.workbookReferences ?? null }));
+  return FingerprintSchema.parse(createHash("sha256").update(canonicalJsonStringify(JsonValueSchema.parse(stable({ fingerprints, rerun: planned.rerun ?? null, runs })))).digest("hex"));
+}
 /** Workflows whose one input is an attached PDF of a fixed OCR form. */
 const PDF_START_WORKFLOWS = new Set(["emergency-contact"]);
 type StartOptions = Omit<AssistantM2ProposalOptions, "priority"> & Partial<Pick<AssistantM2ProposalOptions, "priority">>;
@@ -84,12 +110,12 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
       ...(descriptor.requiredWorkbookTypeIds.length === 0 ? {} : { workbookReferences: descriptor.requiredWorkbookTypeIds.map(typeId => ({ entry: 1, typeId })) }),
       ...(rerun === undefined ? {} : { rerunSource: rerun.source, selectedStepKeys: [...rerun.steps] }) };
     await ports.plans.prepare?.(request, signal);
-    const planned = ports.plans.plan(request), [row] = planned.planned, inputs = ports.plannedInputs(planned.startPlanId), [stored] = inputs ?? [];
-    if (row === undefined || stored === undefined || planned.workflowId !== descriptor.id || planned.dryRun !== dryRun || planned.planned.length !== 1 || inputs?.length !== 1
+    const planned = ports.plans.plan(request), [row] = planned.planned, inputs = ports.plannedInputs(planned.startPlanId), [stored] = inputs?.runs ?? [];
+    if (inputs === undefined || row === undefined || stored === undefined || planned.workflowId !== descriptor.id || planned.dryRun !== dryRun || planned.planned.length !== 1 || inputs.runs.length !== 1
       || planned.refused.length > 0 || planned.omittedSteps !== undefined || (rerun === undefined) !== (planned.rerun === undefined)
       || planned.browserMode !== options.browserMode || planned.captureBrowserScreenshots !== options.captureBrowserScreenshots
       || (options.priority !== undefined && planned.priority !== options.priority) || (rerun === undefined && !same(stored.rawInput, submission))) refuse();
-    return { planned, row, input: stored.input };
+    return { planned, row, input: stored.input, reviewed: reviewedBinding(planned, inputs) };
   }
   function reusableRun(runId: string, workflowId: string) {
     const run = requireTrustRun(ports.runs, runId), descriptor = ports.descriptors.resolve(run.envelope.workflow);
@@ -104,7 +130,7 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
     context.assertCurrent();
     const source = await ports.ocrSources().upload({ actorId: ports.actorId, fileName: record.name, mediaType: record.mediaType, bytes: record.bytes });
     context.assertCurrent();
-    return { submission: JsonValueSchema.parse({ document: source.artifact, readingId: randomUUID(), roster: null, reading: { kind: "subscription" } }), fileName: record.name };
+    return { submission: JsonValueSchema.parse({ document: source.artifact, fileName: record.name, readingId: randomUUID(), roster: null, reading: { kind: "subscription" } }), fileName: record.name };
   }
   async function entrySubmissions(descriptor: AnyWorkflowDescriptor, entries: readonly string[], context: AssistantToolContext): Promise<readonly Readonly<{ submission: JsonValue; fileName?: string }>[]> {
     if (PDF_START_WORKFLOWS.has(descriptor.id)) {
@@ -158,11 +184,11 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
       const rows: AssistantProposalDraft["rows"][number][] = [];
       for (const entry of sources) {
         context.assertCurrent();
-        const { planned, row, input } = await planOne(descriptor, entry.submission, dryRun, options, context.signal);
+        const { planned, row, input, reviewed } = await planOne(descriptor, entry.submission, dryRun, options, context.signal);
         priorities.add(planned.priority);
         rows.push({ title: row.title, ...(row.subtitle === undefined ? {} : { subtitle: row.subtitle }),
           display: plannedRowDisplay(descriptor.id, input, () => entry.fileName),
-          operation: { kind: "workflow-start", workflowId: descriptor.id, submission: entry.submission, expected: planned.fingerprints } });
+          operation: { kind: "workflow-start", workflowId: descriptor.id, submission: entry.submission, reviewed } });
       }
       const [priority] = priorities;
       if (priority === undefined || priorities.size !== 1) refuse();
@@ -173,10 +199,11 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
       rerunParameters, async (value, context) => {
         const { run: reference, dryRun } = rerunParameters.parse(value), run = referencedRun(reference, context), source = rerunSource(run), descriptor = startable(source.workflowId, dryRun);
         const options = { browserMode: ports.browserMode(), captureBrowserScreenshots: true };
-        const { planned } = await planOne(descriptor, source.submission, dryRun, options, context.signal, source.rerun);
+        const { planned, reviewed } = await planOne(descriptor, source.submission, dryRun, options, context.signal, source.rerun);
         context.assertCurrent();
         return { label: `Rerun ${descriptor.label}`, dryRun, options: { ...options, priority: planned.priority }, rows: [{ title: run.displayName ?? descriptor.label,
-          display: plannedRowDisplay(run.envelope.workflow, run.input.parsed), operation: { kind: "rerun", runId: run.envelope.runId, expectedVersion: run.version, selectedStepKeys: source.rerun.steps } }] };
+          display: plannedRowDisplay(run.envelope.workflow, run.input.parsed),
+          operation: { kind: "rerun", runId: run.envelope.runId, expectedVersion: run.version, selectedStepKeys: source.rerun.steps, reviewed } }] };
       }),
     tool("propose_run_action", "write-local", "Propose pausing, resuming or cancelling one run in the queue. The existing run command decides whether the action is allowed." + ask,
       runActionParameters, (value, context) => {
@@ -194,21 +221,22 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
     const { operation } = row;
     if (operation.kind === "run-action") {
       const run = requireTrustRun(ports.runs, operation.runId);
-      if (run.version !== operation.expectedVersion || hasProtectedSubject(run.input.parsed.protectedBindings)) refuse();
+      if (hasProtectedSubject(run.input.parsed.protectedBindings)) refuse();
+      if (run.version !== operation.expectedVersion) refuse("ASSISTANT_READ_STALE");
       return CommandRequestSchema.parse({ ...identity, family: "run", type: operation.action, target: { runId: operation.runId, expectedVersion: operation.expectedVersion } });
     }
     if (snapshot.options === null) refuse();
-    let planned: Awaited<ReturnType<typeof planOne>>["planned"];
-    if (operation.kind === "workflow-start") {
-      ({ planned } = await planOne(startable(operation.workflowId, snapshot.dryRun), operation.submission, snapshot.dryRun, snapshot.options, signal));
-      if (!same(planned.fingerprints, operation.expected)) refuse();
-    } else {
+    let fresh: Awaited<ReturnType<typeof planOne>>;
+    if (operation.kind === "workflow-start") fresh = await planOne(startable(operation.workflowId, snapshot.dryRun), operation.submission, snapshot.dryRun, snapshot.options, signal);
+    else {
       const run = requireTrustRun(ports.runs, operation.runId);
-      if (run.version !== operation.expectedVersion) refuse();
+      if (run.version !== operation.expectedVersion) refuse("ASSISTANT_READ_STALE");
       const source = rerunSource(run);
-      if (!same(source.rerun.steps, operation.selectedStepKeys)) refuse();
-      ({ planned } = await planOne(startable(source.workflowId, snapshot.dryRun), source.submission, snapshot.dryRun, snapshot.options, signal, source.rerun));
+      if (!same(source.rerun.steps, operation.selectedStepKeys)) refuse("ASSISTANT_PROPOSAL_CHANGED");
+      fresh = await planOne(startable(source.workflowId, snapshot.dryRun), source.submission, snapshot.dryRun, snapshot.options, signal, source.rerun);
     }
+    if (fresh.reviewed !== operation.reviewed) refuse("ASSISTANT_PROPOSAL_CHANGED");
+    const { planned } = fresh;
     return StartCommandRequestSchema.parse({ ...identity, family: "start", type: "start-run",
       target: { workflowId: planned.workflowId, startPlanId: planned.startPlanId, expectedVersion: planned.expectedVersion }, payload: planned.fingerprints });
   }
@@ -240,8 +268,10 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
       : result.affectedTargets.flatMap(target => target.family === "run" ? [target.runId] : []);
     if (result.state === "applied" && runIds.length === 1) ports.store.settleRow(snapshot.id, row.id, { state: "applied", commandId, runIds });
     // Rejected, conflicting or confirmation-required commands did not apply; anything else is not proved either way.
-    else if (result.state === "rejected" || result.state === "conflict" || result.state === "confirmation-required") ports.store.settleRow(snapshot.id, row.id, { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED", commandId });
-    else ports.store.settleRow(snapshot.id, row.id, { state: "unknown", commandId });
+    else if (result.state === "rejected" || result.state === "conflict" || result.state === "confirmation-required") {
+      const code = result.state === "conflict" ? "ASSISTANT_READ_STALE" : result.state === "rejected" ? ErrorCatalogCodeSchema.safeParse(result.code).data ?? "ASSISTANT_PROPOSAL_REFUSED" : "ASSISTANT_PROPOSAL_REFUSED";
+      ports.store.settleRow(snapshot.id, row.id, { state: "refused", code, commandId });
+    } else ports.store.settleRow(snapshot.id, row.id, { state: "unknown", commandId });
   }
 
   /** The answered reply, read back from each row's stored result: Done, Not done, or Couldn't finish this. */
@@ -249,16 +279,20 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
     const { snapshot } = record, [first] = snapshot.rows;
     if (first === undefined) refuse();
     const parts: AssistantReplyPart[] = [{ kind: "answered", attribution: attribution(turn, snapshot, first), at: IsoInstantSchema.parse(now()) }], lines: string[] = [];
-    const text = (line: string) => { parts.push({ kind: "text", runs: [{ kind: "plain", text: line }] }); lines.push(line); };
+    const text = (lead: string, row: AssistantM2ProposalRow, tail: readonly AssistantInline[]) => { parts.push({ kind: "text", runs: [{ kind: "plain", text: lead }, ...rowRuns(row), ...tail] }); };
+    // The model's replay names rows by number only; the reviewed names, EIDs and files stay in the operator's parts.
     snapshot.rows.forEach((row, index) => {
-      const result = record.rows[index]?.result;
+      const result = record.rows[index]?.result, n = `Row ${String(row.ordinal)}`;
       if (result?.state === "applied" && row.operation.kind !== "run-action") {
-        lines.push(`Done: ${row.title}.`);
+        lines.push(`${n}: done.`);
         const workflowId = row.operation.kind === "workflow-start" ? row.operation.workflowId : requireTrustRun(ports.runs, row.operation.runId).envelope.workflow;
         for (const runId of result.runIds) parts.push(assistantSessionPart(requireTrustRun(ports.runs, runId), label(workflowId)));
-      } else if (result?.state === "applied") text(`Done: ${row.title}.`);
-      else if (result?.state === "refused" || result?.state === "not-started") text(`Not done: ${row.title}.`);
-      else text(`Couldn't finish this: ${row.title}. Check it before trying again.`);
+      } else if (result?.state === "applied") { lines.push(`${n}: done.`); text("Done: ", row, []); }
+      else if (result?.state === "refused") {
+        lines.push(`${n}: not done (${result.code}).`);
+        text("Not done: ", row, [{ kind: "plain", text: " — " }, { kind: "failure", code: result.code, text: "Failed" }, { kind: "plain", text: `: ${ERROR_CATALOG[result.code].text}` }]);
+      } else if (result?.state === "not-started") { lines.push(`${n}: not done.`); text("Not done: ", row, []); }
+      else { lines.push(`${n}: unknown.`); text("Couldn't finish this: ", row, [{ kind: "plain", text: ". Check it before trying again." }]); }
     });
     return { parts, modelText: `The operator replied yes to: ${snapshot.label}${snapshot.dryRun ? " (dry run)" : ""}. ${lines.join(" ")}` };
   }
