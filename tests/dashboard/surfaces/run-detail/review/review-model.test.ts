@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { correctedOcrRecord, ocrReviewCards } from "../../../../../src/dashboard/surfaces/run-detail/review/review-model.js";
+import { reviewFieldGroups } from "../../../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
 import { ocrReviewPageFixture } from "../../../../support/fixtures/dashboard/ocr-review.js";
 import { blankOperatorOcrFields, operatorOcrRecordId, OcrReviewRevisionSchema } from "../../../../../src/models/ocr/review.js";
 import { OcrOperatorPagesSchema } from "../../../../../src/models/ocr/review-record.js";
@@ -37,6 +38,12 @@ it("keeps source identity stable across revisions and maps drafts without changi
   assert.equal(next[0].pages[0].identity, original[0].pages[0].identity);
   assert.notEqual(next[0].pages[0].imageUrl, original[0].pages[0].imageUrl);
   assert.equal(original[0].record.fields.find(field => field.key === "contact.relationship")?.kind, "relationship");
+  assert.deepEqual(reviewFieldGroups(original[0].record).map(group => [group.title, group.fields.map(field => field.key)]), [
+    ["Employee", ["employee.employeeId", "employee.name", "employee.dateCompleted", "employee.address1", "employee.city", "employee.state", "employee.postalCode", "employee.cellPhone", "employee.homePhone"]],
+    ["Emergency Information", ["contact.name", "contact.relationship", "contact.cellPhone", "contact.homePhone", "contact.workPhone", "contact.address1", "contact.city", "contact.state", "contact.postalCode"]],
+  ]);
+  assert.equal(original[0].record.fields.find(field => field.key === "employee.dateCompleted")?.label, "Date Completed");
+  assert.equal(original[0].record.fields.some(field => field.key.includes("pid")), false);
 });
 
 it("projects operator-added provenance and original page choices without inventing an extracted original", () => {
