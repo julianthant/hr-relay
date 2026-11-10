@@ -5,7 +5,7 @@ import { DashboardClientError } from "../../../../src/dashboard/client/errors.js
 import { WORKER_STOP_REASON_LABEL } from "../../../../src/dashboard/surfaces/sessions/session-panel-model.js";
 // @vitest-environment jsdom
 import { act, createElement, type ComponentProps } from "react";
-import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
+import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { createRoot } from "react-dom/client";
 import { vi } from "vitest";
 import { SessionPanel } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
@@ -22,7 +22,7 @@ import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflo
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../parity/helpers/fixture-day.js";
 
 function SessionPanelWithToasts(props: ComponentProps<typeof SessionPanel>) {
-  return createElement(ToastProvider, null, createElement(SessionPanel, props));
+  return createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SessionPanel, props)));
 }
 
 const catalog = buildWorkflowCatalog([], true, previewFixtureSources([]));
