@@ -2,39 +2,52 @@ import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-rea
 import { Fragment, useState, type CSSProperties } from "react";
 import { RunList, RunListRow } from "../../run-start/run-list.js";
 import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, PageHeading, SegmentedChoice, dsIcon } from "../../../ds/ui.js";
-import { KeyFigures, RunsPerDayChart, TimeLines } from "./status-mock-charts.js";
+import { ChartHeading, KeyFigures, LineChart, StackedBars, clock } from "./status-mock-charts.js";
+import { ANALYTICS_PERIODS, analyticsDays, periodLabel, wobble, type AnalyticsDay, type AnalyticsPeriod } from "./status-mock-assistant-data.js";
+import { AssistantAnalytics } from "./status-mock-assistant-charts.js";
 import { STATUS_MOCK_ANALYTICS, STATUS_MOCK_OUTCOMES, type StatusMockCounts } from "./status-mock-model.js";
 
 const PERIODS = [{ value: "7d", label: "7d" }, { value: "30d", label: "30d" }, { value: "90d", label: "90d" }] as const;
-const CUSTOM = ["Choose dates…", "This month", "Last month", "Year to date"] as const;
-const LINE_COLORS = ["var(--ui-info)", "#8b74f0", "var(--ui-secondary)"] as const;
-const CARD = "rounded-[var(--ds-row-radius)] border border-ui-stroke bg-[var(--ds-card-bg)] px-[var(--ds-row-pad-x)]";
+const CUSTOM = ["this-month", "last-month", "year"] as const;
+const FIXED_WEEK = Date.UTC(2026, 8, 20);
 const NUMBER = "!text-right tabular-nums";
 
 const sum = (rows: readonly StatusMockCounts[]): StatusMockCounts => ({ done: rows.reduce((n, r) => n + r.done, 0), failed: rows.reduce((n, r) => n + r.failed, 0), attention: rows.reduce((n, r) => n + r.attention, 0) });
 const finished = (row: StatusMockCounts) => STATUS_MOCK_OUTCOMES.reduce((n, outcome) => n + row[outcome.key], 0);
 const counts = ([done, failed, attention]: readonly number[]): StatusMockCounts => ({ done: done ?? 0, failed: failed ?? 0, attention: attention ?? 0 });
 
+type Workflow = (typeof STATUS_MOCK_ANALYTICS)["workflows"][number];
+/** A workflow's finished runs and typical seconds on a day: the fixed week as written, other days follow its weekday pattern with a small wobble. */
+const outcomesOn = (row: Workflow, day: AnalyticsDay): StatusMockCounts => {
+  const [done, failed, attention] = row.byDay[new Date(day.time).getUTCDay()] ?? [];
+  return counts([day.time >= FIXED_WEEK ? done ?? 0 : Math.max(0, (done ?? 0) + wobble(day.time)), failed ?? 0, attention ?? 0]);
+};
+const secondsOn = (row: Workflow, day: AnalyticsDay) => (row.seconds[new Date(day.time).getUTCDay()] ?? 0) * (day.time >= FIXED_WEEK ? 1 : 1 + wobble(day.time) * 0.05);
+
 /** Analytics for an HR operator: a toolbar, then Runs, Workflows, Time and Why runs failed as sections of cards. A puts the key figures under the chart, B a slim row of them above it. */
 export function StatusMockAnalytics({ variant, onOpenWorkflow }: { variant: "a" | "b"; onOpenWorkflow?: (workflowId: string) => void }) {
   const data = STATUS_MOCK_ANALYTICS;
-  const [period, setPeriod] = useState<(typeof PERIODS)[number]["value"]>("7d");
+  const [period, setPeriod] = useState<AnalyticsPeriod>("7d");
   const [workflow, setWorkflow] = useState("all");
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set(["emergency-contact"]));
   const shown = data.workflows.filter(row => workflow === "all" || row.id === workflow);
-  const rows = shown.map(row => ({ ...row, ...sum(row.byDay.map(counts)) }));
+  const periodDays = analyticsDays(period);
+  const rows = shown.map(row => ({ ...row, ...sum(periodDays.map(day => outcomesOn(row, day))) }));
   const totals = sum(rows);
-  const days = data.dayLabels.map((label, index) => ({ label, ...sum(shown.map(row => counts(row.byDay[index] ?? [])))}));
+  const days = periodDays.map(day => ({ ...day, ...sum(shown.map(row => outcomesOn(row, day))) }));
+  const outcomes = STATUS_MOCK_OUTCOMES.map(outcome => ({ id: outcome.key, label: outcome.label, color: outcome.color, values: days.map(day => day[outcome.key]) }));
+  const timeSeries = rows.map(row => ({ id: row.id, label: row.label, color: `var(--chart-${data.workflows.findIndex(item => item.id === row.id) + 1})`, values: periodDays.map(day => secondsOn(row, day)) }));
+  const top = Math.ceil(Math.max(...timeSeries.flatMap(line => line.values)) / 60) * 60;
   const toggle = (id: string) => setOpen(current => { const next = new Set(current); if (!next.delete(id)) next.add(id); return next; });
-  const figures = <KeyFigures totals={totals} inline={variant === "b"} />;
+  const figures = <KeyFigures items={outcomes.map(line => ({ label: line.label, color: line.color, count: line.values.reduce((n, value) => n + value, 0) }))} inline={variant === "b"} />;
   return <section aria-label="Analytics report" className="settings-reference-page settings-data-section ui-theme-scope text-ui-primary">
     <PageHeading title="Analytics" description="How your workflows are going." />
     <div className="ds-toolbar-row flex flex-wrap items-center gap-2">
-      <SegmentedChoice hideLabel label="Report period" value={period} options={PERIODS} onChange={setPeriod} />
+      <SegmentedChoice hideLabel label="Report period" value={period as (typeof PERIODS)[number]["value"]} options={PERIODS} onChange={setPeriod} />
       <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="outline" className="ds-filter-trigger" iconAfter={<ChevronDown aria-hidden className="size-3.5 text-ui-muted" />}>Custom…</Button></DropdownMenuTrigger>
+        <DropdownMenuTrigger asChild><Button variant="outline" className="ds-filter-trigger" iconAfter={<ChevronDown aria-hidden className="size-3.5 text-ui-muted" />}>{(CUSTOM as readonly string[]).includes(period) ? ANALYTICS_PERIODS[period].label : "Custom…"}</Button></DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-[200px]">
-          <DropdownMenuItem>{CUSTOM[0]}</DropdownMenuItem><DropdownMenuSeparator />{CUSTOM.slice(1).map(label => <DropdownMenuItem key={label}>{label}</DropdownMenuItem>)}
+          <DropdownMenuItem>Choose dates…</DropdownMenuItem><DropdownMenuSeparator />{CUSTOM.map(id => <DropdownMenuItem key={id} onSelect={() => setPeriod(id)}>{ANALYTICS_PERIODS[id].label}</DropdownMenuItem>)}
         </DropdownMenuContent>
       </DropdownMenu>
       <DropdownMenu>
@@ -48,13 +61,11 @@ export function StatusMockAnalytics({ variant, onOpenWorkflow }: { variant: "a" 
     </div>
     <div className="ds-body-stack mt-2">
       <BodySection title="Runs" description={`${finished(totals)} finished runs${workflow === "all" ? ` · ${data.running} still running` : ""}`}>
-        <div className={`${CARD} py-4`}>
-          <div className="mb-4 flex items-center justify-between gap-3"><span className="text-[13px] leading-[18px]">{data.period}</span>
+        <StackedBars label="Runs per day" days={days} series={outcomes} unit={["run", "runs"]} height={variant === "b" ? 176 : 160}
+          header={<><div className="mb-4 flex items-center justify-between gap-3"><span className="text-[13px] leading-[18px]">{periodLabel(periodDays)}</span>
             <span className="flex items-center gap-1"><IconButton size="xs" label="Previous period" icon={<ChevronLeft aria-hidden className={dsIcon.md} />} /><IconButton size="xs" label="Next period" icon={<ChevronRight aria-hidden className={dsIcon.md} />} /></span></div>
-          {variant === "b" && <div className="mb-5">{figures}</div>}
-          <RunsPerDayChart days={days} height={variant === "b" ? 176 : 160} />
-          {variant === "a" && <div className="mt-4">{figures}</div>}
-        </div>
+            {variant === "b" && <div className="mb-5">{figures}</div>}</>}
+          footer={variant === "a" ? <div className="mt-4">{figures}</div> : undefined} />
       </BodySection>
       <BodySection title="Workflows" description="Open a row to see what went wrong.">
         <div className="ds-table-list-frame ds-usage-table"><table aria-label="Workflows">
@@ -83,14 +94,14 @@ export function StatusMockAnalytics({ variant, onOpenWorkflow }: { variant: "a" 
         </table></div>
       </BodySection>
       <BodySection title="Time" description="How long finished runs take.">
-        <div className={`${CARD} py-4`}>
-          <p className="m-0 mb-5 flex items-baseline gap-2"><span className="text-[28px] font-normal leading-9 tabular-nums">{rows.length === 1 ? rows[0]?.time : data.typicalTime}</span><span className="text-[13px] text-ui-muted">typical</span></p>
-          <TimeLines days={data.dayLabels} series={rows.map(row => ({ id: row.id, label: row.label, color: LINE_COLORS[data.workflows.findIndex(item => item.id === row.id)] ?? LINE_COLORS[2], seconds: row.seconds }))} />
-        </div>
+        <LineChart label="Average time per day" days={periodDays} series={timeSeries} ticks={[top, top / 2, 0].map(value => ({ value, label: value === 0 ? "0" : `${value / 60}m` }))} top={top} format={clock}
+          summary={index => `${clock(timeSeries.reduce((n, line) => n + (line.values[index] ?? 0), 0) / timeSeries.length)} average`}
+          header={<ChartHeading label="Average time" value={rows.length === 1 ? rows[0]?.time ?? data.typicalTime : data.typicalTime} />} />
       </BodySection>
       <BodySection title="Why runs failed" description="Failed runs in this period.">
         <RunList label="Why runs failed">{data.reasons.map(reason => <RunListRow key={reason.label} title={reason.label} description={reason.workflow}><span className="text-[13px] tabular-nums">{reason.runs}</span></RunListRow>)}</RunList>
       </BodySection>
+      <AssistantAnalytics days={periodDays} />
     </div>
   </section>;
 }

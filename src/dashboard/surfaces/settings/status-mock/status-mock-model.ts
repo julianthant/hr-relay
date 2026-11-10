@@ -80,19 +80,17 @@ export const STATUS_MOCK_FIRST_RUN = [
 
 /** Outcome vocabulary shared by the key figures, the daily chart and the workflow rows. Needs attention = finished but not checked after saving, or waiting for you. */
 export const STATUS_MOCK_OUTCOMES = [
-  { key: "done", label: "Done", fill: "bg-ui-positive/55 in-data-[demo-theme=dark]:bg-ui-positive/80", edge: "border-ui-positive/55" },
-  { key: "failed", label: "Failed", fill: "bg-ui-danger/55 in-data-[demo-theme=dark]:bg-ui-danger/80", edge: "border-ui-danger/55" },
-  { key: "attention", label: "Needs attention", fill: "bg-ui-warning/55 in-data-[demo-theme=dark]:bg-ui-warning/80", edge: "border-ui-warning/55" },
+  { key: "done", label: "Done", color: "var(--chart-done)" },
+  { key: "failed", label: "Failed", color: "var(--chart-failed)" },
+  { key: "attention", label: "Needs attention", color: "var(--chart-attention)" },
 ] as const;
 export type StatusMockOutcomeKey = (typeof STATUS_MOCK_OUTCOMES)[number]["key"];
 export type StatusMockCounts = Readonly<Record<StatusMockOutcomeKey, number>>;
 
 /** Synthetic week; each workflow's per-day [done, failed, needs attention] counts are the one source for the chart, key figures and table. Served today: finished and running totals, per-workflow counts, per-day run totals, one median time, failure counts by reason. The per-day outcome split, per-workflow lines under a row, the failing workflow per reason, per-day times per workflow and the workflow filter are backend gaps. */
 export const STATUS_MOCK_ANALYTICS = {
-  period: "Sep 20 – 26, 2026",
   running: 5,
   typicalTime: "2m 14s",
-  dayLabels: ["Sun 20", "Mon 21", "Tue 22", "Wed 23", "Thu 24", "Fri 25", "Sat 26"],
   workflows: [
     { id: "separations", label: "Separations", time: "2m 41s", failedAt: [["Reading the scan", 1]], seconds: [190, 170, 160, 165, 150, 175, 155],
       byDay: [[2, 0, 1], [3, 0, 0], [4, 0, 1], [2, 0, 0], [4, 0, 1], [2, 1, 0], [2, 0, 0]] },
