@@ -84,21 +84,21 @@ describe("command destinations", () => {
     ];
     const children = accepted.targets.slice(0, 4).map((target, index) => {
       const child = deriveBulkChildCommand(accepted, target);
-      return { request: child, state: "succeeded" as const, result: results[index]!(child.commandId) };
+      return { request: child, state: "succeeded" as const, result: results[index](child.commandId) };
     });
     const row = notice("bulk-incomplete");
     const target = createNotificationTargetQuery({ ...base, get: () => row, bulk: () => ({ acceptance, children }) })(row.notificationId, row.actorId);
     expect(target).toEqual({
       kind: "bulk-result", bulkCommandId: UUID_8, type: "cancel", requestedCount: 5,
       results: [
-        { outcome: "applied", runId: UUID_1, commandId: children[0]!.request.commandId, replayed: false, detail: "cancel recorded" },
-        { outcome: "conflict", runId: UUID_2, commandId: children[1]!.request.commandId, currentVersion: 4, detail: "changed" },
-        { outcome: "refused", runId: UUID_3, commandId: children[2]!.request.commandId, code: "schema-mismatch", detail: "refused" },
-        { outcome: "errored", runId: UUID_4, commandId: children[3]!.request.commandId, detail: "threw" },
+        { outcome: "applied", runId: UUID_1, commandId: children[0].request.commandId, replayed: false, detail: "cancel recorded" },
+        { outcome: "conflict", runId: UUID_2, commandId: children[1].request.commandId, currentVersion: 4, detail: "changed" },
+        { outcome: "refused", runId: UUID_3, commandId: children[2].request.commandId, code: "schema-mismatch", detail: "refused" },
+        { outcome: "errored", runId: UUID_4, commandId: children[3].request.commandId, detail: "threw" },
       ],
       notAttempted: [UUID_5],
     });
-    const replayed = { ...children[0]!, result: CommandResultSchema.parse({ state: "already-applied", commandId: children[0]!.request.commandId, affectedTargets: [{ family: "run", runId: UUID_1 }] }) };
+    const replayed = { ...children[0], result: CommandResultSchema.parse({ state: "already-applied", commandId: children[0].request.commandId, affectedTargets: [{ family: "run", runId: UUID_1 }] }) };
     expect(createNotificationTargetQuery({ ...base, get: () => row, bulk: () => ({ acceptance, children: [replayed, ...children.slice(1)] }) })(row.notificationId, row.actorId)).toMatchObject({ results: [{ replayed: false, detail: "cancel recorded" }] });
     expect(createNotificationTargetQuery({ ...base, get: () => row })(row.notificationId, row.actorId)).toMatchObject({ kind: "refused", reason: "target-unavailable" });
   });
