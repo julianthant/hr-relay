@@ -67,7 +67,7 @@ describe("notification collection commands", () => {
     if (change === "duplicate") assert.throws(() => kernel.execute(candidate)); else assert.equal(result?.state, "rejected");
     assert.deepEqual(database.authority.notifications.listByActor(actor), rows);
   });
-  it.each(["late-row", "audit"])("rolls all rows and command publication back on %s failure", async boundary => {
+  it.each(["late-row", "audit"])("keeps notification rows unchanged and leaves the command admitted when %s fails", async boundary => {
     let writes = 0;
     const { database, kernel } = await harness(repositories => ({ ...repositories,
       notifications: { ...repositories.notifications, updateState: input => {
@@ -82,9 +82,9 @@ describe("notification collection commands", () => {
     const request = collectionCommand(database), rows = database.authority.notifications.listByActor(actor), generation = database.getMeta().authorityGeneration;
     assert.throws(() => kernel.execute(request)); assert(writes >= 23);
     assert.deepEqual(database.authority.notifications.listByActor(actor), rows);
-    assert.equal(database.authority.commands.get(request.commandId), undefined);
+    assert.equal(database.authority.commands.get(request.commandId)?.commandId, request.commandId);
     assert.equal(database.authority.commandAudits.findByCommand(request.commandId), undefined);
-    assert.equal(database.getMeta().authorityGeneration, generation);
+    assert.equal(database.getMeta().authorityGeneration, generation + 1);
   });
   it.each(["read", "unread", "snooze", "unsnooze"] as const)("uses the same per-row %s rules and never includes another actor", async operation => {
     const { database, kernel } = await harness();

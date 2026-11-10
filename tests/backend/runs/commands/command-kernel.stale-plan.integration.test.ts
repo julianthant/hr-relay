@@ -33,8 +33,9 @@ it("refuses stale reviewed plans atomically, freshly confirms current settings a
     const refusal = kernel.execute(stale); assert.ok(refusal.state === "rejected"); assert.equal(refusal.code, "replan-required");
     assert.equal(f.database.authority.startPlans.get(old.startPlanId)?.consumedBy, undefined);
     assert.deepEqual(f.database.authority.runs.listByWorkflow(personLookupDescriptor.id), []);
-    assert.equal(f.database.authority.commands.get(stale.commandId), undefined);
-    assert.equal(f.database.getMeta().authorityGeneration, generation); assert.deepEqual(f.published, []);
+    assert.equal(f.database.authority.commands.get(stale.commandId)?.commandId, stale.commandId);
+    assert.equal(f.database.authority.commandAudits.findByCommand(stale.commandId)?.result.state, "rejected");
+    assert.equal(f.database.getMeta().authorityGeneration, generation + 2); assert.deepEqual(f.published, []);
     const fresh = plan(); assert.equal(fresh.planned.length, 1, JSON.stringify(fresh.refused)); assert.equal(fresh.configSnapshotId, f.database.authority.runtimeConfig.get()?.configSnapshotId);
     assert.notEqual(fresh.configSnapshotId, old.configSnapshotId);
     const accepted = command(fresh); const first = kernel.execute(accepted); assert.equal(first.state, "applied");

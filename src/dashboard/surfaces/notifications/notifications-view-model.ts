@@ -1,4 +1,4 @@
-import type { NotificationTarget } from "../../../models/notifications/notifications.js";
+import type { NotificationTarget } from "../../../models/notifications/notification-target.js";
 
 export type NotificationCategory = "all" | "attention" | "failed";
 export type NotificationFilter = "all" | "unread" | "attention" | "failed";
@@ -7,7 +7,7 @@ export type NotificationDestination = NotificationTarget
 export type NotificationItem = Readonly<{
   id: string; title: string; subject: string; workflow: string; detail: string;
   tone: "danger" | "warning" | "positive" | "info"; age: string;
-  read: boolean; action: string; destination: NotificationDestination;
+  read: boolean; priority: boolean; action: string; destination: NotificationDestination;
 }>;
 export type NotificationPinned = Readonly<{ id: string; title: string; detail: string }>;
 export type NotificationsState = Readonly<{ state: "ready"; items: readonly NotificationItem[]; pinned: readonly NotificationPinned[] }>

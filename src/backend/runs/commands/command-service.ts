@@ -19,12 +19,14 @@ import type { RunQueueProjection } from "../projections/run-queue-projection.js"
 import { errorText } from "../lifecycle/support.js";
 import { RunWorkerStartupError, type RunWorkerCapacity } from "./run-worker-capacity.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import type { NotificationInbox } from "../notifications/inbox.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
   readonly projection: Pick<RunQueueProjection, "ingestFromTimeline" | "refreshRun">;
   readonly startWorkerCapacity?: RunWorkerCapacity;
   readonly quitAccepted?: () => void;
+  readonly commandNotices?: Pick<NotificationInbox, "record">;
 }
 
 export interface DashboardCommandService {
@@ -171,6 +173,10 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
           results.push({ outcome: "errored", runId: target.runId, commandId, detail: errorText(error) });
           break;
         }
+        if (result.state === "rejected" && result.code === "bulk-child-errored") {
+          results.push({ outcome: "errored", runId: target.runId, commandId, detail: result.message });
+          break;
+        }
         if (result.state === "pending" || result.state === "confirmation-required") {
           results.push({ outcome: "errored", runId: target.runId, commandId, detail: "Command has no terminal outcome; retain its original identity." });
           break;
@@ -205,6 +211,9 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
         for (const [index, outcome] of results.entries()) {
           if (outcome.outcome === "applied" && workflowOfRun.get(outcome.runId) === workflow) results[index] = { ...outcome, workerStartup };
         }
+      }
+      if (results.length < request.targets.length || results.some(result => result.outcome !== "applied")) {
+        deps.commandNotices?.record({ kind: "bulk-incomplete", bulkCommandId: request.bulkCommandId });
       }
       return BulkRunCommandResponseSchema.parse({
         state: "vector",
