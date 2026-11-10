@@ -13,7 +13,6 @@ import { newEditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsh
 import { type EditableWorkbook } from '../../../../src/rules/spreadsheets/workbook-io.js';
 import { exportSpreadsheetInWorker,importSpreadsheetInWorker } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js';
 import { SpreadsheetTypeDialog, SpreadsheetsSettings } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheets.js';
-import { StorageHealthSummaryWireSchema } from '../../../../src/models/dashboard/bootstrap.js';
 import { SavedWorkbookSchema,WorkbookTypeSchema,WorkbookCreateRequestSchema,decodeEditableWorkbook,encodeSavedWorkbook,type SavedWorkbook, type WorkbookType } from '../../../../src/models/dashboard/workbooks.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
 import { WorkbookLibraryEntrySchema, type WorkbookLibraryEntry } from '../../../../src/models/dashboard/workbook-library.js';

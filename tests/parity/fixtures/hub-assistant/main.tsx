@@ -8,7 +8,6 @@ import {ChatGptAccountContext,createServedChatGptAccountPort} from '../../../../
 import {DashboardClientProvider} from '../../../../src/dashboard/state/client-context.js';
 import {lazy,Suspense} from 'react';
 import {TooltipProvider,ToastProvider} from '../../../../src/dashboard/ds/ui.js';
-import {ASSISTANT_PAUSE_PROPOSAL,ASSISTANT_START_PROPOSAL} from '../../../support/fixtures/dashboard/assistant-start.js';
 const params=new URLSearchParams(location.search);
 document.documentElement.dataset.demoTheme=params.get('theme')||'dark';
 document.documentElement.dataset.motion=params.get('motion')||'on';

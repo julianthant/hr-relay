@@ -290,7 +290,7 @@ it.each([
     if (retired?.turn.state !== 'proposal') throw Error('pending decision must remain represented');
     assert.equal(retired.turn.disposition, 'unknown');
     assert.equal(signal?.aborted, true);
-    history.chats.remove(oldId);
+    await history.chats.remove(oldId);
   });
   await render(replacementId);
   const replacement = current.state, retained = [...rows.values()];
