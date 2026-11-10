@@ -43,8 +43,8 @@ function filledPages(pageCount: number) {
   const outcomes = source.inputs.map((input, index) => {
     const person = employee(index);
     const values: Readonly<Record<string, string>> = {
-      "employee.name": person.name, "employee.employeeId": person.eid, "employee.pid": `A${String(12345678 + index)}`,
-      "employee.homePhone": "530-555-0101", "employee.cellPhone": "530-555-0102", "employee.address1": "123 Example Avenue, Apartment 45",
+      "employee.employeeId": person.eid, "employee.name": person.name, "employee.dateCompleted": "11/03/2026",
+      "employee.address1": "123 Example Avenue, Apartment 45", "employee.cellPhone": "530-555-0102", "employee.homePhone": "530-555-0101",
       "employee.city": "Davis", "employee.state": "CA", "employee.postalCode": "95616",
       "contact.name": "Example, Robin", "contact.relationship": "Spouse", "contact.cellPhone": "530-555-0103",
       "contact.homePhone": "530-555-0104", "contact.workPhone": "530-555-0105", "contact.address1": "456 Example Avenue",
