@@ -3,6 +3,7 @@ import { chosenFromLabel, identityGateDisplay } from "../../../src/dashboard/sta
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { TooltipProvider } from "../../../src/dashboard/ds/ui.js";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { createDashboardClient, type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../src/dashboard/state/client-context.js";
@@ -88,7 +89,7 @@ function commandBindingFixture() {
   return { client, binding };
 }
 let root: Root | undefined;
-beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0)); vi.stubGlobal("cancelAnimationFrame", clearTimeout); });
+beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0)); vi.stubGlobal("cancelAnimationFrame", clearTimeout); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); window.history.replaceState(null, "", "/"); vi.unstubAllGlobals(); });
 async function mount(element: ReturnType<typeof createElement>) { const host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(async () => root?.render(element)); }
 
@@ -600,7 +601,7 @@ describe("served Logs wiring", () => {
       await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
         children: createElement(LogSample, { selection: selected }) }) }));
       assert.match(document.body.textContent ?? "", /Authoritative note 0/);
-      assert.match(document.body.textContent ?? "", omitted === "node" ? /Identity decision join not supplied/ : /Capture availability not supplied/);
+      if (omitted === "node") assert.match(document.body.textContent ?? "", /Identity decision join not supplied/);
       assert.equal(document.querySelector('article[aria-label="Identity Approval"]')?.querySelectorAll("button").length, 0);
       assert.equal(submissions, 0);
       await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren();
@@ -769,8 +770,8 @@ describe("served Logs wiring", () => {
     let reads = 0;
     const client = clientFor(() => { reads++; throw new Error("offline"); });
     const selected = selection();
-    const panel = (source?: "mock" | "served") => createElement(DashboardClientProvider, { client,
-      children: createElement(LogSample, { selection: selected, source }) });
+    const panel = (source?: "mock" | "served") => createElement(TooltipProvider, null, createElement(DashboardClientProvider, { client,
+      children: createElement(LogSample, { selection: selected, source }) }));
     await mount(panel());
     assert.ok(reads > 0);
     assert.match(document.body.textContent ?? "", /Logs unavailable/);

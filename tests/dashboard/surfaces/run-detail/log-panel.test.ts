@@ -16,6 +16,7 @@ import type { LogStep as LogStep_m0 } from '../../../../src/dashboard/surfaces/r
 const steps: readonly LogStep_m0[] = [{ id: 'review', title: 'Employee match', time: '09:10:00', entries: [{ id: 'match', kind: 'decision', time: '09:10:00', decision: { state: 'review', title: 'Review identity' } }] }];
 
 const _beforeEachFixture0 = () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0));
   vi.stubGlobal('cancelAnimationFrame', (id: ReturnType<typeof setTimeout>) => clearTimeout(id));

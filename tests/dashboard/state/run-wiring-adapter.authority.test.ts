@@ -248,7 +248,7 @@ function servedGate(packet: typeof fixtures.ONE_CLICK) {
 }
 
 let root: Root | undefined;
-beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); });
+beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); vi.unstubAllGlobals(); });
 
 type Harness = { day?: DashboardCommandBinding["authority"]["dayState"]["day"]; state?: ReturnType<typeof useRunWiring>; outcomes: CommandOutcome[]; refreshed: number; render: (selected: LogSelection, key?: number) => Promise<void> };
