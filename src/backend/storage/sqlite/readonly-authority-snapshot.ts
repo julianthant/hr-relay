@@ -174,7 +174,8 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySna
   return Object.freeze({ path: snapshot.path, assertUnchanged: () => snapshot.assertUnchanged(), dispose() { if (!proof.active) snapshot.dispose(); } });
 }
 
-const leakedReadonlyAuthorityCopy = /^relay-readonly-authority-(\d+)-/u;
+// The "pid" marker keeps a legacy UUID name (leading digits, then a hyphen) from reading as an owner.
+const leakedReadonlyAuthorityCopy = /^relay-readonly-authority-pid(\d+)-/u;
 
 export function sweepLeakedReadonlyAuthorityCopies(root = realpathSync(tmpdir())): void {
   for (const name of readdirSync(root)) {
@@ -198,8 +199,8 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySnapshot;
 function copyReadonlyAuthoritySnapshot(sourcePath: string, owner: AuthorityImageOwner): ReadonlySnapshot | undefined;
 function copyReadonlyAuthoritySnapshot(sourcePath: string, owner?: AuthorityImageOwner): ReadonlySnapshot | undefined {
   const directory = process.platform === "win32"
-    ? join(realpathSync(tmpdir()), `relay-readonly-authority-${process.pid}-${randomUUID()}`)
-    : mkdtempSync(join(realpathSync(tmpdir()), `relay-readonly-authority-${process.pid}-`));
+    ? join(realpathSync(tmpdir()), `relay-readonly-authority-pid${process.pid}-${randomUUID()}`)
+    : mkdtempSync(join(realpathSync(tmpdir()), `relay-readonly-authority-pid${process.pid}-`));
   if (process.platform === "win32") createPrivateDirectory(directory, { mode: 0o700 });
   const path = join(directory, "authority.sqlite");
   const sources: Array<{ path: string; suffix: string; stats: BigIntStats | undefined }> = [];

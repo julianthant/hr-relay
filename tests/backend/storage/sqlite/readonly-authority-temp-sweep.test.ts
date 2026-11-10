@@ -23,14 +23,17 @@ it("removes leaked readonly authority copies only when their owner pid is dead",
   } catch (error) {
     if (!(error instanceof Error) || !("code" in error) || error.code !== "ESRCH") throw error;
   }
-  const dead = join(root, `relay-readonly-authority-${pid}-dead`);
-  const alive = join(root, `relay-readonly-authority-${process.pid}-alive`);
+  const dead = join(root, `relay-readonly-authority-pid${pid}-dead`);
+  const alive = join(root, `relay-readonly-authority-pid${process.pid}-alive`);
   const unnamed = join(root, "relay-readonly-authority-no-pid");
+  const legacy = join(root, `relay-readonly-authority-${String(pid)}-1234-4abc-8abc-0123456789ab`);
   mkdirSync(dead);
   mkdirSync(alive);
   mkdirSync(unnamed);
+  mkdirSync(legacy);
   sweepLeakedReadonlyAuthorityCopies(root);
   expect(existsSync(dead)).toBe(false);
   expect(existsSync(alive)).toBe(true);
   expect(existsSync(unnamed)).toBe(true);
+  expect(existsSync(legacy)).toBe(true);
 });

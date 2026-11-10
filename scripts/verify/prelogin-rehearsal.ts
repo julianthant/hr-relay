@@ -4,7 +4,7 @@ import { createServer } from "node:net";
 import { DatabaseSync } from "node:sqlite";
 import { chmodSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Entry } from "@napi-rs/keyring";
 import { z } from "zod";
@@ -49,8 +49,12 @@ export function assertCopyInsideTmp(copyPath: string, tmpRoot = realpathSync(tmp
 }
 
 export function rebindControlWorkspace(root: string, workspace: string): void {
+  const realRoot = realpathSync(root);
   for (const relativePath of rehearsalControlFiles) {
     const path = join(root, relativePath);
+    // A copied directory symlink would point the write back at the source store.
+    const parent = relative(realRoot, realpathSync(dirname(path)));
+    if (parent.startsWith("..") || isAbsolute(parent)) throw new Error("prelogin-control-outside-copy");
     if (lstatSync(path).isSymbolicLink()) throw new Error("prelogin-control-symlink");
     const record = ControlRecordSchema.parse(JSON.parse(readFileSync(path, "utf8")));
     writeFileSync(path, `${JSON.stringify({ ...record, workspace })}\n`, { mode: 0o600 });
@@ -140,6 +144,22 @@ function readCurrentConfig(stateRoot: string): { readonly config: z.output<typeo
   } finally { db.close(); }
 }
 
+/** cp's own diagnostics name source paths, so they are captured and dropped. */
+export function copyWorkspace(source: string, target: string): void {
+  try { execFileSync("cp", ["-Rp", source, target], { stdio: ["ignore", "ignore", "pipe"] }); }
+  catch { throw new Error("prelogin-copy-failed"); }
+}
+
+/** Deletes the copy only after its storage owners closed; an unproved closure keeps it. */
+export async function closeThenDelete(release: () => void, close: () => Promise<void>, remove: () => void, write: (line: string) => void): Promise<boolean> {
+  let ok = true;
+  try { release(); } catch (error) { write(`FAIL ${failureToken(error)}`); ok = false; }
+  try { await close(); } catch (error) { write(`FAIL ${failureToken(error)}`); ok = false; }
+  if (!ok) { write("KEPT copy closure-unproved"); return false; }
+  try { remove(); } catch (error) { write(`FAIL ${failureToken(error)}`); return false; }
+  return true;
+}
+
 function deleteCopy(copy: string, tmpRoot: string): void {
   assertCopyInsideTmp(copy, tmpRoot);
   if (lstatSync(copy).isSymbolicLink()) throw new Error("prelogin-copy-symlink");
@@ -165,7 +185,7 @@ export async function runPreloginRehearsal(options: { readonly workspace?: strin
     const source = realpathSync(resolve(options.workspace ?? applicationDataWorkspace()));
     if (source === realpathSync(copy)) throw new Error("prelogin-copy-is-source");
     const workspace = join(copy, "workspace");
-    execFileSync("cp", ["-Rp", source, workspace]);
+    copyWorkspace(source, workspace);
     chmodSync(workspace, 0o700);
     rebindControlWorkspace(workspace, workspace);
     const bootAt = bootLogSize(workspace);
@@ -215,9 +235,7 @@ export async function runPreloginRehearsal(options: { readonly workspace?: strin
     write(`FAIL ${failureToken(error)}`);
     result = 1;
   } finally {
-    try { machine?.release(); } catch (error) { write(`FAIL ${failureToken(error)}`); result = 1; }
-    try { await lock?.close(); } catch (error) { write(`FAIL ${failureToken(error)}`); result = 1; }
-    try { deleteCopy(copy, tmpRoot); } catch (error) { write(`FAIL ${failureToken(error)}`); result = 1; }
+    if (!await closeThenDelete(() => { machine?.release(); }, async () => { await lock?.close(); }, () => { deleteCopy(copy, tmpRoot); }, write)) result = 1;
   }
   return result;
 }
@@ -230,6 +248,7 @@ if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url
     process.stderr.write("verify:prelogin: --workspace needs a path\n");
     process.exitCode = 1;
   } else {
-    process.exitCode = await runPreloginRehearsal(workspace === undefined ? {} : { workspace });
+    // An unproved closure can leave the lifetime listener open; the result is final either way.
+    process.exit(await runPreloginRehearsal(workspace === undefined ? {} : { workspace }));
   }
 }

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
-import { assertCopyInsideTmp, occupiedReservedPorts, rebindControlWorkspace, rehearsalControlFiles } from "../../../scripts/verify/prelogin-rehearsal.js";
+import { assertCopyInsideTmp, closeThenDelete, copyWorkspace, occupiedReservedPorts, rebindControlWorkspace, rehearsalControlFiles } from "../../../scripts/verify/prelogin-rehearsal.js";
 
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -38,6 +38,50 @@ describe("prelogin rehearsal guards", () => {
       symlinkSync(join(root, rehearsalControlFiles[1]), link);
       assert.throws(() => rebindControlWorkspace(root, next), /prelogin-control-symlink/u);
     } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("refuses a control directory that a copied symlink points back at the source", () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "rebind-link-"));
+    try {
+      const source = join(root, "source"), copy = join(root, "copy");
+      const sourceFile = join(source, rehearsalControlFiles[0]);
+      mkdirSync(dirname(sourceFile), { recursive: true });
+      writeFileSync(sourceFile, `${JSON.stringify({ workspace: "/source" })}\n`);
+      const before = readFileSync(sourceFile);
+      mkdirSync(dirname(dirname(join(copy, rehearsalControlFiles[0]))), { recursive: true });
+      symlinkSync(dirname(sourceFile), dirname(join(copy, rehearsalControlFiles[0])));
+      assert.throws(() => rebindControlWorkspace(copy, copy), /prelogin-control-outside-copy/u);
+      assert.deepEqual(readFileSync(sourceFile), before);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("fails a copy with a closed token and prints none of cp's diagnostics", () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "copy-fail-"));
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      const source = join(root, "private-sentinel");
+      mkdirSync(join(source, "locked"), { recursive: true });
+      writeFileSync(join(source, "locked", "private-sentinel.txt"), "x");
+      chmodSync(join(source, "locked"), 0o000);
+      assert.throws(() => { copyWorkspace(source, join(root, "copy")); }, /^Error: prelogin-copy-failed$/u);
+      assert.doesNotMatch(JSON.stringify([...stderr.mock.calls, ...stdout.mock.calls]), /private-sentinel/u);
+      chmodSync(join(source, "locked"), 0o700);
+    } finally {
+      stderr.mockRestore(); stdout.mockRestore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the copy when its storage owners did not close", async () => {
+    const lines: string[] = [];
+    const remove = vi.fn();
+    const ok = await closeThenDelete(() => { throw new Error("authority-source-closure-unproved: detail"); }, () => Promise.resolve(), remove, line => { lines.push(line); });
+    assert.equal(ok, false);
+    assert.equal(remove.mock.calls.length, 0);
+    assert.deepEqual(lines, ["FAIL authority-source-closure-unproved", "KEPT copy closure-unproved"]);
+    assert.equal(await closeThenDelete(() => undefined, () => Promise.resolve(), remove, line => { lines.push(line); }), true);
+    assert.equal(remove.mock.calls.length, 1);
   });
 
   it("accepts a copy under the temp root and refuses any other path", () => {
