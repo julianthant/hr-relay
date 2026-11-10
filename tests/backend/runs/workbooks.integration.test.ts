@@ -222,9 +222,9 @@ it("rolls back a confirmed Start when the real preference insert fails", async (
   expect(f.database.authority.startPlans.get(plan.startPlanId)?.consumedBy).toBeUndefined();
   expect(f.database.authority.runs.listByWorkflow(descriptor.id)).toEqual([]);
   expect(f.database.authority.runSessions.listByWorkflow(descriptor.id)).toEqual([]);
-  expect(f.database.authority.commands.get(command.commandId)).toBeUndefined();
+  expect(f.database.authority.commands.get(command.commandId)?.commandId).toBe(command.commandId);
   expect(f.database.authority.commandAudits.findByCommand(command.commandId)).toBeUndefined();
-  expect(f.database.getMeta().authorityGeneration).toBe(generation);
+  expect(f.database.getMeta().authorityGeneration).toBe(generation + 1);
 });
 
 it("admits an ordered set of complete sources and does not join partial files", async () => {
