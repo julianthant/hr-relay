@@ -27,7 +27,7 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
   const { stateRoot, clock } = input;
   const filesystem = statfsSync(stateRoot, { bigint: true });
   const wal = join(stateRoot, "state.db-wal");
-  const leaseExpired = ownWrite(input.database, () => listCanonicalRuns(input.reader, "live").some(run => "heartbeatAt" in run.lifecycle && clock.nowMs() - Date.parse(run.lifecycle.heartbeatAt) > 60_000));
+  const leaseExpired = listCanonicalRuns(input.reader, "live").some(run => "heartbeatAt" in run.lifecycle && clock.nowMs() - Date.parse(run.lifecycle.heartbeatAt) > 60_000);
   const opening = input.database.changeKey();
   const prior = inspected.get(input.database);
   let integrityFailed: boolean;

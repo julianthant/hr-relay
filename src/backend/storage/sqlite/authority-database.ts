@@ -2079,6 +2079,7 @@ export class AuthorityDatabase implements Disposable {
   #logoutBatch: Readonly<{ admission: RuntimeAdmission }> | undefined;
   #validatedExternalDataVersion: number | undefined;
   #snapshotExternalDataVersion: number | undefined;
+  #pageCacheChanges = 0;
   #transactionDepth = 0;
   #savepointSequence = 0;
   #transactionMode: "authority" | "projection" | "read" | undefined;
@@ -3288,11 +3289,16 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  /** Generation, other connections' commits, and this connection's commits. Reads nothing else. */
+  /** Generation, other connections' commits, and this connection's commits except the run-page cache's own. Reads nothing else. */
   changeKey(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }> {
     this.#assertOpen();
+    const key = this.#rawChangeKey();
+    return Object.freeze({ ...key, totalChanges: key.totalChanges - this.#pageCacheChanges });
+  }
+
+  #rawChangeKey(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }> {
     const totalChanges = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare("SELECT total_changes() AS count").get()).count;
-    return Object.freeze({ authorityGeneration: this.getMeta().authorityGeneration, dataVersion: readIntPragma(this.#database, "data_version"), totalChanges });
+    return { authorityGeneration: this.#readMetaRow().authority_generation, dataVersion: readIntPragma(this.#database, "data_version"), totalChanges };
   }
 
   readApplicationActivity() {
@@ -6272,7 +6278,8 @@ export class AuthorityDatabase implements Disposable {
         this.#database.exec(`CREATE TEMP TABLE IF NOT EXISTS canonical_run_page(position INTEGER PRIMARY KEY,run_id TEXT NOT NULL UNIQUE);
           CREATE TEMP TABLE IF NOT EXISTS canonical_run_page_state(id INTEGER PRIMARY KEY CHECK(id=1),generation INTEGER NOT NULL,
             data_version INTEGER NOT NULL,source_changes INTEGER NOT NULL,workflow TEXT);`);
-        const key = this.changeKey();
+        this.#assertOpen();
+        const key = this.#rawChangeKey();
         const state = z.strictObject({ generation: z.number().int(), data_version: z.number().int(), source_changes: z.number().int(),
           workflow: z.string().nullable() }).optional().parse(this.#database.prepare("SELECT generation,data_version,source_changes,workflow FROM canonical_run_page_state WHERE id=1").get());
         if (state?.generation !== key.authorityGeneration || state.data_version !== key.dataVersion || state.source_changes !== key.totalChanges || state.workflow !== (workflow ?? null)) {
@@ -6282,6 +6289,7 @@ export class AuthorityDatabase implements Disposable {
             .run(...(workflow === undefined ? [] : [workflow]));
           // The temp-table writes advance total_changes, so the stored count is one past this statement.
           this.#database.prepare(`INSERT INTO canonical_run_page_state VALUES(1,?,?,total_changes()+1,?)`).run(key.authorityGeneration, key.dataVersion, workflow ?? null);
+          this.#pageCacheChanges += this.#rawChangeKey().totalChanges - key.totalChanges;
         }
         return Object.freeze(this.#database.prepare(`SELECT r.* FROM canonical_run_page p JOIN runs r ON r.id=p.run_id
           WHERE p.position>? AND p.position<=? ORDER BY p.position`).all(offset,offset+limit).map(runRecordFromRow));

@@ -17,8 +17,7 @@ const lastRead = new WeakMap<AuthorityDatabase, { key: string; diagnostics: read
 
 /** Private canonical evidence is narrowed here to closed events, never passed to the day wire. */
 export function readNotificationSources(database: AuthorityDatabase, reader: Pick<RunRecordService, "read" | "list">): NotificationSourceRead {
-  const before = database.changeKey();
-  const key = JSON.stringify(before);
+  const key = JSON.stringify(database.changeKey());
   const prior = lastRead.get(database);
   // An unchanged store yields the identities already published or pending in the observer.
   if (prior?.key === key) return { observations: [], diagnostics: prior.diagnostics };
@@ -64,9 +63,6 @@ export function readNotificationSources(database: AuthorityDatabase, reader: Pic
     }
     return { observations: result, diagnostics };
   });
-  const after = database.changeKey();
-  // The read is synchronous, so only its own run-page cache write can move totalChanges here.
-  const own = after.dataVersion === before.dataVersion && after.authorityGeneration === before.authorityGeneration;
-  lastRead.set(database, { key: own ? JSON.stringify(after) : key, diagnostics: read.diagnostics });
+  lastRead.set(database, { key, diagnostics: read.diagnostics });
   return read;
 }
