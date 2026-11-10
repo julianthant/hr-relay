@@ -212,6 +212,8 @@ function sameStepKeys(left: readonly string[], right: readonly string[]): boolea
 
 
 /** Restore intake focus to its launcher; it is the control that opened the workspace. */
+const NO_TYPED_DRAFT: TypedInputDraft = {};
+
 export function RunStartButton({ id, onOpen }: { id: string; onOpen: () => void }) {
   return (
     <Button
@@ -355,7 +357,10 @@ export function RunStartDialog({
   const [touchedFacts, setTouchedFacts] = useState<ReadonlySet<string>>(() => new Set());
   const [factsAttempted, setFactsAttempted] = useState(false);
   const [text, setText] = useState("");
-  const [typedDraft, setTypedDraft] = useState<TypedInputDraft>(() => initialWorkflow?.inputRun.state === "present" && initialWorkflow.inputRun.surface.typedInput ? typedInputDefaults(initialWorkflow.inputRun.surface.typedInput) : {});
+  /** A draft belongs to the workflow that made it; another workflow (e.g. restored view state) sees an empty one. */
+  const [typedState, setTypedState] = useState<Readonly<{ workflowId: string; draft: TypedInputDraft }>>(() => ({ workflowId: initialWorkflow?.workflowId ?? "", draft: initialWorkflow?.inputRun.state === "present" && initialWorkflow.inputRun.surface.typedInput ? typedInputDefaults(initialWorkflow.inputRun.surface.typedInput) : {} }));
+  const typedDraft = typedState.workflowId === workflowId ? typedState.draft : NO_TYPED_DRAFT;
+  const setTypedDraft = (forWorkflow: string, draft: TypedInputDraft) => setTypedState({ workflowId: forWorkflow, draft });
   const [sourceInputUnchanged, setSourceInputUnchanged] = useState(false);
   const [priority, setPriority] = useState<StartPriority>("interactive");
   const [dryRunRequested, setDryRunRequested] = useState(false);
@@ -373,7 +378,7 @@ export function RunStartDialog({
     setWorkflowId(next);
     setText("");
     const nextInput = workflows.find(entry => entry.workflowId === next)?.inputRun;
-    setTypedDraft(nextInput?.state === "present" && nextInput.surface.typedInput ? typedInputDefaults(nextInput.surface.typedInput) : {}); setSourceInputUnchanged(false);
+    setTypedDraft(next, nextInput?.state === "present" && nextInput.surface.typedInput ? typedInputDefaults(nextInput.surface.typedInput) : {}); setSourceInputUnchanged(false);
     setPlan(null);
     setResult(null);
     setError(null);
@@ -405,7 +410,7 @@ export function RunStartDialog({
     try { setRecovery(readLaunchRecovery(window.sessionStorage, actorId)); setRecoveryError(null); }
     catch (caught) { setRecoveryError(caught instanceof Error ? caught.message : String(caught)); }
     if (rerunSource !== undefined) {
-      setTypedDraft({}); setText("");
+      setTypedState({ workflowId: "", draft: {} }); setText("");
       setCurrentStage("Steps"); setCustomizeSteps(true);
       void launchService.openRerun({ runId: rerunSource.runId, expectedVersion: rerunSource.expectedVersion }).then((response) => {
         if (launchInstance.current !== instance) return;
@@ -428,7 +433,7 @@ export function RunStartDialog({
           const input = response.snapshot.sourceInput.value;
           const partial = response.snapshot.sourceInput.state === "partial" ? partialRerunTypedInput(declaration, response.snapshot.sourceInput) : undefined;
           const restored = partial?.draft ?? restoreTypedInput(declaration, input);
-          setTypedDraft(restored);
+          setTypedDraft(sourceWorkflow.workflowId, restored);
           setText(partial?.text ?? typedInputText(declaration, input));
           setSourceInputUnchanged(partial === undefined || response.snapshot.sourceInput.state === "partial" && response.snapshot.sourceInput.identityCopied);
           setSelectedStepKeys(sourceWorkflow.steps.filter(step => step.control.state !== "selectable"
@@ -941,7 +946,7 @@ export function RunStartDialog({
                       onValue={(field, value) => {
                         if (typedDeclaration === undefined) return;
                         const next = changeTypedInput(typedDeclaration, typedValues, field, value);
-                        setTypedDraft(next);
+                        setTypedDraft(workflowId, next);
                         if (field === typedDeclaration.modeField) setSourceInputUnchanged(false);
                         setSelectedStepKeys(current => workflow?.steps.filter(step => step.control.state !== "selectable"
                           ? current.includes(step.key) : next[step.control.inputField] === true).map(step => step.key) ?? []);
