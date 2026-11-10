@@ -240,7 +240,9 @@ it("materializes only the requested bounded canonical page", async () => {
   const service = new RunRecordService({ database, clock: f.clock,
     ids: { uuid: () => { throw new Error("read fixture"); } }, publishQueued: () => {} });
   const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  const before = f.database.changeKey();
   const first = service.list({ disposition: "live", limit: 10 });
+  assert.deepEqual(f.database.changeKey(), before, "the page cache rebuild does not count as a store change");
   assert.equal(first.state, "listed");
   assert.equal(first.rows?.length, 10);
   assert.equal(scanned, 0, "a bounded page must not enumerate each workflow corpus");
@@ -248,7 +250,10 @@ it("materializes only the requested bounded canonical page", async () => {
   assert.equal(prepare.mock.calls.filter(([sql]) => sql.includes("INSERT INTO canonical_run_page SELECT")).length, 1,
     "all pages share one complete scalar ordering per source generation");
   f.database.authority.runs.enqueue(runRecordOf({ seed: 2002 }));
+  const written = f.database.changeKey();
+  assert.ok(written.totalChanges > before.totalChanges, "a run write moves the change key");
   assert.equal(listCanonicalRuns(service, "live").length, 1002);
+  assert.deepEqual(f.database.changeKey(), written);
   assert.equal(prepare.mock.calls.filter(([sql]) => sql.includes("INSERT INTO canonical_run_page SELECT")).length, 2);
   prepare.mockRestore();
 });
