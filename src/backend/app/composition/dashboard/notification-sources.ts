@@ -13,9 +13,16 @@ import { listCanonicalRuns } from "../../../runs/queries/canonical-runs.js";
 function observation(event: z.input<typeof NotificationTriggerEventSchema>, identity: string, occurredAt: string): NotificationObservation {
   return { event: NotificationTriggerEventSchema.parse(event), source: { identity: sha256Hex(`notification-occurrence:${event.kind}:${identity}`), occurredAt } };
 }
+const lastRead = new WeakMap<AuthorityDatabase, { key: string; diagnostics: readonly "NOTIFICATION_RECEIPT_MISSING"[] }>();
+
 /** Private canonical evidence is narrowed here to closed events, never passed to the day wire. */
 export function readNotificationSources(database: AuthorityDatabase, reader: Pick<RunRecordService, "read" | "list">): NotificationSourceRead {
-  return database.withAuthorityReadSnapshot(() => {
+  const before = database.changeKey();
+  const key = JSON.stringify(before);
+  const prior = lastRead.get(database);
+  // An unchanged store yields the identities already published or pending in the observer.
+  if (prior?.key === key) return { observations: [], diagnostics: prior.diagnostics };
+  const read = database.withAuthorityReadSnapshot(() => {
     const live = listCanonicalRuns(reader, "live");
     const runs = new Map<string, RunRecord>(live.map(run => [run.envelope.runId, run]));
     const failures = new Map<string, FailureRecord>();
@@ -57,4 +64,9 @@ export function readNotificationSources(database: AuthorityDatabase, reader: Pic
     }
     return { observations: result, diagnostics };
   });
+  const after = database.changeKey();
+  // The read is synchronous, so only its own run-page cache write can move totalChanges here.
+  const own = after.dataVersion === before.dataVersion && after.authorityGeneration === before.authorityGeneration;
+  lastRead.set(database, { key: own ? JSON.stringify(after) : key, diagnostics: read.diagnostics });
+  return read;
 }

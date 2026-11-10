@@ -316,7 +316,7 @@ export class RunQueueProjection {
 
   #workerAuthorityFingerprint: string;
   #publishedBatchVersions: ReadonlyMap<string, number> = new Map();
-  #storedCanonical: { key: string; runs: readonly RunRecord[]; pools: readonly { workflowId: string; desiredWorkers: number; version: number; plannedBy: WorkerPoolRecord["plannedBy"]; plannedAt: string }[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
+  #storedCanonical: { key: string; storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
   #cursorValue = 0;
   #generationValue: number;
   #health: RunQueueProjectionHealth = { state: "live" };
@@ -822,28 +822,33 @@ export class RunQueueProjection {
     const key = this.#deps.authority.changeKey?.();
     const keyText = key === undefined ? undefined : `${key.authorityGeneration}:${key.dataVersion}:${key.totalChanges}`;
     const stored = canonicalRuns === undefined && keyText !== undefined && this.#storedCanonical?.key === keyText ? this.#storedCanonical : undefined;
-    const source = stored?.runs ?? canonicalRuns ?? listCanonicalRuns(this.#deps.reader, "live");
-    const pools = stored?.pools ?? this.#deps.authority.listWorkerPools().map((pool) => ({
-      workflowId: pool.workflow,
-      desiredWorkers: pool.desiredWorkers,
-      version: pool.version,
-      plannedBy: pool.plannedBy,
-      plannedAt: pool.plannedAt,
-    }));
-    const batches = stored?.batches ?? this.#deps.authority.listRunBatches().map(({ sessionId, version }) => ({ sessionId, version })).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
-    if (stored === undefined && canonicalRuns === undefined && keyText !== undefined) this.#storedCanonical = { key: keyText, runs: source, pools, batches };
-    const runs = source.map((run) => ({
-      envelope: run.envelope, displayName: run.displayName, runNumber: run.runNumber,
-      sessionId: run.sessionId, appVersion: run.appVersion,
-      lifecycle: run.lifecycle.state === "claimed" || run.lifecycle.state === "validating" || run.lifecycle.state === "running"
-        ? { ...run.lifecycle, heartbeatAt: undefined } : run.lifecycle,
-      cancelRequested: run.cancelRequested,
-      // Served step interrupts change with the pause request and the write fence.
-      pause: run.pause,
-      ...(runClaim(run) === undefined ? {} : { writeInFlight: this.#deps.authority.writeInFlight?.(run.envelope.runId) }),
-    }));
+    let built: { storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined = stored;
+    if (built === undefined) {
+      const source = canonicalRuns ?? listCanonicalRuns(this.#deps.reader, "live");
+      const pools = this.#deps.authority.listWorkerPools().map((pool) => ({
+        workflowId: pool.workflow,
+        desiredWorkers: pool.desiredWorkers,
+        version: pool.version,
+        plannedBy: pool.plannedBy,
+        plannedAt: pool.plannedAt,
+      }));
+      const batches = this.#deps.authority.listRunBatches().map(({ sessionId, version }) => ({ sessionId, version })).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+      const runs = source.map((run) => ({
+        envelope: run.envelope, displayName: run.displayName, runNumber: run.runNumber,
+        sessionId: run.sessionId, appVersion: run.appVersion,
+        lifecycle: run.lifecycle.state === "claimed" || run.lifecycle.state === "validating" || run.lifecycle.state === "running"
+          ? { ...run.lifecycle, heartbeatAt: undefined } : run.lifecycle,
+        cancelRequested: run.cancelRequested,
+        // Served step interrupts change with the pause request and the write fence.
+        pause: run.pause,
+      }));
+      built = { storeJson: JSON.stringify({ pools, batches, runs }), claimedIds: source.filter((run) => runClaim(run) !== undefined).map((run) => run.envelope.runId), batches };
+      if (canonicalRuns === undefined && keyText !== undefined) this.#storedCanonical = { key: keyText, ...built };
+    }
     const workers = this.#deps.authority.workerMembers?.().map(view => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version }));
-    const fingerprint = JSON.stringify({ members: this.#deps.authority.listWorkerSlots?.(), workers, pools, batches, runs });
+    const writeInFlight = built.claimedIds.map((id) => [id, this.#deps.authority.writeInFlight?.(id)]);
+    const fingerprint = JSON.stringify({ members: this.#deps.authority.listWorkerSlots?.(), workers, writeInFlight }) + built.storeJson;
+    const batches = built.batches;
     this.#publishedBatchVersions = new Map(batches.map(({ sessionId, version }) => [sessionId, version]));
     return fingerprint;
   }
