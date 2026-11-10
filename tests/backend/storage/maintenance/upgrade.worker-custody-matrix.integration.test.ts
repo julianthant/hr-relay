@@ -213,7 +213,9 @@ it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-
   assert.ok(readdirSync(backups).filter(name => name.endsWith(".manifest.json"))
     .some(name => AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(backups, name), "utf8"))).schemaVersion === version));
   const after = read(s.path);
-  assert.deepEqual(after.kept, before.kept);
+  const { workflow_workbook_selections: selections, ...kept } = after.kept;
+  assert.deepEqual(selections, []);
+  assert.deepEqual(kept, before.kept);
   assert.deepEqual(after.upgrades.slice(0, before.upgrades.length), before.upgrades);
   assert.ok(after.upgrades.length > before.upgrades.length);
   // Migration 21 rewrites this trigger; every other trigger comes through verbatim.
