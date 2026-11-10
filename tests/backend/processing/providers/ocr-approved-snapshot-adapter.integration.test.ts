@@ -140,11 +140,13 @@ it("authenticates record reads under an admitted member's actual claim and node,
     snapshots: repositories.ocrReviews.snapshots(sourceRunId), gate: repositories.gateResults.get(`${sourceRunId}:approve-records`) });
   const frozen = custody();
   const correction = f.command("correct-ocr-record", snapshot.revision);
-  const result = f.canonical.kernel.execute({ ...correction, payload: { ...correction.payload, assertedEid: "10899999" } });
+  const refusedCorrection = { ...correction, payload: { ...correction.payload, assertedEid: "10899999" } };
+  const result = f.canonical.kernel.execute(refusedCorrection);
   assert.ok(result.state === "rejected" && result.code === "OCR_REVIEW_REFUSED");
-  assert.equal(repositories.commands.get(correction.commandId), undefined);
-  assert.equal(repositories.commandAudits.findByCommand(correction.commandId), undefined);
-  assert.deepEqual(custody(), frozen);
+  assert.deepEqual(repositories.commands.get(refusedCorrection.commandId), refusedCorrection);
+  assert.deepEqual(repositories.commandAudits.findByCommand(refusedCorrection.commandId)?.result, result);
+  const settled = { ...frozen, meta: { ...frozen.meta, authorityGeneration: frozen.meta.authorityGeneration + 2 } };
+  assert.deepEqual(custody(), settled);
   assert.deepEqual(await read(), accepted);
   const earlier = repositories.ocrReviews.revision(sourceRunId, 1); assert.ok(earlier);
   assert.notEqual(earlier.revision, snapshot.revision);
@@ -156,7 +158,7 @@ it("authenticates record reads under an admitted member's actual claim and node,
     } });
     assert.deepEqual(await read(claimed.run, rawQuery, database), { state: "refused", code: "OCR_REVIEW_REFUSED" }, change);
   }
-  assert.deepEqual(custody(), frozen);
+  assert.deepEqual(custody(), settled);
   assert.deepEqual(await read(), accepted);
   assert.deepEqual(f.database.authority.ocrReviews.snapshot(input.approval.snapshotId), snapshot);
   assert.equal(f.harness.sessions.opens(), 0);

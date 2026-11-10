@@ -222,9 +222,10 @@ it.each(["correct-ocr-record", "discard-ocr-record", "restore-ocr-record"] as co
   const refused = f.canonical.kernel.execute(delayed);
   assert.equal(refused.state, "rejected");
   if (refused.state === "rejected") assert.equal(refused.code, "OCR_REVIEW_REFUSED");
-  assert.deepEqual(observe(), frozen);
-  assert.equal(repositories.commands.get(delayed.commandId), undefined);
-  assert.equal(repositories.commandAudits.findByCommand(delayed.commandId), undefined);
+  assert.deepEqual(repositories.commands.get(delayed.commandId), delayed);
+  assert.deepEqual(repositories.commandAudits.findByCommand(delayed.commandId)?.result, refused);
+  const settled = { ...frozen, generation: frozen.generation + 2 };
+  assert.deepEqual(observe(), settled);
   assert.equal(repositories.lifecycleJournal.getCommand(lifecycleCommandId("operator-ocr-review", delayed.commandId)), undefined);
   assert.deepEqual(f.sources.commandResult(runId, delayed.commandId), { state: "unavailable" });
   const historical = f.sources.commandResult(runId, correction.commandId); assert.ok(historical.state === "recorded");
@@ -232,7 +233,7 @@ it.each(["correct-ocr-record", "discard-ocr-record", "restore-ocr-record"] as co
   assert.equal(historical.result.state, "applied");
   assert.equal(f.canonical.kernel.execute(correction).state, "already-applied");
   assert.equal(f.canonical.kernel.execute(consent).state, "already-applied");
-  assert.deepEqual(observe(), frozen);
+  assert.deepEqual(observe(), settled);
 });
 
 it("rolls snapshot creation back with gate failure, then replays the original approved snapshot through parent resume", async () => {
@@ -246,9 +247,10 @@ it("rolls snapshot creation back with gate failure, then replays the original ap
     gateResults: { ...repositories.gateResults, insert: () => { throw new Error("injected-gate-insert-failure"); } } }));
   try { assert.throws(() => f.canonical.kernel.execute(request), /injected-gate-insert-failure/u); }
   finally { f.database.withAuthorityTransaction = transact; }
-  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  assert.equal(f.database.getMeta().authorityGeneration, generation + 1);
   assert.deepEqual(f.database.authority.ocrReviews.snapshots(f.run.envelope.runId), []);
-  assert.equal(f.database.authority.commands.get(request.commandId), undefined);
+  assert.equal(f.database.authority.commands.get(request.commandId)?.commandId, request.commandId);
+  assert.equal(f.database.authority.commandAudits.findByCommand(request.commandId), undefined);
   assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state, "parked-gate");
   assert.equal(f.canonical.kernel.execute(request).state, "applied");
   assert.equal(f.canonical.kernel.execute(request).state, "already-applied");
