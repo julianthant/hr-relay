@@ -36,6 +36,8 @@ export interface ControlHarness {
   readonly faults: Error[];
   readonly settled: string[];
   readonly changes: WorkerMemberView[];
+  readonly stateRoot: string;
+  readonly lifecycle: RunRecordService;
 }
 
 /** The composed pool over scripted children, the real kernel and real exit settlement against real SQLite. */
@@ -89,7 +91,7 @@ export function createDashboardPoolTestWorld() {
         reconcileReplay: () => { throw new Error("worker-pool fixture has no persisted settings replay authority"); },
         applyOrdinary: command => ({ state: "applied", revision: command.target.expectedRevision + 1, settingsFingerprint: derivePersistedSettingsFingerprint({}), settings: {} }) },
     });
-    return { database, admission: profile.admission, profileRoot: join(root, "browsers"), clock, scheduler, kernel, workers, children, spawnRequests, faults, settled, changes };
+    return { database, admission: profile.admission, profileRoot: join(root, "browsers"), stateRoot: root, lifecycle, clock, scheduler, kernel, workers, children, spawnRequests, faults, settled, changes };
   }
 
   let commandSequence = 0;

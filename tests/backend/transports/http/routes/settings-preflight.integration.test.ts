@@ -246,7 +246,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(refused)).code, "PREFLIGHT_RERUN_ACTIVE");
     assert.equal(settled, false);
     release.resolve();
-    assert.equal((await first).status, 500, "late healthy returns cannot publish a report");
+    const timedOut = await first;
+    assert.equal(timedOut.status, 409, "late healthy returns cannot publish a report");
+    assert.equal((await json(timedOut)).code, "PREFLIGHT_TIMEOUT");
     assert.equal(deadlines.size, 0);
     assert.equal((await request("42")).status, 200, "actual settlement releases admission");
   });
@@ -323,6 +325,29 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const result = PreflightRerunCommandResultSchema.parse(await healthy.json());
     assert.equal(result.state, "completed");
     assert.equal(result.commandId, "00000000-0000-4000-8000-000000000094");
+  });
+
+  it("answers 409 when a detector exceeds its registered timeout", async () => {
+    const h = await harness({
+      preflightScheduler: { schedule(_deadline, onDeadline) { onDeadline(); return { cancel() {} }; } },
+    });
+    const response = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000095",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: { expectedConfigFingerprint: HASH_B },
+      }),
+    });
+    assert.equal(response.status, 409);
+    const body = await json(response);
+    assert.equal(body.code, "PREFLIGHT_TIMEOUT");
+    assert.equal(body.retryable, false);
+    assert.equal(body.message, "A readiness check took too long. Check again.");
   });
 
 });

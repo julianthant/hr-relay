@@ -1,6 +1,7 @@
 import { ERROR_CATALOG,createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { CredentialMaintenanceHold } from "../../../storage/configuration/canonical-credential-store.js";
 import { PreflightAdmissionRefusal, PreflightObservationChangedError } from "../../../../rules/preflight/preflight-admission.js";
+import { preflightRunnerTimeout } from "../../../../models/preflight/preflight.js";
 import { AssistantAuthorizationError } from "../../../assistant/authorization.js";
 import { OcrReviewRefusedError } from "../../../processing/ocr/review-authority.js";
 import { ProfileRuntimeStartFailedError,ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
@@ -55,6 +56,9 @@ export function failureStatus(
   const loginFailure = browserLoginFailure(error);
   if (loginFailure?.system === "sharepoint") return { status: 409, body: wireError(loginFailure.code, ERROR_CATALOG[loginFailure.code].text, false) };
   if (error instanceof ProtectedSubjectDisplayRefusedError) return { status: 409, body: wireError(error.code, message, false) };
+  if (preflightRunnerTimeout(error) !== undefined) {
+    return { status: 409, body: wireError("PREFLIGHT_TIMEOUT", ERROR_CATALOG.PREFLIGHT_TIMEOUT.text, false) };
+  }
   if (error instanceof PreflightAdmissionRefusal) return { status: 409, body: wireError(`PREFLIGHT_${error.reason.toUpperCase().replaceAll("-", "_")}`, message, false) };
   if (error instanceof TargetNotFoundError) {
     return { status: 404, body: wireError("TARGET_NOT_FOUND", message, false) };

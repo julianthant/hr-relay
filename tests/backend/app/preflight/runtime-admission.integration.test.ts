@@ -32,6 +32,7 @@ import { type RuntimeCapability } from "../../../../src/models/preflight/preflig
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { ActorIdSchema, FingerprintSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { PreflightAdmissionRefusal, PreflightAdmissionScopeSchema, PreflightObservationChangedError } from "../../../../src/rules/preflight/preflight-admission.js";
+import { PreflightRunnerTimeoutError } from "../../../../src/models/preflight/preflight.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -255,6 +256,31 @@ it("returns a changed observation before browser preparation or claim once every
       claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => { preparations++; } });
     assert.deepEqual(result, { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: original.envelope.runId });
     assert.equal(observations, 4); assert.equal(preparations, 0); assert.deepEqual(seen, [1, 2, 3]);
+    assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original);
+    assert.equal(h.database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
+  } finally { await _afterEachFixture0(); }
+});
+
+it("returns a timeout refusal before browser preparation or claim, and does not throw", async () => {
+  let armed = false, observations = 0, preparations = 0;
+  try {
+    const h = await harness(runners => runners.map(runner => runner.check !== "authority.health" ? runner : {
+      ...runner, async run(context) {
+        if (armed) { observations++; throw new PreflightRunnerTimeoutError(runner.check, 1_000); }
+        return runner.run(context);
+      },
+    }));
+    await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
+    assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+    const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
+    const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+      workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
+    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
+    armed = true;
+    const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
+      claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => { preparations++; } });
+    assert.deepEqual(result, { state: "preflight-refused", code: "PREFLIGHT_TIMEOUT", runId: original.envelope.runId });
+    assert.equal(observations, 1); assert.equal(preparations, 0);
     assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original);
     assert.equal(h.database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
   } finally { await _afterEachFixture0(); }
