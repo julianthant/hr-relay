@@ -92,7 +92,7 @@ Settings owns its rail and guarded back arrow. Analytics and Explorer mount insi
 the last item is passive text. Wizard Back changes stages, while dismissal closes the layer.
 `DsBodyScope` supplies a shared content width and body rhythm. Tables hold dense records, grids
 hold aligned peer facts, and short chips carry facts that tolerate truncation.
-The workflow rail is narrow (`clamp(176px, 25vw - 128px, 232px)`); the Queue keeps its width and the Logs panel takes the rest.
+The workflow rail and the Settings sidebar share one width (`--ds-sidebar-width`, 312px); the Queue keeps its width and the Logs panel takes the rest.
 Each rail row shows one number, its runs running now, as a green pill with a live dot left of the name,
 hidden at 0 and read out as the row's description ("2 running").
 The Baton mark appears only in the sign-up and login title: the 24 px accent symbol, then "Relay" at 23 px medium. Larger sign-up headers scale that pair together. The sidebar header is the Relay wordmark alone, at 23 px medium, beside the notifications bell and search. `favicon.svg` and the desktop icon sources come from `shell/app-logo.ts`.
