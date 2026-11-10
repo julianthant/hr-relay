@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { describe,expect,it } from "vitest";
 import { z } from "zod";
 import { DESCRIPTORS, descriptorSetHash as descriptorSetHash_m0,INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { projectWorkbookReferences } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { buildBootstrap,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { FrontendBootstrapWireSchema,WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
@@ -20,6 +21,7 @@ import { AT,makeWorld,type DashboardWorld } from "../../../support/helpers/backe
 
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { PreflightReportSchema } from "../../../../src/models/preflight/preflight.js";
 
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
@@ -79,7 +81,8 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
     projection: world.projection,
     actorLabel: () => "Fixture Operator",
     authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
-    backupSummary: () => "current",
+    workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
+
     preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
   };
 }
@@ -91,6 +94,8 @@ describe("bootstrap start-surface block", () => {
       // Re-parsed on purpose: the producer's own `.parse` is what makes this a
       // statement about the WIRE rather than about an object literal.
       const wire = FrontendBootstrapWireSchema.parse(buildBootstrap(depsOf(world)));
+      expect(wire.workbookReferences.map(slot => ({ workflowId: slot.workflowId, typeId: slot.typeId })))
+        .toEqual(DESCRIPTORS.flatMap(descriptor => descriptor.requiredWorkbookTypeIds.map(typeId => ({ workflowId: descriptor.id, typeId }))));
       const served = new Map(
         WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)
           .map((entry) => [String(entry.id), entry.start] as const),
@@ -113,6 +118,16 @@ describe("bootstrap start-surface block", () => {
           enqueue: descriptor.enqueue,
           version: descriptor.version,
 
+          readiness: descriptor.requiredWorkbookTypeIds.length === 0
+            ? { scope: "default-workbook-references", state: "ready" }
+            : wire.workbookReferences.find(slot => slot.workflowId === descriptor.id)?.current.state === "unavailable"
+              ? { scope: "default-workbook-references", state: "unavailable",
+                reason: ERROR_CATALOG.WORKBOOK_TYPE_UNAVAILABLE.text,
+                fixAction: { kind: "review-workbook-reference", workflowId: descriptor.id, typeId: descriptor.requiredWorkbookTypeIds[0] } }
+              : { scope: "default-workbook-references", state: "blocked",
+              reason: `${descriptor.label} needs ${wire.workbookReferences.find(slot => slot.workflowId === descriptor.id)?.type?.name}.`,
+              fixAction: { kind: "import-workbook", workflowId: descriptor.id,
+                typeId: descriptor.requiredWorkbookTypeIds[0] } },
           spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookTypeIds: [...descriptor.requiredWorkbookTypeIds],
           steps: projectStartSteps(descriptor).map((step) => ({
             key: step.key,
@@ -221,10 +236,8 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
 
 {
 
-type BackupSummary = ReturnType<BootstrapQueryDeps["backupSummary"]>;
-
 /** The wire's own vocabulary, read off the schema — never retyped. */
-function armsOf(key: "authority" | "backup"): readonly string[] {
+function armsOf(key: "authority"): readonly string[] {
   const field = StorageHealthSummaryWireSchema.shape[key];
   assert.ok(field instanceof z.ZodEnum, `${key} is expected to be a closed enum`);
   return Object.values(field.enum).map(String);
@@ -232,7 +245,7 @@ function armsOf(key: "authority" | "backup"): readonly string[] {
 
 function depsOf(
   world: DashboardWorld,
-  storage: Readonly<{ authorityReachable: boolean; backup: BackupSummary }>,
+  storage: Readonly<{ authorityReachable: boolean }>,
 ): BootstrapQueryDeps {
   return {
     appVersion: "0.1.0",
@@ -247,7 +260,8 @@ function depsOf(
       if (!storage.authorityReachable) throw new Error("authority database is unreadable");
       return { schemaVersion: 13, authorityGeneration: 4 };
     },
-    backupSummary: () => storage.backup,
+    workbookReferences: workflows => projectWorkbookReferences(world.database.authority.workbooks, workflows),
+
     preflightReport: () => PreflightReportSchema.parse({
       configFingerprint: "a".repeat(64),
       checkedAt: AT.toISOString(),
@@ -274,7 +288,7 @@ describe("bootstrap storage summary", () => {
   it("serves both ordinary and protected command schema identities", async () => {
     const world = await makeWorld();
     try {
-      const deps = depsOf(world, { authorityReachable: true, backup: "current" });
+      const deps = depsOf(world, { authorityReachable: true });
       const wire = buildBootstrap(deps);
       assert.equal(wire.settingsSchemaHash, deps.settingsSchemaHash);
       assert.equal(wire.protectedSchemaHash, PROTECTED_SETTINGS_SCHEMA_HASH);
@@ -290,7 +304,7 @@ describe("bootstrap storage summary", () => {
   it("projects the retained strict preflight report in registry order", async () => {
     const world = await makeWorld();
     try {
-      const wire = buildBootstrap(depsOf(world, { authorityReachable: true, backup: "current" }));
+      const wire = buildBootstrap(depsOf(world, { authorityReachable: true }));
       assert.deepEqual(wire.preflight, [
         {
           id: "runtime.compatibility",
@@ -350,7 +364,7 @@ describe("bootstrap storage summary", () => {
   it("projects retained preflight failures with their exact blocks and remediation", async () => {
     const world = await makeWorld();
     try {
-      const deps = depsOf(world, { authorityReachable: true, backup: "current" });
+      const deps = depsOf(world, { authorityReachable: true });
       const retained = deps.preflightReport();
       const failing = PreflightReportSchema.parse({
         ...retained,
@@ -387,7 +401,7 @@ describe("bootstrap storage summary", () => {
     try {
       const reached = new Set<string>();
       for (const authorityReachable of [true, false]) {
-        const wire = buildBootstrap(depsOf(world, { authorityReachable, backup: "current" }));
+        const wire = buildBootstrap(depsOf(world, { authorityReachable }));
         // Parsed again on purpose: the producer's own `.parse` is what makes
         // this a statement about the WIRE and not about a literal.
         reached.add(FrontendBootstrapWireSchema.parse(wire).storage.authority);
@@ -398,28 +412,14 @@ describe("bootstrap storage summary", () => {
     }
   });
 
-  it("emits every backup arm the wire declares", async () => {
-    const world = await makeWorld();
-    try {
-      const reached = new Set<string>();
-      for (const backup of ["current", "stale", "missing", "unavailable"] as const) {
-        const wire = buildBootstrap(depsOf(world, { authorityReachable: true, backup }));
-        reached.add(FrontendBootstrapWireSchema.parse(wire).storage.backup);
-      }
-      expect([...reached].sort()).toEqual([...armsOf("backup")].sort());
-    } finally {
-      await world.dispose();
-    }
-  });
-
-  it("an unreachable authority still serves the backup indicator", async () => {
+  it("an unreachable authority stays explicitly unavailable", async () => {
     const world = await makeWorld();
     try {
 
-      const wire = buildBootstrap(depsOf(world, { authorityReachable: false, backup: "stale" }));
+      const wire = buildBootstrap(depsOf(world, { authorityReachable: false }));
       assert.deepEqual(
         wire.storage,
-        { authority: "unavailable", backup: "stale", checkedAt: AT.toISOString() },
+        { authority: "unavailable" },
       );
     } finally {
       await world.dispose();

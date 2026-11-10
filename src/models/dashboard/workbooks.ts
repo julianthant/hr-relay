@@ -81,6 +81,8 @@ export function decodeSavedWorkbook(value: unknown): SavedWorkbook {
 export const WorkbookListWireSchema = z.array(SavedWorkbookWireSchema);
 export const WorkbookHistoryWireSchema = z.array(SavedWorkbookWireSchema);
 export const WorkbookCreateRequestSchema = z.strictObject({ workbook: EditableWorkbookWireSchema });
+export const WorkbookImportRequestSchema = z.strictObject({ workbook: EditableWorkbookWireSchema });
+export const WorkbookImportResultSchema = z.strictObject({ workbook: SavedWorkbookWireSchema });
 export const WorkbookSaveRequestSchema = z.strictObject({ expectedVersion: z.number().int().positive(), workbook: EditableWorkbookWireSchema });
 export const WorkbookIntakeRequestSchema = z.strictObject({ expectedVersion: z.number().int().positive(), workflowId: WorkflowIdSchema });
 export const WorkbookIntakeResultSchema = z.discriminatedUnion("state", [

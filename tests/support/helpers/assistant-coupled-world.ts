@@ -94,7 +94,7 @@ export async function assistantCoupledWorld() {
   const identity = createSoloRequestIdentityCheckpoint({ id: 'local-operator', label: 'Local operator' });
   app.use('*', async (c, next) => { identities++; c.set('requestActorId', identity.identify(c.req.raw)); return next(); });
   registerAssistantRoutes(app, service);
-  registerChatGptAccountRoutes(app, { chatGptAccount: account.service });
+  registerChatGptAccountRoutes(app, { clock: account.clock, chatGptAccount: account.service });
   const client = createDashboardClient({ baseUrl: 'http://127.0.0.1:3938', fetchImpl: async (url, init) => {
     requests++; assert.equal(new URL(url).pathname, '/api/v1/assistant/respond', 'Confirm must never request a start plan or command');
     return app.request(url, { ...init, headers: { ...init?.headers, host: '127.0.0.1:3938' } });
