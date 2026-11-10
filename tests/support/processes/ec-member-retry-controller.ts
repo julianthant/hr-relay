@@ -135,7 +135,8 @@ if (serialized === undefined) {
     const replacements = database.authority.runs.listChildren(info.parentId).filter(run => run.envelope.retryOf === info.failedId);
     if (boundary === "before-commit") {
       assert.equal(replacements.length, 0);
-      assert.equal(database.authority.commands.get(info.request.commandId), undefined);
+      assert.equal(database.authority.commands.get(info.request.commandId)?.commandId, info.request.commandId);
+      assert.equal(database.authority.commandAudits.findByCommand(info.request.commandId), undefined);
       assert.equal(parent.lifecycle.state, "terminal");
     } else {
       assert.equal(replacements.length, 1);
@@ -155,7 +156,8 @@ if (serialized === undefined) {
       }
       if (boundary === "resume-rollback") {
         assert.ok(info.resume);
-        assert.equal(database.authority.commands.get(info.resume.commandId), undefined);
+        assert.equal(database.authority.commands.get(info.resume.commandId)?.commandId, info.resume.commandId);
+        assert.equal(database.authority.commandAudits.findByCommand(info.resume.commandId), undefined);
         assert.equal(parent.pause?.state, "paused");
         assert.equal(parent.envelope.continuation, undefined);
         assert.notEqual(database.authority.dependencies.readiness(info.parentId, "join").state, "ready");
