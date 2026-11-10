@@ -8,16 +8,13 @@ import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it,vi } from "vitest";
 import { createDashboardClient,type DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
-import { settingInput } from "../../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
-import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 const DOCUMENT = FIXTURE_EDITABLE_SETTINGS;
 
-const STORAGE = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-08-28T17:00:00.000Z" });
 let root: Root | undefined;
 let host: HTMLElement | undefined;
 const authorities: Awaited<ReturnType<typeof syntheticSettingsAuthority>>[] = [];
@@ -63,9 +60,9 @@ async function mountSettingsPage(client: DashboardClient, section: string,
     root = createRoot(element);
     root.render(createElement(DashboardClientProvider, { client,
       children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso,
-        children: createElement(SettingsPage, { profileName, onClose: () => undefined, storage: STORAGE, sections: [],
-          workflowLabels: new Map<string, string>(), section, actorId: "local-operator",
-          descriptorFingerprint: "d".repeat(64), preflight: [], onSection: () => undefined,
+        children: createElement(SettingsPage, { profileName, onClose: () => undefined,
+          section, actorId: "local-operator",
+          descriptorFingerprint: "d".repeat(64), onSection: () => undefined,
           ...(onExitGuardChange === undefined ? {} : { onExitGuardChange }) }),
       }),
     }));
@@ -232,45 +229,6 @@ describe("editable Settings surface", () => {
     assert.equal(applied.length, 0, "incomplete date edits cannot produce a settings command");
     assert.ok(date.querySelector('button[aria-label="Choose job end date"]'));
   });
-
-  it("autosaves valid production routes after 700 ms but retains invalid partial URLs", async () => {
-    const applied: unknown[] = [];
-    const transport = await settingsClient(applied);
-    host = await mountSettingsPage(transport.client, "routes");
-    assert.match(host.textContent ?? "", /Routes/u);
-    assert.doesNotMatch(host.textContent ?? "", /Test routes/u);
-    const input = host.querySelector('[data-settings-path="urls.crm.prod"] input');
-    if (!(input instanceof HTMLInputElement)) throw new Error("missing CRM route input");
-    const crm = DOCUMENT.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "urls.crm.prod");
-    assert.ok(crm);
-    const original = settingInput(crm);
-    assert.notEqual(typeof original, "string");
-    vi.useFakeTimers();
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-    if (setter === undefined) throw new Error("HTML input value setter is unavailable");
-    const enter = async (value: string): Promise<void> => { await act(async () => {
-      Reflect.apply(setter, input, [value]);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    }); };
-    await enter("https://");
-    await act(async () => { await vi.advanceTimersByTimeAsync(701); });
-    assert.equal(applied.length, 0, "an invalid partial URL stays in the draft");
-    await enter("https://crm.example.test/new");
-    await act(async () => { await vi.advanceTimersByTimeAsync(699); });
-    assert.equal(applied.length, 0, "route edits wait for the debounce");
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-    assert.equal(applied.length, 1);
-    assert.doesNotMatch(host.textContent ?? "", /Save routes/u);
-    const command = applied[0] as { payload: { patch: Record<string, { set: Record<string, string> }> } };
-    assert.equal(command.payload.patch["urls.crm.prod"]?.set.entry, "https://crm.example.test/new");
-    assert.equal(transport.authority.read().revision, 2);
-    assert.deepEqual(transport.authority.read().sections.flatMap(section => section.leaves).find(leaf => leaf.path === "urls.crm.prod")?.settingsValue, command.payload.patch["urls.crm.prod"]?.set);
-    assert.equal(typeof original, "object");
-    if (typeof original === "string") throw new Error("CRM route values are not an object");
-    assert.deepEqual(command.payload.patch["urls.crm.prod"]?.set, { ...original, entry: "https://crm.example.test/new" }, "editing one row retains the other four URLs");
-  });
 });
 
 it("publishes a failed refresh while retaining the verified document and unsaved draft", async () => {
@@ -295,27 +253,14 @@ it("publishes a failed refresh while retaining the verified document and unsaved
   assert.equal(current().dirtyCount, 1);
 });
 
-for (const section of ["general", "paths", "routes", "performance"]) for (const mode of ["failed", "hung"]) {
+for (const section of ["general", "performance"]) for (const mode of ["failed", "hung"]) {
   it(`renders the catalog body in the ${section} failed part after a ${mode} initial read`, async () => {
     vi.useFakeTimers();
     const client = { editableSettings: () => mode === "hung" ? new Promise(() => {}) : Promise.reject(new Error("private fixture error")),
     } as unknown as DashboardClient;
     const dom = await mountSettingsPage(client, section);
     if (mode === "hung") await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-    if (section === "paths") {
-      const folders = dom.querySelector('[role="group"][aria-label="Folders"]');
-      assert.ok(folders);
-      assert.match(folders.textContent ?? "", /Couldn’t load your folders/u);
-      assert.match(folders.textContent ?? "", /Your saved folders are unchanged\./u);
-      const retry = folders.querySelector("button");
-      assert.ok(retry instanceof HTMLButtonElement);
-      assert.equal(retry.textContent, "Try again");
-      assert.equal(retry.disabled, false);
-      assert.doesNotMatch(dom.textContent ?? "", /private fixture error/u);
-      return;
-    }
-    const title = section === "routes" ? "Routes unavailable" : "Settings unavailable";
-    const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes(title));
+    const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes("Settings unavailable"));
     assert.ok(failure);
     assert.ok(failure.textContent?.includes(ERROR_CATALOG.SETTINGS_INITIAL_READ_UNAVAILABLE.text.replace(/ Try again\.$/u, "")));
     assert.doesNotMatch(failure.textContent ?? "", /private fixture error/);

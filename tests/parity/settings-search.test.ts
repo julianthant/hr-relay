@@ -50,15 +50,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(target).toBeFocused();
       await expect.poll(centerDifference).toBeLessThanOrEqual(1);
 
-      await search.fill("CRM onboarding search");
-      await page.getByRole("link", { name: "CRM · Onboarding search Routes" }).click();
-      await expect(page.locator('[data-settings-path="urls.crm.prod.onboardingSearch"]')).toBeFocused();
-      const routesSearch = page.getByRole("searchbox", { name: "Find a system or route" });
-      await routesSearch.fill("UCPath");
-      await page.getByRole("link", { name: "CRM · Onboarding search Routes" }).click();
-      await expect(routesSearch).toHaveValue("");
-      await expect(page.locator('[data-settings-path="urls.crm.prod.onboardingSearch"]')).toBeVisible();
-
       await search.fill("UCPath password");
       await page.getByRole("link", { name: "UCPath password Account" }).click();
       const password = page.locator('[data-settings-path="protected.ucpathPassword"]');
@@ -69,7 +60,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await clear.click();
       await expect(search).toHaveValue("");
       await expect(search).toBeFocused();
-      await expect(page.locator('.settings-nav-group a')).toHaveCount(10);
+      await expect(page.locator('.settings-nav-group a')).toHaveCount(6);
       await expect(clear).toHaveCount(0);
 
       await search.fill("Theme");
@@ -90,7 +81,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await clear.click();
 
       for (const [section, label, value] of [
-        ["routes", "Find a system or route", "CRM"], ["keyboard", "Search shortcuts", "search"],
+        ["keyboard", "Search shortcuts", "search"],
 
       ]) {
         await page.goto(`${server.baseUrl}/?settings=${section}`);
@@ -121,7 +112,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 }
 
 const indexedDocument = fixtureSettingsDocument();
-const indexedTargets = settingsSearchIndex(buildSettingsNav([], indexedDocument), indexedDocument, true)
+const indexedTargets = settingsSearchIndex(buildSettingsNav(indexedDocument), indexedDocument)
   .filter(result => result.target !== undefined);
 for (const section of new Set(indexedTargets.map(result => result.entry.id))) {
 test(`Every indexed setting in ${section} resolves to a visible destination, including folded groups`, async ({ page }) => {
@@ -152,22 +143,4 @@ test("Setting targets retain reduced-motion and unavailable states", async ({ pa
     await page.goto(`${server.baseUrl}/?settings=general&settingsTarget=not-a-real-field`);
     await expect(page.getByText("Setting unavailable", { exact: true })).toBeVisible();
   } finally { await server.close(); }
-});
-
-void 0;
-
-test("A path target waits for its verified authority without a false unavailable warning", async ({ page }) => {
-  const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
-  let release: (() => void) | undefined;
-  const pending = new Promise<void>(resolve => { release = resolve; });
-  await page.route("**/api/v1/settings/editable", async route => { await pending; await route.continue(); });
-  try {
-    await page.goto(`${server.baseUrl}/?settings=paths&settingsTarget=paths.stateRoot`);
-    await expect(page.getByRole("heading", { name: "Paths", exact: true })).toBeVisible();
-    await expect(page.getByText("Reading app-data locations…", { exact: true })).toBeVisible();
-    await expect(page.getByText("Setting unavailable", { exact: true })).toHaveCount(0);
-    if (release === undefined) throw new Error("path read release unavailable");
-    release();
-    await expect(page.locator('[data-settings-path="paths.stateRoot"]')).toBeFocused();
-  } finally { release?.(); await server.close(); }
 });

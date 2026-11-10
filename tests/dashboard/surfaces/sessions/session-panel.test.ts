@@ -13,11 +13,13 @@ describe("frontend timeline and sessions", () => {
     const markup = renderToStaticMarkup(createElement(ToastProvider, null, createElement(SessionPanel, { catalog, source: "mock", open: true, onOpenChange: () => {} })));
     assert.equal((markup.match(/<article /gu) ?? []).length, 4);
     assert.doesNotMatch(markup, /Sample data|Add to preview/);
-    assert.match(markup, /Ready for the next run/);
-    assert.match(markup, /aria-label="No run in progress"/);
+    assert.match(markup, /No run assigned/);
+    assert.match(markup, /Alex Morgan/);
+    assert.doesNotMatch(markup, /role="progressbar"|Ready for the next run|No run in progress/);
     assert.match(markup, /aria-label="Remove worker"/);
     assert.doesNotMatch(markup, /Worker stopped|Worker paused|>Pause<|>Stop<|>Retry<|>Resume</);
-    assert.match(markup, /Kronos timecard/);
+    assert.match(markup, /Kronos/);
+    assert.match(markup, /aria-label="Assistant"/);
     assert.doesNotMatch(markup, /pool version|expectedVersion|lease|Live<|No worker is running|>Worker \d+</);
   });
 });

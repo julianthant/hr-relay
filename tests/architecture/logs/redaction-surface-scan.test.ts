@@ -23,8 +23,7 @@ import { createBoundProfileFixture } from "../../support/helpers/admission-fixtu
 import { LEDGER_OUTBOX_PAYLOAD, NOW, UUID_1, UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { EXIT_RUN_ID, seedPersonLookupExitRun } from "../../support/fixtures/receipt-run-fixtures.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
-import { assistantToolEgress } from "./helpers/assistant-tool-egress.js";
-import { ALL_CANARY_NAMES, EGRESS_DECISION_LEAVES, auditD331ServedLeafDispositions, auditRedactedProducers, auditSurfaceOrigins, canariesIn, decidableLeaves, D331_SERVED_LEAF_DISPOSITIONS, REDACTED_NAME_WAIVERS, REDACTION_CANARIES, REDACTION_SURFACES, redactedProducerSites, SURFACE_LEAF_ORIGINS, SURFACE_MODULE_DISPOSITIONS, scannedSurfaceModules, surfaceLeaves, UNIVERSAL_CANARY_NAMES, type RedactionSurface, type SurfaceLeafOrigin } from "./helpers/redaction-surface-audit.js";
+import { ALL_CANARY_NAMES, auditD331ServedLeafDispositions, auditRedactedProducers, auditSurfaceOrigins, canariesIn, decidableLeaves, D331_SERVED_LEAF_DISPOSITIONS, REDACTED_NAME_WAIVERS, REDACTION_CANARIES, REDACTION_SURFACES, redactedProducerSites, SURFACE_LEAF_ORIGINS, SURFACE_MODULE_DISPOSITIONS, scannedSurfaceModules, surfaceLeaves, UNIVERSAL_CANARY_NAMES, type RedactionSurface, type SurfaceLeafOrigin } from "./helpers/redaction-surface-audit.js";
 import { EditableWorkbookSchema, WorkbookCreateRequestSchema, decodeEditableWorkbook, encodeEditableWorkbook, decodeSavedWorkbook, encodeSavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { createTaskProvenanceCollector } from "../../../src/backend/runs/provenance/task-provenance.js";
@@ -209,34 +208,38 @@ describe("redaction surface scan — the declaration audit", () => {
   });
 
   it("covers the actual assistant and OCR loopback boundaries and rejects each missing origin", () => {
-    const ids = ["request/assistant", "wire/assistant", "request/assistant-history", "wire/assistant-history", "wire/assistant-conversation", "wire/chatgpt-ocr-test"];
+    const ids = ["request/assistant", "wire/assistant", "wire/chatgpt-ocr-test"];
     const surfaces = REDACTION_SURFACES.filter(surface => ids.includes(surface.id));
     assert.deepEqual(surfaces.map(surface => surface.id).sort(), ids.sort());
     const origins = SURFACE_LEAF_ORIGINS.filter(entry => ids.includes(entry.surface));
     const expectedOrigins = [
       "request/assistant|message|operator-authored",
-      "wire/assistant|result.text|external-text",
-      "wire/assistant|result.message|repository-authored",
-      "wire/assistant|result.proposal.workflowId|repository-authored",
-      "wire/assistant|result.proposal.label|repository-authored",
-      "wire/assistant|result.proposal.targetLabel|captured-hr-value",
-      "wire/assistant|result.action.workflowId|repository-authored",
-      "wire/assistant|result.action.label|repository-authored",
-      "wire/assistant|result.action.targetLabel|captured-hr-value",
-      ...["action", "proposal"].flatMap(root => ["row.display.documentNumber", "row.display.name", "row.subtitle", "row.title",
-        "startPlan.planned[].display.documentNumber", "startPlan.planned[].display.name"].map(path => `wire/assistant|result.${root}.${path}|captured-hr-value`)),
-      "wire/assistant|result.proposal.startPlan.planned[].title|captured-hr-value",
-      "wire/assistant|result.proposal.startPlan.planned[].subtitle|captured-hr-value",
-      "wire/assistant|result.action.startPlan.planned[].title|captured-hr-value",
-      "wire/assistant|result.action.startPlan.planned[].subtitle|captured-hr-value",
-      ...["title", "draft", "composer"].flatMap(path => [`request/assistant-history|${path}|operator-authored`, `wire/assistant-conversation|${path}|operator-authored`]),
-      "request/assistant-history|text|repository-authored",
-      "request/assistant-history|messages[].text|external-text",
-      "wire/assistant-history|chats[].title|operator-authored",
-      "wire/assistant-conversation|messages[].text|external-text",
-      "wire/assistant-conversation|messages[].attachments[].name|local-filesystem-name",
-      ...["action", "proposal"].flatMap(root => ["row.display.fileName", "startPlan.planned[].display.fileName"].map(path => `wire/assistant|result.${root}.${path}|local-filesystem-name`)),
-      ...["action", "proposal"].flatMap(root => [`wire/assistant|result.${root}.facts[].label|repository-authored`, `wire/assistant|result.${root}.facts[].value|captured-hr-value`]),
+      "wire/assistant|text|external-text",
+      "wire/assistant|message|repository-authored",
+      "wire/assistant|citations[].path|repository-authored",
+      "wire/assistant|citations[].quote|repository-authored",
+      "wire/assistant|proposal.workflowId|repository-authored",
+      "wire/assistant|proposal.descriptorFingerprint|repository-authored",
+      "wire/assistant|proposal.configSnapshotId|repository-authored",
+      "wire/assistant|proposal.configFingerprint|repository-authored",
+      "wire/assistant|proposal.inputFingerprint|repository-authored",
+      "wire/assistant|proposal.optionsFingerprint|repository-authored",
+      "wire/assistant|proposal.stopBefore.nodeId|repository-authored",
+      "wire/assistant|proposal.stopBefore.afterPrepareTaskId|repository-authored",
+      "wire/assistant|proposal.stopBefore.commitTaskId|repository-authored",
+      "wire/assistant|proposal.subject.displayName|captured-hr-value",
+      "wire/assistant|proposal.label|repository-authored",
+      "wire/assistant|proposal.targetLabel|captured-hr-value",
+      "wire/assistant|action.workflowId|repository-authored",
+      "wire/assistant|action.label|repository-authored",
+      "wire/assistant|action.targetLabel|captured-hr-value",
+      "wire/assistant|action.person.name|captured-hr-value",
+      "wire/assistant|proposal.person.name|captured-hr-value",
+      "wire/assistant|proposal.startPlan.planned[].title|captured-hr-value",
+      "wire/assistant|proposal.startPlan.planned[].subtitle|captured-hr-value",
+      "wire/assistant|action.startPlan.planned[].title|captured-hr-value",
+      "wire/assistant|action.startPlan.planned[].subtitle|captured-hr-value",
+      "wire/assistant|candidates[].displayName|captured-hr-value",
       "wire/chatgpt-ocr-test|model|external-text",
       "wire/chatgpt-ocr-test|message|repository-authored",
     ];
@@ -251,41 +254,6 @@ describe("redaction surface scan — the declaration audit", () => {
         }
       }
     }
-  });
-
-  it("sends only the masked operator message and declared tool output leaves to ChatGPT", () => {
-    const egress = REDACTION_SURFACES.filter(surface => surface.egress === "process-egress");
-    assert.deepEqual(egress.map(surface => surface.id).sort(), ["egress/assistant-user-message", "egress/assistant-replay", ...assistantToolEgress().surfaces.map(surface => surface.id)].sort());
-    assert.ok(egress.length > 8);
-    const origins = SURFACE_LEAF_ORIGINS.filter(entry => egress.some(surface => surface.id === entry.surface));
-    assert.deepEqual(origins.filter(entry => entry.origin !== "repository-authored" && entry.origin !== "declared-redacted").map(entry => `${entry.surface}|${entry.path}|${entry.origin}`),
-      ["egress/assistant-user-message|content|operator-authored", "egress/assistant-replay|answer|external-text"]);
-    for (const origin of ["captured-hr-value", "external-text", "local-filesystem-name", "protected-value"] as const) {
-      const leaked = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-tool/read_run" && entry.path === "gate.label" ? { ...entry, origin } : entry);
-      assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, leaked).some(problem => problem.includes('egress/assistant-tool/read_run (process-egress) leaf "gate.label"') && problem.includes("may not carry at all")), origin);
-    }
-    const unexcepted = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-user-message" ? { surface: entry.surface, path: entry.path, origin: entry.origin } : entry);
-    assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, unexcepted).some(problem => problem.includes("needs a written exception")));
-    assert.deepEqual([...EGRESS_DECISION_LEAVES], [["egress/assistant-user-message|content", { egress: "process-egress", origin: "operator-authored" }],
-      ["egress/assistant-replay|answer", { egress: "process-egress", origin: "external-text" }]]);
-    for (const origin of ["captured-hr-value", "external-text", "local-filesystem-name", "protected-value"] as const) {
-      const reclassified = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-user-message" ? { ...entry, origin } : entry);
-      assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, reclassified).some(problem => problem.includes('egress/assistant-user-message (process-egress) leaf "content"') && problem.includes("may not carry at all")), origin);
-    }
-    const looped = REDACTION_SURFACES.map(surface => surface.id === "egress/assistant-user-message" ? { ...surface, egress: "os-notification" as const } : surface);
-    assert.ok(auditSurfaceOrigins(looped, SURFACE_LEAF_ORIGINS).some(problem => problem.includes('egress/assistant-user-message (os-notification) leaf "content"') && problem.includes("may not carry at all")));
-    for (const origin of ["operator-authored", "captured-hr-value", "local-filesystem-name", "protected-value"] as const) {
-      const reclassified = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-replay" && entry.path === "answer" ? { ...entry, origin } : entry);
-      assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, reclassified).some(problem => problem.includes('egress/assistant-replay (process-egress) leaf "answer"') && problem.includes("may not carry at all")), origin);
-    }
-    const replayUnexcepted = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-replay" && entry.path === "answer" ? { surface: entry.surface, path: entry.path, origin: entry.origin } : entry);
-    assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, replayUnexcepted).some(problem => problem.includes("needs a written exception")));
-    const captionExternal = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-replay" && entry.path === "caption" ? { ...entry, origin: "external-text" as const } : entry);
-    assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, captionExternal).some(problem => problem.includes('egress/assistant-replay (process-egress) leaf "caption"') && problem.includes("may not carry at all")));
-    const replayLooped = REDACTION_SURFACES.map(surface => surface.id === "egress/assistant-replay" ? { ...surface, egress: "os-notification" as const } : surface);
-    assert.ok(auditSurfaceOrigins(replayLooped, SURFACE_LEAF_ORIGINS).some(problem => problem.includes('egress/assistant-replay (os-notification) leaf "answer"') && problem.includes("may not carry at all")));
-    const moved = REDACTION_SURFACES.map(surface => surface.id === "request/assistant" ? { ...surface, egress: "process-egress" as const } : surface);
-    assert.ok(auditSurfaceOrigins(moved, SURFACE_LEAF_ORIGINS).some(problem => problem.includes('request/assistant (process-egress) leaf "message"') && problem.includes("may not carry at all")));
   });
 
   it("pins history, operator observations and definition text origins and rejects their omission", () => {
@@ -362,7 +330,7 @@ describe("redaction surface scan — the declaration audit", () => {
     const audited = REDACTION_SURFACES.flatMap((surface) => decidableLeaves(surface.schema));
     assert.ok(audited.length >= 200, "the audit walked almost no leaves");
     const egressClasses = new Set(REDACTION_SURFACES.map(({ egress }) => egress));
-    assert.deepEqual([...egressClasses].sort(), ["durable-authority", "durable-file", "operator-loopback", "os-notification", "process-egress"], "every remaining egress class must have at least one registered surface");
+    assert.deepEqual([...egressClasses].sort(), ["durable-authority", "durable-file", "operator-loopback", "os-notification"], "every remaining egress class must have at least one registered surface");
   });
 
   it("retains full supplied person identifiers in span/authority diagnostic messages", () => {

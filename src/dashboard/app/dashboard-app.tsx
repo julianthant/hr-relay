@@ -41,7 +41,6 @@ import { Component,useCallback,useContext,useEffect,useLayoutEffect,useMemo,useR
 import { CommandRequestSchema, BulkRunCommandRequestSchema, WorkflowBatchCommandRequestSchema, type BulkRunCommandResponse } from "../../rules/commands/commands.js";
 import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
-SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
 import { StatusMockHost } from "../surfaces/settings/status-mock/status-mock.js";
@@ -130,8 +129,8 @@ import type { NativeRouteHistory,PopstateRouteHandler } from "./navigation/route
 import { useRoute } from "./navigation/route-history-model.js";
 import { SHELL_PANEL_TABS } from "./navigation/shell-selection-model.js";
 import { useTakeoverCloseFocus } from "./navigation/takeover-focus-model.js";
-import {
 import { mockParam } from "./mock-surfaces.js";
+import {
 activeTakeover,
 routeForCrossDateSearchResult,
 type AppRouteState
@@ -925,11 +924,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     onTab,
   });
 
-  // Parse owner-composed bootstrap projections once; unknown arrays are not permission to cast.
-  const settingsSections = useMemo(
-    () => SettingsSectionPrimitiveSchema.array().parse(boot.settingsSections),
-    [boot.settingsSections],
-  );
   const ready = !hasServedWorkflows || dayResource.state === "loaded" || dayResource.state === "failed";
   // One resolution of "which takeover owns the main region", so the JSX below
   // cannot disagree with a link that carries more than one key.
@@ -1214,7 +1208,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
           {/* Intake is a durable workspace; leaving it must not discard mapping progress. */}
           <DashboardTakeovers deleteAccount={deleteAccount} onOpenRun={selectRun} onOpenWorkflow={openWorkflowQueue} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
-            client={client} workflowCatalog={explorerCatalog} settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
+            client={client} workflowCatalog={explorerCatalog} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
             onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} theme={theme} onToggleTheme={onToggleTheme}>

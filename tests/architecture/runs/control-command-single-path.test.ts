@@ -757,7 +757,7 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   {
     commandId: "12121212-1212-4121-8121-121212121212", requestedAt: NOW,
     requestedBy: "local-operator", source: "dashboard", family: "assistant-model-preference", type: "set-assistant-model-preference",
-    target: { profileId: ASSISTANT_PREFERENCE_PROFILE, epoch: 0, expectedRevision: 1 }, payload: { slug: "gpt-6.1-sol", effort: "light" },
+    target: { profileId: ASSISTANT_PREFERENCE_PROFILE, epoch: 0, expectedRevision: 1 }, payload: { slug: "gpt-6.1-sol", effort: "low" },
   },
   {
     commandId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", requestedAt: NOW,

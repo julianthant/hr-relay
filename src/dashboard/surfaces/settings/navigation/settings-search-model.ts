@@ -13,7 +13,7 @@ export interface SettingsSearchResult {
 }
 
 /** Search presentation metadata only; values, credentials and paths on disk never enter the index. */
-export function settingsSearchIndex(groups: readonly SettingsNavGroup[], document?: EditableSettingsWire, runtimePaths = false): readonly SettingsSearchResult[] {
+export function settingsSearchIndex(groups: readonly SettingsNavGroup[], document?: EditableSettingsWire): readonly SettingsSearchResult[] {
   const results: SettingsSearchResult[] = [];
   const add = (section: string, label: string, target: string | undefined, description = "", context?: string) => {
     const resolution = resolveSettingsSection(groups, section);
@@ -28,10 +28,6 @@ export function settingsSearchIndex(groups: readonly SettingsNavGroup[], documen
   add("general", "Browser window", "browser.window", "Browser width height size");
   add("general", "Theme", "appearance.theme", "Appearance dashboard color light dark");
   add("general", "ChatGPT account", "chatgpt.account", "OpenAI sign in login subscription plan OCR manage usage");
-  if (runtimePaths && document !== undefined) {
-    add("storage", "Data", "paths.stateRoot", "Persistent settings and run data; runtime state folder");
-    add("storage", "Evidence", "paths.artifactRoot", "Run evidence and generated artifacts; artifact folder");
-  }
   if (document === undefined) return results;
   for (const fact of PROFILE_WORKFLOW_FACTS) add("credentials", fact.label, fact.target, "Signed-in profile read-only workflow configuration");
   for (const section of document.sections) for (const leaf of section.leaves) {

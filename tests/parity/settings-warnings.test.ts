@@ -4,20 +4,11 @@ import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
-import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
 
 async function sectionWarning(page: Page, title: string, groupName: string) {
   const warning = page.getByText(title, { exact: true });
   await expect(warning).toBeVisible();
-  if (groupName === "App data") {
-    const group = page.getByRole("group", { name: "App data", exact: true });
-    await expect(group).toContainText(title);
-    await expect(group.getByRole("button", { name: "Try again", exact: true })).toBeEnabled();
-    const row = await warning.evaluate(node => { const el = node.closest(".hub-settings-row"); if (!el) throw new Error("app-data-warning-row-missing"); const style = getComputedStyle(el); return { padding: parseFloat(style.paddingInlineStart), minimum: parseFloat(style.getPropertyValue("--ds-space-cozy")) }; });
-    expect(row.padding).toBeGreaterThanOrEqual(row.minimum);
-    return;
-  }
-  // Warnings outside the App data row are toasts, not section banners.
+  // Warnings are toasts, not section banners.
   await expect(page.getByRole("status").or(page.getByRole("alert")).filter({ hasText: title })).toHaveCount(1);
   await expect(page.getByRole("group", { name: groupName, exact: true })).toBeVisible();
 }
@@ -28,35 +19,14 @@ async function attach(page: Page, info: TestInfo, name: string) {
 }
 for (const entry of [
   { section: "general", path: "**/api/v1/settings/chatgpt-account", title: "ChatGPT account unavailable", group: "ChatGPT account" },
-  { section: "paths", path: "**/api/v1/settings/editable", title: "App-data locations couldn’t be read.", group: "App data" },
-  { section: "routes", path: "editable", title: "Roster URL unavailable", group: "SharePoint" },
 ]) test(`Settings warning toast for ${entry.section}`, { annotation: [{ type: "required-a11y-evidence", description: `settings-warning-${entry.section}.a11y.yml` }] }, async ({ page }, info) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   await page.setViewportSize({ width: 1280, height: 720 }); await installTheme(page, PARITY_THEMES[0]);
-  if (entry.path === "editable") {
-    const document = fixtureSettingsDocument();
-    await page.route("**/api/v1/settings/editable", route => route.fulfill({ json: { ...document, protectedSettings: { state: "unknown", rows: document.protectedSettings.rows, reason: "credential-store-unavailable" } } }));
-  } else await page.route(entry.path, route => route.fulfill({ status: 503, json: { state: "error", code: "DASHBOARD_READ_FAILED", message: "Synthetic unavailable", retryable: true } }));
+  await page.route(entry.path, route => route.fulfill({ status: 503, json: { state: "error", code: "DASHBOARD_READ_FAILED", message: "Synthetic unavailable", retryable: true } }));
   try {
     await page.goto(`${server.baseUrl}/?settings=${entry.section}`);
     await sectionWarning(page, entry.title, entry.group);
     await attach(page, info, `settings-warning-${entry.section}.a11y.yml`);
-  } finally { await server.close(); }
-});
-
-test("Settings fixed app data never dispatches a relocation command", { annotation: [{ type: "required-a11y-evidence", description: "settings-warning-relocation-uncertain.a11y.yml" }] }, async ({ page }, info) => {
-  const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
-  await page.setViewportSize({ width: 1280, height: 720 }); await installTheme(page, PARITY_THEMES[0]);
-  const writes: string[] = [];
-  page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
-  try {
-    await page.goto(`${server.baseUrl}/?settings=paths`);
-    await expect(page.getByRole("textbox", { name: "Data path", exact: true })).toHaveAttribute("readonly", "");
-    await expect(page.getByRole("button", { name: "Change Runtime state folder", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Copy relocation command", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Change Reports", exact: true })).toBeVisible();
-    expect(writes).toEqual([]);
-    await attach(page, info, "settings-warning-relocation-uncertain.a11y.yml");
   } finally { await server.close(); }
 });
 

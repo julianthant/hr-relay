@@ -6,7 +6,6 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../mode
 import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
 import { CommandRequestSchema, type CommandRequest } from "../../rules/commands/commands.js";
 import { OcrApprovedSnapshotSchema, ocrSnapshotDigest, operatorOcrRecordId, blankOperatorOcrFields } from "../../models/ocr/review.js";
-import { ocrForm } from "../../models/ocr/form-registry.js";
 import { OcrApprovalReferenceSchema } from "../../models/workflows/ocr/result.js";
 import { deriveSchemaHash } from "../../models/validation/schema-bound-value.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -94,7 +93,6 @@ interface ReviewMemory {
   attempt?: ReviewAttempt;
   confirmed?: { revision: number; approved: boolean };
   discardedRecords?: readonly string[];
-  addedRecordId?: string;
   binding?: DashboardCommandBinding;
   version: number;
   listeners: Set<() => void>;
@@ -228,22 +226,7 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
         snapshotId: commandId, sourceRunId: page.runId, revision: snapshot.revision, digest: ocrSnapshotDigest(snapshot) } },
       ocrApproval: { expectedRevision: snapshot.revision, reviewDigest: review.digest, selectedRecordIds: snapshot.selectedRecordIds } } }));
   };
-  const add = () => {
-    if (memory.attempt !== undefined && memory.attempt.state !== "refused") return memory.addedRecordId ?? "";
-    if (!fresh || dirty || blocked || conflict || review === undefined || page === undefined || binding === undefined) return "";
-    const firstPage = review.revision.seed.review.accounting.manifest.pages[0];
-    if (firstPage === undefined) throw new Error("RUN_REVIEW_SOURCE_UNAVAILABLE");
-    const commandId = crypto.randomUUID();
-    const request = CommandRequestSchema.parse({ family: "ocr-review", type: "add-ocr-record", commandId,
-      requestedBy: binding.scope.actorId, requestedAt: binding.authority.nowIso, source: "dashboard",
-      target: { runId: page.runId, expectedRevision: review.revision.revision },
-      payload: { pages: ocrForm(review.revision.seed.review.formType).pageKinds.map(pageKind => ({ pageKind, sourcePage: firstPage.sourcePage })) } });
-    memory.addedRecordId = operatorOcrRecordId(review.revision.seed, commandId);
-    void send(request);
-    return memory.addedRecordId;
-  };
   return { ...resource, drafts: draft?.fields ?? {}, includes: draft?.includes ?? {}, edit, include, approve, restore, discarded, flush: save,
-    add, addedRecordId: memory.addedRecordId,
     readOnly: review?.editing?.state !== "available" || memory.confirmed?.approved === true, disabled: !fresh || conflict || attempt?.state === "uncertain" || attempt?.state === "conflict",
     actionsDisabled: !fresh || dirty || blocked, feedback: conflict ? formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_CONFLICT", {})).text : attempt?.text ?? (dirty ? "Pending" : undefined),
     reload: conflict || attempt?.state === "conflict" || attempt?.state === "refused" ? () => {

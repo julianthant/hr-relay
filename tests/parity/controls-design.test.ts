@@ -3,7 +3,7 @@ import { attachShellA11y } from "./helpers/shell-proof.js";
 import { registerReferenceServers } from "./helpers/reference-harness.js";
 const servers = registerReferenceServers(["server"]);
 
-for (const fixture of ["delete-account", "fixed-backup", "run-pause", "ucpath-found", "required-captures", "dry-run", "duo-signup"]) for (const theme of ["light", "dark"]) test(`${fixture} desktop and theme ${theme}`, { annotation: [{ type: "required-a11y-evidence", description: `${fixture}-${theme}-desktop.a11y.yml` }] }, async ({ page }, info) => {
+for (const fixture of ["delete-account", "run-pause", "ucpath-found", "required-captures", "dry-run", "duo-signup"]) for (const theme of ["light", "dark"]) test(`${fixture} desktop and theme ${theme}`, { annotation: [{ type: "required-a11y-evidence", description: `${fixture}-${theme}-desktop.a11y.yml` }] }, async ({ page }, info) => {
   const writes: string[] = [], errors: string[] = [];
   page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
   page.on("pageerror", error => errors.push(error.message));
@@ -19,12 +19,6 @@ for (const fixture of ["delete-account", "fixed-backup", "run-pause", "ucpath-fo
     expect(await card.getByRole("heading", { name: "Did this submit reach UCPath?", exact: true }).evaluate(node => getComputedStyle(node).fontSize)).toBe("16px");
     const heights = await card.locator("footer button").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
     expect(new Set(heights).size).toBe(1);
-  }
-  if (fixture === "fixed-backup") {
-    const path = page.getByRole("textbox", { name: "Data path", exact: true });
-    const style = await path.evaluate(node => ({ size: getComputedStyle(node).fontSize, overflow: getComputedStyle(node).textOverflow }));
-    expect(style).toEqual({ size: "12px", overflow: "ellipsis" });
-    await expect(path).toHaveAttribute("title", await path.inputValue());
   }
   if (["run-pause", "dry-run", "required-captures", "ucpath-found"].includes(fixture)) {
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });

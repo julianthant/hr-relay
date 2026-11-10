@@ -66,6 +66,7 @@ const SETTINGS_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   // The Status pages are not part of the combined mock; links to them open General.
   storage: "general",
   preflight: "general",
+  [SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID]: "general",
 });
 
 const servedEntry = (id: string, label: string): SettingsNavEntry => ({
@@ -105,7 +106,6 @@ export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
 
 /** Route token kept only for compatibility notices */
 export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
-export const SETTINGS_PREFLIGHT_SECTION_ID = "preflight";
 export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer", "activity"]);
 
 
@@ -169,7 +169,6 @@ export function resolveSettingsSection(
   const entries = groups.flatMap((group) => group.entries);
   // Existing editor deep links remain available outside the approved HUB navigation.
   if (requested === "performance") return { state: "open", entry: clientEntry("performance", "Performance", "performance") };
-  if (requested === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID) requested = SETTINGS_PREFLIGHT_SECTION_ID;
   const first = entries[0];
   if (requested.length === 0) {
     return first === undefined ? { state: "empty" } : { state: "open", entry: first };

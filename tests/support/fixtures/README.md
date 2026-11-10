@@ -112,6 +112,8 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/browser/fake-login-page.ts` | fake login page |
 | `helpers/canonical-run-reader.ts` | canonical run reader |
 | `helpers/ucpath-findings-page.ts` | synthetic Smart HR list/detail navigation, identity, pagination and refusal evidence shared by findings and lifecycle checks |
+| `helpers/assistant-coupled-server.ts` | served synthetic assistant browser proof and owned cleanup |
+| `helpers/assistant-coupled-world.ts` | coupled assistant account transport, canonical authority and pure planner fixtures |
 | `helpers/chatgpt-account-fixtures.ts` | synthetic ChatGPT account fixtures |
 | `helpers/chatgpt-response-stream.ts` | pure synthetic Responses added, delta, done and completion event builders for OCR and assistant transport tests |
 | `helpers/dashboard-model-fixtures.ts` | dashboard run detail, queue, pagination and artifact data |

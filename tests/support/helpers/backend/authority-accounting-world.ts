@@ -439,8 +439,6 @@ export function createAuthorityAccountingTestWorld() {
   return { ATOMIC_WRITE_COMMIT, roots, openDatabases, cleanup, databasePaths, CLOCK, BULK_COMMAND_ACCEPTANCE, OPERATOR_XLSX_EXPORT, FAILURE_RECORD, DIAGNOSTIC_BUNDLE, RUN_CHECKPOINT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, databasePath, openDatabase, claimedWorkerId, prepareWorkerSlot, prepareRunning, prepareDelegationOwners, terminalizeForTrust, terminalFailureRequest, terminalSuccessRequest, INTAKE_MANIFEST, OCR_EXTRACTION, DRY_RUN_SCENARIO_RESULT };
 }
 
-const ASSISTANT_CHAT_ID = "6f9c3b1e-2a4d-4c8e-9b7a-1d2e3f4a5b6c";
-
 export type MutationCase = Readonly<{
     table: Exclude<AuthorityTableName, "database_states" | "database_upgrades">;
     prepare?: (database: AuthorityDatabase) => void;
@@ -513,12 +511,6 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
       assert.equal((await kernel.executeAssistantModelPreference({ family: "assistant-model-preference", type: "set-assistant-model-preference",
         commandId: randomUUID(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard", target: { profileId, epoch: 0, expectedRevision: 0 },
         payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } })).state, "applied");
-    } },
-    { table: "assistant_conversations", mutate: db => {
-      assert.equal(db.authority.assistantHistory.apply({ operation: "create", conversationId: ASSISTANT_CHAT_ID, title: "Chat" }, NOW).state, "saved");
-    } },
-    { table: "assistant_messages", prepare: db => { db.authority.assistantHistory.apply({ operation: "create", conversationId: ASSISTANT_CHAT_ID, title: "Chat" }, NOW); }, mutate: db => {
-      assert.equal(db.authority.assistantHistory.apply({ operation: "local", conversationId: ASSISTANT_CHAT_ID, expectedRevision: 1, messageId: randomUUID(), text: "Assistant verification completed." }, NOW).state, "saved");
     } },
     { table: "runs", mutate: (db) => { db.authority.runs.enqueue(QUEUED_RUN); } },
     {

@@ -448,16 +448,10 @@ describe_m7("the settings nav renders real navigation, not buttons (unit F4b fin
   const markup = renderToStaticMarkup_m7(createElement_m7(DashboardClientProvider_m7, {
     client: STATIC_SETTINGS_CLIENT,
     children: createElement_m7(SettingsPage_m7, { profileName: "Synthetic Operator", onClose: () => undefined,
-      storage: HEALTHY_STORAGE,
-      sections: [STORAGE],
 
     section: SETTINGS_KEYBOARD_SECTION_ID_m7,
     actorId: "local-operator",
     descriptorFingerprint: "a".repeat(64),
-    preflight: [],
-    // Capabilities is not the open section in any render here, so the join map
-    // is empty rather than a fixture nothing reads.
-    workflowLabels: new Map<string, string>(),
     onSection: () => undefined,
     }),
   }));

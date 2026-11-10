@@ -23,13 +23,13 @@ activeTakeover,
 routeWithoutTakeovers,
 type AppRouteState
 } from "./navigation/url-state.js";
-export function DashboardTakeovers({client,activitySource,today,workflowSources,takeover,route,setRoute,boot,settingsSections,workflowLabels,workflowCatalog,activeWorkflowId,
+export function DashboardTakeovers({client,activitySource,today,workflowSources,takeover,route,setRoute,boot,workflowCatalog,activeWorkflowId,
  workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,onOpenRun,onOpenWorkflow,deleteAccount,children}: {
  activitySource?: SurfaceSource; today: string; workflowSources: WorkflowSourcePolicy;
  client: ComponentProps<typeof WorkflowExplorer>["client"];
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: RouteSetter;
- boot: FrontendBootstrapWire; settingsSections: ComponentProps<typeof SettingsPage>["sections"];
- workflowCatalog: readonly WorkflowCatalogEntry[]; workflowLabels: ReadonlyMap<string,string>; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
+ boot: FrontendBootstrapWire;
+ workflowCatalog: readonly WorkflowCatalogEntry[]; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
  deleteAccount?: ReactNode;
  onOpenRun: (runId: string, partitionDay: string) => void;
  onOpenWorkflow: (workflowId: string) => void;
@@ -47,25 +47,20 @@ export function DashboardTakeovers({client,activitySource,today,workflowSources,
             <SettingsPage
               onOpenRun={onOpenRun}
               onOpenWorkflow={onOpenWorkflow}
-              storage={boot.storage} appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
+              appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
               deleteAccount={deleteAccount}
-              sections={settingsSections}
-              workflowLabels={workflowLabels}
               section={route.settings ?? dataSection ?? ""}
               searchTarget={route.settingsTarget}
               dataContent={dataContent}
               actorId={boot.actor.id}
               profileName={boot.actor.label}
               descriptorFingerprint={boot.descriptorHash}
-              preflight={boot.preflight ?? []}
               onSection={(next, settingsTarget) => setRoute({ ...routeWithoutTakeovers(route), settings: next, settingsTarget,
                 ...(next === "activity" ? { activity: "" } : next === "explorer" ? { explore: activeWorkflowId } : {}) })}
               onClose={() => closeTakeoverTo(SETTINGS_GEAR_ID, routeWithoutTakeovers(route))}
               onExitGuardChange={onSettingsExitGuardChange}
               onSaved={onSettingsSaved}
               onSaveProblem={onSettingsSaveProblem}
-              onHistoryCleared={() => setRoute(current => ({ ...current, run: undefined,
-                view: { ...current.view, queueMember: undefined, logFailure: undefined, records: undefined } }), "replace")}
             />
           ) : takeover === "intake" && route.intake !== undefined ? (
              /** The surface owns the same full-bleed `TakeoverFrame` as every other

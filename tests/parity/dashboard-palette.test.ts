@@ -92,18 +92,22 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         } else if (name === "settings") {
           expect(await paintedBackground(page.getByRole("region", { name: "Settings", exact: true }))).toBe(palette.canvas);
         }
-        const sessions = page.getByRole("region", { name: "Session Panel", exact: true });
-        await page.getByRole("button", { name: /^Sessions\b/ }).click();
-        const strip = sessions.locator("[data-session-strip]");
-        await expect(strip.locator("..")).toHaveCSS("background-color", palette.canvas);
-        await expect(sessions.getByRole("article").first()).toHaveCSS("background-color", palette.panel);
-        await expect(sessions.getByRole("listitem").first()).toHaveCSS("background-color", palette.table);
-        await checkAliases(sessions);
+        if (name === "logs") {
+          const sessions = page.getByRole("region", { name: "Session Panel", exact: true });
+          await page.getByRole("button", { name: /^Sessions\b/ }).click();
+          await expect(sessions).toHaveCSS("background-color", palette.panel);
+          const fill = (node: Locator) => node.evaluate(element => getComputedStyle(element).backgroundColor);
+          const cardFill = await fill(sessions.getByRole("article").first());
+          expect(cardFill).not.toBe(palette.panel);
+          expect(await fill(sessions.getByRole("listitem").first())).not.toBe(cardFill);
+          await checkAliases(sessions);
+        } else await expect(page.getByRole("region", { name: "Session Panel", exact: true })).toHaveCount(0);
         await page.mouse.move(0, 0);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
         await attachTree(page.locator("body"), `palette-${name}-${theme.attribute}-${width}.a11y.yml`);
       }
+      await page.goto(server.baseUrl + `/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}`);
       const add = page.getByRole("region", { name: "Session Panel", exact: true }).getByRole("button", { name: "Add workers", exact: true });
       await add.click();
       const dialog = page.getByRole("dialog", { name: "Add workers", exact: true });

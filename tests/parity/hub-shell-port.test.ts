@@ -38,13 +38,15 @@ for (const theme of ["light", "dark"] as const) {
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); Reflect.set(window, "relayParityMotion", false); }, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
+      await expect(page.locator(".hub-assistant-slot")).toBeHidden();
+      await page.getByRole("button", { name: "Assistant", exact: true }).click();
       await expect(page.locator(".hub-assistant-slot")).toBeVisible();
       await expect(page.getByRole("region", { name: "Relay assistant", exact: true })).toBeVisible();
       await expect(page.locator("#hub-panel-assistant")).toHaveCount(1);
       expect(await page.locator(".hub-assistant-slot").evaluate(element => { const box = element.getBoundingClientRect(); return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)); })).toBe(true);
       const underlying = page.locator(".dashboard-shell");
       const before = await underlying.boundingBox();
-      await page.getByRole("button", { name: "Chats", exact: true }).click();
+      await page.getByRole("button", { name: "History", exact: true }).click();
       await expect(page.locator(".hub-chat-row")).toHaveCount(4);
       await capture(page, info, "chats", theme);
       await page.getByRole("button", { name: "Rename chat Update Alex Rivera work email", exact: true }).click();
@@ -142,7 +144,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Finish setup", exact: true }).click();
       await capture(page, info, "ready", theme);
       await page.getByRole("button", { name: "Go to dashboard", exact: true }).click();
-      await expect(page.locator(".hub-assistant-slot")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Assistant", exact: true })).toBeVisible();
       expect(writes).toEqual([]); expect(errors).toEqual([]);
     } finally { await server.close(); }
   });
@@ -202,13 +204,13 @@ for (const theme of ["light", "dark"] as const) {
       await page.locator('[data-settings-path="appearance.animations"] .ds-switch-control').click(); await page.emulateMedia({ reducedMotion: "reduce" });
       await expect(animations).toBeChecked(); expect(writes).toBe(2);
       await expect(page.getByText("Settings save unconfirmed", { exact: true })).toHaveCount(0);
-      expect(await page.locator(".hub-logout").evaluate(element => getComputedStyle(element).transitionDuration)).toBe("0s");
       await page.getByRole("link", { name: "Storage", exact: true }).click();
       for (const selector of [".ds-form-group > .ds-result-row", ".diagnostic-check-entry > .ds-result-row"]) {
         const row = page.locator(`.settings-tab-body ${selector}`).first();
         await expect(row).toHaveCSS("padding-left", "18px"); await expect(row).toHaveCSS("padding-right", "18px");
       }
       await page.getByRole("button", { name: "Back to dashboard", exact: true }).click();
+      expect(await page.locator(".hub-logout").evaluate(element => getComputedStyle(element).transitionDuration)).toBe("0s");
       const notifications = page.getByRole("button", { name: /^Notifications,/ });
       await notifications.hover(); await expect(notifications).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
       await page.mouse.move(0, 0);

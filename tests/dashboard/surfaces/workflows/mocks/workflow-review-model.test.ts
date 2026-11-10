@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,expect,it } from "vitest";
 import { approveMockRun,initialMockDraft,mockRunLog,mockRunsForDraft,seedMockRuns } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import { addMockReviewRecord,discardMockReview,editReviewRecord,mockReviewProps,restoreMockReview,reviewApprovalError,reviewCanApprove,reviewIsReadOnly,reviewRecords,reviewValue,updateMockReview } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
+import {discardMockReview,editReviewRecord,mockReviewProps,restoreMockReview,reviewApprovalError,reviewCanApprove,reviewIsReadOnly,reviewRecords,reviewValue,updateMockReview } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { RecordReview } from "../../../../../src/dashboard/surfaces/run-detail/review/review.js";
 
 const preparation = (id: "emergency-contact" | "onbase" | "oath-upload") => mockRunsForDraft(id, { ...initialMockDraft(id), files: [{ name: "fictional.pdf", size: 1024, digest: "fixture" }] }, 1);
@@ -31,9 +31,8 @@ describe("complete workflow presentation mocks", () => {
     expect(() => approveMockRun([source], source.id)).toThrow("MOCK_APPROVAL_PARENT_MISSING");
     expect(() => approveMockRun(approved, source.id)).toThrow("MOCK_APPROVAL_UNAVAILABLE");
   });
-  it("adds unresolved records and refuses zero valid selections or discarded preparations", () => {
-    const runs = preparation("onbase"), source = runs.find(run => run.workflowId === "ocr")!, records = addMockReviewRecord(reviewRecords(source));
-    expect(records).toHaveLength(2); expect(records[1].selected).toBe(false); expect(records[1].match).toBe("unresolved");
+  it("refuses zero valid selections or discarded preparations", () => {
+    const runs = preparation("onbase"), source = runs.find(run => run.workflowId === "ocr")!, records = reviewRecords(source);
     const empty = updateMockReview(runs, source.id, records.map(record => ({ ...record, selected: false })));
     expect(() => approveMockRun(empty, source.id)).toThrow("MOCK_APPROVAL_NO_RECORDS");
     const discarded = discardMockReview(empty, source.id);

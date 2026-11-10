@@ -21,7 +21,7 @@ function inventory(directory: string) {
     const directory = process.argv[1];
     process.stdout.write(JSON.stringify(readdirSync(directory).sort().filter(name => name.startsWith("state.db"))
       .map(name => ({ name, bytes: readFileSync(join(directory, name)).toString("base64") }))));
-  `, directory], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  `, directory], { encoding: "utf8" });
   assert.equal(child.status, 0, child.stderr);
   const files = z.array(z.object({ name: z.string(), bytes: z.string() }).strict()).parse(JSON.parse(child.stdout));
   return files.map(file => ({ name: file.name, bytes: Buffer.from(file.bytes, "base64") }));

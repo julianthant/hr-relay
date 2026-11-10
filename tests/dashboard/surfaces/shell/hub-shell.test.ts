@@ -54,7 +54,7 @@ it("invalidates a shown Preflight result on a confirmed model save, even for the
     },
   };
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
-  const effort = current.preference.effort === "light" ? "medium" : "light";
+  const effort = current.preference.effort === "low" ? "medium" : "low";
   let invalidations = 0;
   const preflight = { ...createPreviewPreflightAssistantPort(), invalidate: () => { invalidations++; } };
   const scope: CommandExecutionScope = { actorId: LOCAL_OPERATOR_ACTOR_ID, client, authority: {}, dayRequest: {} };
@@ -104,7 +104,7 @@ it("announces rename and delete only after the chat port acknowledges them and k
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(HubShell, {
       source: "mock", chatsPort: port, settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {}, onRunWorkflow: async () => ({ state: "failed" as const, message: "Unused" }),
     }) })));
-    await act(async () => button("Chats").click());
+    await act(async () => button("History").click());
     await act(async () => button("Delete chat Kept chat").click());
     await act(async () => submit().click());
     assert.equal(status(), "", "no success before the acknowledgment");

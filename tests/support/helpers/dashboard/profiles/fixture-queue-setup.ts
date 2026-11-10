@@ -1,7 +1,6 @@
 import { personLookupDescriptor } from "../../registered-workflows.js";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema, type DashboardDayWire, type QueueSurfaceWire } from "../../../../../src/models/dashboard/projection.js";
 import { isQueueTopLevel } from "../../../../../src/models/dashboard/queue-parent.js";
-import { PositiveIntSchema } from "../../../../../src/rules/identity/ids.js";
 import { queueRowActions } from "../../../../../src/backend/runs/projections/queue-row-actions.js";
 import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-identity.js";
 import type * as FixtureNotificationsTypes from "../../../fixtures/dashboard/fixture-notifications.js";
@@ -89,8 +88,6 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
           : `run is ${input.status} and has not produced a terminal result`,
       )
       : { state: "present", count: input.warnings.count, first: input.warnings.first } as const;
-    const pauseControl = input.status === "running"
-      ? { state: "running" as const, expectedVersion: PositiveIntSchema.parse(input.seed), command: "pause" as const } : undefined;
     const base = {
       runId: uuidOf(input.seed),
       itemId: uuidOf(input.seed + 5000),
@@ -114,7 +111,6 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
       ],
 
       dryRun: input.dryRun ?? false,
-      ...(pauseControl === undefined ? {} : { pauseControl }),
       priority: input.seed === 9 ? "bulk" : "interactive",
 
       runNumber: input.seed === 4
@@ -149,7 +145,6 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
 
       actions: queueRowActions(personLookupDescriptor.actions, {
         status: input.status,
-        ...(pauseControl === undefined ? {} : { pauseControl }),
         rowRevision: input.seed,
         dryRun: input.dryRun ?? false,
         isChild: input.parentSeed !== undefined,

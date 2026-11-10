@@ -87,12 +87,6 @@ export function mockInputRecord(run: MockRun): ReviewRecord { return run.inputRe
 export function reviewIsReadOnly(run: MockRun): boolean {
   return run.workflowId !== "ocr" || run.approved || run.discarded === true || run.role === "person";
 }
-export function addMockReviewRecord(records: readonly ReviewRecord[]): readonly ReviewRecord[] {
-  const base = records[0];
-  if (!base) throw new Error("MOCK_REVIEW_SHAPE_MISSING");
-  const record: ReviewRecord = { ...base, id: `manual-${records.length + 1}`, selected: false, match: "unresolved", warnings: [], fields: base.fields.map(item => ({ ...item, value: /^section[12]$/u.test(item.key) ? item.value : item.kind === "boolean" ? "false" : "" })) };
-  return [...records, record];
-}
 export function updateMockReview(runs: readonly MockRun[], id: string, records: readonly ReviewRecord[]): readonly MockRun[] {
   const run = runs.find(item => item.id === id);
   if (!run || reviewIsReadOnly(run)) throw new Error("MOCK_REVIEW_READ_ONLY");

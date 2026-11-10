@@ -1,9 +1,6 @@
 import { ArrowLeft,ArrowUp,Check,CircleAlert,CreditCard,Database,Folder,Gauge,UserRound,History,MessagesSquare,Monitor,Search,Settings as SettingsIcon,Sparkles,Table2 } from "lucide-react";
-import { z } from "zod";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
-import type { FrontendBootstrapWire } from "../../../models/dashboard/bootstrap.js";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
-import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../models/dashboard/settings.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, Notice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
@@ -22,13 +19,9 @@ import { StatusMockAccount,StatusMockSubscription } from "./status-mock/status-m
 import { StatusMockAnalytics } from "./status-mock/status-mock-analytics.js";
 import { StatusMockGeneral } from "./status-mock/status-mock-general.js";
 import { statusMock } from "./status-mock/status-mock-model.js";
-import { PreflightSection } from "./preflight/settings-preflight.js";
-import { SETTINGS_DATA_SECTION_IDS,SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
+import { SETTINGS_DATA_SECTION_IDS,SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import { storageNeedsAttention,type StorageHealthSummary } from "./storage/storage-settings-model.js";
-import { StorageSection } from "./storage/storage-settings.js";
 
-
-const APP_DATA_LOCATIONS = z.strictObject({ stateRoot: z.string().min(1), artifactRoot: z.string().min(1) });
 
 export type { SettingsSection,StorageHealthSummary };
 
@@ -37,8 +30,6 @@ export type { SettingsSection,StorageHealthSummary };
 const RENDERED_SERVED_SECTION_IDS: ReadonlySet<string> = new Set([
   ...EditableSettingsSectionIdSchema.options,
   "credentials",
-  "storage",
-  SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
 ]);
 
 
@@ -151,9 +142,6 @@ export function SettingsGear({
 
 
 export function SettingsPage({
-  storage,
-  sections,
-  workflowLabels,
   section,
   searchTarget,
   dataContent,
@@ -164,18 +152,12 @@ export function SettingsPage({
   actorId,
   profileName,
   descriptorFingerprint,
-  preflight: _preflight,
   onSection,
   onExitGuardChange,
   onSaved,
   onSaveProblem,
   onClose,
-  onHistoryCleared,
 }: {
-  storage: StorageHealthSummary;
-  sections: readonly SettingsSection[];
-  /** Join capability rows to the bootstrap’s single workflow label source. */
-  workflowLabels: ReadonlyMap<string, string>;
   /** the open section id — `""` is the page's own default, from `?settings=` */
   section: string;
   searchTarget?: string;
@@ -187,11 +169,9 @@ export function SettingsPage({
   actorId: string;
   profileName: string;
   descriptorFingerprint: string;
-  preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
   onSection: (next: string, target?: string) => void;
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onClose: () => void;
-  onHistoryCleared?: () => void;
   onSaved?: SettingsSaveListener;
   onSaveProblem?: SettingsSaveProblemListener;
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
@@ -210,13 +190,11 @@ export function SettingsPage({
   const [searchVisit, setSearchVisit] = useState(0);
   const navSearch = useRef<HTMLInputElement>(null);
   const searchResults = useRef<HTMLDivElement>(null);
-  const index = useMemo(() => settingsSearchIndex(groups, settingsDocument, editor.editor.state === "loaded"), [groups, settingsDocument, editor.editor.state]);
+  const index = useMemo(() => settingsSearchIndex(groups, settingsDocument), [groups, settingsDocument]);
   const results = useMemo(() => searchSettings(index, navQuery), [index, navQuery]);
   const selectedResult = index.find(result => result.target === searchTarget && result.entry.id === activeId);
   const target = selectedResult?.target;
-  const pathTargetLoading = activeId === "paths" && (searchTarget === "paths.stateRoot" || searchTarget === "paths.artifactRoot") && editor.editor.state === "loading";
   const searchContext = useMemo(() => ({ target, visit: searchVisit }), [target, searchVisit]);
-  const appDataLocations = settingsDocument === undefined ? undefined : APP_DATA_LOCATIONS.parse({ stateRoot: settingsDocument.deployment["paths.stateRoot"], artifactRoot: settingsDocument.deployment["paths.artifactRoot"] });
   const content = useRef<HTMLDivElement>(null);
   const scrollPositions = useRef(new Map<string, number>());
   useEffect(() => {
@@ -296,12 +274,11 @@ export function SettingsPage({
 
       <div id="dashboard-settings-content" data-settings-target={target} tabIndex={-1} ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
         <SettingsSearchTargetContext.Provider value={searchContext}><DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]")}>
-        {searchTarget !== undefined && settingsDocument !== undefined && target === undefined && !pathTargetLoading && <Notice tone="warning" title="Setting unavailable" description="Not on the selected page." />}
+        {searchTarget !== undefined && settingsDocument !== undefined && target === undefined && <Notice tone="warning" title="Setting unavailable" description="Not on the selected page." />}
         {editor.editor.state === "failed" && !activeSettingsEditorSection
           && !isDataSection
           && activeId !== "spreadsheets"
-          && activeId !== SETTINGS_PREFLIGHT_SECTION_ID
-          && activeId !== SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
+          && (
           <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />
         )}
         {/* Refuse unknown settings destinations; redirecting would label the wrong page as the requested one. */}
@@ -316,17 +293,12 @@ export function SettingsPage({
         {isDataSection && (activeId === "activity" && mockStatus !== undefined ? <StatusMockAnalytics variant={mockStatus === "analytics-b" ? "b" : "a"} onOpenWorkflow={onOpenWorkflow} /> : dataContent)}
         {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SheetsV2 onOpenRun={onOpenRun} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
-        {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} onHistoryCleared={onHistoryCleared} locations={appDataLocations} />}
-        {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} workflowLabels={workflowLabels} />}
         {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && !(resolution.entry.id === "general" && mockStatus !== undefined) && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} deleteAccount={deleteAccount} />
         )}
         {resolution.state === "open" && resolution.entry.id === "general" && mockStatus !== undefined && <StatusMockGeneral />}
         {resolution.state === "open" && resolution.entry.id === "account" && (mockStatus !== undefined ? <StatusMockAccount frame={mockStatus} /> : <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} />)}
         {resolution.state === "open" && resolution.entry.id === "subscription" && <StatusMockSubscription frame={mockStatus ?? "subscription"} />}
-        {resolution.state === "open" && resolution.entry.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
-          <PreflightSection editor={editor} workflowLabels={workflowLabels} />
-        )}
         {resolution.state === "open"
           && resolution.entry.source === "served"
           && !RENDERED_SERVED_SECTION_IDS.has(resolution.entry.id) && (
