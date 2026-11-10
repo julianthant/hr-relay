@@ -1109,8 +1109,15 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/activity-population", path: "report.workflows[].registration.reason", origin: "repository-authored" },
   ...['wire/activity-population', 'wire/activity-population-selected', 'wire/activity-population-export', 'wire/activity-report'].flatMap(surface => {
     const prefix = surface === 'wire/activity-report' ? '' : surface === 'wire/activity-population' ? 'report.' : 'selection.report.';
-    return ['failures[].registration.label', 'failures[].registration.reason', 'failures[].sentence', 'workflows[].typicalTime.meanMs.reason']
-      .map(path => ({ surface, path: `${prefix}${path}`, origin: 'repository-authored' as const }));
+    return [
+      'days[].typicalTime.medianMs.reason',
+      'failures[].registration.label', 'failures[].registration.reason', 'failures[].sentence',
+      'typicalMedian.medianMs.reason',
+      'workflows[].days[].typicalTime.medianMs.reason',
+      'workflows[].failedAt[].reason', 'workflows[].failedAt[].title',
+      'workflows[].typicalMedian.medianMs.reason',
+      'workflows[].typicalTime.meanMs.reason',
+    ].map(path => ({ surface, path: `${prefix}${path}`, origin: 'repository-authored' as const }));
   }),
   { surface: "wire/activity-population", path: "successfulTiming[].workflowId", origin: "repository-authored" },
   { surface: "wire/activity-population-selected", path: "browse.identity.browse.query", origin: "operator-authored" },
