@@ -20,11 +20,12 @@ function visitRange(database:AuthorityDatabase,from:string,to:string,visit:(row:
 }
 
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { ActivityReportWireSchema, ACTIVITY_SAMPLE_LIMIT, type ActivityReportWire, type ActivityWorkflowTotal } from "../../../models/dashboard/activity.js";
+import { ActivityReportWireSchema, activityMedian, ACTIVITY_MEDIAN_ABSENT_REASON, ACTIVITY_SAMPLE_LIMIT, type ActivityReportWire, type ActivityWorkflowTotal } from "../../../models/dashboard/activity.js";
+import { createActivityAnalytics, failureStepOfTaskSpans, taskSpansForRun } from "./activity-analytics.js";
 import { buildActivityVolumeBoundarySkeleton, createActivityDatePartReader } from "../../../models/dashboard/activity-volume.js";
 import { TERMINAL_QUEUE_STATUSES } from "../../../models/dashboard/projection.js";
 
-type ActivityWorkflowCounts = Omit<ActivityWorkflowTotal,"workflowId"|"registration"|"needsAttention"|"typicalTime">;
+type ActivityWorkflowCounts = Omit<ActivityWorkflowTotal, "workflowId" | "registration" | "needsAttention" | "typicalTime" | "outcomes" | "days" | "failedAt" | "typicalMedian">;
 function emptyActivityWorkflowCounts():ActivityWorkflowCounts {
   return {runs:0,completion:{readBack:0,warnings:0,warningsUnknown:0},failed:0,cancelled:0,partial:0,open:0};
 }
@@ -94,8 +95,8 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
     });
     const people=unavailableRows===0?{state:"present",distinct:identities.size,evidenceRows}:{state:"absent",evidenceRows,unavailableRows,
       reason:`${String(unavailableRows)} of ${String(evidenceRows+unavailableRows)} current Separations run/member rows lack validated canonical identity; distinct people is unavailable`};
-    const days = new Map<string, number>();
     const workflows = new Map<string, ActivityWorkflowCounts>();
+    const analytics = createActivityAnalytics();
     const statuses = new Map<string, { runs: number; sample: string[] }>();
     const outcomes = new Map<string, number>();
     const failures = new Map<string, { workflowId: string; code: string; runs: number; transient: number; sample: string[] }>();
@@ -109,7 +110,6 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
       const day=row.localDay,authority=row;
       const surface={workflowId:row.workflow,status:deriveRunStatus(row),runId:row.runId};
       const warningVerdict={kind:row.warningCount===null?"unread":row.warningCount===0?"none":"present"};
-      days.set(day, (days.get(day) ?? 0) + 1);
       const counts = workflows.get(surface.workflowId) ?? emptyActivityWorkflowCounts();
       counts.runs += 1;
       workflows.set(surface.workflowId, counts);
@@ -142,20 +142,17 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
         completion[arm] += 1;
       }
 
+      const durationMs = authority.lifecycle.state === "terminal" && row.durationMs !== null ? row.durationMs : null;
+      const failureStep = surface.status === "failed"
+        ? failureStepOfTaskSpans(taskSpansForRun(database, surface.runId), deps.descriptors.resolve(surface.workflowId)?.timeline)
+        : undefined;
+      analytics.observe({ workflowId: surface.workflowId, day, status: surface.status, lifecycleState: authority.lifecycle.state, durationMs, ...(failureStep === undefined ? {} : { failureStep }) });
       if (authority.lifecycle.state !== "terminal") continue;
       terminalRuns += 1;
       outcomes.set(authority.lifecycle.outcome, (outcomes.get(authority.lifecycle.outcome) ?? 0) + 1);
 
-
-
-      if (row.durationMs !== null) {
-        measured.push({
-          runId: surface.runId,
-          ms: row.durationMs,
-        });
-      } else {
-        unmeasured += 1;
-      }
+      if (durationMs !== null) measured.push({ runId: surface.runId, ms: durationMs });
+      else unmeasured += 1;
       const { failureId } = authority.lifecycle;
       if (failureId === undefined) continue;
       if (row.failureCode === null || row.failureTransient === null) throw new Error("run-summary-failure-unavailable");
@@ -177,7 +174,7 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
       if (descriptor === undefined) {
         unregisteredCategoryRuns += counts.runs;
         return {
-          ...counts, needsAttention: counts.failed, typicalTime,
+          ...counts, ...analytics.workflow(workflowId), needsAttention: counts.failed, typicalTime,
           workflowId,
           registration: {
             state: "unregistered",
@@ -187,7 +184,7 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
       }
       categories.set(descriptor.category, (categories.get(descriptor.category) ?? 0) + counts.runs);
       return {
-        ...counts, needsAttention: counts.failed, typicalTime,
+        ...counts, ...analytics.workflow(workflowId), needsAttention: counts.failed, typicalTime,
         workflowId,
         registration: {
           state: "registered",
@@ -201,6 +198,7 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
     const sorted = [...measured].sort((a, b) => a.ms - b.ms);
     const longest = sorted.at(-1);
     const median = sorted.length === 0 ? undefined : sorted[Math.floor((sorted.length - 1) / 2)];
+    const typicalMedian = activityMedian(measured.map(entry => entry.ms));
     const volume = {
       state:"complete" as const,
       timeZone:volumeSkeleton.timeZone,
@@ -221,8 +219,10 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
       inFlightRuns: inRange.length - terminalRuns,
       people,
       completion,
+      outcomeSplit: analytics.outcomeSplit(),
+      typicalMedian,
       volume,
-      days: [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, runs]) => ({ day, runs })),
+      days: analytics.days(),
       workflows: workflowTotals,
       categories: [
         ...[...categories.entries()].sort(([a], [b]) => a.localeCompare(b))
@@ -242,10 +242,10 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
         measuredRuns: measured.length,
         unmeasuredRuns: unmeasured,
         medianMs: median === undefined
-          ? { state: "absent", reason: "no terminal run in range carries both a start and an end instant" }
+          ? { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON }
           : { state: "present", value: median.ms },
         longestMs: longest === undefined
-          ? { state: "absent", reason: "no terminal run in range carries both a start and an end instant" }
+          ? { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON }
           : { state: "present", value: longest.ms, runId: longest.runId },
         totalMs: measured.reduce((total, entry) => total + entry.ms, 0),
       },
