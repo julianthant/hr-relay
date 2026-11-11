@@ -18,13 +18,10 @@
       - text: Personal
       - link "General":
         - /url: "?settings=general"
-      - link "Credentials":
-        - /url: "?settings=credentials"
-      - text: Advanced
-      - link "Paths":
-        - /url: "?settings=paths"
-      - link "Routes":
-        - /url: "?settings=routes"
+      - link "Account":
+        - /url: "?settings=account"
+      - link "Subscription":
+        - /url: "?settings=subscription"
       - text: Data
       - link "Spreadsheets":
         - /url: "?settings=spreadsheets"
@@ -32,11 +29,6 @@
         - /url: "?settings=explorer"
       - link "Analytics":
         - /url: "?settings=activity"
-      - text: Status
-      - link "Storage":
-        - /url: "?settings=storage"
-      - link "Preflight":
-        - /url: "?settings=preflight"
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
@@ -44,61 +36,87 @@
       - heading "Explorer" [level=1]
       - paragraph: Browse workflows, their steps and field sources.
       - combobox "Explorer workflow": Person Lookup
+      - region "Run options":
+        - heading "Run options" [level=2]
+        - text: Lookup path
+        - combobox "Lookup path": Search
+        - text: Search by
+        - combobox "Search by": Name
+        - text: CRM cross-check
+        - combobox "CRM cross-check": "On"
+        - text: CRM dates
+        - combobox "CRM dates": Not requested
       - list "Workflow steps":
         - listitem:
-          - heading "Person Lookup" [level=2]
-          - text: You
-          - paragraph: Searches Person Org by EID/name or matches a legal identity in HR-Tasks, with an optional CRM cross-check on either mode. It writes nothing, anywhere — so every run of it is already a rehearsal.
-          - text: Lookup path
-          - combobox "Lookup path preview": Search
-          - text: CRM cross-check
-          - combobox "CRM cross-check preview": Enabled
-          - text: Search identifier
-          - combobox "Search identifier preview": Name
-          - text: Caller CRM dates
-          - combobox "Caller CRM dates preview": Not requested
+          - heading "Open browser sessions" [level=2]
+          - text: UCPath CRM
         - listitem:
-          - heading "Searching" [level=2]
+          - heading "Search for person" [level=2]
           - text: UCPath
-          - paragraph: Search UCPath's Person Org Summary for the typed EID or name and narrow to a single person.
-          - group:
-            - strong: Search criteria
-            - text: Fill
-            - button "Show source for Employee ID": Employee ID 10000001
-            - button "Show source for Name": Name Jordan Lee
-            - button "Show source for Campus": Campus SDCMP
-          - text: Search Person Organizational Summary
-          - group:
-            - strong: UCPath person
-            - text: Read Employee ID 10000001 Name Jordan Lee Department HDH Job title Student assistant Job record 0 HR status Active
+          - paragraph: Searches UCPath by name.
+          - paragraph: Keeps HDH departments only
+          - heading "Person Organizational Summary" [level=4]
+          - text: Fill
+          - button "Show source for Last name": Last name Morrow
+          - button "Show source for First name": First name Bea
+          - paragraph: Clicks Search
+          - heading "Search results" [level=4]
+          - text: Pick
+          - table "Search results":
+            - rowgroup:
+              - row "Choice Name Employee ID Department HR status":
+                - columnheader "Choice"
+                - columnheader "Name"
+                - columnheader "Employee ID"
+                - columnheader "Department"
+                - columnheader "HR status"
+            - rowgroup:
+              - row "Morrow, Bea A. 10000001 Campus Dining Operations Active":
+                - cell
+                - cell "Morrow, Bea A."
+                - cell "10000001"
+                - cell "Campus Dining Operations"
+                - cell "Active"
+              - row "Morrow, Bea 10000042 Housing Operations Active":
+                - cell
+                - cell "Morrow, Bea"
+                - cell "10000042"
+                - cell "Housing Operations"
+                - cell "Active"
+              - row "Morrow, Beatrice 10000077 HDH Catering On leave":
+                - cell
+                - cell "Morrow, Beatrice"
+                - cell "10000077"
+                - cell "HDH Catering"
+                - cell "On leave"
+              - row "Enter employee ID":
+                - cell
+                - cell "Enter employee ID"
+                - cell:
+                  - textbox "Enter employee ID":
+                    - /placeholder: 8 digits
+          - paragraph: Which Bea Morrow is this run about? Logs asks you to pick one, or to type the employee ID.
+          - combobox "Search result": Several people match
+          - text: Waits for you to pick one in Logs, then continues.
         - listitem:
-          - heading "Cross-verification" [level=2]
+          - heading "Cross-check identity" [level=2]
           - text: CRM
-          - paragraph: Match the UCPath person against the CRM onboarding record, so a name collision cannot resolve to the wrong person.
-          - paragraph: "Condition: Search mode and CRM check is enabled."
-          - group:
-            - strong: Cross-verification
-            - text: Read and process CRM match Confirmed
-          - text: Find the onboarding record in CRM
-          - group:
-            - strong: Identity cross-check
-            - text: Read UCPath name Jordan Lee CRM name Jordan Lee Campus email jordan.lee@example.com Start date 08/03/2026 Match Confirmed
+          - paragraph: Compares the person with their CRM onboarding record.
+          - paragraph: Employee ID agrees with UCPath
+          - heading "CRM onboarding search" [level=4]
+          - text: Fill
+          - button "Show source for Name": Name Morrow, Bea A.
+          - heading "CRM onboarding record" [level=4]
+          - text: Read Employee ID 10000001 Start date 03/14/2031
+          - combobox "CRM cross-check result": Records agree
+          - text: Continues to Read employment status.
         - listitem:
-          - heading "Active status" [level=2]
+          - heading "Read employment status" [level=2]
           - text: UCPath
-          - paragraph: Read the HR status. A separated person is a successful lookup with a negative answer, never a failure.
-          - group:
-            - strong: Active status
-            - text: Read and process Termination date None
-          - text: Open Workforce Job Summary
-          - group:
-            - strong: Employment status
-            - text: Read HR status Active Start date 08/03/2026 End date — Termination reason — Found in UCPath Yes
+          - paragraph: Reads department, HR status and hire date.
+          - heading "Workforce Job Summary" [level=4]
+          - text: Read Department Campus Dining Operations HR status Active Hire date 03/14/2031
+          - combobox "Employment status result": Active
+          - text: The run ends as Active.
 - status
-- region "Session Panel":
-  - group "Session actions":
-    - button "Sessions 2 running·1 starting·1 idle"
-    - button "Add workers"
-    - button "Settings" [pressed]
-    - button "Log out"
 - region "Notifications"

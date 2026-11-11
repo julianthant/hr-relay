@@ -1,12 +1,15 @@
 import { useState, type ReactNode } from "react";
+import { RunList, RunListRow } from "../ds/primitives/run-list.js";
 import {
   ArrowUpDown,
   ArrowUpRight,
   Camera,
+  ChevronDown,
   ChevronsUp,
   ClipboardList,
   Inbox,
   Info,
+  MoreHorizontal,
   Pencil,
   Play,
   Plus,
@@ -20,6 +23,7 @@ import { cn } from "../lib/utils.js";
 import {
   Badge,
   Banner,
+  ConfirmDialog,
   BulletList,
   Button,
   Card,
@@ -115,6 +119,16 @@ import {
   useToasts,
   type DsRankedItem,
   type DsStatus,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuItemCopy,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "../ds/ui.js";
 
 const KIT_SECTIONS = [
@@ -131,7 +145,7 @@ export function KitPage() {
   return (
     <TooltipProvider delayDuration={250}>
       <ToastProvider>
-        <div className={cn("flex min-h-screen flex-col bg-[var(--ds-surface-page)]", dsFg.base)}>
+        <div className={cn("flex min-h-screen flex-col bg-[var(--ds-surface-page)] [--ds-accent:var(--ui-info)] [--ds-accent-fg:var(--ui-canvas)] [--ds-accent-hover:var(--ui-info)] [--ds-brand-solid-bg:var(--ui-info)] [--ds-brand-solid-fg:var(--ui-canvas)] [--ds-brand-solid-hover:var(--ui-info)]", dsFg.base)}>
           <KitHeader />
           <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[var(--ds-space-page)] px-[var(--ds-space-section)] py-[var(--ds-space-section)]">
             <StatusSection />
@@ -197,7 +211,7 @@ function Section({
     >
       <div className="flex flex-col gap-[var(--ds-space-hair)] border-b border-[color:var(--ds-border-subtle)] pb-[var(--ds-space-base)]">
         <h2 className={cn(dsText.section, "font-semibold")}>{title}</h2>
-        <p className={cn(dsText.body, "max-w-[80ch] text-[color:var(--ds-fg-muted)]")}>{note}</p>
+        <p className={cn(dsText.body, "max-w-[110ch] text-[color:var(--ds-fg-muted)]")}>{note}</p>
       </div>
       {children}
     </section>
@@ -316,26 +330,38 @@ function StatusSection() {
 
 function ActionsSection() {
   const [loading, setLoading] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [browserMode, setBrowserMode] = useState<"headed" | "headless">("headed");
   return (
     <Section
       id="actions"
       title="Actions"
-      note="One primary per surface, one danger per surface. Variant is semantic, not decorative — outline for peers in a toolbar, ghost for anything that must not compete."
+      note="Soft for most actions, soft bordered for pickers, plain for icons and minor ones, blue to confirm a dialog."
     >
-      <Row label="Variants">
+      <Row label="Soft">
+        <Button>Change</Button>
+        <Button icon={<Upload aria-hidden className="size-3.5" />}>Import</Button>
+        <Button variant="muted">Sync now</Button>
+      </Row>
+      <Row label="Soft bordered">
+        <Button variant="outline" className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden className="size-3.5" />}>This week</Button>
+        <Button variant="outline">Export</Button>
+      </Row>
+      <Row label="Plain">
+        <Button variant="ghost" iconAfter={<ArrowUpRight aria-hidden className="size-3.5" />}>Open receipt</Button>
+        <IconButton label="More" icon={<MoreHorizontal aria-hidden className="size-3.5" />} />
+      </Row>
+      <Row label="Two-way switch">
+        <SegmentedChoice hideLabel label="Theme" value={theme} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} onChange={setTheme} />
+        <SegmentedChoice hideLabel label="Browser mode" value={browserMode} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} onChange={setBrowserMode} />
+      </Row>
+      <Row label="Blue primary">
         <Button variant="brand" size="toolbar" icon={<Play aria-hidden className="size-3.5" />}>
           Start a run
         </Button>
-        <Button variant="primary" icon={<Play aria-hidden className="size-3.5" />}>
-          Run
-        </Button>
-        <Button variant="muted">Cancel</Button>
-        <Button variant="outline" icon={<Upload aria-hidden className="size-3.5" />}>
-          Upload
-        </Button>
-        <Button variant="ghost" iconAfter={<ArrowUpRight aria-hidden className="size-3.5" />}>
-          Open receipt
-        </Button>
+        <Button variant="primary">Confirm</Button>
+      </Row>
+      <Row label="Danger">
         <Button variant="danger" icon={<Trash2 aria-hidden className="size-3.5" />}>
           Delete run
         </Button>
@@ -1029,6 +1055,7 @@ function FormsSection() {
 function OverlaysSection() {
   const [dialog, setDialog] = useState(false);
   const [danger, setDanger] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const { toast } = useToasts();
 
@@ -1044,6 +1071,9 @@ function OverlaysSection() {
         </Button>
         <Button variant="dangerGhost" onClick={() => setDanger(true)}>
           Open destructive dialog
+        </Button>
+        <Button variant="secondary" onClick={() => setConfirm(true)}>
+          Open confirm dialog
         </Button>
         <Button variant="secondary" onClick={() => setDrawer(true)}>
           Open drawer
@@ -1121,6 +1151,22 @@ function OverlaysSection() {
         </Tooltip>
       </Row>
       {/* Essential detail uses click disclosure so pointer, touch and keyboard can reach it. */}
+      <Row label="Search">
+        <div className="ds-toolbar-row flex items-center gap-2">
+        <span className="w-[280px]"><SearchInput aria-label="Search the specimen" placeholder="Search" shortcut={<Kbd>/</Kbd>} /></span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><Button variant="outline" className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden className="size-3.5" />}>Tags</Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[240px]">
+            <div className="p-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find a tag" placeholder="Find a tag" /></div>
+            <DropdownMenuItem>Contact roster</DropdownMenuItem>
+            <DropdownMenuItem>Pinned</DropdownMenuItem>
+            <DropdownMenuItem>SharePoint</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        </div>
+      </Row>
+      <Row label="Menus"><KitMenus /></Row>
+      <Row label="Rows"><KitRows /></Row>
       <Row label="Popover">
         <Popover>
           <PopoverTrigger asChild>
@@ -1180,22 +1226,12 @@ function OverlaysSection() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={danger} onOpenChange={setDanger}>
-        <DialogContent
-          size="sm"
-          title="Delete this run?"
-          description="The tracker row and its evidence are removed. This cannot be undone."
-        >
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setDanger(false)}>
-              Keep it
-            </Button>
-            <Button variant="danger" onClick={() => setDanger(false)}>
-              Delete run
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog open={danger} onOpenChange={setDanger} destructive title="Delete this spreadsheet?"
+        description="Its saved versions and column mapping are removed. This cannot be undone." detail="Contact roster · 6 versions"
+        confirmLabel="Delete spreadsheet" onConfirm={() => setDanger(false)} />
+      <ConfirmDialog open={confirm} onOpenChange={setConfirm} title="Start a live run?"
+        description="Relay will submit real transactions to UCPath for 3 people." detail="Separations · Kuali 48216, 48220, 48224"
+        confirmLabel="Start live run" onConfirm={() => setConfirm(false)} />
 
       <Drawer open={drawer} onOpenChange={setDrawer}>
         <DrawerContent title="Alvarez, Marisol" description="se-140211-9f3a · Separations">
@@ -1312,4 +1348,71 @@ function FoundationsSection() {
       </div>
     </Section>
   );
+}
+
+/** The four shapes of the one menu style: plain list, with icons, with sections, two-line items. */
+function KitMenus() {
+  const [sort, setSort] = useState("newest");
+  const [type, setType] = useState("all");
+  const [mode, setMode] = useState("ask");
+  const trigger = (label: string) => <DropdownMenuTrigger asChild><Button variant="outline" className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden />}>{label}</Button></DropdownMenuTrigger>;
+  return <>
+    <DropdownMenu>{trigger("Plain list")}
+      <DropdownMenuContent align="start" className="w-[220px]">
+        <DropdownMenuRadioGroup value={sort} onValueChange={setSort}>
+          <DropdownMenuRadioItem value="newest">Newest first</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="oldest">Oldest first</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="name">Name</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+    <DropdownMenu>{trigger("With icons")}
+      <DropdownMenuContent align="start" className="w-[220px]">
+        <DropdownMenuItem><Pencil aria-hidden />Rename</DropdownMenuItem>
+        <DropdownMenuItem><ClipboardList aria-hidden />Copy details</DropdownMenuItem>
+        <DropdownMenuItem><Camera aria-hidden />Screenshots</DropdownMenuItem>
+        <DropdownMenuItem disabled><Inbox aria-hidden />Archive</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+    <DropdownMenu>{trigger("With sections")}
+      <DropdownMenuContent align="start" className="w-[240px]">
+        <div className="px-0.5 pb-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find an option" placeholder="Find an option" /></div>
+        <DropdownMenuGroup><DropdownMenuLabel>Type</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={type} onValueChange={setType}>
+            <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="runs">Runs</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup><DropdownMenuLabel>Sort by</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={sort} onValueChange={setSort}>
+            <DropdownMenuRadioItem value="newest">Newest first</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="oldest">Oldest first</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+    <DropdownMenu>{trigger("Two-line items")}
+      <DropdownMenuContent align="start" className="w-[300px]">
+        <DropdownMenuRadioGroup value={mode} onValueChange={setMode}>
+          <DropdownMenuRadioItem value="ask"><DropdownMenuItemCopy title="Ask first" description="Relay asks before each live write." /></DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="auto"><DropdownMenuItemCopy title="Run on its own" description="Only for dry runs and approved workflows." /></DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+    <Select aria-label="Version" value="v6" onChange={() => undefined} className="w-[96px]"><option value="v6">v6</option><option value="v5">v5</option></Select>
+  </>;
+}
+
+/** The one default row size: one-line row, two-line row and a table, all from the `--ds-row-*` tokens. */
+function KitRows() {
+  return <div className="grid w-[640px] max-w-full gap-4">
+    <RunList title="One-line and two-line rows">
+      <RunListRow title="One-line row"><Select aria-label="Version" value="v6" onChange={() => undefined} className="w-[76px]"><option value="v6">v6</option></Select></RunListRow>
+      <RunListRow title="Two-line row" description="A grey line under the title."><Button variant="secondary">Action</Button></RunListRow>
+      <RunListRow title="Two-line row with a switch" description="Controls are 28px."><Switch hideLabel label="Example" checked onCheckedChange={() => undefined} className="!min-h-0 !w-auto !py-0" /></RunListRow>
+    </RunList>
+    <div className="ds-table-list-frame"><table aria-label="Rows example"><thead><tr><th>Name</th><th>Source</th><th>Version</th></tr></thead>
+      <tbody><tr><td>Contact roster</td><td>SharePoint</td><td>v6</td></tr><tr><td>I-9 tracker</td><td>Pinned</td><td>v3</td></tr></tbody></table></div>
+  </div>;
 }

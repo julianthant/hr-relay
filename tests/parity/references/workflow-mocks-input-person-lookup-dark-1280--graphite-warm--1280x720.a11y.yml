@@ -7,9 +7,9 @@
 # capturedAt: 2026-08-03
 
 - region "Notifications"
-- dialog "Start a run":
+- dialog "Start run":
   - banner:
-    - heading "Start a run" [level=2]
+    - heading "Start run" [level=2]
     - paragraph: Person Lookup · Workflow preview
     - button "Close"
   - complementary:
@@ -47,7 +47,7 @@
       - heading "Utils" [level=3]
       - list:
         - listitem:
-          - button "CRM Doc Download"
+          - button "Onboarding Documents"
       - heading "OnBase" [level=3]
       - list:
         - listitem:
@@ -60,32 +60,43 @@
     - listitem:
       - button "1 Input": Input
     - listitem:
-      - button "2 Options" [disabled]: Options
-    - listitem:
-      - button "3 Confirm" [disabled]: Confirm
-  - heading "Run input" [level=3]
-  - paragraph: Each entry starts one run.
+      - button "2 Options": Options
   - region "Input":
-    - group "Lookup mode":
-      - text: Lookup mode
-      - radio "Search" [checked]
-      - text: Search
-      - radio "Match"
-      - text: Match
-    - checkbox "CRM check" [checked]
-    - text: CRM check Employee IDs or names
-    - textbox "Employee IDs or names":
-      - /placeholder: 10000001; Lee, Jordan
-      - text: "10000001"
-    - paragraph: Separate people with a semicolon or a new line.
+    - region "Lookup":
+      - heading "Lookup" [level=4]
+      - text: Lookup mode Search by ID or name, or match on details.
+      - group "Lookup mode":
+        - text: Lookup mode
+        - radio "Search" [checked]
+        - text: Search
+        - radio "Match"
+        - text: Match
+      - text: CRM check Cross-check each person against CRM.
+      - switch "CRM check" [checked]
+      - text: CRM check
+    - region "Input":
+      - heading "Input" [level=4]
+      - paragraph: Employee IDs or names. Separate people with a semicolon or Shift+Enter.
+      - textbox "Employee IDs or names":
+        - /placeholder: 10000001; Lee, Jordan
+        - text: "10000001"
     - region "Parsed input":
       - heading "Parsed input" [level=4]
-      - text: 1 run
-      - list:
-        - listitem:
-          - text: 1. 10000001
-          - button "Remove 10000001"
+      - text: 1 run 10000001
+      - button "Remove 10000001"
+    - region "Reference spreadsheets":
+      - heading "Reference spreadsheets" [level=4]
+      - paragraph: Spreadsheets this run looks people up in. Needs Employee ID and Name.
+      - text: Contact roster Roster
+      - button "Contact roster worksheets, Roster": Roster
+      - combobox "Contact roster version": v6
+      - button "Remove Contact roster"
+      - text: I-9 tracker Sheet1
+      - button "I-9 tracker worksheets, Sheet1": Sheet1
+      - combobox "I-9 tracker version": v3
+      - button "Remove I-9 tracker"
+    - button "Add spreadsheet"
   - contentinfo:
-    - text: 1 runPerson Lookup
+    - text: Person Lookup4 of 4 stepsPriority Enter to continue
     - button "Cancel"
     - button "Continue"

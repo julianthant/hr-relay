@@ -8,7 +8,7 @@
 
 - region "Relay assistant":
   - button "Action proof" [disabled]
-  - button "Chats" [disabled]
+  - button "History" [disabled]
   - button "New chat"
   - button "Close assistant" [disabled]
   - log "Assistant conversation":
@@ -21,7 +21,6 @@
     - group "Message controls":
       - button "Add files"
       - button "Ask before every action" [disabled]
-      - 'button "Model: Model unavailable" [disabled]': Model unavailable
-      - 'button "Thinking effort: Effort unavailable" [disabled]': Effort unavailable
+      - 'button "Model: Model unavailable, Effort unavailable effort" [disabled]': Model unavailable Effort unavailable
       - button "Voice input" [disabled]
       - button "Send message" [disabled]

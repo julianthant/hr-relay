@@ -6,144 +6,59 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- link "Skip to content":
-  - /url: "#dashboard-main-region"
-- complementary "Workspace":
-  - heading "Relay" [level=2]
-  - button "Notifications, 3 unread"
-  - button "Search runs"
-  - navigation "Workflows":
-    - heading "Search" [level=3]
-    - list:
-      - listitem:
-        - button "Person Lookup": Person Lookup 3
-      - listitem:
-        - button "I-9 Lookup"
-    - heading "Separations" [level=3]
-    - list:
-      - listitem:
-        - button "Separations"
-      - listitem:
-        - button "I-9 Check": I-9 Check 1
-    - heading "Onboarding" [level=3]
-    - list:
-      - listitem:
-        - button "Onboarding"
-      - listitem:
-        - button "Oath Signature": Oath Signature 1
-      - listitem:
-        - button "Oath Upload": Oath Upload 1
-      - listitem:
-        - button "Emergency Contact": Emergency Contact 1
-    - heading "Work Study" [level=3]
-    - list:
-      - listitem:
-        - button "Work-Study"
-    - heading "Payroll" [level=3]
-    - list:
-      - listitem:
-        - button "Kronos Pay Rule"
-    - heading "Utils" [level=3]
-    - list:
-      - listitem:
-        - button "CRM Doc Download"
-      - listitem:
-        - button "SharePoint Download"
-    - heading "OnBase" [level=3]
-    - list:
-      - listitem:
-        - button "OnBase": OnBase 1
-    - heading "Timekeeping" [level=3]
-    - list:
-      - listitem:
-        - button "Old Kronos Reports"
-- main:
-  - heading "Oath Signature queue" [level=1]
-  - region "Queue":
-    - text: Active 1
-    - button "single-oath.pdf — running" [pressed]:
-      - text: single-oath.pdf Running Review extracted records 2 / 5 steps 10:04 AM
-      - button "Attempts for single-oath.pdf": "#1"
-      - text: OS76818473 44s
-      - button "Retry"
-      - button "Delete"
-  - region "Action panel":
-    - group "Action panel controls":
-      - button "Start a run"
-      - button "Filter queue by status": Status
-      - combobox "Sort the queue": Newest first
-      - button "Attention first" [pressed]
-      - button "Pause all runs"
-    - group "Log date controls":
-      - text: Dashboard date*
-      - group "Dashboard date*":
-        - spinbutton "month, Dashboard date*": "08"
-        - spinbutton "day, Dashboard date*": "03"
-        - spinbutton "year, Dashboard date*": "2026"
-        - button "Choose date Dashboard date*"
-  - region "Selected run logs":
-    - heading "single-oath.pdf" [level=2]
-    - text: Running
-    - button "Records 1" [pressed]
-    - button "Rerun"
-    - region "OCR records":
-      - region "Record person-1":
-        - region "Source PDF":
-          - text: Page 1
-          - toolbar "PDF controls":
-            - button "Zoom out"
-            - button "Zoom in"
-            - button "Fit page" [disabled]
-          - img "Source page 1 of single-oath.pdf"
-        - group "Record selection":
-          - checkbox "Include Jordan Lee" [checked]
-          - text: Include
-          - heading "Jordan Lee" [level=3]
-        - heading "Employee" [level=4]
-        - group "Employee":
-          - text: Employee ID
-          - textbox "Employee ID": "10000001"
-          - text: First name
-          - textbox "First name": Jordan
-          - text: Last name
-          - textbox "Last name": Lee
-          - text: Printed name
-          - textbox "Printed name": Lee, Jordan
-          - text: Middle initial
-          - textbox "Middle initial"
-          - text: Employment date
-          - textbox "Employment date":
-            - /placeholder: MM/DD/YYYY
-            - text: 04/27/2026
-          - text: Department
-          - textbox "Department": "000412"
-        - heading "Oath" [level=4]
-        - group "Oath":
-          - text: Date signed
-          - textbox "Date signed":
-            - /placeholder: MM/DD/YYYY
-            - text: 04/23/2026
-          - checkbox "Employee signed" [checked]
-          - text: Employee signed
-          - checkbox "Officer signed" [checked]
-          - text: Officer signed Authorized official
-          - textbox "Authorized official": Alex Morgan
-          - text: Official title
-          - textbox "Official title": HR Student Assistant
-          - text: County
-          - textbox "County": San Diego
-          - text: State
-          - textbox "State": CA
-      - text: 1 selected for approval
-      - button "Add record"
-      - button "Discard"
-      - button "Approve records"
-- button "Assistant"
-- status
-- region "Session Panel":
-  - group "Session actions":
-    - button "Sessions 2 running·1 starting·1 idle"
-    - button "Add workers"
-    - button "Settings"
-    - button "Log out"
 - region "Notifications"
+- dialog "Review records single-oath.pdf":
+  - banner:
+    - heading "Review records single-oath.pdf" [level=2]
+    - button "Close"
+  - region "OCR records":
+    - region "Record person-1":
+      - region "Source PDF":
+        - text: Page 1
+        - toolbar "PDF controls":
+          - button "Zoom out"
+          - button "Zoom in"
+          - button "Full screen"
+        - img "Source page 1 of single-oath.pdf"
+      - group "Record selection":
+        - checkbox "Include Jordan Lee" [checked]
+        - text: Include
+        - heading "Jordan Lee" [level=3]
+      - heading "Employee" [level=4]
+      - group "Employee":
+        - text: Employee ID
+        - textbox "Employee ID": "10000001"
+        - text: First name
+        - textbox "First name": Jordan
+        - text: Last name
+        - textbox "Last name": Lee
+        - text: Printed name
+        - textbox "Printed name": Lee, Jordan
+        - text: Middle initial
+        - textbox "Middle initial"
+        - text: Employment date
+        - textbox "Employment date":
+          - /placeholder: MM/DD/YYYY
+          - text: 04/27/2026
+        - text: Department
+        - textbox "Department": "000412"
+      - heading "Oath" [level=4]
+      - group "Oath":
+        - text: Date signed
+        - textbox "Date signed":
+          - /placeholder: MM/DD/YYYY
+          - text: 04/23/2026
+        - checkbox "Employee signed" [checked]
+        - text: Employee signed
+        - checkbox "Officer signed" [checked]
+        - text: Officer signed Authorized official
+        - textbox "Authorized official": Alex Morgan
+        - text: Official title
+        - textbox "Official title": HR Student Assistant
+        - text: County
+        - textbox "County": San Diego
+        - text: State
+        - textbox "State": CA
+    - text: 1 selected for approval
+    - button "Discard"
+    - button "Approve records"

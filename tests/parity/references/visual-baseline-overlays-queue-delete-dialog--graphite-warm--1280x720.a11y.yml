@@ -8,10 +8,7 @@
 
 - region "Notifications"
 - dialog "Delete jordan.lee@example.com?":
-  - banner:
-    - heading "Delete jordan.lee@example.com?" [level=2]
-    - button "Close"
+  - heading "Delete jordan.lee@example.com?" [level=2]
   - paragraph: Remove this run from the queue.
-  - contentinfo:
-    - button "Cancel"
-    - button "Delete"
+  - button "Cancel"
+  - button "Delete run"

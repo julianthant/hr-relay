@@ -40,7 +40,6 @@ for (const theme of ["light", "dark"] as const) {
         for (const artifact of world.artifactIds) await page.route(`**/artifacts/v1/${artifact}`, route => route.fulfill({ contentType: "image/png", body: world.bytes }));
         await page.goto(`${server.baseUrl}/?fixture=picked-a&day=${world.day.day}&run=${world.row.runId}&view=${encodeURIComponent(JSON.stringify({ workflow: world.row.workflowId, preview: null }))}`);
         await expect(page.getByRole("region", { name: "Run logs", exact: true })).toBeVisible();
-        await page.getByRole("button", { name: "Close assistant", exact: true }).click();
         expect(world.day.queueSurfaces.filter(row => row.workflowId === "onboarding")).toHaveLength(0);
         await expectRunningPill(page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Onboarding", exact: true }), 0);
         if (state === "quit-confirm" || state === "quitting") {

@@ -3,7 +3,7 @@ import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { CommandRequestSchema } from "../../src/rules/commands/commands.js";
 import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js";
-import { gotoAppState } from "./helpers/app-driver.js";
+import { gotoAppState, installServedSurfaces } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY, uuidOf } from "./helpers/fixture-identity.js";
@@ -82,6 +82,7 @@ for (const theme of ["light", "dark"] as const) for (const width of [1024, 1440]
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, dayWire });
     try {
       await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+      await installServedSurfaces(page);
       await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
       const queue = page.getByRole("region", { name: "Queue", exact: true });
       const group = queue.locator(`[data-queue-batch-id='${batchId}']`);

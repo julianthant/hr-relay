@@ -84,7 +84,7 @@ current corpus.
 - Required reference types add spreadsheet and named-version rows. Confirm frames Plan, Input and declared Output groups; each stage starts at the top, and body scrolling keeps the header and footer in place.
 - Reading steps allow typed manual values while form actions and required sign-in steps remain included.
 - Settings uses a stationary rail/Navbar and body-scoped content, search, guarded exit, and child breadcrumbs.
-- Settings places General/Credentials under Personal and Paths/Routes under Advanced; Performance remains reachable through Settings search.
+- Settings places General/Account under Personal and Paths/Routes under Advanced; Performance remains reachable through Settings search.
 - General shows the ChatGPT account port; provider budget/model, API-key, viewport, and version-bump controls are absent.
 - Save feedback requires matching acknowledgment/readback and uses a value-free toast with retained inline recovery state.
 - Sessions remains a strip with worker cards and controls behind its add-workers entry.

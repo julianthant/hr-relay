@@ -2,19 +2,23 @@ import { expect } from '@playwright/test';
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { assertThemeApplied, installTheme, PARITY_THEMES } from './helpers/capture.js';
+import { installServedSurfaces } from './helpers/app-driver.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`Spreadsheets matches approved HUB controls @ ${theme.attribute} ${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
     try {
+      await installServedSurfaces(page);
+      // The fixture BFF serves no workbook library; one Roster type fills the types table.
+      await page.route('**/api/v1/workbooks/**', route => route.fulfill({ json: new URL(route.request().url()).pathname.endsWith('/types') ? [{ id: 'roster', name: 'Roster', keyFieldId: 'email', fields: ['email', 'fullName'], defaultWorkbookId: null }] : new URL(route.request().url()).pathname.endsWith('/compatibility') ? { libraries: [], workflows: [] } : [] }));
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
-      await page.goto(`${server.baseUrl}/?settings=spreadsheets`);
+      await page.goto(`${server.baseUrl}/?fixture=hub-integration&settings=spreadsheets`);
       const surface = page.getByRole('region', { name: 'Spreadsheets', exact: true });
-      await expect(surface.getByRole('heading', { name: 'Spreadsheets', exact: true })).toHaveCSS('font-size', '27px');
-      await expect(surface.getByRole('heading', { name: 'Spreadsheets', exact: true })).toHaveCSS('line-height', '33px');
-      await expect(surface.getByRole('heading', { name: 'Spreadsheets', exact: true })).toHaveCSS('font-weight', '650');
+      await expect(surface.getByRole('heading', { name: 'Spreadsheets', exact: true })).toHaveCSS('font-size', '28px');
+      await expect(surface.getByRole('heading', { name: 'Spreadsheets', exact: true })).toHaveCSS('line-height', '34px');
+      await expect(surface.getByRole('heading', { name: 'Spreadsheets', exact: true })).toHaveCSS('font-weight', '400');
       await expect(surface.getByRole('tablist', { name: 'Spreadsheet settings' })).toHaveCount(0);
       await expect(surface.getByRole('heading', { level: 2 })).toHaveText(['Your spreadsheets', 'Workflow outputs', 'Spreadsheet types']);
       await expect(surface.getByRole('table', { name: 'Your spreadsheets', exact: true }).getByRole('columnheader')).toHaveText(['Select all visible spreadsheets', 'Spreadsheet', 'Type', 'Source', 'Rows', 'Actions']);

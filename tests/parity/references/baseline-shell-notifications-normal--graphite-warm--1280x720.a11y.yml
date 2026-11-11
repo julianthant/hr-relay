@@ -10,108 +10,43 @@
   - /url: "#dashboard-main-region"
 - complementary "Workspace":
   - heading "Relay" [level=2]
+  - button "Collapse sidebar" [expanded]
   - button "Notifications, 3 unread" [pressed]
-  - button "Search runs"
+  - button "Search"
   - region "Notifications":
-    - text: Notifications · 3 unread
-    - button "Read all"
-    - tablist "Notification filters":
-      - tab "All" [selected]
-      - tab "Unread"
-    - button "Filter notifications by category"
-    - tabpanel "All":
-      - list "Notification updates":
+    - region "Priority":
+      - heading "Priority" [level=3]
+      - button "Notification actions"
+      - list:
         - listitem:
-          - button "EID 10555001"
-          - paragraph: Run failed
-          - paragraph: Review the failed step in the log.
-          - text: Person Lookup 26 min ago
-          - 'button "Mark read: Run failed"'
-          - button "Open log"
+          - button "Run failed Person Lookup Unread EID 10555001 · Review the failed step in the log."
         - listitem:
-          - button "Morrow, Bea"
-          - paragraph: Approval waiting
-          - paragraph: Waiting on identity review
-          - text: Person Lookup 16 min ago
-          - 'button "Mark unread: Approval waiting"'
-          - button "Review run"
+          - button "Approval waiting Person Lookup Morrow, Bea · Waiting on identity review"
         - listitem:
-          - button "EID 10777012"
-          - paragraph: Write parked
-          - paragraph: A write to UCPath is parked pending proof
-          - text: Person Lookup
-          - 'button "Mark unread: Write parked"'
-          - button "Open log"
+          - button "Write parked Person Lookup EID 10777012 · A write to UCPath is parked pending proof"
         - listitem:
-          - button "EID 10333015"
-          - paragraph: Run completed with issues
-          - paragraph: CRM separation dates were replayed from a checkpoint older than the freshness limit
-          - text: Person Lookup 36 min ago
-          - 'button "Mark unread: Run completed with issues"'
-          - button "Open log"
+          - button "Approval waiting Person Lookup Rehire eligibility sweep · 1 member is waiting on you"
         - listitem:
-          - button "Rehire eligibility sweep"
-          - paragraph: Approval waiting
-          - paragraph: 1 member is waiting on you
-          - text: Person Lookup 43 min ago
-          - 'button "Mark unread: Approval waiting"'
-          - button "Review run"
+          - button "Records ready for approval Oath Signature single-oath.pdf · 1 of 1 records ready for approval"
         - listitem:
-          - button "Separation audit — August"
-          - paragraph: Run completed with issues
-          - paragraph: 2 members failed
-          - text: Person Lookup 53 min ago
-          - 'button "Mark unread: Run completed with issues"'
-          - button "Open log"
+          - button "Records ready for approval Oath Upload multiple-oath.pdf · 4 of 4 records ready for approval"
         - listitem:
-          - button "single-oath.pdf"
-          - paragraph: Records ready for approval
-          - paragraph: 1 of 1 records ready for approval
-          - text: Oath Signature Just now
-          - 'button "Mark unread: Records ready for approval"'
-          - button "Review records"
+          - button "Records ready for approval Emergency Contact Unread emergency-contacts.pdf · 3 of 3 records ready for approval"
         - listitem:
-          - button "multiple-oath.pdf"
-          - paragraph: Records ready for approval
-          - paragraph: 4 of 4 records ready for approval
-          - text: Oath Upload Just now
-          - 'button "Mark unread: Records ready for approval"'
-          - button "Review records"
+          - button "Records ready for approval OnBase detect-test.pdf · 3 of 4 records ready for approval"
         - listitem:
-          - button "emergency-contacts.pdf"
-          - paragraph: Records ready for approval
-          - paragraph: 3 of 3 records ready for approval
-          - text: Emergency Contact Just now
-          - 'button "Mark read: Records ready for approval"'
-          - button "Review records"
+          - button "Records ready for approval I-9 Check i9.pdf · 2 of 2 records ready for approval"
+    - region "Today":
+      - heading "Today" [level=3]
+      - list:
         - listitem:
-          - button "detect-test.pdf"
-          - paragraph: Records ready for approval
-          - paragraph: 3 of 4 records ready for approval
-          - text: OnBase Just now
-          - 'button "Mark unread: Records ready for approval"'
-          - button "Review records"
+          - button "Run completed Person Lookup Unread EID 10101010 · Completed successfully."
         - listitem:
-          - button "i9.pdf"
-          - paragraph: Records ready for approval
-          - paragraph: 2 of 2 records ready for approval
-          - text: I-9 Check Just now
-          - 'button "Mark unread: Records ready for approval"'
-          - button "Review records"
+          - button "Run completed with issues Person Lookup EID 10333015 · CRM separation dates were replayed from a checkpoint older than the freshness limit"
         - listitem:
-          - button "EID 10101010"
-          - paragraph: Run completed
-          - paragraph: Completed successfully.
-          - text: Person Lookup 25 min ago
-          - 'button "Mark read: Run completed"'
-          - button "Open log"
+          - button "Run completed Person Lookup Onboarding cohort — July stragglers · Completed successfully."
         - listitem:
-          - button "Onboarding cohort — July stragglers"
-          - paragraph: Run completed
-          - paragraph: Completed successfully.
-          - text: Person Lookup 58 min ago
-          - 'button "Mark unread: Run completed"'
-          - button "Open log"
+          - button "Run completed with issues Person Lookup Separation audit — August · 2 members failed"
 - main:
   - heading "Person Lookup queue" [level=1]
   - region "Queue":
@@ -148,7 +83,7 @@
       - text: 9:20 AM
       - button "Attempts for Rehire eligibility sweep": "#1"
       - text: PL33065442 45m 0s
-      - button "Cancel group"
+      - button "Stop all 1"
     - button "EID 10555001 — failed":
       - text: EID 10555001 Failed 9:33 AM
       - button "Attempts for EID 10555001": "#1"
@@ -181,7 +116,7 @@
       - text: 9:30 AM
       - button "Attempts for Weekly HDH roster check (1)": "#1"
       - text: PL20000427 35m 0s
-      - button "Cancel group"
+      - button "Stop all 1"
     - button "New-hire lookups — batch 3 — running":
       - text: New-hire lookups — batch 3 Running 1/3
       - table "Members of New-hire lookups — batch 3":
@@ -205,7 +140,7 @@
       - text: 9:28 AM
       - button "Attempts for New-hire lookups — batch 3": "#1"
       - text: PL22034266 37m 0s
-      - button "Cancel group"
+      - button "Stop all 2"
     - text: Queued 2
     - button "EID 10873698 — queued":
       - text: EID 10873698 dry run Queued 9:57 AM
@@ -367,7 +302,7 @@
       - button "Delete run"
   - region "Action panel":
     - group "Action panel controls":
-      - button "Start a run"
+      - button "Start run"
       - button "Filter queue by status": Status
       - combobox "Sort the queue": Newest first
       - button "Attention first" [pressed]
@@ -380,37 +315,6 @@
         - spinbutton "year, Dashboard date*": "2026"
         - button "Choose date Dashboard date*"
   - text: No run open Select a run from the queue to open its logs.
-- region "Assistant panel":
-  - region "Relay assistant":
-    - button "Update Alex Rivera work email"
-    - button "Chats"
-    - button "New chat"
-    - button "Close assistant"
-    - log "Assistant conversation":
-      - text: Update Alex Rivera’s work email. I found the record. Review the change before I save it.
-      - article "Save to UCPath":
-        - heading "Save to UCPath" [level=3]
-        - term: Person
-        - definition: Alex Rivera
-        - term: Work email
-        - definition:
-          - strong: alex.rivera@example.edu
-        - text: Ready to save
-        - button "Not now"
-        - button "Approve"
-      - status: ChatGPT is unavailable. Open Settings to review your account.
-    - group "Message composer":
-      - text: Message Relay
-      - textbox "Message Relay" [disabled]:
-        - /placeholder: Ask Relay…
-      - group "Message controls":
-        - button "Add files" [disabled]
-        - button "Ask before every action" [disabled]
-        - 'button "Model: GPT-6.1 Sol" [disabled]': GPT-6.1 Sol
-        - 'button "Thinking effort: Medium" [disabled]': Medium
-        - button "Voice input" [disabled]
-        - button "Send message" [disabled]
-- button "Assistant" [expanded]
 - status
 - region "Session Panel":
   - group "Session actions":
@@ -418,4 +322,5 @@
     - button "Add workers"
     - button "Settings"
     - button "Log out"
+    - button "Assistant": Ask
 - region "Notifications"

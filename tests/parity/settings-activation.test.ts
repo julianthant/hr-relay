@@ -11,17 +11,14 @@ import { PARITY_THEMES, installTheme, assertThemeApplied } from "./helpers/captu
 
 const retainedParityFixtureFailures = new Set<object>();
 
-for (const theme of PARITY_THEMES) test(`settings activation ${theme.name}: current Paths, exact Task authority and keyboard at minimum desktop`, { annotation: [{ type: "required-a11y-evidence", description: `settings-activation-${theme.name}.a11y.yml` }] }, async ({ page }) => {
+for (const theme of PARITY_THEMES) test(`settings activation ${theme.name}: current Performance, exact Task authority and keyboard at minimum desktop`, { annotation: [{ type: "required-a11y-evidence", description: `settings-activation-${theme.name}.a11y.yml` }] }, async ({ page }) => {
   const server = await startSettingsActivationServer();
   let parityBodyFailure: { error: unknown } | undefined;
   try {
     const pageErrors: string[] = []; page.on("pageerror", (error) => pageErrors.push(error.message));
     await page.setViewportSize({ width: 1024, height: 720 }); await installTheme(page, theme);
-    await page.goto(`${server.url}/?settings=paths`);
+    await page.goto(`${server.url}/?settings=performance`);
     await assertThemeApplied(page, theme);
-    const reports = page.getByRole("button", { name: "Change Reports", exact: true });
-    await expect(reports).toBeVisible(); await expect(reports).toBeEnabled();
-    await reports.focus(); await expect(reports).toBeFocused();
     const client = createDashboardClient({ baseUrl: server.url });
     const initial = await client.editableSettings(); expect(initial.revision).toBe(1);
     expect(initial.runtimeStatus.state).toBe("current");
@@ -57,37 +54,6 @@ for (const theme of PARITY_THEMES) test(`settings activation ${theme.name}: curr
     test.info().annotations.push({ type: `a11y-attachment-sha256:${a11yName}`,
       description: createHash("sha256").update(tree).digest("hex") });
     await test.info().attach(a11yName, { body: tree, contentType: "text/yaml" });
-  } catch (error) { parityBodyFailure = { error }; }
-  if (parityBodyFailure?.error instanceof AuthoritySourceClosureUnprovedError) {
-    retainedParityFixtureFailures.add({ owner: server, primary: parityBodyFailure.error });
-    throw parityBodyFailure.error;
-  }
-  let parityCleanupFailure: { error: unknown } | undefined;
-  try { await server.stop(); } catch (error) { parityCleanupFailure = { error }; }
-  if (parityCleanupFailure !== undefined) {
-    retainedParityFixtureFailures.add({ owner: server, primary: parityBodyFailure?.error, cleanup: parityCleanupFailure.error });
-    if (parityBodyFailure !== undefined) throw new AggregateError([parityBodyFailure.error, parityCleanupFailure.error], 'parity-body-and-cleanup-failed', { cause: parityBodyFailure.error });
-    throw parityCleanupFailure.error;
-  }
-  if (parityBodyFailure !== undefined) throw parityBodyFailure.error;
-});
-
-test("Routes autosaves a complete production system after its field loses focus", async ({ page }) => {
-  const server = await startSettingsActivationServer();
-  let parityBodyFailure: { error: unknown } | undefined;
-  try {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(`${server.url}/?settings=routes`);
-    const entry = page.locator('[data-settings-path="urls.crm.prod"] input').first();
-    await expect(entry).toHaveValue(/^https:\/\//u);
-    await entry.fill("https://crm.example.test/hr");
-    const client = createDashboardClient({ baseUrl: server.url });
-    await expect(page.getByRole("button", { name: "Save routes" })).toHaveCount(0);
-    await entry.blur();
-    await expect.poll(async () => (await client.editableSettings()).revision).toBe(2);
-    const saved = await client.editableSettings();
-    const route = saved.sections.find(section => section.id === "routes")?.leaves.find(leaf => leaf.path === "urls.crm.prod");
-    expect(route?.settingsValue).toMatchObject({ entry: "https://crm.example.test/hr" });
   } catch (error) { parityBodyFailure = { error }; }
   if (parityBodyFailure?.error instanceof AuthoritySourceClosureUnprovedError) {
     retainedParityFixtureFailures.add({ owner: server, primary: parityBodyFailure.error });

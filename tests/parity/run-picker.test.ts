@@ -1,6 +1,7 @@
 
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
+import { installServedSurfaces } from "./helpers/app-driver.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_START_PICKER_DESCRIPTOR_HASH } from "./helpers/fixture-start.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -14,17 +15,18 @@ const pickerBootstrap = { ...FIXTURE_START_PICKER_BOOTSTRAP,
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`grouped run picker stays mounted @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: { bootstrap: pickerBootstrap, day: FIXTURE_START_PICKER_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH } });
   try {
-    await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 }); await installTheme(page, theme);
+    await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 }); await installTheme(page, theme); await installServedSurfaces(page);
     const errors: string[] = [], writes: string[] = []; page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET") writes.push(new URL(request.url()).pathname); });
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
-    await expect(rail.getByRole("button")).toHaveCount(15);
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    await expect(rail.getByRole("button")).toHaveCount(14);
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     const picker = dialog.getByRole("navigation", { name: "Workflow", exact: true });
     await expect(picker.getByRole("button")).toHaveCount(13);
     await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeDisabled();
+    await expect(picker.getByRole("button", { name: "Emergency Contact", exact: true })).toBeDisabled();
     await expect(picker.getByRole("button", { name: "I-9 Lookup", exact: true })).toHaveCount(0);
     await expect(picker.getByRole("heading")).toHaveText(["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"]);
     await expect(picker.locator("button span").filter({ hasText: /^pl$|^sp$/u })).toHaveCount(0);
@@ -39,7 +41,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
       expect(await dialog.evaluate((element, original) => element === original, originalDialog)).toBe(true);
       expect(await picker.evaluate((element, original) => element === original, originalPicker)).toBe(true);
     }
-    await expect(dialog.getByRole("textbox", { name: "Employee IDs", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("textbox", { name: /^Employee IDs/u })).toBeVisible();
     const search = dialog.getByRole("searchbox", { name: "Filter workflows", exact: true });
     await search.fill("oath");
     await expect(picker.getByRole("button")).toHaveCount(2);
@@ -70,15 +72,16 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     });
     expect(metrics).toEqual({ textAligned: true, rowHeight: 32 });
     await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeFocused();
-    for (const label of ["OCR", "I-9 Lookup"]) {
+    await expect(page.getByRole("button", { name: "Start run", exact: true })).toBeFocused();
+    for (const label of ["I-9 Lookup", "OCR"]) {
       await rail.getByRole("button", { name: label, exact: true }).click();
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
       if (label === "OCR") {
         await expect(picker.getByRole("button", { name: label, exact: true })).toBeDisabled();
         await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("OCR");
       } else {
         await expect(picker.getByRole("button", { name: label, exact: true })).toHaveCount(0);
+        await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("Person Lookup");
       }
       await page.keyboard.press("Escape");
     }

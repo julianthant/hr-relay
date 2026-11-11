@@ -151,6 +151,7 @@ export {
   DialogContent,
   DialogBody,
   DialogFooter,
+  ConfirmDialog,
   Drawer,
   DrawerTrigger,
   DrawerClose,
@@ -201,4 +202,4 @@ export type { DsRankedItem, DsSortDirection, DsStep, DsStepState } from "./primi
 
 export { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton } from './primitives/input-group.js';
 export { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel,
-  DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator } from './primitives/dropdown-menu.js';
+  DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator } from './primitives/dropdown-menu.js';
