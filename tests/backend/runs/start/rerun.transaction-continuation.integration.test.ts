@@ -499,7 +499,7 @@ it("refuses a paused run whose completed downstream checkpoint no longer matches
     const active = h.fresh(source);
     requireLifecycleApplied(h.lifecycle.pause({ commandId: randomUUID(), runId: active.envelope.runId, expectedVersion: active.version }));
   };
-  assert.equal((await h.execute(source)).state, "abandoned");
+  assert.equal((await h.execute(source)).state, "abandoned", JSON.stringify(h.database.authority.failures.listByRun(source.envelope.runId)));
   delete hooks.onMapped;
   const paused = h.fresh(source); assert.equal(paused.pause?.state, "paused");
   h.clock.advanceWall(1_000);
