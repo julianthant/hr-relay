@@ -66,6 +66,7 @@
   "src/dashboard/surfaces/run-start/launch-presentation.css",
   "src/dashboard/surfaces/run-start/run-launch-layout.tsx",
   "src/dashboard/surfaces/run-start/run-launch.tsx",
+  "src/dashboard/surfaces/run-start/run-reference-rows.tsx",
   "src/dashboard/surfaces/run-start/run-start-kit.tsx",
   "src/dashboard/surfaces/run-start/run-start-picker.tsx",
   "src/dashboard/surfaces/run-start/run-start.tsx",
