@@ -547,7 +547,10 @@ Every read entry explicitly declares `replay: "checkpoint"` or `"always-rerun"`.
 The executor validates and replays checkpoint ancestors. Ordinary execution runs `always-rerun`
 ancestors again; an authenticated Pause/Resume or failed-run continuation reuses their completed
 checkpoints after the same schema, fingerprint, provenance and freshness checks. A completed `always-rerun` checkpoint
-that fails the freshness check toward a transaction the continuation does not retain is run again. Replay restores values, never browser
+that fails the freshness check toward a transaction the continuation does not retain is run again.
+A continuation compares a completed node's input with the rows it was bound from: its run's newest row
+up to the node's claim, else the row the run was created with. A retained delegation is compared with
+the rows its admission recorded. Replay restores values, never browser
 page state. Transactions recover through permanent write authority, not a read replay flag.
 
 ### 5.4 Entry validation
