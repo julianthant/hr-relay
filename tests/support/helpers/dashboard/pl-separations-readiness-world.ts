@@ -8,7 +8,7 @@ import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js
 import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
-import { TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
+import { TooltipProvider, ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { FixtureCommandBinding } from "./command-binding.js";
 import { createMountedRerunWorld } from "./mounted-rerun-world.js";
 import { protectedSecretSource } from "../protected-secret-source.js";
@@ -69,14 +69,14 @@ export function createPlSeparationsReadinessWorld(profileFixture?: Parameters<ty
     const host = document.createElement("div"); document.body.replaceChildren(host);
     root = createRoot(host);
     const applied: string[] = [], closed: boolean[] = [];
-    await act(async () => root?.render(createElement(TooltipProvider, {
+    await act(async () => root?.render(createElement(ToastProvider, { children: createElement(TooltipProvider, {
       children: createElement(DashboardClientProvider, { client: h.client,
         children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso: h.clock.now().toISOString(),
           children: createElement(RunStartDialog, { open: true, onOpenChange: next => closed.push(next),
             catalog: buildWorkflowCatalog([h.workflow], false, { [h.descriptor.id]: "served" }),
             panelWorkflowId: h.descriptor.id, actorId: "local-operator",
             ...(source === undefined ? {} : { rerunSource: { runId: source.envelope.runId, expectedVersion: source.version } }),
-            onApplied: workflowId => applied.push(workflowId), onOpenIntake: () => assert.fail("typed launch cannot hand off to Intake") }) }) }) })));
+            onApplied: workflowId => applied.push(workflowId), onOpenIntake: () => assert.fail("typed launch cannot hand off to Intake") }) }) }) }) })));
     return { applied, closed };
   }
 

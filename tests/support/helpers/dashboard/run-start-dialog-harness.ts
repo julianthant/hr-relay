@@ -1,3 +1,4 @@
+import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { ItemAttemptHistoryResponseSchema } from "../../../../src/models/dashboard/item-attempt-history.js";
 import { FixtureCommandBinding } from "./command-binding.js";
 import { FIXTURE_DAY_WIRE } from "../../fixtures/dashboard/fixture-queue.js";
@@ -278,7 +279,7 @@ export function createRunStartDialogHarness() {
     onApplied: (workflowId: string) => void = () => undefined,
   ): Promise<OpenDialog> {
     intakeHandoffs.length = 0; closed.length = 0;
-    await render(createElement(DashboardClientProvider, {
+    await render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, {
       client,
       children: createElement(FixtureCommandBinding, { actorId: ACTOR_ID, children: createElement(RunStartDialog, {
         open: true,
@@ -292,7 +293,7 @@ export function createRunStartDialogHarness() {
           intakeHandoffs.push({ workflowId, intakeSessionId });
         },
       }) }),
-    }));
+    }) }));
 
     const typedInput = (): HTMLTextAreaElement => {
       const box = document.body.querySelector("textarea");
@@ -426,7 +427,7 @@ export function createRunStartDialogHarness() {
     await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
     await dialog.press("Start 1 run");
-    assert.equal(dialog.stage(), "Confirm");
+    assert.equal(closed.at(-1), false);
     return dialog;
   }
 
