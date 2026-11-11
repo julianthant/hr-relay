@@ -128,6 +128,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     settleExit: member => { profile.runtime.workerExited(admission, WorkerPoolMemberSchema.parse(member)); },
     onChange: () => { projection.reconcileWorkerAuthority(); },
     onFault: reportSupervisorFault,
+    onStopChannelClosed: error => { debugEvents.emit({ category: "worker", phase: "settled", correlationId: randomUUID(), area: "supervisor",
+      reason: "stop-channel-closed", code: (error as NodeJS.ErrnoException).code }); },
     preflight: runtimePreflight,
     assertAssistantEffect,
   });
