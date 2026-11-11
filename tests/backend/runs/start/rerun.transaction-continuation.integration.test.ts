@@ -464,6 +464,69 @@ it("still refuses a stale checkpoint-policy fact when a paused run resumes befor
   assert.deepEqual(f.intents(), []);
 });
 
+const ownSettlementDescriptor = defineWorkflowDescriptor({ ...metadata, flow: flow(Input)
+  .step("before", staleRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid, memo: "source" }) })
+  .step("check", staleRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid }) })
+  .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: ["before"], prepare: { uses: WriteFixturePrepare, bind: ({ outputs }) => ({ eid: outputs.before.eid }) },
+    commit: { uses: WriteFixtureCommit, bind: ({ input }) => ({ eid: input.eid }) }, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
+  .childRun("child", { id: sourceBoundReadDescriptor.id, input: Input, result: sourceBoundReadContract.output }, {
+    dependsOn: [], edgeId: DelegationEdgeIdSchema.parse("child"), cardinality: "one", await: "terminal", join: "one",
+    policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" },
+    bind: ({ input }) => ({ eid: input.eid }), deriveChildItemId: (_input, identity) => identity.canonicalItemId })
+  .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
+
+for (const [door, probe] of [["resume", "absent"], ["recover", "absent"], ["resume", "present"]] as const) it(`replays its own settled transaction from the receipt after ${door} when a later read differs${probe === "present" ? " and the record was already present" : ""}`, async () => {
+  const changed = EidSchema.parse("10899999"), hooks: { settled?: () => boolean; onRead?: (memo: string | undefined) => void } = {};
+  const h = await sourceBoundHarness(ownSettlementDescriptor, world => {
+    const read = defineTask(staleRead, { sessions: [], async run({ input, ctx }) {
+      hooks.onRead?.(input.memo);
+      const eid = input.memo === "source" && hooks.settled?.() === true ? changed : input.eid;
+      ctx.recordData({ direction: "read", field: "eid", value: eid });
+      return { eid };
+    } });
+    const writes = buildWriteFixtureRegistry(world);
+    return defineTaskStoreRegistry([defineServiceStore("ocr", { read }), ...writes.stores], {
+      scenarioIds: [...staleRead.scenarios, ...writes.corpus.scenarioIds],
+      tasks: [{ id: staleRead.id, effect: staleRead.effect }, ...writes.corpus.tasks],
+    });
+  }, undefined, undefined, undefined, [sourceBoundReadDescriptor], undefined, true);
+  cleanups.push(h.dispose);
+  h.world.probeResults.push(probe === "present" ? { state: "present", proof: { transactionId: "T123456" } } : absentProbeEvidence(h.clock.now().toISOString()));
+  const source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID));
+  const rows = (nodeId: string) => h.database.authority.runCheckpoints.listByItem(source.envelope.workflow, source.envelope.itemId).filter(row => row.nodeId === nodeId);
+  const failures = (runId: string) => JSON.stringify(h.database.authority.failures.listByRun(runId));
+  hooks.settled = () => rows(WRITE_FIXTURE_NODE_ID).length > 0;
+  let stopped = false;
+  hooks.onRead = memo => {
+    h.clock.advanceWall(1);
+    if (stopped || memo !== (door === "resume" ? "source" : undefined)) return;
+    stopped = true;
+    if (door === "recover") throw new Error("fixture check failure");
+    const active = h.fresh(source);
+    requireLifecycleApplied(h.lifecycle.pause({ commandId: randomUUID(), runId: active.envelope.runId, expectedVersion: active.version }));
+  };
+  assert.equal((await h.execute(source)).state, door === "resume" ? "abandoned" : "failed", failures(source.envelope.runId));
+  const halted = h.fresh(source);
+  h.clock.advanceWall(1_000);
+  const next = door === "resume"
+    ? requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: randomUUID(), runId: halted.envelope.runId, expectedVersion: halted.version }))
+    : operatorRecover({ ...h, failed: halted }, halted);
+  assert.ok(next.envelope.continuation);
+  assert.equal((await h.execute(next)).state, "yielded-delegation", failures(next.envelope.runId));
+  const children = h.database.authority.runs.listChildren(next.envelope.runId); assert.equal(children.length, 1);
+  for (const member of children) assert.equal((await h.execute(member)).state, "done");
+  h.clock.advanceWall(1_000);
+  const outcome = await h.execute(next);
+  assert.equal(outcome.state, "done", failures(next.envelope.runId));
+  assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, probe === "present" ? 0 : 1);
+  if (probe === "absent") assert.deepEqual(h.database.authority.writeIntents.listByBusinessKey("ucpath", WRITE_FIXTURE_KEY_DIGEST).map(intent => intent.status), ["committed"]);
+  assert.equal(h.database.authority.runs.listByWorkflow(sourceBoundReadDescriptor.id).length, 1);
+  const settlement = rows(WRITE_FIXTURE_NODE_ID); assert.equal(settlement.length, 1);
+  if (probe === "present") assert.match(JSON.stringify(settlement[0]?.output), /"disposition":"already-present"/u);
+  const latest = rows("before").at(-1); assert.ok(latest); assert.equal(latest.runId, next.envelope.runId);
+  assert.match(JSON.stringify(latest.output), new RegExp(changed, "u"));
+});
+
 const changedSourceDescriptor = defineWorkflowDescriptor({ ...metadata, flow: flow(Input)
   .step("before", staleRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid, memo: "source" }) })
   .step("mapped", staleRead, { dependsOn: ["before"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid }) })
