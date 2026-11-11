@@ -445,8 +445,7 @@ it("refuses deleting a producer whose committed OnBase checkpoint a retained don
   };
   const refusedFirst = remove(f.run.envelope.runId);
   assert.deepEqual(refusedFirst.state === "refused" && refusedFirst.refusal.reason, "shared-checkpoint");
-  assert.equal(remove(again.envelope.runId).state, "deleted");
-  assert.equal(remove(f.run.envelope.runId).state, "deleted");
+  for (const runId of [again.envelope.runId, f.run.envelope.runId]) { const outcome = remove(runId); assert.equal(outcome.state, "deleted", JSON.stringify(outcome)); }
   assert.equal(f.database.authority.runs.get(producer.envelope.runId), undefined);
   assert.deepEqual(f.database.authority.writeIntents.findByPermanentKey(intent.system, intent.idempotencyKey), intent);
 });
