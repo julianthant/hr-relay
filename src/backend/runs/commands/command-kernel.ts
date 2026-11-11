@@ -4,6 +4,7 @@ import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { notificationMatchesCollection,type NotificationCollectionOperation,type NotificationRecord } from "../../../models/notifications/notifications.js";
 import { OcrApprovedSnapshotSchema,ocrSnapshotDigest } from "../../../models/ocr/review.js";
 import { AssistantActionManifestSchema } from "../../../models/profiles/assistant-permissions.js";
+import { isStartPlanExpired } from "../../../models/run/start-plan.js";
 import { RunDisplayNameSchema } from "../../../models/run/display-name.js";
 import { startSupersedeTargets } from "../../../models/run/start-supersede.js";
 import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
@@ -52,7 +53,7 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { checkpointLookupKey,resolveFreshnessBound,type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { deriveGateResultCheckpointFingerprint as deriveGateFingerprint } from "../../../models/workflow/gates.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
-import { COMMAND_FAMILY_REGISTRY,commandAssistantAvailability,CommandIdentityConflictError,CommandRequestSchema,CommandResultSchema,deriveSettingsCommandFingerprint,markSettingsCommand,ParkedWriteCheckAcknowledgementSchema,RunCommandRequestSchema,type ParkedWriteCheckAcknowledgement,type ParkedWriteCheckTarget,type CommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
+import { COMMAND_FAMILY_REGISTRY,commandAssistantAvailability,CommandIdentityConflictError,CommandRequestSchema,CommandResultSchema,StartCommandRequestSchema,deriveSettingsCommandFingerprint,markSettingsCommand,ParkedWriteCheckAcknowledgementSchema,RunCommandRequestSchema,type ParkedWriteCheckAcknowledgement,type ParkedWriteCheckTarget,type CommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
 import { deriveItemId,deriveStableUuid,type IdFactory } from "../../../rules/identity/identifiers.js";
 import { FingerprintSchema,IsoInstantSchema,ItemIdSchema } from "../../../rules/identity/ids.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -297,6 +298,7 @@ export interface CommandKernel {
   assistantManifest(): z.infer<typeof AssistantActionManifestSchema>;
   execute(input: unknown, parentCommandId?: string): CommandResult;
 
+  executeStart(input: unknown): Promise<CommandResult>;
   executeWorkerPool(input: unknown): Promise<CommandResult>;
   executeAssistantModelPreference(input: unknown): Promise<CommandResult>;
 }
@@ -435,12 +437,12 @@ function lifecycleRun(request: CommandRequest, outcome: RunMutationOutcome | Run
 
 /* ── the arms ────────────────────────────────────────────────────────────── */
 
-function executeStartRun(
+function readStartPlan(
   dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
   request: Extract<CommandRequest, { family: "start" }>,
   now: string,
-): CommandApplication {
+) {
   const descriptor = resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
   const plan = repositories.startPlans.get(request.target.startPlanId);
   if (plan === undefined) {
@@ -471,6 +473,23 @@ function executeStartRun(
       `start plan ${plan.startPlanId} was planned against a different ingress/canonical schema for ${plan.workflowId}; re-plan before starting`,
     );
   }
+
+  const mismatched = [
+    ["descriptor", plan.descriptorFingerprint, request.payload.descriptorFingerprint],
+    ["config", plan.configFingerprint, request.payload.configFingerprint],
+    ["ingress schema", plan.ingressSchemaHash, request.payload.ingressSchemaHash],
+    ["canonical-input schema", plan.canonicalInputSchemaHash, request.payload.canonicalInputSchemaHash],
+    ["input", plan.inputFingerprint, request.payload.inputFingerprint],
+  ].find(([, planned, presented]) => planned !== presented);
+  if (mismatched !== undefined) reject(request, "schema-mismatch",
+    `start plan ${plan.startPlanId} was planned against a different ${String(mismatched[0])}; re-plan before starting`);
+  const confirmationVersion = plan.consumedBy === undefined ? plan.version : plan.version - 1;
+  if (request.target.expectedVersion !== confirmationVersion) conflict(request, plan.version,
+    `start plan ${plan.startPlanId} confirmation expected revision ${String(confirmationVersion)} but received ${String(request.target.expectedVersion)}; re-plan before starting`);
+  if (plan.consumedBy !== undefined) reject(request, "invalid-state",
+    `start plan ${plan.startPlanId} was already consumed by command ${plan.consumedBy.commandId}`);
+  if (isStartPlanExpired(plan, Date.parse(now))) reject(request, "invalid-state",
+    `start plan ${plan.startPlanId} expired at ${plan.expiresAt}`);
 
   if (!reviewedRunSettingsCurrent(repositories, plan)) {
     reject(request, "replan-required", "Settings changed after this plan was reviewed; review a fresh plan before starting");
@@ -540,6 +559,16 @@ function executeStartRun(
     }
     selectedSources = sources;
   }
+  return { descriptor, plan };
+}
+
+function executeStartRun(
+  dependencies: CommandKernelDependencies,
+  repositories: AuthorityRepositories,
+  request: Extract<CommandRequest, { family: "start" }>,
+  now: string,
+): CommandApplication {
+  const { descriptor, plan } = readStartPlan(dependencies, repositories, request, now);
   dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
   const consumption = repositories.startPlans.consume({
     startPlanId: request.target.startPlanId,
@@ -2646,125 +2675,134 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
   // Validated ONCE at composition: a dependency satisfying both seams is a
   // wiring ambiguity, refused before any command can reach it.
   const pool = dependencies.workerRuntime.pool;
-  // Serialize the entire per-workflow pool request across admission, process effects and settlement.
-  const poolCommandTails = new Map<string, Promise<void>>();
-  const withPoolCommandSerialization = async (
+  // Serialize admission, asynchronous effects and settlement for each command target.
+  const commandTails = new Map<string, Promise<void>>();
+  const withCommandSerialization = async (
     key: string,
     work: () => Promise<CommandResult>,
   ): Promise<CommandResult> => {
-    const previous = poolCommandTails.get(key);
+    const previous = commandTails.get(key);
     let release: () => void = () => undefined;
     const current = new Promise<void>((resolve) => {
       release = resolve;
     });
-    poolCommandTails.set(key, current);
+    commandTails.set(key, current);
     if (previous !== undefined) await previous;
     try {
       return await work();
     } finally {
-      if (poolCommandTails.get(key) === current) poolCommandTails.delete(key);
+      if (commandTails.get(key) === current) commandTails.delete(key);
       release();
     }
   };
-  const executeSync = (request: CommandRequest, parentCommandId?: string, preferenceCurrent?: () => true): CommandResult => {
-      if (request.family === "assistant-model-preference" && preferenceCurrent === undefined) return CommandResultSchema.parse({
-        state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: "assistant-preference-unavailable",
-      });
-      if (parentCommandId !== undefined && request.family !== "run") throw new Error("command-group children must be run commands");
-      if (request.family === "settings") return executeSettingsCommand(dependencies, request);
-      let rollback: (() => void) | undefined;
-      let commit: (() => void) | undefined;
-      let admitted = false;
-      try {
-        // The journal row commits before the effect: a thrown effect leaves it admitted, and its exact retry resumes the effect.
-        const replayed = dependencies.authority.withAuthorityTransaction((repositories) => {
-          preferenceCurrent?.();
-          if (request.family === "assistant-model-preference" && (request.requestedBy !== "local-operator"
-            || request.source.startsWith("assistant") || dependencies.authorityProfileId !== request.target.profileId
-            || repositories.assistantAuthorization.actionByCommand(request.commandId) !== undefined)) {
-            reject(request, "invalid-state", "assistant-preference-operator-only");
-          }
-          repositories.commands.assertIdentity(request, parentCommandId);
-          repositories.commands.insert(request, parentCommandId);
-          if (repositories.commandAudits.findByCommand(request.commandId) === undefined) return undefined;
-          if (request.family === "assistant-model-preference") repositories.assistantModelPreference.get();
-          return replay(dependencies, repositories, request, IsoInstantSchema.parse(dependencies.clock.now().toISOString()));
-        });
-        if (replayed !== undefined) return replayed;
-        admitted = true;
-        const result =dependencies.authority.withAuthorityTransaction((repositories) => {
-          preferenceCurrent?.();
-          const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
-          const journalRequest = request;
-          const auditId = dependencies.ids.uuid();
-          const application = request.family === "ocr-review" || request.family === "start" || request.family === "run" && (request.type === "retry" || request.type === "recover-run" || request.type === "cancel" || request.type === "resume")
-            ? withCanonicalRunCommandScope(repositories, request,
-              () => dispatchActive(dependencies, repositories, request, now, auditId), parentCommandId)
-            : dispatchActive(dependencies, repositories, request, now, auditId);
-          rollback = application.rollback;
-          commit = application.commit;
-          repositories.commandAudits.insert({
-            auditId,
-            request: journalRequest,
-            result: application.result,
-            completedAt: now,
-            versionChanges: application.versionChanges,
-            affectedDependencyIds: application.affectedDependencyIds,
-            ...(application.writeResolution === undefined ? {} : {writeResolution:application.writeResolution}),
-          });
-          preferenceCurrent?.();
-          application.afterAudit?.();
-          if (application.settingsCurrent !== undefined) {
-            repositories.settingsCurrent.advance({
-              ...application.settingsCurrent,
-              commandId: request.commandId,
-              auditId,
-              committedAt: now,
-            });
-          }
-          return application.result;
-        });
-        const committedSettings = commit;
-        rollback = undefined;
-        commit = undefined;
-        committedSettings?.();
-        return result;
-      } catch (error) {
-
-        if (rollback !== undefined) {
-          try {
-            rollback();
-          } catch (rollbackError) {
-            throw new AggregateError(
-              [error, rollbackError],
-              `command ${request.commandId} failed and its settings-file rollback also failed`,
-              { cause: rollbackError },
-            );
-          }
-        }
-        if (error instanceof CommandIdentityConflictError) return CommandResultSchema.parse({
-          state: "rejected", commandId: request.commandId, code: "command-divergent", message: error.message,
-        });
-        const refusal = error instanceof PreflightAdmissionRefusal ? CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: error.message })
-          : error instanceof CommandRefusal ? error.result
-          : error instanceof OcrReviewRefusedError ? CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
-            code: error.code, message: ERROR_CATALOG.OCR_REVIEW_REFUSED.text })
-          : undefined;
-        // A failure during admission or replay leaves no row of this call to settle.
-        if (!admitted) {
-          if (refusal !== undefined) return refusal;
-          throw error;
-        }
-        try {
-          settleUnsettled(request, refusal ?? (parentCommandId === undefined ? undefined
-            : CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "bulk-child-errored", message: ERROR_CATALOG.BULK_CHILD_ERRORED.text })),
-          parentCommandId);
-        } catch (settlementError) {
-          throw new AggregateError([error, settlementError], `command ${request.commandId} failed and its outcome could not be recorded`, { cause: settlementError });
-        }
-        if (refusal !== undefined) return refusal;
-        throw error;
+  const admitCommand = (request: CommandRequest, parentCommandId?: string, preferenceCurrent?: () => true): CommandResult | undefined => {
+    return dependencies.authority.withAuthorityTransaction((repositories) => {
+      preferenceCurrent?.();
+      if (request.family === "assistant-model-preference" && (request.requestedBy !== "local-operator"
+        || request.source.startsWith("assistant") || dependencies.authorityProfileId !== request.target.profileId
+        || repositories.assistantAuthorization.actionByCommand(request.commandId) !== undefined)) {
+        reject(request, "invalid-state", "assistant-preference-operator-only");
       }
+      repositories.commands.assertIdentity(request, parentCommandId);
+      repositories.commands.insert(request, parentCommandId);
+      if (repositories.commandAudits.findByCommand(request.commandId) === undefined) return undefined;
+      if (request.family === "assistant-model-preference") repositories.assistantModelPreference.get();
+      return replay(dependencies, repositories, request, IsoInstantSchema.parse(dependencies.clock.now().toISOString()));
+    });
+  };
+  const failCommand = (error: unknown, request: CommandRequest, admitted: boolean, parentCommandId?: string): CommandResult => {
+    if (error instanceof CommandIdentityConflictError) return CommandResultSchema.parse({
+      state: "rejected", commandId: request.commandId, code: "command-divergent", message: error.message,
+    });
+    const refusal = error instanceof PreflightAdmissionRefusal ? CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: error.message })
+      : error instanceof CommandRefusal ? error.result
+      : error instanceof OcrReviewRefusedError ? CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
+        code: error.code, message: ERROR_CATALOG.OCR_REVIEW_REFUSED.text })
+      : undefined;
+    // A failure during admission or replay leaves no row of this call to settle.
+    if (!admitted) {
+      if (refusal !== undefined) return refusal;
+      throw error;
+    }
+    try {
+      settleUnsettled(request, refusal ?? (parentCommandId === undefined ? undefined
+        : CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "bulk-child-errored", message: ERROR_CATALOG.BULK_CHILD_ERRORED.text })),
+      parentCommandId);
+    } catch (settlementError) {
+      throw new AggregateError([error, settlementError], `command ${request.commandId} failed and its outcome could not be recorded`, { cause: settlementError });
+    }
+    if (refusal !== undefined) return refusal;
+    throw error;
+  };
+  const applyCommand = (request: CommandRequest, parentCommandId?: string, preferenceCurrent?: () => true): CommandResult => {
+    let rollback: (() => void) | undefined;
+    let commit: (() => void) | undefined;
+    try {
+      const result = dependencies.authority.withAuthorityTransaction((repositories) => {
+        preferenceCurrent?.();
+        const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
+        const journalRequest = request;
+        const auditId = dependencies.ids.uuid();
+        const application = request.family === "ocr-review" || request.family === "start" || request.family === "run" && (request.type === "retry" || request.type === "recover-run" || request.type === "cancel" || request.type === "resume")
+          ? withCanonicalRunCommandScope(repositories, request,
+            () => dispatchActive(dependencies, repositories, request, now, auditId), parentCommandId)
+          : dispatchActive(dependencies, repositories, request, now, auditId);
+        rollback = application.rollback;
+        commit = application.commit;
+        repositories.commandAudits.insert({
+          auditId,
+          request: journalRequest,
+          result: application.result,
+          completedAt: now,
+          versionChanges: application.versionChanges,
+          affectedDependencyIds: application.affectedDependencyIds,
+          ...(application.writeResolution === undefined ? {} : {writeResolution:application.writeResolution}),
+        });
+        preferenceCurrent?.();
+        application.afterAudit?.();
+        if (application.settingsCurrent !== undefined) {
+          repositories.settingsCurrent.advance({
+            ...application.settingsCurrent,
+            commandId: request.commandId,
+            auditId,
+            committedAt: now,
+          });
+        }
+        return application.result;
+      });
+      const committedSettings = commit;
+      rollback = undefined;
+      commit = undefined;
+      committedSettings?.();
+      return result;
+    } catch (error) {
+      if (rollback !== undefined) {
+        try {
+          rollback();
+        } catch (rollbackError) {
+          throw new AggregateError(
+            [error, rollbackError],
+            `command ${request.commandId} failed and its settings-file rollback also failed`,
+            { cause: rollbackError },
+          );
+        }
+      }
+      return failCommand(error, request, true, parentCommandId);
+    }
+  };
+  const executeSync = (request: CommandRequest, parentCommandId?: string, preferenceCurrent?: () => true): CommandResult => {
+    if (request.family === "assistant-model-preference" && preferenceCurrent === undefined) return CommandResultSchema.parse({
+      state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: "assistant-preference-unavailable",
+    });
+    if (parentCommandId !== undefined && request.family !== "run") throw new Error("command-group children must be run commands");
+    if (request.family === "settings") return executeSettingsCommand(dependencies, request);
+    try {
+      const replayed = admitCommand(request, parentCommandId, preferenceCurrent);
+      if (replayed !== undefined) return replayed;
+    } catch (error) {
+      return failCommand(error, request, false, parentCommandId);
+    }
+    return applyCommand(request, parentCommandId, preferenceCurrent);
   };
   /** An admitted command settles with its typed refusal, or stays admitted with a recovery notice when its outcome is unknown. */
   const settleUnsettled = (request: CommandRequest, result: CommandResult | undefined, parentCommandId: string | undefined): void => {
@@ -2812,6 +2850,36 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       }
       return executeSync(request, parentCommandId);
     },
+    async executeStart(input: unknown): Promise<CommandResult> {
+      const request = StartCommandRequestSchema.parse(input);
+      if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("command-envelope-size-exceeded");
+      return withCommandSerialization(`start:${request.target.startPlanId}`, async () => {
+        let admitted = false;
+        const assertEffectCurrent = (): true => { dependencies.assistantRevalidate?.(request); return true; };
+        try {
+          assertEffectCurrent();
+          const replayed = admitCommand(request, undefined, assertEffectCurrent);
+          if (replayed !== undefined) return replayed;
+          admitted = true;
+          const scope = dependencies.authority.withAuthorityTransaction(repositories => {
+            const { descriptor, plan } = readStartPlan(dependencies, repositories, request, dependencies.clock.now().toISOString());
+            return workflowPreflightScope(descriptor, plan);
+          });
+          if (dependencies.preflight !== undefined) {
+            try {
+              await dependencies.preflight.prepare(scope, new AbortController().signal);
+            } catch (error) {
+              if (error instanceof PreflightAdmissionRefusal) throw error;
+              throw new PreflightAdmissionRefusal("unavailable", "Preflight detectors could not verify readiness.", { cause: error });
+            }
+            dependencies.preflight.assertReady(scope);
+          }
+        } catch (error) {
+          return failCommand(error, request, admitted);
+        }
+        return applyCommand(request, undefined, assertEffectCurrent);
+      });
+    },
     async executeAssistantModelPreference(input: unknown): Promise<CommandResult> {
       const request = AssistantModelPreferenceCommandRequestSchema.parse(input);
       if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("Command request exceeds 256 KiB");
@@ -2847,8 +2915,8 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       }
       try {
         dependencies.assistantRevalidate?.(request);
-        return await withPoolCommandSerialization(
-          workerPoolSerializationKey(request),
+        return await withCommandSerialization(
+          `pool:${workerPoolSerializationKey(request)}`,
           () => {
             dependencies.assistantRevalidate?.(request);
             return executeWorkerPoolCommand(dependencies, pool, request);
