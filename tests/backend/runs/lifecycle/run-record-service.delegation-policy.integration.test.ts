@@ -1,9 +1,14 @@
+import { assertDelegationWriteRecoveryRefusals } from "../../../support/helpers/backend/delegation-config-refusals.js";
+import { DelegationInvocationRequestSchema } from "../../../../src/backend/storage/sqlite/delegation-contracts.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import * as delegationAdmission from "../../../../src/backend/runs/lifecycle/delegation-admission.js";
+import { delegationConfigResources } from "../../../support/helpers/backend/delegation-config-resources.js";
 import * as delegationAuthority from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import * as commandRows from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { DatabaseSync } from "node:sqlite";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
-import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { DelegationEdgeIdSchema, FingerprintSchema, PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { bindWorkflowDelegationTargets, descriptorRuntimeNodes, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { runClaim, type RunRecord } from "../../../../src/models/run/record.js";
 import assert from "node:assert/strict";
@@ -26,7 +31,7 @@ import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH, type SettingsPatc
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { RunResultRecordSchema, terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
-import { childContinuationModules, childContinuationRoot, childPolicyModules, childUnawaitedModules } from "../../../support/fixtures/child-execution-workflows.js";
+import { childContinuationModules, childContinuationRoot, childExecutionModules, childExecutionRoot, childPolicyModules, childUnawaitedModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { plan1Stores, plan1Contract, plan1TransientFailureStores } from "../../../support/fixtures/plan1-operation-workflows.js";
 import { testAdmittedWorker, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
@@ -42,8 +47,8 @@ function terminal(run: RunRecord, outcome: "cancelled" | "done" | "failed"): voi
   assert.equal(run.lifecycle.outcome, outcome);
 }
 
-async function fixture(policy: "cascade" | "independent", unawaited = false, continuation = false, stores = plan1Stores, observeExecution?: (run: RunRecord) => void) {
-  const { root: compiled, modules } = continuation ? { root: childContinuationRoot, modules: childContinuationModules }
+async function fixture(policy: "cascade" | "independent", unawaited = false, continuation = false, stores = plan1Stores, observeExecution?: (run: RunRecord) => void, nested = false) {
+  const { root: compiled, modules } = nested ? { root: childExecutionRoot, modules: childExecutionModules } : continuation ? { root: childContinuationRoot, modules: childContinuationModules }
     : unawaited ? childUnawaitedModules(policy) : childPolicyModules(policy);
   bindWorkflowDelegationTargets(modules.map(module => module.descriptor));
   assert.equal(plan1Contract.effect, "read");
@@ -55,7 +60,8 @@ async function fixture(policy: "cascade" | "independent", unawaited = false, con
   const { database, clock, path, stateRoot } = h.authority;
   const patch = { "actor.label": { set: "Synthetic operator" } } as const;
   assert.equal(executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
-    settings: createSettingsApplicationExecutor(settings => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock),
+    settings: createSettingsApplicationExecutor(settings => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock,
+      { stateRoot, artifactRoot: h.authority.profile.admission.artifactRoot }),
       createCredentialStore({ stateRoot })) }, {
     commandId: randomUUID(), family: "settings", type: "apply-settings", source: "settings-surface",
     requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { expectedRevision: 1 },
@@ -64,7 +70,8 @@ async function fixture(policy: "cascade" | "independent", unawaited = false, con
   const applySettings = (patch: SettingsPatch) => {
     const active = database.authority.runtimeConfig.get(); assert.ok(active);
     const result = executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
-      settings: createSettingsApplicationExecutor(settings => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock),
+      settings: createSettingsApplicationExecutor(settings => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock,
+      { stateRoot, artifactRoot: h.authority.profile.admission.artifactRoot }),
         createCredentialStore({ stateRoot })) }, {
       commandId: randomUUID(), family: "settings", type: "apply-settings", source: "person-preferences",
       requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { expectedRevision: active.settingsRevision },
@@ -104,7 +111,7 @@ it("keeps the exact parent snapshot after a real apply-settings workflow selecti
   const child = f.child();
   const invocations = f.database.authority.lifecycleJournal.listDelegationInvocations(pinned.runId);
   assert.equal(invocations.length, 1);
-  for (const identity of [f.currentRoot().envelope, child.envelope, ...invocations]) {
+  for (const identity of [f.currentRoot().envelope, child.envelope, ...invocations.map(row => DelegationInvocationRequestSchema.parse(row.request))]) {
     assert.equal(identity.configSnapshotId, pinned.configSnapshotId);
     assert.equal(identity.configFingerprint, pinned.configFingerprint);
   }
@@ -115,6 +122,149 @@ it("keeps the exact parent snapshot after a real apply-settings workflow selecti
   assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "done");
   assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "done");
   terminal(f.currentRoot(), "done");
+});
+
+it("keeps child resources and preflight on A while a genuinely changed Settings config gives a new root B", async () => {
+  let saves = 0;
+  const f = await fixture("cascade", false, false, plan1Stores, run => {
+    if (saves > 0) return;
+    const snapshot = f.database.authority.configSnapshots.get(run.envelope.configSnapshotId); assert.ok(snapshot);
+    const active = f.applySettings({ "timeouts.taskMs": { set: snapshot.config.timeouts.taskMs + 1000 } });
+    assert.notEqual(active.configFingerprint, run.envelope.configFingerprint);
+    saves++;
+  });
+  const snapshotA = f.database.authority.configSnapshots.get(f.root.envelope.configSnapshotId); assert.ok(snapshotA);
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
+  assert.equal(saves, 1);
+  const child = f.child();
+  const rootModule = f.modules.find(module => module.descriptor.id === f.root.envelope.workflow); assert.ok(rootModule);
+  const newRoot = f.execution.start(rootModule.descriptor, { emplId: "10800001", text: "new", mode: "ok" }, { dryRun: false });
+  const active = f.database.authority.runtimeConfig.get(); assert.ok(active);
+  assert.equal(newRoot.envelope.configSnapshotId, active.configSnapshotId);
+  assert.equal(newRoot.envelope.configFingerprint, active.configFingerprint);
+  for (const identity of [f.currentRoot().envelope, child.envelope,
+    ...f.database.authority.lifecycleJournal.listDelegationInvocations(f.root.envelope.runId).map(row => DelegationInvocationRequestSchema.parse(row.request))]) {
+    assert.equal(identity.configSnapshotId, snapshotA.configSnapshotId);
+    assert.equal(identity.configFingerprint, snapshotA.fingerprint);
+  }
+  const resources = await delegationConfigResources({ database: f.database, deps: f.deps, admission: f.profile.admission,
+    descriptor: rootModule.descriptor, resolve: id => f.modules.find(module => module.descriptor.id === id)?.descriptor });
+  try {
+    const selectedA = await resources.observe(child, world.SIGNAL);
+    const selectedB = await resources.observe(newRoot, world.SIGNAL);
+    assert.equal(selectedA.taskDeadlineMs, snapshotA.config.timeouts.taskMs);
+    assert.equal(selectedB.taskDeadlineMs, snapshotA.config.timeouts.taskMs + 1000);
+    assert.deepEqual(resources.observations, [
+      { snapshotId: snapshotA.configSnapshotId, fingerprint: snapshotA.fingerprint, taskMs: selectedA.taskDeadlineMs },
+      { snapshotId: active.configSnapshotId, fingerprint: active.configFingerprint, taskMs: selectedB.taskDeadlineMs },
+    ]);
+  } finally { await resources.stop(); }
+});
+
+it("refuses missing, tampered and mismatched retained config without publishing partial children", async () => {
+  const f = await fixture("cascade");
+  const snapshot = f.database.authority.configSnapshots.get(f.root.envelope.configSnapshotId); assert.ok(snapshot);
+  const native = f.execution.lifecycle.admitDelegation.bind(f.execution.lifecycle);
+  let refusals = 0;
+  f.execution.lifecycle.admitDelegation = (batch, plans) => {
+    const generation = f.database.getMeta().authorityGeneration;
+    assert.throws(() => native({ ...batch, run: { ...batch.run, version: PositiveIntSchema.parse(batch.run.version + 1) } }, plans),
+      /delegation-parent-claim-stale/u);
+    const other = f.modules.find(module => module.descriptor.id !== batch.descriptor.id); assert.ok(other);
+    assert.throws(() => native({ ...batch, descriptor: other.descriptor }, plans), /delegation-owner-binding-mismatch/u);
+    assert.throws(() => native({ ...batch, leaves: batch.leaves.map(leaf => ({ ...leaf,
+      scope: { ...leaf.scope, input: { emplId: "10800000", text: "tampered", mode: "ok" } } })) }, plans),
+      /delegation-scope-input-mismatch/u);
+    assert.throws(() => native(batch, plans.map(plan => ({ ...plan, edgeId: DelegationEdgeIdSchema.parse("invalid") }))),
+      /delegation-plan-mismatch/u);
+    assert.equal(f.database.getMeta().authorityGeneration, generation);
+    const raw = new DatabaseSync(syntheticDatabasePath(f.database));
+    raw.exec("PRAGMA foreign_keys=OFF");
+    const triggers = ["settings_snapshots_retained", "settings_snapshots_immutable", "settings_snapshots_no_replace"].map(name => {
+      const sql = raw.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?").get(name)?.sql;
+      assert.ok(typeof sql === "string");
+      return { name, sql };
+    });
+    const restore = () => raw.prepare("INSERT OR REPLACE INTO settings_snapshots (id,revision,fingerprint,payload_json,captured_at) VALUES (?,?,?,?,?)")
+      .run(snapshot.configSnapshotId, snapshot.revision, snapshot.fingerprint, JSON.stringify(snapshot), snapshot.capturedAt);
+    try {
+      for (const trigger of triggers) raw.exec(`DROP TRIGGER "${trigger.name}"`);
+      for (const invalid of ["missing", "tampered", "mismatched"] as const) {
+        if (invalid === "missing") raw.prepare("DELETE FROM settings_snapshots WHERE id=?").run(snapshot.configSnapshotId);
+        else {
+          const config = { ...snapshot.config, timeouts: { ...snapshot.config.timeouts, taskMs: snapshot.config.timeouts.taskMs + 1000 } };
+          const fingerprint = invalid === "tampered" ? snapshot.fingerprint : sha256Hex(canonicalJsonStringify(config));
+          raw.prepare("UPDATE settings_snapshots SET fingerprint=?,payload_json=? WHERE id=?")
+            .run(fingerprint, JSON.stringify({ ...snapshot, config, fingerprint }), snapshot.configSnapshotId);
+        }
+        const generation = f.database.getMeta().authorityGeneration;
+        assert.throws(() => native(batch, plans), error => {
+          assert.ok(error instanceof delegationAdmission.DelegationConfigUnavailableError);
+          assert.equal(error.code, "DELEGATION_CONFIG_UNAVAILABLE");
+          assert.ok(error.cause instanceof Error);
+          return true;
+        });
+        assert.equal(f.database.getMeta().authorityGeneration, generation);
+        assert.deepEqual(f.database.authority.runs.listChildren(f.root.envelope.runId), []);
+        assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(f.root.envelope.runId), []);
+        assert.deepEqual(f.database.authority.lifecycleJournal.listDelegationInvocations(f.root.envelope.runId), []);
+        assert.deepEqual(f.database.authority.dependencies.listByParentRun(f.root.envelope.runId), []);
+        refusals++;
+        restore();
+      }
+    } finally {
+      try { restore(); for (const trigger of triggers) raw.exec(trigger.sql); }
+      finally { raw.close(); }
+    }
+    return native(batch, plans);
+  };
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation",
+    JSON.stringify(f.database.authority.failures.listByRun(f.root.envelope.runId)));
+  assert.equal(refusals, 3);
+  assert.equal(f.database.authority.runs.listChildren(f.root.envelope.runId).length, 1);
+});
+
+it("refuses attempting and UNKNOWN parked parent writes at delegation admission without partial publication", async () => {
+  const f = await fixture("cascade");
+  const native = delegationAdmission.admitDelegation;
+  let observed = 0;
+  const probe = vi.spyOn(delegationAdmission, "admitDelegation").mockImplementationOnce((...args) => {
+    assertDelegationWriteRecoveryRefusals(native, ...args);
+    observed++;
+    return native(...args);
+  });
+  try {
+    assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
+    assert.equal(observed, 1);
+  } finally { probe.mockRestore(); }
+});
+
+it("pins nested and later sibling admissions to A across real Settings rotations between admissions", async () => {
+  const f = await fixture("cascade", false, false, plan1Stores, undefined, true);
+  const pinned = f.root.envelope;
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
+  const nested = f.child();
+  assert.equal(f.applySettings({ "preferences.selectedWorkflowId": { set: nested.envelope.workflow } }).configFingerprint, pinned.configFingerprint);
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
+  assert.equal(f.database.authority.runs.listChildren(nested.envelope.runId).length, 1);
+  assert.equal(f.applySettings({ "preferences.selectedWorkflowId": { set: pinned.workflow } }).configFingerprint, pinned.configFingerprint);
+  const completed = await f.execution.execute(f.root, world.SIGNAL);
+  assert.ok(completed.run); terminal(completed.run, "done");
+  const children = f.database.authority.runs.listChildren(pinned.runId);
+  assert.equal(children.length, 2);
+  const descendants = [...children, ...f.database.authority.runs.listChildren(nested.envelope.runId)];
+  assert.equal(descendants.length, 3);
+  for (const run of [f.currentRoot(), ...descendants]) {
+    assert.equal(run.envelope.configSnapshotId, pinned.configSnapshotId);
+    assert.equal(run.envelope.configFingerprint, pinned.configFingerprint);
+    assert.equal(f.database.authority.writeIntents.listByRun(run.envelope.runId).length, 0);
+    assert.deepEqual(f.database.authority.failures.listByRun(run.envelope.runId), []);
+    for (const row of f.database.authority.lifecycleJournal.listDelegationInvocations(run.envelope.runId)) {
+      const invocation = DelegationInvocationRequestSchema.parse(row.request);
+      assert.equal(invocation.configSnapshotId, pinned.configSnapshotId);
+      assert.equal(invocation.configFingerprint, pinned.configFingerprint);
+    }
+  }
 });
 
 /** The parent's OS exit event: its claimed runs settle while the in-process execution still holds the old claim. */
