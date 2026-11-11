@@ -1912,7 +1912,9 @@ export async function executeClaimedRun(
           if (!envelope.dryRun && envelope.continuation !== undefined) {
             const settled = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
             // A run's own settlement replays from its receipt: its input is fixed, so a later re-read is an observation, not a correction.
-            const checkpoint = settled?.runId === runId && envelope.injected === undefined ? undefined : settled;
+            // A child-run dependency keeps the guard, which alone authenticates the original member authority.
+            const checkpoint = settled?.runId === runId && envelope.injected === undefined
+              && !node.dependsOn.some(id => nodes.find(dependency => dependency.id === id)?.kind === "child-run") ? undefined : settled;
             if (checkpoint !== undefined) {
               const originalScope = sourceScopeFor(checkpoint.runId, node.dependsOn, boundBefore(checkpoint));
               const mappings = (scope: RuntimeScope) => ({ prepare: node.prepare.uses.input.parse(node.prepare.bind(scope)),
