@@ -6,6 +6,8 @@ description: >-
   harness from the real components and synthetic fixtures, renders them, and hands the frames over
   for the operator's pick. Not for building or wiring an approved design, updating parity
   references, or standalone HTML mockups.
+metadata:
+  exposed: "true"
 ---
 
 # ui-mock — variants in the real dashboard

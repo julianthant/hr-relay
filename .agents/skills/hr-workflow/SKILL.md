@@ -6,6 +6,8 @@ description: >-
   and public canary subjects, then creates or refreshes a `.agents/skill-library/` reference for
   `hr-manage`. Use for workflow-specific run, monitor, dry-run, verification, debug, and recording
   guidance; it does not author workflow code or execute a workflow.
+metadata:
+  exposed: "true"
 ---
 
 # /hr-workflow <workflow-id> — generate or refresh an internal workflow resource

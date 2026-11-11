@@ -2,6 +2,8 @@
 name: hr-manage
 description: >-
   The shared operations skill every workflow-specific HR skill is built on — managing the Relay dashboard and its workflow runs: start and stop the dashboard runtime, start runs (dryRun default) for one subject or a cohort through the signed-in dashboard, monitor (Logs, explain run, Settings storage section), take gate approvals, retry only real failures, refuse re-runs after an UNKNOWN submit, and close with a per-subject status table. Also covers runtime housekeeping (ports, locks, orphan browsers). Invoke on `/hr-manage`, "run X for these people", "start/restart the dashboard", "what's the status of the runs", "approve the gate", "monitor the batch".
+metadata:
+  exposed: "true"
 ---
 
 # /hr-manage — run, batch, monitor, approve, report
