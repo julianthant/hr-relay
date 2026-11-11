@@ -1,8 +1,6 @@
-import { useLayoutEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { LogOut } from 'lucide-react';
-import { Button, DsBodyScope, TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
+import { DsBodyScope, TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
 import { QueueSurfaceWireSchema } from '../../../../src/models/dashboard/projection.js';
 import { QueuePanel } from '../../../../src/dashboard/surfaces/queue/queue.js';
 import { mockRunLog, seedMockRuns } from '../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js';
@@ -25,14 +23,9 @@ document.body.setAttribute('data-demo-theme', theme);
 let calls = 0;
 function countCall() { document.body.setAttribute('data-action-calls', String(++calls)); }
 function SessionsBarHarness() {
-  const anchor = useRef<HTMLSpanElement>(null);
-  const [footer, setFooter] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(query.get('open') === '1');
-  useLayoutEffect(() => { setFooter(anchor.current?.closest('.dashboard-shell')?.querySelector<HTMLElement>('[aria-label="Session actions"] > span:last-child') ?? null); }, []);
   return <div className="dashboard-shell">
-    <SessionsView open={open} onOpenChange={setOpen} onControl={() => {}} onAdd={() => {}} onSettings={() => {}} workflows={[{ id: 'separations', label: 'Separations' }]} data={sessionsSample('active')} />
-    {footer && createPortal(<Button tabIndex={0} size="sm" variant="ghost" className="hub-logout sessions-bar-icon" aria-label="Log out" title="Log out" icon={<LogOut aria-hidden className="size-4" />} />, footer)}
-    <span ref={anchor} className="sr-only" />
+    <SessionsView open={open} onOpenChange={setOpen} onControl={() => {}} onAdd={() => {}} workflows={[{ id: 'separations', label: 'Separations' }]} data={sessionsSample('active')} account={{ onSettings: () => {}, onLogout: () => {} }} />
   </div>;
 }
 function Fixture() {

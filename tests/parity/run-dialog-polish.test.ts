@@ -1,6 +1,7 @@
 
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
+import { installServedSurfaces } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -15,15 +16,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 });
-      await installTheme(page, theme);
+      await installTheme(page, theme); await installServedSurfaces(page);
       const writes: string[] = [], errors: string[] = [];
       page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
       page.on("pageerror", error => errors.push(error.message));
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.openGateRun}`);
-      const start = page.getByRole("button", { name: "Start a run", exact: true });
+      const start = page.getByRole("button", { name: "Start run", exact: true });
       await start.click();
-      const run = page.getByRole("dialog", { name: "Start a run", exact: true });
-      const input = run.getByRole("textbox", { name: "Employee IDs", exact: true });
+      const run = page.getByRole("dialog", { name: "Start run", exact: true });
+      const input = run.getByRole("textbox", { name: /^Employee IDs/u });
       await expect(input).toBeFocused();
       await expect(run).toHaveCSS("opacity", "1");
       const bounds = (await run.boundingBox())!;
@@ -40,7 +41,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect((await run.locator(":scope > footer").boundingBox())!.height).toBe(57);
       expect((await run.locator(".launch-workflow-rail").boundingBox())!.width).toBe(190);
       expect((await run.locator(".launch-stagebar").boundingBox())!.height).toBe(54);
-      expect((await run.locator('[data-slot="search-field-group"]').boundingBox())!.height).toBe(32);
+      expect((await run.locator('[data-slot="search-field-group"]').boundingBox())!.height).toBe(36);
       expect((await input.boundingBox())!.height).toBe(88);
       await expect(run.locator(":scope > header h2")).toHaveCSS("font-size", "16px");
       await expect(run.locator(".launch-stagebar > li").nth(1)).toHaveCSS("padding", "0px");

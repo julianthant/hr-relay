@@ -18,21 +18,30 @@
     - listitem:
       - button "2 Values": Values
     - listitem:
-      - button "3 Options" [disabled]: Options
-    - listitem:
-      - button "4 Confirm" [disabled]: Confirm
-  - heading "Values for the new run" [level=3]
-  - paragraph: Each entry starts one run.
+      - button "3 Options": Options
   - region "Values":
-    - text: Emails
-    - textbox "Emails":
-      - /placeholder: jordan.lee@example.com, sam.rivera@example.com
-      - text: jordan.lee@example.com
-    - paragraph: Separate values with a comma or a new line.
+    - region "Input":
+      - heading "Input" [level=4]
+      - paragraph: Emails. Separate values with a comma or Shift+Enter.
+      - textbox "Emails":
+        - /placeholder: jordan.lee@example.com, sam.rivera@example.com
+        - text: jordan.lee@example.com
     - list "Parsed inputs":
       - listitem: 1 jordan.lee@example.com
+    - region "Reference spreadsheets":
+      - heading "Reference spreadsheets" [level=4]
+      - paragraph: Spreadsheets this run looks people up in. Needs Employee ID and Name.
+      - text: Contact roster Roster
+      - button "Contact roster worksheets, Roster": Roster
+      - combobox "Contact roster version": v6
+      - button "Remove Contact roster"
+      - text: I-9 tracker Sheet1
+      - button "I-9 tracker worksheets, Sheet1": Sheet1
+      - combobox "I-9 tracker version": v3
+      - button "Remove I-9 tracker"
+    - button "Add spreadsheet"
   - contentinfo:
-    - text: Source run · new runOnboarding
+    - text: Onboarding7 of 8 stepsPriority Enter to continue
     - button "Back"
     - button "Cancel"
     - button "Continue"

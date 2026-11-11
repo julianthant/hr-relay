@@ -7,9 +7,9 @@
 # capturedAt: 2026-08-03
 
 - region "Notifications"
-- dialog "Start a run":
+- dialog "Start run":
   - banner:
-    - heading "Start a run" [level=2]
+    - heading "Start run" [level=2]
     - paragraph: Work-Study · Workflow preview
     - button "Close"
   - complementary:
@@ -47,7 +47,7 @@
       - heading "Utils" [level=3]
       - list:
         - listitem:
-          - button "CRM Doc Download"
+          - button "Onboarding Documents"
       - heading "OnBase" [level=3]
       - list:
         - listitem:
@@ -61,23 +61,33 @@
       - button "1 Input": Input
     - listitem:
       - button "2 Options" [disabled]: Options
-    - listitem:
-      - button "3 Confirm" [disabled]: Confirm
-  - heading "Run input" [level=3]
-  - paragraph: Each entry starts one run.
   - region "Input":
-    - text: Employee IDs
-    - textbox "Employee IDs":
-      - /placeholder: 10000001, 10000002
-    - paragraph: Separate values with a comma or a new line.
-    - text: Effective date*
-    - group "Effective date*":
-      - spinbutton "month, Effective date*": "08"
-      - spinbutton "day, Effective date*": "03"
-      - spinbutton "year, Effective date*": "2026"
-      - button "Choose effective date Effective date*" [expanded]
+    - region "Dates":
+      - text: Effective date The day the change takes effect. Effective date*
+      - group "Effective date*":
+        - spinbutton "month, Effective date*": "08"
+        - spinbutton "day, Effective date*": "03"
+        - spinbutton "year, Effective date*": "2026"
+        - button "Choose effective date Effective date*" [expanded]
+    - region "Input":
+      - heading "Input" [level=4]
+      - paragraph: Employee IDs. Separate values with a comma or Shift+Enter.
+      - textbox "Employee IDs":
+        - /placeholder: 10000001, 10000002
+    - region "Reference spreadsheets":
+      - heading "Reference spreadsheets" [level=4]
+      - paragraph: Spreadsheets this run looks people up in. Needs Employee ID and Name.
+      - text: Contact roster Roster
+      - button "Contact roster worksheets, Roster": Roster
+      - combobox "Contact roster version": v6
+      - button "Remove Contact roster"
+      - text: I-9 tracker Sheet1
+      - button "I-9 tracker worksheets, Sheet1": Sheet1
+      - combobox "I-9 tracker version": v3
+      - button "Remove I-9 tracker"
+    - button "Add spreadsheet"
   - contentinfo:
-    - text: 0 runsWork-Study
+    - text: Work-Study2 of 2 stepsPriority
     - button "Cancel"
     - button "Continue" [disabled]
 - dialog "Choose effective date":

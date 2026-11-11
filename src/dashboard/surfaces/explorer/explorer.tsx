@@ -3,6 +3,8 @@ import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.j
 import { useMemo, useState } from "react";
 import { Button, EmptyState, Notice } from "../../ds/ui.js";
 import { ExplorerTimeline } from "./explorer-flow.js";
+import { ExplorerSpecView } from "./explorer-spec-view.js";
+import { PERSON_LOOKUP_SPEC } from "./explorer-spec-fixtures.js";
 import { buildExplorerPreview, previewFieldSource } from "./explorer-fixture.js";
 import { blockedAfter, DEFAULT_SCENARIO, type PreviewScenario } from "./explorer-flow-model.js";
 import { buildEmergencyContactMock, buildOnboardingMock, DEFAULT_MOCK_SCENARIO, mockFieldSource, updateMockScenario } from "./explorer-mock-fixtures.js";
@@ -31,6 +33,7 @@ export function WorkflowExplorer({ catalog, client }: { catalog: readonly Workfl
     steps: buildExplorerPreview(scenario), summary: "Kuali request → UCPath termination → Kuali completion", completion: "Separation filed and Kuali document verified",
     path: { step: 17, control: "preview-pending" }, stopAfter: blockedAfter(scenario),
   }, [workflowId, mockScenario, scenario]);
+  if (workflowId === "fixture-person-lookup") return <ExplorerSpecView key={workflowId} spec={PERSON_LOOKUP_SPEC} workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId} />;
   if (!workflow || (!served && !id)) return <EmptyState title="Workflow unavailable" description="Choose a registered workflow to inspect its steps." action={<Button onClick={() => setWorkflowId(explorerRecoveryWorkflow(catalog))}>Open Separations</Button>} />;
   if (served) {
     const projection = resource.state === "ready" ? resource.projection : resource.state === "refused" ? resource.previous : undefined;

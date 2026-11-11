@@ -16,39 +16,46 @@
     - listitem:
       - button "1 Steps": Steps
     - listitem:
-      - button "2 Values" [disabled]: Values
+      - button "2 Values": Values
     - listitem:
       - button "3 Options" [disabled]: Options
-    - listitem:
-      - button "4 Confirm" [disabled]: Confirm
-  - heading "Choose what to run again" [level=3]
-  - text: 7 / 7 included
+  - heading "Steps" [level=3]
+  - text: 7 of 7 included
   - paragraph: Select steps for the new run. Statuses show the source outcome.
   - region "Steps":
-    - heading "Steps" [level=4]
-    - list:
-      - listitem:
-        - checkbox "Read emergency contact" [checked]
-        - text: Read emergency contact OCR Completed
-      - listitem: Match extracted people Automatic Completed
-      - listitem: Review extracted records Approval required Not started
-      - listitem:
-        - checkbox "Sign in to OnBase" [checked] [disabled]
-        - text: Sign in to OnBase OnBase · required Not started
-      - listitem:
-        - checkbox "Prepare person page" [checked] [disabled]
-        - text: Prepare person page Form action · required Not started
-        - checkbox "Enter reading values manually for prepare person page"
-        - text: Enter reading values manually for prepare person page
-      - listitem:
-        - checkbox "Fill document keywords" [checked] [disabled]
-        - text: Fill document keywords Form action · required Not started
-        - checkbox "Enter reading values manually for fill document keywords"
-        - text: Enter reading values manually for fill document keywords
-      - listitem:
-        - checkbox "Import document" [checked] [disabled]
-        - text: Import document Form action · required Not started
+    - region "Steps":
+      - text: Read emergency contact OCR Completed
+      - switch "Include Read emergency contact" [checked]
+      - text: Include Read emergency contact
+      - img "Required"
+      - text: Match extracted people Automatic Completed
+      - switch "Match extracted people (required)" [checked] [disabled]
+      - text: Match extracted people (required)
+      - img "Required"
+      - text: Review extracted records Approval required Not started
+      - switch "Review extracted records (required)" [checked] [disabled]
+      - text: Review extracted records (required)
+      - img "Required"
+      - text: Sign in to OnBase OnBase · required Not started
+      - switch "Sign in to OnBase (required)" [checked] [disabled]
+      - text: Sign in to OnBase (required)
+      - img "Required"
+      - text: Prepare person page Form action · required Not started
+      - switch "Enter manually for Prepare person page"
+      - text: Enter manually for Prepare person page
+      - switch "Prepare person page (required)" [checked] [disabled]
+      - text: Prepare person page (required)
+      - img "Required"
+      - text: Fill document keywords Form action · required Not started
+      - switch "Enter manually for Fill document keywords"
+      - text: Enter manually for Fill document keywords
+      - switch "Fill document keywords (required)" [checked] [disabled]
+      - text: Fill document keywords (required)
+      - img "Required"
+      - text: Import document Form action · required Not started
+      - switch "Import document (required)" [checked] [disabled]
+      - text: Import document (required)
   - contentinfo:
-    - text: Source run · new runOnBase
+    - text: OnBase7 of 7 stepsOCR onPriority Enter to continue
     - button "Cancel"
     - button "Continue"

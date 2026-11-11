@@ -10,8 +10,9 @@
   - /url: "#dashboard-main-region"
 - complementary "Workspace":
   - heading "Relay" [level=2]
+  - button "Collapse sidebar" [expanded]
   - button "Notifications, 3 unread"
-  - button "Search runs"
+  - button "Search"
   - navigation "Workflows":
     - heading "Search" [level=3]
     - list:
@@ -46,9 +47,7 @@
     - heading "Utils" [level=3]
     - list:
       - listitem:
-        - button "CRM Doc Download"
-      - listitem:
-        - button "SharePoint Download"
+        - button "Onboarding Documents"
     - heading "OnBase" [level=3]
     - list:
       - listitem:
@@ -71,7 +70,7 @@
       - button "Delete"
   - region "Action panel":
     - group "Action panel controls":
-      - button "Start a run"
+      - button "Start run"
       - button "Filter queue by status": Status
       - combobox "Sort the queue": Newest first
       - button "Attention first" [pressed]
@@ -85,7 +84,6 @@
         - button "Choose date Dashboard date*"
   - region "Selected run logs":
     - heading "Lee, Jordan" [level=2]
-    - text: Done
     - button "Linked runs (1)"
     - navigation "Run timeline":
       - list:
@@ -97,35 +95,25 @@
         - heading "Read Section 2 signer" [level=3]
         - text: I-9 Complete
         - heading "Portal person search" [level=4]
-        - time: 09:10:00
         - term: Last name
         - definition: Lee
-        - time: 09:10:00
         - term: First name
         - definition: Jordan
-        - time: 09:10:00
         - term: SSN
         - definition: •••-••-0001
-        - time: 09:10:00
         - text: Search and open the matching profile
         - heading "Section 2" [level=4]
-        - time: 09:10:00
         - term: I-9 status
         - definition: Section 2 complete
-        - time: 09:10:00
         - term: Authorized official signer
         - definition: Alex Morgan
-        - time: 09:10:00
         - term: Profile ID
         - definition: DEMO-I9-001
         - heading "Lookup" [level=4]
-        - time: 09:10:00
         - term: Official signer
         - definition: Alex Morgan
-        - time: 09:10:36
         - term: Authorized official signer
         - definition: Jamie Morgan
-        - time: 09:10:36
         - term: I-9 status
         - definition: Section 2 complete
     - group:
@@ -134,7 +122,6 @@
     - status
     - button "Copy logs"
     - button "Go to latest action"
-- button "Assistant"
 - status
 - region "Session Panel":
   - group "Session actions":
@@ -142,4 +129,5 @@
     - button "Add workers"
     - button "Settings"
     - button "Log out"
+    - button "Assistant": Ask
 - region "Notifications"

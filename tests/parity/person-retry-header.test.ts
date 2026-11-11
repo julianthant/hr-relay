@@ -46,7 +46,6 @@ for (const theme of ["light", "dark"] as const) for (const width of [1024, 1440]
       const logsPanel = page.getByRole("region", { name: "Selected run logs" });
       const retry = logsPanel.locator("header").getByRole("button", { name: "Retry", exact: true });
       await expect(retry).toHaveCount(1); await expect(retry).toBeEnabled();
-      await page.getByRole("button", { name: "Close assistant" }).click();
       await expect(page.getByRole("region", { name: "Assistant panel" })).toBeHidden();
       await expect(page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
       await retry.focus(); await page.keyboard.press("Enter");

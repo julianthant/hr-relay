@@ -28,7 +28,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       const workflows = surface.getByRole("combobox", { name: "Explorer workflow", exact: true });
       await expect(workflows).toHaveAttribute("data-value", "fixture-separations");
       await workflows.click();
-      await expect(page.locator('[data-slot="select-content"][data-open]').getByRole("option")).toHaveText(["Person Lookup", "I-9 Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule", "CRM Doc Download", "SharePoint Download", "OnBase", "Old Kronos Reports"]);
+      await expect(page.locator('[data-slot="select-content"][data-open]').getByRole("option")).toHaveText(["Person Lookup", "I-9 Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule", "Onboarding Documents", "OnBase", "Old Kronos Reports"]);
       await attachPresentationReference(page, test.info(), "explorer-workflow-menu.png");
       await page.keyboard.press("Escape");
       await expect(surface.getByRole("complementary", { name: "Workflow browser" })).toHaveCount(0);
@@ -75,7 +75,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await finalForm.locator(':scope > summary').click();
       await expect(origin).toBeVisible();
       const table = surface.locator('details[data-disclosure="22-finalize"]').locator("..");
-      expect(await table.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(theme.attribute === "dark" ? "rgb(43, 43, 43)" : "rgb(244, 244, 244)");
+      expect(await table.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(theme.attribute === "dark" ? "rgb(31, 31, 35)" : "rgb(246, 246, 246)");
       await expect(surface.getByRole("textbox", { name: "Find workflow" })).toHaveCount(0);
       await expect(surface.getByLabel("Action legend", { exact: true })).toHaveCount(0);
       expect(requests).toEqual([]);

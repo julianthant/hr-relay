@@ -8,7 +8,7 @@
 
 - region "Relay assistant":
   - button "New chat"
-  - button "Chats"
+  - button "History"
   - button "New chat"
   - button "Close assistant"
   - log "Assistant conversation":
@@ -21,7 +21,6 @@
     - group "Message controls":
       - button "Add files"
       - button "Ask before every action"
-      - 'button "Model: GPT-6.1 Sol"': GPT-6.1 Sol
-      - 'button "Thinking effort: Medium"': Medium
+      - 'button "Model: GPT-6.1 Sol, Medium effort"': GPT-6.1 Sol Medium
       - button "Voice input"
       - button "Send message" [disabled]

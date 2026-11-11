@@ -52,6 +52,9 @@ export async function installFrozenMonotonic(page: Page): Promise<void> {
       writable: true,
       value: () => frozen,
     });
+    // The assistant mark's idle orbit advances by the frame timestamp; a frozen one keeps it at rest.
+    const frame = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = callback => frame(() => callback(frozen));
   });
 }
 
@@ -85,17 +88,13 @@ export async function gotoAppState(page: Page, baseUrl: string, route: AppRoute)
 }
 
 
-export function rowOf(page: Page, runId: string) {
-  return page.locator(`[data-demo-row-id='${runId}']`);
+/** Later navigations on this page read served surfaces only: the parity entry's mock-surface flag stays off. */
+export async function installServedSurfaces(page: Page): Promise<void> {
+  await page.addInitScript(() => { Object.defineProperty(window, "relayMockSurfaces", { value: false, writable: false, configurable: false }); });
 }
 
-export async function moveAssistantLauncherAboveFooter(page: Page): Promise<void> {
-  const launcher = page.getByRole("button", { name: "Assistant", exact: true });
-  const before = await launcher.boundingBox();
-  if (!before) throw new Error("Assistant launcher is unavailable");
-  await launcher.focus();
-  for (let step = 0; step < 4; step++) await launcher.press("Alt+ArrowUp");
-  await expect.poll(async () => (await launcher.boundingBox())?.y).toBe(before.y - 64);
+export function rowOf(page: Page, runId: string) {
+  return page.locator(`[data-demo-row-id='${runId}']`);
 }
 
 /** A rail row shows its running count as a pill (empty slot at 0) and describes it as "N running". */

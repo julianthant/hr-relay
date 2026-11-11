@@ -35,7 +35,7 @@ test(`selected run resize ${viewport.width}x${viewport.height} @ ${theme.name}`,
       await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,run:FIXTURE_IDS.runningRun});
       const before=await assertPanels(page);
       if(viewport.width===1024){await page.setViewportSize({width:1024,height:720});await assertPanels(page);await page.setViewportSize(viewport);await assertPanels(page);}
-      for(const name of ["Settings","Notifications","Start a run"]){
+      for(const name of ["Settings","Notifications","Start run"]){
         const control=page.getByRole("button",{name,exact:name!=="Notifications"}).first();
         await expect(control).toBeVisible();
         expect(await control.evaluate(node=>{const box=node.getBoundingClientRect();return node.contains(document.elementFromPoint(box.x+box.width/2,box.y+box.height/2));})).toBe(true);

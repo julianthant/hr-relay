@@ -42,7 +42,7 @@ describe("notification composition and canonical navigation", () => {
     expect(result.state).toBe("ready");
     if (result.state !== "ready") throw new Error(result.message);
     expect(result.workflowId).toBe(row.workflowId);
-    expect(result.route).toMatchObject({ day, run: runId, section: "logs", start: false, view: { preview: null, notifications: false } });
+    expect(result.route).toMatchObject({ day, run: runId, section: "logs", start: false, view: { preview: null } });
     expect(result.route.settings).toBeUndefined();
     expect(result.route.archive).toBeUndefined();
     expect(result.route.view?.records).toBeUndefined();

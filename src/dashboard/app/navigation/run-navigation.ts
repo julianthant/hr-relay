@@ -15,7 +15,7 @@ export async function resolveRunNavigation(client: Pick<DashboardClient, "dashbo
   if (target.kind === "refused" || target.kind === "recovery" || target.kind === "command-result" || target.kind === "bulk-result") return refuse();
   if (target.kind === "archive") return { state: "refused", message: formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_ARCHIVE_RETIRED", {})).text };
   const base = { ...routeWithoutTakeovers(route), start: false, run: undefined, section: undefined,
-    view: { ...route.view, preview: null, mockRun: undefined, records: undefined, logFailure: undefined, notifications: false } };
+    view: { ...route.view, preview: null, mockRun: undefined, records: undefined, logFailure: undefined } };
   if (target.kind === "storage") return { state: "ready", route: { ...base, settings: "storage" } };
   try {
     const day = await client.dashboardDay(target.day);

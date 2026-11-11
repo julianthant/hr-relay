@@ -11,7 +11,7 @@ import { wireError } from "../support/fixtures/dashboard/fixture-wire-error.js";
 import { attachPresentationReference } from "./helpers/presentation-reference.js";
 
 async function menu(page: Page, info: TestInfo, label: RegExp, state: string) {
-  const trigger = page.getByRole("dialog", { name: "Start a run", exact: true }).getByRole("button", { name: label });
+  const trigger = page.getByRole("dialog", { name: "Start run", exact: true }).getByRole("button", { name: label });
   await trigger.click();
   await expect(page.getByRole("menu").and(page.locator("[data-open]"))).toBeVisible();
   await attachPresentationReference(page, info, `${state}.png`);
@@ -29,20 +29,20 @@ test("mounted launch pickers and queue overlays", async ({ page }, info) => {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     await expect(dialog).toBeVisible();
     await menu(page, info, /Roster$/u, "run-roster-menu");
     await dialog.locator('input[type="file"]').setInputFiles({ name: "fixture.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%%EOF") });
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-    await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("region", { name: "Run", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await rail.getByRole("button", { name: "OnBase", exact: true }).click();
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
     await menu(page, info, /Document type$/u, "run-document-type-menu");
     await page.keyboard.press("Escape");
     await rail.getByRole("button", { name: "Work-Study", exact: true }).click();
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
     const calendar = dialog.getByRole("button", { name: /Choose effective date/iu });
     await calendar.click();
     await expect(page.getByRole("grid")).toBeVisible();

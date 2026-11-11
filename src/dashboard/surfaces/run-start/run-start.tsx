@@ -6,6 +6,7 @@ import { useViewNavigation, useViewState } from "../../app/navigation/view-route
 import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import "./launch-presentation.css";
 import { mockWorkflow, type MockWorkflowId } from "../workflows/mocks/workflow-mock-catalog.js";
+import { statusMock } from "../settings/status-mock/status-mock-model.js";
 import { WorkflowMockRunForm } from "../workflows/mocks/workflow-mock-run.js";
 import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "./run-launch-layout.js";
 import type { MockDraft, MockRun } from "../workflows/mocks/workflow-mock-model.js";
@@ -220,13 +221,13 @@ export function RunStartButton({ id, onOpen }: { id: string; onOpen: () => void 
       size="toolbar"
       variant="brand"
       className="queue-start-trigger"
-      aria-label="Start a run"
+      aria-label="Start run"
       onClick={onOpen}
       icon={<Play aria-hidden className={dsIcon.sm} />}
       // Keep shortcut hints in their shared discovery route so the primary control stays focused on its verb.
       title="Start a run — any workflow, from anywhere (r)"
     >
-      <span className="queue-start-label">Start a run</span>
+      <span className="queue-start-label">Start run</span>
     </Button>
   );
 }
@@ -456,10 +457,11 @@ export function RunStartDialog({
     selectedWorkflowRef.current = id;
     ++launchInstance.current;
     setBusy(false);
-    if (entry.served) {
+    if (entry.preview && (statusMock() !== undefined && entry.preview.runnable || !entry.served)) setPreviewSelection({ workflowId: entry.preview.id });
+    else if (entry.served) {
       setPreviewSelection(undefined);
       selectWorkflow(id);
-    } else if (entry.preview) setPreviewSelection({ workflowId: entry.preview.id });
+    }
   }, [catalog, selectWorkflow, onSubmitPreview, setPreviewSelection]);
 
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
@@ -860,7 +862,8 @@ export function RunStartDialog({
       <DialogContent
         onCloseAutoFocus={onCloseAutoFocus}
         size="xl"
-        title={previewSelection?.source || isRerun ? "Rerun" : "Start a run"}
+        band
+        title={previewSelection?.source || isRerun ? "Rerun" : "Start run"}
         description={previewFlow ? `${previewFlow.label} · Workflow preview` : isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `New work · ${workflow.label}` : "Choose a workflow to begin"}
         className={cn("launch-design launch-dialog", (previewSelection?.source || isRerun) && "launch-rerun")}
       >

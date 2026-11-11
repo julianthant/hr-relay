@@ -1,84 +1,93 @@
-import { Tabs } from "@heroui/react/tabs";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
-import { CheckCheck, CircleAlert, Mail, ListFilter } from "lucide-react";
-import { useEffect, useRef } from "react";
-import { Button, Skeleton, dsFocus, useToasts } from "../../ds/ui.js";
+import { Bell, Check, Mail, MailOpen, MoreHorizontal, X } from "lucide-react";
+import { forwardRef, useEffect, useRef, type ReactNode } from "react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, IconButton, Skeleton, Tooltip, dsFocus, dsIcon, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
-import { LoadingRegion, SkeletonText } from "../shared/loading/loading.js";
-import { notificationView, type NotificationCategory, type NotificationControl, type NotificationFilter, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
+import { LoadingRegion } from "../shared/loading/loading.js";
+import { itemDay, itemPreview, itemSource, type NotificationControl, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
+import "./notifications-panel.css";
 
-const iconButton = cn("inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-ui-secondary hover:bg-ui-hover hover:text-ui-primary", dsFocus);
+type Open = (item: NotificationItem) => void;
+type RowActions = Readonly<{ onControl: (id: string, control: NotificationControl) => void; onDismiss: (id: string) => void }>;
 
-function NotificationsSkeleton() {
-  return <LoadingRegion label="Loading notifications"><div aria-hidden>{[0, 1, 2].map(index => <div key={index} className="notification-row rounded-lg px-3 py-3">
-    <div className="flex items-start gap-2"><Skeleton className="mt-1.5 size-1.5 shrink-0 rounded-full" /><div className="min-w-0 flex-1">
-      <div className="min-h-6 text-body"><SkeletonText className="w-3/4" /></div><div className="mt-1 text-caption"><SkeletonText className="w-full" /></div>
-      <div className="mt-1 text-caption"><SkeletonText className="w-full" /><SkeletonText className="w-4/5" /></div><div className="mt-2 text-caption"><SkeletonText className="w-3/4" /></div>
-    </div><div className="flex size-7 shrink-0 items-center justify-center"><Skeleton className="size-3.5" /></div></div>
-    <div className="ml-3.5 mt-1 flex h-6 items-center px-1"><SkeletonText className="w-20 text-caption" /></div>
-  </div>)}</div></LoadingRegion>;
+/** Hover and focus replace the source tag with icon actions: read/unread, plus Dismiss outside Priority. */
+function RowActionButton({ label, icon, onClick }: { label: string; icon: ReactNode; onClick: () => void }) {
+  return <Tooltip side="bottom" content={label}><IconButton label={label} title="" size="xs" icon={icon} onClick={onClick} /></Tooltip>;
 }
 
-function NotificationRow({ item, onControl, onOpen }: { item: NotificationItem; onControl: (id: string, control: NotificationControl) => void; onOpen: (item: NotificationItem) => void }) {
-  const urgent = item.tone === "danger" || item.tone === "warning";
-  return <li className="notification-row group rounded-lg px-3 py-3 hover:bg-ui-hover focus-within:bg-ui-hover">
-    <div className="flex items-start gap-2"><span aria-hidden className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", item.tone === "danger" ? "bg-ui-danger" : item.tone === "warning" ? "bg-ui-warning" : !item.read ? "bg-ui-info" : "bg-ui-stroke")} />
-      <div className="min-w-0 flex-1"><button type="button" className={cn("block min-h-6 w-full break-words text-left text-body text-ui-primary", dsFocus)} onClick={() => onOpen(item)}>{item.subject}</button>
-        <p className={cn("mb-0 mt-1 text-caption", urgent ? item.tone === "danger" ? "text-ui-danger" : "text-ui-warning" : "text-ui-secondary")}>{item.title}</p>
-        <p className="mb-0 mt-1 break-words text-caption text-ui-muted">{item.detail}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 text-caption text-ui-muted"><span className="max-w-full truncate">{item.workflow}</span>{item.age && <><span aria-hidden>·</span><span className="shrink-0">{item.age}</span></>}</div>
-      </div><button type="button" aria-label={`${item.read ? "Mark unread" : "Mark read"}: ${item.title}`} title={item.read ? "Mark unread" : "Mark read"} className={iconButton} onClick={() => onControl(item.id, item.read ? "unread" : "read")}>{item.read ? <Mail aria-hidden className="size-3.5" /> : <CheckCheck aria-hidden className="size-3.5" />}</button>
-    </div>
-    <Button variant="ghost" size="sm" className="ml-3.5 mt-1 h-6 px-1 text-ui-info" onClick={() => onOpen(item)}>{item.action}</Button>
+/** Codex rows: the unread dot left of the title, the source tag right of it, a two-line grey preview below. */
+function NotificationRow({ item, active, onOpen, actions }: { item: NotificationItem; active: boolean; onOpen: Open; actions: RowActions }) {
+  return <li className="notification-row">
+    <button type="button" aria-current={active || undefined} className={cn("notification-item", dsFocus)} onClick={() => onOpen(item)}>
+      <span className="notification-item-head">
+        {!item.read && <span aria-hidden className="notification-unread-dot" />}
+        <span className="notification-item-title">{item.title}</span>
+        <span className="notification-item-tag">{itemSource(item)}</span>
+        {!item.read && <span className="sr-only">Unread</span>}
+      </span>
+      <span className="notification-item-line">{itemPreview(item)}</span>
+    </button>
+    <span className="notification-item-actions">
+      <RowActionButton label={item.read ? "Mark as unread" : "Mark as read"} icon={item.read ? <Mail aria-hidden className={dsIcon.md} /> : <MailOpen aria-hidden className={dsIcon.md} />} onClick={() => actions.onControl(item.id, item.read ? "unread" : "read")} />
+      {!item.priority && <RowActionButton label="Dismiss" icon={<X aria-hidden className={dsIcon.md} />} onClick={() => actions.onDismiss(item.id)} />}
+    </span>
   </li>;
 }
 
-export function NotificationsView({ state, filter, onFilter, category, onCategory, onControl, onReadAll, onOpen, notice }: {
-  state: NotificationsState; filter: NotificationFilter; onFilter: (filter: NotificationFilter) => void;
-  category: NotificationCategory; onCategory: (category: NotificationCategory) => void;
-  onControl: (id: string, control: NotificationControl) => void; onReadAll: () => void;
-  onOpen: (item: NotificationItem) => void; notice: string; onEnable?: () => void;
-}) {
-  const view = notificationView(state, filter, category);
-  const surface = useRef<HTMLDivElement>(null);
-  const restoreFocus = (focused: Element | null) => window.requestAnimationFrame(() => {
-    if (focused instanceof HTMLElement && (!focused.isConnected || focused.matches(":disabled"))) surface.current?.querySelector<HTMLButtonElement>(`[data-notification-filter="${filter}"]`)?.focus();
-  });
-  const control = (id: string, action: NotificationControl) => {
-    const focused = document.activeElement;
-    onControl(id, action);
-    restoreFocus(focused);
-  };
-  const unread = state.state === "ready" ? state.items.filter(item => !item.read) : [];
-  return <section ref={surface} role="region" aria-label="Notifications" className="notification-rail ui-theme-scope flex min-h-0 flex-1 flex-col overflow-hidden font-ui text-ui-primary">
-    <div className="flex min-h-11 items-center justify-between gap-2 px-4 pb-3"><span className="text-caption text-ui-muted">Notifications{view.unread !== undefined && ` · ${view.unread} unread`}</span>
-      <button type="button" disabled={!unread.length} className={cn("min-h-6 text-caption text-ui-secondary hover:text-ui-primary disabled:opacity-40", dsFocus)} onClick={() => { const focused = document.activeElement; onReadAll(); restoreFocus(focused); }}>Read all</button>
-    </div>
-    <Tabs selectedKey={filter === "unread" ? "unread" : "all"} onSelectionChange={key => onFilter(key as NotificationFilter)} variant="secondary" className="notification-tabs">
-      <div className="notification-filter-bar">
-        <Tabs.ListContainer><Tabs.List aria-label="Notification filters">
-          <Tabs.Tab id="all" data-notification-filter="all">All<Tabs.Indicator /></Tabs.Tab>
-          <Tabs.Tab id="unread" data-notification-filter="unread">Unread<Tabs.Indicator /></Tabs.Tab>
-        </Tabs.List></Tabs.ListContainer>
-        <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" className="notification-category-filter" data-filtered={category !== "all"} aria-label="Filter notifications by category" title={category === "all" ? "All updates" : category === "attention" ? "Needs you" : "Failed"} icon={<ListFilter className="size-3.5" data-icon="inline-start" />} /></DropdownMenuTrigger>
-          <DropdownMenuContent aria-label="Notification categories" align="end"><DropdownMenuGroup><DropdownMenuRadioGroup value={category} onValueChange={value => onCategory(value as NotificationCategory)}>
-            <DropdownMenuRadioItem value="all">All updates</DropdownMenuRadioItem><DropdownMenuRadioItem value="attention">Needs you</DropdownMenuRadioItem><DropdownMenuRadioItem value="failed">Failed</DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup></DropdownMenuGroup></DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      {(["all", "unread"] as const).map(tab => <Tabs.Panel key={tab} id={tab} className="notification-tab-panel">
-      <div className="rail-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">
-        {state.state === "loading" ? <NotificationsSkeleton /> : state.state === "unavailable" ? <div role="alert" className="py-8 text-center"><CircleAlert aria-hidden className="mx-auto mb-2 size-5 text-ui-warning" /><p className="m-0 text-body">Notifications unavailable</p><p className="mb-0 mt-2 text-caption text-ui-secondary">{state.reason}</p></div> : <>
-          <ul aria-label="Notification updates" className="m-0 list-none p-0">{view.shown.map(item => <NotificationRow key={item.id} item={item} onControl={control} onOpen={onOpen} />)}</ul>
-          {view.shown.length === 0 && <p className="py-6 text-center text-body text-ui-secondary">{state.state === "ready" && state.items.length === 0 ? "No notifications" : category === "failed" ? "No failures" : category === "attention" ? "Nothing needs attention" : filter === "unread" ? "All caught up" : "No notifications"}</p>}
-        </>}
-      </div>
-      </Tabs.Panel>)}
-    </Tabs>
-      {notice && <p role="status" className="m-0 border-t border-ui-stroke px-3 py-3 text-caption text-ui-secondary">{notice}</p>}
-
+function NotificationGroup({ label, items, activeId, onOpen, actions, action, empty }: { label: string; items: readonly NotificationItem[]; activeId: string; onOpen: Open; actions: RowActions; action?: ReactNode; empty?: string }) {
+  return <section aria-label={label} className="notification-group"><div className="notification-group-head"><h3 className="notification-group-label">{label}</h3>{action}</div>
+    {items.length === 0 ? <p className="notification-empty">{empty}</p>
+      : <ul className="notification-list">{items.map(item => <NotificationRow key={item.id} item={item} active={item.id === activeId} onOpen={onOpen} actions={actions} />)}</ul>}
   </section>;
 }
+
+/** Day groups in the order their first item appears. */
+function dayGroups(items: readonly NotificationItem[]) {
+  const days = [...new Set(items.map(itemDay))];
+  return days.map(day => ({ day, items: items.filter(item => itemDay(item) === day) }));
+}
+
+/** The sidebar body while the bell is pressed: Priority (when shown), then day groups. The sidebar header stays the workflow view's. */
+export function NotificationsPanel({ state, activeId, showPriority, onShowPriority, dismissed, onDismiss, onControl, onReadAll, onOpen, onBack, notice }: {
+  state: NotificationsState; activeId: string; showPriority: boolean; onShowPriority: (show: boolean) => void; dismissed: readonly string[]; onDismiss: (id: string) => void;
+  onControl: (id: string, control: NotificationControl) => void; onReadAll: () => void; onOpen: Open; onBack: () => void; notice: string;
+}) {
+  const items = (state.state === "ready" ? state.items : []).filter(item => !dismissed.includes(item.id));
+  const actions: RowActions = { onControl, onDismiss: id => { onControl(id, "read"); onDismiss(id); } };
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || document.querySelector('[role="dialog"], [role="menu"]')) return;
+      event.preventDefault(); onBack();
+    };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [onBack]);
+  const menu = <DropdownMenu><DropdownMenuTrigger asChild><IconButton label="Notification actions" size="xs" icon={<MoreHorizontal aria-hidden className={dsIcon.md} />} /></DropdownMenuTrigger>
+    <DropdownMenuContent align="start" alignOffset={3} className="notification-menu">
+      <DropdownMenuGroup><DropdownMenuLabel>Show</DropdownMenuLabel>
+      <DropdownMenuItem role="menuitemcheckbox" aria-checked={showPriority} className="pr-[34px]" onClick={() => onShowPriority(!showPriority)}>Priority section<span className="ds-menu-indicator">{showPriority && <Check aria-hidden className="ds-menu-check" />}</span></DropdownMenuItem></DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem disabled={!items.some(item => !item.read)} onClick={onReadAll}>Mark all as read</DropdownMenuItem>
+    </DropdownMenuContent></DropdownMenu>;
+  const groups = [
+    ...(showPriority ? [{ label: "Priority", items: items.filter(item => item.priority), empty: "Nothing needs attention" }] : []),
+    ...dayGroups(items.filter(item => !showPriority || !item.priority)).map(group => ({ label: group.day, items: group.items, empty: undefined })),
+  ];
+  return <section aria-label="Notifications" className="notification-panel font-ui">
+    <div className="notification-panel-scroll rail-scroll">
+      {state.state === "loading" ? <LoadingRegion label="Loading notifications"><div aria-hidden>{[0, 1, 2].map(index => <div key={index} className="flex items-center gap-2.5 px-2 py-2"><Skeleton className="h-10 flex-1" /></div>)}</div></LoadingRegion>
+        : state.state === "unavailable" ? <p role="alert" className="notification-empty">Notifications unavailable. {state.reason}</p>
+        : groups.length === 0 ? <div className="notification-group-head justify-end">{menu}</div>
+        : groups.map((group, index) => <NotificationGroup key={group.label} label={group.label} items={group.items} activeId={activeId} onOpen={onOpen} actions={actions} empty={group.empty} action={index === 0 ? menu : undefined} />)}
+    </div>
+    {notice && <p role="status" className="notification-notice">{notice}</p>}
+  </section>;
+}
+
+/** The sidebar header's bell: pressed while the list is open, a small dot when anything is unread. */
+export const NotificationBell = forwardRef<HTMLButtonElement, { label: string; open: boolean; unread: boolean; onToggle: () => void }>(function NotificationBell({ label, open, unread, onToggle }, ref) {
+  return <Tooltip side="bottom" content="Notifications"><IconButton ref={ref} variant="ghost" size="sm" className="rail-notification-toggle" aria-pressed={open} label={label} title="" onClick={onToggle}
+    icon={<><Bell aria-hidden className="size-4" />{unread && <span data-testid="notification-unread-dot" className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-ui-info" />}</>} /></Tooltip>;
+});
 
 export function NotificationPing({ item }: { item: NotificationItem }) {
   const { toast } = useToasts();

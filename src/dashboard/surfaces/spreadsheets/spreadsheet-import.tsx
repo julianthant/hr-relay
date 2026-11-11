@@ -6,6 +6,7 @@ import { Banner, Button, ChoicePicker, Dialog, DialogBody, DialogContent, Dialog
 import { SpreadsheetTable } from "./spreadsheet-table.js";
 import { MOCK_ROSTER_ROWS } from "./spreadsheet-mock-data.js";
 import { initialSpreadsheetSheets, NOT_MAPPED, registerMockSpreadsheet, spreadsheetMappingErrors, useSpreadsheetMocks, WORKBOOK_ONLY, type RegisteredSpreadsheet, type SpreadsheetSheet } from "./spreadsheet-mock-model.js";
+import { mockParam } from "../../app/mock-surfaces.js";
 
 export function SpreadsheetImportDialog({ open, onOpenChange, existing, onRegistered }: {
   open: boolean; onOpenChange: (open: boolean) => void; existing?: RegisteredSpreadsheet; onRegistered: (file: RegisteredSpreadsheet) => void;
@@ -35,7 +36,7 @@ export function SpreadsheetImportDialog({ open, onOpenChange, existing, onRegist
   const updateSheet = (patch: Partial<SpreadsheetSheet>) => setSheets(current => current.map(entry => entry.name === sheetName ? { ...entry, ...patch } : entry));
   const finish = () => {
     try {
-      if (new URLSearchParams(window.location.search).get("spreadsheetPreviewOutcome") === "failure") throw new Error("Import failed. No file was registered.");
+      if (mockParam("spreadsheetPreviewOutcome") === "failure") throw new Error("Import failed. No file was registered.");
       const file = registerMockSpreadsheet({ name, typeId, sheets }, existing?.id);
       onOpenChange(false);
       onRegistered(file);
