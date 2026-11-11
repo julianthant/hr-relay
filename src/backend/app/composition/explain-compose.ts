@@ -2,7 +2,6 @@ import { captureSelectedProfileStorage } from "./storage-compose.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
 
-import { join } from "node:path";
 import type { z } from "zod";
 import { TimelinePageRequestSchema, TimelineEventRecordSchema, debugEventLevel, type TimelineAppend } from "../../../models/events/timeline.js";
 import { readLocalDebugLog } from "../../storage/events/local-debug-log.js";
@@ -74,7 +73,22 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
       return options.json ? JSON.stringify(report, null, 2) : report.state === "absent" ? `boot diagnostics: absent (${report.reason})`
         : report.records.map(record => `${record.occurredAt} ${JSON.stringify(record.payload)}`).join("\n");
     }
-    const stored = AuthorityDatabase.inspectTimelinePageReadOnly(admission, join(admission.stateRoot, "state.db"), options.request);
+    const selected = captureSelectedProfileStorage(admission);
+    const person = admission.admitProfile(selected.profileId);
+    let stored: ReturnType<typeof AuthorityDatabase.inspectTimelinePageReadOnly>;
+    try {
+      selected.assertCurrent();
+      person.assertProfileRuntime();
+      stored = AuthorityDatabase.inspectTimelinePageReadOnly(person, selected.authorityPath, options.request);
+      selected.assertCurrent();
+    } catch (error) {
+      if (hasUnprovedSourceClosure(error)) {
+        admission.retainSourceClosure(error); person.retainSourceClosure(error);
+        retainUnprovedSourceOwners(error, { admission: person });
+      } else person.release();
+      throw error;
+    }
+    person.release();
     const page = { ...stored, records: stored.records.map(debugRecordView) };
     return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
   }
