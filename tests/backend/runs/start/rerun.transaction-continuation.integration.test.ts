@@ -464,6 +464,14 @@ it("still refuses a stale checkpoint-policy fact when a paused run resumes befor
   assert.deepEqual(f.intents(), []);
 });
 
+// The child reads through the parent's 0 ms contract, because the store serves one implementation per task id.
+const staleChildDescriptor = defineWorkflowDescriptor({ id: sourceBoundReadDescriptor.id, version: 1,
+  contractFingerprint: sourceBoundReadDescriptor.contractFingerprint, code: "sr", label: "Source read", icon: "Search", category: "operations",
+  canonicalInput: sourceBoundReadDescriptor.canonicalInput, inputSubject: "eid", surface: { shape: "single" }, enqueue: "reject-active",
+  actions: sourceBoundReadDescriptor.actions, surfaces: {}, details: [], identity: { matchKey: (input: z.output<typeof Input>) => input.eid },
+  presentation: { title: (input: z.output<typeof Input>) => input.eid }, scenarios: ["source-read/happy"],
+  flow: flow(Input).step("read", staleRead, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => input })
+    .build({ schema: staleRead.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }) });
 const ownSettlementDescriptor = defineWorkflowDescriptor({ ...metadata, flow: flow(Input)
   .step("before", staleRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid, memo: "source" }) })
   .step("check", staleRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid }) })
@@ -489,7 +497,7 @@ for (const [door, probe] of [["resume", "absent"], ["recover", "absent"], ["resu
       scenarioIds: [...staleRead.scenarios, ...writes.corpus.scenarioIds],
       tasks: [{ id: staleRead.id, effect: staleRead.effect }, ...writes.corpus.tasks],
     });
-  }, undefined, undefined, undefined, [sourceBoundReadDescriptor], undefined, true);
+  }, undefined, undefined, undefined, [staleChildDescriptor], undefined, true);
   cleanups.push(h.dispose);
   h.world.probeResults.push(probe === "present" ? { state: "present", proof: { transactionId: "T123456" } } : absentProbeEvidence(h.clock.now().toISOString()));
   const source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID));
@@ -514,7 +522,7 @@ for (const [door, probe] of [["resume", "absent"], ["recover", "absent"], ["resu
   assert.ok(next.envelope.continuation);
   assert.equal((await h.execute(next)).state, "yielded-delegation", failures(next.envelope.runId));
   const children = h.database.authority.runs.listChildren(next.envelope.runId); assert.equal(children.length, 1);
-  for (const member of children) assert.equal((await h.execute(member)).state, "done");
+  for (const member of children) assert.equal((await h.execute(member)).state, "done", failures(member.envelope.runId));
   h.clock.advanceWall(1_000);
   const outcome = await h.execute(next);
   assert.equal(outcome.state, "done", failures(next.envelope.runId));
