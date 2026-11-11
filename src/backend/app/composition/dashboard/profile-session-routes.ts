@@ -185,8 +185,9 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.use("/api/v1/profile/onboarding/*", operatorMutationIngressGuard);
   const activeState = (profileId: string, epoch: number) => {
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === profileId);
-    return { state: "active" as const, profileId, epoch, duoState: row?.duoState,
-      ...row !== undefined && { account: { name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName, lastSignedInAt: row.lastSignedInAt } } };
+    if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+    return { state: "active" as const, profileId, epoch, duoState: row.duoState,
+      account: { name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName, lastSignedInAt: row.lastSignedInAt } };
   };
   const mountActive = async (result: ActiveProfileSession, onInitialPreflight = input.onInitialPreflight): Promise<PublicProfileState> => {
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
