@@ -621,3 +621,47 @@ it("revocation holds account-wide exclusion across awaits without hiding current
     assert.equal(f.repository.read()?.session, null);
   } finally { release.resolve(); await signingOut; await peer.close(); await f.cleanup(); }
 });
+
+it("forgets the registered identity and allows a different account on the next sign-in", async () => {
+  const f = await chatGptFixture();
+  try {
+    await f.connected(); const original = f.repository.read(); assert.ok(original);
+    assert.deepEqual(await f.service.forgetAccount(), { state: "signed-out", remoteRevocation: "confirmed" });
+    const fresh = f.repository.read(); assert.ok(fresh);
+    assert.notEqual(fresh.hostId, original.hostId); assert.match(fresh.hostId, /^urn:uuid:/u);
+    assert.deepEqual(fresh, { schemaVersion: 1, revision: original.revision + 1, hostId: fresh.hostId, clientId: null, registration: null, session: null });
+    const revoke = f.calls.find(call => call.url.endsWith("/revoke")); assert.ok(revoke?.init.body instanceof URLSearchParams);
+    assert.equal(revoke.init.body.get("token"), original.session?.refreshToken);
+    assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+    const attempt = await f.service.signIn({ usePlan: true }), url = new URL(attempt.authorizationUrl);
+    assert.equal(url.searchParams.get("client_id"), "dynamic_agent_client"); assert.equal(url.searchParams.has("login_hint"), false);
+    f.setClaims({ sub: "different-subject", email: "different@example.com" });
+    await f.callback(attempt);
+    const account = await attempt.completion; assert.equal(account.state, "connected");
+    if (account.state !== "connected") throw new Error("new account must connect");
+    assert.equal(account.email, "different@example.com");
+  } finally { await f.cleanup(); }
+});
+it("forgets a retained signed-out identity and exposes its email until forgotten", async () => {
+  const f = await chatGptFixture();
+  try {
+    await f.connected(); await f.service.signOut();
+    assert.deepEqual(f.service.readAccount(), { state: "signed-out", account: { email: "synthetic@example.com" } });
+    const before = f.repository.read(); assert.ok(before);
+    assert.deepEqual(await f.service.forgetAccount(), { state: "signed-out", remoteRevocation: "not-needed" });
+    assert.equal(f.repository.read()?.registration, null); assert.notEqual(f.repository.read()?.hostId, before.hostId);
+    assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+  } finally { await f.cleanup(); }
+});
+it("forget cancels a pending sign-in and is a durable no-op on a fresh record", async () => {
+  const f = await chatGptFixture();
+  try {
+    assert.deepEqual(await f.service.forgetAccount(), { state: "signed-out", remoteRevocation: "not-needed" });
+    assert.equal(f.repository.read(), undefined);
+    const attempt = await f.service.signIn({ usePlan: true });
+    const cancelled = assert.rejects(attempt.completion, { code: "CHATGPT_AUTH_CANCELLED" });
+    const before = f.repository.read();
+    assert.deepEqual(await f.service.forgetAccount(), { state: "signed-out", remoteRevocation: "not-needed" }); await cancelled;
+    assert.deepEqual(f.repository.read(), before);
+  } finally { await f.cleanup(); }
+});

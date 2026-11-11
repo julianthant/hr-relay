@@ -123,3 +123,20 @@ it("keeps OCR diagnostics out of the account panel", () => {
   assert.doesNotMatch(html, /Test OCR|OCR test/u);
   assert.match(html, /Disconnect/u);
 });
+
+it("offers a different account only when an identity remains", async () => {
+  const retained = { state: "signed-out", account: { email: "synthetic@example.com" } } as const;
+  for (const snapshot of [retained, { state: "expired" } as const, { state: "connected", name: "Synthetic", email: "synthetic@example.com", planUsage: "enabled" } as const]) {
+    const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) }));
+    assert.match(html, /Use a different account/u);
+  }
+  for (const snapshot of [{ state: "signed-out" } as const, { state: "signing-in", attemptId: "pending", expiresAt: "2099-01-01T00:00:00.000Z" } as const]) {
+    assert.doesNotMatch(renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) })), /Use a different account/u);
+  }
+  let forgotten = 0;
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountSettings, { port: controlledPort(retained, { forgetAccount: async () => { forgotten++; } }) })));
+  assert.match(host.textContent ?? "", /Signs in as synthetic@example.com\./u);
+  const button = [...host.querySelectorAll("button")].find(button => button.textContent === "Use a different account");
+  assert.ok(button); await act(async () => button.click()); assert.equal(forgotten, 1);
+});

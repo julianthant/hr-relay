@@ -217,3 +217,14 @@ it("refuses an already completed authorization result when the completion GET ab
     assert.equal(ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account.state, "connected");
   } finally { await f.cleanup(); }
 });
+
+it("forgets the account through the guarded route and returns a fresh signed-out state", async () => {
+  const f = await setup();
+  try {
+    await f.connected();
+    assert.equal((await f.app.request(`http://127.0.0.1${path}/forget-account`, { method: "POST", body: "{}" })).status, 403);
+    assert.deepEqual(await (await f.request("/forget-account", {})).json(), { state: "signed-out", remoteRevocation: "confirmed" });
+    assert.deepEqual(ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account, { state: "signed-out" });
+    assert.equal(f.repository.read()?.registration, null);
+  } finally { await f.cleanup(); }
+});
