@@ -762,6 +762,27 @@ describe("Onboarding captured roster admission and row choice", () => {
       assert.deepEqual(f.database.authority.writeIntents.listByRun(run.envelope.runId), []);
     });
 
+    it("refuses the receipt of a failed run whose required roster gate result is missing, and cites the taken gate otherwise", async () => {
+      const f = await executionFixture(false, { match: "duplicate", dryRun: true, crmReadFails: true });
+      const root = f.start(), runId = root.envelope.runId;
+      assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "parked-gate");
+      assert.equal(f.kernel.execute(f.choice(root)).state, "applied");
+      assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "failed");
+      const run = f.database.authority.runs.get(runId); assert.ok(run?.lifecycle.state === "terminal");
+      assert.equal(OnboardingCanonicalValueSchema.parse(run.input.parsed.value).roster.state, "resolve-required");
+      assert.deepEqual(f.database.authority.gateResults.listByRun(runId).map(gate => gate.gateId), [ONBOARDING_ROSTER_GATE_ID]);
+      const receipts = createReceiptService({ database: f.database, runReader: testRunService(f.database, f.clock), descriptors: [descriptor] });
+      f.setFault("gate-missing");
+      try {
+        assert.throws(() => receipts.ensureReceipt(runId));
+        assert.equal(f.database.authority.evidenceReceipts.findByRun(runId), undefined);
+      } finally { f.setFault(undefined); }
+      const ensured = receipts.ensure(runId); assert.equal(ensured.state, "derived");
+      const receipt = ensured.receipt;
+      assert.ok(!receipt.decisions.some(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`)));
+      assert.ok(receipt.decisions.some(value => value.kind === "gate" && value.outcome === "taken"));
+    });
+
     it("refuses a corrupt failure digest and a result of another run or attempt", async () => {
       const { failure, result, input } = await failedAtCrmSource();
       assert.throws(() => buildRunEvidenceReceipt({ ...input, failure: { ...failure, summary: `${failure.summary} altered` } }), /terminal-failure-result-mismatch/u);
