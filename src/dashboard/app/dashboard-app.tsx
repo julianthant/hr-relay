@@ -1033,11 +1033,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const runs = mockRuns.filter(run => run.workflowId === id);
     setRoute(current => ({ ...current, view: { ...current.view, preview: id, mockRun: (runs.find(run => run.id === `mock:${id}:sample`) ?? runs.find(run => !run.parentId) ?? runs[0])?.id, records: undefined } }));
   }, [mockRuns, setRoute]);
-  const openWorkflowQueue = useCallback((id: string) => leaveSettings(() => {
-    setRoute(current => ({ ...routeWithoutTakeovers(current), start: false, run: undefined, section: undefined }));
-    onFilter(["all"]);
-    if (workflowCatalog.some(flow => flow.id === id)) onRailSelect(id); else onRailPreview(id);
-  }), [leaveSettings, setRoute, onFilter, workflowCatalog, onRailSelect, onRailPreview]);
   const previewSearchData = useWorkspaceSearchData({ today, day, unavailable: dateError, rows: queueRows, workflowLabel: workflowLabelOf, mockRuns });
   const servedSearchData = useSearchWiring({ client, enabled: workflowComposition.search === "served" && route.view?.search === true,
     query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows });
@@ -1249,9 +1244,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
           {/* Intake is a durable workspace; leaving it must not discard mapping progress. */}
-          <DashboardTakeovers deleteAccount={deleteAccount} accountPage={accountPage} onOpenRun={selectRun} onOpenWorkflow={openWorkflowQueue} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
+          <DashboardTakeovers deleteAccount={deleteAccount} accountPage={accountPage} onOpenRun={selectRun} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
             client={client} workflowCatalog={explorerCatalog} activeWorkflowId={activeWorkflowId}
-            workflowLabelOf={workflowLabelOf} spreadsheetSource={workflowComposition.spreadsheets} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
+            workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
             onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} theme={theme} onToggleTheme={onToggleTheme}>
           <>

@@ -25,17 +25,15 @@ routeWithoutTakeovers,
 type AppRouteState
 } from "./navigation/url-state.js";
 export function DashboardTakeovers({client,activitySource,today,workflowSources,takeover,route,setRoute,boot,workflowCatalog,activeWorkflowId,
- workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,spreadsheetSource,onOpenRun,onOpenWorkflow,deleteAccount,accountPage,children}: {
+ workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,onOpenRun,deleteAccount,accountPage,children}: {
  activitySource?: SurfaceSource; today: string; workflowSources: WorkflowSourcePolicy;
  client: ComponentProps<typeof WorkflowExplorer>["client"];
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: RouteSetter;
  boot: FrontendBootstrapWire;
  workflowCatalog: readonly WorkflowCatalogEntry[]; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
- spreadsheetSource?: "mock" | "served";
  deleteAccount?: ReactNode;
  accountPage?: AccountPage;
  onOpenRun: (runId: string, partitionDay: string) => void;
- onOpenWorkflow: (workflowId: string) => void;
  supportsDryRun: boolean;
  closeTakeoverTo: (target: DashboardTakeoverCloseFocusTargetId,next: AppRouteState) => void;
  onSettingsSaved?: ComponentProps<typeof SettingsPage>["onSaved"];
@@ -48,8 +46,7 @@ export function DashboardTakeovers({client,activitySource,today,workflowSources,
  : dataSection === "explorer" ? <div className="codex-text"><WorkflowExplorer catalog={workflowCatalog} client={client} /></div> : undefined;
  return (takeover === "settings" || takeover === "archive" || dataContent !== undefined ? (
             <SettingsPage
-              spreadsheetSource={spreadsheetSource} onOpenRun={onOpenRun}
-              onOpenWorkflow={onOpenWorkflow}
+              onOpenRun={onOpenRun}
               appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
               deleteAccount={deleteAccount}
               accountPage={accountPage}

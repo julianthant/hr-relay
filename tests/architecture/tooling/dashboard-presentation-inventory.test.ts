@@ -123,13 +123,13 @@ function temporaryRoot(): string {
 describe("dashboard presentation freeze", () => {
   it("pins every current presentation component, stylesheet, and design-token file", () => {
     assert.equal(new Set(frozenPresentationFiles).size, frozenPresentationFiles.length);
-    assert.equal(frozenPresentationFiles.length, 161);
+    assert.equal(frozenPresentationFiles.length, 149);
 
     const actual = discoverDashboardPresentationFiles(REPO_ROOT);
-    assert.equal(actual.filter((file) => file.endsWith(".tsx")).length, 132);
+    assert.equal(actual.filter((file) => file.endsWith(".tsx")).length, 122);
     assert.equal(
       actual.filter((file) => STYLESHEET_EXTENSIONS.has(extname(file).toLowerCase())).length,
-      27,
+      25,
     );
     assert.ok(actual.includes("src/dashboard/ds/theme/tokens.ts"));
     assert.ok(actual.includes("src/dashboard/ds/theme/tokens.css"));

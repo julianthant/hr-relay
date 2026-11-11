@@ -18,7 +18,7 @@ test.use({ deviceScaleFactor: Number(process.env.STATUS_MOCK_SCALE ?? 1) });
 
 const SETTINGS_PAGE: Partial<Record<StatusMockId, string>> = {
   "general-a": "general", "general-a-browser": "general", "general-a-date": "general",
-  "analytics-a": "activity", "analytics-b": "activity", "search-keyboard": "keyboard",
+  "search-keyboard": "keyboard",
 };
 
 let server: FixtureServer;
@@ -373,7 +373,7 @@ for (const theme of THEMES) test(`settings pages @ ${theme} ${WIDTH}`, async ({ 
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   for (const id of ["general", "activity", "keyboard"]) {
-    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}${id === "general" ? "&statusMock=general-a" : id === "activity" ? "&statusMock=analytics-a" : "&statusMock=general-a"}`);
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}${id === "general" ? "&statusMock=general-a" : id === "activity" ? "" : "&statusMock=general-a"}`);
     await expect(page.getByRole("navigation", { name: "Settings sections", exact: true })).toBeVisible();
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     await settle(page);
@@ -395,7 +395,7 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=activity&statusMock=analytics-a`);
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=activity`);
   await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
   const shot = async (name: string) => { await page.waitForTimeout(300); await page.screenshot({ path: join(OUT, `analytics-${name}-${theme}-${WIDTH}.png`) }); };
   const scroller = page.locator("#dashboard-settings-content");
@@ -436,26 +436,20 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
     await shot(`hover-${name}`);
     await page.mouse.move(1, 1);
   };
-  await hoverChart("time", "Average time per day", /^Thu 24: Separations/);
-  await hoverChart("messages", "Messages per day", /^Wed 23: Questions/);
-  await hoverChart("tools", "Tool calls per day", /^Wed 23: Person Lookup/);
-  await hoverChart("actions", "Proposed actions per day", /^Wed 23: Approved/);
+  await hoverChart("time", "Typical time per day", /^Thu 24: Separations/);
   // One period control drives every chart: 30d turns each into month days.
   await scrollTo(0);
   await page.getByRole("group", { name: "Report period" }).getByText("30d").click();
   await hoverChart("runs-30d", "Runs per day", /^Sep 23: Done/);
-  await hoverChart("messages-30d", "Messages per day", /^Sep 23: Questions/);
   await expect(tip).toHaveCount(0);
   await page.getByRole("group", { name: "Report period" }).getByText("7d").click();
   // Keyboard focus on a day shows the same card; arrow keys move on, Escape hides it.
-  await page.getByRole("img", { name: /^Mon 21: Approved/ }).focus();
+  await page.getByRole("img", { name: /^Mon 21: Done/ }).focus();
   await expect(tip).toContainText("Sep 21, 2026");
   await page.keyboard.press("ArrowRight");
   await expect(tip).toContainText("Sep 22, 2026");
   await page.keyboard.press("Escape");
   await expect(tip).toHaveCount(0);
-  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=activity&statusMock=analytics-b`);
-  await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
