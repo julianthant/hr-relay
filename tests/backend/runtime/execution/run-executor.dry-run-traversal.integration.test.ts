@@ -14,7 +14,9 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { HASH_A, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { RUN_ID, sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { RunRecordService, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { createCapabilityWiringTestWorld } from "../../../support/helpers/backend/capability-wiring-world.js";
 import { createDryRunPreviewResultTestWorld } from "../../../support/helpers/backend/dry-run-preview-result-world.js";
 import { RunDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
@@ -330,8 +332,13 @@ describe("publication preview boundary", () => {
       w.approveAndResume(runIdOf(1));
       assert.equal((await w.runNext()).state, "failed");
       const failed = w.database.authority.runs.get(runIdOf(1)); assert.ok(failed);
-      w.enqueue(2, { dryRun: true, retryOf: runIdOf(1), continuation: captureRunContinuation(w.database.authority, failed) });
-      assertPreviewed(w, await w.runNext(), [runIdOf(1), runIdOf(2)], 0, ["read", "tail"]);
+      const lifecycle = new RunRecordService({ database: w.database, clock: w.clock, ids: sequentialIdFactory("r"), publishQueued: () => undefined });
+      const recovered = requireLifecycleApplied(lifecycle.create({ commandId: w.uuid(), code: w.descriptor.code, matchKey: "name:Battistessa, Johnnie",
+        workflow: w.descriptor.id, descriptorVersion: failed.envelope.descriptorVersion, contractFingerprint: failed.envelope.contractFingerprint,
+        configFingerprint: failed.envelope.configFingerprint, configSnapshotId: failed.envelope.configSnapshotId, resolvedInstance: failed.envelope.resolvedInstance,
+        priority: failed.envelope.priority, shape: failed.envelope.shape, dryRun: true, input: failed.input, retryOf: failed.envelope.runId,
+        continuation: captureRunContinuation(w.database.authority, failed), runtimeConfig: selectRunRuntime(w.database.authority) }));
+      assertPreviewed(w, await w.runNext(), [runIdOf(1), recovered.envelope.runId], 0, ["read", "tail"]);
     });
 
     it("an ordinary run parks, is approved and resumes to its workflow result, saving once", async () => {
@@ -349,7 +356,8 @@ describe("publication preview boundary", () => {
       assert.equal((await w.runNext()).state, "done");
       const before = w.called.length;
       w.enqueue(2, { dryRun: false });
-      assert.equal((await w.runNext()).state, "parked-gate", w.failureOf(runIdOf(2))?.summary ?? "");
+      const outcome = await w.runNext();
+      assert.equal(outcome.state, "parked-gate", JSON.stringify({ outcome, failure: w.failureOf(runIdOf(2))?.summary }));
       assert.deepEqual(w.called.slice(before).filter(name => name === "extract" || name === "after"), ["extract", "after"]);
     });
   });
