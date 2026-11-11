@@ -762,27 +762,24 @@ describe("Onboarding captured roster admission and row choice", () => {
       assert.deepEqual(f.database.authority.writeIntents.listByRun(run.envelope.runId), []);
     });
 
-    it("never records a required roster gate as not-taken: unknown without its stored result, taken with it", async () => {
+    it("refuses the receipt of a failed run whose required roster gate result is missing, and cites the taken gate otherwise", async () => {
       const f = await executionFixture(false, { match: "duplicate", dryRun: true, crmReadFails: true });
-      const root = f.start();
+      const root = f.start(), runId = root.envelope.runId;
       assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "parked-gate");
       assert.equal(f.kernel.execute(f.choice(root)).state, "applied");
       assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "failed");
-      const run = f.database.authority.runs.get(root.envelope.runId); assert.ok(run?.lifecycle.state === "terminal");
+      const run = f.database.authority.runs.get(runId); assert.ok(run?.lifecycle.state === "terminal");
       assert.equal(OnboardingCanonicalValueSchema.parse(run.input.parsed.value).roster.state, "resolve-required");
-      const failure = f.database.authority.failures.listByRun(run.envelope.runId).find(value => value.code === "ONBOARDING_CRM_READ_FAILED"); assert.ok(failure);
-      const result = f.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
-      const gateResults = f.database.authority.gateResults.listByRun(run.envelope.runId);
-      assert.deepEqual(gateResults.map(gate => gate.gateId), [ONBOARDING_ROSTER_GATE_ID]);
-      const input = { descriptor, run, result, failure, checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId), writes: [] };
-      const notTaken = (receipt: ReturnType<typeof buildRunEvidenceReceipt>) =>
-        receipt.decisions.some(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`));
-      const without = buildRunEvidenceReceipt({ ...input, gateResults: [] });
-      assert.ok(!notTaken(without));
-      assert.ok(!without.decisions.some(value => value.kind === "gate"));
-      assert.equal(without.verification.find(entry => entry.id === deriveEvidenceEntryId(without.receiptId, "verification", `node.${ONBOARDING_ROSTER_GATE_ID}`))?.verdict, "unknown");
-      const receipt = buildRunEvidenceReceipt({ ...input, gateResults });
-      assert.ok(!notTaken(receipt));
+      assert.deepEqual(f.database.authority.gateResults.listByRun(runId).map(gate => gate.gateId), [ONBOARDING_ROSTER_GATE_ID]);
+      const receipts = createReceiptService({ database: f.database, runReader: testRunService(f.database, f.clock), descriptors: [descriptor] });
+      f.setFault("gate-missing");
+      try {
+        assert.throws(() => receipts.ensureReceipt(runId));
+        assert.equal(f.database.authority.evidenceReceipts.findByRun(runId), undefined);
+      } finally { f.setFault(undefined); }
+      const ensured = receipts.ensure(runId); assert.equal(ensured.state, "derived");
+      const receipt = ensured.receipt;
+      assert.ok(!receipt.decisions.some(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`)));
       assert.ok(receipt.decisions.some(value => value.kind === "gate" && value.outcome === "taken"));
     });
 
