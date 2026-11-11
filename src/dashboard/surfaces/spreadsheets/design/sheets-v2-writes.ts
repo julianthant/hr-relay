@@ -4,20 +4,27 @@ import type { EditableWorkbook } from '../../../../rules/spreadsheets/workbook-i
 import { withMapping } from './sheets-v2-model.js';
 
 type Adapter = ReturnType<typeof createSpreadsheetWiringAdapter>;
-type Writes = { held?: { key: string; document: EditableWorkbook }; queue: Promise<unknown>; edits: number };
+type Held = { key: string; document: EditableWorkbook; running?: Promise<ImportOutcome> };
+type Writes = { held?: Held; queue: Promise<unknown>; edits: number };
 const sessions = new WeakMap<Adapter, Writes>();
 const writesOf = (adapter: Adapter): Writes => { let writes = sessions.get(adapter); if (!writes) { writes = { queue: Promise.resolve(), edits: 0 }; sessions.set(adapter, writes); } return writes; };
 
 export type ImportOutcome = { state: 'added'; name: string } | { state: 'pending' | 'failed'; reason: string };
 
-/** An unconfirmed import is resumed, never created again; it outlives the dialog and the page. */
-export async function importWorkbook(adapter: Adapter, document: EditableWorkbook): Promise<ImportOutcome> {
-  const writes = writesOf(adapter), held = writes.held ?? { key: adapter.create(document), document };
-  const result = await adapter.save(held.key, held.document);
-  if (result.state === 'confirmed') { writes.held = undefined; return { state: 'added', name: held.document.name }; }
-  if (result.state === 'uncertain') { writes.held = held; return { state: 'pending', reason: result.reason }; }
-  writes.held = undefined; adapter.close(held.key);
-  return { state: 'failed', reason: result.reason };
+/** An unconfirmed import is resumed, never created again; it outlives the dialog and the page, and callers during a save join it. */
+export function importWorkbook(adapter: Adapter, document: EditableWorkbook): Promise<ImportOutcome> {
+  const writes = writesOf(adapter), held = writes.held ??= { key: adapter.create(document), document };
+  if (held.running) return held.running;
+  const settle = (): void => { if (writes.held === held) writes.held = undefined; };
+  const running = (async (): Promise<ImportOutcome> => {
+    const result = await adapter.save(held.key, held.document);
+    if (result.state === 'confirmed') { settle(); return { state: 'added', name: held.document.name }; }
+    if (result.state === 'uncertain') return { state: 'pending', reason: result.reason };
+    settle(); adapter.close(held.key);
+    return { state: 'failed', reason: result.reason };
+  })().finally(() => { held.running = undefined; });
+  held.running = running;
+  return running;
 }
 export const pendingImportName = (adapter: Adapter): string | undefined => sessions.get(adapter)?.held?.document.name;
 
@@ -35,7 +42,7 @@ export function editMapping(adapter: Adapter, id: string, worksheet: string, pat
       result = await adapter.save(id, latest.document);
       const after = adapter.draft(id);
       // Recovering an earlier save leaves newer edits unsent: send them next.
-      if (result.state === 'confirmed' || !after || after.intent || !after.dirty) break;
+      if (result.state !== 'uncertain' || !after || after.intent || !after.dirty) break;
     }
     return { result, latest: mine === writes.edits };
   });

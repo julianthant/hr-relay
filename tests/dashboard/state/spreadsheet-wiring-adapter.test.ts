@@ -293,6 +293,29 @@ describe('spreadsheet page writes', () => {
     assert.equal((await importWorkbook(adapter, edited)).state, 'added');
     assert.equal(client.workbookCreate.mock.calls.length, 1);
   });
+  it('joins an import that is still saving instead of creating again', async () => {
+    const { client, adapter } = setup(); const document = newEditableWorkbook();
+    let release!: (record: SavedWorkbook) => void; client.workbookCreate.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const first = importWorkbook(adapter, document), second = importWorkbook(adapter, { ...document, name: 'Again.xlsx' });
+    client.workbookOpen.mockResolvedValue(saved(1, { ...document, libraryId: 'generated' })); release(saved(1, { ...document, libraryId: 'generated' }));
+    assert.deepEqual((await Promise.all([first, second])).map(outcome => outcome.state), ['added', 'added']);
+    assert.equal(client.workbookCreate.mock.calls.length, 1);
+  });
+  it('sends an edit made while an earlier save is still in flight', async () => {
+    const { client, adapter } = setup(); await adapter.list(); await adapter.open('saved');
+    const sheet = adapter.draft('saved')!.document.sheets[0], headers = datasetOf(sheet).headers;
+    let store = saved(3), release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
+    client.workbookSave.mockImplementationOnce(async (_id: string, version: number, workbook: unknown) => { await gate; return (store = saved(version + 1, workbook as ReturnType<typeof book>)); });
+    client.workbookSave.mockImplementation(async (_id: string, version: number, workbook: unknown) => (store = saved(version + 1, workbook as ReturnType<typeof book>)));
+    client.workbookOpen.mockImplementation(async () => store);
+    const a = editMapping(adapter, 'saved', sheet.id, { eid: headers[0] });
+    await vi.waitFor(() => assert.equal(client.workbookSave.mock.calls.length, 1));
+    const b = editMapping(adapter, 'saved', sheet.id, { fullName: headers[1] });
+    release(); await Promise.all([a, b]);
+    assert.equal(client.workbookSave.mock.calls.length, 2);
+    const bound = store.workbook.sheets[0].columnBindings?.map(binding => binding.fieldId); assert(bound?.includes('eid') && bound.includes('fullName'));
+    assert.equal(adapter.draft('saved')?.dirty, false);
+  });
   it('saves both of two quick mapping edits and never closes a draft with unsaved edits', async () => {
     const { client, adapter } = setup(); await adapter.list(); await adapter.open('saved');
     const sheet = adapter.draft('saved')!.document.sheets[0], headers = datasetOf(sheet).headers;
@@ -311,7 +334,7 @@ describe('spreadsheet page writes', () => {
     const sheet = adapter.draft('saved')!.document.sheets[0], headers = datasetOf(sheet).headers;
     client.workbookSave.mockRejectedValue(new DashboardClientError({ kind: 'http', status: 409, code: 'WORKBOOK_VERSION_CONFLICT', message: 'Conflict' }));
     const { result } = await editMapping(adapter, 'saved', sheet.id, { eid: headers[0] });
-    assert.notEqual(result?.state, 'confirmed');
+    assert.notEqual(result?.state, 'confirmed'); assert.equal(client.workbookSave.mock.calls.length, 1);
     assert.equal(await closeDraft(adapter, 'saved', false), false);
     assert.equal(await closeDraft(adapter, 'saved', true), true);
     assert.equal(adapter.draft('saved'), undefined);
