@@ -17,7 +17,7 @@ import type { RunRecord } from "../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import { MatchIdentityOutputSchema } from "../../../src/models/workflows/separations/match-identity.js";
-import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
+import { FingerprintSchema, NodeIdSchema } from "../../../src/rules/identity/ids.js";
 import { buildIdentityEvidencePacket, deriveIdentityEvidenceDigest } from "../../../src/rules/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../src/rules/separations/write-plan.js";
 import { JOB_SUMMARY_NODE } from "../../../src/workflows/separations/steps/identity-check/step.js";
@@ -107,7 +107,7 @@ async function failUnknownLookup(h: Harness, queued: RunRecord) {
     .then(() => undefined, (thrown: unknown) => thrown);
   assert.ok(error instanceof Error && error.message.includes(`EID ••••${TYPED.slice(-4)} `) && !error.message.includes(TYPED));
   const now = h.clock.now().toISOString();
-  const failure = buildNodeFailureRecord({ run, failureId: h.ids.uuid(), nodeId: JOB_SUMMARY_NODE, taskId: readJobSummaryTask.contract.id,
+  const failure = buildNodeFailureRecord({ run, failureId: h.ids.uuid(), nodeId: NodeIdSchema.parse(JOB_SUMMARY_NODE), taskId: readJobSummaryTask.contract.id,
     error, occurredAt: now, writes: [] });
   const outcome = h.lifecycle.terminalize({ kind: "failure", commandId: h.ids.uuid(),
     terminal: { failure, authorization: buildTerminalAuthorization({ run, authorizedAt: now, consequence: { kind: "failed", failure } }) },
