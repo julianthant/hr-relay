@@ -53,7 +53,7 @@ describe('served workbook authority', () => {
   it('adopts only a confirmed generated ID and keeps export from clearing durable dirtiness', async () => {
     const { client, adapter } = setup(); const draft = newEditableWorkbook(); const id = adapter.create(draft);
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...draft, libraryId: 'generated' }));
-    const result = await adapter.save(id, draft); assert.equal(result.state, 'confirmed');
+    const result = await adapter.save(id, draft); assert.equal(result.state, 'confirmed'); assert.equal(adapter.draft(id)?.dirty, false);
     const adopted = { ...draft, libraryId: 'generated' }; adapter.change(id, adopted, false); assert.equal(adapter.draft(id)?.dirty, false);
     const edited = { ...adopted, name: 'Edited.xlsx' }; adapter.change(id, edited, false); assert.equal(adapter.draft(id)?.dirty, true); assert.equal(adapter.draft('generated'), adapter.draft(id));
   });

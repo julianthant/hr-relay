@@ -24,7 +24,7 @@ export const sheetOf = (entry: WorkbookLibraryEntry): Sheet => ({
   id: entry.libraryId, name: entry.name, sharePoint: entry.metadata.sharePoint?.url ?? null,
   workflow: entry.state.origin.kind === 'workflow' ? entry.state.origin.workflowLabel : undefined,
   run: entry.state.origin.kind === 'workflow' ? { id: entry.state.origin.runId, day: entry.state.origin.partitionDay } : undefined,
-  updatedAt: entry.updatedAt, version: entry.version, currentVersionId: entry.state.selectedVersionId,
+  updatedAt: entry.updatedAt, version: entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.version ?? entry.version, currentVersionId: entry.state.selectedVersionId,
   versions: entry.state.versions.map(version => ({ id: version.id, n: version.version, at: version.savedAt, note: version.name })).toSorted((a, b) => b.n - a.n),
 });
 
@@ -40,11 +40,13 @@ export const fieldsOf = (compatibility: WorkbookCompatibility): readonly Field[]
 
 /** Header labels are unique and never blank, so a label picks exactly one column. */
 export function datasetOf(sheet: EditableSheet): Dataset {
-  const header = spreadsheetHeaderRow(sheet), seen = new Map<string, number>();
+  const header = spreadsheetHeaderRow(sheet), used = new Set<string>();
   const headers = Array.from({ length: sheet.width }, (_, column) => {
-    const text = cellText(sheet.rows[header - 1].cells[column]).trim() || `Column ${columnName(column)}`, count = (seen.get(text) ?? 0) + 1;
-    seen.set(text, count);
-    return count === 1 ? text : `${text} (${count})`;
+    const text = cellText(sheet.rows[header - 1].cells[column]).trim() || `Column ${columnName(column)}`;
+    let label = text, count = 1;
+    while (used.has(label)) label = `${text} (${++count})`;
+    used.add(label);
+    return label;
   });
   return { headers, rows: sheet.rows.slice(header).map(row => headers.map((_, column): Cell => {
     const cell = row.cells[column], value = cell?.value;

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { PageHeading, SearchInput, useToasts } from '../../../ds/ui.js';
 import { useSpreadsheetWiringAdapter, type LibraryChangeResult } from '../../../state/spreadsheet-wiring-adapter.js';
 import { decodeEditableWorkbook } from '../../../../models/dashboard/workbooks.js';
@@ -22,7 +22,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const { toast } = useToasts();
   const [openId, setOpenId] = useState<string>();
   const wiring = useSpreadsheetWiringAdapter(true, openId ?? null, true);
-  const { adapter, catalog, compatibility, catalogLoading, catalogError, openError, draft } = wiring;
+  const { adapter, catalog, compatibility, catalogLoading, catalogError, openError, draft, pendingLibraries } = wiring;
   const [dialog, setDialog] = useState<{ kind: DialogKind; id: string }>();
   const [importing, setImporting] = useState(false);
   const [filter, setFilter] = useState<readonly string[]>([]);
@@ -54,18 +54,35 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     else setDialog({ kind: action, id });
   };
   const rows: RowActions = { open: setOpenId, version: id => setDialog({ kind: 'rollback', id }), menu, logs: sheet => { if (sheet.run) onOpenRun?.(sheet.run.id, sheet.run.day); } };
-  const back = () => { if (openId) adapter.close(openId); setOpenId(undefined); };
-  const saveMapping = async (worksheet: string, patch: Record<string, string | null>) => {
-    if (!openId || !draft) return;
-    const next: EditableWorkbook = { ...draft.document, sheets: draft.document.sheets.map(item => item.id === worksheet ? withMapping(item, patch) : item) };
-    adapter.change(openId, next, true);
-    const result = await adapter.save(openId, next);
-    if (result.state !== 'confirmed') toast({ tone: 'danger', title: "Couldn't save the columns", description: result.reason });
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const edits = useRef(0);
+  const back = () => { const id = openId; setOpenId(undefined); if (id) void queue.current.then(() => adapter.close(id)); };
+  const saveMapping = (worksheet: string, patch: Record<string, string | null>) => {
+    const id = openId, current = id ? adapter.draft(id)?.document : undefined;
+    if (!id || !current) return;
+    adapter.change(id, { ...current, sheets: current.sheets.map(item => item.id === worksheet ? withMapping(item, patch) : item) }, true);
+    const mine = ++edits.current;
+    // Saves run one at a time and each sends the newest draft, so a quick second edit is never dropped.
+    queue.current = queue.current.then(async () => {
+      const latest = adapter.draft(id)?.document;
+      if (!latest) return;
+      const result = await adapter.save(id, latest);
+      if (result.state !== 'confirmed' && mine === edits.current) toast({ tone: 'danger', title: "Couldn't save the columns", description: result.reason });
+    });
   };
+  // A retried import resumes the original save instead of creating a second workbook.
+  const importAttempt = useRef<{ key: string; document: string } | undefined>(undefined);
   const add = async (document: EditableWorkbook) => {
-    const key = adapter.create(document), result = await adapter.save(key, document);
-    if (result.state === 'confirmed') { toast({ tone: 'success', title: `Added ${document.name}` }); return true; }
-    adapter.close(key); toast({ tone: 'danger', title: "Couldn't add the spreadsheet", description: result.reason }); return false;
+    const text = JSON.stringify(document), held = importAttempt.current?.document === text ? importAttempt.current.key : undefined;
+    const key = held ?? adapter.create(document), result = await adapter.save(key, document);
+    if (result.state === 'confirmed') { importAttempt.current = undefined; toast({ tone: 'success', title: `Added ${document.name}` }); return true; }
+    if (result.state === 'uncertain') importAttempt.current = { key, document: text };
+    else { importAttempt.current = undefined; adapter.close(key); }
+    toast({ tone: 'danger', title: "Couldn't add the spreadsheet", description: result.reason }); return false;
+  };
+  const checkPending = async (id: string) => {
+    const result = await adapter.settleLibrary(id);
+    toast(result.state === 'confirmed' ? { tone: 'success', title: 'The change went through' } : { tone: 'danger', title: 'The change is not confirmed yet', description: result.message });
   };
 
   const groups = { workflows: workflowTags(sheets), tags: [] };
@@ -74,7 +91,9 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const target = dialog && get(dialog.id);
   const open = openId ? get(openId) : undefined;
 
+  const pending = pendingLibraries.map(id => catalog.find(item => item.libraryId === id)).filter(Boolean);
   return <section aria-label="Spreadsheets" className="hub-sheets-library settings-compact-page min-w-0">
+    {pending.map(entry => <Grey key={entry!.libraryId} className="mb-3 text-[13px]">A change to {entry!.name} isn't confirmed yet. <V2Button look="plain" onClick={() => void checkPending(entry!.libraryId)}>Check result</V2Button></Grey>)}
     {openId && open ? (draft ? <SheetDetail key={openId} sheet={open} document={draft.document} fields={fields} onBack={back} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'rollback', id: openId })} onMap={(worksheet, patch) => void saveMapping(worksheet, patch)} />
       : <Grey className="text-[13px]">{openError ? "This spreadsheet couldn't be opened." : 'Opening…'} <V2Button look="plain" onClick={back}>Back</V2Button></Grey>) : <>
       <PageHeading title="Spreadsheets" description="Reference lists your runs look people up in." actions={<V2Button disabled={catalogLoading || !!catalogError} onClick={() => setImporting(true)}>Import</V2Button>} />
