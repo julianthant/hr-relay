@@ -31,6 +31,7 @@ export type SystemHostWire = z.infer<typeof SystemHostWireSchema>;
 export const DryRunPostureWireSchema = z.union([
   z.strictObject({ state: z.literal("supported"), firstTransactionNodeId: NodeIdSchema }),
   z.strictObject({ state: z.literal("supported"), firstDelegationNodeId: NodeIdSchema }),
+  z.strictObject({ state: z.literal("supported"), firstPublicationNodeId: NodeIdSchema }),
   z.strictObject({ state: z.literal("unsupported"), reason: z.literal("no-transaction-node") }),
   z.strictObject({
     state: z.literal("unsupported"),
