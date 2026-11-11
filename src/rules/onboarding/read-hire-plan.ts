@@ -30,7 +30,7 @@ export function readHirePlan(input: z.input<typeof OnboardingReadHirePlan.input>
   const raw = parsed.crm.fields;
   const { legal, preferred } = rosterHireNames(parsed.roster.references,
     { firstName: clean(raw.firstName), middleName: clean(raw.middleName), lastName: clean(raw.lastName) });
-  const appointment = /(?:^|\s)(\d+)\s*$/u.exec(clean(raw.appointment));
+  const appointment = /^(\d+)\s+\S/u.exec(clean(raw.appointment));
   if (appointment?.[1] === undefined) throw new Error("CRM appointment has no classification number");
   const department = /\((\d{4,6})\)\s*$/u.exec(parsed.crm.department.trim());
   if (department?.[1] === undefined) throw new Error("CRM department has no department number");

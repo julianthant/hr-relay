@@ -12,8 +12,8 @@ const DEAD_STAGE = /rescinded|cancelled|canceled|withdrawn/iu;
 const FIELD_LABELS = Object.freeze({
   positionNumber: "Position Number", firstName: "First Name", lastName: "Last Name", middleName: "Middle Name",
   ssn: "SSN (National ID)", address: "Address Line 1", addressLine2: "Address Line 2", city: "City", state: "State",
-  postalCode: "Postal Code", wage: "Compensation rate", dob: "Date of Birth", phone: "Cell Phone", email: "Email",
-  appointment: "Appointment", effectiveDate: "First Day of Service (Effective Date)",
+  postalCode: "Postal Code", wage: "Compensation rate", dob: "Date of Birth", phone: "Cell Phone Number",
+  email: "Personal Email Address", appointment: "Type of Appointment (Employee Classification)", effectiveDate: "First Day of Service (Effective Date)",
   expectedJobEndDate: "Expected Job End Date (if applicable)",
 } satisfies Record<keyof CrmHireFields, string>);
 const FIELD_ANCHOR = Object.freeze({ label: "th, td", value: "xpath=following-sibling::*[1][self::td]" });

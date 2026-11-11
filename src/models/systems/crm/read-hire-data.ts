@@ -50,7 +50,7 @@ export const CrmReadHireData = defineTaskContract({
       positionNumber: "12345678", firstName: "Fixture", lastName: "Hire", middleName: "", ssn: "",
       address: "123 Example St", addressLine2: "", city: "San Diego", state: "CA", postalCode: "92093",
       wage: "$17.75 per hour", dob: "01/14/2000", phone: "", email: "hire@example.test",
-      appointment: "Casual/Restricted 5", effectiveDate: "09/11/2026", expectedJobEndDate: "06/30/2027",
+      appointment: "5 Student: Casual/Restricted", effectiveDate: "09/11/2026", expectedJobEndDate: "06/30/2027",
     },
   },
 });
