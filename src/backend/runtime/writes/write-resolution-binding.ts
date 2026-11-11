@@ -1,22 +1,24 @@
-import { readRunCheckpoint } from "../../storage/sqlite/run-continuation.js";
+import { readContinuationGate, readRunCheckpoint, retainedCheckpoint, validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
+import { checkpointRecordKey, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 import { repeatOccurrenceKey } from "../../../models/run/rerun.js";
 // Resolve only the same workflow, node, schemas, permanent key and binding proof; whole-closure identity is sufficient, not necessary.
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { JsonValueSchema } from "../../../rules/validation/canonical-json.js";
+import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { idempotencyKeyDigestReference } from "../../../rules/redaction/redaction.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { FingerprintSchema } from "../../../rules/identity/ids.js";
+import { BrowserSystemIdSchema, FingerprintSchema } from "../../../rules/identity/ids.js";
 import {
   deriveIdempotencyKeyDigest,
   IdempotencyKeySchema,
   type WriteIntentRecord,
 } from "../../../rules/write-safety/write-safety.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import type { RuntimeFlowNode, RuntimeScope } from "../../../models/workflow/graph.js";
+import { projectTransactionOutcome, type RuntimeFlowNode, type RuntimeScope } from "../../../models/workflow/graph.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { currentBuildId } from "../build-id.js";
 
@@ -207,10 +209,87 @@ function rebuildCommitInputWithoutFence(
       `unsupported-dependency:${dependencyNode.kind}:${String(dependency)}`,
     );
   }
-  const scope: RuntimeScope = { input: JsonValueSchema.parse(canonicalInput), outputs: Object.freeze(outputs),
-    protectedInputBindings: retainedRunProtectedBindings(run) };
-  const commitContract = node.commit.uses;
-  return commitContract.input.parse(node.commit.bind(scope));
+  return bindCommitInput(node, run, JsonValueSchema.parse(canonicalInput), outputs);
+}
+
+function bindCommitInput(node: TransactionRuntimeNode, run: RunRecord, input: JsonValue, outputs: Record<string, JsonValue>): unknown {
+  const scope: RuntimeScope = { input, outputs: Object.freeze(outputs), protectedInputBindings: retainedRunProtectedBindings(run) };
+  return node.commit.uses.input.parse(node.commit.bind(scope));
+}
+
+type CheckpointReconstructionRepositories = WriteBindingRepositories
+  & { readonly runs: Pick<AuthorityRepositories["runs"], "get">; readonly lifecycleJournal: Pick<AuthorityRepositories["lifecycleJournal"], "findContinuationIssue"> };
+
+/** The commit input a transaction checkpoint settled, rebuilt only from its producer's retained facts up to that checkpoint. */
+export function rebuildCheckpointCommitInput(
+  repositories: CheckpointReconstructionRepositories,
+  descriptor: AnyWorkflowDescriptor,
+  node: TransactionRuntimeNode,
+  producer: RunRecord,
+  checkpoint: RunCheckpointRecord,
+  schemaReader?: EvidenceSchemaReader,
+): unknown {
+  const { envelope } = producer;
+  if (checkpoint.runId !== envelope.runId || checkpoint.workflowId !== envelope.workflow || checkpoint.itemId !== envelope.itemId
+    || checkpoint.attempt !== envelope.attempt || checkpoint.nodeId !== String(node.id)) {
+    throw new WriteCommitInputRebuildError("missing-evidence", "checkpoint-producer-mismatch");
+  }
+  const inputHash = deriveSchemaHash(descriptor.canonicalInput, "output");
+  if ((schemaReader?.({ kind: "run-input", id: envelope.runId }, producer.input, producer.input.parsed.schemaHash, inputHash) ?? producer.input.parsed.schemaHash) !== inputHash) {
+    throw new WriteCommitInputRebuildError("schema-failure", "run-input");
+  }
+  const canonicalInput = JsonValueSchema.parse(descriptor.canonicalInput.parse(producer.input.parsed.value));
+  const nodesById = new Map(descriptorRuntimeNodes(descriptor).map((candidate) => [String(candidate.id), candidate]));
+  const admitted = (owner: Parameters<EvidenceSchemaReader>[0], source: unknown, stored: string, schema: z.ZodType) => {
+    const current = deriveSchemaHash(schema, "output");
+    if ((schemaReader?.(owner, source, stored, current) ?? stored) !== current) throw new WriteCommitInputRebuildError("schema-failure", `schema:${owner.id}`);
+  };
+  const outputs: Record<string, JsonValue> = {};
+  for (const dependency of node.dependsOn.map(String)) {
+    const dependencyNode = nodesById.get(dependency);
+    if (dependencyNode?.kind === "gate") {
+      const gate = readContinuationGate(repositories, envelope, dependency);
+      if (gate === undefined) throw new WriteCommitInputRebuildError("missing-evidence", `gate-result:${dependency}`);
+      admitted({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate, gate.result.schemaHash, dependencyNode.result);
+      outputs[dependency] = JsonValueSchema.parse(dependencyNode.result.parse(gate.result.value));
+      continue;
+    }
+    if (dependencyNode?.kind !== "task" && dependencyNode?.kind !== "transaction") {
+      throw new WriteCommitInputRebuildError("missing-evidence", `unsupported-dependency:${dependencyNode?.kind ?? "unknown"}:${dependency}`);
+    }
+    // Only the producer's rows written up to this checkpoint's claim, else its authenticated continuation reference.
+    const own = repositories.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, dependency, checkpoint.attempt)
+      .filter(row => row.runId === envelope.runId && row.claimGeneration <= checkpoint.claimGeneration && row.writtenAt <= checkpoint.writtenAt)
+      .sort((a, b) => a.claimGeneration - b.claimGeneration).at(-1);
+    let row = own;
+    if (row === undefined && envelope.continuation !== undefined) {
+      validateRunContinuation(repositories, envelope);
+      const reference = envelope.continuation.checkpoints.find(candidate => candidate.nodeId === dependency);
+      if (reference !== undefined) row = retainedCheckpoint(repositories, envelope, reference);
+    }
+    if (row === undefined) throw new WriteCommitInputRebuildError("missing-evidence", `task-checkpoint:${dependency}`);
+    if (dependencyNode.kind === "transaction") {
+      outputs[dependency] = JsonValueSchema.parse(projectTransactionOutcome(dependencyNode.commit.uses, row.output.value, "Receipt write reconstruction",
+        { checkpoint: row, ...(schemaReader === undefined ? {} : { schemaReader }) }));
+      continue;
+    }
+    admitted({ kind: "task-output", id: checkpointRecordKey(row) }, row, row.output.schemaHash, dependencyNode.uses.output);
+    dependencyNode.uses.output.parse(row.output.value);
+    outputs[dependency] = JsonValueSchema.parse(row.output.value);
+  }
+  return bindCommitInput(node, producer, canonicalInput, outputs);
+}
+
+/** The exact permanent system and key a run settles a commit input under, including its acknowledged repeat occurrence. */
+export function commitPermanentKey(node: TransactionRuntimeNode, commitInput: unknown, run: RunRecord): Readonly<{ system: string; key: string }> {
+  const contract = node.commit.uses;
+  const system = BrowserSystemIdSchema.parse(contract.id.slice(0, contract.id.lastIndexOf("/")));
+  const naturalKey = IdempotencyKeySchema.parse(Reflect.apply(contract.writeSafety.idempotency.key, undefined, [commitInput]));
+  const businessKeyDigest = deriveIdempotencyKeyDigest(system, naturalKey);
+  const bound = run.envelope.sourceBound;
+  const repeat = bound?.warnings.some((warning) => warning.nodeId === node.id && warning.taskId === contract.id
+    && warning.system === system && warning.businessKeyDigest === businessKeyDigest) === true;
+  return { system, key: bound !== undefined && repeat ? IdempotencyKeySchema.parse(repeatOccurrenceKey(businessKeyDigest, bound.confirmationCommandId, String(node.id))) : naturalKey };
 }
 
 /* ── the evaluation ──────────────────────────────────────────────────────── */

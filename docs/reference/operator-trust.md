@@ -269,7 +269,9 @@ A commit action may carry `proved`, with system, public transaction-key digest, 
 kind, proof source, classified proof values, and recorded instant. The completion kinds are
 `receipt`, `save-verify`, and `upload-verify`. Proof sources are `normal-output`, `recovery-probe`,
 `operator-attestation`, `durable-intent`, and `live-probe`. A non-commit action cannot carry that
-block. A verified write action requires a binding-proof reference.
+block. A verified write action requires a binding-proof reference. An `already-present` commit action is
+`committed` at the checkpoint's observed instant and carries no binding-proof reference: this run
+observed or reused a permanent write that was already satisfied and bound no fresh subject.
 
 A prepare output stays in memory under its task contract. A transaction checkpoint records the
 transaction outcome and its completion evidence. A graph walk alone does not prove that the executor

@@ -95,6 +95,14 @@ export interface ReceiptWriteEvidence {
   readonly attempts: readonly WriteAttemptRecord[];
 }
 
+/** The settled permanent write an ordinary already-present checkpoint pairs with, read by the exact key its retained facts derive. */
+export interface ReceiptCheckpointWrite {
+  readonly checkpointKey: string;
+  readonly system: string;
+  readonly keyDigest: string;
+  readonly intent: WriteIntentRecord | undefined;
+}
+
 export interface ReceiptBuildInput {
   readonly schemaReader?: EvidenceSchemaReader;
   readonly settlementVersion?: number;
@@ -109,6 +117,8 @@ export interface ReceiptBuildInput {
   readonly checkpoints: readonly unknown[];
   /** Every write intent this run fenced, with its attempt rows. */
   readonly writes?: readonly ReceiptWriteEvidence[];
+  /** The permanent write an ordinary already-present checkpoint reused or observed; it may belong to another run or item. */
+  readonly writeForCheckpoint?: (node: Extract<RuntimeFlowNode, { kind: "transaction" }>, checkpoint: RunCheckpointRecord) => ReceiptCheckpointWrite;
 
   readonly gateResults?: readonly unknown[];
   readonly continuedGateResults?: readonly unknown[];
@@ -254,6 +264,8 @@ export function deriveActionWriteProof(input: Readonly<{
   /** The transaction node's checkpoint row (raw or parsed). */
   record: unknown;
   intent: WriteIntentRecord | undefined;
+  /** Required for an already-present outcome: the checkpoint and exact permanent key the intent was read by. */
+  pairing?: Omit<ReceiptCheckpointWrite, "intent">;
   composition?: ReceiptComposition;
   schemaReader?: EvidenceSchemaReader;
 }>): ActionWriteProof {
@@ -288,6 +300,7 @@ export function deriveActionWriteProof(input: Readonly<{
       + "refusing to redact a proof under a declaration authored for a different shape",
     );
   }
+  if (outcome.disposition === "already-present") assertAlreadyPresentPair(commitContract, record, outcome, intent, input.pairing, input.schemaReader);
   const scope: EvidenceValueScope = { kind: "write-proof", taskId: commitContract.id };
   return ActionWriteProofSchema.parse({
     system: intent.system,
@@ -299,6 +312,34 @@ export function deriveActionWriteProof(input: Readonly<{
   });
 }
 
+
+function assertAlreadyPresentPair(
+  commitContract: AnyCommitTaskContract,
+  record: RunCheckpointRecord,
+  outcome: Extract<z.infer<typeof TransactionOutcomeSchema>, { disposition: "already-present" }>,
+  intent: WriteIntentRecord,
+  pairing: Omit<ReceiptCheckpointWrite, "intent"> | undefined,
+  schemaReader: EvidenceSchemaReader | undefined,
+): void {
+  const refuse = (category: string) => {
+    throw new Error(`receipt-write-pair-${category}: transaction checkpoint ${record.nodeId} does not pair with permanent write ${intent.writeIntentId}`);
+  };
+  if (pairing === undefined || pairing.checkpointKey !== checkpointRecordKey(record)) refuse("checkpoint");
+  const system = commitContract.id.slice(0, commitContract.id.lastIndexOf("/"));
+  if (intent.taskId !== commitContract.id || intent.system !== system || pairing?.system !== system || intent.idempotencyKeyDigest !== pairing.keyDigest) refuse("identity");
+  if (intent.status !== "committed" && intent.status !== "observed-present" || outcome.proofSource === "live-probe" && intent.status !== "observed-present") refuse("status");
+  const settledAt = intent.status === "committed" ? intent.confirmedAt : intent.status === "observed-present" ? intent.observedAt : undefined;
+  if (settledAt === undefined || Date.parse(settledAt) > Date.parse(outcome.observedAt)) refuse("order");
+  const completion = commitContract.writeSafety.completion;
+  const durable = intent.status === "committed" ? intent.completionProof : intent.status === "observed-present" ? intent.observedProof : undefined;
+  const proof = completion.proofSchema.safeParse(durable?.value);
+  const checkpointProof = completion.proofSchema.safeParse(outcome.proof.value);
+  if (!proof.success || !checkpointProof.success || canonicalJsonStringify(proof.data) !== canonicalJsonStringify(checkpointProof.data)) refuse("proof");
+  const outputHash = deriveSchemaHash(commitContract.output, "output");
+  const output = commitContract.output.safeParse(outcome.output.value);
+  if ((schemaReader?.({ kind: "checkpoint-output", id: checkpointRecordKey(record) }, record, outcome.output.schemaHash, outputHash) ?? outcome.output.schemaHash) !== outputHash
+    || !output.success || canonicalJsonStringify(output.data) !== canonicalJsonStringify(commitContract.output.parse(Reflect.apply(completion.outputFromProof, undefined, [proof.data])))) refuse("output");
+}
 
 export function deriveRunEvidenceReceipt(
   input: ReceiptBuildInput,
@@ -699,7 +740,39 @@ export function deriveRunEvidenceReceipt(
 
     /* action */
     const occurredAt = record.writtenAt;
-    if (node.kind === "transaction") {
+    if (node.kind === "transaction" && transactionOutcomeOf(record).disposition === "already-present" && !envelope.dryRun) {
+      // The permanent write may belong to another run or item; the exact key from this checkpoint's retained facts selects it.
+      const paired = input.writeForCheckpoint?.(node, record);
+      const outcome = TransactionOutcomeSchema.parse(record.output.value);
+      if (outcome.disposition !== "already-present") throw new Error("transaction-outcome-changed");
+      actions.push({ id: entryId("action", `${id}.prepare`), taskId: node.prepare.uses.id, kind: "prepare", writeState: "prepared", occurredAt });
+      const commitAction: Action = { id: entryId("action", `${id}.commit`), taskId: contract.id, kind: "commit", writeState: "committed", occurredAt: outcome.observedAt };
+      commitAction.proved = deriveActionWriteProof({
+        ...(input.schemaReader === undefined ? {} : { schemaReader: input.schemaReader }),
+        composition,
+        commitContract: node.commit.uses,
+        record,
+        intent: paired?.intent,
+        ...(paired === undefined ? {} : { pairing: { checkpointKey: paired.checkpointKey, system: paired.system, keyDigest: paired.keyDigest } }),
+      });
+      actions.push(commitAction);
+      decisions.push({
+        id: entryId("decision", `dedupe.${id}`),
+        kind: "dedupe",
+        outcome: "not-taken",
+        reason: `the permanent key was ALREADY satisfied (proof source: ${outcome.proofSource}); this run performed no second write`,
+        evidence: [evidenceEntryRef(commitAction.id)],
+      });
+      decisions.push({
+        id: entryId("decision", `identity.${id}`),
+        kind: "identity",
+        outcome: "approved",
+        reason: `the permanent ${commitAction.proved.system} ${idempotencyKeyDigestReference(commitAction.proved.idempotencyKeyDigest)} was already satisfied and `
+          + (outcome.proofSource === "live-probe" ? "observed present by this run's probe" : "reused from its settled permanent record")
+          + "; this run bound no fresh subject because it performed no write",
+        evidence: [evidenceEntryRef(commitAction.id)],
+      });
+    } else if (node.kind === "transaction") {
       const outcome = transactionOutcomeOf(record);
       // Checkpoint rows lack intent IDs; a duplicated task ID cannot safely join to a first matching intent.
       const matchingWrites = writes.filter((entry) => entry.intent.taskId === contract.id);
@@ -1059,6 +1132,7 @@ export interface EvidenceReceiptStore {
   getFailure(failureId: string): unknown;
   listCheckpointsByRun(runId: string): readonly unknown[];
   listWritesByRun(runId: string): readonly ReceiptWriteEvidence[];
+  readonly writeForCheckpoint?: ReceiptBuildInput["writeForCheckpoint"];
 
   listGateResultsByRun(runId: string): readonly unknown[];
   listContinuedGateResultsByRun?(runId: string): readonly unknown[];
@@ -1100,6 +1174,7 @@ export function ensureRunEvidenceReceipt(
     ...(lifecycle.failureId === undefined ? {} : { failure: store.getFailure(lifecycle.failureId) }),
     checkpoints: store.listCheckpointsByRun(runId),
     writes: store.listWritesByRun(runId),
+    ...(store.writeForCheckpoint === undefined ? {} : { writeForCheckpoint: store.writeForCheckpoint }),
     gateResults: store.listGateResultsByRun(runId),
     continuedGateResults: store.listContinuedGateResultsByRun?.(runId),
     ...(store.listDelegationsByRun === undefined ? {} : { delegations: store.listDelegationsByRun(runId) }),
