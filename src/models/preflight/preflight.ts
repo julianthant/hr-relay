@@ -68,7 +68,7 @@ export interface PreflightRunner {
 
 /** A detector missed its registered budget. The message names that check and budget only. */
 export class PreflightRunnerTimeoutError extends Error {
-  constructor(check: PreflightCheckId, timeoutMs: number) {
+  constructor(readonly check: PreflightCheckId, readonly timeoutMs: number) {
     super(`preflight runner ${check} exceeded its registered ${String(timeoutMs)}ms timeout`);
     this.name = "PreflightRunnerTimeoutError";
   }

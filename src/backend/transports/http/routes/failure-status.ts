@@ -56,8 +56,9 @@ export function failureStatus(
   const loginFailure = browserLoginFailure(error);
   if (loginFailure?.system === "sharepoint") return { status: 409, body: wireError(loginFailure.code, ERROR_CATALOG[loginFailure.code].text, false) };
   if (error instanceof ProtectedSubjectDisplayRefusedError) return { status: 409, body: wireError(error.code, message, false) };
-  if (preflightRunnerTimeout(error) !== undefined) {
-    return { status: 409, body: wireError("PREFLIGHT_TIMEOUT", ERROR_CATALOG.PREFLIGHT_TIMEOUT.text, false) };
+  const timeout = preflightRunnerTimeout(error);
+  if (timeout !== undefined) {
+    return { status: 409, body: wireError("PREFLIGHT_TIMEOUT", `${ERROR_CATALOG.PREFLIGHT_TIMEOUT.text} (${timeout.check})`, false) };
   }
   if (error instanceof PreflightAdmissionRefusal) return { status: 409, body: wireError(`PREFLIGHT_${error.reason.toUpperCase().replaceAll("-", "_")}`, message, false) };
   if (error instanceof TargetNotFoundError) {
