@@ -9,7 +9,6 @@ EditableSettingsWire
 import {
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 } from "../../../models/dashboard/settings.js";
-import { statusMock } from "./status-mock/status-mock-model.js";
 
 
 export type PreflightCheckWire = z.infer<typeof PreflightCheckWireSchema>;
@@ -61,8 +60,6 @@ const SETTINGS_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   "provider-env": "general",
   "protected-store": "account",
   credentials: "account",
-  // Subscription is a mock-only entry; without it the link opens General.
-  subscription: "general",
   // The Status pages are not part of the combined mock; links to them open General.
   storage: "general",
   preflight: "general",
@@ -133,7 +130,7 @@ export function buildSettingsNav(
     clientEntry("general", "General", "general"),
     clientEntry("account", "Account", "credentials"),
     // The plan and limits are not served yet: the Subscription page exists only in the design frames.
-    ...(statusMock() === undefined ? [] : [clientEntry("subscription", "Subscription", "subscription")]),
+    clientEntry("subscription", "Subscription", "subscription"),
   ] });
   const advanced = editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
     .map(section => servedEntry(section.id, section.label)) ?? [];

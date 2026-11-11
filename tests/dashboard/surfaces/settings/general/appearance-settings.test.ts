@@ -21,10 +21,10 @@ it("keeps appearance rows description-free and preserves availability and save f
       children: createElement(AppearanceSettings, { theme: "light", onToggleTheme() {} }) })));
     assert.doesNotMatch(host.textContent ?? "", /Saved for|Dark theme|reduced-motion preference/u);
     assert.equal(host.querySelectorAll(".ds-field-description,.hub-row-note").length, 0);
-    const theme = host.querySelector<HTMLButtonElement>('button[aria-label="Switch to dark theme"]');
+    const theme = host.querySelector<HTMLInputElement>('input[type="radio"][value="dark"]');
     assert.ok(theme);
-    assert.equal(theme.textContent, "Light");
-    assert.equal(theme.disabled, state !== "ready");
+    assert.equal(host.querySelector<HTMLInputElement>('input[type="radio"][value="light"]')?.checked, true);
+    assert.equal(theme.closest("fieldset")?.disabled, state !== "ready");
     const controls = [...host.querySelectorAll<HTMLButtonElement>('[role="switch"]')];
     assert.equal(controls.length, 1);
     assert.equal(controls[0]?.closest(".ds-switch-row")?.textContent, "Animations");
@@ -43,10 +43,9 @@ it("toggles from either theme through the supplied preference callback", async (
     let toggles = 0;
     await act(async () => root?.render(createElement(PersonPreferencesContext.Provider, { value: port,
       children: createElement(AppearanceSettings, { theme, onToggleTheme() { toggles++; } }) })));
-    const button = host.querySelector<HTMLButtonElement>(`button[aria-label="Switch to ${theme === "light" ? "dark" : "light"} theme"]`);
-    assert.ok(button);
-    assert.equal(button.textContent, theme === "light" ? "Light" : "Dark");
-    await act(async () => button.click());
+    const other = host.querySelector<HTMLInputElement>(`input[type="radio"][value="${theme === "light" ? "dark" : "light"}"]`);
+    assert.ok(other);
+    await act(async () => other.click());
     assert.equal(toggles, 1);
   }
 });

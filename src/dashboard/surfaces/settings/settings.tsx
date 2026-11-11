@@ -2,7 +2,7 @@ import { ArrowLeft,ArrowUp,Check,CircleAlert,CreditCard,Database,Folder,Gauge,Us
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, Notice } from "../../ds/ui.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,PageHeading,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, Notice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
 import { SheetsV2 } from "../spreadsheets/design/sheets-v2.js";
@@ -18,9 +18,9 @@ import "./hub-settings.css";
 import { KeyboardSection } from "./navigation/settings-keyboard.js";
 import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./navigation/settings-search-model.js";
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
-import { StatusMockAccount,StatusMockSubscription } from "./status-mock/status-mock.js";
 import { StatusMockAnalytics } from "./status-mock/status-mock-analytics.js";
-import { StatusMockGeneral } from "./status-mock/status-mock-general.js";
+import { ChatGptAccountSettings } from "./general/chatgpt-account.js";
+import { DeleteAccountControl } from "./general/ui-settings-records-general-paths.js";
 import { statusMock } from "./status-mock/status-mock-model.js";
 import { SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import {type StorageHealthSummary } from "./storage/storage-settings-model.js";
@@ -267,12 +267,11 @@ export function SettingsPage({
         {isDataSection && (activeId === "activity" && mockStatus !== undefined ? <StatusMockAnalytics variant={mockStatus === "analytics-b" ? "b" : "a"} onOpenWorkflow={onOpenWorkflow} /> : dataContent)}
         {resolution.state === "open" && resolution.entry.id === "spreadsheets" && (spreadsheetSource === "mock" ? <SheetsV2 onOpenRun={onOpenRun} /> : <SpreadsheetsSettings onOpenRun={onOpenRun} source={spreadsheetSource} workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />)}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
-        {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && !(resolution.entry.id === "general" && mockStatus !== undefined) && (
-          <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} deleteAccount={deleteAccount} />
+        {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
+          <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} />
         )}
-        {resolution.state === "open" && resolution.entry.id === "general" && mockStatus !== undefined && <StatusMockGeneral />}
-        {resolution.state === "open" && resolution.entry.id === "account" && (mockStatus !== undefined ? <StatusMockAccount frame={mockStatus} /> : <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} />)}
-        {resolution.state === "open" && resolution.entry.id === "subscription" && <StatusMockSubscription frame={mockStatus ?? "subscription"} />}
+        {resolution.state === "open" && resolution.entry.id === "account" && <><SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} />{deleteAccount ?? <DeleteAccountControl presentation={{ state: "unavailable" }} />}</>}
+        {resolution.state === "open" && resolution.entry.id === "subscription" && <section className="settings-compact-page"><PageHeading title="Subscription" /><ChatGptAccountSettings /></section>}
         {resolution.state === "open"
           && resolution.entry.source === "served"
           && !RENDERED_SERVED_SECTION_IDS.has(resolution.entry.id) && (
