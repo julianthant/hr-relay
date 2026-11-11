@@ -1,5 +1,5 @@
 import * as profileCredentials from "../../../../src/backend/storage/configuration/credential-store.js";
-import { createProfileFixtureSet, installationAdmission, profileFixtureStorageAdmission, releaseAdmissionFixture, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, createSyntheticProfileSession, finishProfileOnboarding, installationAdmission, profileFixtureStorageAdmission, releaseAdmissionFixture, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import { TargetNotFoundError } from "../../../../src/backend/runs/commands/refusals.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -28,6 +28,8 @@ EXIT_TRACE_ID,
 seedPersonLookupExitRun,
 } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase as ProductionAuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 
 const profiles = createProfileFixtureSet();
 const heldProfiles: BoundProfileStorageFixture[] = [];
@@ -41,6 +43,30 @@ afterEach(async () => {
   for (const profile of heldProfiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
+
+// Registers a second ready profile on the fixture's machine and leaves the first selected.
+async function addSecondProfile(profile: BoundProfileStorageFixture): Promise<string> {
+  const registry = createProfileRegistry(profile.machine);
+  const first = registry.read().activeProfileId; assert.ok(first);
+  const session = createSyntheticProfileSession({ admission: profile.machine, machineRoot: profile.machine.stateRoot, activity: { hasUnquiescedWork: () => false } });
+  try {
+    registry.advanceSession(null);
+    const draft = session.signUp({ firstName: "Second", lastName: "Example", email: "second@ucsd.edu", password: "disposable-fixture-password", createdAt: "2026-10-02T12:00:00.000Z" });
+    assert.equal(draft.state, "onboarding");
+    const active = await finishProfileOnboarding(session, draft);
+    assert.equal(active.state, "active");
+    assert.notEqual(registry.read().activeProfileId, first);
+    return first;
+  } finally { await session.close(); }
+}
+
+// Seeds a run-scoped debug event and closes the writer so the test may change the profile selection.
+async function seededWithRunEvent(): Promise<void> {
+  const database = await seeded();
+  createDebugEventWriter({ repository: database.authority.timelineEvents, clock: manualClock(new Date("2026-08-04T00:11:13.500Z")), build: "fixture" })
+    .emit({ category: "http", phase: "failed", correlationId: "run-scoped" }, { kind: "run", runId: RunIdSchema.parse(EXIT_RUN_ID) }, WorkflowIdSchema.parse("person-lookup"));
+  databases.splice(databases.indexOf(database), 1); database.close();
+}
 
 async function seeded(seedRun = true): Promise<AuthorityDatabase> {
   const profile = await profiles.create(); heldProfiles.push(profile);
@@ -177,6 +203,51 @@ describe("explain run", () => {
     assert.notEqual(profile.machine, heldProfiles[0]?.machine);
     assert.throws(() => composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID, "--json"] }), /timeline-event-owner-missing/u);
     profile.machine.assertLive(); profile.admission.assertLive();
+  });
+
+  it("serves diagnostics --run only from the selected profile when two profiles share one machine", async () => {
+    await seededWithRunEvent();
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    const first = await addSecondProfile(profile);
+    const registry = createProfileRegistry(profile.machine);
+    const second = registry.read().activeProfileId; assert.ok(second);
+    assert.equal(registry.read().profiles.length, 2);
+    const secondPath = join(profile.machine.stateRoot, "profiles", second, "state.db");
+    const run = () => composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID, "--json"] });
+    const firstBefore = readFileSync(profile.path);
+
+    assert.throws(run, /timeline-event-owner-missing/u);
+
+    registry.advanceSession(first);
+    const records = z.object({ records: z.array(z.object({ eventId: z.string() })) }).parse(JSON.parse(run())).records;
+    assert.ok(records.length > 0);
+    assert.notEqual(secondPath, profile.path);
+
+    registry.advanceSession(second);
+    assert.throws(run, /timeline-event-owner-missing/u);
+    assert.deepEqual(readFileSync(profile.path), firstBefore);
+    profile.machine.assertLive();
+  });
+
+  it("refuses the page and releases the person admission when the selection changes during the read", async () => {
+    await seededWithRunEvent();
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    const registry = createProfileRegistry(profile.machine);
+    const selected = registry.read().activeProfileId; assert.ok(selected);
+    const admitted: RuntimeAdmission[] = [];
+    const real = ProductionAuthorityDatabase.inspectTimelinePageReadOnly.bind(ProductionAuthorityDatabase);
+    vi.spyOn(ProductionAuthorityDatabase, "inspectTimelinePageReadOnly").mockImplementation((...args) => {
+      admitted.push(args[0]); const page = real(...args); registry.advanceSession(selected); return page;
+    });
+    const run = () => composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID, "--json"] });
+
+    assert.throws(run, /profile-session-stale/u);
+    assert.equal(admitted.length, 1);
+    assert.throws(() => admitted[0]?.assertLive());
+    profile.machine.assertLive();
+
+    vi.restoreAllMocks();
+    assert.ok(z.object({ records: z.array(z.unknown()) }).parse(JSON.parse(run())).records.length > 0);
   });
 
   it("refuses diagnostics --run with a missing profile selection before reading credentials", async () => {
