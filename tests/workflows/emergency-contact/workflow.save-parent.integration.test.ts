@@ -3,6 +3,8 @@ import { createReceiptService } from "../../../src/backend/runs/trust/receipt-se
 import { readQueueRecordMembers } from "../../../src/backend/runs/queries/ocr-record-members.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
+import { SQLITE_MIGRATIONS } from "../../../src/backend/storage/sqlite/migrations.js";
 import { afterAll, afterEach, it } from "vitest";
 import { EmergencyContactMemberInputSchema } from "../../../src/models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactResultSchema } from "../../../src/models/workflows/emergency-contact/result.js";
@@ -71,4 +73,15 @@ it("verifies the parent's members node from every saved member's own receipt", a
   assert.deepEqual(membersRow && { verdict: membersRow.verdict, evidence: [...membersRow.evidence].sort() },
     { verdict: "verified", evidence: memberReceipts.map(receipt => `receipt:${String(receipt?.receiptId)}`).sort() });
   assert.deepEqual(receipts.ensureReceipt(f.parentRun.envelope.runId), parentReceipt);
+  const statements = SQLITE_MIGRATIONS.find(migration => migration.version === 26)?.statements; assert.ok(statements);
+  {
+    using raw = new DatabaseSync(f.path);
+    raw.exec("BEGIN IMMEDIATE");
+    for (const statement of statements) raw.exec(statement);
+    raw.exec("COMMIT");
+  }
+  assert.equal(f.database.authority.evidenceReceipts.findByRun(f.parentRun.envelope.runId), undefined, "migration 26 deletes the delegation parent's receipt");
+  const rederived = receipts.ensure(f.parentRun.envelope.runId);
+  assert.deepEqual({ state: rederived.state, receipt: rederived.receipt }, { state: "derived", receipt: parentReceipt });
+  assert.equal(receipts.ensure(f.parentRun.envelope.runId).state, "existing");
 });
