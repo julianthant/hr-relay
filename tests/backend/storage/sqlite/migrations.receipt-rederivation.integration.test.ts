@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { ActionEvidenceSchema } from "../../../../src/models/trust/evidence.js";
 
 const at = "2026-11-02T00:00:00.000Z";
 const ids = { ordinary: "run-ordinary", preview: "run-preview", failed: "run-failed", plain: "run-plain" } as const;
@@ -79,10 +80,15 @@ it("deletes only an ordinary done delegation parent's stored receipt at 26 and k
   } finally { database.close(); }
 });
 
-// The migration reads only `proved.proofSource`; the rest of the object keeps the stored ActionWriteProof shape.
-const commitAction = (proofSource: string | null) => ({ id: `action-${proofSource}`, taskId: "save", kind: "commit", writeState: "verified", occurredAt: at,
-  ...(proofSource === null ? {} : { proved: { system: "ucpath", idempotencyKeyDigest: "a".repeat(64), completion: "save-verify", proofSource,
-    values: [{ key: "effect", transform: "allowed", classification: "operational", value: "x" }], recordedAt: at } }) });
+// The migration reads only `proved.proofSource`; each action is a schema-valid stored commit.
+const PROOF_SOURCES = [null, "normal-output", "recovery-probe", "operator-attestation", "durable-intent", "live-probe"] as const;
+const commitAction = (proofSource: typeof PROOF_SOURCES[number]) => {
+  const index = String(PROOF_SOURCES.indexOf(proofSource) + 1).padStart(12, "0");
+  return ActionEvidenceSchema.parse({ id: `aaaaaaaa-0001-4000-8000-${index}`, taskId: "ucpath/save-contacts", kind: "commit", writeState: "verified",
+    proofRef: `aaaaaaaa-0002-4000-8000-${index}`, occurredAt: at,
+    ...(proofSource === null ? {} : { proved: { system: "ucpath", idempotencyKeyDigest: "a".repeat(64), completion: "save-verify", proofSource,
+      values: [{ key: "effect", state: "allowed", transform: "allow", classification: "safe-diagnostic", value: "x" }], recordedAt: at } }) });
+};
 
 it("also deletes every ordinary terminal run's current already-present receipt at 26 and keeps preview, committed and superseded receipts", () => {
   const database = emptySchema25Store();
