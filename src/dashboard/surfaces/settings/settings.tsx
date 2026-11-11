@@ -18,7 +18,6 @@ import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigati
 import { AccountSettings, type AccountPage } from "./account/account-settings.js";
 import { ChatGptAccountSettings } from "./general/chatgpt-account.js";
 import { DeleteAccountControl } from "./general/ui-settings-records-general-paths.js";
-import { statusMock } from "./status-mock/status-mock-model.js";
 import { SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import {type StorageHealthSummary } from "./storage/storage-settings-model.js";
 
@@ -145,7 +144,6 @@ export function SettingsPage({
   const exitFocusTarget = useRef<HTMLElement | null>(null);
   const settingsDocument = editor.editor.state === "loaded" ? editor.editor.document : undefined;
   const groups = useMemo(() => buildSettingsNav(settingsDocument), [settingsDocument]);
-  const mockStatus = statusMock();
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
   const isDataSection = activeId !== undefined && SETTINGS_DATA_SECTION_IDS.has(activeId);
