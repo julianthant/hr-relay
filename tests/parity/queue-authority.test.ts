@@ -191,16 +191,18 @@ test.describe("Queue authority, live commands, and desktop parity", () => {
     await row.getByRole("button", { name: /Delete run/u }).click();
     await page.getByRole("dialog", { name: "Delete this run", exact: true })
       .getByRole("button", { name: "Delete", exact: true }).click();
-    const recovery = page.getByRole("region", { name: "Commands awaiting recovery" });
-    await expect(recovery).toBeVisible();
+    const toast = page.locator("[data-slot=toast]").filter({ hasText: "Delete run: outcome unknown" });
+    await expect(toast).toBeVisible();
     expect(responses[0], JSON.stringify(responses[0])).toMatchObject({ state: "applied" });
     await expect(row).toHaveCount(0);
     const tombstone = server.authority().authority.deletedRuns.get(runId);
     expect(tombstone).toBeDefined();
-    await recovery.getByRole("button", { name: "Review Delete run (1 run)", exact: true }).click();
+    await page.getByRole("button", { name: /^Notifications/u }).click();
+    await page.locator("button.notification-item").filter({ hasText: "Delete run: outcome unknown" }).click();
     await page.getByRole("dialog", { name: "Recover previous Delete run", exact: true })
       .getByRole("button", { name: "Resend original request", exact: true }).click();
-    await expect(recovery).toHaveCount(0);
+    await expect(toast).toHaveCount(0);
+    await expect(page.locator("button.notification-item").filter({ hasText: "Delete run: outcome unknown" })).toHaveCount(0);
     expect(requests).toHaveLength(2);
     expect(requests[1]).toEqual(requests[0]);
     expect(server.authority().authority.deletedRuns.get(runId)).toEqual(tombstone);

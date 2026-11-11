@@ -131,7 +131,7 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
       </div>
       {(assistantTest.state === "passed" || assistantTest.state === "failed") && <Notice tone={assistantTest.state === "passed" ? "success" : "danger"}
         title={assistantTest.state === "passed" ? "Assistant test passed" : "Assistant test failed"} description={assistantTest.state === "failed" ? assistantTest.message : undefined} />}
-      {ocr.state === "disabled" && <p className={cn(dsText.meta, "mb-[var(--ds-space-heading-content)]")}><span className="font-semibold">OCR test unavailable</span> <span>{ERROR_CATALOG[ocr.code].text}</span></p>}
+      {ocr.state === "disabled" && <p className={cn(dsText.meta, "mb-[var(--ds-space-heading-content)] font-normal text-[13px] text-[color:var(--ds-fg-secondary)]")}><span>OCR test unavailable</span> <span>{ERROR_CATALOG[ocr.code].text}</span></p>}
       {ocr.state !== "idle" && ocr.state !== "loading" && ocr.state !== "disabled" && <Notice
         tone={ocr.state === "completed" ? "success" : ocr.state === "failed" ? "danger" : "warning"}
         title={ocr.state === "completed" ? "OCR test completed" : ocr.state === "uncertain" ? "OCR test outcome uncertain" : ocr.state === "refused" ? "OCR test refused" : "OCR test failed"}
@@ -187,7 +187,7 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
         {displayed.checks.map(check => <div key={check.id} className="settings-preflight-item">
           <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
             <Badge tone={check.verdict === "fail" ? "danger" : check.verdict === "warning" ? "warning" : "success"}>{check.verdict}</Badge>
-            <span className={cn(dsText.ui, "break-words font-medium")}>{checkCopy(check.id).name}</span>
+            <span className={cn(dsText.ui, "break-words")}>{checkCopy(check.id).name}</span>
           </div>
           <span className={cn(dsText.body, "break-words text-[color:var(--ds-fg-muted)]")}>{checkCopy(check.id).description}</span>
           {check.verdict !== "pass" && <span className={cn(dsText.body, "break-words text-[color:var(--ds-fg-muted)]")}>{check.detail}</span>}

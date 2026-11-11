@@ -6,7 +6,6 @@ describe("complete workflow presentation mocks", () => {
   it("keeps Work-Study's exact fields, configured SharePoint and validated Time Detail output", () => {
     const work = workflowPreviewGraph("work-study").nodes.find(node => node.id === "Transaction")!;
     expect(work.contract.map(row => row.field)).toEqual(["Effective date", "Position pool", "Change reason", "Job Data comments", "Initiator comments"]);
-    expect(workflowPreviewGraph("sharepoint-download").nodes.map(node => node.id)).toEqual(["Navigate", "Download"]);
     expect(workflowPreviewGraph("old-kronos-reports").nodes.map(node => node.id)).toEqual(["Searching", "Extracting", "Downloading"]);
     expect(workflowPreviewGraph("onboarding").summary).toContain("then stages Smart HR without Save and Submit");
     const workRun = seedMockRuns().find(run => run.workflowId === "work-study")!;

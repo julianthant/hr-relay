@@ -50,6 +50,7 @@ import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflo
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 import { AuthorityBackupService, AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase as StoreDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
 /** A blocked claim refusal names each failing check with its value-free detector summary. */
 function assertBlockedRefusal(result: unknown, runId: string): void {
@@ -621,8 +622,8 @@ async function harness(beforeCrmEndpoint?: () => Promise<void>) {
 
 it("opens CRM during authority writes while the full doctor still rejects mixed snapshots", async () => {
   const endpointReached = Promise.withResolvers<void>();
-  let release = Promise.withResolvers<void>();
-  let backupReadReached = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const backupReadReached = Promise.withResolvers<void>();
   let gateSession = false;
   const h = await harness(async () => {
     if (!gateSession) return;
@@ -692,17 +693,19 @@ it("opens CRM during authority writes while the full doctor still rejects mixed 
     assert.equal(await openOutcome, reachedBrowser);
     assert.equal(opens, 2);
     gateSession = false;
-    release = Promise.withResolvers<void>();
-    backupReadReached = Promise.withResolvers<void>();
-    doctorOutcome = h.preflight.admission.prepare(scope, signal()).catch((error: unknown) => error);
-    await backupReadReached.promise;
-    createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit({
-      t: "span.started", kind: "task", ts: h.clock.now().toISOString(), workflow: run.envelope.workflow,
-      runId: run.envelope.runId, attempt: run.envelope.attempt, traceId: run.envelope.traceId,
-      spanPath: `${run.envelope.traceId}/crm-cross-verify#1`, parentSpanPath: run.envelope.traceId, name: "crm-cross-verify",
+    // The readiness pass reads no backup and has no await, so the write lands between its span snapshot and final identity reads.
+    const readSpans = StoreDatabase.inspectSpanRunAuthorityReadOnly.bind(StoreDatabase);
+    const spans = vi.spyOn(StoreDatabase, "inspectSpanRunAuthorityReadOnly").mockImplementationOnce((...args) => {
+      const snapshot = readSpans(...args);
+      createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit({
+        t: "span.started", kind: "task", ts: h.clock.now().toISOString(), workflow: run.envelope.workflow,
+        runId: run.envelope.runId, attempt: run.envelope.attempt, traceId: run.envelope.traceId,
+        spanPath: `${run.envelope.traceId}/crm-cross-verify#1`, parentSpanPath: run.envelope.traceId, name: "crm-cross-verify",
+      });
+      return snapshot;
     });
-    release.resolve();
-    const fullError = await doctorOutcome;
+    const fullError = await h.preflight.admission.prepare(scope, signal()).catch((error: unknown) => error);
+    spans.mockRestore();
     assert.ok(fullError instanceof PreflightObservationChangedError && fullError.reason === "observation-changed");
     assert.ok(fullError.cause instanceof StorageDoctorObservationChangedError);
     assert.match(fullError.cause.message, /authority changed while the storage doctor awaited external evidence/u);

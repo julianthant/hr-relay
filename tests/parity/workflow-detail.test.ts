@@ -1,5 +1,5 @@
 import { setSwitchChecked } from "./helpers/switch-choice.js";
-import { expectRunningPill, installFrozenMonotonic, moveAssistantLauncherAboveFooter } from "./helpers/app-driver.js";
+import { expectRunningPill, installFrozenMonotonic } from "./helpers/app-driver.js";
 
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
@@ -18,8 +18,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     const height = width === 1024 ? 720 : 1000;
     try {
       await page.setViewportSize({ width, height }); await installFrozenMonotonic(page); await installTheme(page, theme); await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
-      await moveAssistantLauncherAboveFooter(page);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true }), logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       const counts = mockWorkflowCounts(seedMockRuns());
       for (const flow of MOCK_WORKFLOWS.filter(flow => !["person-lookup", "separations", "emergency-contact", "ocr"].includes(flow.id))) {
@@ -41,18 +39,16 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await logs.getByRole("searchbox", { name: "Search logs", exact: true }).fill("Expected job end date");
       await expect(logs).toContainText("06/30/2027");
 
-      await logs.getByRole("searchbox", { name: "Search logs", exact: true }).fill("");
-      await page.getByRole("button", { name: "Start a run", exact: true }).click();
-      const launcher = page.getByRole("dialog", { name: "Start a run", exact: true });
+      await logs.getByRole("button", { name: "Clear search", exact: true }).click();
+      await page.getByRole("button", { name: "Start run", exact: true }).click();
+      const launcher = page.getByRole("dialog", { name: "Start run", exact: true });
       await launcher.getByRole("navigation", { name: "Workflow", exact: true }).getByRole("button", { name: "Onboarding", exact: true }).click();
       await launcher.getByRole("textbox", { name: "Emails", exact: true }).fill("jordan.lee@example.com");
       await launcher.getByRole("button", { name: "Continue", exact: true }).click();
       await launcher.getByRole("radio", { name: "Rehire", exact: true }).press("Space");
-      await setSwitchChecked(launcher.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true }), true);
-      await expect(launcher.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true })).toBeChecked();
-      const preview = launcher.getByRole("button", { name: "Preview plan", exact: true });
-      await (await preview.count() ? preview : launcher.getByRole("button", { name: "Continue", exact: true })).click();
-      await launcher.getByRole("button", { name: "Start preview", exact: true }).click();
+      await setSwitchChecked(launcher.getByRole("switch", { name: "Dry run", exact: true }), true);
+      await expect(launcher.getByRole("switch", { name: "Dry run", exact: true })).toBeChecked();
+      await launcher.getByRole("button", { name: "Start dry run", exact: true }).click();
       const concurrent = logs.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button", { name: /^Submit hire · Skipped/u });
       await expect(concurrent).toBeVisible();
       await concurrent.hover();
@@ -61,8 +57,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
-      const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
-      await drawer.getByRole("button", { name: "Approve records", exact: true }).click(); await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      const review = page.getByRole("dialog", { name: /^Review records/u });
+      await review.getByRole("region", { name: "OCR records", exact: true }).getByRole("button", { name: "Approve records", exact: true }).click();
+      await page.keyboard.press("Escape"); await expect(review).toHaveCount(0);
       await expectRunningPill(rail.getByRole("button", { name: "Emergency Contact", exact: true }), 0);
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await logs.getByRole("button", { name: /^Linked runs \(/u }).click(); await page.getByRole("dialog", { name: "Linked runs", exact: true }).getByRole("button", { name: /Jordan Lee/u }).click();

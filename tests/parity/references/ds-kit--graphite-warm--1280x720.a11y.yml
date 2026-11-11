@@ -45,13 +45,34 @@
   - img "Done"
   - text: "Petrov, Iryna on-115502-de44 Done Scan it with your eyes half-closed: two blocks of light, everything else recedes."
   - heading "Actions" [level=2]
-  - paragraph: One primary per surface, one danger per surface. Variant is semantic, not decorative — outline for peers in a toolbar, ghost for anything that must not compete.
-  - text: Variants
-  - button "Start a run"
-  - button "Run"
-  - button "Cancel"
-  - button "Upload"
+  - paragraph: Soft for most actions, soft bordered for pickers, plain for icons and minor ones, blue to confirm a dialog.
+  - text: Soft
+  - button "Change"
+  - button "Import"
+  - button "Sync now"
+  - text: Soft bordered
+  - button "This week"
+  - button "Export"
+  - text: Plain
   - button "Open receipt"
+  - button "More"
+  - text: Two-way switch
+  - group "Theme":
+    - text: Theme
+    - radio "Light" [checked]
+    - text: Light
+    - radio "Dark"
+    - text: Dark
+  - group "Browser mode":
+    - text: Browser mode
+    - radio "Headed" [checked]
+    - text: Headed
+    - radio "Headless"
+    - text: Headless
+  - text: Blue primary
+  - button "Start a run"
+  - button "Confirm"
+  - text: Danger
   - button "Delete run"
   - button "Remove"
   - text: Sizes
@@ -298,6 +319,7 @@
   - text: Dialog
   - button "Open dialog"
   - button "Open destructive dialog"
+  - button "Open confirm dialog"
   - button "Open drawer"
   - text: ContextMenu Right-click me Toast
   - button "Info"
@@ -306,6 +328,42 @@
   - button "Danger"
   - text: Tooltip
   - button "Hover me"
+  - text: Search
+  - group:
+    - searchbox "Search the specimen"
+    - text: /
+  - button "Tags"
+  - text: Menus
+  - button "Plain list"
+  - button "With icons"
+  - button "With sections"
+  - button "Two-line items"
+  - combobox "Version": v6
+  - text: Rows
+  - region "One-line and two-line rows":
+    - heading "One-line and two-line rows" [level=4]
+    - text: One-line row
+    - combobox "Version": v6
+    - text: Two-line row A grey line under the title.
+    - button "Action"
+    - text: Two-line row with a switch Controls are 28px.
+    - switch "Example" [checked]
+    - text: Example
+  - table "Rows example":
+    - rowgroup:
+      - row "Name Source Version":
+        - columnheader "Name"
+        - columnheader "Source"
+        - columnheader "Version"
+    - rowgroup:
+      - row "Contact roster SharePoint v6":
+        - cell "Contact roster"
+        - cell "SharePoint"
+        - cell "v6"
+      - row "I-9 tracker Pinned v3":
+        - cell "I-9 tracker"
+        - cell "Pinned"
+        - cell "v3"
   - text: Popover
   - button "Why is this parked?"
   - button "About this trace id"

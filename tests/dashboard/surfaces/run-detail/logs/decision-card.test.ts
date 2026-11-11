@@ -35,10 +35,11 @@ describe("DecisionCard", () => {
     assert.deepEqual(calls, ["confirm", "stop"]);
   });
 
-  it("collapses to one answered line and shows no actions in preview", async () => {
-    const view = await draw({ title: "Read-back failed", answered: { choice: "Check again", time: "09:41", by: "assistant on behalf of Alex Rivera" } });
-    assert.equal(view.textContent, "Answered: Check again · 09:41 · by assistant on behalf of Alex Rivera");
-    assert.equal(view.querySelector("form"), null);
+  it("keeps the card when answered and swaps the actions for one outcome line; preview shows no actions", async () => {
+    const view = await draw({ title: "Read-back failed", context: "UCPath did not answer.", answered: { outcome: "Retried", kind: "retry", time: "09:41", by: "assistant on behalf of Alex Rivera" } });
+    assert.equal(view.querySelector("h4")?.textContent, "Read-back failed");
+    assert.equal(view.querySelector("p[data-answered]")?.textContent, "Retried · 09:41 · assistant on behalf of Alex Rivera");
+    assert.equal(view.querySelectorAll("button").length, 0);
     await draw({ title: "Which Bea Morrow is this run about?", preview: true });
     assert.equal(view.querySelectorAll("button").length, 0);
   });

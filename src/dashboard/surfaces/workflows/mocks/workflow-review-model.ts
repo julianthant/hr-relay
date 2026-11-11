@@ -14,13 +14,14 @@ function extractedReviewRecords(run: Pick<MockRun, "workflowId" | "draft">, useF
   const kind = type === "i9" ? "i9" : type === "verify" ? "verify" : type === "oath" ? "oath" : type === "separation" ? "separation" : "contact";
   const i9Section = kind === "i9" && "i9Section" in documentType ? documentType.i9Section : undefined;
   const records: readonly ReviewRecord[] = [{ id: "person-1", page: 1, kind, ...(i9Section ? { i9Section } : {}), selected: true, match: "matched", warnings: [], fields: [
-    field("employeeId", "Employee ID", "10000001"), field("firstName", "First name", "Jordan"), field("lastName", "Last name", "Lee"),
+    field("employeeId", "Employee ID", "10000001"), ...(kind === "contact" ? [] : [field("firstName", "First name", "Jordan"), field("lastName", "Last name", "Lee")]),
     ...(kind === "oath" ? [field("printedName", "Printed name", "Lee, Jordan"), field("dateSigned", "Date signed", "2026-08-03", "date", "Oath"), field("employeeSigned", "Employee signed", "true", "boolean", "Oath"), field("officerSigned", "Officer signed", "true", "boolean", "Oath")] : []),
     ...(kind === "contact" ? [
-      ...[["employeeName", "Employee name", "Jordan Lee"], ["pid", "PID", ""], ["jobTitle", "Job title", ""], ["workLocation", "Work location", ""], ["supervisor", "Supervisor", ""], ["workEmail", "Work email", "jordan.lee@example.com"], ["personalEmail", "Personal email", ""], ["employeeHomePhone", "Employee home phone", ""], ["employeeCellPhone", "Employee cell phone", "(202) 555-0101"]].map(([key, label, value]) => field(key, label, value)),
-      ...[["employeeStreet", "Employee street", "100 Example Street"], ["employeeCity", "Employee city", "San Diego"], ["employeeState", "Employee state", "CA"], ["employeeZip", "Employee ZIP", "92101"], ["employeeCountry", "Employee country", "USA"]].map(([key, label, value]) => field(key, label, value, undefined, "Employee address")),
-      field("contactName", "Contact name", "Alex Lee", undefined, "Emergency contact"), field("relationship", "Relationship", "Sibling", "relationship", "Emergency contact"), field("primary", "Primary contact", "true", "boolean", "Emergency contact"), field("sameAddress", "Same address as employee", "true", "boolean", "Emergency contact"),
-      ...[["cellPhone", "Cell phone", "(202) 555-0102"], ["homePhone", "Home phone", ""], ["workPhone", "Work phone", ""], ["street", "Street", "100 Example Street"], ["city", "City", "San Diego"], ["state", "State", "CA"], ["zip", "ZIP", "92101"], ["country", "Country", "USA"]].map(([key, label, value]) => field(key, label, value, undefined, "Emergency contact")),
+      field("employeeName", "Employee name", "Jordan Lee"), field("dateCompleted", "Date completed", "2026-04-23", "date"), field("homeAddress", "Home address", "100 Example Street, San Diego, CA 92101"),
+      field("employeeCellPhone", "Cell phone", "(202) 555-0101"), field("employeeHomePhone", "Home phone", ""),
+      field("contactName", "Name", "Alex Lee", undefined, "Emergency contact"), field("relationship", "Relationship", "Sibling", "relationship", "Emergency contact"),
+      field("address", "Address", "100 Example Street, San Diego, CA 92101", undefined, "Emergency contact"),
+      ...[["cellPhone", "Cell phone", "(202) 555-0102"], ["homePhone", "Home phone", ""], ["workPhone", "Work phone", ""]].map(([key, label, value]) => field(key, label, value, undefined, "Emergency contact")),
     ] : []),
     ...(kind === "verify" ? [field("printedName", "Printed name", "Lee, Jordan"), field("paperEmployeeId", "Employee ID on paper", "10000001"), field("paperEmploymentDate", "First day of service on paper", "2026-08-03", "date", "Paper forms"), field("paperDateSigned", "Date signed on paper", "2026-08-03", "date", "Paper forms"), field("employeeSigned", "Employee signed", "true", "boolean", "Paper forms"), field("officerSigned", "Officer signed", "true", "boolean", "Paper forms"), field("paperOfficialName", "Official name on paper", "Alex Morgan", undefined, "Paper forms")] : []),
     ...(kind === "i9" ? [field("middleInitial", "Middle initial", ""), ...(i9Section !== 2 ? [field("dateOfBirth", "Date of birth", "1990-01-01", "date", "I-9"), field("ssn", "Social Security number", "", undefined, "I-9"), field("section1", "Section 1 page", "1", undefined, "I-9")] : []), ...(i9Section !== 1 ? [field("hireDate", "First day of employment", "2026-08-03", "date", "I-9"), field("section2", "Section 2 page", i9Section === 2 ? "1" : "2", undefined, "I-9")] : [])] : []),
@@ -48,7 +49,7 @@ export function reviewApprovalError(record: ReviewRecord): string | undefined {
   if (!/^10\d{6}$/u.test(employeeId)) return "Employee ID must start with 10 and contain eight digits.";
   if (record.unknown || record.match === "unresolved") return "Resolve this record before approval.";
   if (!record.manualEntry) return undefined;
-  if (!["firstName", "lastName"].every(key => reviewValue(record, key).trim())) return "Enter the employee’s first and last name.";
+  if (record.kind === "contact" ? !reviewValue(record, "employeeName").trim() : !["firstName", "lastName"].every(key => reviewValue(record, key).trim())) return record.kind === "contact" ? "Enter the employee’s name." : "Enter the employee’s first and last name.";
   const required = record.kind === "oath" ? ["dateSigned"] : record.kind === "contact" ? ["contactName", "cellPhone"] : record.kind === "i9" ? ["dateOfBirth", "hireDate"] : record.kind === "verify" ? ["paperEmploymentDate", "paperDateSigned"] : ["kualiId", "separationDate"];
   for (const item of record.fields.filter(field => required.includes(field.key))) {
     if (!item.value.trim()) return `Enter ${item.label.toLowerCase()}.`;
@@ -68,7 +69,7 @@ function validManualDate(value: string): boolean {
   return Number.isFinite(date.valueOf()) && date.toISOString().slice(0, 10) === iso;
 }
 export function reviewValue(record: ReviewRecord, key: string): string { return record.fields.find(item => item.key === key)?.value ?? ""; }
-export function reviewName(record: ReviewRecord): string { return `${reviewValue(record, "firstName")} ${reviewValue(record, "lastName")}`.trim() || "Unnamed record"; }
+export function reviewName(record: ReviewRecord): string { return reviewValue(record, "employeeName").trim() || `${reviewValue(record, "firstName")} ${reviewValue(record, "lastName")}`.trim() || "Unnamed record"; }
 export function reviewCanApprove(record: ReviewRecord): boolean {
   return record.selected && reviewApprovalError(record) === undefined;
 }
@@ -85,12 +86,6 @@ export function reviewRecords(run: MockRun): readonly ReviewRecord[] { return ru
 export function mockInputRecord(run: MockRun): ReviewRecord { return run.inputRecord ?? reviewRecords(run)[0] ?? seedReviewRecords(run)[0]; }
 export function reviewIsReadOnly(run: MockRun): boolean {
   return run.workflowId !== "ocr" || run.approved || run.discarded === true || run.role === "person";
-}
-export function addMockReviewRecord(records: readonly ReviewRecord[]): readonly ReviewRecord[] {
-  const base = records[0];
-  if (!base) throw new Error("MOCK_REVIEW_SHAPE_MISSING");
-  const record: ReviewRecord = { ...base, id: `manual-${records.length + 1}`, selected: false, match: "unresolved", warnings: [], fields: base.fields.map(item => ({ ...item, value: /^section[12]$/u.test(item.key) ? item.value : item.kind === "boolean" ? "false" : "" })) };
-  return [...records, record];
 }
 export function updateMockReview(runs: readonly MockRun[], id: string, records: readonly ReviewRecord[]): readonly MockRun[] {
   const run = runs.find(item => item.id === id);
@@ -121,6 +116,5 @@ export function mockReviewProps({ run, sourcePages, approvalError, onChange, onA
         label: run.discarded ? "Discarded" : record.selected ? "Approved" : "Excluded" } } : {}) })),
     onEditField: (recordId, key, value) => onChange(records.map(record => record.id === recordId ? editReviewRecord(record, key, value) : record)),
     onChange: updated => onChange(records.map(record => record.id === updated.id ? { ...record, ...updated } : record)),
-    onAdd: records.length === 0 ? undefined : () => { const next = addMockReviewRecord(records); onChange(next); return next[next.length - 1].id; },
   };
 }

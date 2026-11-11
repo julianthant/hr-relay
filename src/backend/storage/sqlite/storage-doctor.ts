@@ -785,11 +785,17 @@ function inspectCredentialPresence(admission: RuntimeAdmission, stateRoot: strin
   }
 }
 
-export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore, owner?: AuthorityImageOwner): Promise<StorageDoctorReport> {
+const StorageReadinessReportSchema = StorageDoctorReportSchema.pick({ authority: true, spanAuthority: true, protectedSettings: true, authorityUpgrades: true });
+export type StorageReadinessReport = z.infer<typeof StorageReadinessReportSchema>;
+
+/** A readiness pass skips backup verification and workbook payload decode; it reports only what it inspected. */
+export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock?: Clock, credentials?: CredentialStore, owner?: AuthorityImageOwner, readiness?: false): Promise<StorageDoctorReport>;
+export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock | undefined, credentials: CredentialStore | undefined, owner: AuthorityImageOwner | undefined, readiness: true): Promise<StorageReadinessReport>;
+export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore, owner?: AuthorityImageOwner, readiness = false): Promise<StorageDoctorReport | StorageReadinessReport> {
   try {
     const authorityPath = resolve(StorageDoctorOptionsSchema.parse(input).authorityPath);
     // The process holding the authority open reads one image of it per pass, so concurrent writers such as peer heartbeats cannot invalidate the pass.
-    return await withActiveAuthorityObservation(authorityPath, owner, () => inspectAuthorityStorage(admission, input, clock, credentials));
+    return await withActiveAuthorityObservation(authorityPath, owner, () => inspectAuthorityStorage(admission, input, clock, credentials, readiness));
   }
   catch (error) {
     // A live write during any snapshot copy or read is a changed observation; real damage still reports unhealthy.
@@ -798,7 +804,7 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
   }
 }
 
-async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock, credentials: CredentialStore | undefined): Promise<StorageDoctorReport> {
+async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock, credentials: CredentialStore | undefined, readiness: boolean): Promise<StorageDoctorReport | StorageReadinessReport> {
   return withOperationProof(async () => {
     requireRuntimeAdmission(admission);
     const options = StorageDoctorOptionsSchema.parse(input);
@@ -814,7 +820,7 @@ async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unkno
     let authorityInspection: AuthorityCopyInspection | undefined;
     let authorityCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
     try {
-      authorityInspection = AuthorityDatabase.inspectExistingReadOnly(admission, authorityPath, options.busyTimeoutMs);
+      authorityInspection = AuthorityDatabase.inspectExistingReadOnly(admission, authorityPath, options.busyTimeoutMs, !readiness);
     } catch (error) {
       authorityCause = storageHealthCauseFromError(error);
       if (isAuthoritySourceChanged(error) || authorityCause.code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
@@ -829,9 +835,11 @@ async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unkno
     const initialRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
     let candidates: readonly CandidateWithMtime[] = [];
     let candidateInspectionFailed = false;
-    try {
-      candidates = await inspectCandidates(admission,backupDirectory, authorityInspection, stateRoot, clock);
-    } catch { candidateInspectionFailed = true; }
+    if (!readiness) {
+      try {
+        candidates = await inspectCandidates(admission,backupDirectory, authorityInspection, stateRoot, clock);
+      } catch { candidateInspectionFailed = true; }
+    }
     const first = candidates[0];
     const latestVerified = candidates
       .filter((entry): entry is CandidateWithMtime & { candidate: Extract<RestoreCandidate, { state: "verified-compatible" }> } => (
@@ -911,6 +919,10 @@ async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unkno
     if (spanAuthorityIdentityMismatch) {
       throw new Error("span authority snapshot does not match the storage doctor's initial authority identity");
     }
+    const authority = authorityInspection === undefined
+      ? { state: "degraded" as const, cause: authorityCause }
+      : { state: "healthy" as const, inspection: authorityInspection };
+    if (readiness) return StorageReadinessReportSchema.parse({ authority, spanAuthority, protectedSettings, authorityUpgrades });
     const finalRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
     const recovery = initialRecovery.identity === finalRecovery.identity ? finalRecovery.report
       : { state: "unavailable", findings: finalRecovery.report.state === "clear" ? [] : finalRecovery.report.findings,
@@ -926,9 +938,7 @@ async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unkno
       mode: "read-only",
       checkedAt: clock.now().toISOString(),
       sourceDatabaseIdentity,
-      authority: authorityInspection === undefined
-        ? { state: "degraded", cause: authorityCause }
-        : { state: "healthy", inspection: authorityInspection },
+      authority,
       counts: authorityInspection === undefined
         ? { state: "unavailable", cause: authorityCause }
         : { state: "available", values: authorityInspection.counts },

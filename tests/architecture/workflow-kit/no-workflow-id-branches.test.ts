@@ -49,6 +49,8 @@ const ALLOWED_SITES: readonly WorkflowIdSite[] = [
   { path: "src/dashboard/surfaces/explorer/explorer-workflow-model.ts", workflowIds: ["ocr"], reason: "OCR's record keys label its Explorer nodes." },
   { path: "src/dashboard/surfaces/shell/search/search-wiring-model.ts", workflowIds: ["ocr"], reason: "search opens an unapproved OCR run on its records." },
   { path: "src/dashboard/surfaces/sessions/sessions-fixture.ts", workflowIds: ["person-lookup", "separations"], reason: PREVIEW_MOCKS },
+  { path: "src/dashboard/surfaces/explorer/explorer-spec-fixtures.ts", workflowIds: ["person-lookup"], reason: PREVIEW_MOCKS },
+  { path: "src/dashboard/surfaces/settings/status-mock/", workflowIds: ["emergency-contact", "separations", "person-lookup"], reason: PREVIEW_MOCKS },
   { path: "src/dashboard/surfaces/workflows/mocks/", reason: PREVIEW_MOCKS, workflowIds: [
     "crm-doc-download", "emergency-contact", "i9-check-start", "i9-lookup", "ocr", "onbase", "onboarding", "person-lookup", "separations",
   ] },

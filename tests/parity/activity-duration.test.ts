@@ -4,6 +4,7 @@ import { test } from "./helpers/fixtures.js";
 import { createHash } from 'node:crypto';
 import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
+import { installServedSurfaces } from './helpers/app-driver.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
@@ -17,6 +18,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await page.setViewportSize({ width, height: 900 });
       await installTheme(page, theme);
+      await installServedSurfaces(page);
       await page.goto(`${server.baseUrl}/?settings=activity`);
       const chart = page.getByRole('figure', { name: 'Average workflow time', exact: true });
       await expect(chart).toBeVisible();

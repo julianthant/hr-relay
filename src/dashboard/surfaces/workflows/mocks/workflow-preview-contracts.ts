@@ -150,7 +150,7 @@ export const WORKFLOW_PREVIEW_GRAPHS: readonly PreviewGraph[] = [
     ],
     edges: [{"from":"Split pages","to":"Read forms"},{"from":"Read forms","to":"Roster match","condition":"a roster was selected"},{"from":"Read forms","to":"Person lookup","condition":"no roster — every person is looked up"},{"from":"Roster match","to":"Person lookup"},{"from":"Person lookup","to":"Your review","condition":"the spec has an approve target"},{"from":"Person lookup","to":"Done","condition":"no downstream workflow"}],
   },
-  { workflowId: "fixture-crm-doc-download", label: "CRM Doc Download", summary: "Finds a person's onboarding record in CRM and downloads the iDocs attached to it. CRM is read-only throughout — every change this workflow makes is to a local folder — so there is nothing a rehearsal would stop short of.",
+  { workflowId: "fixture-crm-doc-download", label: "Onboarding Documents", summary: "Finds a person's onboarding record in CRM and downloads the iDocs attached to it. CRM is read-only throughout — every change this workflow makes is to a local folder — so there is nothing a rehearsal would stop short of.",
     nodes: [
       {"id":"CRM auth","kind":"task","system":"crm","purpose":"Reach an authenticated CRM session. A replayed session is reused when a prior attempt still holds one.","skippedInDryRun":false,"contract":[{"dir":"read","field":"CRM authentication","system":"crm"}]},
       {"id":"Search record","kind":"task","system":"crm","purpose":"Find the onboarding record from the typed EID or email. The fuzzy search result must be confirmed against the identifier on the record, or the run throws rather than downloading somebody else's documents.","skippedInDryRun":false,"contract":[{"dir":"read","field":"Email searched","system":"crm","editable":true},{"dir":"read","field":"Roster email","system":"crm","editable":true},{"dir":"read","field":"UCPath Employee ID","system":"crm"}]},
@@ -158,13 +158,6 @@ export const WORKFLOW_PREVIEW_GRAPHS: readonly PreviewGraph[] = [
       {"id":"Archive","kind":"output","system":"crm","purpose":"Read the person's name off the UCPath Entry Sheet, zip the folder under it, and delete the folder. Runs sharing a parent append into one combined zip under a cross-process lock.","skippedInDryRun":false,"contract":[{"dir":"read","field":"Lived name","system":"crm"},{"dir":"write","field":"Archive zip","system":"crm","proof":"the zip listed back after the move"}]},
     ],
     edges: [{"from":"CRM auth","to":"Search record"},{"from":"Search record","to":"Download"},{"from":"Download","to":"Archive"}],
-  },
-  { workflowId: "fixture-sharepoint-download", label: "SharePoint Download", summary: "Downloads the current roster export into the roster folder, then reads it back and counts its rows. Every roster-backed start reads whatever this leaves behind. It changes no system of record.",
-    nodes: [
-      {"id":"Navigate","kind":"task","system":"sharepoint","purpose":"Resolve the configured Onboarding Roster destination and authenticate to SharePoint. The operator does not supply a URL.","skippedInDryRun":false,"contract":[]},
-      {"id":"Download","kind":"output","system":"sharepoint","purpose":"Download one configured spreadsheet into the local roster directory and record the saved filename and path.","skippedInDryRun":false,"contract":[{"dir":"write","field":"Roster file","system":"sharepoint","proof":"download save completed"}]},
-    ],
-    edges: [{"from":"Navigate","to":"Download"}],
   },
 ];
 
