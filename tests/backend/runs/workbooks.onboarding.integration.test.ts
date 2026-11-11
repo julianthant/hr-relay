@@ -762,7 +762,7 @@ describe("Onboarding captured roster admission and row choice", () => {
       assert.deepEqual(f.database.authority.writeIntents.listByRun(run.envelope.runId), []);
     });
 
-    it("refuses a failed receipt that lacks the stored roster gate result and cites the taken gate with it", async () => {
+    it("never records a required roster gate as not-taken: unknown without its stored result, taken with it", async () => {
       const f = await executionFixture(false, { match: "duplicate", dryRun: true, crmReadFails: true });
       const root = f.start();
       assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "parked-gate");
@@ -775,9 +775,14 @@ describe("Onboarding captured roster admission and row choice", () => {
       const gateResults = f.database.authority.gateResults.listByRun(run.envelope.runId);
       assert.deepEqual(gateResults.map(gate => gate.gateId), [ONBOARDING_ROSTER_GATE_ID]);
       const input = { descriptor, run, result, failure, checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId), writes: [] };
-      assert.throws(() => buildRunEvidenceReceipt({ ...input, gateResults: [] }), /REFUSAL_PLACEHOLDER/u);
+      const notTaken = (receipt: ReturnType<typeof buildRunEvidenceReceipt>) =>
+        receipt.decisions.some(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`));
+      const without = buildRunEvidenceReceipt({ ...input, gateResults: [] });
+      assert.ok(!notTaken(without));
+      assert.ok(!without.decisions.some(value => value.kind === "gate"));
+      assert.equal(without.verification.find(entry => entry.id === deriveEvidenceEntryId(without.receiptId, "verification", `node.${ONBOARDING_ROSTER_GATE_ID}`))?.verdict, "unknown");
       const receipt = buildRunEvidenceReceipt({ ...input, gateResults });
-      assert.ok(!receipt.decisions.some(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`)));
+      assert.ok(!notTaken(receipt));
       assert.ok(receipt.decisions.some(value => value.kind === "gate" && value.outcome === "taken"));
     });
 
