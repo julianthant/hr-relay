@@ -1,3 +1,4 @@
+import { onbaseOcrWorldChild } from "../../../support/helpers/backend/onbase-child-fixture.js";
 import { ocrModule } from "../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -66,14 +67,15 @@ for (const dryRun of [false, true]) {
     let ticks = Date.parse(contactPage.page.observedAt);
     const persistence = createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
       displayedEid: employee.emplId, displayedName: employee.name }), () => new Date(++ticks).toISOString());
+    const onbaseChild = onbaseOcrWorldChild();
     const sessions = sessionFactoryHarness({ ucpath: () => {
       const session = persistence.session();
       return createDeterministicUcpathPersonOrgDriver(lookup, undefined, session.port, session.save);
-    }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
+    }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }), onbase: onbaseChild.session });
     const f = await world.fixture({ coordinator: true, parent: historicalParent, ocr: historicalOcr, member: historicalMember,
       approvedStore: retainedSnapshotStore,
       approvedReader: deps => createRetainedApprovedRecordReader({ ...deps, snapshotContract: retainedSnapshotContract }),
-      record: true, pageCount: 1, dryRun, operatorEvidence: true, sessions,
+      record: true, pageCount: 1, dryRun, operatorEvidence: true, sessions, ...onbaseChild.fixture,
       reviewedPages: [{ employeeName: employee.name, contactName: "Original Contact", correctedContactName: "Released Contact" }],
       screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
     assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");

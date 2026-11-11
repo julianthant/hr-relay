@@ -4,7 +4,7 @@ import { createOperatorProjection } from "../../../../src/backend/app/compositio
 import { createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
-import { createDeterministicUcpathContactPage } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
+import { createDeterministicContactPersistence } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { UcpathContactPageSnapshotSchema } from "../../../../src/models/ui/ucpath-emergency-contact.js";
 import { sessionFactoryHarness } from "../phase1f-executor-harness.js";
@@ -24,10 +24,12 @@ export async function verifyRetainedDelegatedPreviewEvidence(
   const world = createOcrReviewWorld();
   let reopened: AuthorityDatabase | undefined;
   try {
-    const port = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
-      displayedEid: "10800000", displayedName: "Example, Avery" }) });
+    let ticks = Date.parse(contactPage.page.observedAt);
+    const persistence = createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
+      displayedEid: "10800000", displayedName: "Example, Avery" }), () => new Date(++ticks).toISOString());
+    let port = persistence.session().port;
     const onbaseChild = onbaseOcrWorldChild();
-    const sessions = sessionFactoryHarness({ ucpath: () => createDeterministicUcpathPersonOrgDriver(undefined, undefined, port), onbase: onbaseChild.session });
+    const sessions = sessionFactoryHarness({ ucpath: () => { port = persistence.session().port; return createDeterministicUcpathPersonOrgDriver(undefined, undefined, port); }, onbase: onbaseChild.session });
     const f = await world.fixture({ coordinator: true, record: true, dryRun: true, sessions, ...onbaseChild.fixture,
       screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); await port.snapshot(); } } });
     assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
@@ -102,7 +104,7 @@ export async function verifyRetainedDelegatedPreviewEvidence(
         assert.ok(preview.stages.some(stage => /without (saving|submitting)/u.test(stage.detail)));
       }
     }
-    assert.equal(port.actions.some(action => action.startsWith("save")), false);
+    assert.equal(persistence.submissions.length, 0);
 
   } finally { reopened?.close(); await world.cleanup(); }
 }

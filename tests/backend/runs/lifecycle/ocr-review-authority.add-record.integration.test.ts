@@ -74,10 +74,13 @@ it.each(["oath", "emergency-contact", "i9"] as const)("creates and approves an o
 });
 
 it("durably creates, corrects and approves an operator-added record through native downstream dry-run execution and restart", async () => {
-  const contact = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
-    displayedEid: "10800001", displayedName: "Example, Manual" }) });
+  // Each browser session opens the saved page; a dry run never saves, so every session sees the initial page.
+  const contactPages: ReturnType<typeof createDeterministicUcpathContactPage>[] = [];
   const onbaseChild = onbaseOcrWorldChild();
   const sessions = sessionFactoryHarness({ ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
+    const contact = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
+      displayedEid: "10800001", displayedName: "Example, Manual" }) });
+    contactPages.push(contact);
     const driver = createDeterministicUcpathPersonOrgDriver(undefined, undefined, contact);
     return { ...driver, async searchPersonOrg(input) {
       return input.kind === "by-name" ? SearchPersonOrgOutputSchema.parse({ results: [],
@@ -155,7 +158,7 @@ it("durably creates, corrects and approves an operator-added record through nati
   const result = repositories.runResults.get(member.envelope.runId); assert.ok(result);
   assert.equal(RunDryRunPreviewResultSchema.parse(result.result.value).externalCommit, "none");
   for (const run of [f.parentRun, f.run, member]) assert.deepEqual(repositories.writeIntents.listByRun(run.envelope.runId), []);
-  assert.ok(contact.actions.includes("fill-fields:1"));
+  assert.ok(contactPages.some(page => page.actions.includes("fill-fields:1")));
   const snapshot = repositories.ocrReviews.snapshots(runId)[0]; assert.ok(snapshot);
   await f.harness.manager.closeAll("worker-stop"); f.database.close();
   const reopened = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 500, migrationOwner: "ocr-add-record-restart" }, f.clock,
