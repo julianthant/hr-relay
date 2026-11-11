@@ -549,7 +549,7 @@ for (const changed of [false, true]) it(`${changed ? "refuses" : "reuses"} a ret
       scenarioIds: [...sourceBoundReadContract.scenarios, ...writes.corpus.scenarioIds],
       tasks: [{ id: sourceBoundReadContract.id, effect: sourceBoundReadContract.effect }, ...writes.corpus.tasks],
     });
-  }, undefined, undefined, undefined, [sourceBoundReadDescriptor]);
+  }, undefined, undefined, undefined, [sourceBoundReadDescriptor], undefined, true);
   cleanups.push(h.dispose);
   h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
   const source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID));
