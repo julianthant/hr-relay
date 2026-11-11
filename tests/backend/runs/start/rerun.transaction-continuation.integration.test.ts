@@ -580,7 +580,9 @@ for (const changed of [false, true]) it(`${changed ? "refuses" : "reuses"} a ret
   assert.deepEqual(h.database.authority.writeIntents.listByBusinessKey("ucpath", WRITE_FIXTURE_KEY_DIGEST), []);
 });
 
-const inheritedRead = defineTaskContract({ ...staleRead, id: TaskIdSchema.parse("ocr/inherited-source") });
+const inheritedRead = defineTaskContract({ id: TaskIdSchema.parse("ocr/inherited-source"), title: staleRead.title, effect: staleRead.effect,
+  input: staleRead.input, output: staleRead.output, errorCodes: staleRead.errorCodes, subject: staleRead.subject,
+  scenarios: staleRead.scenarios, freshness: staleRead.freshness, provenance: staleRead.provenance, example: staleRead.example });
 
 function inheritedInputDescriptor(child: boolean) {
   const start = flow(Input)
