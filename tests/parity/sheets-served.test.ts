@@ -11,7 +11,7 @@ for (const theme of ["dark", "light"] as const) {
   test(`spreadsheets page on the served library ${theme} 1280x720`, async ({ page, hubServer }) => {
     mkdirSync(OUT, { recursive: true });
     try {
-      await serveWorkbookLibrary(page, ["Contact roster", "I-9 tracker"]);
+      await serveWorkbookLibrary(page, ["Contact roster", "I-9 tracker"], { requiredFields: true });
       await page.addInitScript(value => Reflect.set(window, "relayParityTheme", value), theme);
       await page.setViewportSize({ width: 1280, height: 720 });
       await page.goto(`${hubServer.baseUrl}/?fixture=hub-integration&settings=spreadsheets`);
