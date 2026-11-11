@@ -24,7 +24,7 @@ import { authenticateDelegationRefresh } from "../../storage/sqlite/delegation-r
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import type { ChildRunBatchContext, ChildRunContext } from "../../runtime/execution/run-executor.js";
 import { resolveInstances } from "../start/plan.js";
-import { selectRunRuntime } from "../settings/run-settings.js";
+import { selectRunRuntime, selectRunSettings } from "../settings/run-settings.js";
 import type { CreateRunRequest, RunQueuedPublication, RunRecordServiceDependencies, RunRecoveryOutcome } from "./run-record-service.js";
 import { protectedSubjectDisplay } from "../start/protected-input.js";
 import { canonicalDelegationChild, planCanonicalDelegation } from "./delegation-planning.js";
@@ -38,6 +38,12 @@ import { taskSpanPath } from "../../logs/span-emitter.js";
 import { observationLeafPaths, readObservationPath, resolveObservationOrigin } from "../../../models/events/data-observation-origin.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { DelegationManifestIdSchema, DependencyIdSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+
+export class DelegationConfigUnavailableError extends Error {
+  readonly code = "DELEGATION_CONFIG_UNAVAILABLE";
+  constructor(cause: unknown) { super(ERROR_CATALOG.DELEGATION_CONFIG_UNAVAILABLE.text, { cause }); }
+}
 
 type Journal = z.infer<typeof RunLifecycleCommandRecordSchema>;
 type JournalResult = z.infer<typeof RunLifecycleCommandAuditRecordSchema>["result"];
@@ -88,10 +94,8 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
         || workflowTerminalResultExecution(target).schemaHash !== deriveSchemaHash(context.node.target.result, "output")) throw new Error("delegation-node-binding-mismatch");
       const dryRunSupport = workflowDryRunSupport(target);
       if (parent.envelope.dryRun && dryRunSupport.state === "unsupported" && dryRunSupport.reason !== "no-transaction-node") throw new Error("delegation-target-dry-run-unsupported");
-      const snapshot = repositories.configSnapshots.get(parent.envelope.configSnapshotId);
-      const active = repositories.runtimeConfig.get();
-      if (snapshot === undefined || snapshot.fingerprint !== parent.envelope.configFingerprint || active === undefined
-        || active.configSnapshotId !== snapshot.configSnapshotId || active.configFingerprint !== snapshot.fingerprint) throw new Error("delegation-config-stale");
+      try { selectRunSettings(repositories, parent.envelope); }
+      catch (error) { throw new DelegationConfigUnavailableError(error); }
       if (canonicalJsonStringify(resolveInstances(descriptor, parent.envelope.requestedInstance)) !== canonicalJsonStringify(parent.envelope.resolvedInstance)) throw new Error("delegation-parent-instance-mismatch");
       if (repositories.writeIntents.listAttemptingByItem({ workflowId: parent.envelope.workflow, itemId: parent.envelope.itemId }).length > 0
         || repositories.writeIntents.listByRun(parent.envelope.runId).some(intent => intent.status === "parked")) throw new Error("delegation-write-recovery-required");
