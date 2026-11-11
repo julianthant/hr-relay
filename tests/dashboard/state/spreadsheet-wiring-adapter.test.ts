@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { describe, it, vi } from 'vitest';
 import { createSpreadsheetWiringAdapter } from '../../../src/dashboard/state/spreadsheet-wiring-adapter.js';
 import { newEditableWorkbook, spreadsheetValuesOnly } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { closeDraft, editMapping, importWorkbook } from '../../../src/dashboard/surfaces/spreadsheets/design/sheets-v2-writes.js';
+import { datasetOf } from '../../../src/dashboard/surfaces/spreadsheets/design/sheets-v2-model.js';
 import { DashboardClientError } from '../../../src/dashboard/client/errors.js';
 import type { WorkbookLibraryQueries } from '../../../src/dashboard/client/queries/workbook-library-queries.js';
 import { SavedWorkbookSchema, encodeEditableWorkbook, type SavedWorkbook } from '../../../src/models/dashboard/workbooks.js';
@@ -53,7 +55,7 @@ describe('served workbook authority', () => {
   it('adopts only a confirmed generated ID and keeps export from clearing durable dirtiness', async () => {
     const { client, adapter } = setup(); const draft = newEditableWorkbook(); const id = adapter.create(draft);
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...draft, libraryId: 'generated' }));
-    const result = await adapter.save(id, draft); assert.equal(result.state, 'confirmed');
+    const result = await adapter.save(id, draft); assert.equal(result.state, 'confirmed'); assert.equal(adapter.draft(id)?.dirty, false);
     const adopted = { ...draft, libraryId: 'generated' }; adapter.change(id, adopted, false); assert.equal(adapter.draft(id)?.dirty, false);
     const edited = { ...adopted, name: 'Edited.xlsx' }; adapter.change(id, edited, false); assert.equal(adapter.draft(id)?.dirty, true); assert.equal(adapter.draft('generated'), adapter.draft(id));
   });
@@ -279,5 +281,62 @@ describe('named library actions', () => {
     assert.equal((await adapter.saveType({ ...type, name: 'Edited' })).state, 'refused');
     client.workbookTypes.mockResolvedValue([type]); assert.equal((await adapter.saveType(type)).state, 'confirmed');
     assert.equal(client.workbookPutType.mock.calls.length, 1);
+  });
+});
+
+describe('spreadsheet page writes', () => {
+  it('resumes an uncertain import instead of creating a second workbook, even for an edited document', async () => {
+    const { client, adapter } = setup(); const first = newEditableWorkbook(), edited = { ...first, name: 'Renamed.xlsx' };
+    client.workbookOpen.mockRejectedValueOnce(new Error('lost'));
+    assert.equal((await importWorkbook(adapter, first)).state, 'pending');
+    client.workbookOpen.mockResolvedValueOnce(saved(1, { ...first, libraryId: 'generated' }));
+    assert.equal((await importWorkbook(adapter, edited)).state, 'added');
+    assert.equal(client.workbookCreate.mock.calls.length, 1);
+  });
+  it('joins an import that is still saving instead of creating again', async () => {
+    const { client, adapter } = setup(); const document = newEditableWorkbook();
+    let release!: (record: SavedWorkbook) => void; client.workbookCreate.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const first = importWorkbook(adapter, document), second = importWorkbook(adapter, { ...document, name: 'Again.xlsx' });
+    client.workbookOpen.mockResolvedValue(saved(1, { ...document, libraryId: 'generated' })); release(saved(1, { ...document, libraryId: 'generated' }));
+    assert.deepEqual((await Promise.all([first, second])).map(outcome => outcome.state), ['added', 'added']);
+    assert.equal(client.workbookCreate.mock.calls.length, 1);
+  });
+  it('sends an edit made while an earlier save is still in flight', async () => {
+    const { client, adapter } = setup(); await adapter.list(); await adapter.open('saved');
+    const sheet = adapter.draft('saved')!.document.sheets[0], headers = datasetOf(sheet).headers;
+    let store = saved(3), release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
+    client.workbookSave.mockImplementationOnce(async (_id: string, version: number, workbook: unknown) => { await gate; return (store = saved(version + 1, workbook as ReturnType<typeof book>)); });
+    client.workbookSave.mockImplementation(async (_id: string, version: number, workbook: unknown) => (store = saved(version + 1, workbook as ReturnType<typeof book>)));
+    client.workbookOpen.mockImplementation(async () => store);
+    const a = editMapping(adapter, 'saved', sheet.id, { eid: headers[0] });
+    await vi.waitFor(() => assert.equal(client.workbookSave.mock.calls.length, 1));
+    const b = editMapping(adapter, 'saved', sheet.id, { fullName: headers[1] });
+    release(); await Promise.all([a, b]);
+    assert.equal(client.workbookSave.mock.calls.length, 2);
+    const bound = store.workbook.sheets[0].columnBindings?.map(binding => binding.fieldId); assert(bound?.includes('eid') && bound.includes('fullName'));
+    assert.equal(adapter.draft('saved')?.dirty, false);
+  });
+  it('saves both of two quick mapping edits and never closes a draft with unsaved edits', async () => {
+    const { client, adapter } = setup(); await adapter.list(); await adapter.open('saved');
+    const sheet = adapter.draft('saved')!.document.sheets[0], headers = datasetOf(sheet).headers;
+    let store = saved(3), failNext = true;
+    client.workbookSave.mockImplementation(async (_id: string, version: number, workbook: unknown) => (store = saved(version + 1, workbook as ReturnType<typeof book>)));
+    client.workbookOpen.mockImplementation(async () => { if (failNext) { failNext = false; throw new Error('lost'); } return store; });
+    const a = editMapping(adapter, 'saved', sheet.id, { eid: headers[0] }), b = editMapping(adapter, 'saved', sheet.id, { fullName: headers[1] });
+    await Promise.all([a, b]);
+    assert(client.workbookSave.mock.calls.length >= 1);
+    assert.equal(adapter.draft('saved')?.dirty, false);
+    const bound = store.workbook.sheets[0].columnBindings?.map(binding => binding.fieldId); assert(bound?.includes('eid') && bound.includes('fullName'));
+    assert.equal(await closeDraft(adapter, 'saved', false), true);
+  });
+  it('keeps a draft whose save was refused until the operator discards it', async () => {
+    const { client, adapter } = setup(); await adapter.list(); await adapter.open('saved');
+    const sheet = adapter.draft('saved')!.document.sheets[0], headers = datasetOf(sheet).headers;
+    client.workbookSave.mockRejectedValue(new DashboardClientError({ kind: 'http', status: 409, code: 'WORKBOOK_VERSION_CONFLICT', message: 'Conflict' }));
+    const { result } = await editMapping(adapter, 'saved', sheet.id, { eid: headers[0] });
+    assert.notEqual(result?.state, 'confirmed'); assert.equal(client.workbookSave.mock.calls.length, 1);
+    assert.equal(await closeDraft(adapter, 'saved', false), false);
+    assert.equal(await closeDraft(adapter, 'saved', true), true);
+    assert.equal(adapter.draft('saved'), undefined);
   });
 });

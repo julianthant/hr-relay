@@ -7,8 +7,6 @@ import { mockRunLog, seedMockRuns } from '../../../../src/dashboard/surfaces/wor
 import { mockQueueOutcomes, mockQueueSurfaces } from '../../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js';
 import { ActivityView } from '../../../../src/dashboard/surfaces/activity/activity-view.js';
 import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, activitySample } from '../../../../src/dashboard/surfaces/activity/activity-fixture.js';
-import { SpreadsheetEditor } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor.js';
-import { newEditableWorkbook, type SpreadsheetSaveResult } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { SessionsView } from '../../../../src/dashboard/surfaces/sessions/sessions-view.js';
 import { SessionsR2, SessionsStates } from './sessions-states.js';
 import { sessionsSample } from '../../../../src/dashboard/surfaces/sessions/sessions-fixture.js';
@@ -29,7 +27,6 @@ function SessionsBarHarness() {
   </div>;
 }
 function Fixture() {
-  const [book, setBook] = useState(newEditableWorkbook), [dirty, setDirty] = useState(true);
   if (surface === 'sessions-states') return <SessionsStates />;
   if (surface === 'sessions-r2') return <SessionsR2 />;
   if (surface === 'sessions-bar') return <SessionsBarHarness />;
@@ -55,14 +52,7 @@ function Fixture() {
     if (mode === 'pending') return new Promise<void>(() => {});
     return Promise.reject(new Error('Synthetic export refusal'));
   }} />;
-  return <SpreadsheetEditor document={book} dirty={dirty} onDocument={(next, changed) => { if (!next) throw new Error('fixture-document-closed'); setBook(next); setDirty(changed); }} onSave={async draft => {
-    countCall();
-    if (mode === 'pending') return new Promise<SpreadsheetSaveResult>(() => {});
-    if (mode === 'confirmed') return { state: 'confirmed', version: 7, readback: structuredClone(draft) };
-    if (mode === 'mismatch') return { state: 'confirmed', version: 7, readback: { ...draft, name: 'Other workbook' } };
-    if (mode !== 'refused' && mode !== 'conflict' && mode !== 'uncertain') throw new Error('fixture-mode-invalid');
-    return { state: mode, reason: 'The library did not confirm this draft.' };
-  }} />;
+  throw new Error('fixture-surface-unknown');
 }
 const container = document.getElementById('controls-fixture');
 if (!container) throw new Error('controls-fixture-missing');

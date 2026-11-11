@@ -19,7 +19,7 @@ const policies = {
   "gate-opened": { trigger: "gate-waiting", tone: "warning", detail: "This run is waiting for your review." },
   "write-parked": { trigger: "write-parked", tone: "warning", detail: "A write is parked. Review its evidence before continuing." },
   "repeating-failure": { trigger: "repeating", tone: "danger", detail: "A failure crossed its repetition threshold. Review the failure." },
-  "storage-degraded": { trigger: "storage", tone: "warning", detail: "Review Storage in Settings before starting more work." },
+  "storage-degraded": { trigger: "storage", tone: "warning", detail: "Relay could not save everything. Reopen Relay before starting more work." },
   "verified-done": { trigger: "verified-done", tone: "positive", detail: "Completed with the required verification evidence." },
   "backfill-gap": { trigger: "backfill-gap", tone: "warning", detail: "Notification history is incomplete. Reconcile the affected work." },
   "command-refused": { trigger: "command", tone: "warning", detail: "Relay did not do this, so nothing changed." },
@@ -68,7 +68,7 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
         ? row.summary
         : policy?.detail ?? inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"),
       age: elapsed < 1 ? "Just now" : elapsed < 60 ? `${elapsed} min ago` : elapsed < 1440 ? `${Math.floor(elapsed / 60)} hr ago` : `${Math.floor(elapsed / 1440)} days ago`,
-      read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "Open Storage" : "Open log",
+      read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "" : "Open log",
       destination: { kind: "refused", reason: "target-unavailable" },
     };
 }

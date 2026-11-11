@@ -37,12 +37,12 @@ export function ChoicePicker({ label, value, options, onChange, disabled, hideLa
 }
 
 /** Compact two-way switch: a soft grey pill with one raised thumb that slides to the selected side (no slide under reduced motion). Arrow keys follow the selected radio. `hideLabel` keeps the legend for screen readers when a Field names it. */
-export function SegmentedChoice<T extends string>({ label, value, options, onChange, hideLabel = false }: {
-  label: string; value: T; options: readonly { value: T; label: string }[]; onChange: (value: T) => void; hideLabel?: boolean;
+export function SegmentedChoice<T extends string>({ label, value, options, onChange, hideLabel = false, disabled = false }: {
+  label: string; value: T; options: readonly { value: T; label: string }[]; onChange: (value: T) => void; hideLabel?: boolean; disabled?: boolean;
 }) {
   const name = useId();
   const selected = options.findIndex(option => option.value === value);
-  return <fieldset className="min-w-0"><legend className={cn(dsText.meta, "mb-[var(--ds-space-tight)] font-medium text-[color:var(--ds-fg-secondary)]", hideLabel && "sr-only")}>{label}</legend>
+  return <fieldset disabled={disabled} className="min-w-0"><legend className={cn(dsText.meta, "mb-[var(--ds-space-tight)] font-medium text-[color:var(--ds-fg-secondary)]", hideLabel && "sr-only")}>{label}</legend>
     <div className="ds-segment relative flex h-[var(--ds-h-md)] rounded-full border border-[color:var(--ds-border-subtle)] bg-[var(--ds-segment-track)] p-[2px]">
       {selected >= 0 && <span aria-hidden className="pointer-events-none absolute inset-y-[2px] left-[2px] rounded-full bg-[var(--ds-segment-thumb)] shadow-[0_1px_2px_rgb(0_0_0/0.14)] transition-transform duration-[180ms] ease-out motion-reduce:transition-none"
         style={{ width: `calc((100% - 4px) / ${options.length})`, transform: `translateX(${selected * 100}%)` }} />}
