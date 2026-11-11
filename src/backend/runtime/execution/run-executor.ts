@@ -2,7 +2,7 @@ import { OcrApprovalReadResultSchema } from "../../../models/processing/ocr/appr
 import { authenticateDelegationRetryPause, delegationAccountingExecution } from "../../storage/sqlite/delegation-authority.js";
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
-import { readRunCheckpoint, RunContinuationRefusedError, readContinuationGate, validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
+import { readRunCheckpoint, retainedCheckpoint, RunContinuationRefusedError, readContinuationGate, validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
 import { RunClaimTokenSchema, type RunClaimToken } from "../../../models/run/worker.js";
 import { DryRunSampleSchema, type DryRunBinding } from "../../../models/workflow/dry-run.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
@@ -690,9 +690,12 @@ export async function executeClaimedRun(
       if (source === undefined) throw new RunContinuationRefusedError("run-continuation-input-source-unavailable");
       const values: Record<string, JsonValue> = {};
       for (const dependency of dependsOn) {
+        // A row this claim wrote is a re-read, never the original the comparison checks it against.
         const own = deps.authority.authority.runCheckpoints.listByAttempt(source.envelope.workflow, source.envelope.itemId, String(dependency), source.envelope.attempt)
-          .filter(row => row.runId === sourceRunId).at(-1);
-        const checkpoint = own ?? (source.envelope.continuation === undefined ? undefined : readRunCheckpoint(deps.authority.authority, source.envelope, String(dependency), true));
+          .filter(row => row.runId === sourceRunId && (sourceRunId !== runId || row.claimGeneration < claim.claimGeneration)).at(-1);
+        const reference = source.envelope.continuation?.checkpoints.find(row => row.nodeId === dependency);
+        const checkpoint = own ?? (sourceRunId === runId ? reference && retainedCheckpoint(deps.authority.authority, source.envelope, reference)
+          : source.envelope.continuation === undefined ? undefined : readRunCheckpoint(deps.authority.authority, source.envelope, String(dependency), true));
         const gate = readContinuationGate(deps.authority.authority, source.envelope, String(dependency));
         if (checkpoint !== undefined) {
           const dependencyNode = nodes.find(node => node.id === dependency);
