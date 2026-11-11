@@ -200,6 +200,12 @@ export const ImmutableInsertDispositionSchema = z.enum(["inserted", "existing"])
 
 export const DiagnosticPurgeDispositionSchema = z.enum(["purged", "absent"]);
 
+/** Delegation reads one locked operation reuses: group proofs and invocation commands. */
+type DelegationOperationReads = {
+  groups: Map<string, { manifest: string; group: ReturnType<typeof authenticateDelegationGroup> }>;
+  invocations: Map<string, readonly z.infer<typeof RunLifecycleCommandRecordSchema>[]>;
+};
+
 type ImmutableInsertResult<RecordValue> = Readonly<{
   state: z.infer<typeof ImmutableInsertDispositionSchema>;
   record: RecordValue;
@@ -282,7 +288,7 @@ type SettingsCurrentRepository = Readonly<{
 
 
 type DependencyRepository = Readonly<{
-  authenticateGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup>;
+  authenticateGroup(manifest: DelegationManifest, scopePath?: Set<string>): ReturnType<typeof authenticateDelegationGroup>;
   parents(envelopes: readonly RunRecord["envelope"][]): ReturnType<typeof readQueueParents>;
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof DependencyRecordSchema>>;
   get(dependencyId: string): z.infer<typeof DependencyRecordSchema> | undefined;
@@ -2092,12 +2098,11 @@ export class AuthorityDatabase implements Disposable {
   #transactionDepth = 0;
   #savepointSequence = 0;
   #transactionMode: "authority" | "projection" | "read" | undefined;
-  #delegationReadSnapshot: {
+  #delegationReadSnapshot: DelegationOperationReads & {
     waits: Map<string, ReturnType<typeof readDelegationWaitState>>;
-    groups: Map<string, { manifest: string; group: ReturnType<typeof authenticateDelegationGroup> }>;
   } | undefined;
-  /** Group proofs authenticated inside one write transaction, valid while the connection's total_changes() stays the same. */
-  #transactionDelegationGroups: { changes: number; groups: Map<string, { manifest: string; group: ReturnType<typeof authenticateDelegationGroup> }> } | undefined;
+  /** Delegation reads inside one write transaction, valid while the connection's total_changes() stays the same. */
+  #transactionDelegationReads: DelegationOperationReads & { changes: number } | undefined;
   #authorityDirty = false;
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
@@ -4083,7 +4088,7 @@ export class AuthorityDatabase implements Disposable {
 
   #assertCurrentExecution(runId: string, claim: z.infer<typeof RunClaimTokenSchema>): void {
     const previous = this.#delegationReadSnapshot;
-    this.#delegationReadSnapshot ??= { waits: new Map(), groups: new Map() };
+    this.#delegationReadSnapshot ??= { waits: new Map(), groups: new Map(), invocations: new Map() };
     try {
       this.#admission.assertProfileRuntime();
       const run = this.#readRunRow(runId), held = run === undefined ? undefined : runClaim(run);
@@ -4496,7 +4501,7 @@ export class AuthorityDatabase implements Disposable {
             this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
             this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
           } catch (rollback) { this.#failNativeClosure([error, rollback]); }
-          this.#transactionDelegationGroups = undefined;
+          this.#transactionDelegationReads = undefined;
           this.#authorityDirty = dirtyBefore;
           this.#authorityCommitCallbacks.splice(callbacksBefore);
           throw error;
@@ -4551,7 +4556,7 @@ export class AuthorityDatabase implements Disposable {
         clearOperationProofSlots();
         this.#transactionDepth = 0;
         this.#transactionMode = undefined;
-        this.#transactionDelegationGroups = undefined;
+        this.#transactionDelegationReads = undefined;
         this.#snapshotExternalDataVersion = undefined;
         this.#authorityDirty = false;
       }
@@ -4561,24 +4566,34 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #readDelegationGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup> {
-    const groups = this.#delegationReadSnapshot?.groups ?? this.#writeTransactionDelegationGroups();
+  #readDelegationGroup(manifest: DelegationManifest, scopePath = new Set<string>()): ReturnType<typeof authenticateDelegationGroup> {
+    if (scopePath.has(manifest.manifestId)) throw new Error("delegation-scope-cycle");
+    const groups = this.#operationDelegationReads()?.groups;
     const fingerprint = groups === undefined ? undefined : canonicalJsonStringify(manifest);
     const cached = groups?.get(manifest.manifestId);
     if (cached !== undefined && cached.manifest === fingerprint) return structuredClone(cached.group);
-    const group = authenticateDelegationGroup(this.authority, manifest);
+    const group = authenticateDelegationGroup(this.authority, manifest, scopePath);
     // Store only when authenticating changed no row (the map is still the current one).
-    const current = this.#delegationReadSnapshot?.groups ?? this.#writeTransactionDelegationGroups();
+    const current = this.#operationDelegationReads()?.groups;
     if (groups !== undefined && fingerprint !== undefined && groups === current) groups.set(manifest.manifestId, { manifest: fingerprint, group: structuredClone(group) });
     return group;
   }
 
-  // Any row change, trigger rows included, advances total_changes() and drops every cached proof; a savepoint rollback drops them too.
-  #writeTransactionDelegationGroups() {
+  // Any row change, trigger rows included, advances total_changes() and drops every cached read; a savepoint rollback drops them too.
+  #operationDelegationReads(): DelegationOperationReads | undefined {
+    if (this.#delegationReadSnapshot !== undefined) return this.#delegationReadSnapshot;
     if (this.#transactionDepth === 0 || this.#transactionMode === "read") return undefined;
     const changes = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare("SELECT total_changes() AS count").get()).count;
-    if (this.#transactionDelegationGroups?.changes !== changes) this.#transactionDelegationGroups = { changes, groups: new Map() };
-    return this.#transactionDelegationGroups.groups;
+    if (this.#transactionDelegationReads?.changes !== changes) this.#transactionDelegationReads = { changes, groups: new Map(), invocations: new Map() };
+    return this.#transactionDelegationReads;
+  }
+
+  #readDelegationInvocations(key: string, read: () => readonly z.infer<typeof RunLifecycleCommandRecordSchema>[]) {
+    const invocations = this.#operationDelegationReads()?.invocations, cached = invocations?.get(key);
+    if (cached !== undefined) return structuredClone(cached);
+    const commands = read();
+    invocations?.set(key, structuredClone(commands));
+    return commands;
   }
 
   #withReadSnapshot<Result>(read: () => Result): Result {
@@ -4592,7 +4607,7 @@ export class AuthorityDatabase implements Disposable {
       this.#database.exec("BEGIN");
       this.#transactionDepth = 1;
       this.#transactionMode = "read";
-      this.#delegationReadSnapshot = { waits: new Map(), groups: new Map() };
+      this.#delegationReadSnapshot = { waits: new Map(), groups: new Map(), invocations: new Map() };
       this.#authorityDirty = false;
       try {
         const result = read();
@@ -5405,17 +5420,17 @@ export class AuthorityDatabase implements Disposable {
           return rows[0] === undefined ? undefined : RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]));
         },
         listDelegationRefreshes: (runId: string) => readDelegationRefreshCommands(this.#database,runId),
-        listDelegationInvocations: (parentRunId: string) => this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+        listDelegationInvocations: (parentRunId: string) => this.#readDelegationInvocations(`parent:${parentRunId}`, () => this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
           AND json_extract(request_json,'$.operation')='delegation-invocation'
           AND json_extract(request_json,'$.request.runId')=? ORDER BY id`).all(parentRunId)
-          .map(row => RunLifecycleCommandRecordSchema.parse(commandFromRow(row))),
-        findDelegationInvocation: (manifestId: string) => {
+          .map(row => RunLifecycleCommandRecordSchema.parse(commandFromRow(row)))),
+        findDelegationInvocation: (manifestId: string) => this.#readDelegationInvocations(`manifest:${manifestId}`, () => {
           const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
             AND json_extract(request_json,'$.operation')='delegation-invocation'
             AND json_extract(request_json,'$.request.manifestId')=? ORDER BY id`).all(manifestId);
           if (rows.length > 1) throw new Error("delegation-invocation-ambiguous");
-          return rows[0] === undefined ? undefined : RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]));
-        },
+          return rows[0] === undefined ? [] : [RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]))];
+        })[0],
         listDelegationAdmissions: (runId: string, claimGeneration: number) => this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle' AND target_id=?
           AND json_extract(request_json,'$.operation')='delegation-admission'
           AND json_extract(request_json,'$.request.claim.claimGeneration')=?
@@ -5499,7 +5514,7 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       dependencies: Object.freeze({
-        authenticateGroup: (manifest: DelegationManifest) => this.#readDelegationGroup(manifest),
+        authenticateGroup: (manifest: DelegationManifest, scopePath?: Set<string>) => this.#readDelegationGroup(manifest, scopePath),
         parents: (envelopes: readonly RunRecord["envelope"][]) => readQueueParents(this.authority, envelopes),
         groups: (parentRunId: string, selection: "current" | "retained" = "current") => {
           const parent = this.authority.runs.get(parentRunId);
@@ -5535,7 +5550,7 @@ export class AuthorityDatabase implements Disposable {
         members: (manifestId: string) => {
           const manifest = this.authority.delegationManifests.get(manifestId);
           if (manifest === undefined) throw new Error("delegation-manifest-unavailable");
-          return authenticateDelegationGroup(this.authority, manifest).children;
+          return this.authority.dependencies.authenticateGroup(manifest).children;
         },
         readiness: (parentRunId: string, intent: "join" | "cancel") => readDelegationReadiness(this.authority, parentRunId, intent),
         reconcile: (parentRunId: string, now: string) => this.withAuthorityTransaction(repositories => {
@@ -5591,7 +5606,7 @@ export class AuthorityDatabase implements Disposable {
           if (current === undefined) throw new Error("delegation-dependency-unavailable");
           const manifest = repositories.delegationManifests.get(current.manifestId);
           if (manifest === undefined) throw new Error("delegation-manifest-unavailable");
-          const selected = authenticateDelegationGroup(repositories, manifest).children.find(child => child.dependency.dependencyId === request.dependencyId);
+          const selected = repositories.dependencies.authenticateGroup(manifest).children.find(child => child.dependency.dependencyId === request.dependencyId);
           if (selected === undefined || selected.child.envelope.runId !== request.runId || selected.child.envelope.attempt !== request.childAttempt) throw new Error("delegation-settlement-child-mismatch");
           const terminal = childTerminalSettlement(selected.child, repositories);
           if (terminal === undefined || terminal.state !== request.state || terminal.result.resultDigest !== request.resultDigest
@@ -6507,7 +6522,7 @@ export class AuthorityDatabase implements Disposable {
             if (current.lifecycle.state !== "queued" || cancellationSource === undefined
               || this.authority.delegationManifests.listByParentRun(runId).length === 0) throw new Error(`run ${runId} holds no claim for a cancel request`);
             authenticateCancellationSource(this.authority, current, cancellationSource);
-            for (const manifest of this.authority.delegationManifests.listByParentRun(runId)) authenticateDelegationGroup(this.authority, manifest);
+            for (const manifest of this.authority.delegationManifests.listByParentRun(runId)) this.authority.dependencies.authenticateGroup(manifest);
           }
           return RunRecordSchema.parse({ ...current, cancelRequested: true, ...(errorSummary !== undefined && { cancelSummary: errorSummary }) });
         },
