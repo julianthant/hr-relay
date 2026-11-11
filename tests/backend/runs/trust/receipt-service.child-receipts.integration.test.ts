@@ -73,7 +73,7 @@ it("pairs a new item's already-present Save with its exact original permanent re
   assert.ok(original?.status === "committed");
   const unrelatedKey = `${original.idempotencyKey}|unrelated`;
   f.database.authority.writeIntents.recordObservedPresent(WriteIntentRecordSchema.parse({ writeIntentId: crypto.randomUUID(), workflowId: original.workflowId,
-    itemId: `${original.itemId}-unrelated`, taskId: original.taskId, system: original.system, idempotencyKey: unrelatedKey,
+    itemId: crypto.randomUUID(), taskId: original.taskId, system: original.system, idempotencyKey: unrelatedKey,
     idempotencyKeyDigest: deriveIdempotencyKeyDigest(original.system, unrelatedKey), generation: 1, status: "observed-present",
     observedProof: original.completionProof, observedAt: original.confirmedAt, version: 1, createdAt: original.confirmedAt, updatedAt: original.confirmedAt }));
   const second = await f.again(`${"c".repeat(64)}#emergency-contact#2`);

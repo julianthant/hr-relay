@@ -16,7 +16,8 @@ function migration(version: number) {
 // Raw rows shaped like stored ones: the migration reads only these columns and json paths.
 function insertRun(database: DatabaseSync, name: string, outcome: "done" | "failed" | "cancelled", warnings: readonly { code: string }[], delegated: boolean, actions: readonly unknown[] = []) {
   const lifecycle = JSON.stringify({ lifecycle: { state: "terminal", outcome, endedAt: at, failureId: outcome === "failed" ? "failure" : null },
-    completion: { schemaVersion: 1, kind: outcome, authorizedAt: at, claim: { claimGeneration: 0, workerId: "worker" }, expectedVersion: 3, resultDigest: "digest", failureId: "failure" } });
+    // Only done and failed runs carry a completion (runs_completion_insert).
+    ...(outcome === "cancelled" ? {} : { completion: { schemaVersion: 1, kind: outcome, authorizedAt: at, claim: { claimGeneration: 0, workerId: "worker" }, expectedVersion: 3, resultDigest: "digest", failureId: "failure" } }) });
   database.prepare(`INSERT INTO runs(id,workflow,item_id,attempt,state,outcome,priority,claim_generation,version,settings_snapshot_id,descriptor_version,
     contract_fingerprint,trace_id,dry_run,local_day,enqueued_at,envelope_json,lifecycle_json,created_at,updated_at)
     VALUES(?,'emergency-contact',?,1,'terminal',?,'interactive',0,4,'snapshot',1,'fp','trace',0,'2026-11-02',?,'{}',?,?,?)`)

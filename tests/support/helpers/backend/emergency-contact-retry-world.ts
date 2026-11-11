@@ -270,17 +270,7 @@ export function createEmergencyContactRetryWorld() {
       assert.equal(f.canonical.kernel.execute({ ...command, payload: { ...command.payload, assertedEid: String(10800000 + index) } }).state, "applied");
     }
     assert.equal(f.canonical.kernel.execute(f.approval()).state, "applied");
-    if (options.secondMemberAlreadyPresent) {
-      const review = f.database.authority.ocrReviews.latest(f.run.envelope.runId); assert.ok(review);
-      const record = review.records.find(record => record.assertedEid === "10800001"); assert.ok(record);
-      const input = approvedEmergencyContact(record), desired = contactEffect(input);
-      const rows = UcpathContactPageSnapshotSchema.parse(fixture.page).rows;
-      rows[0] = { ...rows[0], primary: false };
-      rows[1] = { rowIndex: 1, name: desired.name, relationship: desired.relationship, primary: true, phone: desired.phone ?? "",
-        sameAddressAsEmployee: false, address: desired.address.kind === "explicit" ? desired.address.fields : null };
-      live.persistence.set(input.emplId, createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...fixture.page,
-        displayedEid: input.emplId, displayedName: input.expectedName, rows }), live.now));
-    }
+    if (options.secondMemberAlreadyPresent) markContactPresent(f, live, "10800001");
     const interrupted = await f.canonical.execute(f.parentRun, new AbortController().signal);
     if ((options.failures ?? 1) > 0) assert.equal(interrupted.run?.lifecycle.state, "queued", "a terminal failed sibling requeues the allow-partial parent");
     // The failed sibling ends execute while the saved member's OnBase child can still be queued; settle it so the template holds only the parent.
@@ -293,6 +283,18 @@ export function createEmergencyContactRetryWorld() {
       assert.equal(member.outcome.state, "done");
     }
     return { ...f, live, mintedIds: ids.minted().length };
+  }
+  // UCPath already shows the approved record's contact as primary, so the member's Save settles already-present.
+  function markContactPresent(f: Awaited<ReturnType<typeof world.fixture>>, live: ReturnType<typeof pieces>, eid: string) {
+    const review = f.database.authority.ocrReviews.latest(f.run.envelope.runId); assert.ok(review);
+    const record = review.records.find(record => record.assertedEid === eid); assert.ok(record);
+    const input = approvedEmergencyContact(record), desired = contactEffect(input);
+    const rows = UcpathContactPageSnapshotSchema.parse(fixture.page).rows;
+    rows[0] = { ...rows[0], primary: false };
+    rows[1] = { rowIndex: 1, name: desired.name, relationship: desired.relationship, primary: true, phone: desired.phone ?? "",
+      sameAddressAsEmployee: false, address: desired.address.kind === "explicit" ? desired.address.fields : null };
+    live.persistence.set(input.emplId, createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...fixture.page,
+      displayedEid: input.emplId, displayedName: input.expectedName, rows }), live.now));
   }
   function present(f: Awaited<ReturnType<typeof world.fixture>>, live: ReturnType<typeof pieces>) {
     const current = (runId = f.parentRun.envelope.runId) => { const run = f.database.authority.runs.get(runId); assert.ok(run); return run; };
@@ -311,7 +313,8 @@ export function createEmergencyContactRetryWorld() {
       assert.equal(resumed.run.envelope.runId, first.run.envelope.runId);
       return resumed;
     };
-    return { ...f, canonical: { ...f.canonical, step }, facts, persistence: live.persistence, onbase: live.onbase, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children };
+    return { ...f, canonical: { ...f.canonical, step }, facts, persistence: live.persistence, onbase: live.onbase, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children,
+      markContactPresent: (eid: string) => markContactPresent(f, live, eid) };
   }
   async function capture(built: Awaited<ReturnType<typeof build>>): Promise<MemberStageTemplate> {
     const source = built.harness.authority.profile.workspace;
