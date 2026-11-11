@@ -553,7 +553,8 @@ for (const changed of [false, true]) it(`${changed ? "refuses" : "reuses"} a ret
   cleanups.push(h.dispose);
   h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
   const source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID));
-  assert.equal((await h.execute(source)).state, "yielded-delegation");
+  const failures = () => JSON.stringify(h.database.authority.failures.listByRun(source.envelope.runId));
+  assert.equal((await h.execute(source)).state, "yielded-delegation", failures());
   const children = h.database.authority.runs.listChildren(source.envelope.runId); assert.equal(children.length, 1);
   for (const member of children) assert.equal((await h.execute(member)).state, "done");
   assert.equal((await h.execute(source)).state, "failed");
