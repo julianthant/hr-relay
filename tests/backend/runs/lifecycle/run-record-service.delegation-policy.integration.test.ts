@@ -98,7 +98,8 @@ it("keeps the exact parent snapshot after a real apply-settings workflow selecti
     saves++;
   });
   const pinned = f.root.envelope;
-  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation",
+    JSON.stringify(f.database.authority.failures.listByRun(pinned.runId)));
   assert.equal(saves, 1);
   const child = f.child();
   const invocations = f.database.authority.lifecycleJournal.listDelegationInvocations(pinned.runId);
