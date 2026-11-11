@@ -24,6 +24,6 @@ it("binds exactly the approved employee, parent PDF and record page to the OnBas
   const onbase = descriptorRuntimeNodes(descriptor).find(node => node.id === "onbase-import");
   assert.ok(onbase?.kind === "child-run" && onbase.cardinality === "one");
   const input = { ...EMERGENCY_CONTACT_MEMBER_EXAMPLE, sourcePage: 2 };
-  assert.deepEqual(onbase.bind({ input, outputs: { "map-contact": { emplId: "10800007" } } }),
-    { ucpathId: "10800007", document: input.document, sourcePage: 2 });
+  const emplId = input.record.assertedEid;
+  assert.deepEqual(onbase.bind({ input, outputs: { "map-contact": { emplId } } }), { ucpathId: emplId, document: input.document, sourcePage: 2 });
 });
