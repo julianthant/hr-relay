@@ -34,22 +34,21 @@ describe("a dry run paused mid-preview resumes in the same process (ref workers-
   for (const role of ["probe", "prepare"] as const) {
     it(`Pause during the ${role} span, then Resume, finishes the preview with one span per claim`, async () => {
       const h = await harness();
-      let entered!: () => void;
-      const blocked = new Promise<void>(resolve => { entered = resolve; });
+      let entered = false;
       const never = new Promise<void>(() => undefined);
       if (role === "probe") {
         h.world.probeWait = never;
         h.world.prepareSteps = undefined;
       } else {
         let first = true;
-        h.world.prepareSteps = async () => { if (first) { first = false; entered(); await never; } };
+        h.world.prepareSteps = async () => { if (!entered) { entered = true; await never; } };
       }
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW), absentProbeEvidence(WRITE_FIXTURE_NOW));
       const stop = new AbortController();
       const loop = h.loop(stop.signal);
       try {
         assert.equal(h.database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun: true })).state, "inserted");
-        if (role === "probe") await pump(h, () => h.world.events.includes("probe")); else await blocked;
+        await pump(h, () => role === "probe" ? h.world.events.includes("probe") : entered);
         const firstGeneration = current(h).claimGeneration;
         requireLifecycleApplied(testRunService(h.database, h.clock).pause({ commandId: randomUUID(), runId: WRITE_FIXTURE_RUN_ID, expectedVersion: current(h).version }));
         await pump(h, () => current(h).lifecycle.state === "queued" && current(h).pause?.state === "paused");
@@ -58,7 +57,8 @@ describe("a dry run paused mid-preview resumes in the same process (ref workers-
         requireLifecycleApplied(testRunService(h.database, h.clock).resumePaused({ commandId: randomUUID(), runId: WRITE_FIXTURE_RUN_ID, expectedVersion: current(h).version }));
         await pump(h, () => current(h).lifecycle.state === "terminal");
 
-        assert.deepEqual(current(h).lifecycle.state === "terminal" && current(h).lifecycle.outcome, "done");
+        assert.deepEqual(current(h).lifecycle.state === "terminal" && current(h).lifecycle.outcome, "done",
+          JSON.stringify({ lifecycle: current(h).lifecycle, result: h.database.authority.runResults.get(WRITE_FIXTURE_RUN_ID)?.result }));
         assert.ok(current(h).claimGeneration > firstGeneration);
         const result = h.database.authority.runResults.get(WRITE_FIXTURE_RUN_ID);
         assert.ok(result);
