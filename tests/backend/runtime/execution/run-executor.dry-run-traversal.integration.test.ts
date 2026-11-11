@@ -332,7 +332,7 @@ describe("publication preview boundary", () => {
       w.approveAndResume(runIdOf(1));
       assert.equal((await w.runNext()).state, "failed");
       const failed = w.database.authority.runs.get(runIdOf(1)); assert.ok(failed);
-      const lifecycle = new RunRecordService({ database: w.database, clock: w.clock, ids: sequentialIdFactory("r"), publishQueued: () => undefined });
+      const lifecycle = new RunRecordService({ database: w.database, clock: w.clock, ids: sequentialIdFactory("f"), publishQueued: () => undefined });
       const recovered = requireLifecycleApplied(lifecycle.create({ commandId: w.uuid(), code: w.descriptor.code, matchKey: "name:Battistessa, Johnnie",
         workflow: w.descriptor.id, descriptorVersion: failed.envelope.descriptorVersion, contractFingerprint: failed.envelope.contractFingerprint,
         configFingerprint: failed.envelope.configFingerprint, configSnapshotId: failed.envelope.configSnapshotId, resolvedInstance: failed.envelope.resolvedInstance,
