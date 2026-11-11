@@ -56,6 +56,7 @@ describe("a dry run paused mid-preview resumes in the same process (ref workers-
         if (role === "probe") h.world.probeWait = undefined;
         requireLifecycleApplied(testRunService(h.database, h.clock).resumePaused({ commandId: randomUUID(), runId: WRITE_FIXTURE_RUN_ID, expectedVersion: current(h).version }));
         await pump(h, () => current(h).lifecycle.state === "terminal");
+        assert.deepEqual(h.emitRefusals, []);
 
         assert.deepEqual(current(h).lifecycle.state === "terminal" && current(h).lifecycle.outcome, "done",
           JSON.stringify({ lifecycle: current(h).lifecycle, result: h.database.authority.runResults.get(WRITE_FIXTURE_RUN_ID)?.result }));
