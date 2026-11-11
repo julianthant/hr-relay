@@ -8,7 +8,7 @@ import * as commandRows from "../../../../src/backend/storage/sqlite/command-rec
 import { DatabaseSync } from "node:sqlite";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
-import { DelegationEdgeIdSchema, FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { DelegationEdgeIdSchema, FingerprintSchema, PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { bindWorkflowDelegationTargets, descriptorRuntimeNodes, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { runClaim, type RunRecord } from "../../../../src/models/run/record.js";
 import assert from "node:assert/strict";
@@ -60,7 +60,8 @@ async function fixture(policy: "cascade" | "independent", unawaited = false, con
   const { database, clock, path, stateRoot } = h.authority;
   const patch = { "actor.label": { set: "Synthetic operator" } } as const;
   assert.equal(executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
-    settings: createSettingsApplicationExecutor(settings => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock),
+    settings: createSettingsApplicationExecutor(settings => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock,
+      { stateRoot, artifactRoot: h.authority.profile.admission.artifactRoot }),
       createCredentialStore({ stateRoot })) }, {
     commandId: randomUUID(), family: "settings", type: "apply-settings", source: "settings-surface",
     requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { expectedRevision: 1 },
@@ -69,7 +70,8 @@ async function fixture(policy: "cascade" | "independent", unawaited = false, con
   const applySettings = (patch: SettingsPatch) => {
     const active = database.authority.runtimeConfig.get(); assert.ok(active);
     const result = executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
-      settings: createSettingsApplicationExecutor(settings => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock),
+      settings: createSettingsApplicationExecutor(settings => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock,
+      { stateRoot, artifactRoot: h.authority.profile.admission.artifactRoot }),
         createCredentialStore({ stateRoot })) }, {
       commandId: randomUUID(), family: "settings", type: "apply-settings", source: "person-preferences",
       requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { expectedRevision: active.settingsRevision },
@@ -166,9 +168,10 @@ it("refuses missing, tampered and mismatched retained config without publishing 
   let refusals = 0;
   f.execution.lifecycle.admitDelegation = (batch, plans) => {
     const generation = f.database.getMeta().authorityGeneration;
-    assert.throws(() => native({ ...batch, run: { ...batch.run, version: batch.run.version + 1 } }, plans),
+    assert.throws(() => native({ ...batch, run: { ...batch.run, version: PositiveIntSchema.parse(batch.run.version + 1) } }, plans),
       /delegation-parent-claim-stale/u);
-    assert.throws(() => native({ ...batch, descriptor: { ...batch.descriptor } }, plans), /delegation-node-binding-mismatch/u);
+    const other = f.modules.find(module => module.descriptor.id !== batch.descriptor.id); assert.ok(other);
+    assert.throws(() => native({ ...batch, descriptor: other.descriptor }, plans), /delegation-owner-binding-mismatch/u);
     assert.throws(() => native({ ...batch, leaves: batch.leaves.map(leaf => ({ ...leaf,
       scope: { ...leaf.scope, input: { emplId: "10800000", text: "tampered", mode: "ok" } } })) }, plans),
       /delegation-scope-input-mismatch/u);
@@ -215,7 +218,8 @@ it("refuses missing, tampered and mismatched retained config without publishing 
     }
     return native(batch, plans);
   };
-  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation",
+    JSON.stringify(f.database.authority.failures.listByRun(f.root.envelope.runId)));
   assert.equal(refusals, 3);
   assert.equal(f.database.authority.runs.listChildren(f.root.envelope.runId).length, 1);
 });

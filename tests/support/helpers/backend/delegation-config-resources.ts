@@ -27,7 +27,7 @@ export async function delegationConfigResources(input: {
   const preflight = composeRuntimePreflight({ admission, credentials: boundProfileCredentials(admission),
     database, clock: deps.clock, repoRoot: process.cwd(), isolation: rebuildRuntimeIsolation,
     descriptors: { resolve: input.resolve }, descriptorSetHash: input.descriptor.contractFingerprint,
-    protectedSecrets: { read: initialProtectedStoreRecord }, environment: {}, runnerFactory: selected => {
+    protectedSecrets: { read: () => initialProtectedStoreRecord() }, environment: {}, runnerFactory: selected => {
       observations.push({ snapshotId: selected.scope.configSnapshotId,
         fingerprint: selected.scope.configFingerprint, taskMs: selected.config.timeouts.taskMs });
       return healthyRuntimePreflightRunners(selected);
@@ -38,7 +38,8 @@ export async function delegationConfigResources(input: {
     artifacts, clock: deps.clock, ids: { uuid: randomUUID }, scheduler: deps.scheduler,
     isolation: rebuildRuntimeIsolation, environment: {}, preflight,
     nominatim: createNominatimWorkerAdapter(deps.clock),
-    ocr: { capability: "ocr.extract", call: async () => { throw new Error("snapshot proof must not call OCR"); } },
+    ocr: { capability: "ocr.extract", policy: { kind: "chatgpt-subscription-only", timeoutMs: 120_000 },
+      invoke: async () => { throw new Error("snapshot proof must not call OCR"); } },
     protectedSecrets: { read: () => { throw new Error("snapshot proof must not read secrets"); } },
     duoCeremony: { openGate: () => { throw new Error("snapshot proof must not open Duo"); } },
     assertProfileOwner: () => { throw new Error("snapshot proof must not acquire a browser profile"); },

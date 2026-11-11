@@ -59,18 +59,19 @@ it("uses the first served workflow when a remembered workflow is unavailable at 
 
 it("sends no Settings command for the current workflow and canonically saves a different selection once", async () => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-  let settings: SettingsOverride = { preferences: { selectedWorkflowId: "a" } };
+  let settings: SettingsOverride = { preferences: { selectedWorkflowId: "person-lookup" } };
   let revision = 1;
+  let document = fixtureSettingsDocument(settings, revision);
   const commands: ReturnType<typeof SettingsCommandRequestSchema.parse>[] = [];
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
-    if (url.endsWith("/settings/editable")) return Response.json(fixtureSettingsDocument(settings, revision));
+    if (url.endsWith("/settings/editable")) return Response.json(document);
     assert.ok(url.endsWith("/commands"));
     assert.ok(typeof init?.body === "string");
     const command = SettingsCommandRequestSchema.parse(JSON.parse(init.body));
     commands.push(command);
     assert.equal(command.target.expectedRevision, revision);
     settings = mergeSettingsPatch(settings, command.payload.patch);
-    const document = fixtureSettingsDocument(settings, ++revision);
+    document = fixtureSettingsDocument(settings, ++revision);
     return Response.json(CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
       affectedTargets: [{ family: "settings", revision }], settingsRevision: revision,
       settingsFingerprint: document.settingsFingerprint, restartRequired: false }));
@@ -78,6 +79,8 @@ it("sends no Settings command for the current workflow and canonically saves a d
   const epoch = { client, bootstrap: { ...FIXTURE_BOOTSTRAP } };
   const scope: CommandExecutionScope = { client, actorId: "local-operator", authority: epoch, dayRequest: {} };
   const binding = { scope, executor: new CommandExecutor(() => scope), authority: { epoch, nowIso: FIXTURE_BOOTSTRAP.serverClock.now } };
+  const initial = await client.editableSettings();
+  assert.equal(initial.revision, revision);
   const preferences = createPersonPreferences("person");
   const close = preferences.connect(client, binding, () => binding);
   const ready = () => preferences.snapshot().state === "ready" ? Promise.resolve() : new Promise<void>((resolve, reject) => {
@@ -89,23 +92,23 @@ it("sends no Settings command for the current workflow and canonically saves a d
     });
   });
   const selections: ReturnType<typeof useSelectedWorkflow>[] = [];
-  function Probe() { selections.push(useSelectedWorkflow([{ id: "a" }, { id: "b" }])); return null; }
+  function Probe() { selections.push(useSelectedWorkflow([{ id: "person-lookup" }, { id: "separations" }])); return null; }
   const root = createRoot(document.createElement("div"));
   try {
     await ready();
     await act(async () => root.render(createElement(PersonPreferencesContext.Provider, { value: preferences, children: createElement(Probe) })));
-    assert.equal(selections.at(-1)?.selectedWorkflowId, "a");
-    await act(async () => { assert.equal(selections.at(-1)?.setSelectedWorkflowId("a"), true); await ready(); });
+    assert.equal(selections.at(-1)?.selectedWorkflowId, "person-lookup");
+    await act(async () => { assert.equal(selections.at(-1)?.setSelectedWorkflowId("person-lookup"), true); await ready(); });
     assert.equal(commands.length, 0);
     assert.equal(revision, 1);
-    await act(async () => { assert.equal(selections.at(-1)?.setSelectedWorkflowId("b"), true); await ready(); });
-    assert.equal(selections.at(-1)?.selectedWorkflowId, "b");
+    await act(async () => { assert.equal(selections.at(-1)?.setSelectedWorkflowId("separations"), true); await ready(); });
+    assert.equal(selections.at(-1)?.selectedWorkflowId, "separations");
     assert.equal(commands.length, 1);
     assert.equal(commands[0]?.source, "person-preferences");
     assert.equal(commands[0]?.type, "apply-settings");
-    assert.deepEqual(commands[0]?.payload.patch, { "preferences.selectedWorkflowId": { set: "b" } });
+    assert.deepEqual(commands[0]?.payload.patch, { "preferences.selectedWorkflowId": { set: "separations" } });
     assert.equal(revision, 2);
-    await act(async () => { assert.equal(selections.at(-1)?.setSelectedWorkflowId("b"), true); await ready(); });
+    await act(async () => { assert.equal(selections.at(-1)?.setSelectedWorkflowId("separations"), true); await ready(); });
     assert.equal(commands.length, 1);
     assert.equal(selections.at(-1)?.setSelectedWorkflowId("missing"), false);
     assert.equal(commands.length, 1);

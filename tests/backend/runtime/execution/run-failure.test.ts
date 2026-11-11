@@ -90,7 +90,7 @@ it.each(["not-attempted", "committed", "verified"] as const)("maps retained dele
   assert.equal(failure.writeState, writeState);
   assert.equal(failure.taskId, undefined, "a child control node owns no task");
   assert.ok(failure.debug?.causes.some(value => value.includes(cause.message)));
-  const resolved = resolveErrorCatalogFailure(failure, "http-response");
+  const resolved = resolveErrorCatalogFailure({ code: failure.code, parameters: {}, summary: failure.summary }, "http-response");
   assert.equal(resolved.state, "resolved");
   assert.equal(resolved.code, "DELEGATION_CONFIG_UNAVAILABLE");
   assert.equal(resolved.text, "Relay could not verify this run's saved settings, so the child workflow did not start. Review the run evidence before continuing.");

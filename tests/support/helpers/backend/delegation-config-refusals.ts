@@ -25,7 +25,8 @@ export function assertDelegationWriteRecoveryRefusals(native: typeof admitDelega
           },
           listByRun: runId => { assert.equal(runId, run.envelope.runId); return status === "parked" ? [intent] : []; },
         } }));
-      return Reflect.get(target, key, target);
+      const value: unknown = Reflect.get(target, key, target);
+      return value;
     } });
     const generation = database.getMeta().authorityGeneration;
     assert.throws(() => native({ ...dependencies, database: observed }, batch, plans, lifecycle),
