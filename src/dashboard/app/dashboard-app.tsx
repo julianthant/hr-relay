@@ -106,12 +106,13 @@ import { PAUSE_ALL_EFFECT, PROPOSED_STATUS, dsStatusOf } from "../surfaces/share
 import { StorageNotice } from "../surfaces/settings/storage/storage-settings.js";
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { BulkRunCommandResponseSchema } from "../../rules/commands/commands.js";
 import { notificationTargetUnavailable, resolveRunNavigation } from "./navigation/run-navigation.js";
 import type { NotificationReads } from "../surfaces/notifications/notification-rail-model.js";
 import { notificationDestinationRefusal, useWorkspaceNotifications } from "../surfaces/notifications/notifications-preview-model.js";
 import { withCommandNotices, type NotificationDestination, type NotificationItem } from "../surfaces/notifications/notifications-view-model.js";
 import {
-bulkSubjectsOf,
+bulkSubjectsOf, BULK_VERB_LABEL,
 composeBulkRunCommand,
 type BulkBatchOutcome,
 type BulkVerbPlan,
@@ -1036,8 +1037,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     setRoute(current => ({ ...current, view: { ...current.view, preview: id, mockRun: (runs.find(run => run.id === `mock:${id}:sample`) ?? runs.find(run => !run.parentId) ?? runs[0])?.id, records: undefined } }));
   }, [mockRuns, setRoute]);
   const previewSearchData = useWorkspaceSearchData({ today, day, unavailable: dateError, rows: queueRows, workflowLabel: workflowLabelOf, mockRuns });
+  const searchTitles = useMemo(() => new Map(queueRows.map(row => [String(row.runId), row.title])), [queueRows]);
   const servedSearchData = useSearchWiring({ client, enabled: workflowComposition.search === "served" && route.view?.search === true,
-    query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows });
+    query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows, titles: searchTitles });
   const searchData = workflowComposition.search === "mock" ? previewSearchData : servedSearchData;
   const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast });
   const [notificationReads, setNotificationReads] = useState<NotificationReads>({});
@@ -1082,6 +1084,23 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       setCommandResults(previous => previous.filter(result => result.id !== destination.id));
       if (entry !== undefined) selectRun(entry.targetRunId);
       opened();
+      return;
+    }
+    if (destination.kind === "bulk-result" && (destination.type === "cancel" || destination.type === "retry" || destination.type === "resume")) {
+      const rows = notificationContext.current.rows;
+      const title = (runId: string) => rows.find(row => row.runId === runId)?.title ?? runId;
+      const response = BulkRunCommandResponseSchema.safeParse({ state: "vector", bulkCommandId: destination.bulkCommandId, type: destination.type, requestedCount: destination.requestedCount, results: destination.results });
+      if (!response.success) { refused(notificationTargetUnavailable()); return; }
+      const ids = [...destination.results.map(result => result.runId), ...destination.notAttempted];
+      setBulkOutcome({ plan: { verb: destination.type, label: BULK_VERB_LABEL[destination.type], eligible: [], skipped: destination.notAttempted.map(runId => ({ runId, title: title(runId) })), unavailable: [] },
+        subjects: new Map(ids.map(runId => [runId, title(runId)])), response: response.data });
+      setBulkReview(true); opened();
+      return;
+    }
+    if (destination.kind === "command-result") {
+      const request = destination.request;
+      if (!("target" in request) || !("runId" in request.target) || typeof request.target.runId !== "string") { refused(notificationTargetUnavailable()); return; }
+      selectRun(request.target.runId); opened();
       return;
     }
     if (destination.kind === "settings") {

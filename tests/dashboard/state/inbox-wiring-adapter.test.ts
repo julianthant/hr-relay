@@ -323,3 +323,9 @@ it("matches recovery and command-result targets by command id and bulk results b
   assert.equal(notificationTargetMatches(row(), recovery), false);
   assert.equal(notificationTargetMatches(commandRow("command-unknown"), { kind: "storage" }), false);
 });
+
+it("groups served notices by local day", () => {
+  const now = new Date(2026, 10, 11, 15).toISOString();
+  const at = (days: number) => new Date(2026, 10, 11 - days, 9).toISOString();
+  assert.deepEqual([0, 1, 3, 8].map(days => notificationDay(at(days), now)), ["Today", "Yesterday", "Sunday", "November 3"]);
+});

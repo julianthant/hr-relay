@@ -5,6 +5,8 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../mode
 import type { WorkflowBootstrapPrimitive } from "../surfaces/shell/shell-model.js";
 import type { DashboardClient } from "../client/index.js";
 import type { NavbarData, NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
+import type { PaletteSheet } from "../surfaces/shell/search/search-palette-model.js";
+import type { SavedWorkbook } from "../../models/dashboard/workbooks.js";
 
 export const searchMessage = (code: "SEARCH_LOADING" | "SEARCH_UNAVAILABLE" | "SEARCH_SUBJECT_UNAVAILABLE") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
@@ -42,6 +44,16 @@ export function searchResults(snapshot: Awaited<ReturnType<typeof readSearchSnap
   }));
 }
 
+/** Served search may not know a run's subject; the queue row's own title fills it. */
+export function withQueueSubjects(results: readonly NavbarSearchResult[], titles: ReadonlyMap<string, string>): readonly NavbarSearchResult[] {
+  const missing = searchMessage("SEARCH_SUBJECT_UNAVAILABLE");
+  return results.map(result => result.subject === missing && titles.has(result.id) ? { ...result, subject: titles.get(result.id)! } : result);
+}
+
+const shortDay = (iso: string) => new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(iso));
+export const paletteSheets = (records: readonly SavedWorkbook[]): readonly PaletteSheet[] =>
+  [...records].sort((a, b) => b.savedAt.localeCompare(a.savedAt)).map(record => ({ id: record.libraryId, name: record.workbook.name, detail: `v${record.version} · Updated ${shortDay(record.savedAt)}` }));
+
 export function workspaceSearchQuery(query: string, workflows: readonly Pick<WorkflowBootstrapPrimitive, "id" | "label">[]): CrossDateSearchQueryInput {
   const normalized = query.trim().toLowerCase();
   const matches = workflows.filter(workflow => workflow.label.toLowerCase() === normalized);
@@ -52,7 +64,8 @@ export function workspaceSearchQuery(query: string, workflows: readonly Pick<Wor
   return base;
 }
 
-export function useSearchWiring({ client, enabled, query, today, epoch, workflows }: { client: DashboardClient; enabled: boolean; query: string; today: string; epoch: object; workflows: readonly Pick<WorkflowBootstrapPrimitive, "id" | "label">[] }): NavbarData {
+const NO_TITLES: ReadonlyMap<string, string> = new Map();
+export function useSearchWiring({ client, enabled, query, today, epoch, workflows, titles = NO_TITLES }: { client: DashboardClient; enabled: boolean; query: string; today: string; epoch: object; workflows: readonly Pick<WorkflowBootstrapPrimitive, "id" | "label">[]; titles?: ReadonlyMap<string, string> }): NavbarData {
   const request = useMemo(() => ({ client, enabled, query, epoch, workflows }), [client, enabled, query, epoch, workflows]);
   const active = useRef(request); active.current = request;
   const [settled, setSettled] = useState<{ request: typeof request; data: NavbarData }>();
@@ -67,5 +80,13 @@ export function useSearchWiring({ client, enabled, query, today, epoch, workflow
     });
     return () => controller.abort();
   }, [client, enabled, query, today, workflows, request]);
-  return settled?.request === request ? settled.data : { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_LOADING") };
+  const [sheets, setSheets] = useState<readonly PaletteSheet[]>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    Promise.resolve().then(() => client.workbookList()).then(records => { if (live) setSheets(paletteSheets(records)); }, () => { if (live) setSheets([]); });
+    return () => { live = false; };
+  }, [client, enabled]);
+  const data = settled?.request === request ? settled.data : { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_LOADING") };
+  return useMemo(() => ({ ...data, results: withQueueSubjects(data.results, titles), sheets }), [data, titles, sheets]);
 }

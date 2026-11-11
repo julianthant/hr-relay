@@ -38,7 +38,7 @@ export interface BulkVerbPlan {
   readonly unavailable: readonly string[];
 }
 
-const VERB_LABEL: Record<BulkVerb, string> = { cancel: "Cancel", retry: "Retry", resume: "Resume" };
+export const BULK_VERB_LABEL: Record<BulkVerb, string> = { cancel: "Cancel", retry: "Retry", resume: "Resume" };
 
 function commandFor(
   row: BulkCandidateRow,
@@ -86,10 +86,10 @@ export function planBulkVerb(
       continue;
     }
     // Conflicting served labels use the shared verb label, never the first row’s wording.
-    servedLabel = servedLabel === undefined || servedLabel === action.label ? action.label : VERB_LABEL[verb];
+    servedLabel = servedLabel === undefined || servedLabel === action.label ? action.label : BULK_VERB_LABEL[verb];
     eligible.push({ runId: row.runId, title: row.title, expectedVersion: action.expectedVersion });
   }
-  return { verb, label: servedLabel ?? VERB_LABEL[verb], eligible, skipped, unavailable };
+  return { verb, label: servedLabel ?? BULK_VERB_LABEL[verb], eligible, skipped, unavailable };
 }
 
 /** Unavailable selections need their own count even when no served row offers a verb. */
