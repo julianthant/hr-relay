@@ -31,7 +31,7 @@ it("normalizes Search people, removes a duplicate identity from the textbox and 
   assert.match(parsed.textContent ?? "", /4 runs/u);
   await dialog.press("Remove Example, Person");
   assert.equal(box.value, "10000001;10000002;Other, Person");
-  assert.equal(document.activeElement, box);
+  assert.equal(document.activeElement === box, true, "removing an entry restores focus to the textbox");
   assert.equal(parsed.querySelectorAll("li").length, 3);
   assert.match(parsed.textContent ?? "", /3 runs/u);
   await dialog.press("Continue");
