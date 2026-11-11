@@ -19,7 +19,6 @@ import { KeyboardSection } from "./navigation/settings-keyboard.js";
 import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./navigation/settings-search-model.js";
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
 import { StatusMockAccount,StatusMockSubscription } from "./status-mock/status-mock.js";
-import { StatusMockAnalytics } from "./status-mock/status-mock-analytics.js";
 import { StatusMockGeneral } from "./status-mock/status-mock-general.js";
 import { statusMock } from "./status-mock/status-mock-model.js";
 import { SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
@@ -116,7 +115,6 @@ export function SettingsPage({
   deleteAccount,
   onOpenRun,
   spreadsheetSource,
-  onOpenWorkflow,
   actorId,
   profileName,
   descriptorFingerprint,
@@ -133,7 +131,6 @@ export function SettingsPage({
   appearance?: ReactNode;
   deleteAccount?: ReactNode;
   onOpenRun?: (runId: string, partitionDay: string) => void;
-  onOpenWorkflow?: (workflowId: string) => void;
   actorId: string;
   profileName: string;
   descriptorFingerprint: string;
@@ -264,7 +261,7 @@ export function SettingsPage({
         {resolution.state === "empty" && (
           <Notice tone="warning" title="No settings sections" />
         )}
-        {isDataSection && (activeId === "activity" && mockStatus !== undefined ? <StatusMockAnalytics variant={mockStatus === "analytics-b" ? "b" : "a"} onOpenWorkflow={onOpenWorkflow} /> : dataContent)}
+        {isDataSection && dataContent}
         {resolution.state === "open" && resolution.entry.id === "spreadsheets" && (spreadsheetSource === "mock" ? <SheetsV2 onOpenRun={onOpenRun} /> : <SpreadsheetsSettings onOpenRun={onOpenRun} source={spreadsheetSource} workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />)}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
         {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && !(resolution.entry.id === "general" && mockStatus !== undefined) && (

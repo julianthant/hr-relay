@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import "./status-mock-charts.css";
+import "./analytics-charts.css";
 
 const AXIS = "text-[12px] leading-4 tabular-nums text-ui-secondary";
 

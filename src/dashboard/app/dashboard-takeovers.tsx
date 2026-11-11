@@ -24,7 +24,7 @@ routeWithoutTakeovers,
 type AppRouteState
 } from "./navigation/url-state.js";
 export function DashboardTakeovers({client,activitySource,today,workflowSources,takeover,route,setRoute,boot,workflowCatalog,activeWorkflowId,
- workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,spreadsheetSource,onOpenRun,onOpenWorkflow,deleteAccount,children}: {
+ workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,spreadsheetSource,onOpenRun,deleteAccount,children}: {
  activitySource?: SurfaceSource; today: string; workflowSources: WorkflowSourcePolicy;
  client: ComponentProps<typeof WorkflowExplorer>["client"];
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: RouteSetter;
@@ -33,7 +33,6 @@ export function DashboardTakeovers({client,activitySource,today,workflowSources,
  spreadsheetSource?: "mock" | "served";
  deleteAccount?: ReactNode;
  onOpenRun: (runId: string, partitionDay: string) => void;
- onOpenWorkflow: (workflowId: string) => void;
  supportsDryRun: boolean;
  closeTakeoverTo: (target: DashboardTakeoverCloseFocusTargetId,next: AppRouteState) => void;
  onSettingsSaved?: ComponentProps<typeof SettingsPage>["onSaved"];
@@ -47,7 +46,6 @@ export function DashboardTakeovers({client,activitySource,today,workflowSources,
  return (takeover === "settings" || takeover === "archive" || dataContent !== undefined ? (
             <SettingsPage
               spreadsheetSource={spreadsheetSource} onOpenRun={onOpenRun}
-              onOpenWorkflow={onOpenWorkflow}
               appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
               deleteAccount={deleteAccount}
               section={route.settings ?? dataSection ?? ""}
