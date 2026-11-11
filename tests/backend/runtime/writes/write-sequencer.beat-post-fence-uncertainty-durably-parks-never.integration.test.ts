@@ -45,7 +45,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
 
     assert.deepEqual(
       h.emitter.events()
-        .filter((event) => event.spanPath.endsWith("/commit"))
+        .filter((event) => event.spanPath.includes("/commit#"))
         .map((event) => event.t),
       ["span.started"],
       "parent abort cannot flush the commit lane before callback settlement",
@@ -99,7 +99,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
 
     assert.deepEqual(
       h.emitter.events()
-        .filter((event) => event.spanPath.endsWith("/commit"))
+        .filter((event) => event.spanPath.includes("/commit#"))
         .map((event) => event.t),
       ["span.started"],
     );
