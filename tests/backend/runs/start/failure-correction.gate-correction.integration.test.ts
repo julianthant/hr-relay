@@ -95,8 +95,12 @@ describe("gate correction start", () => {
     assert.equal(replacement.envelope.dryRun, true);
     assert.deepEqual(replacement.input.parsed.value, { eid: "10812345", memo: "corrected" });
     assert.deepEqual(replacement.envelope.sourceBound?.source.gateCorrection, { gateId: "approval", inputField: "memo" });
+    const closing = () => h.database.authority.timelineEvents.page({ runId: source.envelope.runId }).flatMap(record =>
+      record.payload.kind === "note" && record.payload.note.message.startsWith("Replaced:") ? [record.payload.note.message] : []);
+    assert.deepEqual(closing(), ["Replaced: Relay is looking up the Memo you entered."]);
     assert.equal(h.kernel.execute(command).state, "already-applied");
     assert.equal(h.database.authority.runs.listByWorkflow(h.descriptor.id).length, 2);
+    assert.equal(closing().length, 1);
   });
 
   it("refuses replan-required when the parked run changed after the preview, leaving it parked and starting nothing", async () => {
