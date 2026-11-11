@@ -60,19 +60,19 @@ describe("the seven-beat happy path", () => {
         event.t === "data.observed" ? event.taskId : "",
       ]),
       [
-        ["span.started", "wf-090000-2222/submit-write/probe", ""],
-        ["data.observed", "wf-090000-2222/submit-write/probe", "ucpath/read-write-fixture-probe"],
-        ["span.ended", "wf-090000-2222/submit-write/probe", ""],
-        ["span.started", "wf-090000-2222/submit-write/prepare", ""],
-        ["data.observed", "wf-090000-2222/submit-write/prepare", "ucpath/fill-write-fixture"],
-        ["span.ended", "wf-090000-2222/submit-write/prepare", ""],
-        ["span.started", "wf-090000-2222/submit-write/commit", ""],
-        ["transaction.fenced", "wf-090000-2222/submit-write/commit", ""],
-        ["data.observed", "wf-090000-2222/submit-write/commit", "ucpath/save-write-fixture"],
-        ["span.ended", "wf-090000-2222/submit-write/commit", ""],
-        ["span.started", "wf-090000-2222/submit-write/verify", ""],
-        ["data.observed", "wf-090000-2222/submit-write/verify", "ucpath/read-write-fixture-verify"],
-        ["span.ended", "wf-090000-2222/submit-write/verify", ""],
+        ["span.started", "wf-090000-2222/submit-write/probe#1", ""],
+        ["data.observed", "wf-090000-2222/submit-write/probe#1", "ucpath/read-write-fixture-probe"],
+        ["span.ended", "wf-090000-2222/submit-write/probe#1", ""],
+        ["span.started", "wf-090000-2222/submit-write/prepare#1", ""],
+        ["data.observed", "wf-090000-2222/submit-write/prepare#1", "ucpath/fill-write-fixture"],
+        ["span.ended", "wf-090000-2222/submit-write/prepare#1", ""],
+        ["span.started", "wf-090000-2222/submit-write/commit#1", ""],
+        ["transaction.fenced", "wf-090000-2222/submit-write/commit#1", ""],
+        ["data.observed", "wf-090000-2222/submit-write/commit#1", "ucpath/save-write-fixture"],
+        ["span.ended", "wf-090000-2222/submit-write/commit#1", ""],
+        ["span.started", "wf-090000-2222/submit-write/verify#1", ""],
+        ["data.observed", "wf-090000-2222/submit-write/verify#1", "ucpath/read-write-fixture-verify"],
+        ["span.ended", "wf-090000-2222/submit-write/verify#1", ""],
       ],
     );
 
@@ -308,12 +308,12 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
     );
     assert.deepEqual(h.world.events, ["probe", "prepare", `subject-read:${WRITE_FIXTURE_OBSERVATION}`]);
     assert.deepEqual(h.emitter.events().map((event) => [event.t, event.spanPath]), [
-      ["span.started", "wf-090000-2222/submit-write/probe"],
-      ["data.observed", "wf-090000-2222/submit-write/probe"],
-      ["span.ended", "wf-090000-2222/submit-write/probe"],
-      ["span.started", "wf-090000-2222/submit-write/prepare"],
-      ["data.observed", "wf-090000-2222/submit-write/prepare"],
-      ["span.ended", "wf-090000-2222/submit-write/prepare"],
+      ["span.started", "wf-090000-2222/submit-write/probe#1"],
+      ["data.observed", "wf-090000-2222/submit-write/probe#1"],
+      ["span.ended", "wf-090000-2222/submit-write/probe#1"],
+      ["span.started", "wf-090000-2222/submit-write/prepare#1"],
+      ["data.observed", "wf-090000-2222/submit-write/prepare#1"],
+      ["span.ended", "wf-090000-2222/submit-write/prepare#1"],
     ], "dry-run reports probe and stage only; it fabricates no fence, click, or read-back");
     assert.equal(intentByKey(h.database), undefined, "zero intents");
     assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")), "zero clicks");

@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, it } from "vitest";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
 import { WORK_CONTROL_POLL_MS } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { RunDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { absentProbeEvidence, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, writeFixtureQueuedRun } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { absentProbeEvidence, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, writeFixtureDescriptor, writeFixtureQueuedRun } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { createDryRunPreviewResultTestWorld } from "../../../support/helpers/backend/dry-run-preview-result-world.js";
 
 const { harness, cleanup } = createDryRunPreviewResultTestWorld();
@@ -71,6 +73,15 @@ describe("a dry run paused mid-preview resumes in the same process (ref workers-
         assert.equal(roleStarts("probe"), 2, "the probe runs once per claim");
         assert.equal(roleStarts("prepare"), role === "probe" ? 1 : 2, "the prepare runs once per claim that reached it");
         assert.equal(h.world.events.filter(event => event.startsWith("commit-click")).length, 0);
+        const logs = await makeWorld();
+        try {
+          const descriptors = { resolve: () => writeFixtureDescriptor };
+          const section = buildRunLogsSection({ stateRoot: logs.stateRoot, authority: logs.authority, timeline: h.database.authority.timelineEvents,
+            projection: logs.projection, canonical: { database: h.database, reader: testRunService(h.database, h.clock), descriptors }, descriptors,
+          }, WRITE_FIXTURE_RUN_ID, undefined, current(h));
+          assert.ok(section.section === "logs" && section.payload.dryRunPreview?.state === "available");
+          assert.deepEqual(section.payload.dryRunPreview.stages.map(stage => stage.state), ["exercised"]);
+        } finally { await logs.dispose(); }
       } finally {
         stop.abort(new Error("test done"));
         await loop;

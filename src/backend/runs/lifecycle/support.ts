@@ -22,10 +22,10 @@ export function errorText(error: unknown): string {
 export function nodeIdOfTaskSpanPath(spanPath: string): string | undefined {
   const segments = spanPath.split("/");
   const segment = segments.at(-1);
-  if (segment !== undefined && segment.includes("#")) return segment.slice(0, segment.lastIndexOf("#"));
-  if (segments.length !== 3 || !["probe", "prepare", "commit", "verify"].includes(segments[2] ?? "")) return undefined;
-  return TraceIdSchema.safeParse(segments[0]).success && NodeIdSchema.safeParse(segments[1]).success
-    ? segments[1] : undefined;
+  if (segments.length === 3 && /^(?:probe|prepare|commit|verify)(?:#\d+)?$/u.test(segment ?? "")) {
+    return TraceIdSchema.safeParse(segments[0]).success && NodeIdSchema.safeParse(segments[1]).success ? segments[1] : undefined;
+  }
+  return segment?.includes("#") === true ? segment.slice(0, segment.lastIndexOf("#")) : undefined;
 }
 
 // Malformed browser span identities refuse; silently losing a live-session card would misreport ownership.
