@@ -189,7 +189,7 @@ it("emergency-contact/verified-save — commits the declared primary demotion an
   const onbaseRow = receipt.verification.find(row => row.obligation === "node.onbase-import");
   assert.deepEqual(onbaseRow && { verdict: onbaseRow.verdict, mandatory: onbaseRow.mandatory, evidence: onbaseRow.evidence },
     { verdict: "verified", mandatory: true, evidence: [`receipt:${onbaseReceipt.receiptId}`] });
-  assert.equal(f.reads, 3, "initial read, native probe and mandatory native verifier");
+  assert.equal(f.reads, 4, "initial read, native probe, mandatory native verifier, and the initial read again when the member is claimed after its OnBase child");
   const intents = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
   assert.equal(intents.length, 1); assert.equal(intents[0]?.status, "committed");
   assert.ok(f.database.authority.runCheckpoints.latest(f.run.envelope.workflow, f.run.envelope.itemId, "contact-preview"));
