@@ -18,9 +18,9 @@ let host: HTMLElement | undefined;
 beforeEach(() => { vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; vi.unstubAllGlobals(); });
 
-function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut">> = {}): ChatGptAccountPort {
+function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut" | "forgetAccount">> = {}): ChatGptAccountPort {
   return { mode: "live", getSnapshot: () => snapshot, subscribe: () => () => undefined,
-    signIn: () => Promise.resolve(), signOut: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
+    signIn: () => Promise.resolve(), forgetAccount: () => Promise.resolve(), signOut: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
 }
 
 describe("General ChatGPT account", () => {
@@ -72,13 +72,13 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
   const account = ChatGptAccountStateSchema.parse({ state: "connected", name: "Exact held operator", email: "exact@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" });
   const started = ChatGptSignInStartSchema.parse({ state: "started", attemptId: "00000000-0000-4000-8000-000000000001", authorizationUrl: "https://auth.openai.com/api/accounts/authorize?state=synthetic", expiresAt: "2099-01-01T00:05:00.000Z" });
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
-  let starts = 0, reads = 0;
-  const queries: ChatGptAccountQueries = { chatGptAccount: async () => { reads++; if (scenario === "initial read failure" && reads === 1) throw new Error("synthetic failed read"); return chatGptStatusFixture(account); },
-    startChatGptSignIn: async () => { starts++; return started; },
+  let starts = 0, reads = 0, disconnected = false;
+  const queries: ChatGptAccountQueries = { chatGptAccount: async () => { reads++; if (scenario === "initial read failure" && reads === 1) throw new Error("synthetic failed read"); return chatGptStatusFixture(disconnected ? { state: "signed-out" } : account); },
+    startChatGptSignIn: async () => { starts++; disconnected = false; return started; },
     completeChatGptSignIn: () => completion.promise,
     cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId: started.attemptId }),
     testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }),
-    signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "unconfirmed" }),
+    forgetChatGptAccount: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }), signOutChatGpt: async () => { disconnected = true; return { state: "signed-out", remoteRevocation: "unconfirmed" }; },
   };
   const port = createServedChatGptAccountPort(queries, { open: () => ({ navigate() {}, close() {} }) });
   const button = (label: string) => { const found = [...host!.querySelectorAll("button")].find(node => node.textContent === label); assert.ok(found); return found; };
@@ -102,7 +102,7 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
     assert.equal(starts, 1);
     await act(async () => { completion.resolve({ state: "completed", attemptId: started.attemptId, account }); });
     assert.match(host.textContent ?? "", /Exact held operator.*exact@example.com/u);
-    assert.equal(host.textContent?.includes(message), false); assert.equal(reads, 2); assert.equal(starts, 1);
+    assert.equal(host.textContent?.includes(message), false); assert.equal(reads, scenario === "initial read failure" ? 2 : 3); assert.equal(starts, 1);
   } finally { port.dispose(); }
 });
 
@@ -122,4 +122,21 @@ it("keeps OCR diagnostics out of the account panel", () => {
   const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "connected", name: "Operator", email: "operator@example.com", planUsage: "enabled" }) }));
   assert.doesNotMatch(html, /Test OCR|OCR test/u);
   assert.match(html, /Disconnect/u);
+});
+
+it("offers a different account only when an identity remains", async () => {
+  const retained = { state: "signed-out", account: { email: "synthetic@example.com" } } as const;
+  for (const snapshot of [retained, { state: "expired" } as const, { state: "connected", name: "Synthetic", email: "synthetic@example.com", planUsage: "enabled" } as const]) {
+    const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) }));
+    assert.match(html, /Use a different account/u);
+  }
+  for (const snapshot of [{ state: "signed-out" } as const, { state: "signing-in", attemptId: "pending", expiresAt: "2099-01-01T00:00:00.000Z" } as const]) {
+    assert.doesNotMatch(renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) })), /Use a different account/u);
+  }
+  let forgotten = 0;
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountSettings, { port: controlledPort(retained, { forgetAccount: async () => { forgotten++; } }) })));
+  assert.match(host.textContent ?? "", /Signs in as synthetic@example.com\./u);
+  const button = [...host.querySelectorAll("button")].find(button => button.textContent === "Use a different account");
+  assert.ok(button); await act(async () => button.click()); assert.equal(forgotten, 1);
 });
