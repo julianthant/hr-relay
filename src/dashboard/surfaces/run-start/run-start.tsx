@@ -1,3 +1,4 @@
+import { StartPlanRequestSchema, type StartPlanRequest } from "../../../models/dashboard/start-plan.js";
 import { useWorkbookRows, useWorkbookVersionSources, previewWorkbookRows, resolveWorkbookRowSelection, WORKBOOK_ROW_UNAVAILABLE_TEXT, type WorkbookRowChoice } from "./run-workbook-rows-model.js";
 import { spreadsheetField } from "../../../models/fields/workbook-fields.js";
 import { RequiredCaptureStatus } from "../run-detail/logs/log-screenshots.js";
@@ -22,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Keyboard, Play } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import {
+  useToasts,
   BareButton,
   Badge,
   Banner,
@@ -46,7 +48,7 @@ import {
   dsText,
 } from "../../ds/ui.js";
 import type { CommandResult, RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
-import { settleCommandResult } from "../../app/commands/command-result.js";
+import { runStartRefusalToast, settleCommandResult } from "../../app/commands/command-result.js";
 import {
   inputRunValueNoun,
   type InputRunSurface,
@@ -59,7 +61,6 @@ import type { StartPlanResponse } from "../../client/index.js";
 import { useDashboardCommandBinding, useDashboardClient } from "../../state/client-context.js";
 import {
   TypedInput,
-  EnqueueResultBanner,
   PlanRefusals,
   RunFlagChips,
   StepOmissionFactsForm,
@@ -309,6 +310,9 @@ export function RunStartDialog({
     if (binding === undefined || binding.scope.client !== client || binding.scope.actorId !== actorId) throw new Error("RUN_LAUNCH_AUTHORITY_UNAVAILABLE");
     return binding.authority.nowIso;
   } }), [client, actorId]);
+  const { toast } = useToasts();
+  const reviewedRequest = useRef<{ planId: string; request: StartPlanRequest } | null>(null);
+  const [expiredPlan, setExpiredPlan] = useState(false);
   const finalRequest = useRef<LaunchFinalCommand | null>(null);
   const sending = useRef<object | false>(false);
   const finalDiagnostic = useRef<Readonly<{ command: LaunchFinalCommand; cause: unknown }> | null>(null);
@@ -379,7 +383,7 @@ export function RunStartDialog({
     setText("");
     const nextInput = workflows.find(entry => entry.workflowId === next)?.inputRun;
     setTypedDraft(next, nextInput?.state === "present" && nextInput.surface.typedInput ? typedInputDefaults(nextInput.surface.typedInput) : {}); setSourceInputUnchanged(false);
-    setPlan(null);
+    setPlan(null); reviewedRequest.current = null; setExpiredPlan(false);
     setResult(null);
     setError(null);
     if (!preserveStage) { setCurrentStage("Input"); setCustomizeSteps(false); }
@@ -399,6 +403,7 @@ export function RunStartDialog({
   // Opening lands on the panel you are standing in, every time — including the
   // second time, which is why this keys on `open` rather than running once.
   useEffect(() => {
+    reviewedRequest.current = null; setExpiredPlan(false);
     const instance = ++launchInstance.current;
     if (!open) return;
     resetPdfs();
@@ -529,23 +534,11 @@ export function RunStartDialog({
   const requestFingerprintRef = useRef(requestFingerprint);
   useEffect(() => {
     requestFingerprintRef.current = requestFingerprint;
-    setPlan(null);
+    setPlan(null); reviewedRequest.current = null; setExpiredPlan(false);
     setResult(null);
     setError(null);
     if (!previewOwnsStages) setCurrentStage((current) => current === "Confirm" ? (isRerun ? "Values" : "Input") : current);
   }, [requestFingerprint, isRerun, setCurrentStage, previewOwnsStages]);
-
-  /** Return focus to the typed box when settled-banner controls unmount. */
-  const typedInputRef = useRef<HTMLTextAreaElement>(null);
-  const restoreInputFocusRef = useRef(false);
-
-  useEffect(() => {
-    if (!["Input", "Values"].includes(currentStage) || !restoreInputFocusRef.current) return;
-    restoreInputFocusRef.current = false;
-    // A workflow with no typed-input surface has no box to restore to. That is
-    // the served absence, not a focus fallback to an unrelated control.
-    typedInputRef.current?.focus();
-  }, [currentStage]);
 
   const preview = useMemo((): RunInputPreview => {
     if (pdfSurface !== undefined) return previewPdfRun(pdfSurface, pdfInput.draft);
@@ -581,7 +574,7 @@ export function RunStartDialog({
           && !selectedStepKeys.includes(candidate.targetStepKey)
           ? [{ nodeId: candidate.nodeId, fieldPath: candidate.fieldPath, targetFieldPath: candidate.targetFieldPath, targetStepKey: candidate.targetStepKey }] : [];
       })];
-      const next = await launchService.preview({
+      const request = StartPlanRequestSchema.parse({
         workflowId,
         submissions: values === null ? preview.submissions : [values.submission],
         ...(snapshot === null ? {} : { rerunSource: { runId: snapshot.source.runId, expectedVersion: snapshot.source.version,
@@ -597,8 +590,11 @@ export function RunStartDialog({
         // Send omission facts only after every declared form parses.
         ...(customizeSteps && stepOmissions !== null && stepOmissions.length > 0 ? { stepOmissions } : {}),
       });
+      const next = await launchService.preview(request);
       // Ignore superseded plan responses; their tokens describe text no longer in the form.
       if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
+      reviewedRequest.current = { planId: next.startPlanId, request };
+      setExpiredPlan(false);
       setPlan(next);
       setResult(null);
       if (next.rerun !== undefined && next.rerun.warnings.length > 0 && next.rerun.acknowledgment !== next.rerun.warningDigest) {
@@ -613,7 +609,23 @@ export function RunStartDialog({
     }
   }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput, requiredTypes, library.catalog, library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility, versionSources, workbookReference, selectedReferences, rowCapability, selectedWorkbookRows, pdfSurface]);
 
-  const sendFinal = useCallback(async (command: LaunchFinalCommand, dispatchedFor: string): Promise<void> => {
+  const closeAndReset = useCallback((next: boolean) => {
+    onOpenChange(next);
+    if (!next) {
+      ++launchInstance.current;
+      if (result !== null && recovery !== null) {
+        dismissLaunchRecovery(window.sessionStorage, recovery); setRecovery(null); finalRequest.current = null;
+      }
+      // Closing invalidates single-use plans; typed drafts may survive, consumed authority may not.
+      setPlan(null); reviewedRequest.current = null; setExpiredPlan(false);
+      setResult(null);
+      setError(null);
+      setCurrentStage("Input");
+    }
+  }, [onOpenChange, result, recovery, setCurrentStage]);
+
+
+  const sendFinal = useCallback(async (command: LaunchFinalCommand, dispatchedFor: string, expiryRequest?: StartPlanRequest): Promise<void> => {
     if (sending.current) return;
     const binding = commandBindingRef.current;
     if (binding === undefined || binding.scope.client !== client || binding.scope.actorId !== actorId || command.requestedBy !== binding.scope.actorId) { setError(formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text); return; }
@@ -624,27 +636,50 @@ export function RunStartDialog({
       retainLaunchFinal(window.sessionStorage, command, plan?.startPlanId === command.target.startPlanId ? plan : undefined);
       const verificationPlan = readLaunchVerificationPlan(window.sessionStorage, command.requestedBy);
       finalRequest.current = command; setRecovery(command);
-      await launchService.submit(command, binding, verificationPlan, outcome => {
-        if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
-        binding.feedback(outcome);
-        if (outcome.kind === "confirmed") {
-          dismissLaunchRecovery(window.sessionStorage, command);
-          finalRequest.current = null; setRecovery(null); setPlan(null); setResult(null); setBusy(false);
-          const reply = outcome.reply;
-          const workerStartup = reply !== undefined && "state" in reply && (reply.state === "applied" || reply.state === "already-applied")
-            ? reply.workerStartup : undefined;
-          onApplied?.(command.target.workflowId, plan?.planned.length, workerStartup);
-          onOpenChange(false);
-          ++launchInstance.current;
-        } else {
-          setError(outcome.feedback.text);
-          const reply = outcome.reply;
-          if (outcome.kind !== "uncertain" && reply !== undefined && "state" in reply
-            && (reply.state === "rejected" || reply.state === "conflict" || reply.state === "confirmation-required")) {
-            setResult({ ...reply, message: outcome.feedback.text });
-          }
+      const outcome = await launchService.submit(command, binding, verificationPlan);
+      if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance || commandBindingRef.current?.scope !== binding.scope) return;
+      const reply = outcome.reply;
+      if (outcome.kind === "refused" && reply !== undefined && "state" in reply && reply.state === "rejected"
+        && reply.code === "RUN_START_PLAN_EXPIRED" && expiryRequest !== undefined) {
+        dismissLaunchRecovery(window.sessionStorage, command);
+        finalRequest.current = null; setRecovery(null); setPlan(null); reviewedRequest.current = null; setExpiredPlan(false); setResult(null);
+        try {
+          const next = await launchService.preview(expiryRequest);
+          if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance || commandBindingRef.current?.scope !== binding.scope) return;
+          reviewedRequest.current = { planId: next.startPlanId, request: expiryRequest };
+          setPlan(next); setExpiredPlan(true);
+          if (next.rerun !== undefined && next.rerun.warnings.length > 0 && next.rerun.acknowledgment !== next.rerun.warningDigest) {
+            setWarning({ workflowId: next.workflowId, rerun: next.rerun }); setCurrentStage("Warning");
+          } else setCurrentStage("Confirm");
+        } catch (caught) {
+          finalDiagnostic.current = { command, cause: caught };
+          if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance || commandBindingRef.current?.scope !== binding.scope) return;
+          closeAndReset(false);
+          toast(runStartRefusalToast(formatErrorCatalogFailure(createErrorCatalogFailure("RUN_START_READINESS_UNAVAILABLE", {})).text));
         }
-      });
+        return;
+      }
+      binding.feedback(outcome);
+      if (outcome.kind === "confirmed") {
+        dismissLaunchRecovery(window.sessionStorage, command);
+        finalRequest.current = null; setRecovery(null); setPlan(null); reviewedRequest.current = null; setExpiredPlan(false); setResult(null); setBusy(false);
+        const workerStartup = reply !== undefined && "state" in reply && (reply.state === "applied" || reply.state === "already-applied")
+          ? reply.workerStartup : undefined;
+        onApplied?.(command.target.workflowId, plan?.planned.length, workerStartup);
+        onOpenChange(false);
+        ++launchInstance.current;
+      } else if ((outcome.kind === "refused" || outcome.kind === "conflict") && reply !== undefined && "state" in reply
+        && (reply.state === "rejected" || reply.state === "conflict")) {
+        dismissLaunchRecovery(window.sessionStorage, command);
+        finalRequest.current = null; setRecovery(null);
+        closeAndReset(false);
+      } else {
+        setError(outcome.feedback.text);
+        if (outcome.kind !== "uncertain" && reply !== undefined && "state" in reply
+          && (reply.state === "rejected" || reply.state === "conflict" || reply.state === "confirmation-required")) {
+          setResult({ ...reply, message: outcome.feedback.text });
+        }
+      }
     } catch (caught) {
       finalDiagnostic.current = { command, cause: caught };
       if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance || commandBindingRef.current?.scope !== binding.scope) return;
@@ -653,15 +688,17 @@ export function RunStartDialog({
       if (sending.current === attempt) sending.current = false;
       if (launchInstance.current === instance && commandBindingRef.current?.scope === binding.scope) setBusy(false);
     }
-  }, [launchService, onApplied, onOpenChange, plan, client, actorId]);
+  }, [launchService, onApplied, onOpenChange, plan, client, actorId, closeAndReset, setCurrentStage, toast]);
   const confirmStart = useCallback(async (): Promise<void> => {
     if (plan === null || sending.current || recoveryError !== null) return;
     if (commandBinding === undefined || commandBinding.scope.client !== client || commandBinding.scope.actorId !== actorId) { setError(formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text); return; }
+    const expiryRequest = finalRequest.current === null && recovery === null && reviewedRequest.current?.planId === plan.startPlanId
+      ? reviewedRequest.current.request : undefined;
     if (finalRequest.current === null || finalRequest.current.target.startPlanId !== plan.startPlanId) {
       finalRequest.current = launchService.prepareFinal(plan);
     }
-    await sendFinal(finalRequest.current, requestFingerprint);
-  }, [client, actorId, commandBinding, launchService, plan, requestFingerprint, recoveryError, sendFinal]);
+    await sendFinal(finalRequest.current, requestFingerprint, expiryRequest);
+  }, [client, actorId, commandBinding, launchService, plan, requestFingerprint, recoveryError, recovery, sendFinal]);
 
   // already-applied confirms the same enqueue; its plan token is single-use.
   const applied = result !== null && settleCommandResult(result).kind === "applied";
@@ -783,34 +820,6 @@ export function RunStartDialog({
     setCurrentStage(nextStage);
   }, [currentStage, nextStage, plan, stepsBlockedReason, submitPlan, isRerun, snapshot, requestFingerprint, launchService, workflowId, selectedStepKeys, acknowledgment, setCurrentStage, rerunInputBlocked]);
 
-  /** Discard spent plans and stage state together; restore focus after settled controls unmount. */
-  const returnToInput = useCallback(() => {
-    if (result !== null && settleCommandResult(result).kind === "applied") resetPdfs();
-    if (recovery !== null && result !== null) {
-      dismissLaunchRecovery(window.sessionStorage, recovery); setRecovery(null); finalRequest.current = null;
-    }
-    restoreInputFocusRef.current = true;
-    setPlan(null);
-    setResult(null);
-    setError(null);
-    setCurrentStage(isRerun ? "Values" : "Input");
-  }, [recovery, result, isRerun, setCurrentStage, resetPdfs]);
-
-  const closeAndReset = useCallback((next: boolean) => {
-    onOpenChange(next);
-    if (!next) {
-      ++launchInstance.current;
-      if (result !== null && recovery !== null) {
-        dismissLaunchRecovery(window.sessionStorage, recovery); setRecovery(null); finalRequest.current = null;
-      }
-      // Closing invalidates single-use plans; typed drafts may survive, consumed authority may not.
-      setPlan(null);
-      setResult(null);
-      setError(null);
-      setCurrentStage("Input");
-    }
-  }, [onOpenChange, result, recovery, setCurrentStage]);
-
   const copyOmittedValue = (step: string, index: number) => {
     const candidate = snapshot?.values[index];
     const row = omissionRows.find(entry => entry.step === step);
@@ -892,9 +901,6 @@ export function RunStartDialog({
                 <MetaLine items={[recovery.commandId, recovery.target.workflowId]} />
                 <Button disabled={busy} onClick={() => void sendFinal(recovery, requestFingerprint)}>Replay exact submission</Button>
               </Banner>
-            )}
-            {result !== null && (
-              <EnqueueResultBanner result={result} onDismiss={returnToInput} onReload={returnToInput} />
             )}
             {error !== null && (
               <Banner tone="danger" title="The request did not complete">{error}</Banner>
@@ -1067,7 +1073,7 @@ export function RunStartDialog({
 
               {currentStage === "Confirm" && plan !== null && (
                 <RunConfirmLayout count={plan.planned.length} outputs={plan.planned.flatMap(planned => planned.outputs ?? [])} inputs={pdfSurface !== undefined ? pdfInput.draft?.files.map(file => ({ label: file.source.fileName, kind: "PDF" })) : preview.entries.length ? preview.entries.map(entry => ({ label: entry.sourceText, kind: rowCapability === undefined ? inputRun.state === 'present' ? inputRunFieldLabel(inputRun.surface.parser) : 'Input' : `Entry ${entry.index + 1} · ${plan.refused.some(refusal => refusal.entry === entry.index + 1) ? "Refused" : "Accepted"}` })) : undefined} flags={<RunFlagChips dryRun={plan.dryRun} priority={plan.priority} />}
-                  description={isRerun ? "A new run linked to the source." : pdfSurface !== undefined ? "One run for all attached PDFs." : "One run for each accepted entry."}
+                  description={expiredPlan ? "This plan expired, so it was checked again. Review it and press Start again." : isRerun ? "A new run linked to the source." : pdfSurface !== undefined ? "One run for all attached PDFs." : "One run for each accepted entry."}
                   facts={[
                       { key: "Workflow", value: workflow === undefined ? plan.workflowId : `${workflow.label} · ${versionTag(workflow.version)}` },
                       { key: "Input", value: inputSummary || Object.values(valueDrafts).map(draft => draft.text).filter(Boolean).join(", ") },
@@ -1118,7 +1124,7 @@ export function RunStartDialog({
             Cancel
           </Button>
           {currentStage === "Warning" && warning !== null ? (
-            <Button variant="primary" onClick={() => { setAcknowledgment(warning.rerun.warningDigest); setPlan(null); setCurrentStage("Values"); }}>Confirm</Button>
+            <Button variant="primary" onClick={() => { setAcknowledgment(warning.rerun.warningDigest); setPlan(null); reviewedRequest.current = null; setExpiredPlan(false); setCurrentStage("Values"); }}>Confirm</Button>
           ) : currentStage === "Confirm" && plan !== null ? (
             <Button
               variant="primary"

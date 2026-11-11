@@ -1,5 +1,5 @@
 import type { RefObject, ReactNode } from "react";
-import { Check, CheckCircle2, FlaskConical, X } from "lucide-react";
+import { Check, FlaskConical, X } from "lucide-react";
 import type { SurfaceField, InputRunSurface, TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { cn } from "../../lib/utils.js";
 import {
@@ -13,7 +13,6 @@ import {
   Field,
   Input,
   IconButton,
-  KeyValueList,
   MetaLine,
   Refusal,
   Select,
@@ -26,7 +25,6 @@ import {
   dsText,
 } from "../../ds/ui.js";
 import { fmtClock } from "../shared/status/format.js";
-import type { CommandResult } from "../../../rules/commands/commands.js";
 import type { StartPlanResponse } from "../../client/index.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
 import { RunList, RunListRow, RunSection } from "../../ds/primitives/run-list.js";
@@ -181,88 +179,6 @@ export function PlanRefusals({ refused, sources }: { refused: StartPlanResponse[
         </li>
       ))}
     </ul>
-  );
-}
-
-
-
-/** Command acceptance does not prove queue insertion; only authoritative projection updates create rows. */
-export function EnqueueResultBanner({
-  result,
-  onReload,
-  onDismiss,
-}: {
-  result: Exclude<CommandResult, { state: "pending" }>;
-  /** conflict only — the ONE cure for a plan built against a version that moved */
-  onReload?: () => void;
-  onDismiss?: () => void;
-}) {
-  // Close receipts and dismiss refusals; the exit wording preserves their different outcomes.
-  const dismissWith = (word: string) =>
-    onDismiss ? (
-      <Button size="sm" variant="secondary" onClick={onDismiss}>
-        {word}
-      </Button>
-    ) : undefined;
-
-  if (result.state === "rejected") {
-    return (
-      <Refusal
-        title="The start was refused"
-        code={result.code}
-        outcome="nothing is enqueued"
-        action={dismissWith("Dismiss")}
-      >
-        {result.message}
-      </Refusal>
-    );
-  }
-
-  if (result.state === "conflict") {
-    // Conflicts spend the plan token; reload the served basis before planning again.
-    return (
-      <Banner
-        tone="warning"
-        title="The start plan moved under this form"
-        action={
-          onReload ? (
-            <Button size="sm" variant="primary" onClick={onReload}>
-              Reload the form
-            </Button>
-          ) : undefined
-        }
-      >
-        <div className="flex flex-col gap-[var(--ds-space-snug)]">
-          <span>{result.message}</span>
-          <KeyValueList
-            items={[{ key: "server holds version", value: String(result.currentVersion), tone: "warning" }]}
-          />
-        </div>
-      </Banner>
-    );
-  }
-
-  if (result.state === "confirmation-required") {
-    return <Banner tone="warning" title="Confirmation required" action={dismissWith("Close")}>{result.message}</Banner>;
-  }
-
-  return (
-    <Banner
-      tone="success"
-      title={result.state === "applied" ? "Start applied" : "Already applied"}
-      icon={<CheckCircle2 aria-hidden className={dsIcon.lg} />}
-      action={dismissWith("Close")}
-    >
-      <div className="flex flex-col gap-[var(--ds-space-snug)]">
-        <KeyValueList
-          items={result.affectedTargets.map((target) => ({
-            key: target.family,
-            value: "runId" in target ? target.runId : target.family,
-          }))}
-        />
-        <MetaLine items={[`command ${result.commandId}`]} />
-      </div>
-    </Banner>
   );
 }
 

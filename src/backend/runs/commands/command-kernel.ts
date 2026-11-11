@@ -1,3 +1,4 @@
+import { preflightRunnerTimeout } from "../../../models/preflight/preflight.js";
 import { applyWorkerPoolPlan, WorkerPoolPlanVersionConflict } from "../../storage/sqlite/worker-slots.js";
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -12,7 +13,7 @@ import { workerPoolMember,type WorkerPoolMember } from "../../../models/run/work
 import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { AssistantModelPreferenceCommandRequestSchema } from "../../../rules/commands/commands.js";
-import { PreflightAdmissionRefusal,type PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
+import { PreflightEvidenceExpiredError, PreflightAdmissionRefusal,type PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { ASSISTANT_INPUT_PROJECTION_VERSION,assistantKnowledgeArtifact } from "../../assistant/context.js";
@@ -488,7 +489,7 @@ function readStartPlan(
     `start plan ${plan.startPlanId} confirmation expected revision ${String(confirmationVersion)} but received ${String(request.target.expectedVersion)}; re-plan before starting`);
   if (plan.consumedBy !== undefined) reject(request, "invalid-state",
     `start plan ${plan.startPlanId} was already consumed by command ${plan.consumedBy.commandId}`);
-  if (isStartPlanExpired(plan, Date.parse(now))) reject(request, "invalid-state",
+  if (isStartPlanExpired(plan, Date.parse(now))) reject(request, "RUN_START_PLAN_EXPIRED",
     `start plan ${plan.startPlanId} expired at ${plan.expiresAt}`);
 
   if (!reviewedRunSettingsCurrent(repositories, plan)) {
@@ -584,7 +585,7 @@ function executeStartRun(
   if (consumption.state === "refused") {
     if (consumption.code === "version-mismatch") conflict(request, plan.version, consumption.message);
     if (consumption.code === "fingerprint-mismatch") reject(request, "schema-mismatch", consumption.message);
-    reject(request, "invalid-state", consumption.message);
+    reject(request, consumption.code === "expired" ? "RUN_START_PLAN_EXPIRED" : "invalid-state", consumption.message);
   }
   if (consumption.state !== "consumed") {
     throw new Error(
@@ -2714,7 +2715,11 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
     if (error instanceof CommandIdentityConflictError) return CommandResultSchema.parse({
       state: "rejected", commandId: request.commandId, code: "command-divergent", message: error.message,
     });
-    const refusal = error instanceof PreflightAdmissionRefusal ? CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: error.message })
+    const refusal = error instanceof PreflightAdmissionRefusal ? CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: request.family !== "start" ? "capability-unavailable"
+      : preflightRunnerTimeout(error) !== undefined ? "PREFLIGHT_TIMEOUT"
+      : error instanceof PreflightEvidenceExpiredError ? "PREFLIGHT_EVIDENCE_EXPIRED"
+      : error.reason === "observation-changed" || error.reason === "stale" ? "RUN_START_READINESS_CHANGED"
+      : error.reason === "blocked" ? "RUN_START_READINESS_BLOCKED" : "RUN_START_READINESS_UNAVAILABLE", message: error.message })
       : error instanceof CommandRefusal ? error.result
       : error instanceof OcrReviewRefusedError ? CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
         code: error.code, message: ERROR_CATALOG.OCR_REVIEW_REFUSED.text })

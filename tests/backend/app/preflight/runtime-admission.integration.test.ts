@@ -178,7 +178,7 @@ for (const fault of ["unhealthy", "throw", "missing", "timeout"] as const) it(`S
     const result = await service.submit(command);
     assert.equal(result.state, "rejected");
     if (result.state === "rejected") {
-      assert.equal(result.code, "capability-unavailable");
+      assert.equal(result.code, fault === "unhealthy" ? "RUN_START_READINESS_BLOCKED" : fault === "timeout" ? "PREFLIGHT_TIMEOUT" : "RUN_START_READINESS_UNAVAILABLE");
       if (fault === "missing") {
         assert.ok(prepareError instanceof Error);
         assert.match(prepareError.message, /no runner for selected checks: browser\.assets/u);

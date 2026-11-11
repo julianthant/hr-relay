@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { act,createElement } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
-import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
+import { runStartRefusalToast } from "../../../../src/dashboard/app/commands/command-result.js";
+import { ToastProvider, useToasts } from "../../../../src/dashboard/ds/ui.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { useRunLaunch } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { RunLaunchHost } from "../../../../src/dashboard/surfaces/run-start/run-launch.js";
@@ -22,7 +23,7 @@ const disposers: (() => void | Promise<void>)[] = [];
 async function unmount() { await act(async () => root?.unmount()); root = undefined; }
 async function cleanup() { await unmount(); document.body.replaceChildren(); window.sessionStorage.clear();
   for (const dispose of disposers.splice(0)) await dispose(); }
-async function setup() { const h = await launchHarness(undefined, undefined, undefined, profileFixture); disposers.push(h.dispose); return h; }
+async function setup(createPreflight?: Parameters<typeof launchHarness>[4]) { const h = await launchHarness(undefined, undefined, undefined, profileFixture, createPreflight); disposers.push(h.dispose); return h; }
 type Harness = Awaited<ReturnType<typeof setup>>;
 const text = () => document.body.textContent ?? "";
 function button(name: string): HTMLButtonElement {
@@ -49,14 +50,16 @@ async function fill(node: HTMLInputElement | HTMLTextAreaElement, value: string)
 }
 async function mount(h: Harness, source: RunRecord | undefined, client: DashboardClient = h.client, workersStopped?: (workflowId: string) => boolean) {
   const workflows = [h.workflow]; const sourceRef = source === undefined ? undefined : { runId: source.envelope.runId, expectedVersion: source.version };
-  function Launcher({ actorId }: { actorId: string }) { const controller = useRunLaunch(false, "launch-main"); return createElement("main", { id: "launch-main", tabIndex: -1 },
+  function Launcher({ actorId, requestKey, nowIso, bound }: { actorId: string; requestKey: number; nowIso: string; bound: boolean }) { const { toast } = useToasts(); const controller = useRunLaunch(false, "launch-main"); return createElement("main", { id: "launch-main", tabIndex: -1 },
     createElement("button", { onClick: () => sourceRef === undefined ? controller.openStart() : controller.openRerun(sourceRef) }, sourceRef === undefined ? "Run workflow" : "Rerun source"),
-    createElement(ToastProvider, { children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId, workersStopped, onOpenIntake: () => { throw new Error("unexpected intake"); } }) })); }
+    bound ? createElement(FixtureCommandBinding, { actorId, requestKey, nowIso, feedback: outcome => {
+      if (outcome.kind === "refused" || outcome.kind === "conflict") toast(runStartRefusalToast(outcome.feedback.text));
+    }, children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId, workersStopped, onOpenIntake: () => { throw new Error("unexpected intake"); } }) }) : createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), actorId, onOpenIntake: () => { throw new Error("unexpected intake"); } })); }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   async function replaceBinding(nextClient: DashboardClient, { actorId = "local-operator", requestKey = 0, nowIso = h.clock.now().toISOString(), bound = true } = {}) {
-    const launcher = createElement(Launcher, { actorId });
+    const launcher = createElement(Launcher, { actorId, requestKey, nowIso, bound });
     await act(async () => root?.render(createElement(DashboardClientProvider, { client: nextClient,
-      children: bound ? createElement(FixtureCommandBinding, { actorId, requestKey, nowIso, children: launcher }) : launcher })));
+      children: createElement(ToastProvider, { children: launcher }) })));
   }
   await replaceBinding(client);
   button(source === undefined ? "Run workflow" : "Rerun source").focus(); await press(source === undefined ? "Run workflow" : "Rerun source");

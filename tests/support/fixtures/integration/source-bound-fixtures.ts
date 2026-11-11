@@ -38,7 +38,8 @@ const retainedSourceBoundFixtureOwners = new Set<object>();
 export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig, protectedSecrets?: ProtectedSecretSource,
   profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture,
   childDescriptors: readonly AnyWorkflowDescriptor[] = [],
-  commandNotices?: CommandKernelDependencies["commandNotices"]) {
+  commandNotices?: CommandKernelDependencies["commandNotices"],
+  createPreflight?: (clock: Clock) => NonNullable<CommandKernelDependencies["preflight"]>) {
   bindWorkflowDelegationTargets([descriptor, ...childDescriptors]);
   const held: { profile?: BoundProfileStorageFixture; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; primary?: unknown } = {};
   retainedSourceBoundFixtureOwners.add(held);
@@ -70,13 +71,15 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
   const resolution = createWriteResolutionExecutor({ continuation: runContinuationPort(lifecycle), descriptors,
     authority: database, ids  });
   const unused = () => { throw new Error("unrequested runtime operation"); };
+  const preflight = createPreflight?.(clock);
   const kernel = createCommandKernel({ lifecycle, appVersion: "0.1.0", authority: database, clock, ids, descriptors,
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: resolution,
     workerRuntime: {pool:unusedWorkerPool(unused)},
+    ...(preflight === undefined ? {} : { preflight }),
     ...(commandNotices === undefined ? {} : { commandNotices }),
   });
-  const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors, clock,
+  const planner = createStartPlanService({ ...(preflight === undefined ? {} : { preflight }), authority: database, authorityRead: database, descriptors, clock,
     ...(protectedSecrets === undefined ? {} : { protectedSecrets }),
     ids: planIds, planTtlMs: 600_000, configFingerprint: activeConfig.configFingerprint, configSnapshotId: activeConfig.configSnapshotId, plannedBy: "local-operator" });
   const world = createWriteFixtureWorld();
