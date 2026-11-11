@@ -11,11 +11,13 @@ export interface AnalyticsData {
   reasons: readonly { label: string; workflow: string; runs: number }[];
 }
 
+/** `date` is the readable day or week the hover card names. */
 export interface AnalyticsBucket { date: string; label: string; done: number; failed: number; attention: number; seconds: Record<string, number> }
 
 const DAY = 86_400_000;
 const MAX_DAILY_BARS = 31;
 const WEEKDAY = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
+const FULL_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 const MONTH_DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 const parse = (date: string) => Date.parse(`${date}T00:00:00.000Z`);
 const iso = (time: number) => new Date(time).toISOString().slice(0, 10);
@@ -39,7 +41,8 @@ export function analyticsBuckets(range: ActivityDateRange, workflows: readonly A
   for (let offset = 0; offset < total; offset += step) {
     const dates = Array.from({ length: Math.min(step, total - offset) }, (_, index) => shiftDate(range.from, offset + index));
     const start = dates[0] ?? range.from;
-    const bucket: AnalyticsBucket = { date: start, label: step === 1 ? total <= 7 ? `${WEEKDAY.format(parse(start))} ${new Date(parse(start)).getUTCDate()}` : MONTH_DAY.format(parse(start)) : MONTH_DAY.format(parse(start)), done: 0, failed: 0, attention: 0, seconds: {} };
+    const end = dates.at(-1) ?? start;
+    const bucket: AnalyticsBucket = { date: start === end ? FULL_DATE.format(parse(start)) : analyticsPeriodLabel({ from: start, to: end }), label: step === 1 ? total <= 7 ? `${WEEKDAY.format(parse(start))} ${new Date(parse(start)).getUTCDate()}` : MONTH_DAY.format(parse(start)) : MONTH_DAY.format(parse(start)), done: 0, failed: 0, attention: 0, seconds: {} };
     for (const workflow of workflows) {
       const days = workflow.days.filter(day => dates.includes(day.date));
       for (const day of days) { bucket.done += day.done; bucket.failed += day.failed; bucket.attention += day.attention; }
