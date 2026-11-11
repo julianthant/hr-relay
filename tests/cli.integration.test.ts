@@ -248,6 +248,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
         const schemaPath = join(scratchRoot, "src", "models", "config", "define-runtime-isolation.ts");
         writeFileSync(isolationPath, readFileSync(isolationPath, "utf8").replace("lockPort: 0", `lockPort: ${String(lockPort)}`));
         writeFileSync(schemaPath, readFileSync(schemaPath, "utf8").replace("lockPort: z.literal(0)", `lockPort: z.literal(${String(lockPort)})`));
+        writeDashboardBuildIdentity({ repoRoot: scratchRoot, distDir: join(scratchRoot, "dist", "dashboard") });
         const duplicate = spawn(
           process.execPath,
           ["--import", testProcessImport(), join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
