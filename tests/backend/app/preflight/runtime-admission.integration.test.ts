@@ -150,9 +150,8 @@ for (const delayMs of [60_000, 300_000]) it(`Start refreshes readiness through t
     assert.equal((await h.service.submit(command)).state, "already-applied");
     assert.equal(h.probes.length, settledProbes); assert.equal(h.publications, 1); assert.equal(h.projections, 1);
     assert.equal(h.database.authority.runs.listByWorkflow(plan.workflowId).length, 1);
-    const divergent = await h.service.submit({ ...command, requestedAt: h.clock.now().toISOString() });
-    assert.equal(divergent.state, "rejected");
-    if (divergent.state === "rejected") assert.equal(divergent.code, "command-divergent");
+    await assert.rejects(h.service.submit({ ...command, requestedAt: h.clock.now().toISOString() }),
+      /command id 99999999-9999-4999-8999-999999999999 was reused with different content/u);
     assert.equal(h.probes.length, settledProbes);
   } finally { await _afterEachFixture0(); }
 });
@@ -197,9 +196,8 @@ for (const fault of ["unhealthy", "throw", "missing", "timeout"] as const) it(`S
     const probes = h.probes.length;
     armed = false; h.faults.clear();
     assert.deepEqual(await service.submit(command), result);
-    const divergent = await service.submit({ ...command, source: "other-source" });
-    assert.equal(divergent.state, "rejected");
-    if (divergent.state === "rejected") assert.equal(divergent.code, "command-divergent");
+    await assert.rejects(service.submit({ ...command, source: "other-source" }),
+      /command id 99999999-9999-4999-8999-999999999999 was reused with different content/u);
     assert.equal(h.probes.length, probes); assert.equal(h.publications, 0); assert.equal(h.capacityCalls, 0);
   } finally { await _afterEachFixture0(); }
 });
