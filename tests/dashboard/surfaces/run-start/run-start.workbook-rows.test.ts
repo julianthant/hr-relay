@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act } from "react";
-import { afterEach, it } from "vitest";
+import { act, createElement, useState } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, it, onTestFinished } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
@@ -9,7 +10,14 @@ import { WorkbookLibraryEntrySchema, WorkbookLibraryVersionViewSchema, projectWo
 import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from "../../../../src/models/dashboard/start-plan.js";
 import { RerunValuesRequestSchema, RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../../../src/models/dashboard/rerun-warning.js";
-import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
+import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
+
+import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
+import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";
+import type { AppRouteState } from "../../../../src/dashboard/app/navigation/url-state.js";
+import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
+import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
@@ -58,6 +66,45 @@ function proposal(request: StartPlanRequest, partial = false) {
     }]), refused: partial ? [{ entry: 2, code: "active-run-exists", message: "Duplicate email refused" }] : [],
   });
 }
+
+it.each(["late catalog", "sidebar workflow", "restored route"])("plans default Onboarding steps after %s opens the mounted launcher", async path => {
+  let planned: StartPlanRequest | undefined;
+  const client = h.stubClient({ ...libraryReads, submitStartPlan: async input => {
+    planned = StartPlanRequestSchema.parse(input);
+    return proposal(planned);
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  onTestFinished(async () => { await act(async () => root.unmount()); });
+  let openOnboarding = () => {};
+  function Harness() {
+    const [loaded, setLoaded] = useState(path !== "late catalog");
+    const [route, setRoute] = useState<AppRouteState>(path === "restored route"
+      ? { start: true, view: { launchServed: descriptorId, launchCustomize: false } } : {});
+    openOnboarding = () => {
+      setLoaded(true);
+      setRoute({ start: true, view: { launchServed: descriptorId, launchStage: "Input", launchCustomize: false } });
+    };
+    const workflows = loaded ? [h.WORKFLOWS[0], workflow] : [];
+    return createElement(ViewNavigationProvider, { route, setRoute,
+      children: createElement(DashboardClientProvider, { client,
+        children: createElement(FixtureCommandBinding, { actorId: h.ACTOR_ID,
+          children: createElement(RunStartDialog, { open: route.start === true, onOpenChange() {},
+            catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)),
+            panelWorkflowId: h.WORKFLOWS[0].workflowId, actorId: h.ACTOR_ID, onOpenIntake() {} }) }) }) });
+  }
+  await act(async () => root.render(createElement(Harness)));
+  if (path !== "restored route") await act(async () => openOnboarding());
+  await h.settle(); await chooseCurrent(); await select(0); await mode("new-hire");
+  const press = async (name: string) => {
+    const button = h.buttons().find(button => h.buttonName(button) === name); assert.ok(button, name);
+    await act(async () => button.click());
+  };
+  await press("Continue"); await press("Continue");
+  assert.ok(planned, document.body.textContent ?? "Planner was not called");
+  assert.deepEqual(planned.selectedStepKeys, workflow.steps.filter(step => step.includedByDefault).map(step => step.key));
+  assert.match(document.body.textContent ?? "", /Entry 1 · Accepted/u);
+});
 
 it("uses saved rows only, requires a common explicit mode and preserves duplicate physical entry/refusal correspondence", async () => {
   let planned: StartPlanRequest | undefined;
