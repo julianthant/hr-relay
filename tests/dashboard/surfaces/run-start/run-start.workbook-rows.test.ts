@@ -91,7 +91,7 @@ it("keeps Rerun single-source with its restored mode and a fresh explicit refere
     submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return proposal(planned); },
   }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
   await dialog.press("Continue"); assert.equal(checkboxRows().length, 0); assert.equal(dialog.typedInput().value, "source@example.test");
-  await dialog.press("Continue"); await chooseCurrent(); await dialog.press("Back");
+  await chooseCurrent();
   assert.equal(document.querySelector<HTMLInputElement>('input[value="rehire"]')?.checked, true);
   await dialog.press("Continue"); await dialog.press("Continue"); assert.ok(planned);
   assert.deepEqual(planned.submissions, [{ email: "source@example.test", mode: "rehire" }]);

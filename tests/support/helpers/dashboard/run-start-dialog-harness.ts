@@ -308,7 +308,7 @@ export function createRunStartDialogHarness() {
     };
 
     const switchNamed = (name: string): HTMLInputElement | undefined => [...document.body.querySelectorAll<HTMLInputElement>('[role="switch"], [role="checkbox"]')]
-      .find(node => [name, `Include ${name}`].includes(node.closest("label")?.querySelector(".ds-switch-copy > span")?.textContent ?? "") || node.getAttribute("aria-label") === name);
+      .find(node => [name, `Include ${name}`, `${name} (required)`].includes(node.closest("label")?.querySelector(".ds-switch-copy > span")?.textContent ?? "") || node.getAttribute("aria-label") === name);
     const press = async (name: string): Promise<void> => {
       const action = name === "Continue" && buttons().some(button => button.textContent?.trim() === "Preview plan") ? "Preview plan" : name;
       const visibleMatches = buttons().filter((button) => (button.textContent ?? "").trim() === action);
@@ -397,8 +397,8 @@ export function createRunStartDialogHarness() {
 
     const disabled = (name: string): boolean => {
       const found = buttons().filter((button) => buttonName(button) === (name === "Continue" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
-      const only = found[0];
-      if (found.length !== 1 || only === undefined) {
+      const only = found[0] ?? switchNamed(name);
+      if (found.length > 1 || only === undefined) {
         throw new Error(`expected exactly one control named "${name}", found ${String(found.length)}`);
       }
       return only.disabled || only.getAttribute("data-disabled") !== null;
@@ -419,10 +419,12 @@ export function createRunStartDialogHarness() {
   }
 
   async function chooseVersion(version: string): Promise<void> {
-    const select = document.body.querySelector<HTMLSelectElement>('select[aria-label$=" version"]');
-    const option = select && [...select.options].find(candidate => candidate.textContent?.includes(version));
-    if (select === null || option === undefined) throw new Error(`no version ${version}`);
-    await act(async () => { typeInto(select, option.value); });
+    const trigger = buttons().find(button => (button.getAttribute("aria-label") ?? "").endsWith(" version"));
+    if (trigger === undefined) throw new Error("the reference row draws no version picker");
+    await act(async () => { trigger.click(); });
+    const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent?.includes(version));
+    if (option === undefined) throw new Error(`no version ${version}`);
+    await act(async () => { option.click(); });
     await settle();
   }
 
