@@ -284,6 +284,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
           if (draft.document.libraryId === undefined) draft.document = { ...draft.document, libraryId };
           aliases.set(libraryId, key); updateRow(key, draft);
           if (!spreadsheetSaveMatches(draft.document, result)) return { state: 'uncertain', reason: 'The original save was confirmed. The current draft still has unsaved changes.' };
+          draft.dirty = false;
           return result;
         } catch (error) { intent.error = error; return { state: 'uncertain', reason: `Save outcome is uncertain. ${message(error)} Check the library before saving again.` }; }
       };

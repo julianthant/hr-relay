@@ -43,7 +43,9 @@ describe("General ChatGPT account", () => {
     assert.equal(port.getSnapshot().state, "connected");
     assert.match(host?.textContent ?? "", /jordan.lee@example\.com/u);
     assert.doesNotMatch(host?.textContent ?? "", /Using ChatGPT plan|Preview/u);
-    assert.equal(document.activeElement, host?.querySelector(`a[href="${CHATGPT_USAGE_URL}"]`));
+    const focused = document.activeElement;
+    assert.ok(focused instanceof HTMLButtonElement && host?.contains(focused), "focus recovers inside the account region after Connect");
+    assert.equal(focused.textContent, "Disconnect", "the first control of the connected account row takes focus");
   });
 
   it("requests plan access directly for a disabled account, then signs out", async () => {

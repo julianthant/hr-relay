@@ -1,6 +1,0 @@
-.sub-limits { display:flex; flex-direction:column; gap:12px; }
-.sub-limit { display:flex; flex-direction:column; padding:11px 0 14px; }
-.sub-limit-title { font-size:var(--ds-row-title); line-height:var(--ds-row-title-lh); color:var(--ui-primary); }
-.sub-limit-meta { display:flex; justify-content:space-between; gap:16px; margin-top:var(--ds-row-gap); font-size:var(--ds-row-desc); line-height:var(--ds-row-desc-lh); color:var(--ds-fg-secondary); }
-.sub-limit-bar { height:6px; margin-top:4px; border-radius:999px; background:color-mix(in srgb, var(--ds-fg) 10%, var(--ds-card-bg)); overflow:hidden; }
-.sub-limit-bar > span { display:block; height:100%; border-radius:inherit; background:var(--ui-info); }
