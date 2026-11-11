@@ -1,3 +1,4 @@
+import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { InputRunSurfaceSchema } from "../../../src/models/workflow/ingress.js";
 import { StepOmissionFormSchema } from "../../../src/models/workflow/step-omission.js";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
@@ -117,7 +118,10 @@ export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", in
       ...(limit === undefined ? {} : { limit: Number(limit) }), ...(cursor === undefined ? {} : { cursor }),
     })));
   });
-  app.post("/api/v1/commands", async (c) => c.json(await h.kernel.executeStart(await c.req.json())));
+  app.post("/api/v1/commands", async (c) => {
+    const request = CommandRequestSchema.parse(await c.req.json());
+    return c.json(request.family === "start" ? await h.kernel.executeStart(request) : h.kernel.execute(request));
+  });
   const submissions: unknown[] = []; const finalCommands: unknown[] = [];
   let loseResponse = false;
   const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async (url, init) => {
