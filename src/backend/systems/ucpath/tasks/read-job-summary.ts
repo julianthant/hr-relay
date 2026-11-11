@@ -17,7 +17,8 @@ export const readJobSummaryTask = defineTask(ucpathDriver, UcpathReadJobSummary,
 
       return ctx.fail(
         "employee-not-found",
-        `UCPath Person Org has no record for EID ${directIdentifierDisplay(read.emplId)} `
+        // The ID may be one the operator typed, so the line names only its last four digits.
+        `UCPath Person Org has no record for EID ••••${directIdentifierDisplay(read.emplId.slice(-4))} `
         + `(the page rendered ${JSON.stringify(read.observedMarker)}). This is UCPath's own answer, not `
         + "a timeout: a search that times out throws instead.",
       );
