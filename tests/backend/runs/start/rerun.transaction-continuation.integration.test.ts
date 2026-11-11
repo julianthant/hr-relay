@@ -553,7 +553,7 @@ it("refuses own-run transaction reuse when a conditional mapping task reaches an
     .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: ["mapped"], prepare: { uses: WriteFixturePrepare, bind: mappedEid },
       commit: { uses: WriteFixtureCommit, bind: ({ input }) => ({ eid: input.eid }) }, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
     .transaction("later-write", { dependsOn: ["mapped"], prepare: { uses: WriteFixturePrepare, bind: mappedEid },
-      commit: { uses: WriteFixtureCommit, bind: () => ({ eid: EidSchema.parse("10899998") }) }, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
+      commit: { uses: WriteFixtureCommit, bind: () => ({ eid: replaced }) }, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
     .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
   let replacedReads = 0;
   const h = await sourceBoundHarness(selected, world => {
