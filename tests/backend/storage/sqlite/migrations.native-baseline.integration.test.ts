@@ -6,7 +6,9 @@ import { join } from "node:path";
 import { describe,it } from "vitest";
 import { credentialTrap,storageRecoveryFixture,storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { applyOlderBuildStatements } from "../../../support/fixtures/storage/older-build-authority.js";
+import { DatabaseSync } from "node:sqlite";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { inspectAuthorityBackupReadOnly,upgradeStorage } from "../../../support/helpers/synthetic-storage-admission.js";
 
@@ -80,6 +82,20 @@ describe("current stopped authority initialization", () => {
       assert.equal(readFileSync(f.input.environmentFile, "utf8"), "HRAUTO_DEFAULT_WORKERS=17\nUCPATH_PASSWORD=synthetic-retired-input\n");
       assert.equal(readFileSync(join(f.root, "settings.json"), "utf8"), "corrupt obsolete input");
     } finally { await f.dispose(); }
+  });
+  it("initializes a schema 26 store with the same tables, indexes and triggers as schema 25", async () => {
+    const f = await storageRecoveryFixture();
+    const previous = new DatabaseSync(":memory:");
+    try {
+      assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 26);
+      assert.equal((await f.run()).state, "initialized");
+      assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 26);
+      applyOlderBuildStatements(previous, 24);
+      for (const statement of SQLITE_MIGRATIONS.find(value => value.version === 25)?.statements ?? []) previous.exec(statement);
+      const objects = (database: DatabaseSync) => database.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all();
+      const current = new DatabaseSync(f.path, { readOnly: true });
+      try { assert.deepEqual(objects(current), objects(previous)); } finally { current.close(); }
+    } finally { previous.close(); await f.dispose(); }
   });
   it("preserves a fresh source after admission fails and admits the exact retry", async () => {
     const f = await storageRecoveryFixture();
