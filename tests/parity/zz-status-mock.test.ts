@@ -458,60 +458,19 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
   expect(errors).toEqual([]);
 });
 
-// Account edit, password and delete flows, Subscription, and General's toggles and pickers, on the mock fixtures.
-test("account, subscription and general interactions", async ({ page }) => {
+// General's toggles and pickers on the mock fixtures; served Account and Subscription controls are covered in settings-served-pages.test.ts.
+test("general interactions", async ({ page }) => {
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=account&statusMock=account`);
-  const nav = page.locator("nav.settings-panel-nav");
-  for (const name of ["General", "Account", "Subscription"]) await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
-  for (const name of ["Routes", "Paths"]) await expect(nav.getByRole("link", { name })).toHaveCount(0);
-  for (const name of ["Relay account", "UCPath sign-in", "Workflow configuration", "Security"]) await expect(page.getByRole("group", { name, exact: true })).toBeVisible();
-  await expect(page.getByRole("textbox")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Edit Last signed in" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Edit name", exact: true }).click();
-  const edit = page.getByRole("dialog", { name: "Edit name" });
-  await expect(edit.getByRole("button", { name: "Close" })).toHaveCount(0);
-  await edit.getByRole("textbox", { name: "Name" }).fill("Casey Park");
-  await edit.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByText("Casey Park").first()).toBeVisible();
-  await page.getByRole("button", { name: "Edit name", exact: true }).click();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("button", { name: "Change Relay password", exact: true }).click();
-  const password = page.getByRole("dialog", { name: "Change password" });
-  await expect(password.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
-  await password.getByRole("textbox", { name: "Current password" }).fill("old-secret");
-  await password.getByRole("textbox", { name: "New password", exact: true }).fill("new-secret");
-  await password.getByRole("textbox", { name: "Confirm new password" }).fill("other");
-  await expect(password.getByText("The passwords don’t match.")).toBeVisible();
-  await expect(password.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
-  await password.getByRole("textbox", { name: "Confirm new password" }).fill("new-secret");
-  await password.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
-  await page.keyboard.press("Escape");
-  await nav.getByRole("link", { name: "Subscription", exact: true }).click();
-  await expect(page.getByRole("group", { name: "Connected account" }).getByText("Plus plan")).toBeVisible();
-  await expect(nav.getByRole("link", { name: "Storage" })).toHaveCount(0);
-  await expect(nav.getByRole("link", { name: "Preflight" })).toHaveCount(0);
-  for (const name of ["5-hour limit", "Weekly limit"]) await expect(page.getByRole("progressbar", { name: `${name} left` })).toBeVisible();
-  await expect(page.getByRole("switch", { name: "Full access" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
-  await expect(page.getByText("Not connected")).toBeVisible();
-  await expect(page.getByRole("progressbar")).toHaveCount(0);
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=general&statusMock=general-a`);
   await expect(page.getByRole("group", { name: "General", exact: true })).toBeVisible();
   for (const name of ["Downloads", "Job end date", "Theme", "Animations", "Browser window"]) await expect(page.getByRole("group", { name: "General", exact: true }).getByText(name, { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Run without a browser window")).toHaveCount(0);
-  const full = page.getByRole("switch", { name: "Full access" });
-  await expect(full).not.toBeChecked();
-  await full.dispatchEvent("click");
-  await expect(full).toBeChecked();
-  await expect(page.getByRole("button", { name: "Change", exact: true })).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Full access" })).toHaveCount(0);
+  await expect(page.getByText("Default permissions")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Change", exact: true }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -527,7 +486,7 @@ test("sidebar click-through shows the mock pages", async ({ page }) => {
   const marks: Record<string, () => Promise<void>> = {
     General: () => expect(page.getByRole("group", { name: "General", exact: true }).getByText("Browser window", { exact: true })).toBeVisible(),
     Account: () => expect(page.getByRole("group", { name: "Relay account", exact: true })).toBeVisible(),
-    Subscription: () => expect(page.getByRole("group", { name: "Plan limits" }).or(page.getByText("Plan limits", { exact: true }))).toBeVisible(),
+    Subscription: () => expect(page.getByRole("group", { name: "Connected account" })).toBeVisible(),
     Spreadsheets: () => expect(page.getByRole("region", { name: "Spreadsheets", exact: true })).toBeVisible(),
     Explorer: () => expect(page.locator("#dashboard-settings-content")).toBeVisible(),
     Analytics: () => expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible(),
