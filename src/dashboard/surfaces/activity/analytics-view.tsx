@@ -58,14 +58,14 @@ export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns }
   const totals = sum(shown);
   const days = buckets.map(bucket => ({ label: bucket.label, date: bucket.date }));
   const series = OUTCOMES.map(outcome => ({ id: outcome.key, label: outcome.label, color: outcome.color, values: buckets.map(bucket => bucket[outcome.key]) }));
-  const timeSeries = shown.map(row => ({ id: row.id, label: row.label, color: `var(--chart-${data.workflows.findIndex(item => item.id === row.id) % 6 + 1})`, values: buckets.map(bucket => bucket.seconds[row.id] ?? 0) }));
-  const longest = Math.max(0, ...timeSeries.flatMap(line => line.values));
+  const timeSeries = shown.map(row => ({ id: row.id, label: row.label, color: `var(--chart-${data.workflows.findIndex(item => item.id === row.id) % 6 + 1})`, values: buckets.map(bucket => bucket.seconds[row.id] ?? null) }));
+  const longest = Math.max(0, ...timeSeries.flatMap(line => line.values.flatMap(value => value === null ? [] : [value])));
   const top = Math.max(60, Math.ceil(longest / 60) * 60);
-  const typical = shown.flatMap(row => row.typicalSeconds === null ? [] : [row.typicalSeconds]);
+  const typical = workflow === "all" ? data.typicalSeconds : shown[0]?.typicalSeconds ?? null;
   const reasons = data.reasons.filter(reason => workflow === "all" || shown.some(row => row.label === reason.workflow));
   const toggle = (id: string) => setOpen(current => { const next = new Set(current); if (!next.delete(id)) next.add(id); return next; });
   return <div className="ds-body-stack mt-2">
-    <BodySection title="Runs" description={`${finished(totals)} finished runs${workflow === "all" ? ` · ${data.running} still running` : ""}`}>
+    <BodySection title="Runs" description={`${totals.done + totals.failed} finished runs${workflow === "all" ? ` · ${data.running} still open` : ""}`}>
       <StackedBars label="Runs per day" days={days} series={series} unit={["run", "runs"]}
         header={<div className="mb-4 flex items-center justify-between gap-3"><span className="text-[13px] leading-[18px]">{analyticsPeriodLabel(range)}</span>
           <span className="flex items-center gap-1"><IconButton size="xs" label="Previous period" icon={<ChevronLeft aria-hidden className={dsIcon.md} />} onClick={() => onRange(shiftRange(range, -1))} /><IconButton size="xs" label="Next period" icon={<ChevronRight aria-hidden className={dsIcon.md} />} onClick={() => onRange(shiftRange(range, 1))} /></span></div>}
@@ -99,10 +99,10 @@ export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns }
         })}</tbody>
       </table></div>}
     </BodySection>
-    {typical.length > 0 && <BodySection title="Time" description="How long finished runs take.">
+    {typical !== null && <BodySection title="Time" description="How long finished runs take.">
       <LineChart label="Typical time per day" days={days} series={timeSeries} ticks={[top, top / 2, 0].map(value => ({ value, label: value === 0 ? "0" : `${value / 60}m` }))} top={top} format={analyticsClock}
-        summary={index => { const values = timeSeries.flatMap(line => (line.values[index] ?? 0) > 0 ? [line.values[index] ?? 0] : []); return values.length === 0 ? "No timed runs" : `${analyticsClock(values.reduce((n, value) => n + value, 0) / values.length)} average`; }}
-        header={<ChartHeading label="Typical time" value={analyticsClock(typical.reduce((n, value) => n + value, 0) / typical.length)} />} />
+        summary={index => (buckets[index]?.step ?? 1) === 1 ? "Typical time" : "Average of daily typical times"}
+        header={<ChartHeading label="Typical time" value={analyticsClock(typical)} />} />
     </BodySection>}
     {reasons.length > 0 && <BodySection title="Why runs failed" description="Failed runs in this period.">
       <RunList label="Why runs failed">{reasons.map(reason => <RunListRow key={`${reason.workflow}:${reason.label}`} title={reason.label} description={reason.workflow}><span className="text-[13px] tabular-nums">{reason.runs}</span></RunListRow>)}</RunList>

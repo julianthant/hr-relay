@@ -4,7 +4,7 @@ import "./analytics-charts.css";
 const AXIS = "text-[12px] leading-4 tabular-nums text-ui-secondary";
 
 export interface ChartDay { label: string; date: string }
-export interface ChartSeries { id: string; label: string; color: string; values: readonly number[] }
+export interface ChartSeries { id: string; label: string; color: string; values: readonly (number | null)[] }
 interface Tip { title: string; rows: readonly { name: string; value: string; color: string }[] }
 interface Hover { index: number; x: number; top: number }
 
@@ -91,7 +91,7 @@ export function StackedBars({ label, days, series, unit, height = 160, header, f
     plot={active => <div className="pointer-events-none absolute inset-0 flex items-end">
       {days.map((day, index) => <div key={day.date} className="flex h-full min-w-0 flex-1 flex-col-reverse items-center">
         <div className="flex w-3/5 max-w-12 flex-col-reverse" style={{ height: `${sumAt(series, index) / top * 100}%`, filter: active === index ? "var(--chart-lift)" : undefined }}>
-          {series.map(line => (line.values[index] ?? 0) > 0 && <span key={line.id} aria-hidden className="block w-full last:rounded-t-[4px]" style={{ flexGrow: line.values[index], flexBasis: 0, background: line.color }} />)}
+          {series.map(line => (line.values[index] ?? 0) > 0 && <span key={line.id} aria-hidden className="block w-full last:rounded-t-[4px]" style={{ flexGrow: line.values[index] ?? 0, flexBasis: 0, background: line.color }} />)}
         </div>
       </div>)}
     </div>} />;
@@ -103,10 +103,22 @@ function barScale(max: number) {
   return { top, ticks: [top, top * 2 / 3, top / 3, 0].map(value => ({ value, label: String(value) })) };
 }
 
+/** Consecutive measured days; a missing day breaks the line instead of plotting zero. */
+function runsOf(values: readonly (number | null)[]) {
+  const runs: { index: number; value: number }[][] = [];
+  let current: { index: number; value: number }[] | undefined;
+  values.forEach((value, index) => {
+    if (value === null) { current = undefined; return; }
+    if (!current) { current = []; runs.push(current); }
+    current.push({ index, value });
+  });
+  return runs;
+}
+
 /** One line per series, a dot on each line at the hovered day. `summary` is the hover card's title for a day. */
 export function LineChart({ label, days, series, ticks, top, format, summary, height = 120, header }: {
   label: string; days: readonly ChartDay[]; series: readonly ChartSeries[]; ticks: readonly { value: number; label: string }[]; top: number;
-  format: (value: number) => string; summary: (index: number) => string; height?: number; header?: ReactNode;
+  format: (value: number | null) => string; summary: (index: number) => string; height?: number; header?: ReactNode;
 }) {
   const x = (index: number) => (index + 0.5) / days.length * 100;
   const y = (value: number) => 100 - value / top * 100;
@@ -114,11 +126,11 @@ export function LineChart({ label, days, series, ticks, top, format, summary, he
     footer={<ul aria-label="Legend" className="m-0 mt-3 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-[12px] leading-4 text-ui-secondary">
       {series.map(line => <li key={line.id} className="flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-full" style={{ background: line.color }} />{line.label}</li>)}
     </ul>}
-    tip={index => ({ title: summary(index), rows: series.map(line => ({ name: line.label, value: format(line.values[index] ?? 0), color: line.color })) })}
+    tip={index => ({ title: summary(index), rows: series.map(line => ({ name: line.label, value: format(line.values[index] ?? null), color: line.color })) })}
     plot={active => <>
       <svg aria-hidden className="pointer-events-none absolute inset-0 size-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
-        {series.map(line => <polyline key={line.id} fill="none" stroke={line.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" points={line.values.map((value, index) => `${x(index)},${y(value)}`).join(" ")} />)}
+        {series.flatMap(line => runsOf(line.values).map(run => <polyline key={`${line.id}:${run[0]?.index}`} fill="none" stroke={line.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" points={run.map(point => `${x(point.index)},${y(point.value)}`).join(" ")} />))}
       </svg>
-      {active !== null && series.map(line => <span key={line.id} aria-hidden className="ds-chart-dot" style={{ left: `${x(active)}%`, top: `${y(line.values[active] ?? 0)}%`, background: line.color }} />)}
+      {active !== null && series.map(line => line.values[active] == null ? null : <span key={line.id} aria-hidden className="ds-chart-dot" style={{ left: `${x(active)}%`, top: `${y(line.values[active])}%`, background: line.color }} />)}
     </>} />;
 }

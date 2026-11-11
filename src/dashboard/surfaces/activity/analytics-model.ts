@@ -6,16 +6,17 @@ export interface AnalyticsWorkflow {
   failedAt: readonly { label: string; runs: number }[]; days: readonly AnalyticsDayRow[];
 }
 export interface AnalyticsData {
-  running: number;
+  running: number; typicalSeconds: number | null;
   workflows: readonly AnalyticsWorkflow[];
   reasons: readonly { label: string; workflow: string; runs: number }[];
 }
 
 /** `date` is the readable day or week the hover card names. */
-export interface AnalyticsBucket { date: string; label: string; done: number; failed: number; attention: number; seconds: Record<string, number> }
+export interface AnalyticsBucket { date: string; label: string; step: number; done: number; failed: number; attention: number; seconds: Record<string, number | null> }
 
 const DAY = 86_400_000;
 const MAX_DAILY_BARS = 31;
+const MAX_BARS = 32;
 const WEEKDAY = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
 const FULL_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 const MONTH_DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
@@ -33,21 +34,21 @@ export function shiftRange(range: ActivityDateRange, direction: -1 | 1): Activit
 
 export const finished = (counts: { done: number; failed: number; attention: number }) => counts.done + counts.failed + counts.attention;
 
-/** One bar per day, or per week once the period is longer than a month. Time per workflow is the mean of its daily typical times. */
+/** One bar per day up to a month, then 7-day bars, then wider bars so a period never draws more than 32. Time per workflow is the mean of its daily typical times; a bucket with no timed run is null. */
 export function analyticsBuckets(range: ActivityDateRange, workflows: readonly AnalyticsWorkflow[]): AnalyticsBucket[] {
   const total = rangeDays(range);
-  const step = total > MAX_DAILY_BARS ? 7 : 1;
+  const step = total <= MAX_DAILY_BARS ? 1 : Math.max(7, Math.ceil(total / MAX_BARS));
   const buckets: AnalyticsBucket[] = [];
   for (let offset = 0; offset < total; offset += step) {
-    const dates = Array.from({ length: Math.min(step, total - offset) }, (_, index) => shiftDate(range.from, offset + index));
-    const start = dates[0] ?? range.from;
-    const end = dates.at(-1) ?? start;
-    const bucket: AnalyticsBucket = { date: start === end ? FULL_DATE.format(parse(start)) : analyticsPeriodLabel({ from: start, to: end }), label: step === 1 ? total <= 7 ? `${WEEKDAY.format(parse(start))} ${new Date(parse(start)).getUTCDate()}` : MONTH_DAY.format(parse(start)) : MONTH_DAY.format(parse(start)), done: 0, failed: 0, attention: 0, seconds: {} };
+    const start = shiftDate(range.from, offset);
+    const end = shiftDate(range.from, Math.min(offset + step, total) - 1);
+    const label = step === 1 && total <= 7 ? `${WEEKDAY.format(parse(start))} ${new Date(parse(start)).getUTCDate()}` : step > 7 ? FULL_DATE.format(parse(start)) : MONTH_DAY.format(parse(start));
+    const bucket: AnalyticsBucket = { date: start === end ? FULL_DATE.format(parse(start)) : analyticsPeriodLabel({ from: start, to: end }), label, step, done: 0, failed: 0, attention: 0, seconds: {} };
     for (const workflow of workflows) {
-      const days = workflow.days.filter(day => dates.includes(day.date));
+      const days = workflow.days.filter(day => day.date >= start && day.date <= end);
       for (const day of days) { bucket.done += day.done; bucket.failed += day.failed; bucket.attention += day.attention; }
       const timed = days.flatMap(day => day.seconds === null ? [] : [day.seconds]);
-      bucket.seconds[workflow.id] = timed.length === 0 ? 0 : timed.reduce((sum, value) => sum + value, 0) / timed.length;
+      bucket.seconds[workflow.id] = timed.length === 0 ? null : timed.reduce((sum, value) => sum + value, 0) / timed.length;
     }
     buckets.push(bucket);
   }

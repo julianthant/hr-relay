@@ -18,7 +18,8 @@ export function ActivityView({ data, range, today, rangeRevision = 0, period, on
   selection?: ActivityBrowse | null; onSelection?: ActivitySelectionHandler;
 }) {
   const [exporting, setExporting] = useState<object>();
-  const [workflow, setWorkflow] = useState("all");
+  const [chosen, setWorkflow] = useState("all");
+  const workflow = data.state !== "loaded" || chosen === "all" || data.report.analytics.workflows.some(row => row.id === chosen) ? chosen : "all";
   const [exportError, setExportError] = useState<{ report: ActivityViewState; reason: string }>();
   const latest = useRef(data); latest.current = data;
   const requestRef = useRef<object | undefined>(undefined);

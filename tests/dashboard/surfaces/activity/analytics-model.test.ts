@@ -18,3 +18,13 @@ it("groups a period longer than a month by week and moves whole periods", () => 
   assert.deepEqual(shiftRange({ from: "2026-09-20", to: "2026-09-26" }, -1), { from: "2026-09-13", to: "2026-09-19" });
   assert.equal(analyticsPeriodLabel({ from: "2026-08-28", to: "2026-09-26" }), "Aug 28 – Sep 26, 2026");
 });
+it("keeps a day without timed runs absent instead of plotting zero", () => {
+  const buckets = analyticsBuckets({ from: "2026-09-20", to: "2026-09-22" }, [{ ...workflow, days: [workflow.days[0], { date: "2026-09-21", done: 1, failed: 0, attention: 0, seconds: null }] }]);
+  assert.deepEqual(buckets.map(bucket => bucket.seconds.w), [50, null, null]);
+});
+it("never draws more than 32 buckets, even for the full supported range", () => {
+  const buckets = analyticsBuckets({ from: "0001-01-01", to: "9999-12-31" }, [workflow]);
+  assert.ok(buckets.length <= 32 && buckets.length > 1);
+  assert.equal(buckets.at(-1)?.date.endsWith("9999"), true);
+  assert.equal(analyticsBuckets({ from: "2026-01-01", to: "2026-12-31" }, [workflow]).length <= 32, true);
+});

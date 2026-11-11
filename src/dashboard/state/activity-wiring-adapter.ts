@@ -34,6 +34,7 @@ function projectAnalytics(selection: ActivityPopulationSelection): AnalyticsData
   const label = (workflow: { workflowId: string; registration: { state: string; label?: string } }) => workflow.registration.label ?? workflow.workflowId;
   return {
     running: report.inFlightRuns,
+    typicalSeconds: report.typicalMedian.medianMs.state === "present" ? report.typicalMedian.medianMs.value / 1000 : null,
     workflows: report.workflows.map(workflow => ({
       id: workflow.workflowId, label: label(workflow), ...workflow.outcomes,
       typicalSeconds: workflow.typicalMedian.medianMs.state === "present" ? workflow.typicalMedian.medianMs.value / 1000 : null,
