@@ -19,6 +19,7 @@ import { KeyboardSection } from "./navigation/settings-keyboard.js";
 import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./navigation/settings-search-model.js";
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
 import { StatusMockAnalytics } from "./status-mock/status-mock-analytics.js";
+import { AccountSettings, type AccountPage } from "./account/account-settings.js";
 import { ChatGptAccountSettings } from "./general/chatgpt-account.js";
 import { DeleteAccountControl } from "./general/ui-settings-records-general-paths.js";
 import { statusMock } from "./status-mock/status-mock-model.js";
@@ -114,6 +115,7 @@ export function SettingsPage({
   dataContent,
   appearance,
   deleteAccount,
+  accountPage,
   onOpenRun,
   spreadsheetSource,
   onOpenWorkflow,
@@ -132,6 +134,7 @@ export function SettingsPage({
   dataContent?: ReactNode;
   appearance?: ReactNode;
   deleteAccount?: ReactNode;
+  accountPage?: AccountPage;
   onOpenRun?: (runId: string, partitionDay: string) => void;
   onOpenWorkflow?: (workflowId: string) => void;
   actorId: string;
@@ -270,7 +273,7 @@ export function SettingsPage({
         {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} />
         )}
-        {resolution.state === "open" && resolution.entry.id === "account" && <><SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} />{deleteAccount ?? <DeleteAccountControl presentation={{ state: "unavailable" }} />}</>}
+        {resolution.state === "open" && resolution.entry.id === "account" && accountPage === undefined ? <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} /> : <AccountSettings page={accountPage} ucpath={<SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} />} deleteAccount={deleteAccount ?? <DeleteAccountControl presentation={{ state: "unavailable" }} />} />}
         {resolution.state === "open" && resolution.entry.id === "subscription" && <section className="settings-compact-page"><PageHeading title="Subscription" /><ChatGptAccountSettings /></section>}
         {resolution.state === "open"
           && resolution.entry.source === "served"

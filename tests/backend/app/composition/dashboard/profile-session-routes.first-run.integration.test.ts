@@ -59,7 +59,10 @@ it("serves the original local startup report at Finish and replays it without ch
     assert.deepEqual(f.machine.readProfileRegistry().profiles[0]?.registration.onboardingCompletion, completion);
     const sessionCookie = finished.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(sessionCookie);
     const ordinary = PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie: sessionCookie } })).json());
-    assert.deepEqual(ordinary, { state: "active", profileId: active.profileId, epoch: active.epoch, duoState: active.duoState });
+    const row = f.machine.readProfileRegistry().profiles[0];
+    assert.ok(row);
+    assert.deepEqual(ordinary, { state: "active", profileId: active.profileId, epoch: active.epoch, duoState: active.duoState,
+      account: { name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName, lastSignedInAt: row.lastSignedInAt } });
     const foreign = await ready.post("/api/v1/profile/onboarding/complete", { operationId: ready.draft.operationId }, "relay-profile-onboarding=foreign");
     assert.deepEqual(await foreign.json(), { state: "refused", code: "PROFILE_SESSION_STALE" });
     assert.equal(reports.length, 1);

@@ -8,7 +8,7 @@ export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
 
 /** Account and Subscription fixtures. Email is not served after sign-in, so the Account page has no email row; the ChatGPT email comes with the connected account. */
 export const STATUS_MOCK_ACCOUNT = {
-  values: { name: "Jordan Lee", username: "jordan.lee", initials: "JL", ucpathUsername: "jlee", timekeeper: "Lee, Jordan", timekeeperInitials: "JL", lastSignedIn: "Aug 3, 2026, 8:41 AM" },
+  values: { name: "Jordan Lee", initials: "JL", timekeeper: "Lee, Jordan", lastSignedInAt: "2026-08-03T15:41:00Z" },
   email: "jordan.lee@example.com",
 } as const;
 

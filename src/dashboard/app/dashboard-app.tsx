@@ -6,6 +6,7 @@ import { PreflightAssistantContext, createServedPreflightAssistantPort, type Pre
 import { ChatGptAccountContext, createServedChatGptAccountPort } from "../surfaces/settings/general/chatgpt-account-model.js";
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
+import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import { DeleteAccountControl } from "../surfaces/settings/general/ui-settings-records-general-paths.js";
 import { HubPreferencesPreviewContext } from "../surfaces/settings/general/hub-preferences-model.js";
 import { OnboardingSetup } from "../surfaces/shell/onboarding-setup.js";
@@ -257,6 +258,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
                 : { state: publicProfile.accountDeletion.state, personName: boot.actor.label,
                   message: operatorFailureSentence(publicProfile.accountDeletion.state === "uncertain" ? "PROFILE_ACCOUNT_DELETION_REFUSED" : publicProfile.accountDeletion.code) }} />
             : undefined}
+          accountPage={profileSource === "served" && session?.state === "active" && session.account !== undefined && publicProfile.logout !== undefined ? { values: session.account, duo: session.duoState === "ready" ? "ready" : "setup", onSignOut: () => { void publicProfile.logout(); } } : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}
@@ -341,6 +343,7 @@ interface LoadedAppProps {
   preferences: PersonPreferencesOwner;
   onProfileLogout?: () => Promise<void>;
   deleteAccount?: ReactNode;
+  accountPage?: AccountPage;
   workflowComposition: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition;
   boot: FrontendBootstrapWire;
   route: AppRouteState;
@@ -373,6 +376,7 @@ function LoadedApp({
   preferences,
   onProfileLogout,
   deleteAccount,
+  accountPage,
   workflowComposition: composeWorkflows,
   boot,
   route,
@@ -1245,7 +1249,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
           {/* Intake is a durable workspace; leaving it must not discard mapping progress. */}
-          <DashboardTakeovers deleteAccount={deleteAccount} onOpenRun={selectRun} onOpenWorkflow={openWorkflowQueue} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
+          <DashboardTakeovers deleteAccount={deleteAccount} accountPage={accountPage} onOpenRun={selectRun} onOpenWorkflow={openWorkflowQueue} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
             client={client} workflowCatalog={explorerCatalog} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} spreadsheetSource={workflowComposition.spreadsheets} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}

@@ -5,7 +5,7 @@ import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMe
 import { DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../../ds/primitives/dropdown-menu.js";
 import { DATASETS, missingRequired, samplesOf, withMapping, type Sheet, type Worksheet } from "../../spreadsheets/design/sheets-v2-model.js";
 import { sheetKey, ticked, type StatusMockPicks } from "./status-mock-picks.js";
-import { AccountSettings, type AccountValues } from "../account/account-settings.js";
+import { AccountSettings } from "../account/account-settings.js";
 import { SubscriptionSettings, type SubscriptionAccount } from "../subscription/subscription-settings.js";
 import { AppLockup } from "../../shell/app-lockup.js";
 import "../../shell/onboarding.css";
@@ -111,14 +111,10 @@ function ToastsLiveMock() {
   return null;
 }
 
-/** The Account page on fixtures: every frame starts from its own state, and edits stay local. */
+/** The Account page on fixtures. */
 export function StatusMockAccount({ frame }: { frame: StatusMockId }) {
-  const [values, setValues] = useState<AccountValues>(STATUS_MOCK_ACCOUNT.values);
-  const [duo, setDuo] = useState<"ready" | "setup">(frame === "account-duo-setup" ? "setup" : "ready");
-  return <AccountSettings values={values} duo={duo}
-    initialEdit={frame === "account-edit" ? "name" : frame === "account-password" ? "relayPassword" : undefined} initialConfirmDelete={frame === "account-delete"}
-    onSave={(field, value) => { if (field !== "ucpathPassword") setValues(current => ({ ...current, [field]: value })); }}
-    onPasswordChange={noop} onDuoSetup={() => setDuo("ready")} onSignOut={noop} onDelete={noop} />;
+  return <AccountSettings page={{ values: STATUS_MOCK_ACCOUNT.values, duo: frame === "account-duo-setup" ? "setup" : "ready", onSignOut: noop }}
+    ucpath={null} deleteAccount={null} />;
 }
 
 /** The Subscription page on fixtures; the frame picks a connected plan, one whose 5-hour limit has run out, or a disconnected ChatGPT. */

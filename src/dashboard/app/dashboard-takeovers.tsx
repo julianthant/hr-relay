@@ -2,6 +2,7 @@ import type { SurfaceSource, WorkflowSourcePolicy } from "./workflow-sources.js"
 import "../surfaces/shared/codex-text.css";
 import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
 import type { ComponentProps,ReactNode } from "react";
+import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import {
 type FrontendBootstrapWire
 } from "../../models/dashboard/bootstrap.js";
@@ -24,7 +25,7 @@ routeWithoutTakeovers,
 type AppRouteState
 } from "./navigation/url-state.js";
 export function DashboardTakeovers({client,activitySource,today,workflowSources,takeover,route,setRoute,boot,workflowCatalog,activeWorkflowId,
- workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,spreadsheetSource,onOpenRun,onOpenWorkflow,deleteAccount,children}: {
+ workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,spreadsheetSource,onOpenRun,onOpenWorkflow,deleteAccount,accountPage,children}: {
  activitySource?: SurfaceSource; today: string; workflowSources: WorkflowSourcePolicy;
  client: ComponentProps<typeof WorkflowExplorer>["client"];
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: RouteSetter;
@@ -32,6 +33,7 @@ export function DashboardTakeovers({client,activitySource,today,workflowSources,
  workflowCatalog: readonly WorkflowCatalogEntry[]; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
  spreadsheetSource?: "mock" | "served";
  deleteAccount?: ReactNode;
+ accountPage?: AccountPage;
  onOpenRun: (runId: string, partitionDay: string) => void;
  onOpenWorkflow: (workflowId: string) => void;
  supportsDryRun: boolean;
@@ -50,6 +52,7 @@ export function DashboardTakeovers({client,activitySource,today,workflowSources,
               onOpenWorkflow={onOpenWorkflow}
               appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
               deleteAccount={deleteAccount}
+              accountPage={accountPage}
               section={route.settings ?? dataSection ?? ""}
               searchTarget={route.settingsTarget}
               dataContent={dataContent}
