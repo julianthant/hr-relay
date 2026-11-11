@@ -113,8 +113,8 @@ describe("failure, retry, and resume", () => {
     const { database, clock } = harness.authority;
     const timeline = database.authority.timelineEvents;
     const debugEvents = fault === "append"
-      ? createDebugEventWriter({ repository: { ...timeline, append: (input) => {
-        if (input.payload.kind === "debug") throw new Error("debug-append-fault");
+      ? createDebugEventWriter({ repository: { ...timeline, append: (input: unknown) => {
+        if ((input as { payload: { kind: string } }).payload.kind === "debug") throw new Error("debug-append-fault");
         return timeline.append(input);
       } }, clock, build: "test" })
       : createDebugEventWriter({ repository: timeline, clock, build: "test", development: true,
@@ -126,7 +126,7 @@ describe("failure, retry, and resume", () => {
         origin: { kind: "failure", failureId: context.failure.failureId }, createdAt: clock.now().toISOString(), contentDigest: "a".repeat(64),
         configFingerprint: context.configFingerprint, descriptorFingerprint: context.descriptorFingerprint,
         redaction: { fields: [], warnings: [] }, attachments: [], retention: { kind: "pinned", reason: "write-recovery" } }),
-      persist: () => { bundles.persisted += 1; },
+      persist: (bundle) => { bundles.persisted += 1; return bundle; },
       discard: () => { bundles.discarded += 1; },
     };
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
