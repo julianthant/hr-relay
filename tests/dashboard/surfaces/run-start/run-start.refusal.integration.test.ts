@@ -64,6 +64,8 @@ for (const rerun of [false, true]) {
     assert.equal(window.sessionStorage.length, 0);
     assert.equal(h.queueRoots.length, rerun ? 1 : 0);
     assert.equal(h.finalCommands.length, 1);
+    // Radix dispatches close autofocus on a zero-delay timer.
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
     assert.equal(document.activeElement?.textContent, rerun ? "Rerun source" : "Run workflow");
   });
   it(`${rerun ? "Rerun" : "Run"} closes and toasts safely if expiry re-preview fails`, async () => {
