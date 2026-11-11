@@ -38,7 +38,7 @@ export function editMapping(adapter: Adapter, id: string, worksheet: string, pat
     let result: SpreadsheetSaveResult | undefined;
     for (let attempt = 0; attempt < 5; attempt++) {
       const latest = adapter.draft(id);
-      if (!latest) break;
+      if (!latest || (!latest.dirty && !latest.intent)) break; // an earlier turn already saved this edit
       result = await adapter.save(id, latest.document);
       const after = adapter.draft(id);
       // Recovering an earlier save leaves newer edits unsent: send them next.
