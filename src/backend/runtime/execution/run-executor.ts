@@ -502,8 +502,6 @@ export async function executeClaimedRun(
         return new RunTerminalAdmissionLostError(outcome, authorization.expectedVersion);
       requireLifecycleApplied(outcome);
       if (prepared !== undefined && capture !== undefined) capture.persist(prepared);
-      deps.debugEvents?.emit({ category: "worker", phase: "failed", area: "run-execution", reason: "run-failed",
-        code: bound.code, correlationId: bound.failureId }, { kind: "run", runId }, envelope.workflow);
       return "settled";
     };
     if (prepared !== undefined && deps.authority.withAuthorityTransaction === undefined) {
@@ -518,6 +516,10 @@ export async function executeClaimedRun(
       if (prepared !== undefined && capture !== undefined) capture.discard(prepared);
       return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: "paused" });
     }
+    // Emitted after commit so a logging fault can neither roll back the failure nor discard its committed bundle.
+    disposed = true;
+    deps.debugEvents?.emit({ category: "worker", phase: "failed", area: "run-execution", reason: "run-failed",
+      code: bound.code, correlationId: bound.failureId }, { kind: "run", runId }, envelope.workflow);
     return RunExecutionOutcomeSchema.parse({ state: "failed", runId, failureId: bound.failureId });
     } catch (error) {
       if (!disposed && prepared !== undefined && capture !== undefined) {
