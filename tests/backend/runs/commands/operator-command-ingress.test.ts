@@ -18,7 +18,6 @@ function ingress(resolve: (answer: IdentityGateAnswerRequest, journaled: Command
 describe("operator command ingress identity answers", () => {
   it.each([
     { decision: "approved", gateRef: GATE_REF, optionRef: OPTION_REF },
-    { decision: "approved", gateRef: GATE_REF, typedEid: "10000001" },
     { decision: "rejected", gateRef: GATE_REF },
   ])("hands each answer shape to the resolver and executes the canonical command it returns: %o", async payload => {
     const resolved = CommandRequestSchema.parse({ ...envelope, family: "gate", type: "resolve-gate", target,

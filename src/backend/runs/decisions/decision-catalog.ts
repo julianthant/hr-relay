@@ -129,6 +129,12 @@ export const IDENTITY_REVIEW_TEXT = Object.freeze({
     noMatch: "No match",
     unnamed: "Name not shown in UCPath",
   },
+  /** A typed Employee ID: confirming starts the lookup that replaces this run; it approves nobody. */
+  lookup: {
+    title: "Look up this Employee ID",
+    body: "Relay replaces this run with one that looks up the Employee ID you entered. You confirm the person it finds before anything is filed.",
+    confirmLabel: "Look up",
+  },
   confirm: {
     agreed: "Every check agreed. Approving files the rest of this separation for this person.",
     disagreed: "Approving files the rest of this separation for this person anyway.",

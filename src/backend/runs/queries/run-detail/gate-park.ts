@@ -37,6 +37,7 @@ import { deterministicUuid } from "../../lifecycle/support.js";
 import { directIdentifierDisplay, idempotencyKeyDigestReference } from "../../../../rules/redaction/redaction.js";
 import { SectionUnavailableError } from "../../commands/refusals.js";
 import type { RunDetailQueryDeps } from "../run-detail-types.js";
+import { correctionStartRequest } from "./receipts-failures.js";
 import { requireTrustRun } from "../../trust/run-reader.js";
 import { availableSections } from "./availability.js";
 import { descriptorRuntimeNodes, runtimeNodeLabel } from "../../../../workflow-kit/workflow.js";
@@ -451,6 +452,7 @@ function buildIdentityGatePayload(deps: RunDetailQueryDeps, authority: RunRecord
   if (read.state === "missing") return read;
   const { facts } = read;
   const actions = ActionDescriptorWireSchema.array().parse(identityGateActions(facts));
+  const correction = facts.options.length > 1 ? identityGateCorrection(deps, authority, facts.gateId) : undefined;
   return {
     state: "available",
     value: IdentityGateDetailWireSchema.parse({
@@ -466,9 +468,21 @@ function buildIdentityGatePayload(deps: RunDetailQueryDeps, authority: RunRecord
       approvalShape: facts.options.length > 1 ? "choose-a-candidate" : "one-click",
       actions,
       decision: identityGateDecision(facts.options, actions, facts.arms, deps.projection.queueSurface(facts.runId)?.actions,
-        { documentName: facts.packet.documentName }),
+        { documentName: facts.packet.documentName }, correction),
+      ...(correction === undefined ? {} : { correction }),
     }),
   };
+}
+
+/** The fill row's lookup: a typed value restarts this run's lookup for that person, served only where the workflow declares it for this gate. */
+function identityGateCorrection(deps: RunDetailQueryDeps, authority: RunRecord, gateId: string) {
+  const canonical = deps.canonical;
+  const descriptor = canonical?.descriptors.resolve(authority.envelope.workflow);
+  const declared = descriptor?.gateCorrections?.find(entry => entry.gateId === gateId);
+  if (canonical === undefined || descriptor === undefined || declared === undefined) return undefined;
+  const request = correctionStartRequest(canonical, descriptor, authority, { gateCorrection: { gateId, inputField: declared.inputField } });
+  return request === undefined ? undefined : { inputField: declared.inputField, label: declared.label, placeholder: declared.placeholder,
+    pattern: declared.pattern, expectedVersion: authority.version, confirm: { ...IDENTITY_REVIEW_TEXT.lookup, tone: "neutral" as const }, request };
 }
 
 /** Why Relay asks: several matches, else the first disagreement in the packet's disagreements-first order. */
@@ -504,6 +518,7 @@ export function identityGateDecision(
   arms: readonly Readonly<{ outcome: string; label: string; hint: string }>[],
   rowActions: readonly ActionDescriptorWire[] | undefined,
   subject?: Readonly<{ documentName: string }>,
+  typed?: Readonly<{ label: string; placeholder: string; pattern: string }>,
 ): RunDecisionWire {
   const find = (resolution: "approved" | "rejected") => actions.find(action => action.kind === "command" && action.resolution === resolution);
   const approved = find("approved"), approve = approved?.key, reject = find("rejected")?.key;
@@ -523,7 +538,7 @@ export function identityGateDecision(
       rows: options.map(option => ({ id: option.ref, name: option.displayName, cells: [
         { columnId: "name", value: option.displayName }, { columnId: "eid", value: option.maskedEid }, { columnId: "origin", value: option.origin },
       ] })),
-      typed: { label: "Enter employee ID", placeholder: "8 digits", pattern: "^\\d{8}$", serverMatched: true as const },
+      ...(typed === undefined ? {} : { typed: { label: typed.label, placeholder: typed.placeholder, pattern: typed.pattern, lookup: true as const } }),
     } } }]),
     ...rowActionOption("cancel-run", "cancel", rowActions),
   ], subject === undefined ? {} : { title: `Which ${subject.documentName} is this run about?`, context: `UCPath found ${options.length} people with this name.` });
@@ -595,12 +610,8 @@ export function resolveIdentityGateAnswer(
     if (facts.rejected?.rejectReason === undefined) return refused("invalid-state", "This identity review has no reject answer.");
     value = IdentityApprovalResultSchema.parse({ decision: "rejected", reason: facts.rejected.rejectReason, evidenceDigest: facts.evidenceDigest });
   } else {
-    const option = "optionRef" in payload
-      ? facts.options.find(({ ref }) => ref === payload.optionRef)
-      : facts.options.find(({ eid }) => eid === payload.typedEid);
-    if (option === undefined) {
-      return refused("invalid-state", "optionRef" in payload ? STALE_IDENTITY_ANSWER : "That Employee ID is not one of the people Relay found.");
-    }
+    const option = facts.options.find(({ ref }) => ref === payload.optionRef);
+    if (option === undefined) return refused("invalid-state", STALE_IDENTITY_ANSWER);
     value = IdentityApprovalResultSchema.parse({ decision: "approved", eid: option.eid, chosenFrom: option.chosenFrom, evidenceDigest: facts.evidenceDigest });
   }
   const { commandId, requestedAt, requestedBy, source, target } = answer;
@@ -618,7 +629,7 @@ function journaledAnswerMatches(journaled: Extract<CommandRequest, { family: "ga
   if (gateRef !== answer.payload.gateRef) return false;
   const { payload } = answer;
   if (parsed.data.decision === "rejected" || payload.decision === "rejected") return true;
-  return "optionRef" in payload ? identityOptionRef(parsed.data.evidenceDigest, parsed.data.eid) === payload.optionRef : parsed.data.eid === payload.typedEid;
+  return identityOptionRef(parsed.data.evidenceDigest, parsed.data.eid) === payload.optionRef;
 }
 
 function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord): unknown {
