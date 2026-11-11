@@ -16,7 +16,7 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
 
 const APPROVED_NAV = [
-  ["Personal", ["general", "account"]],
+  ["Personal", ["general", "account", "subscription"]],
   ["Data", ["spreadsheets", "explorer", "activity"]],
   ["Help", ["keyboard"]],
 ];

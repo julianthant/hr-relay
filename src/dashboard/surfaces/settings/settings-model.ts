@@ -129,7 +129,6 @@ export function buildSettingsNav(
   groups.push({ id: "personal", heading: "Personal", entries: [
     clientEntry("general", "General", "general"),
     clientEntry("account", "Account", "credentials"),
-    // The plan and limits are not served yet: the Subscription page exists only in the design frames.
     clientEntry("subscription", "Subscription", "subscription"),
   ] });
   const advanced = editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
