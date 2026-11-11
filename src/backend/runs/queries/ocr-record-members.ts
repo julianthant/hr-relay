@@ -255,7 +255,7 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
   }
   const selected = new Set(group === undefined ? snapshot.selectedRecordIds : bound.keys());
   const runIds = [...new Set([...source.runIds,...[...bound.values()].flatMap(member => member.history)])];
-  return QueueRecordMembersSchema.parse({ runIds, members: source.members.filter(row => {
+  const members = source.members.filter(row => {
     const member = row.kind === "record" ? bound.get(row.record.recordId) : undefined;
     if (member === undefined || group === undefined) return true;
     const visibility = group.invocation.policy.visibility;
@@ -290,7 +290,8 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
       target: { runId: focus.envelope.runId, workflowId: focus.envelope.workflow,
         partitionDay: LocalDateSchema.parse(localDatePart(new Date(focus.envelope.enqueuedAt))), label: resolve(focus.envelope.workflow)?.label ?? focus.envelope.workflow,
         status: focusStatus, panelKind: panelKindOf(focus.envelope.shape, false), section: "logs" } };
-  }) });
+  });
+  return QueueRecordMembersSchema.parse({ runIds: [...new Set([...runIds, ...members.flatMap(row => row.childRunIds)])], members });
 }
 
 export function hostedOcrRun(repositories: AuthorityRepositories, host: RunRecord): RunRecord | undefined {
