@@ -32,6 +32,7 @@ for (const kind of ["closure", "unknown"] as const) it(`serves explicit ${kind} 
   registerChatGptAccountRoutes(app, { clock, chatGptAccount: {
     readStatus: async signal => { observed = signal; if (kind === "closure") throw new ChatGptResourceClosureUnprovedError(new Error("private")); throw new Error("private"); },
     refreshAccount: async () => { throw new Error("unexpected refresh"); },
+    forgetAccount: async () => { throw new Error("unexpected forget"); },
     signIn: async () => { throw new Error("unexpected sign-in"); }, signOut: async () => { throw new Error("unexpected sign-out"); },
   } });
   const request = new Request(path, { signal: abort.signal });

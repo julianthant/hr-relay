@@ -17,7 +17,7 @@ function setup(overrides: Partial<ChatGptAccountQueries> = {}) {
     startChatGptSignIn: async () => started,
     completeChatGptSignIn: async () => { connected = true; return { state: "completed", attemptId, account }; },
     cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }),
-    signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }),
+    forgetChatGptAccount: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }), signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }),
     testChatGptOcr: async () => { calls.push("ocr"); return { state: "completed", model: "Synthetic OCR" }; },
     ...overrides,
   };
@@ -132,7 +132,7 @@ it("aborts pending OCR when an account sign-out starts", async () => {
   const result = Promise.withResolvers<Awaited<ReturnType<ChatGptAccountQueries["testChatGptOcr"]>>>();
   const signOut = Promise.withResolvers<Awaited<ReturnType<ChatGptAccountQueries["signOutChatGpt"]>>>();
   let signal: AbortSignal | undefined;
-  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(account), testChatGptOcr: value => { signal = value; return result.promise; }, signOutChatGpt: () => signOut.promise });
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(account), testChatGptOcr: value => { signal = value; return result.promise; }, forgetChatGptAccount: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }), signOutChatGpt: () => signOut.promise });
   try {
     await f.account.refresh(); const testing = f.port.testOcr();
     const signingOut = f.account.signOut(); assert.equal(signal?.aborted, true);
@@ -152,7 +152,9 @@ it("does not use retained connected identity when the current account read is un
     await f.account.refresh(); await f.account.refresh();
     assert.equal(f.account.getSnapshot().state, "unavailable");
     const retained = f.account.getSnapshot();
-    assert.ok("account" in retained); assert.equal(retained.account?.state, "connected");
+    assert.equal(retained.state, "unavailable");
+    if (retained.state !== "unavailable") throw new Error("unavailable account required");
+    assert.equal(retained.account?.state, "connected");
     await f.port.testOcr(); assert.equal(calls, 0); assert.equal(f.port.getSnapshot().state, "disabled");
   } finally { f.dispose(); }
 });
