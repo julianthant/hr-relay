@@ -7,9 +7,9 @@
 # capturedAt: 2026-08-03
 
 - region "Notifications"
-- dialog "Start a run":
+- dialog "Start run":
   - banner:
-    - heading "Start a run" [level=2]
+    - heading "Start run" [level=2]
     - paragraph: Old Kronos Reports · Workflow preview
     - button "Close"
   - complementary:
@@ -47,7 +47,7 @@
       - heading "Utils" [level=3]
       - list:
         - listitem:
-          - button "CRM Doc Download"
+          - button "Onboarding Documents"
       - heading "OnBase" [level=3]
       - list:
         - listitem:
@@ -60,32 +60,43 @@
     - listitem:
       - button "1 Input": Input
     - listitem:
-      - button "2 Options" [disabled]: Options
-    - listitem:
-      - button "3 Confirm" [disabled]: Confirm
-  - heading "Run input" [level=3]
-  - paragraph: Each entry starts one run.
+      - button "2 Options": Options
   - region "Input":
-    - text: Employee IDs
-    - textbox "Employee IDs":
-      - /placeholder: 10000001, 10000002
-      - text: "10000001"
-    - paragraph: Separate values with a comma or a new line.
+    - region "Report period":
+      - heading "Report period" [level=4]
+      - text: Report start First day of the report. Report start*
+      - group "Report start*":
+        - spinbutton "month, Report start*": "01"
+        - spinbutton "day, Report start*": "01"
+        - spinbutton "year, Report start*": "2017"
+        - button "Choose report start date Report start*"
+      - text: Report end Last day of the report. Report end*
+      - group "Report end*":
+        - spinbutton "month, Report end*": "01"
+        - spinbutton "day, Report end*": "31"
+        - spinbutton "year, Report end*": "2026"
+        - button "Choose report end date Report end*"
+    - region "Input":
+      - heading "Input" [level=4]
+      - paragraph: Employee IDs. Separate values with a comma or Shift+Enter.
+      - textbox "Employee IDs":
+        - /placeholder: 10000001, 10000002
+        - text: "10000001"
     - list "Parsed inputs":
       - listitem: 1 10000001
-    - text: Report start*
-    - group "Report start*":
-      - spinbutton "month, Report start*": "01"
-      - spinbutton "day, Report start*": "01"
-      - spinbutton "year, Report start*": "2017"
-      - button "Choose report start date Report start*"
-    - text: Report end*
-    - group "Report end*":
-      - spinbutton "month, Report end*": "01"
-      - spinbutton "day, Report end*": "31"
-      - spinbutton "year, Report end*": "2026"
-      - button "Choose report end date Report end*"
+    - region "Reference spreadsheets":
+      - heading "Reference spreadsheets" [level=4]
+      - paragraph: Spreadsheets this run looks people up in. Needs Employee ID and Name.
+      - text: Contact roster Roster
+      - button "Contact roster worksheets, Roster": Roster
+      - combobox "Contact roster version": v6
+      - button "Remove Contact roster"
+      - text: I-9 tracker Sheet1
+      - button "I-9 tracker worksheets, Sheet1": Sheet1
+      - combobox "I-9 tracker version": v3
+      - button "Remove I-9 tracker"
+    - button "Add spreadsheet"
   - contentinfo:
-    - text: 1 runOld Kronos Reports
+    - text: Old Kronos Reports3 of 3 stepsPriority Enter to continue
     - button "Cancel"
     - button "Continue"

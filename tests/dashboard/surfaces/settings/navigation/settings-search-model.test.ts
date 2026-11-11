@@ -5,8 +5,8 @@ import { buildSettingsNav } from "../../../../../src/dashboard/surfaces/settings
 import { fixtureSettingsDocument } from "../../../../parity/helpers/fixture-settings.js";
 
 const document = fixtureSettingsDocument();
-const groups = buildSettingsNav([], document);
-const index = settingsSearchIndex(groups, document, true);
+const groups = buildSettingsNav(document);
+const index = settingsSearchIndex(groups, document);
 
 describe("Settings field search", () => {
   it("finds pages and the displayed field names with their canonical parent page", () => {
@@ -18,19 +18,18 @@ describe("Settings field search", () => {
     ]);
     for (const [term, section, target] of [
       ["job end date", "general", `annualDates.FY${document.currentFiscalYear}.jobEndDate`],
-      ["CRM onboarding search", "routes", "urls.crm.prod.onboardingSearch"],
       ["OpenAI login", "general", "chatgpt.account"],
-      ["UCPath username", "credentials", "protected.ucpathUserId"],
-      ["runtime state folder", "paths", "paths.stateRoot"],
+      ["UCPath username", "account", "protected.ucpathUserId"],
     ]) assert.ok(searchSettings(index, term).some(result => result.entry.id === section && result.target === target), term);
-    assert.equal(searchSettings(index, "Data")[0]?.label, "Data");
-    assert.equal(searchSettings(index, "Evidence")[0]?.label, "Evidence");
+    assert.deepEqual(searchSettings(index, "runtime state folder"), []);
+    assert.deepEqual(searchSettings(index, "CRM onboarding search"), []);
+    assert.equal(index.some(result => result.entry.id === "storage" || result.entry.id === "routes" || result.entry.id === "paths"), false);
     assert.equal(new Set(index.map(result => result.id)).size, index.length);
   });
 
   it("finds read-only profile facts without retaining the retired pseudonym field", () => {
-    assert.deepEqual(searchSettings(index, "Timekeeper name").map(result => [result.entry.id, result.target]), [["credentials", "profile.displayName"]]);
-    assert.deepEqual(searchSettings(index, "Timekeeper initials").map(result => [result.entry.id, result.target]), [["credentials", "profile.initials"]]);
+    assert.deepEqual(searchSettings(index, "Timekeeper name").map(result => [result.entry.id, result.target]), [["account", "profile.displayName"]]);
+    assert.deepEqual(searchSettings(index, "Timekeeper initials").map(result => [result.entry.id, result.target]), [["account", "profile.initials"]]);
     assert.deepEqual(searchSettings(index, "pseudonym"), []);
     assert.equal(index.some(result => result.target === "protected.timekeeperName"), false);
   });
@@ -73,10 +72,9 @@ describe("Settings field search", () => {
   });
 
   it("retains page search when reads fail without inventing served fields", () => {
-    const unavailable = settingsSearchIndex(buildSettingsNav([]));
+    const unavailable = settingsSearchIndex(buildSettingsNav());
     assert.ok(searchSettings(unavailable, "performance").some(result => result.target === undefined));
     assert.deepEqual(searchSettings(unavailable, "backoff"), []);
     assert.deepEqual(searchSettings(unavailable, "runtime state folder"), []);
-    assert.deepEqual(searchSettings(settingsSearchIndex(groups, undefined, true), "runtime state folder"), []);
   });
 });

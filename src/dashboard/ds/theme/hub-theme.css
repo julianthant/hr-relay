@@ -3,11 +3,11 @@
   --hub-fast-duo-ink: #fff;
   --hub-focus-fill: #d6d6d6;
   --hub-focus-ink: #151515;
-  --hub-primary-border: #747474;
-  --hub-primary: #202020;
-  --hub-primary-ink: #fafafa;
-  --hub-primary-hover: #343434;
-  --hub-switch: #3b82f6;
+  --hub-primary-border: var(--ui-info);
+  --hub-primary: var(--ui-info);
+  --hub-primary-ink: var(--ds-accent-fg);
+  --hub-primary-hover: color-mix(in srgb, var(--ui-info) 88%, var(--ds-accent-fg));
+  --hub-switch: var(--ds-switch-on);
   --hub-shadow: 0 8px 32px #0002;
   --hub-panel-shadow: 0 4px 16px #0002;
   --hub-dialog-shadow: 0 20px 60px #0003;
@@ -32,10 +32,17 @@ html[data-hub] :is(.ds-focus-within, .ds-secret-input, .ds-unit-field):focus-wit
   box-shadow: none !important;
 }
 html[data-hub] [tabindex="-1"]:not([role="menu"]):focus-visible { background: transparent !important; color: inherit !important; }
-html[data-hub] .ds-search-field [data-slot="search-field-group"]:focus-within { box-shadow: none; }
+/* Text fields never take a ring: the edge steps up one neutral step. */
+html[data-hub] :is(.date-input-group, .ds-secret-input, .ds-unit-field):is(:focus-within, [data-focus-within="true"]),
+html[data-hub] :is(textarea, input.input):focus-visible { border-color: var(--ds-field-focus-edge); box-shadow: none; }
+html[data-hub] .date-input-group:is(:focus-within, [data-focus-within="true"]) { box-shadow: none !important; outline: none; }
+html[data-hub] .ds-search-field [data-slot="search-field-group"]:focus-within { border-color: var(--ds-field-focus-edge); box-shadow: inset 0 0 0 1px var(--ds-field-focus-edge); }
+html[data-hub] .launch-picker-search .ds-search-field [data-slot="search-field-group"]:focus-within { box-shadow: none; }
 html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="off"] *::after {
   animation: none !important; transition: none !important; scroll-behavior: auto !important;
 }
 @media (prefers-reduced-motion: reduce) {
   html[data-hub] *, html[data-hub] *::before, html[data-hub] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+/* The floating assistant sits above the Sessions bar and below every dialog and drawer. */
+html[data-hub] #hub-panel-assistant { z-index: var(--ds-layer-assistant); }

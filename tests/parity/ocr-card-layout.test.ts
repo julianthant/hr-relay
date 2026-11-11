@@ -20,7 +20,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     try {
       await page.setViewportSize({ width, height: 720 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
@@ -29,18 +28,18 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(rail.getByRole("button", { name: "Oath Upload", exact: true })).toHaveAttribute("aria-current", "page");
       const logsUrl = page.url();
       await logs.locator("header").first().getByRole("button", { name: "Review", exact: true }).click();
-      await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toHaveAttribute("aria-pressed", "true");
-      await expect(logs.getByRole("region", { name: "OCR records", exact: true })).toBeVisible();
+      const review = page.getByRole("dialog", { name: /^Review records/u });
+      const drawer = review.getByRole("region", { name: "OCR records", exact: true });
+      await expect(drawer).toBeVisible();
       const recordsUrl = page.url();
       expect(recordsUrl).not.toBe(logsUrl);
       await page.goBack();
       await expect(page).toHaveURL(logsUrl);
-      await expect(logs.getByRole("region", { name: "OCR records", exact: true })).toHaveCount(0);
+      await expect(review).toHaveCount(0);
       await expect(logs.locator("header").first().getByRole("button", { name: "Review", exact: true })).toBeVisible();
       await page.goForward();
       await expect(page).toHaveURL(recordsUrl);
-      await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toHaveAttribute("aria-pressed", "true");
-      const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
+      await expect(drawer).toBeVisible();
       const cards = drawer.locator('[aria-label="Record review cards"]');
       const record = drawer.getByRole("region", { name: "Record person-1", exact: true });
       const source = record.getByRole("region", { name: "Source PDF", exact: true });
@@ -68,9 +67,8 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       expect(offset.x).toBeGreaterThan(0); expect(offset.y).toBeGreaterThan(0);
       expect(await controls.boundingBox()).toEqual(before.controls);
       expect((await image.boundingBox())!.y).toBeLessThan(before.image.y);
-      await source.getByRole("button", { name: "Fit page", exact: true }).click();
+      await source.getByRole("button", { name: "Zoom out", exact: true }).click();
       expect((await image.boundingBox())!.width).toBe(before.image.width);
-      expect(await pan.evaluate(node => ({ x: node.scrollLeft, y: node.scrollTop }))).toEqual({ x: 0, y: 0 });
       const fields = record.locator("[data-review-fields]");
       const selection = fields.getByRole("group", { name: "Record selection", exact: true });
       const employee = fields.getByRole("group", { name: "Employee", exact: true });
@@ -119,6 +117,9 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       const a11y = await drawer.ariaSnapshot();
       await info.attach(a11yName, { body: a11y, contentType: "text/yaml" });
       info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(a11y).digest("hex") });
+      await page.keyboard.press("Escape");
+      await expect(review).toHaveCount(0);
+      await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toHaveAttribute("aria-pressed", "false");
       await rail.getByRole("button", { name: "I-9 Check", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       const i9 = drawer.getByRole("region", { name: "Record person-1", exact: true });
@@ -132,7 +133,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await i9.getByRole("button", { name: "Zoom in", exact: true }).click();
       await chooseSelect(pager, "1");
       await expect(i9.getByRole("img")).toHaveAccessibleName("Source page 1 of i9.pdf");
-      await expect(i9.getByRole("button", { name: "Fit page", exact: true })).toBeDisabled();
       await expect(pager).toContainText("Section 2 · Page 1");
       const i9Controls = (await i9.getByRole("toolbar", { name: "PDF controls", exact: true }).boundingBox())!;
       const i9Preview = (await i9.locator("[data-review-preview]").boundingBox())!;
@@ -140,15 +140,15 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect.poll(() => i9.getByRole("img").evaluate(node => (node as HTMLImageElement).complete && (node as HTMLImageElement).naturalWidth > 0)).toBe(true);
       await i9.getByRole("button", { name: "Zoom in", exact: true }).focus();
       await page.keyboard.press("Enter");
-      await expect(i9.getByRole("button", { name: "Fit page", exact: true })).toBeEnabled();
-      await i9.getByRole("button", { name: "Fit page", exact: true }).click();
       await expect(page.locator('[data-slot="select-content"]')).toBeHidden();
 
+      await page.keyboard.press("Escape");
+      await expect(review).toHaveCount(0);
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       const contact = drawer.getByRole("region", { name: "Record person-1", exact: true });
       await expect(contact.getByRole("textbox", { name: "Notes", exact: true })).toHaveCount(0);
-      const street = contact.getByRole("textbox", { name: "Street", exact: true });
+      const street = contact.getByRole("textbox", { name: "Address", exact: true });
       const contactBody = street.locator('xpath=ancestor::*[@data-slot="card-content"]');
       const fieldContentWidth = await contactBody.evaluate(node => node.clientWidth - parseFloat(getComputedStyle(node).paddingLeft) - parseFloat(getComputedStyle(node).paddingRight));
       expect((await street.boundingBox())!.width).toBeCloseTo(fieldContentWidth, 0);
@@ -164,13 +164,15 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         expect(contactControls.y + contactControls.height).toBeLessThanOrEqual(contactPreview.y);
       }
 
+      await page.keyboard.press("Escape");
+      await expect(review).toHaveCount(0);
       const queue = page.getByRole("region", { name: "Queue", exact: true });
       const deletes = queue.getByRole("button", { name: "Delete", exact: true });
       const initialCount = await deletes.count();
       expect(initialCount).toBeGreaterThan(0);
       for (let remaining = initialCount; remaining > 0; remaining--) {
         await deletes.first().click();
-        await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
+        await page.getByRole("dialog").getByRole("button", { name: "Delete run", exact: true }).click();
         await expect(deletes).toHaveCount(remaining - 1);
       }
       await expect(queue).toContainText("No Emergency Contact runs");

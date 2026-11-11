@@ -8,7 +8,7 @@
 
 - region "Relay assistant":
   - button "Update Alex Rivera work email"
-  - button "Chats"
+  - button "History"
   - button "New chat"
   - button "Close assistant"
   - log "Assistant conversation": What should I check before saving? Check the person, the destination, and the values you want to change. I’ll show the details before asking you to approve. Can I keep working while you check? Yes. You can leave this chat open while you work. Come back here to review the result.
@@ -19,7 +19,6 @@
     - group "Message controls":
       - button "Add files"
       - button "Ask before every action"
-      - 'button "Model: GPT-6.1 Sol"': GPT-6.1 Sol
-      - 'button "Thinking effort: Medium"': Medium
+      - 'button "Model: GPT-6.1 Sol, Medium effort"': GPT-6.1 Sol Medium
       - button "Voice input"
       - button "Send message" [disabled]

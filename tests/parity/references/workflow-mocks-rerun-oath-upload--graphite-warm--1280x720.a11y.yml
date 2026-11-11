@@ -16,44 +16,51 @@
     - listitem:
       - button "1 Steps": Steps
     - listitem:
-      - button "2 Values" [disabled]: Values
+      - button "2 Values": Values
     - listitem:
       - button "3 Options" [disabled]: Options
-    - listitem:
-      - button "4 Confirm" [disabled]: Confirm
-  - heading "Choose what to run again" [level=3]
-  - text: 7 / 8 included
+  - heading "Steps" [level=3]
+  - text: 7 of 8 included
   - paragraph: Select steps for the new run. Statuses show the source outcome.
   - region "Steps":
-    - heading "Steps" [level=4]
-    - list:
-      - listitem:
-        - checkbox "Read oath" [checked]
-        - text: Read oath OCR Completed
-      - listitem: Match extracted people Automatic Completed
-      - listitem: Review extracted records Approval required Not started
-      - listitem: Wait for all signatures Automatic Not started
-      - listitem:
-        - checkbox "Sign in to ServiceNow" [checked] [disabled]
-        - text: Sign in to ServiceNow ServiceNow · required Not started
-      - listitem:
-        - checkbox "Open HR inquiry"
-        - text: Open HR inquiry ServiceNow Not started
-        - group "Manual values for Open HR inquiry":
-          - paragraph: Enter the values this step would read. Use “None” for an absent value. These values are operator supplied.
-          - text: Service
-          - textbox "Service": None
-          - text: Attachment
-          - textbox "Attachment": None
-      - listitem:
-        - checkbox "Attach oath PDF" [checked] [disabled]
-        - text: Attach oath PDF Form action · required Not started
-        - checkbox "Enter reading values manually for attach oath pdf"
-        - text: Enter reading values manually for attach oath pdf
-      - listitem:
-        - checkbox "File HR ticket" [checked] [disabled]
-        - text: File HR ticket Form action · required Not started
+    - region "Steps":
+      - text: Read oath OCR Completed
+      - switch "Include Read oath" [checked]
+      - text: Include Read oath
+      - img "Required"
+      - text: Match extracted people Automatic Completed
+      - switch "Match extracted people (required)" [checked] [disabled]
+      - text: Match extracted people (required)
+      - img "Required"
+      - text: Review extracted records Approval required Not started
+      - switch "Review extracted records (required)" [checked] [disabled]
+      - text: Review extracted records (required)
+      - img "Required"
+      - text: Wait for all signatures Automatic Not started
+      - switch "Wait for all signatures (required)" [checked] [disabled]
+      - text: Wait for all signatures (required)
+      - img "Required"
+      - text: Sign in to ServiceNow ServiceNow · required Not started
+      - switch "Sign in to ServiceNow (required)" [checked] [disabled]
+      - text: Sign in to ServiceNow (required) Open HR inquiry ServiceNow Not started
+      - switch "Include Open HR inquiry"
+      - text: Include Open HR inquiry
+      - group "Manual values for Open HR inquiry":
+        - text: Service
+        - textbox "Service": None
+        - text: Attachment
+        - textbox "Attachment": None
+      - img "Required"
+      - text: Attach oath PDF Form action · required Not started
+      - switch "Enter manually for Attach oath PDF"
+      - text: Enter manually for Attach oath PDF
+      - switch "Attach oath PDF (required)" [checked] [disabled]
+      - text: Attach oath PDF (required)
+      - img "Required"
+      - text: File HR ticket Form action · required Not started
+      - switch "File HR ticket (required)" [checked] [disabled]
+      - text: File HR ticket (required)
   - contentinfo:
-    - text: Source run · new runOath Upload
+    - text: Oath Upload7 of 8 stepsOCR onPriority Enter to continue
     - button "Cancel"
     - button "Continue"

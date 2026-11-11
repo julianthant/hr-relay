@@ -17,15 +17,12 @@ describe("complete workflow presentation mocks", () => {
   });
 });
 
-it("offers native creation on an empty review only when the producer supplies that authority", () => {
+it("never offers Add record: new records come from running another session", () => {
   const props: RecordReviewProps = { runId: "synthetic-empty", subject: "Synthetic document", cards: [],
-    selectedCount: 0, readOnly: false, discarded: false, onApprove: () => {}, onAdd: () => "created-record" };
-  const editable = renderToStaticMarkup(createElement(RecordReview, props));
-  expect(editable).toContain("No records extracted"); expect(editable).toContain("Add record");
-  const absent = renderToStaticMarkup(createElement(RecordReview, { ...props, onAdd: undefined }));
-  expect(absent).not.toContain("Add record");
-  const readOnly = renderToStaticMarkup(createElement(RecordReview, { ...props, readOnly: true }));
-  expect(readOnly).not.toContain("Add record");
+    selectedCount: 0, readOnly: false, discarded: false, onApprove: () => {}, onDiscard: () => {} };
+  const markup = renderToStaticMarkup(createElement(RecordReview, props));
+  expect(markup).toContain("No records extracted"); expect(markup).toContain("Approve records"); expect(markup).toContain("Discard");
+  expect(markup).not.toContain("Add record");
 });
 
 it("keeps an unknown boolean distinct from an observed No in editable and read-only records", () => {

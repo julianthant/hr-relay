@@ -1,4 +1,4 @@
-import { installFrozenMonotonic } from "./helpers/app-driver.js";
+import { installFrozenMonotonic, installServedSurfaces } from "./helpers/app-driver.js";
 
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
@@ -12,20 +12,19 @@ import { attachShellA11y } from "./helpers/shell-proof.js";
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(`one workflow catalog supplies every current selector @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `catalog-run-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: { bootstrap: FIXTURE_START_PICKER_BOOTSTRAP, day: FIXTURE_START_PICKER_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH } });
   try {
-    await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 }); await installFrozenMonotonic(page); await installTheme(page, theme);
+    await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 }); await installFrozenMonotonic(page); await installServedSurfaces(page); await installTheme(page, theme);
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET") writes.push(new URL(request.url()).pathname); });
     await page.goto(`${server.baseUrl}/?fixture=workflow-catalog&day=${FIXTURE_DAY}&sessionsPreview=empty`);
-    await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
-    await expect(rail.getByRole("button")).toHaveCount(15);
+    await expect(rail.getByRole("button")).toHaveCount(14);
     const labels = await rail.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")));
-    expect(labels).toHaveLength(15);
-    await page.getByRole("button", { name: "Start a run", exact: true }).click();
-    const run = page.getByRole("dialog", { name: "Start a run", exact: true });
+    expect(labels).toHaveLength(14);
+    await page.getByRole("button", { name: "Start run", exact: true }).click();
+    const run = page.getByRole("dialog", { name: "Start run", exact: true });
     const picker = run.getByRole("navigation", { name: "Workflow", exact: true });
-    const parentOnly = ["SharePoint Download", "I-9 Lookup"];
+    const parentOnly = ["I-9 Lookup"];
     expect(await picker.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")))).toEqual(labels.filter(label => !parentOnly.includes(label!)));
     await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeDisabled();
     await expect(picker.getByRole("button", { name: "OCR", exact: true })).toHaveAttribute("aria-description", /no standalone launch input/u);

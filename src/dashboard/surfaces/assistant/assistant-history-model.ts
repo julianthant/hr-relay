@@ -40,15 +40,15 @@ export function createAssistantHistory(storage: Pick<Storage, 'getItem' | 'setIt
   const requireChat = (id: string) => { if (!data.chats.some(chat => chat.id === id)) throw Error('HUB_CHAT_UNAVAILABLE'); };
   const chats: HubChatsPort = {
     source: 'local', read: () => data.chats, selectedId: () => data.selected ?? data.chats[0]?.id,
-    select(id) { requireChat(id); save({ ...data, selected: id }); },
-    create() {
+    async select(id) { requireChat(id); save({ ...data, selected: id }); },
+    async create() {
       if (data.chats.length >= 20) throw Error('Delete an old chat before starting another. This tab retains up to 20 chats.');
       const chat: HubChat = { id: crypto.randomUUID(), title: 'New chat', minutes: 0, group: 'Today' };
       if (!save({ ...data, chats: [chat, ...data.chats], selected: chat.id })) throw Error(NOTICE);
       return chat;
     },
-    rename(id, title) { requireChat(id); if (!title.trim() || title.trim().length > 200) throw Error('HUB_CHAT_TITLE_INVALID'); save({ ...data, chats: data.chats.map(chat => chat.id === id ? { ...chat, title: title.trim() } : chat) }); },
-    remove(id) {
+    async rename(id, title) { requireChat(id); if (!title.trim() || title.trim().length > 200) throw Error('HUB_CHAT_TITLE_INVALID'); save({ ...data, chats: data.chats.map(chat => chat.id === id ? { ...chat, title: title.trim() } : chat) }); },
+    async remove(id) {
       requireChat(id); const transcripts = { ...data.transcripts }; delete transcripts[id];
       const remaining = data.chats.filter(chat => chat.id !== id);
       save({ ...data, chats: remaining, transcripts, selected: data.selected === id ? remaining[0]?.id : data.selected });

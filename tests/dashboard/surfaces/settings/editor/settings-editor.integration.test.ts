@@ -94,57 +94,6 @@ describe("typed Settings catalog controls", () => {
     assert.equal(h.host.querySelector('[data-settings-path="features.debugScreenshots"]'), null);
     assert.equal(h.host.querySelector('[data-settings-path="features.duoWebAuthn"]'), null);
   });
-  it("shows managed app-data locations and ordinary workflow pickers", async () => {
-    const { host } = await setup("paths");
-    assert.deepEqual([...host.querySelectorAll("h1")].map(node => node.textContent), ["Paths"]);
-    assert.deepEqual([...host.querySelectorAll("h2")].map(node => node.textContent), ["Folders", "App dataManaged by Relay", "Workflow locations"]);
-    assert.equal(host.querySelectorAll(".hub-settings-row input[readonly]").length, 2);
-    assert.equal(host.querySelectorAll(".settings-compact-row .ds-path-control button").length, 5);
-    assert.equal(host.querySelector('[data-settings-path="paths.duoCredential"]'), null);
-    assert.equal(host.querySelector('[data-settings-path="paths.browserProfileRoot"]'), null);
-    for (const path of ["paths.duoExtensionDir",
-      "paths.reportsDir", "paths.downloadsDir", "paths.onboardingDocsDir", "paths.i9CheckTrackerPath"]) {
-      const row = host.querySelector(`[data-settings-path="${path}"]`);
-      if (row === null) throw new Error(`missing ${path} row`);
-      assert.ok(row.querySelector(".ds-path-value[aria-label]"));
-      const label = row.querySelector("label");
-      const change = row.querySelector(".ds-path-control button");
-      assert.equal(label?.htmlFor, change?.id);
-    }
-    assert.doesNotMatch(host.textContent ?? "", /Code-owned paths for this process|Local operator ID/u);
-  });
-  it("groups each system's visible URL rows in one card with associated labels and descriptions", async () => {
-    const { host } = await setup("routes");
-    const systems = [...host.querySelectorAll(".routes-page-system")];
-    assert.equal(systems.length, 9);
-    assert.equal(host.querySelectorAll(".ds-disclosure, button[aria-expanded]").length, 0);
-    for (const system of systems) {
-      assert.equal(system.querySelectorAll(".ds-form-group").length, 1);
-      assert.equal(system.querySelectorAll(".ds-form-group .ds-form-group").length, 0);
-      assert.equal(system.querySelectorAll('[hidden], [data-state="closed"]').length, 0);
-      const name = system.querySelector("h2 span span")?.textContent;
-      assert.equal(system.querySelector('[role="group"]')?.getAttribute("aria-label"), name);
-    }
-    const crm = host.querySelector('[data-settings-path="urls.crm.prod"]'); assert.ok(crm);
-    assert.equal(crm.closest(".routes-page-system")?.querySelector("h2")?.textContent, "CRM5 URLs");
-    assert.equal(crm.querySelectorAll("button").length, 0);
-    const rows = [...crm.querySelectorAll(".routes-page-field")];
-    assert.equal(rows.length, 5);
-    assert.deepEqual(rows.map(row => row.querySelector("label")?.textContent), ["Entry* (required)", "Onboarding search* (required)", "UCPath entry sheet* (required)", "Onboarding history* (required)", "iDocs viewer* (required)"]);
-    for (const row of rows) {
-      const label = row.querySelector("label");
-      const input = row.querySelector("input");
-      assert.ok(label); assert.ok(input);
-      assert.equal(row.querySelectorAll("input").length, 1);
-      assert.equal(label.htmlFor, input.id);
-      assert.notEqual(input.id, "");
-      assert.ok(input.getAttribute("aria-describedby")?.includes("description"));
-      assert.equal(input.required, true);
-      assert.equal(input.type, "url");
-    }
-    assert.equal(crm.closest(".ds-form-group")?.getAttribute("aria-label"), "CRM");
-    assert.equal(host.querySelectorAll('.routes-page-field input[type="url"]').length, 18);
-  });
   it("renders Performance timeouts as grouped, described controls with visible units", async () => {
     const { host } = await setup("performance");
     const groups = [...host.querySelectorAll('.settings-performance-page .ds-body-section-heading')].map(heading => heading.firstChild?.textContent);

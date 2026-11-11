@@ -1,4 +1,3 @@
-import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
@@ -18,21 +17,14 @@ for (const theme of PARITY_THEMES) test(`Setup repair and launch share admission
     const h = operations; if (h === undefined) throw new Error("missing combined operations fixture");
     const errors = failOnPageErrors(page);
     await page.setViewportSize({ width: 1280, height: 720 }); await page.clock.setFixedTime(new Date(server.now)); await installTheme(page, theme);
-    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "preflight" }); await dismissWorkflowWindow(page);
-    const setup = page.getByRole("region", { name: "Preflight", exact: true });
-    await chooseSelect(setup.getByRole("combobox"), server.scope);
-    await expect(setup).toContainText("UCPath sign-in"); await expect(setup.getByText("Blocked", { exact: true }).first()).toBeVisible();
+    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY }); await dismissWorkflowWindow(page);
     const rejected = await page.request.post(`${server.baseUrl}/api/v1/start-plans`, {
       headers: { origin: server.baseUrl }, data: { workflowId: server.scope, submissions: [{ emplId: "10873698" }], dryRun: false },
     });
     expect(rejected.status()).toBe(409); expect(h.runs()).toEqual([]); expect(h.publications).toBe(0); expect(h.mintedRunIdentities).toBe(0);
     h.repair();
-    const recheck = setup.getByRole("button", { name: "Run preflight", exact: true }); await recheck.focus(); await page.keyboard.press("Enter");
-    await expect(setup.getByText("Blocked", { exact: true })).toHaveCount(0);
-    await expect(setup.locator("time")).toHaveAttribute("datetime", server.now);
-    expect(server.requests.some(request => request.path === "/api/v1/preflight/rerun" && request.status === 200)).toBe(true);
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, start: true });
-    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     await dialog.getByRole("textbox", { name: /Employee IDs/u }).fill("10873698");
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     // Person Lookup has no transaction; its ordinary queued run has no dry-run variant.

@@ -57,15 +57,18 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
   const elapsed = Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(row.occurredAt)) / 60000));
   const context = row.context;
   const command = row.kind === "command";
-  return { id: row.notificationId, title: row.title,
+  const tone = policy?.tone ?? (row.severity === "error" ? "danger" : row.severity === "warning" ? "warning" : "info");
+  return { id: row.notificationId, title: row.title, tone,
+      kind: command ? "command" as const : row.link?.kind === "storage" ? "storage" as const : "run" as const,
+      // Notices the server marks as commands carry their own priority; error and warning notices still need the operator.
+      priority: command ? row.priority : tone === "danger" || tone === "warning",
       subject: context.state === "available" ? context.subject : inboxMessage("NOTIFICATION_CONTEXT_UNAVAILABLE"),
       workflow: context.state === "available" || context.state === "workflow-only" ? context.workflow : "",
       detail: command ? row.summary : row.sourceEvent?.state === "available" && row.sourceEvent.kind === "run-failed" && row.summary !== undefined
         ? row.summary
         : policy?.detail ?? inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"),
-      tone: policy?.tone ?? (row.severity === "error" ? "danger" : row.severity === "warning" ? "warning" : "info"),
       age: elapsed < 1 ? "Just now" : elapsed < 60 ? `${elapsed} min ago` : elapsed < 1440 ? `${Math.floor(elapsed / 60)} hr ago` : `${Math.floor(elapsed / 1440)} days ago`,
-      read: row.readState === "read", priority: command ? row.priority : false, action: command ? "Open" : row.link?.kind === "storage" ? "Open Storage" : "Open log",
+      read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "Open Storage" : "Open log",
       destination: { kind: "refused", reason: "target-unavailable" },
     };
 }

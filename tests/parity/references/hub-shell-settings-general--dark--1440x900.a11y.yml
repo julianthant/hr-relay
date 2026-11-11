@@ -18,13 +18,8 @@
       - text: Personal
       - link "General":
         - /url: "?settings=general"
-      - link "Credentials":
-        - /url: "?settings=credentials"
-      - text: Advanced
-      - link "Paths":
-        - /url: "?settings=paths"
-      - link "Routes":
-        - /url: "?settings=routes"
+      - link "Account":
+        - /url: "?settings=account"
       - text: Data
       - link "Spreadsheets":
         - /url: "?settings=spreadsheets"
@@ -32,16 +27,10 @@
         - /url: "?settings=explorer"
       - link "Analytics":
         - /url: "?settings=activity"
-      - text: Status
-      - link "Storage":
-        - /url: "?settings=storage"
-      - link "Preflight":
-        - /url: "?settings=preflight"
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
     - heading "General" [level=1]
-    - paragraph: ChatGPT account, appearance, and account controls.
     - heading "ChatGPT account" [level=2]
     - group "ChatGPT account":
       - text: Use your ChatGPT plan
@@ -53,6 +42,12 @@
       - button "Switch to light theme": Dark
       - switch "Animations"
       - text: Animations
+    - heading "Downloads" [level=2]
+    - group "Downloads":
+      - text: Downloads
+      - paragraph: Files downloaded during runs.
+      - text: /tmp/settings-fixture/downloads
+      - button "Change Downloads": Change
     - heading "Employment" [level=2]
     - group "Employment":
       - text: Job end date (required)
@@ -75,10 +70,4 @@
       - text: Delete account Remove your data and credentials from this Mac.
       - button "Delete account"
 - status
-- region "Session Panel":
-  - group "Session actions":
-    - button "Sessions 2 running·1 starting·1 idle"
-    - button "Add workers"
-    - button "Settings" [pressed]
-    - button "Log out"
 - region "Notifications"

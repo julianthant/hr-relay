@@ -20,6 +20,7 @@ import type { LogTimelineStage, LogTimelineState } from "../surfaces/run-detail/
 import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
 import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
 import { fmtActionClock, fmtElapsed } from "../surfaces/shared/status/format.js";
+import { plainStepLabel } from "./log-display.js";
 import { SYSTEM_NAME } from "../surfaces/shared/status/system-chip-model.js";
 import { ucpathFoundPresentation, type UcpathFoundDecision, type UcpathFoundPresentation } from "../surfaces/run-detail/logs/ucpath-found-model.js";
 import { workbookReferenceChoiceId, workbookReferenceLogDecision, workbookReferenceMatchesReplay, workbookReferenceTimelineEvent, workbookWriteLogStep, workbookWriteMatchesReplay, type WorkbookReferenceChoice, type WorkbookWrite } from "../surfaces/run-detail/logs/workbook-write-model.js";
@@ -93,8 +94,7 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   if (logRowsOf(logs, "identity").some(log => log.kind !== "note" && (log.attempt > row.attempt || log.traceId !== row.traceId))) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_MISMATCH");
   signal.throwIfAborted();
   const unavailableEvidence: string[] = [];
-  if (detail.captures === undefined) unavailableEvidence.push("Capture availability not supplied");
-  else if (detail.captures.state === "error") unavailableEvidence.push("Captures unavailable");
+  if (detail.captures?.state === "error") unavailableEvidence.push("Captures unavailable");
   const sections = await Promise.all(detail.availableSections.filter(name => ["captures", "identity-gate", "parked-write", "failure", "workbook-writes"].includes(name)
     && (name !== "captures" || detail.captures?.state === "available"))
     .map(name => client.runSection(row.runId, name, undefined, signal)));
@@ -364,8 +364,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       const gate = section.payload.value;
       const ceremony = identityCeremonyFor(gate);
       order.set(gate.gateRef, requireOrder(gate.order)); node.set(gate.gateRef, gateTimelineOwner(detail, gate)?.native?.nodeId ?? (detail.gate.state === "open" ? detail.gate.nodeId : undefined));
-      steps.push({ id: gate.gateRef, time: fmtActionClock(gate.parkedAt), title: gate.label,
-        entries: [{ kind: "decision", id: gate.gateRef, time: fmtActionClock(gate.parkedAt), decision: { title: gateOpen(detail) && gate.decision !== undefined ? gate.decision.title : gate.label, state: "review",
+      steps.push({ id: gate.gateRef, time: fmtActionClock(gate.parkedAt), title: plainStepLabel(gate.label),
+        entries: [{ kind: "decision", id: gate.gateRef, time: fmtActionClock(gate.parkedAt), decision: { title: gateOpen(detail) && gate.decision !== undefined ? gate.decision.title : plainStepLabel(gate.label), state: "review",
           message: gate.reason,
           comparison: gate.comparisons.map(comparison => ({ label: comparison.label, expected: comparison.request, observed: comparison.ucpath })),
           ...(ceremony.kind === "confirm" ? { field: { label: "Approving employee", value: `${ceremony.option.displayName} · ${directIdentifierDisplay(ceremony.option.maskedEid)}`,
@@ -386,7 +386,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     groupable.add(event.noteId);
     order.set(event.noteId, requireNative(event.native).order); node.set(event.noteId, requireNative(event.native).nodeId);
     const state = { failed: "Failed", blocked: "Waiting", cancelled: "Cancelled", skipped: "Skipped" }[event.state];
-    steps.push({ id: event.noteId, time, title: event.label, entries: [{ kind: "note", id: event.noteId, time,
+    steps.push({ id: event.noteId, time, title: plainStepLabel(event.label), entries: [{ kind: "note", id: event.noteId, time,
       message: reasoned(state, event.notRun.state === "present" ? event.notRun.reason : undefined) }] });
   }
   if (new Set(steps.map(step => step.id)).size !== steps.length) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_DUPLICATE");
@@ -426,7 +426,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       ...(category.durationSec === undefined ? {} : { durationLabel: fmtElapsed(category.durationSec) }),
       substeps: category.members.map(member => {
         if (member.nodeId === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_MEMBER_IDENTITY_MISMATCH");
-        return { id: member.nodeId, label: member.label,
+        return { id: member.nodeId, label: plainStepLabel(member.label),
         state: member.state === "replayed" ? "completed" : TIMELINE_STATE[member.state],
         ...(member.durationSec === undefined ? {} : { durationLabel: fmtElapsed(member.durationSec) }) }; }) };
   });

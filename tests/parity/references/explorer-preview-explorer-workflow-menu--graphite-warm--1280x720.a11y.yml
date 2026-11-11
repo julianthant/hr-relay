@@ -18,13 +18,10 @@
       - text: Personal
       - link "General":
         - /url: "?settings=general"
-      - link "Credentials":
-        - /url: "?settings=credentials"
-      - text: Advanced
-      - link "Paths":
-        - /url: "?settings=paths"
-      - link "Routes":
-        - /url: "?settings=routes"
+      - link "Account":
+        - /url: "?settings=account"
+      - link "Subscription":
+        - /url: "?settings=subscription"
       - text: Data
       - link "Spreadsheets":
         - /url: "?settings=spreadsheets"
@@ -32,11 +29,6 @@
         - /url: "?settings=explorer"
       - link "Analytics":
         - /url: "?settings=activity"
-      - text: Status
-      - link "Storage":
-        - /url: "?settings=storage"
-      - link "Preflight":
-        - /url: "?settings=preflight"
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
@@ -56,8 +48,7 @@
           - option "Emergency Contact"
           - option "Work-Study"
           - option "Kronos Pay Rule"
-          - option "CRM Doc Download"
-          - option "SharePoint Download"
+          - option "Onboarding Documents"
           - option "OnBase"
           - option "Old Kronos Reports"
       - list "Workflow steps":
@@ -224,10 +215,4 @@
           - text: Verify every staged field and preserve existing comments Click Save Reload and verify the saved document
       - paragraph: Separation filed and Kuali document verified
 - status
-- region "Session Panel":
-  - group "Session actions":
-    - button "Sessions 2 running·1 starting·1 idle"
-    - button "Add workers"
-    - button "Settings" [pressed]
-    - button "Log out"
 - region "Notifications"

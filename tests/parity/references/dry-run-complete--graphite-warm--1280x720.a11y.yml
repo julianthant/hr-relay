@@ -8,8 +8,9 @@
 
 - complementary "Workspace":
   - heading "Relay" [level=2]
+  - button "Collapse sidebar" [expanded]
   - button "Notifications, 0 unread"
-  - button "Search runs"
+  - button "Search"
   - navigation "Workflows":
     - heading "Search" [level=3]
     - list:
@@ -48,13 +49,11 @@
         - time: 09:12:40
         - heading "Submit" [level=3]
         - text: UCPath
-        - time: 09:12:40
         - paragraph: Not clicked in a dry run.
       - region "Finalize in Kuali":
         - time: 09:12:52
         - heading "Finalize in Kuali" [level=3]
         - text: Kuali
-        - time: 09:12:52
         - paragraph: Filled, not saved.
         - region "Full dry-run preview":
           - heading "Dry run result" [level=4]

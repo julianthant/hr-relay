@@ -18,12 +18,12 @@ for(const theme of PARITY_THEMES){
   test(`Run dialog restores its external door after every dismissal @ ${theme.name}`,async({page})=>{
     await installTheme(page,theme);
     await gotoAppState(page,fixture.baseUrl,{day:FIXTURE_DAY});
-    const start=page.getByRole("button",{name:"Start a run",exact:true});
+    const start=page.getByRole("button",{name:"Start run",exact:true});
     for(const launch of ["button","shortcut"]){
       for(const dismissal of ["Cancel","Escape","Close"]){
         if(launch==="button")await start.press("Enter");
         else {await start.focus();await page.keyboard.press("r");}
-        const dialog=page.getByRole("dialog",{name:"Start a run",exact:true});await expect(dialog).toBeVisible();
+        const dialog=page.getByRole("dialog",{name:"Start run",exact:true});await expect(dialog).toBeVisible();
         await expect.poll(()=>dialog.evaluate(el=>el.contains(document.activeElement))).toBe(true);
         if(dismissal==="Escape")await page.keyboard.press("Escape");
         else await dialog.getByRole("button",{name:dismissal,exact:true}).press("Enter");
@@ -85,7 +85,7 @@ for(const theme of PARITY_THEMES){
     await expect(page.getByRole("button",{name:"Discard changes",exact:true})).toBeVisible();
     await page.getByRole("button",{name:"Keep editing",exact:true}).click();
     await page.goBack();await page.getByRole("button",{name:"Discard changes",exact:true}).click();
-    await expect(page.getByRole("button",{name:"Start a run",exact:true})).toBeVisible();
+    await expect(page.getByRole("button",{name:"Start run",exact:true})).toBeVisible();
     await expect(page.getByRole("button",{name:"Back to dashboard",exact:true})).toHaveCount(0);
     expect(new URL(page.url()).searchParams.has("settings")).toBe(false);
   });

@@ -16,43 +16,42 @@
     - listitem:
       - button "1 Steps": Steps
     - listitem:
-      - button "2 Values" [disabled]: Values
+      - button "2 Values": Values
     - listitem:
       - button "3 Options" [disabled]: Options
-    - listitem:
-      - button "4 Confirm" [disabled]: Confirm
-  - heading "Choose what to run again" [level=3]
-  - text: 7 / 7 included
+  - heading "Steps" [level=3]
+  - text: 7 of 7 included
   - paragraph: Select steps for the new run. Statuses show the source outcome.
   - region "Steps":
-    - heading "Steps" [level=4]
-    - list:
-      - listitem:
-        - checkbox "Read Kuali document" [checked]
-        - text: Read Kuali document Kuali Completed
-      - listitem:
-        - checkbox "Verify employee identity" [checked]
-        - text: Verify employee identity UCPath Completed
-      - listitem:
-        - checkbox "Read job summary" [checked] [disabled]
-        - text: Read job summary Form action · required Completed
-        - checkbox "Enter reading values manually for read job summary"
-        - text: Enter reading values manually for read job summary
-      - listitem:
-        - checkbox "Read timecard" [checked] [disabled]
-        - text: Read timecard Form action · required Completed
-        - checkbox "Enter reading values manually for read timecard"
-        - text: Enter reading values manually for read timecard
-      - listitem:
-        - checkbox "Check pending termination" [checked]
-        - text: Check pending termination UCPath Completed
-      - listitem:
-        - checkbox "Submit termination" [checked] [disabled]
-        - text: Submit termination Form action · required Completed
-      - listitem:
-        - checkbox "Finalize Kuali document" [checked] [disabled]
-        - text: Finalize Kuali document Form action · required Completed
+    - region "Steps":
+      - text: Read Kuali document Kuali Completed
+      - switch "Include Read Kuali document" [checked]
+      - text: Include Read Kuali document Verify employee identity UCPath Completed
+      - switch "Include Verify employee identity" [checked]
+      - text: Include Verify employee identity
+      - img "Required"
+      - text: Read job summary Form action · required Completed
+      - switch "Enter manually for Read job summary"
+      - text: Enter manually for Read job summary
+      - switch "Read job summary (required)" [checked] [disabled]
+      - text: Read job summary (required)
+      - img "Required"
+      - text: Read timecard Form action · required Completed
+      - switch "Enter manually for Read timecard"
+      - text: Enter manually for Read timecard
+      - switch "Read timecard (required)" [checked] [disabled]
+      - text: Read timecard (required) Check pending termination UCPath Completed
+      - switch "Include Check pending termination" [checked]
+      - text: Include Check pending termination
+      - img "Required"
+      - text: Submit termination Form action · required Completed
+      - switch "Submit termination (required)" [checked] [disabled]
+      - text: Submit termination (required)
+      - img "Required"
+      - text: Finalize Kuali document Form action · required Completed
+      - switch "Finalize Kuali document (required)" [checked] [disabled]
+      - text: Finalize Kuali document (required)
   - contentinfo:
-    - text: Source run · new runSeparations
+    - text: Separations7 of 7 stepsPriority Enter to continue
     - button "Cancel"
     - button "Continue"
