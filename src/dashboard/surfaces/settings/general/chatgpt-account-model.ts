@@ -214,6 +214,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
       if (result.state === "signed-out") {
         const account = forget ? { state: "signed-out" as const } : await readWithDeadline(async () => (await client.chatGptAccount()).account, "CHATGPT_AUTH_UNAVAILABLE");
         if (!current(request)) return;
+        if (account.state === "signing-in") { problem("uncertain", "CHATGPT_AUTH_UNAVAILABLE", account); return; }
         if (result.remoteRevocation === "unconfirmed") {
           clearTimeout(expiryTimer);
           resource = { state: account.state === "signed-out" ? "empty" : "loaded", account, warning: "CHATGPT_REVOCATION_UNCONFIRMED" };

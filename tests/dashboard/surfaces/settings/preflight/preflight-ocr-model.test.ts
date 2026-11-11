@@ -152,7 +152,9 @@ it("does not use retained connected identity when the current account read is un
     await f.account.refresh(); await f.account.refresh();
     assert.equal(f.account.getSnapshot().state, "unavailable");
     const retained = f.account.getSnapshot();
-    assert.ok("account" in retained); assert.equal(retained.account?.state, "connected");
+    assert.equal(retained.state, "unavailable");
+    if (retained.state !== "unavailable") throw new Error("unavailable account required");
+    assert.equal(retained.account?.state, "connected");
     await f.port.testOcr(); assert.equal(calls, 0); assert.equal(f.port.getSnapshot().state, "disabled");
   } finally { f.dispose(); }
 });

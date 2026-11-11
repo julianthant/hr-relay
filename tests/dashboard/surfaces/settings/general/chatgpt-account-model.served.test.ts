@@ -59,7 +59,7 @@ it("preserves failed, refused and uncertain outcomes with one uncertain state re
   try { await failed.port.refresh(); assert.equal(failed.port.getResource().state, "failed"); assert.doesNotMatch(JSON.stringify(failed.port.getSnapshot()), /secret/u); } finally { failed.port.dispose(); }
 });
 it("retains local signed-out authority and warns on unconfirmed remote revocation", async () => {
-  const f = setup({ forgetChatGptAccount: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }), signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "unconfirmed" }) });
+  const f = setup({ signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "unconfirmed" }) });
   try {
     await f.port.refresh(); await f.port.signOut();
     assert.deepEqual(f.port.getResource(), { state: "empty", account: { state: "signed-out" }, warning: "CHATGPT_REVOCATION_UNCONFIRMED" });
@@ -474,5 +474,16 @@ it("reads the retained identity after disconnect and clears it with the forget c
     await f.port.refresh(); await f.port.signOut(); assert.deepEqual(f.port.getSnapshot(), retained);
     await f.port.forgetAccount(); assert.deepEqual(f.port.getSnapshot(), { state: "signed-out" });
     assert.equal(forgets, 1); assert.equal(signouts, 1);
+  } finally { f.port.dispose(); }
+});
+
+it("keeps a concurrent sign-in uncertain when disconnect readback finds a pending ceremony", async () => {
+  let reads = 0;
+  const pending: ChatGptAccountView = { state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account };
+  const f = setup({ chatGptAccount: async () => chatGptStatusFixture(++reads === 1 ? account : pending) });
+  try {
+    await f.port.refresh(); await f.port.signOut();
+    assert.equal(f.port.getResource().state, "uncertain");
+    assert.deepEqual(f.port.getSnapshot(), { state: "unavailable", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text, account: pending });
   } finally { f.port.dispose(); }
 });
