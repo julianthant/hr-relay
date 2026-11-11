@@ -32,7 +32,7 @@ export function buildEmergencyContactRecords(author: WorkflowAuthor<typeof Emerg
           employees.set(employee, desired);
         }
       },
-      memberInput: (_input, approved) => approved });
+      memberInput: (input, approved, pages) => ({ ...approved, document: input.document, sourcePage: pages[0] }) });
   return { ...graph, steps: [[READ_DOCUMENT_STEP, graph.steps[0][1]]] as const,
     result: author.result(ReadApprovedOcrSnapshot.output, [graph.approved], ({ outputs }) => outputs["approved-records"]) };
 }

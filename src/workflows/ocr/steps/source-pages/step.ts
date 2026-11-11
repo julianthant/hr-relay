@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { ReadApprovedOcrSnapshot } from "../../../../models/processing/ocr/read-approved-snapshot.js";
 import { ApprovedOcrRecordInputSchema } from "../../../../models/workflows/ocr/approved-record.js";
 import type { OcrApprovedSnapshot } from "../../../../models/ocr/review.js";
+import { ocrRecordSourcePages } from "../../../../models/ocr/review-record.js";
 import type { WorkflowRef } from "../../../../models/workflow/graph.js";
 import { EidSchema, type BrowserSystemId } from "../../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
@@ -170,7 +171,7 @@ export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput ext
     memberLabel: string;
     filter(record: OcrApprovedSnapshot["records"][number]): boolean;
     validate(records: readonly OcrApprovedSnapshot["records"][number][]): void;
-    memberInput(input: z.output<Input>, approved: z.output<typeof ApprovedOcrRecordInputSchema>): z.input<MemberInput>;
+    memberInput(input: z.output<Input>, approved: z.output<typeof ApprovedOcrRecordInputSchema>, sourcePages: readonly number[]): z.input<MemberInput>;
   }>,
 ) {
   const ocr = delegate({ id: "read-document", label: "Read and approve PDF",
@@ -191,8 +192,8 @@ export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput ext
     if (reference.state !== "done" || reference.output.approvedSnapshot === null) throw new TaskError(ReadApprovedOcrSnapshot.id, "OCR_REVIEW_REFUSED", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
     const records = outputs["approved-records"].snapshot.records.filter(options.filter);
     options.validate(records);
-    return records.map(record =>
-      options.memberInput(input, ApprovedOcrRecordInputSchema.parse({ approval: reference.output.approvedSnapshot, record })));
+    return records.map(record => options.memberInput(input, ApprovedOcrRecordInputSchema.parse({ approval: reference.output.approvedSnapshot, record }),
+      ocrRecordSourcePages(reference.output.review.records, record)));
   }, sourceRecordIds: ({ outputs }) => outputs["approved-records"].snapshot.records.filter(options.filter).map(record => [record.recordId]),
   deriveChildItemId: (_input, context) => context.canonicalItemId });
   return { ocr, approved, members, steps: [

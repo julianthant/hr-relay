@@ -578,12 +578,16 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(taskOutput("ucpath/stage-emergency-contact"), "stagedPageState"),
   ...contactProofLeaves(taskOutput("ucpath/save-emergency-contact"), "proof."),
   ...contactProofLeaves(writeProof("ucpath/save-emergency-contact"), ""),
-  ...["emergency-contact-member", "emergency-contact-member-contact-plan", "emergency-contact-member-contact-preview"].flatMap(id => [
+  ...["emergency-contact-member", "emergency-contact-member-contact-plan", "emergency-contact-member-contact-preview", "emergency-contact-member-onbase-import"].flatMap(id => [
     ...approvedOcrReferenceLeaves(workflowInput(id), "approval."), ...approvedOcrRecordLeaves(workflowInput(id), "record."),
+    ...open(workflowInput(id), "sourcePage", "document.bytes", "document.mediaType"),
+    ...["document.id", "document.sha256"].map(path => ({ scope: workflowInput(id), path, classification: "direct-identifier", transform: "drop" })),
   ]),
-  ...["emergency-contact-member", "emergency-contact-member-contact-preview"].flatMap(id => [
-    ...open(workflowResult(id), "disposition"), ...contactProofLeaves(workflowResult(id), "proof."),
+  ...["emergency-contact-member", "emergency-contact-member-onbase-import"].flatMap(id => [
+    ...open(workflowResult(id), "disposition", "onbase.disposition"), ...contactProofLeaves(workflowResult(id), "proof."),
+    ...onbaseSavedLeaves(workflowResult(id), "onbase.savedDocument"),
   ]),
+  ...contactProofLeaves(workflowResult("emergency-contact-member-contact-preview"), "proof."),
   ...contactPlannedOutputLeaves(workflowResult("emergency-contact-member-contact-plan")),
   ...["emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].flatMap(id => [
     ...ocrArtifactLeaves(workflowInput(id), "document."), ...ocrRosterLeaves(workflowInput(id), "roster."),
