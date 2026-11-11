@@ -360,6 +360,8 @@ and parent dry-run flags must match. This exception does not offer standalone re
 For a transaction preview, `executeClaimedRun` traverses the declared graph and stores
 `RunDryRunPreviewResult`, independently of the authored terminal derive. A parent aggregating
 delegated preparation stores `RunDelegatedDryRunPreviewResult` with a distinct kind and schema hash.
+An Emergency Contact member mixes both: `contact-preview` is a transaction-preview and its later
+`onbase-import` child is a delegation-preview.
 Every node has exercised, transaction-preview, delegation-preview, unavailable or not-run accounting.
 Each transaction prepares, verifies and captures without invoking commit.
 Existing completion may be observed at the durable lookup or read probe without restaging a form.

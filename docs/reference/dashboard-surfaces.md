@@ -63,7 +63,7 @@ It keeps stable ID, label, category, start capability, availability, and source 
 Preview capability does not establish executable registration. An unknown workflow source throws
 rather than picking a default.
 
-`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations and Emergency Contact are `served`, OCR is `hidden` and the other configured values
+`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations and Emergency Contact are `served`, OCR and OnBase are `hidden` and the other configured values
 are `mock`. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
 selection determines Queue heading, visible rows, launcher target, and Logs context. Exact run
 selection may identify its own workflow. Counts come from the producer corresponding to the
@@ -72,7 +72,7 @@ rows rather than a second browser status authority.
 The preview catalog contains Separations, Onboarding, Person Lookup, I-9 Lookup, Work-Study,
 Kronos Pay Rule, OCR, Oath Signature, Oath Upload, Emergency Contact, OnBase, I-9 Check,
 CRM Doc Download, SharePoint Download, and Old Kronos Reports. I-9 Lookup and SharePoint Download
-are parent-only. The other entries have their declared preview launch methods and options.
+are parent-only. Hidden entries (OCR, OnBase) are left out of the rail and Run picker. The other entries have their declared preview launch methods and options.
 A catalog label is presentation; backend admission still requires registered capability.
 
 ## Search, dates, and navigation
@@ -149,7 +149,7 @@ action still being served.
 Logs can serve Retry for an eligible failed Emergency Contact member while the parent is waiting,
 paused or settled. A settled mixed-outcome EC parent still admits Retry of each eligible failed
 member. Confirming it requeues the parent, clears completion and mints a replacement while the old
-settlement and receipt stay. UNKNOWN and a committed or unresolved Save still refuse. OCR page and
+settlement and receipt stay. UNKNOWN and a committed or unresolved Save still refuse. Each member imports its page to OnBase after its Save; a member whose OnBase import failed serves no Retry, and running the PDF again finds the Save already present and imports once. A member row whose OnBase child failed or parked opens that child's Logs. OCR page and
 lookup child Retry remain separate.
 
 Lookup status filters admit a batch when one of its attempts matches and retain its canonical
