@@ -24,7 +24,7 @@ import { MatchIdentityOutputSchema } from "../../../../src/models/workflows/sepa
 import { IdentityGateAnswerRequestSchema, type CommandRequest, type IdentityGateAnswerRequest } from "../../../../src/rules/commands/commands.js";
 import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { ApprovedIdentitySubjectSchema, IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
+import { ApprovedIdentitySubjectSchema, IdentityApprovalResultSchema, verifyIdentityApproval } from "../../../../src/rules/separations/identity-approval.js";
 import { VerifyIdentityApprovalOutputSchema } from "../../../../src/models/workflows/separations/verify-identity-approval.js";
 import { IdentityGateDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { SeparationsCanonicalInput } from "../../../../src/workflows/separations/workflow.js";
@@ -712,9 +712,19 @@ describe("the typed Employee ID lookup served with the Separations pick-person g
     assert.equal(value.correction, undefined);
   });
 
-  it("serves the replacement run's park with one option, Approve and Reject, and no typed row", async () => {
+  it.each([
+    { search: "matches the entered ID", searchEid: undefined },
+    { search: "resolves an old candidate", searchEid: SEARCH_EID },
+  ])("serves the replacement run's park with one option, Approve and Reject, and no typed row when the name search $search", async ({ searchEid }) => {
     const typed = "10800002";
-    const { value } = await separationsWorld(packetOf({ eid: typed, source: "operator-entered" }));
+    const packet = packetOf({ eid: typed, source: "operator-entered", ...(searchEid === undefined ? {} : { searchEid }) });
+    const { value } = await separationsWorld(packet);
+    assert.deepEqual(packet.approvableEids, [typed]);
+    if (searchEid !== undefined) {
+      const forged = IdentityApprovalResultSchema.parse({ decision: "approved", eid: searchEid, chosenFrom: "name-search", evidenceDigest: deriveIdentityEvidenceDigest(packet) });
+      const refusal = verifyIdentityApproval(packet, forged);
+      assert.equal(refusal.state === "refused" ? refusal.code : refusal.state, "identity-approval-eid-not-shown");
+    }
     assert.equal(value.options.length, 1);
     assert.equal(value.decision?.type, "identity-mismatch");
     assert.deepEqual(value.decision?.options.map(({ id }) => id), ["approve", "reject"]);

@@ -245,7 +245,8 @@ export function buildIdentityEvidencePacket(
   ];
   comparisons.sort((left, right) => Number(left.agrees) - Number(right.agrees));
 
-  const approvableEids = [...new Set([
+  // An entered ID is the operator's answer to the candidates they rejected: only that person is offered.
+  const approvableEids = input.emplIdSource === "operator-entered" ? [input.jobSummary.emplId] : [...new Set([
     input.jobSummary.emplId,
     ...nameSearch.candidateEids,
   ])];

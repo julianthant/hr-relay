@@ -86,10 +86,8 @@ export type IdentityApprovalVerification = z.infer<typeof IdentityApprovalVerifi
 
 function choiceFor(packet: IdentityEvidencePacket, eid: string): IdentityApprovalChoice | undefined {
   if (eid === packet.emplId) return "checked";
-  if (packet.nameSearch.status === "resolved" && eid === packet.nameSearch.candidate.eid) {
-    return "name-search";
-  }
-  return packet.approvableEids.includes(EidSchema.parse(eid)) ? "manual" : undefined;
+  if (!packet.approvableEids.includes(EidSchema.parse(eid))) return undefined;
+  return packet.nameSearch.status === "resolved" && eid === packet.nameSearch.candidate.eid ? "name-search" : "manual";
 }
 
 /** The identity-authority check, run as a real node so every refusal has a durable code: the decision, the packet digest, that the EID was SHOWN, and that `chosenFrom` agrees. */
