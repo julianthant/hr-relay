@@ -21,8 +21,8 @@ const sheet = `<table><tbody>
   <tr><th>Address Line 2</th><td></td></tr><tr><th>City</th><td>San Diego</td></tr>
   <tr><th>State</th><td>CA</td></tr><tr><th>Postal Code</th><td>92093</td></tr>
   <tr><th>Compensation rate</th><td>$17.75 per hour</td></tr><tr><th>Date of Birth</th><td>01/14/2000</td></tr>
-  <tr><th>Cell Phone</th><td></td></tr><tr><th>Email</th><td>${EMAIL}</td></tr>
-  <tr><th>Appointment</th><td>Casual/Restricted 5</td></tr>
+  <tr><th>Cell Phone Number</th><td></td></tr><tr><th>Personal Email Address</th><td>${EMAIL}</td></tr>
+  <tr><th>Type of Appointment (Employee Classification)</th><td>5 Student: Casual/Restricted</td></tr>
   <tr><th>First Day of Service (Effective Date)</th><td>09/11/2026</td></tr>
   <tr><th>Expected Job End Date (if applicable)</th><td>06/30/2027</td></tr>
 </tbody></table>`;
@@ -55,6 +55,23 @@ describe("CRM hire extraction", () => {
     assert.deepEqual(result, CrmReadHireData.example);
     assert.equal(navigations.some(url => url.includes("id=dead")), false);
     assert.ok(navigations.at(-1)?.endsWith("ONB_PPSEntrySheet?id=fixture-hire"));
+  });
+
+  it("reads a populated cell phone from the live label", async () => {
+    const populated = sheet.replace("<th>Cell Phone Number</th><td></td>", "<th>Cell Phone Number</th><td>(202) 555-0101</td>");
+    const result = await readCrmHireDataOnPage(() => {}, fixture({ sheet: populated }).page, EMAIL);
+    assert.deepEqual(result, { ...CrmReadHireData.example, fields: { ...CrmReadHireData.example.fields, phone: "(202) 555-0101" } });
+  });
+
+  it.each([
+    ["Cell Phone Number", ""], ["Personal Email Address", EMAIL], ["Type of Appointment (Employee Classification)", "5 Student: Casual/Restricted"],
+  ] as const)("refuses a missing, duplicated or valueless %s row", async (label, value) => {
+    const cells = `<th>${label}</th><td>${value}</td>`;
+    assert.ok(sheet.includes(cells));
+    for (const changed of [sheet.replace(cells, "<th>Other</th><td></td>"), sheet.replace("</tbody>", `<tr>${cells}</tr></tbody>`),
+      sheet.replace(cells, `<th>${label}</th>`)]) {
+      await assert.rejects(readCrmHireDataOnPage(() => {}, fixture({ sheet: changed }).page, EMAIL));
+    }
   });
 
   it("chooses the newest active exact-email offer and refuses ties or unreadable competing dates", () => {

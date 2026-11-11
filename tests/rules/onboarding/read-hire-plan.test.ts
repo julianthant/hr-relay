@@ -88,8 +88,13 @@ describe("hire plan validation", () => {
     }
   });
 
+  it("takes the classification number leading the live appointment text", () => {
+    assert.equal(input.crm.fields.appointment, "5 Student: Casual/Restricted");
+    assert.equal(readHirePlan(input).employee.employeeClassification, "5");
+  });
+
   it.each([
-    { appointment: "Student" }, { wage: "$17.75 annually" }, { wage: "$0.00 per hour" },
+    { appointment: "Student" }, { appointment: "Casual/Restricted 5" }, { appointment: "5" }, { appointment: "" }, { wage: "$17.75 annually" }, { wage: "$0.00 per hour" },
     { postalCode: "bad" }, { dob: "02/30/2000" }, { effectiveDate: "02/30/2026" },
     { expectedJobEndDate: "06/30/2026" }, { expectedJobEndDate: "02/30/2027" }, { ssn: "bad" },
   ])("refuses invalid source values %j", fields => {
