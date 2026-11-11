@@ -307,14 +307,16 @@ export function createRunStartDialogHarness() {
       return (current.textContent ?? "").replace(/^\d+/u, "").trim();
     };
 
+    const switchNamed = (name: string): HTMLInputElement | undefined => [...document.body.querySelectorAll<HTMLInputElement>('[role="switch"], [role="checkbox"]')]
+      .find(node => node.closest("label")?.querySelector(".ds-switch-copy > span")?.textContent === name || node.getAttribute("aria-label") === name);
     const press = async (name: string): Promise<void> => {
       const action = name === "Continue" && buttons().some(button => button.textContent?.trim() === "Preview plan") ? "Preview plan" : name;
       const visibleMatches = buttons().filter((button) => (button.textContent ?? "").trim() === action);
       const matches = visibleMatches.length > 0
         ? visibleMatches
         : buttons().filter((button) => buttonName(button) === (name === "Continue" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
-      const only = matches[0];
-      if (matches.length !== 1 || only === undefined) {
+      const only = matches[0] ?? switchNamed(name);
+      if (matches.length > 1 || only === undefined) {
         throw new Error(
           `expected exactly one control named "${name}", found ${String(matches.length)} among `
           + `[${buttons().map((button) => JSON.stringify(buttonName(button))).join(", ")}]`,
@@ -335,12 +337,17 @@ export function createRunStartDialogHarness() {
       });
     };
 
+    const chooseSwitch = async (name: string, on: boolean) => {
+      const node = switchNamed(name);
+      assert.ok(node, `missing switch ${name}`);
+      if (node.checked !== on) await act(async () => node.click());
+    };
     const chooseRadio = async (name: string, value: string) => {
       const radio = document.querySelector<HTMLInputElement>(`input[type="radio"][name^="${name}-"][value="${value}"]`);
       assert.ok(radio, `missing ${name}: ${value}`);
       await act(async () => radio.click());
     };
-    const choosePriority = (value: string) => chooseRadio("Priority", value);
+    const choosePriority = (value: string) => chooseSwitch("Priority", value === "interactive");
     const chooseBrowserMode = (value: string) => chooseRadio("Browser mode", value);
 
     // jsdom has no DataTransfer; install FileList on the Dropzone input.

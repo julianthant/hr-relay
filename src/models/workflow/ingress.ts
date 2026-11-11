@@ -354,7 +354,6 @@ export type InputRunExample = z.infer<typeof InputRunExampleSchema>;
 const TypedInputControlSchema = z.strictObject({
   field: InputFieldNameSchema,
   label: z.string().min(1),
-  note: z.string().min(1).optional(),
   placement: z.enum(["input", "step", "hidden"]),
   modes: z.array(z.string().min(1)).min(1),
   requires: z.array(InputFieldNameSchema),
@@ -380,7 +379,6 @@ const TypedInputModeSchema = z.strictObject({
 export const TypedInputSurfaceSchema = z.strictObject({
   modeField: InputFieldNameSchema, modeLabel: z.string().min(1), initialMode: z.string().min(1).nullable(),
   description: z.string().min(1),
-  modeNote: z.string().min(1).optional(),
   modes: z.array(TypedInputModeSchema).min(1), controls: z.array(TypedInputControlSchema),
 });
 export type TypedInputSurface = z.infer<typeof TypedInputSurfaceSchema>;

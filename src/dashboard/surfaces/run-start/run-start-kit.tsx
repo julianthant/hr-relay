@@ -355,6 +355,9 @@ export function StepOmissionFactsForm({
   );
 }
 
+/** The approved grey lines under the Lookup rows, by the mode label or control field they describe. */
+const INPUT_NOTES: Readonly<Record<string, string>> = { "Lookup mode": "Search by ID or name, or match on details.", crmCheck: "Cross-check each person against CRM." };
+
 /** The approved Lookup / Input / Parsed input layout, used by the served Run and Rerun dialogs and the design preview alike. */
 export function TypedInput({
   surface,
@@ -401,13 +404,13 @@ export function TypedInput({
       }} />;
   return <>
     {declaration && <RunList title="Lookup">
-      <RunListRow title={declaration.modeLabel} description={declaration.modeNote}>
+      <RunListRow title={declaration.modeLabel} description={INPUT_NOTES[declaration.modeLabel]}>
         <div className="w-[250px]"><SegmentedChoice hideLabel label={declaration.modeLabel} value={mode?.value ?? ""}
           options={declaration.modes.map(candidate => ({ value: candidate.value, label: candidate.label }))}
           onChange={value => onValue?.(declaration.modeField, value)} /></div>
       </RunListRow>
       {declaration.controls.filter(control => control.placement === "input" && control.modes.includes(mode?.value ?? "")).map(control =>
-        <RunListRow key={control.field} title={control.label} description={control.note}>
+        <RunListRow key={control.field} title={control.label} description={INPUT_NOTES[control.field]}>
           <Switch hideLabel label={control.label} checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value)} className="!min-h-0 !w-auto !py-0" />
         </RunListRow>)}
     </RunList>}

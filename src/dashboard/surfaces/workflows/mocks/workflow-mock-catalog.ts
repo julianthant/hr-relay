@@ -22,7 +22,7 @@ const step = (key: string, label: string, system: string | undefined, message: s
 type Contract = Omit<MockWorkflow, "id" | "label" | "category">;
 const contracts: Record<MockWorkflowId, Contract> = {
   "person-lookup": { typedInput: {
-    modeField: "mode", modeLabel: "Lookup mode", initialMode: "search", description: "Each entry starts one run.", modeNote: "Search by ID or name, or match on details.",
+    modeField: "mode", modeLabel: "Lookup mode", initialMode: "search", description: "Each entry starts one run.",
     modes: [
       { value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or a new line.", placeholder: "10000001; Lee, Jordan",
         defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
@@ -36,7 +36,7 @@ const contracts: Record<MockWorkflowId, Contract> = {
       },
     ],
     controls: [
-      { field: "crmCheck", label: "CRM check", note: "Cross-check each person against CRM.", placement: "input", modes: ["search", "match"], requires: [] },
+      { field: "crmCheck", label: "CRM check", placement: "input", modes: ["search", "match"], requires: [] },
       { field: "keepNonHdh", label: "Keep non-HDH candidates", placement: "hidden", modes: ["search"], requires: [] },
       { field: "includeCrmDates", label: "Read CRM dates", placement: "step", modes: ["search"], requires: ["crmCheck"] },
     ],
