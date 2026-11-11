@@ -18,13 +18,8 @@
       - text: Personal
       - link "General":
         - /url: "?settings=general"
-      - link "Credentials":
-        - /url: "?settings=credentials"
-      - text: Advanced
-      - link "Paths":
-        - /url: "?settings=paths"
-      - link "Routes":
-        - /url: "?settings=routes"
+      - link "Account":
+        - /url: "?settings=account"
       - text: Data
       - link "Spreadsheets":
         - /url: "?settings=spreadsheets"
@@ -32,11 +27,6 @@
         - /url: "?settings=explorer"
       - link "Analytics":
         - /url: "?settings=activity"
-      - text: Status
-      - link "Storage":
-        - /url: "?settings=storage"
-      - link "Preflight":
-        - /url: "?settings=preflight"
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
@@ -96,10 +86,4 @@
                 - textbox "C3": taylor@example.com
         - text: Rows 1–2 of 2 · Cell B2 · Does not match Employee ID (8 digits, starting with 10). Columns 1–3 of 3
 - status
-- region "Session Panel":
-  - group "Session actions":
-    - button "Sessions 2 running·1 starting·1 idle"
-    - button "Add workers"
-    - button "Settings" [pressed]
-    - button "Log out"
 - region "Notifications"

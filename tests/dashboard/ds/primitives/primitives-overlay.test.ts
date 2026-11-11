@@ -9,7 +9,7 @@ import { dsLayer } from "../../../../src/dashboard/ds/theme/tokens.js";
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 class MeasurementFreeResizeObserver { observe(): void {} unobserve(): void {} disconnect(): void {} }
 
-it("keeps error cards until acknowledgment and makes the toast close control inert during overlays", async () => {
+it("keeps error cards until acknowledgment and makes the toast inert during overlays", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("ResizeObserver", MeasurementFreeResizeObserver);
   function Producer() {
@@ -23,7 +23,6 @@ it("keeps error cards until acknowledgment and makes the toast close control ine
   }
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   const button = (name: string) => { const found = [...document.querySelectorAll("button")].find(node => node.textContent === name); assert.ok(found, name); return found; };
-  const dismiss = () => { const found = document.querySelector<HTMLButtonElement>('button[aria-label="Dismiss"]'); assert.ok(found); return found; };
   try {
     await act(async () => root.render(createElement(ToastProvider, { children: createElement(Producer) })));
     await act(async () => button("Fail").click());
@@ -38,9 +37,12 @@ it("keeps error cards until acknowledgment and makes the toast close control ine
     assert.equal(toast.hasAttribute("data-ending-style"), false);
     await act(async () => button("Layer").click());
     assert.equal(document.querySelector('[data-ds-toast-viewport]')?.hasAttribute("inert"), true);
-    assert.equal(dismiss().disabled, true);
-    await act(async () => button("Layer").click()); assert.equal(dismiss().disabled, false);
-    assert.deepEqual([...toast.querySelectorAll("button")].map(node => node.getAttribute("aria-label")), ["Dismiss"]);
-    await act(async () => dismiss().click());
+    assert.equal(toast.classList.contains("pointer-events-none"), true);
+    await act(async () => button("Layer").click());
+    assert.equal(document.querySelector('[data-ds-toast-viewport]')?.hasAttribute("inert"), false);
+    assert.equal(toast.classList.contains("pointer-events-none"), false);
+    assert.equal(toast.querySelectorAll("button").length, 0);
+    assert.equal(toast.getAttribute("aria-label"), "Dismiss notification");
+    await act(async () => (toast as HTMLElement).click());
   } finally { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); }
 });

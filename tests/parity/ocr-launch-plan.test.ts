@@ -1,4 +1,5 @@
-import { installFrozenMonotonic, moveAssistantLauncherAboveFooter } from "./helpers/app-driver.js";
+import { installFrozenMonotonic } from "./helpers/app-driver.js";
+import { setSwitchChecked } from "./helpers/switch-choice.js";
 
 import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
@@ -23,57 +24,52 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
-      await moveAssistantLauncherAboveFooter(page);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       for (const extraction of [true, false]) {
         await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
-        await page.getByRole("button", { name: "Start a run", exact: true }).click();
-        const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
-        const roster = dialog.getByRole("button", { name: "Existing Onboarding Roster Roster", exact: true });
-        expect((await roster.locator("svg").boundingBox())?.width).toBe(14);
-        expect((await roster.locator("svg").boundingBox())?.height).toBe(14);
-        await roster.press("Enter");
-        await expect(page.getByRole("menuitemradio")).toHaveCount(2);
-        await page.keyboard.press("Escape"); await expect(roster).toBeFocused();
+        await page.getByRole("button", { name: "Start run", exact: true }).click();
+        const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
+        await expect(dialog.getByRole("button", { name: "Add spreadsheet", exact: true })).toBeVisible();
         await dialog.locator('input[type="file"]').setInputFiles({ ...pdf, name: extraction ? "contacts.pdf" : "manual-contacts.pdf" });
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-        await expect(dialog).toContainText("Interactive runs go first.");
-        await expect(dialog.getByRole("radio", { name: "Bulk", exact: true })).toBeVisible();
-        await dialog.getByRole("radio", { name: "Bulk", exact: true }).press("Space");
-        await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).check();
+        const priority = dialog.getByRole("switch", { name: "Priority", exact: true });
+        await expect(priority).toBeChecked();
+        await expect(dialog).toContainText("· Priority");
+        await priority.press("Space");
+        await expect(priority).not.toBeChecked();
+        await expect(dialog).not.toContainText("· Priority");
+        await dialog.getByRole("switch", { name: "Customize steps", exact: true }).dispatchEvent("click");
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-        const steps = dialog.getByRole("region", { name: "Steps", exact: true });
-        const rows = steps.getByRole("listitem");
+        const steps = dialog.getByRole("region", { name: "Steps", exact: true }).last();
+        const rows = steps.locator(".ds-run-row");
         await expect(rows).toHaveCount(6);
         await expect(rows.nth(0)).toContainText("Read emergency contact");
         await expect(rows.nth(0)).toContainText("OCR");
         await expect(steps).not.toContainText("Delegate document to OCR");
         await expect(steps).not.toContainText("Wait for OCR approval");
-        const reading = steps.getByRole("checkbox", { name: "Read emergency contact", exact: true });
+        const reading = steps.getByRole("switch", { name: "Include Read emergency contact", exact: true });
         await expect(reading).toBeEnabled(); await expect(reading).toBeChecked();
-        await reading.setChecked(extraction);
-        await expect(steps.getByRole("checkbox", { name: "Read existing contacts", exact: true })).toBeEnabled();
-        await expect(steps.getByRole("checkbox", { name: "Fill emergency contact", exact: true })).toBeDisabled();
-        await expect(steps.getByRole("checkbox", { name: "Save emergency contact", exact: true })).toBeDisabled();
-        await expect(dialog).toContainText(extraction ? "6 / 6 included" : "4 / 6 included");
+        await setSwitchChecked(reading, extraction);
+        await expect(steps.getByRole("switch", { name: "Include Read existing contacts", exact: true })).toBeEnabled();
+        await expect(steps.getByRole("switch", { name: "Fill emergency contact (required)", exact: true })).toBeDisabled();
+        await expect(steps.getByRole("switch", { name: "Save emergency contact (required)", exact: true })).toBeDisabled();
+        await expect(dialog).toContainText(extraction ? "6 of 6 included" : "4 of 6 included");
         if (extraction) {
           const a11y = await dialog.ariaSnapshot();
 
           await info.attach(`${planName}.a11y.yml`, { body: a11y, contentType: "text/yaml" });
           info.annotations.push({ type: `a11y-attachment-sha256:${planName}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
         }
-        await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
-        await expect(dialog.getByRole("region", { name: "Confirm", exact: true })).toContainText(extraction ? "6 / 6 included" : "4 / 6 included");
-        await expect(dialog.getByRole("region", { name: "Confirm", exact: true })).toContainText("Bulk");
-        await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
+        await dialog.getByRole("button", { name: /^Start (dry|live) run$/u }).click();
+        const review = page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true });
         if (extraction) {
           await expect(logs).toContainText("Read emergency contact");
           await logs.locator("header").first().getByRole("button", { name: "Review", exact: true }).click();
-          await expect(logs.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10000001");
+          await expect(review.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10000001");
+          await page.keyboard.press("Escape");
+          await expect(review).toHaveCount(0);
         } else {
-          const review = logs.getByRole("region", { name: "OCR records", exact: true });
           await expect(review).toBeVisible();
           await expect(review.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("");
           await expect(review.getByRole("button", { name: "Approve records", exact: true })).toBeDisabled();
@@ -81,10 +77,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
           await info.attach(`${reviewName}.a11y.yml`, { body: a11y, contentType: "text/yaml" });
           info.annotations.push({ type: `a11y-attachment-sha256:${reviewName}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
-          for (const [label, value] of [["Employee ID", "10000022"], ["First name", "Sam"], ["Last name", "Rivera"], ["Contact name", "Alex Rivera"], ["Cell phone", "2025550101"]]) await review.getByRole("textbox", { name: label, exact: true }).fill(value);
+          for (const [label, value] of [["Employee ID", "10000022"], ["Employee name", "Sam Rivera"], ["Contact name", "Alex Rivera"], ["Cell phone", "2025550101"]]) await (label === "Contact name" ? review.getByRole("group", { name: "Emergency contact", exact: true }).getByRole("textbox", { name: "Name", exact: true }) : label === "Cell phone" ? review.getByRole("group", { name: "Emergency contact", exact: true }).getByRole("textbox", { name: "Cell phone", exact: true }) : review.getByRole("textbox", { name: label, exact: true })).fill(value);
           await review.getByRole("button", { name: "Approve records", exact: true }).click();
-          await expect(page.getByText("Records approved", { exact: true })).toBeVisible();
-          await expect(page.getByText("1 record released to the parent workflow.", { exact: true })).toBeVisible();
+          await expect(page.locator('[data-slot="toast"]').getByText("Records approved", { exact: true }).first()).toBeVisible();
+          await expect(page.locator('[data-slot="toast"]').getByText("1 record released to the parent workflow.", { exact: true }).first()).toBeVisible();
+          await page.keyboard.press("Escape");
+          await expect(review).toHaveCount(0);
           await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
           await expect(page.getByRole("region", { name: "Queue", exact: true })).toContainText("Sam Rivera");
         }

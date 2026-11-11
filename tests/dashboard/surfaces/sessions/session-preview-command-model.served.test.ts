@@ -5,7 +5,7 @@ import { DashboardClientError } from "../../../../src/dashboard/client/errors.js
 import { WORKER_STOP_REASON_LABEL } from "../../../../src/dashboard/surfaces/sessions/worker-stop-reason-label.js";
 // @vitest-environment jsdom
 import { act, createElement, type ComponentProps } from "react";
-import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
+import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { createRoot } from "react-dom/client";
 import { vi } from "vitest";
 import { SessionPanel } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
@@ -21,7 +21,7 @@ import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflo
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../parity/helpers/fixture-day.js";
 
 function SessionPanelWithToasts(props: ComponentProps<typeof SessionPanel>) {
-  return createElement(ToastProvider, null, createElement(SessionPanel, props));
+  return createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SessionPanel, props)));
 }
 
 const catalog = buildWorkflowCatalog([], true, previewFixtureSources([]));
@@ -534,7 +534,9 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
   try {
     h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state: "running", currentRun: { state: "present", runId: row.runId, traceId: row.traceId } }],
       queueSurfaces: [{ ...row, pipeline: [{ id: "served-active", label: "Served active step", state: "active" }] }] }));
-    await act(async () => render()); assert(host.querySelector('[role="progressbar"]'));
+    await act(async () => render()); assert.equal(host.querySelector('[role="progressbar"]'), null);
+    const served = sessionsFromDay(h.day(), catalog, now); assert(served.state === "ready");
+    assert.deepEqual(served.workers[0].timeline, [{ id: "served-active", label: "Served active step", state: "active" }]);
     assert.doesNotMatch(host.textContent ?? "", /Run timeline is not served|No steps are served|states unavailable/);
     for (const state of ["idle", "starting", "failed", "running", "waiting", "paused"] as const) {
       h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state, currentRun: { state: "absent", reason: "No current claimed run" },
@@ -542,9 +544,9 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
       await act(async () => render());
       assert.doesNotMatch(host.textContent ?? "", /No current claimed run|Run timeline is not served|No steps are served|states unavailable/);
       assert.equal(host.querySelector('[role="progressbar"]'), null);
-      if (state === "idle") assert.match(host.textContent ?? "", /Ready for the next run/);
-      if (state === "starting") assert.match(host.textContent ?? "", /Preparing worker/);
-      if (state === "failed") assert(host.textContent?.includes("Worker stopped unexpectedly."));
+      if (state === "idle") assert.match(host.textContent ?? "", /Idle.*No run assigned/s);
+      if (state === "starting") assert.match(host.textContent ?? "", /Starting.*No run assigned/s);
+      if (state === "failed") assert(host.textContent?.includes("Its run is no longer on record."));
     }
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -571,7 +573,7 @@ it("distinguishes unopened browser requirements from observed unavailable health
       assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", observation?.state === "present" && observation.health === "failed" ? "failed" : "unavailable"], ["UCPath", "unopened"]]);
       await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
       assert.deepEqual([...host.querySelectorAll("article li")].map(item => item.textContent), [observation?.state === "present" && observation.health === "failed" ? "CRMFailed" : observation?.state === "unavailable" ? "CRMUnavailable. Browser health was not served" : "CRMUnavailable", "UCPathNot opened"]);
-      assert.match(host.querySelector("article")?.textContent ?? "", /No run assigned.*Ready for the next run/s);
+      assert.match(host.querySelector("article")?.textContent ?? "", /Idle.*No run assigned/s);
       assert.equal(h.sent.length, 0);
     }
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }

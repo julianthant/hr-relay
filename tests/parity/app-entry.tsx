@@ -13,6 +13,7 @@ import { servedFixtureSources, PARITY_WORKFLOW_COMPOSITION } from "./helpers/wor
 import { RestoreNoticeContext } from "../../src/dashboard/surfaces/settings/storage/storage-settings-model.js";
 import "../../src/dashboard/app/index.css";
 
+Reflect.set(window, "relayMockSurfaces", true);
 const container = document.getElementById("root");
 if (container === null) throw new Error("parity dashboard root missing");
 const client = createDashboardClient({ baseUrl: window.location.origin });

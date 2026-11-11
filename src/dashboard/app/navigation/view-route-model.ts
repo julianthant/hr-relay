@@ -15,7 +15,7 @@ export const ViewRouteSchema = z.object({
   reviewPages: z.record(identity, z.number().int().min(0).max(10000)).refine(value => Object.keys(value).length <= 200).optional(),
   queueOpen: z.array(identity).max(200).optional(),
   queueFilter: z.array(z.enum(["all", "needsYou", "queued", "running", "cancelling", "blocked", "awaiting-approval", "done", "failed", "cancelled", "partial"])).max(12).optional(), queueSort: z.enum(["attention", "newest", "oldest", "longest"]).optional(),
-  notifications: z.boolean().optional(), notificationFilter: z.enum(["all", "unread", "attention", "failed"]).optional(), notificationCategory: z.enum(["all", "attention", "failed"]).optional(),
+  notifications: z.boolean().optional(), notificationActive: z.string().max(200).optional(),
   workerWorkflow: identity.optional(), sessions: z.boolean().optional(), addWorkers: z.boolean().optional(),
   search: z.boolean().optional(), searchQuery: z.string().max(500).optional(), settingsQuery: z.string().max(500).optional(),
   spreadsheetImport: z.boolean().optional(), spreadsheetMapping: identity.optional(), spreadsheetImportView: z.enum(["mapping", "preview", "columns"]).optional(), spreadsheetType: identity.nullable().optional(),

@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { logDecisionExamples } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-fixture.js";
-import { answeredRow, choiceOptions, decisionAnswerValid, recommendedOption } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
+import { answeredOutcome, answeredRow, choiceOptions, decisionAnswerValid, recommendedOption } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
 import { LogDecisionBlock, type DecisionAnswerHandler } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision.js";
 import { type LogEntry } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import { RunDecisionWireSchema } from "../../../../../src/models/dashboard/run-decision.js";
@@ -123,11 +123,21 @@ describe("served log decisions", () => {
     await act(async () => root?.render(createElement(LogDecisionBlock, { decision: example("review-fields").decision })));
     assert.equal(document.querySelector('[role="spinbutton"]')?.getAttribute("aria-disabled"), "true");
   });
-  it("collapses an answered decision to one line with who answered", async () => {
+  it("keeps an answered decision's card and prints one outcome line with who answered", async () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const base = example("failure-no-write").decision;
-    await act(async () => root?.render(createElement(LogDecisionBlock, { decision: { ...base, answered: { optionId: "x", label: "Check again", at: "2026-08-03T16:41:05.000Z" as never, actor: { kind: "assistant", onBehalfOf: { name: "Alex Rivera" } } } } })));
-    assert.match(host.textContent ?? "", /^Answered: Check again · .+ · by assistant on behalf of Alex Rivera$/u);
-    assert.equal(host.querySelector("button"), null);
+    await act(async () => root?.render(createElement(LogDecisionBlock, { decision: { ...base, answered: { optionId: "check-again", label: "Check again", at: "2026-08-03T16:41:05.000Z" as never, actor: { kind: "assistant", onBehalfOf: { name: "Alex Rivera" } } } } })));
+    assert.match(host.querySelector("p[data-answered]")?.textContent ?? "", /^Retried · \d\d:\d\d · assistant on behalf of Alex Rivera$/u);
+    assert.ok(host.querySelector("h4"));
+    assert.deepEqual([...host.querySelectorAll("button")].map(button => button.textContent).filter(text => /Confirm|Cancel run|Retry|Check again/u.test(text ?? "")), []);
+  });
+  it("names the outcome from the chosen option", () => {
+    const answered = (optionId: string) => ({ optionId, label: "x", at: "2026-08-03T16:41:05.000Z" as never, actor: { kind: "person" as const, name: "Alex Rivera" } });
+    assert.deepEqual(answeredOutcome({ answered: answered("approve-lookup-match") }), { outcome: "Match approved", kind: "done" });
+    assert.deepEqual(answeredOutcome({ answered: answered("reject-lookup-match") }), { outcome: "Match rejected", kind: "rejected" });
+    assert.deepEqual(answeredOutcome({ answered: answered("cancel-run") }), { outcome: "Run cancelled", kind: "cancelled" });
+    assert.deepEqual(answeredOutcome({ answered: answered("retry-crm") }), { outcome: "Retried", kind: "retry" });
+    assert.deepEqual(answeredOutcome({ answered: answered("saved"), answerNoun: "Transaction", answeredInput: "T0001" }), { outcome: "Transaction confirmed · T0001", kind: "done" });
+    assert.deepEqual(answeredOutcome({ answered: answered("resolve-write-absent") }), { outcome: "Resolved", kind: "done" });
   });
 });

@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
-import { ToastIcon as BaseToastIcon, Toast as BaseToast, ToastContent as BaseToastContent, ToastTitle as BaseToastTitle, ToastDescription as BaseToastDescription, ToastClose as BaseToastClose, ToastViewport as BaseToastViewport } from "./base-toast.js";
+import { ToastIcon as BaseToastIcon, Toast as BaseToast, ToastContent as BaseToastContent, ToastTitle as BaseToastTitle, ToastDescription as BaseToastDescription, ToastViewport as BaseToastViewport } from "./base-toast.js";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
@@ -108,7 +108,7 @@ export const DialogClose = DialogPrimitive.Close;
 export type DsDialogSize = "sm" | "md" | "lg" | "xl";
 
 const DIALOG_SIZE: Record<DsDialogSize, string> = {
-  sm: "max-w-[420px]",
+  sm: "max-w-[400px]",
   md: "max-w-[560px]",
   lg: "max-w-[760px]",
   xl: "max-w-[min(94vw,1100px)]",
@@ -129,6 +129,9 @@ function Scrim({ layer, entered, slow }: { layer: string; entered: boolean; slow
   );
 }
 
+/** A dialog's confirming action is the dashboard blue. */
+const DIALOG_BLUE = "[--ds-accent:var(--ui-info)] [--ds-accent-fg:var(--ui-canvas)] [--ds-accent-hover:var(--ui-info)]";
+
 /** A modal dialog. `title` is REQUIRED — Radix warns without one,
  * and an unlabelled modal is unusable with a screen reader. */
 export function DialogContent({
@@ -136,6 +139,7 @@ export function DialogContent({
   description,
   size = "md",
   hideClose,
+  band,
   className,
   onOpenAutoFocus,
   onCloseAutoFocus,
@@ -146,6 +150,8 @@ export function DialogContent({
   description?: ReactNode;
   size?: DsDialogSize;
   hideClose?: boolean;
+  /** The Run and Rerun dialog only: a divided header and a grey footer band. Every other dialog is compact. */
+  band?: boolean;
   className?: string;
   onOpenAutoFocus?: (event: Event) => void;
   onCloseAutoFocus?: (event: Event) => void;
@@ -159,6 +165,7 @@ export function DialogContent({
         description={description}
         size={size}
         hideClose={hideClose}
+        band={band}
         className={className}
         onOpenAutoFocus={onOpenAutoFocus}
         onCloseAutoFocus={onCloseAutoFocus}
@@ -182,6 +189,7 @@ function DialogSurface({
   description,
   size,
   hideClose,
+  band,
   className,
   onOpenAutoFocus,
   onCloseAutoFocus,
@@ -192,6 +200,7 @@ function DialogSurface({
   description?: ReactNode;
   size: DsDialogSize;
   hideClose?: boolean;
+  band?: boolean;
   className?: string;
   onOpenAutoFocus?: (event: Event) => void;
   onCloseAutoFocus?: (event: Event) => void;
@@ -204,6 +213,7 @@ function DialogSurface({
     <>
       <Scrim layer={dsLayer.modal} entered={entered} />
       <DialogPrimitive.Content
+        data-band={band || undefined}
         {...(!description ? { "aria-describedby": undefined } : {})}
         onOpenAutoFocus={onOpenAutoFocus}
         onCloseAutoFocus={onCloseAutoFocus}
@@ -212,7 +222,7 @@ function DialogSurface({
           "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] -translate-x-1/2 -translate-y-1/2",
           DIALOG_SIZE[size],
           dsLayer.modal,
-          "flex max-h-[86vh] flex-col overflow-hidden border outline-none",
+          "group/dialog flex max-h-[86vh] flex-col overflow-hidden border outline-none", DIALOG_BLUE,
           "border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-overlay)]",
           dsRadius.xl,
           dsElev.high,
@@ -221,7 +231,7 @@ function DialogSurface({
           className,
         )}
       >
-        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] border-b border-[color:var(--ds-border)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)]">
+        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)] group-data-[band]/dialog:border-b group-data-[band]/dialog:border-[color:var(--ds-border)]">
           <div className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-hair)]">
             <DialogPrimitive.Title className={cn(dsText.section, "font-semibold text-[color:var(--ds-fg)]")}>
               {title}
@@ -234,7 +244,7 @@ function DialogSurface({
           </div>
           {!hideClose && (
             <DialogPrimitive.Close asChild>
-              <IconButton label="Close" size="sm" icon={<X aria-hidden className={dsIcon.md} />} />
+              <IconButton label="Close" size="md" icon={<X aria-hidden className={dsIcon.md} />} />
             </DialogPrimitive.Close>
           )}
         </header>
@@ -266,10 +276,9 @@ export function DialogFooter({
   return (
     <footer
       className={cn(
-        "flex shrink-0 items-center gap-[var(--ds-space-base)] border-t px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)]",
-        // The recessed plane, the same solid band the queue row's own footer
-        // draws, read off the shared tokens rather than re-answered here.
-        "border-[color:var(--ds-border-subtle)] bg-[var(--ds-recess-bg)] [border-end-start-radius:inherit] [border-end-end-radius:inherit]",
+        // Compact: the buttons sit in the dialog's own padding. Only the Run and Rerun dialog (`band`) has the recessed plane.
+        "flex shrink-0 items-center gap-[var(--ds-space-base)] px-[var(--ds-space-loose)] pb-[var(--ds-space-cozy)]",
+        "group-data-[band]/dialog:border-t group-data-[band]/dialog:border-[color:var(--ds-border-subtle)] group-data-[band]/dialog:bg-[var(--ds-recess-bg)] group-data-[band]/dialog:pt-[var(--ds-space-cozy)] group-data-[band]/dialog:[border-end-start-radius:inherit] group-data-[band]/dialog:[border-end-end-radius:inherit]",
         meta ? "justify-between" : "justify-end",
         className,
       )}
@@ -286,6 +295,86 @@ export function DialogFooter({
       )}
       <span className="flex shrink-0 items-center gap-[var(--ds-space-base)]">{children}</span>
     </footer>
+  );
+}
+
+/** Confirm: the one dialog every confirmation uses.
+ * No close ×: Escape and Cancel close it, and Cancel takes focus (ringed). A destructive action is a soft red button named for the action;
+ * any other confirm is the blue primary. Never offers "Don't ask again" for deleting or merging data. */
+export function ConfirmDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  detail,
+  confirmLabel,
+  onConfirm,
+  destructive = false,
+  cancelLabel = "Cancel",
+  busy = false,
+  onCloseAutoFocus,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: ReactNode;
+  description?: ReactNode;
+  /** The exact thing affected: a file name, path or ID. */
+  detail?: ReactNode;
+  confirmLabel: ReactNode;
+  onConfirm: () => void;
+  destructive?: boolean;
+  cancelLabel?: ReactNode;
+  busy?: boolean;
+  onCloseAutoFocus?: (event: Event) => void;
+}) {
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+      <DialogPrimitive.Portal>
+        <ConfirmSurface title={title} description={description} detail={detail} confirmLabel={confirmLabel} onConfirm={onConfirm}
+          destructive={destructive} cancelLabel={cancelLabel} busy={busy} onCloseAutoFocus={onCloseAutoFocus} />
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}
+
+function ConfirmSurface({
+  title, description, detail, confirmLabel, onConfirm, destructive, cancelLabel, busy, onCloseAutoFocus,
+}: {
+  title: ReactNode; description?: ReactNode; detail?: ReactNode; confirmLabel: ReactNode; onConfirm: () => void;
+  destructive: boolean; cancelLabel: ReactNode; busy: boolean; onCloseAutoFocus?: (event: Event) => void;
+}) {
+  const entered = useEntered();
+  useRegisterModal();
+  return (
+    <>
+      <Scrim layer={dsLayer.modal} entered={entered} />
+      <DialogPrimitive.Content
+        {...(!description ? { "aria-describedby": undefined } : {})}
+        onCloseAutoFocus={onCloseAutoFocus}
+        onOpenAutoFocus={event => { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>("[data-confirm-cancel]")?.focus(); }}
+        className={cn(
+          "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] max-w-[420px] -translate-x-1/2 -translate-y-1/2",
+          dsLayer.modal,
+          "flex flex-col gap-[var(--ds-space-loose)] border p-5 outline-none", DIALOG_BLUE,
+          "rounded-[20px] border-[color:var(--ds-border)] bg-[var(--ds-surface-overlay)]",
+          dsElev.high,
+          dsMotion.enter,
+          entered ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]",
+        )}
+      >
+        <div className="flex min-w-0 flex-col gap-1">
+          <DialogPrimitive.Title className="m-0 text-[20px] font-semibold leading-7 text-[color:var(--ds-fg)]">{title}</DialogPrimitive.Title>
+          {description && <DialogPrimitive.Description className="m-0 text-[13px] leading-5 text-[color:var(--ds-fg-muted)]">{description}</DialogPrimitive.Description>}
+          {detail && <p className="m-0 break-all font-mono text-[13px] leading-5 text-[color:var(--ds-fg-muted)]">{detail}</p>}
+        </div>
+        <div className="flex justify-end gap-3">
+          <DialogPrimitive.Close asChild>
+            <Button data-confirm-cancel variant="muted" disabled={busy} className="h-8 focus:[outline-style:solid] focus:outline-[length:var(--ds-focus-ring-w)] focus:outline-offset-[var(--ds-focus-ring-offset)] focus:outline-[color:var(--ds-focus-ring)]">{cancelLabel}</Button>
+          </DialogPrimitive.Close>
+          <Button variant={destructive ? "danger" : "primary"} loading={busy} onClick={onConfirm} className="h-8 rounded-[8px]">{confirmLabel}</Button>
+        </div>
+      </DialogPrimitive.Content>
+    </>
   );
 }
 
@@ -377,7 +466,7 @@ function DrawerSurface({
             )}
           </div>
           <DialogPrimitive.Close asChild>
-            <IconButton label="Close" size="sm" icon={<X aria-hidden className={dsIcon.md} />} />
+            <IconButton label="Close" size="md" icon={<X aria-hidden className={dsIcon.md} />} />
           </DialogPrimitive.Close>
         </header>
         {children}
@@ -395,32 +484,34 @@ export function Tooltip({
   content,
   side = "top",
   collisionBoundary,
+  open,
+  shortcut,
+  variant,
   children,
 }: {
   content: ReactNode;
+  /** `card` is the rich-content surface (256px card, 12px corners) instead of the one-line hint. */
+  variant?: "card";
+  /** The key chord, drawn as a chip after the text. */
+  shortcut?: ReactNode;
   side?: "top" | "right" | "bottom" | "left";
   collisionBoundary?: Element | null;
+  /** Set false to hold the tooltip closed (for example while the trigger's own menu is open). */
+  open?: false;
   children: ReactNode;
 }) {
   return (
-    <TooltipPrimitive.Root>
+    <TooltipPrimitive.Root {...(open === false ? { open: false } : {})}>
       <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
       <TooltipPrimitive.Portal>
         <TooltipPrimitive.Content
           side={side}
-          sideOffset={6}
+          sideOffset={8}
           collisionBoundary={collisionBoundary}
           collisionPadding={8}
-          className={cn(
-            "max-w-[280px] border px-[var(--ds-space-base)] py-[var(--ds-space-tight)]",
-            "border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-overlay)] text-[color:var(--ds-fg)]",
-            dsRadius.md,
-            dsText.meta,
-            dsElev.mid,
-            dsLayer.menu,
-          )}
+          className={cn("ds-tooltip", variant === "card" && "ds-tooltip--card", dsLayer.tooltip)}
         >
-          {content}
+          {content}{shortcut && <kbd className="ds-tooltip-key">{shortcut}</kbd>}
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
     </TooltipPrimitive.Root>
@@ -461,6 +552,7 @@ export function PopoverContent({
   hideClose,
   className,
   surfaceRef,
+  sideOffset,
   children,
 }: {
   id?: string;
@@ -469,6 +561,7 @@ export function PopoverContent({
   side?: DsPopoverSide;
   align?: "start" | "center" | "end";
   width?: DsPopoverWidth;
+  sideOffset?: number;
   /** keep the accessible name, drop the visible heading row */
   hideTitle?: boolean;
   hideClose?: boolean;
@@ -489,6 +582,7 @@ export function PopoverContent({
         hideClose={hideClose}
         className={className}
         surfaceRef={surfaceRef}
+        sideOffset={sideOffset}
       >
         {children}
       </PopoverSurface>
@@ -509,6 +603,7 @@ function PopoverSurface({
   hideClose,
   className,
   surfaceRef,
+  sideOffset = 6,
   children,
 }: {
   id?: string;
@@ -517,6 +612,7 @@ function PopoverSurface({
   side: DsPopoverSide;
   align: "start" | "center" | "end";
   width: DsPopoverWidth;
+  sideOffset?: number | undefined;
   hideTitle?: boolean;
   hideClose?: boolean;
   className?: string;
@@ -531,7 +627,7 @@ function PopoverSurface({
       asChild
       side={side}
       align={align}
-      sideOffset={6}
+      sideOffset={sideOffset}
       collisionPadding={8}
       aria-label={title}
     >
@@ -540,7 +636,7 @@ function PopoverSurface({
         ref={surfaceRef}
         className={cn(
           POPOVER_WIDTH[width],
-          "max-w-[calc(100vw-var(--ds-space-section))] outline-none",
+          "ds-menu-surface max-w-[calc(100vw-var(--ds-space-section))]",
           dsLayer.menu,
           dsMotion.enter,
           POPOVER_ORIGIN,
@@ -551,7 +647,7 @@ function PopoverSurface({
         {showHeader && (
           <header
             className={cn(
-              "flex items-start gap-[var(--ds-space-base)] border-b px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]",
+              "flex items-start gap-[var(--ds-space-base)] border-b px-[10px] py-[6px]",
               "border-[color:var(--ds-border-subtle)]",
             )}
           >
@@ -568,7 +664,7 @@ function PopoverSurface({
             )}
           </header>
         )}
-        <div className={cn(dsText.body, "px-[var(--ds-space-cozy)] py-[var(--ds-space-base)] text-[color:var(--ds-fg-secondary)]")}>
+        <div className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
           {children}
         </div>
       </FloatingSurface>
@@ -714,7 +810,7 @@ export interface DsToast {
   description?: string;
   /** ms before auto-dismiss; default 3000. `danger` never auto-dismisses unless a duration is given. */
   duration?: number;
-  /** stays until its owner dismisses it or the operator closes it */
+  /** stays until its owner dismisses it or the operator clicks it */
   sticky?: boolean;
   action?: { label: string; onClick: () => void };
 }
@@ -749,7 +845,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     },
     dismiss: id => manager.close(id),
   }), [manager]);
-  return <ToastContext.Provider value={value}><ToastPrimitive.Provider toastManager={manager}>
+  return <ToastContext.Provider value={value}><ToastPrimitive.Provider toastManager={manager} limit={3}>
     {children}<ToastViewport />
   </ToastPrimitive.Provider></ToastContext.Provider>;
 }
@@ -768,17 +864,18 @@ export function Notice({ tone, title, description, sticky = false }: Pick<DsToas
 }
 
 function ToastViewport() {
-  const { toasts } = ToastPrimitive.useToastManager();
+  const { toasts, close } = ToastPrimitive.useToastManager();
   const inert = useAnyOverlayOpen();
   return <BaseToastViewport aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
     {toasts.map(item => {
       const action = item.actionProps;
-      return <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" className={cn((inert || item.type === "success") && "pointer-events-none")}>
+      return <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" tabIndex={0} aria-label="Dismiss notification"
+        onClick={() => close(item.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === "Escape" || event.key === " ") close(item.id); }}
+        className={cn(inert && "pointer-events-none")}>
         <BaseToastContent><BaseToastIcon type={item.type} />
           <div className="min-w-0 flex-1"><BaseToastTitle /><BaseToastDescription />
             {action !== undefined && <Button size="sm" variant="secondary" onClick={action.onClick}>{action.children}</Button>}
           </div>
-          <BaseToastClose disabled={inert} className={!inert && item.type === "success" ? "pointer-events-auto" : undefined} aria-label="Dismiss" />
         </BaseToastContent>
       </BaseToast>;
     })}

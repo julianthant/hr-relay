@@ -8,7 +8,7 @@ export function SettingsSectionSkeleton({ section, contentOnly = false }: { sect
   const copy = section === "general" ? { title: "General", description: "ChatGPT account, appearance, and browser preferences." }
     : section === "performance" ? { title: "Performance", description: "Time limits for navigation, work, and sign-in." }
     : section === "routes" ? { title: "Routes", description: "Production destinations, organized by system." }
-    : { title: "Credentials", description: "Sign-in details and protected workflow configuration." };
+    : { title: "Account", description: "Sign-in details and protected workflow configuration." };
   return <section className="settings-compact-page" data-settings-loading={show ? section : undefined}>
     {!contentOnly && <PageHeading {...copy} />}
     {show && <LoadingRegion label={`Loading ${copy.title.toLowerCase()}`} className="settings-compact-form">

@@ -14,25 +14,15 @@
     - text: Personal
     - link "General":
       - /url: "?fixture=delete-account"
-    - link "Credentials":
-      - /url: "?fixture=fixed-backup"
-    - text: Advanced
-    - link "Paths":
-      - /url: "?fixture=fixed-backup"
-    - link "Routes":
-      - /url: "?fixture=fixed-backup"
+    - link "Account":
+      - /url: "?fixture=delete-account"
     - text: Data
     - link "Spreadsheets":
-      - /url: "?fixture=fixed-backup"
+      - /url: "?fixture=delete-account"
     - link "Explorer":
-      - /url: "?fixture=fixed-backup"
+      - /url: "?fixture=delete-account"
     - link "Analytics":
-      - /url: "?fixture=fixed-backup"
-    - text: Status
-    - link "Storage":
-      - /url: "?fixture=fixed-backup"
-    - link "Preflight":
-      - /url: "?fixture=fixed-backup"
+      - /url: "?fixture=delete-account"
   - main:
     - heading "General" [level=1]
     - paragraph: ChatGPT account, appearance, and account controls for Alex Morgan.

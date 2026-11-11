@@ -16,33 +16,28 @@
     - listitem:
       - button "1 Steps": Steps
     - listitem:
-      - button "2 Values" [disabled]: Values
+      - button "2 Values": Values
     - listitem:
       - button "3 Options" [disabled]: Options
-    - listitem:
-      - button "4 Confirm" [disabled]: Confirm
-  - heading "Choose what to run again" [level=3]
-  - text: 2 / 3 included
+  - heading "Steps" [level=3]
+  - text: 2 of 3 included
   - paragraph: Select steps for the new run. Statuses show the source outcome.
   - region "Steps":
-    - heading "Steps" [level=4]
-    - list:
-      - listitem:
-        - checkbox "Find employee"
-        - text: Find employee Old Kronos Skipped
-        - group "Manual values for Find employee":
-          - paragraph: Enter the values this step would read. Use “None” for an absent value. These values are operator supplied.
-          - text: Found
-          - combobox "Found": "Yes"
-          - text: Matching rows
-          - textbox "Matching rows": None
-      - listitem:
-        - checkbox "Read employee name" [checked]
-        - text: Read employee name Old Kronos Completed
-      - listitem:
-        - checkbox "Download Time Detail report" [checked]
-        - text: Download Time Detail report Old Kronos Completed
+    - region "Steps":
+      - text: Find employee Old Kronos Skipped
+      - switch "Include Find employee"
+      - text: Include Find employee
+      - group "Manual values for Find employee":
+        - text: Found
+        - combobox "Found": "Yes"
+        - text: Matching rows
+        - textbox "Matching rows": None
+      - text: Read employee name Old Kronos Completed
+      - switch "Include Read employee name" [checked]
+      - text: Include Read employee name Download Time Detail report Old Kronos Completed
+      - switch "Include Download Time Detail report" [checked]
+      - text: Include Download Time Detail report
   - contentinfo:
-    - text: Source run · new runOld Kronos Reports
+    - text: Old Kronos Reports2 of 3 stepsPriority Enter to continue
     - button "Cancel"
     - button "Continue"

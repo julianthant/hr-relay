@@ -13,6 +13,7 @@ export const logDecisionExamples = [
       "decision": {
         "title": "Did the termination save in UCPath?",
         "state": "parked",
+        "answerNoun": "Transaction",
         "message": "Clicked Save and Submit, but no confirmation returned.",
         "caution": "The result is unknown. Check UCPath before continuing.",
         "screenshots": [
@@ -84,6 +85,7 @@ export const logDecisionExamples = [
       "decision": {
         "title": "Termination saved, but the read-back failed",
         "state": "parked",
+        "answerNoun": "Transaction",
         "message": "Clicked Save and Submit, but no confirmation returned.",
         "caution": "The result is unknown. Check UCPath before continuing.",
         "screenshots": [

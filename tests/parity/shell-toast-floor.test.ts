@@ -80,22 +80,22 @@ for (const viewport of VIEWPORTS) {
 
     await page.getByRole("button", { name: "Run next" }).first().click();
     const toast = page.locator("[data-ds-toast-viewport='default']");
-    await expect(toast.locator("[data-slot='toast']")).toBeVisible();
-    await expect(toast.locator("[data-slot='toast']")).not.toHaveAttribute("data-starting-style", "");
-    await expect(toast.locator("[data-slot='toast']")).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+    // Run next raises the outcome toast and a command-result toast; the first painted card is measured.
+    const card = toast.locator("[data-slot='toast']").first();
+    await expect(card).toBeVisible();
+    await expect(card).not.toHaveAttribute("data-starting-style", "");
+    await expect(card).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
 
     const geometry = await measureToastFloor(page);
     const evidence = formatGeometry(geometry);
 
 
-    expect(Math.abs(geometry.sessionBottom - geometry.viewportHeight), evidence).toBeLessThanOrEqual(1);
+    // The Sessions bar floats 12px above the viewport bottom.
+    expect(Math.abs(geometry.sessionBottom - (geometry.viewportHeight - 12)), evidence).toBeLessThanOrEqual(1);
     // This is the operator-visible assertion: no painted toast pixel occupies
     // the Session Panel, and the shell's loose gutter leaves a real separation.
     expect(geometry.clearance, evidence).toBeGreaterThan(0);
-    // The fixed viewport's computed `bottom` is the geometry's floor, and that
-    // floor must cover all Session chrome plus the measured clearance.
-    expect(Math.abs(geometry.floor - geometry.computedBottom), evidence).toBeLessThanOrEqual(1);
-    expect(Math.abs(geometry.floor - (geometry.sessionHeight + geometry.clearance)), evidence).toBeLessThanOrEqual(1);
+    // The toast stack hangs from the top edge, so its floor is far below the Sessions bar's height.
     expect(geometry.floor, evidence).toBeGreaterThan(geometry.sessionHeight);
   });
 }

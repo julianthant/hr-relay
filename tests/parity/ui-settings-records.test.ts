@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
-import { gotoAppState } from "./helpers/app-driver.js";
+import { gotoAppState, installServedSurfaces } from "./helpers/app-driver.js";
 import { assertThemeApplied, installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { registerReferenceServers } from "./helpers/reference-harness.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -47,10 +47,7 @@ for (const theme of PARITY_THEMES) test(`Settings body switch thumbs remain on t
 const SETTINGS = [
   ["general", "General"],
   ["performance", "Performance"],
-  ["paths", "Paths"],
-  ["routes", "Routes"],
-  ["protected-store", "Credentials"],
-  ["storage", "Storage checks"],
+  ["protected-store", "Account"],
   ["keyboard", "Keyboard shortcuts"],
 ] as const;
 
@@ -70,23 +67,16 @@ test(`UI-A Settings desktop layout matrix @ ${theme.name}`, async ({ page }, inf
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     for (const [section, title] of LAYOUT_SCENES) {
       await gotoSettingsDiscardingDraft(page, section);
-      await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: title, level: 1, exact: true })).toBeVisible();
       await assertThemeApplied(page, theme);
-      if (section === "storage") {
-        const doctor = page.getByRole("button", { name: "Run storage checks" });
-        await doctor.focus(); await expect(doctor).toBeFocused();
-      } else {
-        await createSettingsDraft(page, section);
-        await expect(page.getByText("Setting identities", { exact: true })).toHaveCount(0);
-        await expect(page.getByText("Credential identifiers", { exact: true })).toHaveCount(0);
-      }
-      const lastInput = section === "paths" ? page.getByRole("button", { name: "Change Reports", exact: true }) : page.locator('[data-settings-path] input:not([type=hidden]),[data-settings-path] textarea,[data-settings-path] select,[data-protected-name] input:not([type=hidden])').last();
-      if (section !== "storage") {
-        await expect(page.getByRole("button", { name: section === "protected-store" ? "Save credentials" : "Save changes", exact: true })).toHaveCount(0);
-        await expect(lastInput).toHaveCount(1); await expect(lastInput).toBeEnabled();
-        await lastInput.focus(); await expect(lastInput).toBeFocused();
-        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      }
+      await createSettingsDraft(page, section);
+      await expect(page.getByText("Setting identities", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Credential identifiers", { exact: true })).toHaveCount(0);
+      const lastInput = section === "paths" ? page.getByRole("button", { name: "Change Downloads", exact: true }) : page.locator('[data-settings-path] input:not([type=hidden]),[data-settings-path] textarea,[data-settings-path] select,[data-protected-name] input:not([type=hidden])').last();
+      await expect(page.getByRole("button", { name: section === "protected-store" ? "Save credentials" : "Save changes", exact: true })).toHaveCount(0);
+      await expect(lastInput).toHaveCount(1); await expect(lastInput).toBeEnabled();
+      await lastInput.focus(); await expect(lastInput).toBeFocused();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       const stem = `ui-settings-records-after/${viewport.name}/settings-${section}-${theme.name}`;
       const tree = await page.locator("body").ariaSnapshot();
       writeSettingsEvidence(info.outputPath(`${stem}.a11y.yml`), tree);
@@ -106,7 +96,7 @@ test(`UI-A Settings inventory after @ ${theme.name}`, {
     let finalTree = "";
     for (const [section, title] of SETTINGS) {
       await gotoSettingsDiscardingDraft(page, section);
-      await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: title, level: 1, exact: true })).toBeVisible();
       finalTree = await page.locator("body").ariaSnapshot();
       writeSettingsEvidence(info.outputPath(`ui-settings-records-after/settings-${section}-${theme.name}.a11y.yml`), finalTree);
     }
@@ -117,8 +107,8 @@ test(`UI-A Settings inventory after @ ${theme.name}`, {
 }
 
 const LAYOUT_SCENES = [
-  ["paths", "Paths"],
-  ["protected-store", "Credentials"], ["storage", "Storage checks"],
+  ["paths", "General"],
+  ["protected-store", "Account"],
 ] as const;
 
 async function gotoSettingsDiscardingDraft(page: import("@playwright/test").Page, section: string): Promise<readonly string[]> {
@@ -129,6 +119,7 @@ async function gotoSettingsDiscardingDraft(page: import("@playwright/test").Page
     await dialog.accept();
   };
   page.on("dialog", acceptDraftNavigation);
+  await installServedSurfaces(page);
   try {
     await gotoAppState(page, servers.server.baseUrl, { day: FIXTURE_DAY, settings: section });
   } finally {
@@ -158,11 +149,11 @@ async function createSettingsDraft(page: import("@playwright/test").Page, sectio
   } else if (section === "paths") {
     await page.route("**/api/v1/settings/path-picker", async route => {
       const request = NativePathPickerRequestSchema.parse(route.request().postDataJSON());
-      expect(request.field).toBe("paths.reportsDir");
-      await route.fulfill({ json: { state: "selected", field: request.field, path: "/tmp/settings-proof/reports" } });
+      expect(request.field).toBe("paths.downloadsDir");
+      await route.fulfill({ json: { state: "selected", field: request.field, path: "/tmp/settings-proof/downloads" } });
     }, { times: 1 });
-    await page.getByRole("button", { name: "Change Reports", exact: true }).click();
-    await expect(page.getByText("/tmp/settings-proof/reports", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Change Downloads", exact: true }).click();
+    await expect(page.getByText("/tmp/settings-proof/downloads", { exact: true })).toBeVisible();
   } else {
     throw new Error(`settings-draft-section-unsupported:${section}`);
   }
@@ -212,13 +203,13 @@ test("UI-A Settings survives real browser zoom with reachable controls", async (
       await page.route("**/api/v1/settings/editable", route => route.fulfill({ json: settings }));
       await installTheme(page, theme);
       const samples = [
-        { zoom: 1.25, viewport: { width: 1280, height: 720 }, css: { width: 1024, height: 576 }, section: "paths", title: "Paths" },
+        { zoom: 1.25, viewport: { width: 1280, height: 720 }, css: { width: 1024, height: 576 }, section: "paths", title: "General" },
         { zoom: 2, viewport: { width: 1440, height: 900 }, css: { width: 720, height: 450 }, section: "annual-dates", title: "General" },
       ] as const;
       for (const sample of samples) {
         await page.setViewportSize(sample.viewport);
         const discardedNavigationDialogs = await gotoSettingsDiscardingDraft(page, sample.section);
-        await expect(page.getByRole("heading", { name: sample.title, exact: true })).toBeVisible();
+        await expect(page.getByRole("heading", { name: sample.title, level: 1, exact: true })).toBeVisible();
         await assertThemeApplied(page, theme);
         const zoomResult = await setBrowserZoom(worker, page.url(), sample.zoom);
         expect(zoomResult.value).toBe(sample.zoom);
@@ -228,7 +219,7 @@ test("UI-A Settings survives real browser zoom with reachable controls", async (
         await createSettingsDraft(page, sample.section);
         await expect(page.getByText("Setting identities", { exact: true })).toHaveCount(0);
         await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(0);
-        const lastInput = sample.section === "paths" ? page.getByRole("button", { name: "Change Reports", exact: true }) : page.getByRole("spinbutton", { name: "year, Job end date*", exact: true });
+        const lastInput = sample.section === "paths" ? page.getByRole("button", { name: "Change Downloads", exact: true }) : page.getByRole("spinbutton", { name: "year, Job end date*", exact: true });
         await lastInput.focus(); await expect(lastInput).toBeFocused();
         const stem = `ui-settings-records-after/zoom-${String(sample.zoom)}-${theme.name}`;
         const tree = await page.locator("body").ariaSnapshot(); writeSettingsEvidence(info.outputPath(`${stem}.a11y.yml`), tree);

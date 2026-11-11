@@ -11,7 +11,7 @@ const TIMEOUT_SETTINGS: Readonly<Record<string, TimeoutSetting>> = {
   "timeouts.navigationMs": { title: "Standard navigation", description: "Maximum wait for a regular page change.", group: "Navigation", storedUnit: "milliseconds" },
   "timeouts.longNavigationMs": { title: "Long navigation", description: "Maximum wait for a page known to load slowly.", group: "Navigation", storedUnit: "milliseconds" },
   "timeouts.ukgNavigationMs": { title: "UKG navigation", description: "Maximum wait for a UKG page change.", group: "Navigation", storedUnit: "milliseconds" },
-  "timeouts.taskMs": { title: "Task", description: "Maximum time for one worker task after a session is ready.", group: "Work", storedUnit: "milliseconds" },
+  "timeouts.taskMs": { title: "Task", description: "Maximum time for one task in a ready session.", group: "Work", storedUnit: "milliseconds" },
   "timeouts.transactionMs": { title: "Transaction", description: "Maximum time allowed for a transaction operation.", group: "Work", storedUnit: "milliseconds" },
   "timeouts.retryDelayMs": { title: "Retry delay", description: "Wait before retrying an eligible operation.", group: "Work", storedUnit: "milliseconds" },
   "timeouts.sessionAcquireMs": { title: "Session acquisition", description: "Maximum time to open a browser session and sign in.", group: "Sign-in & Duo", storedUnit: "milliseconds" },

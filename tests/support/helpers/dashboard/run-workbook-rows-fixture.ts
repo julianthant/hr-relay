@@ -52,7 +52,7 @@ async function startWorkbookRowsFixture(page: Page) {
   const profile = { bootstrap, descriptorHash: bootstrap.descriptorHash, day: DashboardDayWireSchema.parse({ ...FIXTURE_START_PICKER_DAY_WIRE, queueSurfaces: [], attemptHistory: [], monthCounts: [{ day: FIXTURE_DAY, count: 0 }], workflowCounts: [], statusCounts: [], workerCards: [], workerPools: [], workerAuthority: { state: 'present', members: [] }, notifications: [] }) };
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, profile });
   const plans: StartPlanRequest[] = [], commands: ReturnType<typeof StartCommandRequestSchema.parse>[] = [], commandBodies: string[] = [];
-  let currentCatalog = structuredClone(catalog), rows: ReturnType<typeof QueueSurfaceWireSchema.parse>[] = [];
+  const currentCatalog = structuredClone(catalog); let rows: ReturnType<typeof QueueSurfaceWireSchema.parse>[] = [];
   const compatibility = () => projectWorkbookCompatibility([{ id: workflow.id, label: workflow.label,
     requiredWorkbookFields: workflow.start.requiredWorkbookFields, workbookReference: workflow.start.workbookReference }],
     currentCatalog.map(entry => ({ libraryId: entry.libraryId, versionId: entry.state.selectedVersionId,
@@ -61,8 +61,8 @@ async function startWorkbookRowsFixture(page: Page) {
         mappings: sheet.columnBindings?.flatMap((binding, column) => binding.fieldId !== null && binding.basis !== 'unmapped'
           ? [{ fieldId: binding.fieldId, column, basis: binding.basis }] : []) ?? [] })) })));
   let plan: ReturnType<typeof StartPlanWireSchema.parse> | undefined;
-  let loseResponse = false, delayedVersion = false, delayedCatalog = false;
-  let releaseVersion: (() => void) | undefined, releaseCatalog: (() => void) | undefined;
+  let loseResponse = false, delayedVersion = false;
+  let releaseVersion: (() => void) | undefined;
   const pendingVersions: string[] = [];
   const day = () => DashboardDayWireSchema.parse({ ...profile.day, snapshotCursor: rows.length === 0 ? 'pc:1' : `pc:${commands.length + 1}`, queueSurfaces: rows,
     attemptHistory: rows.map(({ runId, startedAt, endedAt }) => ({ runId, startedAt, endedAt })),
@@ -74,7 +74,6 @@ async function startWorkbookRowsFixture(page: Page) {
   const handler = async (route: Route) => {
     const request = route.request(), path = new URL(request.url()).pathname;
     if (path === '/api/v1/workbooks/catalog') {
-      if (delayedCatalog) { delayedCatalog = false; await new Promise<void>(resolve => { releaseCatalog = resolve; }); }
       return json(route, WorkbookLibraryCatalogSchema.parse(currentCatalog));
     }
     if (path === '/api/v1/workbooks/compatibility') return json(route, compatibility());
@@ -100,7 +99,7 @@ async function startWorkbookRowsFixture(page: Page) {
           const submission = OnboardingInput.parse(input.submissions[entry - 1]), selected = versionView(selection.versionId);
           const matchKey = submission.email.toLowerCase();
           return { logicalKey: deriveItemId(workflow.id, matchKey), title: submission.email, matchKey, subtitle: 'Read-only review · hire unavailable',
-            workbookReferences: [{ libraryId, version: selected.version.version, versionId: selected.version.id, versionName: selected.version.name, selectedRow: selection.selectedRow,
+            workbookReferences: [{ libraryId, version: currentCatalog[0].version, versionId: selected.version.id, versionName: selected.version.name, selectedRow: selection.selectedRow,
               worksheets: selected.workbook.sheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name })), type }] };
         }), refused: [{ entry: 2, code: 'active-run-exists', message: 'This selected row repeats the normalized email from entry 1.' }] });
       return json(route, plan);
@@ -115,7 +114,7 @@ async function startWorkbookRowsFixture(page: Page) {
           traceId: traceOf(9700 + index), runNumber: { state: 'present', value: index + 1 }, workflowId: workflow.id, descriptorVersion: workflow.start.version, descriptorHash: command.payload.descriptorFingerprint,
           configFingerprint: command.payload.configFingerprint, actorId: command.requestedBy, title: entry.title, dryRun: plan!.dryRun,
           subtitle: { state: 'present', value: entry.subtitle }, pipeline: workflow.start.steps.map(step => ({ id: step.key, label: step.label, state: 'pending' })),
-          parent: null, rowRevision: 1,
+          rowRevision: 1,
           session: { state: 'present', itemScope: workflow.id === 'person-lookup' ? 'session' : 'workflow', sessionId: uuidOf(9900), presentation: { layout: 'items', groupInQueue: false, version: 1, startedAt: seed.startedAt },
             origin: { kind: 'start-plan', startPlanId: command.target.startPlanId, actorId: command.requestedBy } } }));
       }
@@ -139,11 +138,9 @@ async function startWorkbookRowsFixture(page: Page) {
   return { server, plans, commands, commandBodies, pendingVersions, workflow, libraryId, type, day,
     get plan() { return plan; }, get rows() { return rows; },
     delayVersion() { delayedVersion = true; }, releaseVersion() { if (!releaseVersion) throw new Error('no-delayed-version'); releaseVersion(); },
-    refreshCatalog() { currentCatalog = WorkbookLibraryCatalogSchema.parse(currentCatalog.map(entry => ({ ...entry, state: { ...entry.state, revision: entry.state.revision + 1 } }))); delayedCatalog = true; },
-    releaseCatalog() { if (!releaseCatalog) throw new Error('no-delayed-catalog'); releaseCatalog(); },
     loseResponse() { loseResponse = true; },
     async close() {
-      releaseVersion?.(); releaseCatalog?.();
+      releaseVersion?.();
       const settlements = await Promise.allSettled([page.unroute('**/api/v1/**', handler), server.close()]);
       const errors = settlements.flatMap(result => result.status === 'rejected' ? [result.reason as unknown] : []);
       if (errors.length === 1) throw errors[0];

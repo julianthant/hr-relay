@@ -4,7 +4,7 @@ import { test } from "./helpers/fixtures.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { FIXTURE_DAY, FIXTURE_NOW } from "./helpers/fixture-identity.js";
-import { gotoAppState } from "./helpers/app-driver.js";
+import { gotoAppState, installServedSurfaces } from "./helpers/app-driver.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
 
@@ -42,6 +42,7 @@ for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, 
       resumed = false;
       await route.fulfill({ json: { state: "cancelled", attemptId } });
     });
+    await installServedSurfaces(page);
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "general" });
     const account = page.getByRole("group", { name: "ChatGPT account", exact: true });
     await account.getByRole("button", { name: "Connect ChatGPT", exact: true }).click();
@@ -85,7 +86,7 @@ for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, 
       await shot(page, info, `sign-in-expired-${width}`);
     } finally { expiring.resolve(); }
 
-    for (const section of ["spreadsheets", "general", "performance", "paths", "routes", "credentials", "keyboard"]) {
+    for (const section of ["spreadsheets", "general", "performance", "account", "keyboard"]) {
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${section}`);
       const nav = page.getByRole("navigation", { name: "Settings sections", exact: true });
       const current = nav.locator(`[aria-current="${section === "performance" ? "location" : "page"}"]`);
@@ -137,13 +138,14 @@ for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, 
     const timeline = page.getByRole("navigation", { name: "Run timeline", exact: true });
     await expect(timeline).toBeVisible();
     for (const step of await timeline.getByRole("button").all()) {
-      const title = await step.getAttribute("title"); expect(title).toBeTruthy();
+      const name = await step.getAttribute("aria-label"); expect(name).toBeTruthy();
+      const title = name!.split(" · ")[0]; expect(title).toBeTruthy();
       await expect(step).toHaveAccessibleName(new RegExp(`^${title}`));
-      const label = step.locator("span").filter({ hasText: title! }).last();
-      await expect(label).toHaveText(title!);
+      const label = step.locator("span").filter({ hasText: title }).last();
+      await expect(label).toHaveText(title);
       if (await step.isEnabled()) {
         await step.focus();
-        await expect(page.getByRole("tooltip")).toContainText(title!);
+        await expect(page.getByRole("tooltip")).toContainText(title);
       }
     }
     await timeline.getByRole("button").first().focus();

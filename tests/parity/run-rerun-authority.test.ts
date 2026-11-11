@@ -34,7 +34,7 @@ test("ordinary batch dry run enqueues one reviewed vector and no work before fin
   let parityBodyFailure: { error: unknown } | undefined;
     try {
     await gotoAppState(page, server.baseUrl, { day: server.day, start: true });
-    const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+    const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     await dialog.getByPlaceholder("Employee ID").fill("10812346\n10812347");
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     await setSwitchChecked(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true }), true);

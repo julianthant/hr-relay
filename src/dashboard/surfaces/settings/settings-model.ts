@@ -9,6 +9,7 @@ EditableSettingsWire
 import {
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 } from "../../../models/dashboard/settings.js";
+import { statusMock } from "./status-mock/status-mock-model.js";
 
 
 export type PreflightCheckWire = z.infer<typeof PreflightCheckWireSchema>;
@@ -30,6 +31,7 @@ export type SettingsNavIcon =
   | "capabilities"
   | "keyboard"
   | "unrendered"
+  | "subscription"
   | "spreadsheets"
   | "explorer"
   | "activity";
@@ -52,10 +54,19 @@ const FOLDED_EDITOR_SECTIONS = new Set(["display", "annual-dates"]);
 const SETTINGS_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   display: "general",
   "annual-dates": "general",
-  "runtime-isolation": "paths",
+  "runtime-isolation": "general",
+  paths: "general",
+  routes: "general",
   providers: "general",
   "provider-env": "general",
-  "protected-store": "credentials",
+  "protected-store": "account",
+  credentials: "account",
+  // Subscription is a mock-only entry; without it the link opens General.
+  subscription: "general",
+  // The Status pages are not part of the combined mock; links to them open General.
+  storage: "general",
+  preflight: "general",
+  [SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID]: "general",
 });
 
 const servedEntry = (id: string, label: string): SettingsNavEntry => ({
@@ -95,7 +106,6 @@ export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
 
 /** Route token kept only for compatibility notices */
 export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
-export const SETTINGS_PREFLIGHT_SECTION_ID = "preflight";
 export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer", "activity"]);
 
 
@@ -116,35 +126,23 @@ export function settingsCloseFocusTargetId(gearMounted: boolean): string {
 /** The approved Settings page list stays available while the current editor
  * projection loads or fails. Each page still reads its values and edit */
 export function buildSettingsNav(
-  sections: readonly SettingsSection[],
   editor?: EditableSettingsWire,
 ): readonly SettingsNavGroup[] {
   const groups: SettingsNavGroup[] = [];
   groups.push({ id: "personal", heading: "Personal", entries: [
     clientEntry("general", "General", "general"),
-    clientEntry("credentials", "Credentials", "credentials"),
+    clientEntry("account", "Account", "credentials"),
+    // The plan and limits are not served yet: the Subscription page exists only in the design frames.
+    ...(statusMock() === undefined ? [] : [clientEntry("subscription", "Subscription", "subscription")]),
   ] });
-  groups.push({ id: "advanced", heading: "Advanced", entries: [
-    clientEntry("paths", "Paths", "paths"),
-    clientEntry("routes", "Routes", "routes"),
-    ...(editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
-      .map(section => servedEntry(section.id, section.label)) ?? []),
-  ] });
+  const advanced = editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
+    .map(section => servedEntry(section.id, section.label)) ?? [];
+  if (advanced.length > 0) groups.push({ id: "advanced", heading: "Advanced", entries: advanced });
   groups.push({ id: "data", heading: "Data", entries: [
     clientEntry("spreadsheets", "Spreadsheets", "spreadsheets"),
     clientEntry("explorer", "Explorer", "explorer"),
     clientEntry("activity", "Analytics", "activity"),
   ] });
-  const statusEntries: SettingsNavEntry[] = [];
-  for (const section of sections) {
-    if (section.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID || section.id === "providers" || section.id === SETTINGS_UI_CATALOG_SECTION_ID) continue;
-    statusEntries.push(servedEntry(section.id, section.id === "storage" ? "Storage" : section.label));
-    if (section.id === "storage") statusEntries.push({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
-  }
-  if (!statusEntries.some(entry => entry.id === SETTINGS_PREFLIGHT_SECTION_ID)) {
-    statusEntries.unshift({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
-  }
-  groups.push({ id: "status", heading: "Status", entries: statusEntries });
   groups.push({
     id: "help",
     heading: "Help",
@@ -171,12 +169,11 @@ export function resolveSettingsSection(
   const entries = groups.flatMap((group) => group.entries);
   // Existing editor deep links remain available outside the approved HUB navigation.
   if (requested === "performance") return { state: "open", entry: clientEntry("performance", "Performance", "performance") };
-  if (requested === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID) requested = SETTINGS_PREFLIGHT_SECTION_ID;
   const first = entries[0];
   if (requested.length === 0) {
     return first === undefined ? { state: "empty" } : { state: "open", entry: first };
   }
-  const found = entries.find((entry) => entry.id === (SETTINGS_ALIASES[requested] ?? requested));
+  const found = entries.find((entry) => entry.id === requested) ?? entries.find((entry) => entry.id === SETTINGS_ALIASES[requested]);
   return found === undefined ? { state: "unknown", requested } : { state: "open", entry: found };
 }
 export { CAPABILITY_SPECS,capabilityAvailableCount,capabilityMatrix,dryRunPostureSentence } from "./preflight/settings-capabilities-model.js";
