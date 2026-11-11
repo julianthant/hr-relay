@@ -148,3 +148,19 @@ it("keeps the unknown original ID and draft while authority is absent, then repl
   assert.equal(h.sent.length, 2); assert.equal(h.sent[1], firstBody);
   assert.equal(h.controller().save.state, "applied"); assert.equal(h.controller().dirtyCount, 0);
 });
+
+it("writes a dialog-held credential only on explicit submit, never on the autosave timer or after reset", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }); cleanups.push(() => { vi.useRealTimers(); });
+  const h = await mountRecovery();
+  await act(async () => { h.controller().setExplicitSave(true); });
+  await act(async () => h.controller().update("ucpathUserId", "Held operator"));
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  assert.equal(h.sent.length, 0, "no dispatch past the autosave timer while the dialog holds the draft");
+  await act(async () => h.controller().reset("ucpathUserId"));
+  await act(async () => { h.controller().setExplicitSave(false); await vi.advanceTimersByTimeAsync(5000); });
+  assert.equal(h.sent.length, 0, "no dispatch after Cancel");
+  await act(async () => { h.controller().setExplicitSave(true); });
+  await act(async () => h.controller().update("ucpathUserId", "Confirmed operator"));
+  await h.action(() => h.controller().submit());
+  assert.equal(h.sent.length, 1, "one dispatch for the confirmed Save");
+});
