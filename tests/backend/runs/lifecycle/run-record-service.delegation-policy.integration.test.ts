@@ -90,7 +90,7 @@ it("keeps the exact parent snapshot after a real apply-settings workflow selecti
   let saves = 0;
   const f = await fixture("cascade", false, false, plan1Stores, run => {
     if (saves > 0) return;
-    assert.equal(run.lifecycle.state, "running");
+    assert.equal(run.lifecycle.state, "claimed");
     assert.equal(run.envelope.runId, f.root.envelope.runId);
     const active = f.applySettings({ "preferences.selectedWorkflowId": { set: f.root.envelope.workflow } });
     assert.equal(active.configFingerprint, run.envelope.configFingerprint);
