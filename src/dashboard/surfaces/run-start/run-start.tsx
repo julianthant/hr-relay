@@ -540,6 +540,8 @@ export function RunStartDialog({
     if (!previewOwnsStages) setCurrentStage((current) => current === "Confirm" ? (isRerun ? "Values" : "Input") : current);
   }, [requestFingerprint, isRerun, setCurrentStage, previewOwnsStages]);
 
+  const typedInputRef = useRef<HTMLTextAreaElement>(null);
+
   const preview = useMemo((): RunInputPreview => {
     if (pdfSurface !== undefined) return previewPdfRun(pdfSurface, pdfInput.draft);
     if (inputRun.state !== "present") return { entries: [], submissions: [], problem: null };
@@ -929,6 +931,7 @@ export function RunStartDialog({
                       text={text}
                       onText={next => { setText(next); setSourceInputUnchanged(false); }}
                       preview={preview}
+                      inputRef={typedInputRef}
                       draft={typedValues}
                       rowInput={rowCapability === undefined ? undefined : <>
                         {referenceControls([rowCapability.typeId])}
