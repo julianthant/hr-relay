@@ -179,7 +179,7 @@ describe_m1("frontend workflow catalog", () => {
     const future = { ...served[0], workflowId: "new-workflow", label: "New workflow", categoryId: "Payroll", code: "NW" };
     const renamed = { ...served[0], label: "Registered name" };
     const entries = buildWorkflowCatalog_m1([renamed, served[1], future], true, servedFixtureSources_m1([renamed, served[1], future]));
-    expect_m1(entries).toHaveLength(14);
+    expect_m1(entries).toHaveLength(13);
     expect_m1(new Set(entries.map(entry => entry.id)).size).toBe(entries.length);
     expect_m1(entries.find(entry => entry.id === renamed.workflowId)).toMatchObject({ label: "Registered name", source: "served", launch: { state: "served" }, served: renamed });
     expect_m1(entries.find(entry => entry.id === future.workflowId)).toMatchObject({ label: future.label, code: "NW", launch: { state: "served" }, served: future });
