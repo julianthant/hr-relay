@@ -68,6 +68,7 @@ export interface WorkerPoolCompositionInput {
   readonly settleExit: (member: WorkerPoolMember) => void | Promise<void>;
   readonly onChange?: (view: WorkerMemberView) => void;
   readonly onFault: (error: Error) => void;
+  readonly onStopChannelClosed?: (error: Error) => void;
   readonly preflight?: RuntimePreflight;
   readonly assertAssistantEffect?: (commandId: string) => void;
   readonly platform?: NodeJS.Platform;
@@ -118,6 +119,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
     settleExit: async member => { await settleProfiles(member, "recover"); await input.settleExit(member); },
     onChange: onMemberChange,
     onFault: (_member, error) => { input.onFault(fault(error)); },
+    onStopChannelClosed: (_member, error) => { input.onStopChannelClosed?.(fault(error)); },
   });
   poolRef.current = pool;
   const viewOf = (workerId: string): WorkerMemberView | undefined => pool.snapshot().find(view => view.member.workerId === workerId);
