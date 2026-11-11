@@ -3,7 +3,8 @@ import type { UcpathContactPagePort } from "../../../src/backend/systems/ucpath/
 import { EmergencyContactMemberResultSchema } from "../../../src/models/workflows/emergency-contact/result.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach,it } from "vitest";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { readApprovedOcrRecordTask } from "../../../src/backend/processing/ocr/tasks/read-approved-record.js";
@@ -40,7 +41,6 @@ import { seedUnknownContactWrite } from "../../support/helpers/backend/unknown-c
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
 import { ONBASE_SOURCE_DOCUMENT, ONBASE_SOURCE_PDF, onbaseChildFixture } from "../../support/helpers/backend/onbase-child-fixture.js";
 import { boundProfileAdmission } from "../../support/helpers/synthetic-database-admission.js";
-import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { onbaseModule } from "../../support/helpers/registered-workflows.js";
 import { OnbaseInputSchema } from "../../../src/models/systems/onbase/import-document.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
@@ -435,9 +435,10 @@ it("refuses deleting a producer whose committed OnBase checkpoint a retained don
   assert.equal(f.onbase.imports(), 1);
   const [intent] = f.database.authority.writeIntents.listByRun(producer.envelope.runId); assert.ok(intent);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(consumer.envelope.runId), []);
-  // Deletion inspects every artifact its rows name; the world serves the source PDF without storing it.
-  const artifacts = createContentAddressedArtifactWriter({ admission: boundProfileAdmission(realpathSync(f.authority.path)) }); await artifacts.ready;
-  assert.equal((await artifacts.put(Buffer.from(ONBASE_SOURCE_PDF), { mediaType: "application/pdf" })).sha256, ONBASE_SOURCE_DOCUMENT.sha256);
+  // Deletion inspects every artifact its rows name; the world serves the source PDF without storing it, so store it under its exact ref.
+  const { artifactRoot } = boundProfileAdmission(realpathSync(f.authority.path));
+  mkdirSync(artifactRoot, { recursive: true, mode: 0o700 });
+  writeFileSync(join(artifactRoot, `${ONBASE_SOURCE_DOCUMENT.sha256}.artifact`), JSON.stringify({ ref: ONBASE_SOURCE_DOCUMENT, payloadBase64: Buffer.from(ONBASE_SOURCE_PDF).toString("base64") }), { mode: 0o600 });
   const remove = (runId: string) => {
     const current = f.database.authority.runs.get(runId); assert.ok(current);
     return f.execution.lifecycle.delete({ commandId: randomUUID(), runId, expectedVersion: current.version });

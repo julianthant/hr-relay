@@ -58,8 +58,10 @@ export async function verifyRetainedDelegatedPreviewEvidence(
     assert.ok(dependency?.state === "delegation-resolved");
     assert.equal(dependency.members.find(entry => entry.runId === member.envelope.runId)?.resultDigest, child.result.resultDigest);
     const modules = [workflowModuleOf("emergency-contact"), childWorkflowModuleOf("emergency-contact", "ocr"), childWorkflowModuleOf("emergency-contact", "emergency-contact-member"), childWorkflowModuleOf("emergency-contact-member", "onbase")];
+    const ocrPage = f.resolve("ocr-page"); assert.ok(ocrPage);
+    const receiptDescriptors = [...modules.map(module => module.descriptor), ocrPage];
     const beforeReceipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle,
-      descriptors: modules.map(module => module.descriptor) });
+      descriptors: receiptDescriptors });
     const originalReceipts = previews.map(({ run }) => beforeReceipts.ensureReceipt(run.envelope.runId));
     await f.harness.manager.closeAll("worker-stop");
     f.harness.authority.closeDatabase();
@@ -70,11 +72,11 @@ export async function verifyRetainedDelegatedPreviewEvidence(
       const result = database.authority.runResults.get(saved.run.envelope.runId); assert.ok(result);
       assert.equal(canonicalJsonStringify(result), saved.bytes);
       assert.deepEqual(database.authority.runs.get(saved.run.envelope.runId)?.completion, saved.run.completion);
-      assert.deepEqual(createReceiptService({ database, runReader: reader, descriptors: modules.map(module => module.descriptor) })
+      assert.deepEqual(createReceiptService({ database, runReader: reader, descriptors: receiptDescriptors })
         .ensureReceipt(saved.run.envelope.runId), originalReceipts[index]);
     }
     const receipts = createReceiptService({ database, runReader: reader,
-      descriptors: modules.map(module => module.descriptor) });
+      descriptors: receiptDescriptors });
     for (const run of [completed.run, member]) {
       const receipt = receipts.ensureReceipt(run.envelope.runId);
       assert.deepEqual(receipt.output, []);
