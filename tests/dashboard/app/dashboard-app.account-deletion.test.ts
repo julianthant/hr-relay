@@ -89,7 +89,7 @@ for (const outcome of ["refused", "error", "cancelling", "lost"] as const) it(`k
   assert.equal(document.querySelector('[aria-label="Account"] [role="alert"]')?.textContent, message);
   assert.equal(button("Delete account").disabled, true);
   await act(async () => button("Delete account").click());
-  for (const name of ["Credentials", "General"]) {
+  for (const name of ["Account", "General"]) {
     const link = [...document.querySelectorAll<HTMLAnchorElement>(".settings-nav-group a")].find(candidate => candidate.textContent === name);
     assert.ok(link); await act(async () => link.click());
   }

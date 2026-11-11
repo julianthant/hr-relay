@@ -1,9 +1,8 @@
-import { installFrozenMonotonic, moveAssistantLauncherAboveFooter } from "./helpers/app-driver.js";
+import { installFrozenMonotonic } from "./helpers/app-driver.js";
 
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
-import { seedMockRuns } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -51,20 +50,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
-      await moveAssistantLauncherAboveFooter(page);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await expect(logs.getByRole("tab")).toHaveCount(0);
       await expect(logs.getByRole("button", { name: /^Review records/u })).toHaveCount(0);
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
-      const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
-      const record = drawer.getByRole("region", { name: "Record person-1", exact: true });
       await expect(logs.getByRole("heading", { level: 2 })).toHaveText("emergency-contacts.pdf");
-      await expect(logs.getByRole("navigation", { name: "Run timeline", exact: true })).toHaveCount(0);
-      await expect(logs.getByRole("searchbox", { name: "Search logs", exact: true })).toHaveCount(0);
-      await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toHaveAttribute("aria-pressed", "true");
+      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      const drawer = page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true });
+      const record = drawer.getByRole("region", { name: "Record person-1", exact: true });
       const source = record.getByRole("region", { name: "Source PDF", exact: true });
       const sourceBox = (await source.boundingBox())!, fieldsBox = (await record.locator("[data-review-fields]").boundingBox())!;
       expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(fieldsBox.x);
@@ -74,7 +68,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await source.getByRole("button", { name: "Zoom in", exact: true }).click();
       expect((await pageImage.boundingBox())!.width).toBeGreaterThan(fitWidth);
       await expect(source.getByRole("toolbar", { name: "PDF controls", exact: true })).toBeInViewport();
-      await source.getByRole("button", { name: "Fit page", exact: true }).click();
+      await source.getByRole("button", { name: "Zoom out", exact: true }).click();
       expect((await pageImage.boundingBox())!.width).toBe(fitWidth);
       for (const id of ["person-2", "person-3"]) {
         await drawer.getByRole("region", { name: `Record ${id}`, exact: true }).getByRole("checkbox", { name: /^Include /u }).click();
@@ -82,19 +76,17 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await record.getByRole("textbox", { name: "Employee ID", exact: true }).fill("x");
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeDisabled();
       await record.getByRole("textbox", { name: "Employee ID", exact: true }).fill("10000009");
-      await record.getByRole("textbox", { name: "Contact name", exact: true }).fill("Sam Lee");
+      await record.getByRole("textbox", { name: "Name", exact: true }).fill("Sam Lee");
       await expect(record).not.toContainText("not confirmed by a UCPath lookup");
       const image = drawer.getByRole("img", { name: "Source page 1 of emergency-contacts.pdf", exact: true });
       await expect(image).toBeVisible();
       expect(await image.getAttribute("src")).toMatch(/emergency-contacts-1.*\.webp$/u);
-      await record.getByRole("checkbox", { name: "Same address as employee", exact: true }).click();
-      await expect(record.getByRole("textbox", { name: "Street", exact: true })).toBeVisible();
       await expect(pageImage).toHaveAttribute("src", sourceUrl!);
 
       await attachShellA11y(page, info, `contact-review-${theme.attribute}-${width}.a11y.yml`);
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click();
       await expect(record.getByRole("textbox")).toHaveCount(0);
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      await page.keyboard.press("Escape"); await expect(drawer).toHaveCount(0);
       await logs.getByRole("button", { name: /^Linked runs \(/u }).click();
       await page.getByRole("dialog", { name: "Linked runs", exact: true }).getByRole("button", { name: /Jordan Lee/u }).click();
       await expect(logs).toContainText("Sam Lee"); await expect(logs).toContainText("10000009");
@@ -104,7 +96,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click();
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      await page.keyboard.press("Escape"); await expect(drawer).toHaveCount(0);
       await logs.getByRole("button", { name: /^Linked runs \(/u }).click();
       await page.getByRole("dialog", { name: "Linked runs", exact: true }).getByRole("button", { name: /Jordan Lee/u }).click();
       await expect(logs).toContainText("Verify onboarding and oath date");
@@ -120,7 +112,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(discardedHeading).toBeFocused();
       await discardedHeading.press("Control+z");
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      await page.keyboard.press("Escape"); await expect(drawer).toHaveCount(0);
       await rail.getByRole("button", { name: "I-9 Check", exact: true }).click();
       await expect(logs.getByRole("textbox")).toHaveCount(0); await expect(logs.getByRole("tab")).toHaveCount(0);
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
@@ -145,23 +137,22 @@ for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme
   const writes: string[] = []; page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
   try {
     await page.setViewportSize({ width: 1440, height: 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme); await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
-    for (const [label, field] of [["Oath Upload", "Officer signed"], ["Emergency Contact", "Contact name"], ["OnBase", "Contact name"], ["I-9 Check", "Section 2 page"]]) {
+    for (const [label, field] of [["Oath Upload", "Officer signed"], ["Emergency Contact", "Relationship"], ["OnBase", "Relationship"], ["I-9 Check", "Section 2 page"]]) {
       await rail.getByRole("button", { name: label, exact: true }).click();
       await expect(logs.getByRole("tab")).toHaveCount(0);
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
-      const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
+      const drawer = page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true });
       await expect(drawer).toContainText(field);
       const record = drawer.getByRole("region", { name: "Record person-1", exact: true });
       await expect(record.getByRole("textbox", { name: "Employee ID", exact: true })).toBeVisible();
-      await record.getByRole("textbox", { name: "First name", exact: true }).fill("Taylor");
+      await (label === "Emergency Contact" || label === "OnBase" ? record.getByRole("textbox", { name: "Employee name", exact: true }).fill("Taylor Lee") : record.getByRole("textbox", { name: "First name", exact: true }).fill("Taylor"));
       await expect(drawer.getByRole("heading", { name: "Taylor Lee", exact: true })).toBeVisible();
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
 
       if (label === "Oath Upload") await attachShellA11y(page, info, `ocr-${label}-${theme.attribute}.a11y.yml`);
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click(); await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toBeFocused();
+      await page.keyboard.press("Escape"); await expect(drawer).toHaveCount(0); await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toBeFocused();
     }
     expect(writes).toEqual([]);
   } finally { await server.close(); }
@@ -175,8 +166,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
-      await moveAssistantLauncherAboveFooter(page);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
@@ -184,48 +173,43 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(queue.getByRole("button", { name: /emergency-contacts.pdf —/u })).toBeVisible();
       await expect(queue.getByRole("button", { name: "Attempts for emergency-contacts.pdf", exact: true })).toBeVisible();
       await expect(queue).not.toContainText("PDF preparation");
-      await expect(logs.getByRole("navigation", { name: "Run timeline", exact: true })).toContainText("Read emergency contact");
+      await expect(queue).toContainText("Review extracted records");
       const reviewTrigger = logs.getByRole("button", { name: /^Records \d+$/u });
       await reviewTrigger.focus(); await page.keyboard.press("Enter");
-      const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
+      const drawer = page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true });
+      await expect(drawer).toBeVisible();
       const first = drawer.getByRole("region", { name: "Record person-1", exact: true });
       for (const id of ["person-2", "person-3"]) {
         await drawer.getByRole("region", { name: `Record ${id}`, exact: true }).getByRole("checkbox", { name: /^Include /u }).click();
       }
       await drawer.getByRole("checkbox", { name: "Include Jordan Lee", exact: true }).click();
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeDisabled();
-      await drawer.getByRole("button", { name: "Add record", exact: true }).click();
-      await expect(first).toHaveCount(1);
-      const added = drawer.getByRole("region", { name: "Record manual-4", exact: true });
-      await expect(added.getByRole("textbox", { name: "Employee ID", exact: true })).toBeFocused();
-      await added.getByRole("textbox", { name: "Employee ID", exact: true }).fill("10001234");
-      await added.getByRole("textbox", { name: "First name", exact: true }).fill("Taylor");
-      await added.getByRole("textbox", { name: "Last name", exact: true }).fill("Chen");
-      await drawer.getByRole("checkbox", { name: "Include Taylor Chen", exact: true }).click();
-      await added.getByRole("textbox", { name: "Contact name", exact: true }).fill("Sam Chen");
+      await drawer.getByRole("checkbox", { name: "Include Jordan Lee", exact: true }).click();
+      await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
+      await first.getByRole("textbox", { name: "Name", exact: true }).fill("Sam Chen");
       await expect(drawer.getByRole("combobox", { name: "Record", exact: true })).toHaveCount(0);
-      await expect(first.getByRole("textbox", { name: "Contact name", exact: true })).toHaveValue("Alex Lee");
-      await expect(added.getByRole("textbox", { name: "Contact name", exact: true })).toHaveValue("Sam Chen");
-      await expect(added.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10001234");
+      await expect(first.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Sam Chen");
+      await expect(first.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10000001");
 
       await attachShellA11y(page, info, `focused-records-${theme.attribute}-${width}.a11y.yml`);
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click();
-      await expect(added.getByRole("textbox")).toHaveCount(0);
-      await expect(drawer.getByRole("heading", { name: "Taylor Chen", exact: true })).toBeFocused();
-      await logs.getByRole("button", { name: /^Records \d+$/u }).click(); await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toBeFocused();
+      await expect(first.getByRole("textbox")).toHaveCount(0);
+      await expect(drawer.getByRole("heading", { name: "Jordan Lee", exact: true })).toBeFocused();
+      await page.keyboard.press("Escape"); await expect(drawer).toHaveCount(0); await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toBeFocused();
       await expect(logs.getByRole("tab")).toHaveCount(0);
       const links = logs.getByRole("button", { name: "Linked runs (1)", exact: true });
       await links.focus(); await page.keyboard.press("Enter");
       const linked = page.getByRole("dialog", { name: "Linked runs", exact: true });
-      await expect(linked).toContainText("Taylor Chen"); await page.keyboard.press("Escape"); await expect(links).toBeFocused();
-      await links.click(); await linked.getByRole("button", { name: /Taylor Chen/u }).click();
-      await expect(logs).toContainText("Sam Chen"); await expect(logs).toContainText("10001234");
+      await expect(linked).toContainText("Jordan Lee"); await page.keyboard.press("Escape"); await expect(links).toBeFocused();
+      await links.click(); await linked.getByRole("button", { name: /Jordan Lee/u }).click();
+      await expect(logs).toContainText("Sam Chen"); await expect(logs).toContainText("10000001");
       await expect(logs.getByRole("textbox")).toHaveCount(0); await expect(logs.getByRole("button", { name: /^Records/u })).toHaveCount(1);
       await logs.getByRole("button", { name: /^Linked runs \(/u }).click();
       await linked.getByRole("button", { name: /emergency-contacts.pdf.*Parent/u }).click();
       await expect(logs).toContainText("emergency-contacts.pdf");
       await expect(logs).not.toContainText("Emergency Contact · emergency-contacts.pdf");
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      await expect(drawer).toBeVisible();
       const overflow = await drawer.evaluate(node => [...node.querySelectorAll<HTMLElement>("section, table, input:not([aria-hidden=true]), button:not([aria-hidden=true])")].filter(element => element.clientWidth > 0 && element.scrollWidth > element.clientWidth + 1).map(element => element.getAttribute("aria-label") ?? element.tagName));
       expect(overflow).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
@@ -241,15 +225,13 @@ for (const theme of PARITY_THEMES) test(`every local workflow uses canonical que
   try {
     await page.setViewportSize({ width: 1440, height: 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
-    const inlineRecords = new Set(seedMockRuns().filter(run => run.ocrRunId !== undefined).map(run => run.workflowId));
     for (const flow of MOCK_WORKFLOWS.filter(flow => !["person-lookup", "separations", "ocr"].includes(flow.id))) {
       await rail.getByRole("button", { name: flow.label, exact: true }).click();
       await expect(page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: /^Attempts for/u }).first()).toBeVisible();
       await expect(logs.getByRole("tab")).toHaveCount(0);
-      await expect(logs.getByRole("button", { name: /^Review records|^Records/u })).toHaveCount(inlineRecords.has(flow.id) ? 1 : 0);
+      await expect(logs.getByRole("button", { name: /^Review records|^Records/u })).toHaveCount(["emergency-contact", "oath-signature", "oath-upload", "onbase", "i9-check-start"].includes(flow.id) ? 1 : 0);
       await expect(logs.getByRole("tab", { name: "Result", exact: true })).toHaveCount(0);
       await expect(logs.getByRole("tab", { name: /^Linked runs/u })).toHaveCount(0);
       await expect(logs).not.toContainText("Fictional workflow preview");
@@ -259,9 +241,10 @@ for (const theme of PARITY_THEMES) test(`every local workflow uses canonical que
     await page.goto(`${server.baseUrl}/?day=invalid-day`);
     await rail.getByRole("button", { name: "Onboarding", exact: true }).click();
     await expect(page.getByText("Choose a valid date", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Search runs", exact: true }).click();
-    const search = page.getByRole("dialog", { name: "Search runs", exact: true });
-    await expect(search.getByRole("status")).toHaveText("Invalid date: invalid-day.");
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    const search = page.getByRole("dialog", { name: "Search Relay", exact: true });
+    await expect(search.getByRole("status").filter({ hasText: "Invalid date: invalid-day." })).toBeVisible();
+    await search.getByRole("group", { name: "Filter results", exact: true }).getByRole("button", { name: "Runs", exact: true }).click();
     await expect(search.getByRole("option")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: /^Choose date/u }).click();

@@ -2,7 +2,6 @@ import { useRef, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
-  Ban,
   CheckCircle2,
   ChevronsUp,
   CircleSlash,
@@ -21,6 +20,8 @@ import { cn } from "../../../lib/utils.js";
 import { IconActionButton } from "./icon-action-button.js";
 import {
   bannerPills,
+  commandResultDetail,
+  commandResultTitle,
   type CommandResultFeedEntry,
   intentPill,
   outcomeAction,
@@ -32,8 +33,7 @@ import {
   Dialog,
   DialogContent,
   DialogFooter,
-  IconButton,
-  dsBorder,
+  Notice,
   dsFocus,
   dsIcon,
   dsMotion,
@@ -58,83 +58,11 @@ export type DashboardActionHandler = (action: ActionDescriptorWire, target: Acti
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
 
-/** Persistent refusal context. It is a client-side feed of command
- * answers not a replacement for the durable audit trail */
-export function CommandResultFeed({
-  results,
-  onDismiss,
-  onRefreshRow,
-}: {
-  results: readonly CommandResultFeedEntry[];
-  onDismiss: (id: string) => void;
-  onRefreshRow: (entry: CommandResultFeedEntry) => void;
-}) {
-  if (results.length === 0) return null;
-  return (
-    <div
-      className={cn(
-        "flex shrink-0 flex-col border-b bg-[var(--ds-recess-bg)]",
-        dsBorder.subtle,
-        "gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]",
-      )}
-      aria-live="polite"
-      data-queue-command-result-feed=""
-    >
-      {results.map((entry) => {
-        const conflict = entry.settlement.reason === "conflict";
-        const tone = conflict
-          ? {
-            wrap: "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)]",
-            text: "text-[color:var(--ds-status-waiting-fg)]",
-            icon: <AlertTriangle aria-hidden className={dsIcon.md} />,
-            word: "Conflict",
-          }
-          : {
-            wrap: "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]",
-            text: "text-[color:var(--ds-danger)]",
-            icon: <Ban aria-hidden className={dsIcon.md} />,
-            word: "Rejected",
-          };
-        return (
-          <div key={entry.id} className={cn("border px-[var(--ds-space-base)] py-[var(--ds-space-snug)]", dsRadius.md, tone.wrap)}>
-            <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
-              <span className={cn("inline-flex shrink-0", tone.text)}>{tone.icon}</span>
-              <span className={cn(dsText.caps, "shrink-0", tone.text)}>{tone.word}</span>
-              <span className={cn(dsText.body, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>
-                {entry.actionLabel} — {entry.subject}
-              </span>
-              <span className={cn(dsText.micro, dsText.nums, "ml-auto shrink-0 text-[color:var(--ds-fg-muted)]")}>
-                {entry.actionLabel} · {entry.clock}
-              </span>
-              <IconButton
-                size="sm"
-                label="Dismiss this result"
-                onClick={() => onDismiss(entry.id)}
-                icon={<X aria-hidden className={dsIcon.sm} />}
-              />
-            </div>
-            <p className={cn(dsText.meta, "mt-[var(--ds-space-hair)] pl-5 leading-relaxed text-[color:var(--ds-fg-muted)]")}>
-              {entry.settlement.message}
-            </p>
-            {conflict ? (
-              <div className="mt-[var(--ds-space-tight)] flex items-center gap-[var(--ds-space-base)] pl-5">
-                <span className={cn(dsText.micro, dsText.nums, "text-[color:var(--ds-status-waiting-fg)]")}>
-                  row rev {entry.expectedVersion} → server {entry.settlement.currentVersion}
-                </span>
-                <Button size="sm" variant="outline" onClick={() => onRefreshRow(entry)}>
-                  Refresh this row
-                </Button>
-              </div>
-            ) : (
-              <p className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-hair)] pl-5 text-[color:var(--ds-danger)]")}>
-                code {(entry.settlement.reason === "rejected" ? entry.settlement.code : "confirmation-required")} · {entry.subject} · {entry.workflowLabel}
-              </p>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
+
+/** Persistent refusal context: sticky toasts that only notify; each has a Priority notification item that opens the run. */
+export function CommandResultFeed({ results }: { results: readonly CommandResultFeedEntry[] }) {
+  return <>{results.map(entry => <Notice key={entry.id} sticky tone={entry.settlement.reason === "conflict" ? "warning" : "danger"}
+    title={commandResultTitle(entry)} description={commandResultDetail(entry)} />)}</>;
 }
 
 const ICONS: Record<ActionIconKey, ReactNode> = {
@@ -177,11 +105,14 @@ export function FooterActions({
   target,
   onAction = NOOP_ACTION,
   onPreviewAction,
+  groupCount,
 }: {
   actions: readonly ActionDescriptorWire[];
   target: ActionTarget;
   onAction?: DashboardActionHandler;
   onPreviewAction?: (action: 'retry' | 'delete') => void;
+  /** A group or batch card: Pause and Stop act on every member still running. */
+  groupCount?: number;
 }) {
   const footer = actionsAt(actions, "footer");
   if (footer.length === 0 && !onPreviewAction) return null;
@@ -193,18 +124,21 @@ export function FooterActions({
         <IconActionButton tone="muted" icon={<RotateCcw aria-hidden className={dsIcon.sm} />} label="Retry" onClick={event => { event.stopPropagation(); onPreviewAction('retry'); }} />
         <IconActionButton tone="destructive" icon={<Trash2 aria-hidden className={dsIcon.sm} />} label="Delete" onClick={event => { event.stopPropagation(); onPreviewAction('delete'); }} />
       </>}
-      {footer.map((a) => (
+      {footer.map((a) => {
+        const label = groupCount === undefined ? a.label
+          : a.key === "pause" ? `Pause all ${groupCount}` : a.key === CANCEL_TREE_KEY ? `Stop all ${groupCount}` : a.label;
+        return (
         <IconActionButton
           key={a.key}
           tone={INTENT_TONE[a.intent]}
           icon={ICONS[a.icon ?? "external"]}
-          label={a.label}
+          label={label}
           title={
-            a.key === CANCEL_TREE_KEY
+            a.key === CANCEL_TREE_KEY && groupCount === undefined
               ? CANCEL_TREE_TITLE
               : a.kind === "command" && a.confirm
-                ? `${a.label} — asks first`
-                : a.label
+                ? `${label} — asks first`
+                : label
           }
           onClick={(e) => {
             e.stopPropagation();
@@ -213,7 +147,8 @@ export function FooterActions({
             if (a.kind === "command" && (a.command === "pause" || a.command === "resume")) row?.focus({ preventScroll: true });
           }}
         />
-      ))}
+        );
+      })}
     </span>
   );
 }

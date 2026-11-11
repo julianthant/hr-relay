@@ -18,10 +18,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?settings=general`);
-      const month = page.getByRole("spinbutton", { name: "month, Job end date*", exact: true });
-      const day = page.getByRole("spinbutton", { name: "day, Job end date*", exact: true });
-      const year = page.getByRole("spinbutton", { name: "year, Job end date*", exact: true });
-      const original = { month: await month.textContent(), day: await day.textContent(), year: await year.textContent() };
+      const month = page.getByRole("spinbutton", { name: "month, Job end date", exact: true });
+      const day = page.getByRole("spinbutton", { name: "day, Job end date", exact: true });
+      const year = page.getByRole("spinbutton", { name: "year, Job end date", exact: true });
       await month.focus(); await page.keyboard.type("04");
       await day.focus(); await page.keyboard.type("27");
       await year.focus();
@@ -36,13 +35,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         }
       }
       await expect(year).toHaveText("2026");
-      await expect(page.getByRole("button", { name: /^Undo/u })).toHaveCount(0);
-      await year.press(width === 1024 ? "Control+z" : "Meta+z");
-      await expect(month).toHaveText(original.month!); await expect(day).toHaveText(original.day!); await expect(year).toHaveText(original.year!);
-      await month.focus(); await page.keyboard.type("04");
-      await day.focus(); await page.keyboard.type("27");
-      await year.focus(); await page.keyboard.type("2026");
-      await page.getByRole("button", { name: "Choose job end date Job end date*", exact: true }).click();
+      await page.getByRole("button", { name: "Choose job end date Job end date", exact: true }).click();
       const calendar = page.getByRole("dialog", { name: "Choose job end date", exact: true });
       await expect(calendar.getByRole("button", { name: /Monday, April 27, 2026/ })).toBeVisible();
       await page.keyboard.press("Escape");

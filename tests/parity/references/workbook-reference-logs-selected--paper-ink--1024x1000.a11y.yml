@@ -1,7 +1,7 @@
 # workbook-reference-logs-selected--paper-ink--1024x1000
 # adapter: fixture
 # fixture: workbook-reference-logs.spec.ts:ordered roster reference Logs light 1024
-# descriptorHash: 5902cae11b4a5f7d95e142b7366b807886e3f75ab5b1de56ef7806d2109fd0c6
+# descriptorHash: a426cf2eb08114a10b7803bbada8096d6fff19a01b26804ab9b29590055f2ab4
 # appVersion: 0.1.0
 # viewport: 1024x1000  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -10,8 +10,9 @@
   - /url: "#dashboard-main-region"
 - complementary "Workspace":
   - heading "Relay" [level=2]
+  - button "Collapse sidebar" [expanded]
   - button "Notifications, 0 unread"
-  - button "Search runs"
+  - button "Search"
   - navigation "Workflows":
     - heading "Search" [level=3]
     - list:
@@ -49,8 +50,6 @@
         - button "CRM Document Download"
       - listitem:
         - button "OCR"
-      - listitem:
-        - button "SharePoint Download"
     - heading "OnBase" [level=3]
     - list:
       - listitem:
@@ -66,10 +65,10 @@
     - button "Example, Person — review · 72h 5m" [pressed]:
       - text: Example, Person Review Waiting for a roster row 9:52 AM
       - button "Attempts for Example, Person": "#1"
-      - text: ONB58832308 13m 0s
+      - text: 13m 0s
   - region "Action panel":
     - group "Action panel controls":
-      - button "Start a run"
+      - button "Start run"
       - button "Filter queue by status"
       - combobox "Sort the queue"
       - button "Attention first" [pressed]
@@ -96,7 +95,6 @@
       - region "Read reference":
         - time: 10:00:00
         - heading "Read reference" [level=3]
-        - time: 10:00:00
         - paragraph: Read retained reference
       - region "Look up in roster":
         - time: 10:00:00
@@ -131,7 +129,6 @@
       - region "Run notes":
         - time: 10:00:00
         - heading "Run notes" [level=3]
-        - time: 10:00:00
         - paragraph: Retained run note
     - group:
       - searchbox "Search logs"
@@ -139,7 +136,6 @@
     - status
     - button "Copy logs"
     - button "Go to latest action"
-- button "Assistant"
 - status
 - region "Session Panel":
   - group "Session actions":
@@ -147,4 +143,5 @@
     - button "Add workers"
     - button "Settings"
     - button "Log out"
+    - button "Assistant"
 - region "Notifications"

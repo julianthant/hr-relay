@@ -8,8 +8,9 @@
 
 - complementary "Workspace":
   - heading "Relay" [level=2]
+  - button "Collapse sidebar" [expanded]
   - button "Notifications, 0 unread"
-  - button "Search runs"
+  - button "Search"
   - navigation "Workflows":
     - heading "Search" [level=3]
     - list:
@@ -40,7 +41,6 @@
         - time: 09:00:02
         - heading "Submit" [level=3]
         - text: UCPath
-        - time: 09:00:09
         - paragraph: Write outcome unknown. The original submit remains held.
         - region "UCPath found transactions":
           - heading "Did this submit reach UCPath?" [level=3]

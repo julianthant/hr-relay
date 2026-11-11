@@ -7,9 +7,9 @@
 # capturedAt: 2026-08-03
 
 - region "Notifications"
-- dialog "Start a run":
+- dialog "Start run":
   - banner:
-    - heading "Start a run" [level=2]
+    - heading "Start run" [level=2]
     - paragraph: Emergency Contact · Workflow preview
     - button "Close"
   - complementary:
@@ -47,7 +47,7 @@
       - heading "Utils" [level=3]
       - list:
         - listitem:
-          - button "CRM Doc Download"
+          - button "Onboarding Documents"
       - heading "OnBase" [level=3]
       - list:
         - listitem:
@@ -61,23 +61,30 @@
       - button "1 Input": Input
     - listitem:
       - button "2 Options" [disabled]: Options
-    - listitem:
-      - button "3 Confirm" [disabled]: Confirm
-  - heading "Run input" [level=3]
-  - paragraph: Choose the documents to process.
   - region "Input":
     - region "PDF documents":
       - heading "PDF documents" [level=4]
-      - button "Choose PDFs"
+      - paragraph: Choose the scans to read.
       - status: No PDFs selected
-    - text: Roster
-    - button "Existing Onboarding Roster Roster" [expanded]: Existing Onboarding Roster
-    - menu "Existing Onboarding Roster Roster":
-      - group:
-        - group:
-          - menuitemradio "Existing Onboarding Roster" [checked]
-          - menuitemradio "Download Onboarding Roster"
+      - button "Choose PDFs"
+    - region "Reference spreadsheets":
+      - heading "Reference spreadsheets" [level=4]
+      - paragraph: Spreadsheets this run looks people up in. Needs Employee ID and Name.
+      - text: Contact roster Roster
+      - button "Contact roster worksheets, Roster" [expanded]: Roster
+      - menu "Contact roster worksheets, Roster":
+        - group "Contact roster":
+          - menuitemcheckbox "Roster 28 rows" [checked]
+          - menuitemcheckbox "Terminated 9 rows"
+          - menuitemcheckbox "Notes 5 rows"
+      - combobox "Contact roster version": v6
+      - button "Remove Contact roster"
+      - text: I-9 tracker Sheet1
+      - button "I-9 tracker worksheets, Sheet1": Sheet1
+      - combobox "I-9 tracker version": v3
+      - button "Remove I-9 tracker"
+    - button "Add spreadsheet"
   - contentinfo:
-    - text: 0 runsEmergency Contact
+    - text: Emergency Contact6 of 6 stepsOCR onPriority
     - button "Cancel"
     - button "Continue" [disabled]

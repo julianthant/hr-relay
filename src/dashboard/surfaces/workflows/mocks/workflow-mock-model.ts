@@ -20,7 +20,7 @@ export type MockDraft = Readonly<{
   method: MockMethod; text: string; files: readonly MockFile[]; lookupMode: "search" | "match";
   typedValues?: TypedInputDraft;
   crmCheck: boolean; hireType: "new-hire" | "rehire"; uploadMode: "full" | "upload-only";
-  roster: "existing" | "download" | "none"; formType: string; documentType: string;
+  formType: string; documentType: string;
   effectiveDate: string; startDate: string; endDate: string;
   dryRun: boolean; priority: "interactive" | "background"; browser: "headed" | "headless";
   selectedSteps: readonly string[];
@@ -44,7 +44,7 @@ const prep: readonly MockStep[] = [
 export function initialMockDraft(id: string): MockDraft {
   const flow = mockWorkflow(id);
   return { method: flow.methods[0], text: "", files: [], lookupMode: "search", crmCheck: true,
-    hireType: "new-hire", uploadMode: "full", roster: "existing", formType: id === "i9-check-start" ? "i9" : id === "onbase" ? "onbase-emergency-contact" : id === "emergency-contact" ? "emergency-contact" : "oath",
+    hireType: "new-hire", uploadMode: "full", formType: id === "i9-check-start" ? "i9" : id === "onbase" ? "onbase-emergency-contact" : id === "emergency-contact" ? "emergency-contact" : "oath",
     documentType: "Emergency Contact", effectiveDate: "2026-08-03", startDate: "2017-01-01", endDate: "2026-01-31",
     // Dry run is an explicit operator choice; every launch starts with it off.
     dryRun: false, priority: "interactive", browser: "headed",
@@ -98,7 +98,6 @@ export function mockDraftInputError(id: string, draft: MockDraft): string | unde
   if (id === "work-study" && !validDate(draft.effectiveDate)) return "Choose a valid effective date.";
   if (id === "old-kronos-reports" && (!validDate(draft.startDate) || !validDate(draft.endDate) || draft.startDate > draft.endDate)) return "Choose a valid report date range; start must precede end.";
   if (id === "onbase" && !MOCK_ONBASE_TYPES.some(type => type.value === draft.documentType)) return "Choose a supported document type.";
-  if (draft.method === "pdf" && flow.roster && !(id === "oath-upload" && draft.uploadMode === "upload-only") && draft.roster === "none") return "Choose an existing roster or download the configured roster.";
   return undefined;
 }
 
@@ -119,7 +118,7 @@ export function mockOcrReadSteps(id: string, draft: MockDraft): readonly MockSte
 }
 export function mockPipeline(id: string, draft: MockDraft): readonly MockStep[] {
   const flow = mockWorkflow(id);
-  if (id === "ocr") return [...(draft.roster === "download" ? mockWorkflow("sharepoint-download").steps.map(step => ({ ...step, key: `roster:${step.key}` })) : []), ...prep.map(step => ({ ...step,
+  if (id === "ocr") return [...prep.map(step => ({ ...step,
     ...(step.key === "prep:awaiting-approval" && draft.ocrMode === "manual" ? { label: "Review records", message: "Enter the records manually and approve them before starting downstream work." } : {}),
     ...(step.key === "prep:loading-roster" && draft.formType === "i9" ? { message: "Load configured Action History for I-9 identity matching." } : {}),
     ...(step.key === "prep:ocr" ? { label: mockOcrReadSteps(id, draft)[0].label, system: "OCR" } : {}),
@@ -172,7 +171,7 @@ export function mockStepState(run: MockRun, step: MockStep): LogTimelineState {
   if (run.workflowId === "ocr" && draft.ocrMode === "manual" && step.key !== "prep:awaiting-approval") return "skipped";
   if (run.workflowId === "person-lookup" && ((step.key === "cross-verification" && (!draft.crmCheck || /^\d{5,}$/u.test(run.subject))) || (step.key === "active-status" && draft.lookupMode === "match") || step.key === "crm-dates")) return "skipped";
   if (run.workflowId === "onboarding" && step.key === "i9-creation" && draft.hireType === "rehire") return "skipped";
-  if (!mockNeedsReview(run) && !mockWaitsForOcr(run) && !step.key.startsWith("roster:") && !prep.some(item => item.key === step.key) && !draft.selectedSteps.includes(step.key) && !["members", "rollup"].includes(step.key)) return "skipped";
+  if (!mockNeedsReview(run) && !mockWaitsForOcr(run) && !prep.some(item => item.key === step.key) && !draft.selectedSteps.includes(step.key) && !["members", "rollup"].includes(step.key)) return "skipped";
   if (mockNeedsReview(run) || mockWaitsForOcr(run)) {
     const pipeline = mockRunPipeline(run);
     const gate = run.workflowId === "ocr" ? "prep:awaiting-approval" : "read-document";
@@ -222,7 +221,6 @@ export function seedMockRuns(): readonly MockRun[] {
     const pdf = flow.methods[0] === "pdf" || flow.id === "oath-signature";
     const document = OCR_DOCUMENT_FIXTURES.find(item => item.parent === flow.id);
     const draft: MockDraft = { ...initialMockDraft(flow.id), method: pdf ? "pdf" : flow.methods[0], text: document?.formType === "separation" ? reviewValue(document.records[0], "kualiId") : flow.example,
-      ...(flow.id === "onbase" ? { roster: "download" } : {}),
       ...(document ? { formType: document.formType } : {}),
       files: document ? [{ name: document.name, size: 4096, digest: `fixture:document:${document.name}` }] : pdf ? [{ name: flow.example.endsWith(".pdf") ? flow.example : "oaths.pdf", size: 4096, digest: `fixture:${flow.id}` }] : [] };
     const subject = pdf ? draft.files.map(file => file.name).join(" + ") : draft.text;
@@ -234,7 +232,7 @@ export function seedMockRuns(): readonly MockRun[] {
     });
     return delegateMockOcr(parent);
   });
-  return runs.map(run => ["i9-lookup", "sharepoint-download"].includes(run.workflowId) ? { ...run, parentId: "mock:onbase:sample", parentWorkflowId: "onbase" } : run);
+  return runs.map(run => run.workflowId === "i9-lookup" ? { ...run, parentId: "mock:onbase:sample", parentWorkflowId: "onbase" } : run);
 }
 
 export function mockRunSubset(runs: readonly MockRun[], include: (run: MockRun) => boolean): readonly MockRun[] {
@@ -405,7 +403,6 @@ export function mockConfirmationFacts(id: MockWorkflowId, draft: MockDraft): rea
     ...(id === "onboarding" ? [{ key: "Hire type", value: draft.hireType === "rehire" ? "Rehire · UC_CONC_HIRE" : "New hire · UC_FULL_HIRE" }] : []),
     ...(id === "person-lookup" ? [{ key: "Lookup mode", value: draft.lookupMode }, { key: "CRM check", value: draft.crmCheck ? "On" : "Off" }] : []),
     ...(id === "oath-upload" ? [{ key: "Processing mode", value: uploadOnly ? "Upload-only" : "Full process" }] : []),
-    ...(pdf && flow.roster && !uploadOnly ? [{ key: "Roster", value: draft.roster === "download" ? "Download Onboarding Roster" : "Existing Onboarding Roster" }] : []),
     ...(id === "onbase" ? [{ key: "Document type", value: draft.documentType }] : []),
     ...(id === "work-study" ? [{ key: "Effective date", value: displayExtractedDate(draft.effectiveDate) }] : []),
     ...(id === "old-kronos-reports" ? [{ key: "Report dates", value: `${displayExtractedDate(draft.startDate)} – ${displayExtractedDate(draft.endDate)}` }] : []),

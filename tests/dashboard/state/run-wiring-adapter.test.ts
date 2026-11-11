@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { TooltipProvider } from "../../../src/dashboard/ds/ui.js";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { createDashboardClient, type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../src/dashboard/state/client-context.js";
@@ -86,7 +87,7 @@ function commandBindingFixture() {
   return { client, binding };
 }
 let root: Root | undefined;
-beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0)); vi.stubGlobal("cancelAnimationFrame", clearTimeout); });
+beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0)); vi.stubGlobal("cancelAnimationFrame", clearTimeout); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); window.history.replaceState(null, "", "/"); vi.unstubAllGlobals(); });
 async function mount(element: ReturnType<typeof createElement>) { const host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(async () => root?.render(element)); }
 
@@ -185,7 +186,7 @@ describe("served Logs wiring", () => {
     });
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: { row, workflowLabel: "Person Lookup" } }) }));
     assert.match(document.body.textContent ?? "", /Searching UCPath directory for Morrow, Bea/);
-    assert.match(document.body.textContent ?? "", /Capture availability not supplied/);
+    assert.doesNotMatch(document.body.textContent ?? "", /Capture availability not supplied/);
     assert.match(document.body.textContent ?? "", /Identity Approval/);
     assert.doesNotMatch(document.body.textContent ?? "", /Identity decision join not supplied/);
     assert.doesNotMatch(document.body.textContent ?? "", /Logs unavailable|Reading the employment record/);
@@ -600,7 +601,7 @@ describe("served Logs wiring", () => {
       await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
         children: createElement(LogSample, { selection: selected }) }) }));
       assert.match(document.body.textContent ?? "", /Authoritative note 0/);
-      assert.match(document.body.textContent ?? "", omitted === "node" ? /Identity decision join not supplied/ : /Capture availability not supplied/);
+      if (omitted === "node") assert.match(document.body.textContent ?? "", /Identity decision join not supplied/);
       assert.equal(document.querySelector('article[aria-label="Identity Approval"]')?.querySelectorAll("button").length, 0);
       assert.equal(submissions, 0);
       await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren();
@@ -694,8 +695,8 @@ describe("served Logs wiring", () => {
     const scope = { ...h.binding.scope, client };
     const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-    const panel = (next: LogSelection, currentBinding = binding, nowIso = AT) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
-      children: createElement(LogSample, { key: next.row.runId, selection: next, nowIso }) }) });
+    const panel = (next: LogSelection, currentBinding = binding) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
+      children: createElement(LogSample, { key: next.row.runId, selection: next }) }) });
     const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.decision!.options[0].label); assert.ok(control); return control; };
     async function choose(index: number) {
       const radio = document.querySelectorAll<HTMLButtonElement>('[role="radio"]')[index]; assert.ok(radio); await act(async () => radio.click());
@@ -716,13 +717,13 @@ describe("served Logs wiring", () => {
     }
     const nextBinding = authority === "foreign-actor" || authority === "foreign-authority" ? { ...binding, scope: { ...scope,
       ...(authority === "foreign-actor" ? { actorId: "other-operator" } : { authority: {} }) } } : binding;
-    await act(async () => root?.render(panel(next, nextBinding, "2026-08-03T12:00:01.000Z")));
+    await act(async () => root?.render(panel(next, nextBinding)));
     assert.equal(sent.length, 1); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
     assert.doesNotMatch(document.body.textContent ?? "", /Pending/);
     if (authority !== "current") { assert.doesNotMatch(document.body.textContent ?? "", /The command was refused/); return; }
     assert.match(document.body.textContent ?? "", /The command was refused/);
     await act(async () => document.querySelectorAll<HTMLButtonElement>('[role="radio"]')[0]?.click()); assert.equal(approve().disabled, false);
-    await act(async () => root?.render(panel(next, binding, "2026-08-03T12:00:02.000Z"))); assert.equal(sent.length, 1);
+    await act(async () => root?.render(panel(next, binding))); assert.equal(sent.length, 1);
     await choose(1); assert.equal(sent.length, 2); assert.notEqual(sent[1].commandId, sent[0].commandId);
     for (const [index, envelope] of sent.entries()) { assert.equal(envelope.family, "gate"); if (envelope.family === "gate") assert.deepEqual(envelope.payload,
       { decision: "approved", gateRef: gate.gateRef, optionRef: gate.options[index].ref }); }
@@ -731,7 +732,7 @@ describe("served Logs wiring", () => {
     assert.match(document.body.textContent ?? "", /Pending/); assert.doesNotMatch(document.body.textContent ?? "", /The command was refused/);
     currentDetail = RunDetailWireSchema.parse({ ...open, rowRevision: 4, gate: { state: "resolved", gateId: NOTE, nodeId: GATE_NODE, label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 } });
     await act(async () => release?.()); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
-    await act(async () => root?.render(panel(next, binding, "2026-08-03T12:00:03.000Z")));
+    await act(async () => root?.render(panel(next, binding)));
     assert.doesNotMatch(document.body.textContent ?? "", /The command was refused|Pending/); assert.equal(sent.length, 2);
   });
   it("mounts the served LogSample producer without fictional decision events", async () => {
@@ -769,8 +770,8 @@ describe("served Logs wiring", () => {
     let reads = 0;
     const client = clientFor(() => { reads++; throw new Error("offline"); });
     const selected = selection();
-    const panel = (source?: "mock" | "served") => createElement(DashboardClientProvider, { client,
-      children: createElement(LogSample, { selection: selected, source }) });
+    const panel = (source?: "mock" | "served") => createElement(TooltipProvider, null, createElement(DashboardClientProvider, { client,
+      children: createElement(LogSample, { selection: selected, source }) }));
     await mount(panel());
     assert.ok(reads > 0);
     assert.match(document.body.textContent ?? "", /Logs unavailable/);
