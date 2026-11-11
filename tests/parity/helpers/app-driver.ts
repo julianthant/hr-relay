@@ -52,6 +52,9 @@ export async function installFrozenMonotonic(page: Page): Promise<void> {
       writable: true,
       value: () => frozen,
     });
+    // The assistant mark's idle orbit advances by the frame timestamp; a frozen one keeps it at rest.
+    const frame = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = callback => frame(() => callback(frozen));
   });
 }
 

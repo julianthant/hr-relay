@@ -102,7 +102,7 @@ for (const theme of PARITY_THEMES) {
     let release!: () => void;
     const pending = new Promise<void>(resolve => { release = resolve; });
     try {
-      await page.setViewportSize({ width: 1280, height: 720 }); await installTheme(page, theme);
+      await page.setViewportSize({ width: 1280, height: 720 }); await installTheme(page, theme); await installFrozenMonotonic(page);
       await page.route(`**/api/v1/intake/${FIXTURE_INTAKE_IDS.mapping}`, async route => { await pending; await route.fulfill({ status: 503, json: { error: "fixture-intake-unavailable" } }); });
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&intake=${FIXTURE_INTAKE_IDS.mapping}`);
       await expect(page.getByRole("region", { name: "Spreadsheet intake" })).toBeVisible();
