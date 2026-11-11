@@ -320,6 +320,58 @@ describe("served Logs decision authority", () => {
     if (sent[0].family === "gate") assert.deepEqual(sent[0].payload, { decision: "approved", gateRef: gate.gateRef, optionRef: gate.options[1].ref });
   });
 
+  it("looks a typed Employee ID up through a start plan that replaces the run, never a gate answer", async () => {
+    const chosen = servedGate(fixtures.CHOOSE);
+    const pick = chosen.decision?.options[0];
+    assert.ok(pick?.input?.kind === "candidate");
+    const correction = { inputField: "operatorEmployeeId", label: "Employee ID", placeholder: "8 digits", pattern: "^10\\d{6}$", expectedVersion: 3,
+      confirm: { title: "Look up this Employee ID", confirmLabel: "Look up", tone: "neutral" as const },
+      request: StartPlanRequestSchema.parse({ workflowId: "separations", dryRun: true, browserMode: "headless", captureBrowserScreenshots: false, submissions: [{}],
+        selectedStepKeys: ["identity-check"], rerunSource: { runId: RUN, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["identity-check"],
+          gateCorrection: { gateId: GATE_NODE, inputField: "operatorEmployeeId" } } }) };
+    const lookupPick = { ...pick, input: { ...pick.input, table: { ...pick.input.table, typed: { label: "Employee ID", placeholder: "8 digits", pattern: "^10\\d{6}$", lookup: true as const } } } };
+    const gate = IdentityGateDetailWireSchema.parse({ ...chosen, correction, decision: { ...chosen.decision, options: [lookupPick, ...(chosen.decision?.options.slice(1) ?? [])] } });
+    const selected = selectionAt(3);
+    const sent: DashboardCommandRequest[] = [], planned: unknown[] = [], requested: { pending: PendingCommand; onConfirmed: () => void }[] = [];
+    const client = { ...gateClient(gate, selected, sent), submitStartPlan: async (input: unknown) => {
+      const request = StartPlanRequestSchema.parse(input); planned.push(request);
+      return StartPlanWireSchema.parse({ wireVersion: 1, startPlanId: NOTE, workflowId: "separations", expectedVersion: 1,
+        expiresAt: "2026-08-03T13:00:00.000Z", dryRun: request.dryRun, browserMode: request.browserMode, captureBrowserScreenshots: request.captureBrowserScreenshots,
+        priority: "interactive", plannedBy: "local-operator", configSnapshotId: NOTE, rerun: { source: request.rerunSource, warnings: [], warningDigest: "a".repeat(64) },
+        fingerprints: Object.fromEntries(["descriptorFingerprint", "configFingerprint", "ingressSchemaHash", "canonicalInputSchemaHash", "inputFingerprint"].map(key => [key, "a".repeat(64)])),
+        planned: [{ logicalKey: RUN, title: "Separation 4502", matchKey: "4502" }], refused: [] });
+    } };
+    const h = await harness(client, (pending, onConfirmed) => { requested.push({ pending, onConfirmed }); });
+    await h.render(selected);
+    const option = gate.decision?.options[0];
+    assert.ok(option);
+    await act(async () => { h.state?.onDecision?.(gate.gateRef, option, { typed: " 10800002 " }); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(sent.length, 0);
+    assert.equal(planned.length, 1);
+    const request = StartPlanRequestSchema.parse(planned[0]);
+    assert.deepEqual(request.submissions, [{ operatorEmployeeId: "10800002" }]);
+    assert.deepEqual(request.rerunSource?.gateCorrection, { gateId: GATE_NODE, inputField: "operatorEmployeeId" });
+    assert.equal(requested.length, 1);
+    assert.deepEqual(requested[0].pending.action.confirm, correction.confirm);
+    assert.equal(JSON.stringify(requested[0].pending).includes("10800002"), false, "the confirm dialog carries no typed digits");
+    await act(async () => { requested[0].onConfirmed(); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].family, "start");
+    assert.ok(sent.every(envelope => envelope.family !== "gate"));
+  });
+
+  it("sends nothing for a typed Employee ID when the gate serves no lookup", async () => {
+    const gate = servedGate(fixtures.CHOOSE);
+    const selected = selectionAt(3);
+    const sent: DashboardCommandRequest[] = [], requested: unknown[] = [];
+    const h = await harness(gateClient(gate, selected, sent), pending => { requested.push(pending); });
+    await h.render(selected);
+    const option = gate.decision?.options[0];
+    assert.ok(option);
+    await act(async () => { h.state?.onDecision?.(gate.gateRef, option, { typed: "10800002" }); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.deepEqual([sent.length, requested.length], [0, 0]);
+  });
+
   it("sends nothing when a newer row revision supersedes the confirmed gate", async () => {
     const gate = servedGate(fixtures.ONE_CLICK);
     const selected = selectionAt(3);

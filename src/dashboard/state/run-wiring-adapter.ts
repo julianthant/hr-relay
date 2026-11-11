@@ -8,7 +8,7 @@ import type { CommandOutcome, CommandExecutionScope } from "../app/commands/comm
 import { batchMemberRetryAction, batchMemberRetrySourceMatches, childRetrySourceMatches, composeCommandRequest, verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import { DashboardCommandRequestSchema, type DashboardCommandRequest } from "../../rules/commands/commands.js";
 import type { DecisionOptionWire } from "../../models/dashboard/run-decision.js";
-import { answeredRow, decisionAnswerValid, serverMatchedTyped, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
+import { answeredRow, decisionAnswerValid, lookupTyped, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
 import { identityCeremonyFor } from "../surfaces/run-detail/identity/identity-ceremony.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -466,7 +466,8 @@ interface GateCommandOwner {
 /** Shows the served confirmation for a decision and calls `onConfirmed` only when the operator confirms it. */
 export type RunWiringConfirm = (pending: PendingCommand, onConfirmed: () => void) => void;
 
-interface CorrectionLaunch { readonly envelope: DashboardCommandRequest; readonly sourceVersion: number; readonly failureId: string; readonly plan: StartPlanWire }
+/** `source` is the failure id or identity gate ref whose served correction prepared this start. */
+interface CorrectionLaunch { readonly envelope: DashboardCommandRequest; readonly sourceVersion: number; readonly source: string; readonly plan: StartPlanWire }
 const correctionLaunches = new WeakMap<CommandExecutionScope, Map<string, CorrectionLaunch>>();
 
 export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm) {
@@ -580,7 +581,13 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         && envelope.target.expectedVersion.valueOf() === row.rowRevision.valueOf() && served.recovery?.expectedVersion === row.rowRevision;
       const prepared = correctionCommand?.get(row.runId);
       if (envelope.family === "start" && prepared !== undefined) return prepared.sourceVersion === row.rowRevision
-        && prepared.failureId === served.failureId && canonicalJsonStringify(prepared.envelope) === canonicalJsonStringify(envelope);
+        && prepared.source === served.failureId && canonicalJsonStringify(prepared.envelope) === canonicalJsonStringify(envelope);
+    }
+    const lookup = gate?.section === "identity-gate" && gate.payload.state === "available" ? gate.payload.value : undefined;
+    if (envelope.family === "start" && lookup?.correction !== undefined) {
+      const prepared = correctionCommand?.get(row.runId);
+      return prepared !== undefined && prepared.sourceVersion === row.rowRevision && lookup.correction.expectedVersion === row.rowRevision
+        && prepared.source === lookup.gateRef && canonicalJsonStringify(prepared.envelope) === canonicalJsonStringify(envelope);
     }
     const held = envelope.family === "worker-browser" && envelope.type === "check-parked-write";
     if ((!held && (envelope.family !== "run" || (envelope.type !== "recheck-write" && envelope.type !== "resolve-write-absent")))
@@ -591,7 +598,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         commandId: envelope.commandId, requestedAt: envelope.requestedAt,
         ...(envelope.type === "recheck-write" ? { transactionId: envelope.payload.transactionId } : {}) }) : undefined;
     return composed?.state === "ready" && canonicalJsonStringify(composed.request) === canonicalJsonStringify(envelope);
-  }, [matchesGate, parked, failure, correctionCommand, row.runId, row.rowRevision, row.parent, row.actions, workbookWrites, detail, batchRetry]);
+  }, [matchesGate, gate, parked, failure, correctionCommand, row.runId, row.rowRevision, row.parent, row.actions, workbookWrites, detail, batchRetry]);
   const commandApplies = useCallback((attempt: NonNullable<typeof command>) => attempt.state === "pending" || attempt.state === "uncertain"
     || matchesDecision(attempt.envelope) || (attempt.state === "settled" && attempt.envelope.family === "run" && attempt.envelope.type !== "resolve-workbook-reference-row" && parked === undefined
       && row.rowRevision > attempt.envelope.target.expectedVersion) || (attempt.state === "settled" && attempt.envelope.family === "gate" && detailGate?.state === "resolved"
@@ -757,7 +764,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         void launch.preview({ ...recovery.request, submissions: [{ [recovery.correction.inputField]: answer.text?.trim() }] }).then(plan => {
           if (currentCommandOwner.current !== commandOwner) return;
           const envelope = DashboardCommandRequestSchema.parse({ ...launch.prepareFinal(plan), source: "run-detail" });
-          correctionCommand?.set(row.runId, { envelope, sourceVersion: row.rowRevision, failureId: served.failureId, plan });
+          correctionCommand?.set(row.runId, { envelope, sourceVersion: row.rowRevision, source: served.failureId, plan });
           if (currentDecisionMatches.current(envelope)) showConfirm(envelope, true);
         }).catch(() => {
           if (currentCommandOwner.current !== commandOwner) return;
@@ -795,11 +802,32 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     const key = option.send.actionKey;
     const descriptor = gate.actions.find(candidate => candidate.key === key);
     if (descriptor?.kind !== "command") return;
+    const typed = option.input?.kind === "candidate" && answer.typed !== undefined ? lookupTyped(option.input.table, answer.typed) : undefined;
+    if (typed !== undefined) {
+      // A typed Employee ID is looked up by a run that replaces this one; it never answers the gate.
+      const correction = gate.correction;
+      if (correction === undefined || correction.expectedVersion !== row.rowRevision || launch === undefined || confirm === undefined || preparingCorrection.current) return;
+      preparingCorrection.current = true;
+      void launch.preview({ ...correction.request, submissions: [{ [correction.inputField]: typed }] }).then(plan => {
+        if (currentCommandOwner.current !== commandOwner) return;
+        const envelope = DashboardCommandRequestSchema.parse({ ...launch.prepareFinal(plan), source: "run-detail" });
+        correctionCommand?.set(row.runId, { envelope, sourceVersion: row.rowRevision, source: gate.gateRef, plan });
+        if (!currentDecisionMatches.current(envelope)) return;
+        confirm({ action: { ...descriptor, label: correction.confirm.confirmLabel, confirm: correction.confirm }, target: { runId: row.runId, expectedVersion: row.rowRevision },
+          subject: row.title, traceId: String(row.traceId), workflowLabel: selection.workflowLabel, source: "run-detail", commandId: envelope.commandId,
+          requestedAt: envelope.requestedAt, triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : null },
+          () => dispatchIfDecisionCurrent.current(envelope));
+      }).catch(() => {
+        if (currentCommandOwner.current !== commandOwner) return;
+        binding.feedback({ kind: "refused", commandId: crypto.randomUUID(), reason: "not-attempted",
+          feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})) });
+      }).finally(() => { preparingCorrection.current = false; });
+      return;
+    }
     const optionRef = answeredRow(option, answer)?.id;
-    const typedEid = option.input?.kind === "candidate" && answer.typed !== undefined ? serverMatchedTyped(option.input.table, answer.typed) : undefined;
     const composed = composeCommandRequest(descriptor, { runId: row.runId, expectedVersion: gate.expectedVersion }, { actorId: binding.scope.actorId, source: "run-detail",
       requestedAt: binding.authority.nowIso, gate: section.payload, gateId: openGate.nodeId,
-      ...(optionRef !== undefined ? { gateAnswer: { decision: "approved", optionRef } } : typedEid !== undefined ? { gateAnswer: { decision: "approved", typedEid } } : {}) });
+      ...(optionRef !== undefined ? { gateAnswer: { decision: "approved", optionRef } } : {}) });
     if (composed.state !== "ready") return;
     const envelope = DashboardCommandRequestSchema.parse(composed.request);
     if (descriptor.confirm === undefined) { dispatch(envelope); return; }

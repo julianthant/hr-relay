@@ -340,7 +340,7 @@ describe("composeCommandRequest — the ceremonies reach the identity-answer end
     const composed = composeCommandRequest(
       APPROVE,
       { runId: runId(1), expectedVersion: 3 },
-      { ...GATE_CONTEXT, gate: available(forged), gateAnswer: { decision: "approved", typedEid: CHECKED } },
+      { ...GATE_CONTEXT, gate: available(forged), gateAnswer: { decision: "approved", optionRef: forged.options[0].ref } },
     );
     assert.equal(composed.state, "refused");
     assert.match(composed.state === "refused" ? composed.reason : "", /biometric-scan/);
