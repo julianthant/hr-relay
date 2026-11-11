@@ -7,7 +7,7 @@ import { z } from "zod";
 import { createDeterministicProviderHarness } from "../../../../src/backend/processing/providers/deterministic-provider.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
-import { FingerprintSchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
+import { FingerprintSchema, IsoInstantSchema, TraceIdSchema } from "../../../../src/rules/identity/ids.js";
 import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { HASH_A, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -63,9 +63,10 @@ it("previews both ordered writes and accounts for a skipped gate and unavailable
 describe("publication preview boundary", () => {
   const { SIGNAL, SCENARIO, providersOnlyContract, publicationDescriptor, queuedRunFor, wiringHarness, claim } = wiring;
   const descriptor = publicationDescriptor("publication-preview-fixture", "pp");
+  const ORDINARY_RUN_ID = "00000000-0000-4000-8000-0000000000a1";
   const PREVIEW_LOG = "Dry run: this save was prepared and checked. Nothing was saved.";
 
-  async function run(options: Readonly<{ dryRun: boolean; name?: string }>) {
+  async function run(options: Readonly<{ dryRun: boolean; name?: string; ordinaryFirst?: boolean }>) {
     const adapter = createDeterministicProviderHarness("geocode.census", [0, 1].map(() => ({
       kind: "return" as const,
       outcome: {
@@ -86,18 +87,25 @@ describe("publication preview boundary", () => {
     const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });
     let ids = 0;
     const queued = queuedRunFor(descriptor);
-    database.authority.runs.enqueue({ ...queued, envelope: { ...queued.envelope, dryRun: options.dryRun },
-      input: { ...queued.input, parsed: { ...queued.input.parsed, value: { name: options.name ?? "Battistessa, Johnnie" } } } });
-    const claimed = claim(harness.authority, descriptor);
-    const outcome = await executeClaimedRun({ ...harness.deps,
-      taskNotes: { ...notes, emitRunLog(input, current) { logs.push(input); return notes.emitRunLog(input, current); } },
-      providers: Object.freeze({ adapters: { "geocode.census": adapter.adapter }, configSnapshots: database.authority.configSnapshots,
-        idFactory: { next: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, "0")}` } }) },
-    { ...claimed, signal: SIGNAL });
+    const execute = async (envelope: Partial<typeof queued.envelope>, commandId: string) => {
+      database.authority.runs.enqueue({ ...queued, envelope: { ...queued.envelope, ...envelope },
+        input: { ...queued.input, parsed: { ...queued.input.parsed, value: { name: options.name ?? "Battistessa, Johnnie" } } } });
+      return executeClaimedRun({ ...harness.deps,
+        taskNotes: { ...notes, emitRunLog(input, current) { logs.push(input); return notes.emitRunLog(input, current); } },
+        providers: Object.freeze({ adapters: { "geocode.census": adapter.adapter }, configSnapshots: database.authority.configSnapshots,
+          idFactory: { next: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, "0")}` } }) },
+      { ...claim(harness.authority, descriptor, commandId), signal: SIGNAL });
+    };
+    if (options.ordinaryFirst === true) {
+      const ordinary = await execute({ runId: ORDINARY_RUN_ID, traceId: TraceIdSchema.parse("pp-170000-2223"), dryRun: false }, ORDINARY_RUN_ID);
+      assert.equal(ordinary.state, "done");
+    }
+    const callsBefore = adapter.calls().length;
+    const outcome = await execute({ dryRun: options.dryRun, ...(options.ordinaryFirst === true ? { attempt: 2 } : {}) }, "00000000-0000-4000-8000-0000000000c1");
     const finished = database.authority.runs.get(RUN_ID);
     const failure = finished?.lifecycle.state === "terminal" && finished.lifecycle.failureId !== undefined
       ? database.authority.failures.get(finished.lifecycle.failureId) : undefined;
-    return { outcome, database, clock, calls: adapter.calls().length, logs, failure };
+    return { outcome, database, clock, calls: adapter.calls().length - callsBefore, logs, failure };
   }
 
   it("previews the declared save, leaves dependents unavailable, and never calls the provider in a dry run", async () => {
@@ -124,6 +132,17 @@ describe("publication preview boundary", () => {
       assert.deepEqual([saved?.state, saved?.detail, saved?.submitNotClicked], ["exercised", "Prepared and checked without saving.", undefined]);
       assert.equal(after?.state, "unavailable");
     } finally { await world.dispose(); }
+  });
+
+  it("previews the declared save even when an ordinary run of the same item saved it first", async () => {
+    const { outcome, database, calls, failure } = await run({ dryRun: true, ordinaryFirst: true });
+    assert.equal(outcome.state, "done", failure?.summary ?? "");
+    const stored = database.authority.runResults.get(RUN_ID);
+    assert.ok(stored);
+    const preview = z.looseObject({ kind: z.string(), steps: z.array(z.looseObject({ nodeId: z.string(), state: z.string() })) }).parse(stored.result.value);
+    assert.equal(preview.kind, "publication-dry-run-preview");
+    assert.deepEqual(preview.steps.map(step => [step.nodeId, step.state]), [["extract", "publication-preview"], ["after", "unavailable"]]);
+    assert.equal(calls, 0);
   });
 
   it("fails the declared node on an invalid bound input in a dry run without calling the provider", async () => {

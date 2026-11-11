@@ -212,7 +212,7 @@ export function createCapabilityWiringTestWorld() {
     return { authority, emitter, deps };
   }
 
-  function claim(authority: Pick<Awaited<ReturnType<typeof openAuthorityHarness>>, "database" | "clock" | "path">, descriptor: AnyWorkflowDescriptor): {
+  function claim(authority: Pick<Awaited<ReturnType<typeof openAuthorityHarness>>, "database" | "clock" | "path">, descriptor: AnyWorkflowDescriptor, commandId = sequentialIdFactory("c").uuid()): {
     run: RunRecord;
     claim: { workerId: string; claimGeneration: number };
   } {
@@ -220,7 +220,7 @@ export function createCapabilityWiringTestWorld() {
     const ports = testWorkerPorts(database, clock, { path, descriptor, poolIndex: 1 });
     const slot = database.authority.workerSlots.list(descriptor.id).find(candidate => candidate.poolIndex === 1);
     if (slot === undefined) throw new Error("fixture native worker slot absent");
-    const claimed = ports.claimNext({ commandId: sequentialIdFactory("c").uuid(), workflow: descriptor.id, workerId: slot.workerId });
+    const claimed = ports.claimNext({ commandId, workflow: descriptor.id, workerId: slot.workerId });
     if (claimed.state !== "applied") throw new Error(`claim outcome was ${claimed.state}`);
     return { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration } };
   }

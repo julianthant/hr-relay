@@ -813,6 +813,12 @@ export async function executeClaimedRun(
             continue;
           }
         }
+        if (envelope.dryRun && node.dryRun === "stop-before-publish") {
+          // A dry run previews its publication; it never replays a saved one or anything after it.
+          ancestorRegionOpen = false;
+          plan.set(String(node.id), { mode: "execute" });
+          continue;
+        }
         const stored = retainedAccounting
           ? deps.authority.authority.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, node.id, envelope.attempt)
             .filter(record => record.runId === runId).at(-1)
