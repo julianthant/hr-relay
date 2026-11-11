@@ -16,7 +16,7 @@ async function render(report: ActivityViewState = data, onExport?: (format: 'csv
   if (!root) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); }
   await act(async () => root?.render(createElement(ActivityView, { data: report, range: ACTIVITY_SAMPLE_RANGE, today: ACTIVITY_SAMPLE_TODAY, period: 'custom', onPreset() {}, onRange() {}, onExport })));
 }
-const button = () => { const found = [...document.querySelectorAll('button')].find(button => button.textContent === 'Export CSV'); assert(found); return found; };
+const button = () => { const found = [...document.querySelectorAll('button')].find(button => button.textContent === 'Export'); assert(found); return found; };
 it('exports CSV exactly once while pending and retains refusal feedback', async () => {
   let reject!: () => void;
   const onExport = vi.fn(() => new Promise<void>((_, fail) => { reject = () => fail(new Error('refused')); }));

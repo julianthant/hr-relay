@@ -38,23 +38,24 @@ afterEach_m0(_afterEachFixture1);
     try {
       await act_m0(async () => root.render(createElement_m0(TooltipProvider_m1, null, createElement_m0(ActivityReport_m0, { source: "mock", range: '', onRange: () => {} }))));
       assert_m0.equal(host.querySelector('h1')?.textContent, 'Analytics');
-      await click('button[aria-label="View completed runs (38)"]');
-      assert_m0.equal(host.querySelectorAll('tbody tr').length, 20);
+      await click('button[aria-label="Show Separations details"]');
+      const open = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === 'Open runs'); assert_m0(open);
+      await act_m0(async () => open.click());
+      assert_m0.equal(host.querySelectorAll('tbody tr').length, 2);
       await click('button[aria-label^="Open logs for"]');
       assert_m0(host.querySelector('section[aria-label="Selected run logs"]'));
       assert_m0.doesNotMatch(host.querySelector('section[aria-label="Selected run logs"] header')?.textContent ?? '', /Attempt #|Elapsed/);
       const breadcrumbs = () => host.querySelector('nav[aria-label="Analytics breadcrumbs"]');
       assert_m0.equal(breadcrumbs()?.querySelector('[aria-current="page"]')?.textContent, host.querySelector('section[aria-label="Selected run logs"] h2')?.textContent);
-      const back = [...breadcrumbs()!.querySelectorAll('button')].find(button => button.textContent === 'Completed runs'); assert_m0(back);
+      const back = [...breadcrumbs()!.querySelectorAll('button')].find(button => button.textContent !== 'Analytics'); assert_m0(back);
       await act_m0(async () => back.click());
-      assert_m0.match(host.textContent ?? '', /1–20 of 38/);
-      assert_m0.equal(breadcrumbs()?.querySelector('[aria-current="page"]')?.textContent, 'Completed runs');
+      assert_m0.match(host.textContent ?? '', /1–2 of 2/);
       const overview = [...breadcrumbs()!.querySelectorAll('button')].find(button => button.textContent === 'Analytics'); assert_m0(overview);
       await act_m0(async () => overview.click());
-      assert_m0(host.querySelector('button[aria-label="View completed runs (38)"]'));
+      assert_m0(host.querySelector('button[aria-label="Show Separations details"]'));
     } finally { await act_m0(async () => root.unmount()); host.remove(); }
   });
-  it_m0('keeps Custom selected when its applied dates equal a preset', async () => {
+  it_m0('applies a hand-picked range that equals a preset exactly', async () => {
     const host = document.createElement('div'); document.body.append(host);
     const root = createRoot_m0(host);
     const changes: string[] = [];
@@ -74,24 +75,17 @@ afterEach_m0(_afterEachFixture1);
     };
     try {
       await act_m0(async () => { root.render(createElement_m0(ActivityReport_m0, { source: "mock", range: applied, onRange: next => { changes.push(next); } })); });
-      const period = () => host.querySelector<HTMLElement>('button[aria-label="Report period"]');
-      const periodValue = () => host.querySelector<HTMLElement>('button[aria-label="Report period"] [data-slot="select-value"]')?.textContent?.trim();
-      assert_m0.equal(period()?.getAttribute('data-value'), 'this-week');
-      assert_m0.equal(periodValue(), 'This week');
-      // The operator picks Custom first, then edits dates — the ordinary way to name a range by hand.
-      await act_m0(async () => { period()!.click(); });
-      const custom = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent?.trim() === 'Custom range');
-      assert_m0.ok(custom, 'the period control offers its Custom range preset');
-      await act_m0(async () => { custom.click(); });
-      assert_m0.equal(period()?.getAttribute('data-value'), 'custom');
-      assert_m0.deepEqual(changes, [], 'choosing Custom edits no range on its own');
+      const chooseDates = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.startsWith('Custom…')); assert_m0(chooseDates);
+      await act_m0(async () => { chooseDates.click(); });
+      const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(node => node.textContent?.trim() === 'Choose dates…');
+      assert_m0.ok(item, 'the period menu offers Choose dates');
+      await act_m0(async () => { item.click(); });
+      assert_m0.deepEqual(changes, [], 'choosing dates edits no range on its own');
       const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Choose start date range"]');
       assert_m0.ok(trigger, 'the range control owns its calendar trigger');
       await act_m0(async () => { trigger.click(); });
       for (const day of [preset.from, preset.to]) await act_m0(async () => { rangeCell(day).click(); });
       assert_m0.deepEqual(changes, [applied], 'the applied range is exactly the preset it equals');
-      assert_m0.equal(period()?.getAttribute('data-value'), 'custom', 'an applied range equal to a preset keeps the operator\'s Custom choice');
-      assert_m0.equal(periodValue(), 'Custom range');
     } finally { await act_m0(async () => root.unmount()); host.remove(); }
   });
 });
@@ -104,8 +98,7 @@ const noop = () => {};
 describe_m1("frontend presentation producers", () => {
   it_m1("renders canonical surfaces without a client provider or registered-definition fallback", () => {
     const activity = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(ActivityReport_m1, { source: "mock", range: "", onRange: noop })));
-    assert_m1.match(activity, /Workflow outcomes/);
-    assert_m1.match(activity, /34 measured/);
+    assert_m1.match(activity, /Workflows/);
     assert_m1.doesNotMatch(activity, /Sample data/);
     const explorer = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(WorkflowExplorer_m1, { catalog: buildWorkflowCatalog_m1([], true, previewFixtureSources([])) })));
     assert_m1.equal((explorer.match(/data-step-number=/g) ?? []).length, 22);

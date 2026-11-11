@@ -22,16 +22,17 @@ export function AnalyticsToolbar({ range, today, period, onPreset, onRange, work
   range: ActivityDateRange; today: string; period: ActivityDatePreset; onPreset: (preset: ActivityDatePreset) => void; onRange: (range: ActivityDateRange) => void;
   workflows: readonly AnalyticsWorkflow[]; workflow: string; onWorkflow: (id: string) => void; exportButton: React.ReactNode; rangeInput: React.ReactNode;
 }) {
+  const [editing, setEditing] = useState(false);
   const quick = QUICK.find(option => { const candidate = quickRange(option.value, today); return candidate.from === range.from && candidate.to === range.to; })?.value;
   const preset = ACTIVITY_DATE_PRESETS.find(option => option.value === period && option.value !== "custom");
   return <>
     <div className="ds-toolbar-row flex flex-wrap items-center gap-2">
-      <SegmentedChoice hideLabel label="Report period" value={(quick ?? "") as Quick} options={QUICK} onChange={value => onRange(quickRange(value, today))} />
+      <SegmentedChoice hideLabel label="Report period" value={(quick ?? "") as Quick} options={QUICK} onChange={value => { setEditing(false); onRange(quickRange(value, today)); }} />
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="outline" className="ds-filter-trigger" iconAfter={<ChevronDown aria-hidden className="size-3.5 text-ui-muted" />}>{quick ? "Custom…" : preset?.label ?? "Custom range"}</Button></DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-[200px]">
-          <DropdownMenuItem onSelect={() => onPreset("custom")}>Choose dates…</DropdownMenuItem><DropdownMenuSeparator />
-          {ACTIVITY_DATE_PRESETS.filter(option => option.value !== "custom").map(option => <DropdownMenuItem key={option.value} onSelect={() => onPreset(option.value)}>{option.label}</DropdownMenuItem>)}
+          <DropdownMenuItem onSelect={() => { setEditing(true); onPreset("custom"); }}>Choose dates…</DropdownMenuItem><DropdownMenuSeparator />
+          {ACTIVITY_DATE_PRESETS.filter(option => option.value !== "custom").map(option => <DropdownMenuItem key={option.value} onSelect={() => { setEditing(false); onPreset(option.value); }}>{option.label}</DropdownMenuItem>)}
         </DropdownMenuContent>
       </DropdownMenu>
       <DropdownMenu>
@@ -41,7 +42,7 @@ export function AnalyticsToolbar({ range, today, period, onPreset, onRange, work
           {workflows.map(row => <DropdownMenuRadioItem key={row.id} value={row.id}>{row.label}</DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup></DropdownMenuContent>
       </DropdownMenu>
-      {period === "custom" && !quick && rangeInput}
+      {(editing || period === "custom" && !quick) && rangeInput}
       <span className="ml-auto">{exportButton}</span>
     </div>
   </>;
