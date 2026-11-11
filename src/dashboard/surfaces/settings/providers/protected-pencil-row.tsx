@@ -1,5 +1,5 @@
 import { Pencil } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Dialog, DialogContent, DialogFooter, IconButton, ResultRow, dsIcon } from "../../../ds/ui.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { formatSetting } from "../editor/settings-draft-model.js";
@@ -14,6 +14,8 @@ export function ProtectedPencilRow({ editor, name, label, description, onRemove 
   onRemove: (hasSaved: boolean, label: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { setExplicitSave } = editor.protectedEditor;
+  useEffect(() => { setExplicitSave(open); return () => setExplicitSave(false); }, [open, setExplicitSave]);
   if (editor.editor.state !== "loaded") return null;
   const authority = editor.editor.document.protectedSettings;
   const credentials = editor.protectedEditor;
