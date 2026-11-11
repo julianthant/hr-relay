@@ -558,6 +558,7 @@ An override covers only its node and field paths, only the specified attempt, an
 whose policy is `override: "audited"`. A forbidden override refuses. Correcting a value does not
 refresh untouched live facts. Gate decisions are separate upstream evidence and cannot make an
 older observed input fresh.
+A gate decision ages only `checkpoint` dependencies; an `always-rerun` dependency is read again when the run resumes.
 
 ### 5.6 Recovery and Rerun
 
