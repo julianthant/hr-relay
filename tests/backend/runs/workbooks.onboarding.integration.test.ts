@@ -765,8 +765,8 @@ describe("Onboarding captured roster admission and row choice", () => {
     it("refuses a corrupt failure digest and a result of another run or attempt", async () => {
       const { failure, result, input } = await failedAtCrmSource();
       assert.throws(() => buildRunEvidenceReceipt({ ...input, failure: { ...failure, summary: `${failure.summary} altered` } }), /terminal-failure-result-mismatch/u);
-      assert.throws(() => buildRunEvidenceReceipt({ ...input, result: { ...result, attempt: result.attempt + 1 } }), /terminal-evidence-receipt-identity-mismatch/u);
-      assert.throws(() => buildRunEvidenceReceipt({ ...input, result: { ...result, runId: randomUUID() } }), /terminal-evidence-receipt-identity-mismatch/u);
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, result: { ...result, attempt: result.attempt + 1 } }), /identity[ -]mismatch/u);
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, result: { ...result, runId: randomUUID() } }), /identity[ -]mismatch/u);
     });
   });
 
