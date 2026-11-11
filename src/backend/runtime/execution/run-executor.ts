@@ -346,7 +346,7 @@ export async function executeClaimedRun(
   const envelope = initial.envelope;
   const runId = envelope.runId;
   let retainedByRun = retainedTransactionPreviews.get(deps.authority);
-  if (retainedByRun === undefined) retainedTransactionPreviews.set(deps.authority, retainedByRun = new Map());
+  if (retainedByRun === undefined) retainedTransactionPreviews.set(deps.authority, retainedByRun = new Map<string, Map<string, TransactionPreviewStep>>());
   const settled = (outcome: RunExecutionOutcome): RunExecutionOutcome => {
     if (outcome.state === "done" || outcome.state === "failed") retainedByRun.delete(runId);
     return outcome;
@@ -1978,7 +1978,7 @@ export async function executeClaimedRun(
               const step: TransactionPreviewStep = { nodeId: node.id, state: "transaction-preview", preview, samples: preview.outcome.state === "would-prepare" ? samples : [] };
               dryRunSteps.set(String(node.id), step);
               let kept = retainedByRun.get(runId);
-              if (kept === undefined) retainedByRun.set(runId, kept = new Map());
+              if (kept === undefined) retainedByRun.set(runId, kept = new Map<string, TransactionPreviewStep>());
               kept.set(String(node.id), step);
               previewOnly.add(String(node.id));
               continue;
