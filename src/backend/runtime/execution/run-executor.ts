@@ -1814,7 +1814,7 @@ export async function executeClaimedRun(
             dryRunSteps.set(String(node.id), { nodeId: node.id, state: "publication-preview" });
             deps.taskNotes?.emitRunLog({ workflow: descriptor.id,
               address: { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath: `${envelope.traceId}/${node.id}` },
-              level: "info", message: "Dry run: this save was prepared and checked. Nothing was saved.",
+              level: "step", message: "Dry run: this save was prepared and checked. Nothing was saved.",
             }, getRun());
             continue;
           }
