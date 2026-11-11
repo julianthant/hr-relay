@@ -9,7 +9,7 @@
   "oath-signature": "mock",
   "oath-upload": "mock",
   "emergency-contact": "served",
-  "onbase": "mock",
+  "onbase": "hidden",
   "i9-check-start": "mock",
   "crm-doc-download": "mock",
   "sharepoint-download": "mock",
