@@ -91,7 +91,7 @@ async function boundedEmptyResponse(response: Response): Promise<boolean> {
   finally { await reader.cancel(); reader.releaseLock(); }
 }
 function publicState(record: ChatGptCredentialRecord | undefined, now: number): ChatGptAccountState {
-  if (record?.session == null || record.registration === null) return { state: "signed-out" };
+  if (record?.session == null || record.registration === null) return { state: "signed-out", ...(record?.registration == null ? {} : { account: { email: record.registration.email } }) };
   if (Date.parse(record.session.expiresAt) <= now) return { state: "expired" };
   if (record.session.usage === "unavailable") return { state: "unavailable", code: "CHATGPT_USAGE_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text };
   return { state: "connected", name: record.registration.name, email: record.registration.email, expiresAt: record.session.expiresAt,
@@ -433,7 +433,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       finishStartup();
     }
   }
-  async function signOut(): Promise<ChatGptSignedOut> {
+  async function disconnect(forget: boolean): Promise<ChatGptSignedOut> {
     active(); if (signOutLifetime !== undefined) throw fault("CHATGPT_AUTH_BUSY");
     const epoch = ++generation;
     const assertCurrent = () => { active(); if (epoch !== generation) throw fault("CHATGPT_AUTH_CANCELLED"); };
@@ -446,9 +446,9 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       await Promise.all([...inferenceLifetimes]); assertCurrent(); assertResourceClosure();
       return repository.withLock(async transaction => {
         assertCurrent();
-        const current = transaction.read(); if (current === undefined || current.session === null || current.registration === null || current.clientId === null) return { state: "signed-out", remoteRevocation: "not-needed" };
-        let remoteRevocation: "confirmed" | "unconfirmed" | "not-needed" = current.session.refreshToken === null ? "not-needed" : "unconfirmed";
-        try { if (current.session.refreshToken !== null) {
+        const current = transaction.read(); if (current === undefined || current.registration === null || !forget && (current.session === null || current.clientId === null)) return { state: "signed-out", remoteRevocation: "not-needed" };
+        let remoteRevocation: "confirmed" | "unconfirmed" | "not-needed" = current.session?.refreshToken == null ? "not-needed" : "unconfirmed";
+        try { if (current.session?.refreshToken != null && current.clientId !== null) {
           const discovered = await discovery(); assertCurrent();
           const response = await request(discovered.revocation, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams({ token: current.session.refreshToken, token_type_hint: "refresh_token", client_id: current.clientId }) });
@@ -462,7 +462,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
           retainCredentialClosure(error); assertResourceClosure(); assertCurrent(); remoteRevocation = "unconfirmed";
         }
         assertCurrent(); assertResourceClosure();
-        transaction.replace({ ...current, revision: current.revision + 1, session: null }, current.revision);
+        transaction.replace({ ...current, revision: current.revision + 1, session: null, ...(forget ? { hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null } : {}) }, current.revision);
         return { state: "signed-out", remoteRevocation };
       });
     })();
@@ -1255,6 +1255,6 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     if (signOutFailure instanceof Error) throw signOutFailure;
     if (signOutFailure !== undefined) throw new Error("ChatGPT sign-out failed", { cause: signOutFailure });
   }
-  return Object.freeze({ setDebugEvents, readAccount, refreshAccount, readStatus, checkConnection, readAuthority, revalidateAuthority, signIn, signOut, extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, verifyAssistantCapability, captureAssistantModelPolicy, close });
+  return Object.freeze({ setDebugEvents, readAccount, refreshAccount, readStatus, checkConnection, readAuthority, revalidateAuthority, signIn, signOut: () => disconnect(false), forgetAccount: () => disconnect(true), extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, verifyAssistantCapability, captureAssistantModelPolicy, close });
 }
 export type ChatGptAccountService = ReturnType<typeof createChatGptAccountService>;
