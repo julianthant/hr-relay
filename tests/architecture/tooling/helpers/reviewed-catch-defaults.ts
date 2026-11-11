@@ -400,5 +400,16 @@ export const REVIEWED_CATCH_DEFAULTS = [
         "occurrences": 1
       }
     ]
+  },
+  {
+    "path": "src/backend/runs/trust/receipt-service.ts",
+    "reason": "A child run whose receipt this build refuses to derive (ReceiptDerivationRefusedError, its descriptor moved since it ran) has no receipt to cite, so its parent's child-run node stays unknown and the parent's receipt still opens. Every other derivation failure is rethrown and fails the parent's derivation.",
+    "statements": [
+      {
+        "kind": "try",
+        "sha256": "be1cb975d6e37284ac6f9fb4ea26ba2b85048d431149844cae26d049e23fe39f",
+        "occurrences": 1
+      }
+    ]
   }
 ] as const satisfies readonly ReviewedCatchDefault[];

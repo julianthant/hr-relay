@@ -22,7 +22,7 @@ it("migrates an authenticated terminal result and receipt without changing their
   const run = f.database.authority.runs.get(f.run.envelope.runId);
   assert.ok(run?.completion?.kind === "done");
   const result = f.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
-  const receipt = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor] }).ensureReceipt(run.envelope.runId);
+  const receipt = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor, f.resolve("ocr-page")].filter(entry => entry !== undefined) }).ensureReceipt(run.envelope.runId);
   const version = run.completion.expectedVersion + 1;
   assert.deepEqual(f.database.authority.runResults.getSettlement(run.envelope.runId,version), { run, result });
   assert.equal(f.database.authority.runResults.getSettlement(run.envelope.runId,version + 1), undefined);
