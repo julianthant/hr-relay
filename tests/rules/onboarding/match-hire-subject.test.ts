@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
-import { matchHireSubject } from "../../../src/rules/onboarding/match-hire-subject.js";
+import { hireReviewChoices, matchHireSubject } from "../../../src/rules/onboarding/match-hire-subject.js";
 
 const person = { emplId: EidSchema.parse("10800000"), name: "Hire, Fixture" };
 const other = { emplId: EidSchema.parse("10800001"), name: "Hire, Other" };
@@ -38,5 +38,16 @@ describe("onboarding duplicate identity", () => {
       { hits: [person, person], confirmed: [person], dropped: [] },
       { hits: [person], confirmed: [person], dropped: [{ ...person, reason: "not confirmed" }] },
     ]) assert.throws(() => matchHireSubject({ ...base, match }));
+  });
+
+  it("serves a new hire only when Person Org confirmed nobody, and existing people from the confirmed or else the dropped hits", () => {
+    assert.deepEqual(hireReviewChoices("new-hire", base.match), { newHire: true, existing: [] });
+    const confirmed = { hits: [person, other], confirmed: [person], dropped: [{ ...other, reason: "Last name does not match" }] };
+    assert.deepEqual(hireReviewChoices("new-hire", confirmed), { newHire: false, existing: [{ ...person, confirmedBy: "person-org" }] });
+    const dropped = { hits: [person, other], confirmed: [], dropped: [{ ...person, reason: "No Person Org record" }, { ...other, reason: "Last name does not match" }] };
+    assert.deepEqual(hireReviewChoices("new-hire", dropped), { newHire: true, existing: [
+      { ...person, confirmedBy: "operator", reason: "No Person Org record" }, { ...other, confirmedBy: "operator", reason: "Last name does not match" }] });
+    assert.equal(hireReviewChoices("rehire", dropped).newHire, false);
+    assert.throws(() => hireReviewChoices("new-hire", { hits: [person], confirmed: [], dropped: [] }), /did not classify every person/u);
   });
 });

@@ -2,6 +2,9 @@ import { OnboardingReadWritePlan } from "../../../src/models/workflows/onboardin
 import { ONBOARDING_ROSTER_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
 import { createOnboardingRunWorld } from "../../support/helpers/backend/onboarding-run-world.js";
 import { buildRunGate } from "../../../src/backend/runs/queries/run-trust.js";
+import { buildRunDetail, resolveGateArmAnswer } from "../../../src/backend/runs/queries/run-detail.js";
+import { GateArmAnswerRequestSchema } from "../../../src/rules/commands/commands.js";
+import { randomUUID } from "node:crypto";
 import type { RunDetailQueryDeps } from "../../../src/backend/runs/queries/run-detail.js";
 import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { GateDecisionWireSchema } from "../../../src/models/dashboard/run-detail.js";
@@ -41,7 +44,6 @@ import { classifyEvidenceLeaf, evidenceLeaves, redactEvidenceLeaf } from "../../
 import { DataPointSchema } from "../../../src/rules/workflow/task-provenance.js";
 import { FingerprintSchema, GateIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { createOperatorProjection, createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/operator.js";
-import { buildRunDetail } from "../../../src/backend/runs/queries/run-detail.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 
 const descriptor = compileWorkflow(onboardingWorkflow).descriptor;
@@ -158,7 +160,7 @@ describe("onboarding workflow", () => {
   it("derives completion from independent receipts and the actual master write disposition", () => {
     const terminal = workflowTerminalResultExecution(descriptor);
     const outputs = {
-      "hire-plan": plan, "write-plan": OnboardingReadWritePlan.example, "hire-review": { decision: "new-hire" },
+      "hire-plan": plan, "write-plan": OnboardingReadWritePlan.example, "hire-review": { decision: "new-hire", ruledOut: [] },
       "hire-create": { disposition: "committed", output: { receipt: UCPATH_HIRE_PROOF_EXAMPLE } },
       "hire-receipt": UCPATH_HIRE_PROOF_EXAMPLE, "i9-remote-create": { output: I9CreateRemoteRecord.example },
       "master-results": { state: "recorded", operationId: "results", libraryId: "master", version: 2, receiptState: "applied" },
@@ -380,6 +382,51 @@ describe("onboarding roster names in a real run", () => {
       ["i9-search", "done", [["i9-lookup-child", "skipped", "condition-false"], ["i9-lookup", "done", undefined]]],
       ["hire-review", "blocked", [["hire-findings", "done", undefined], ["hire-review", "blocked", undefined]]],
     ]);
+  });
+
+  it("answers the all-dropped hire review through the served arms, composing the gate result from the run's own match", async () => {
+    const dropped = ["10800003", "10800001", "10800002"].map(emplId => ({ emplId, name: "Other, Person" }));
+    const personMatch = SearchPersonMatchOutputSchema.parse({ hits: dropped, confirmed: [], dropped: dropped.map(hit => ({ ...hit, reason: "Last name does not match" })) });
+    const f = await runWorld.executionFixture(false, { match: "unique", dryRun: true, personMatch }), root = f.start();
+    const parked = await f.rawExecution.execute(root, new AbortController().signal);
+    assert.ok(parked.run?.lifecycle.state === "parked-gate" && parked.run.lifecycle.gateId === "hire-review");
+    const reader = testRunService(f.database, f.clock);
+    const deps = { runReader: reader, authority: { listGateResults: (runId: string) => f.database.authority.gateResults.listByRun(runId) },
+      canonical: { reader, database: f.database, descriptors: { resolve: (id: string) => id === descriptor.id ? descriptor : undefined } } } as unknown as RunDetailQueryDeps;
+    const gate = GateDecisionWireSchema.parse(buildRunGate(deps, root.envelope.runId, undefined, parked.run));
+    assert.ok(gate.state === "open" && gate.decision !== undefined);
+    assert.deepEqual(gate.decision.options.map(option => option.id), ["existing-person", "new-hire"]);
+    const answer = (payload: { arm: string; rowId?: string }, expectedVersion = parked.run.version) => GateArmAnswerRequestSchema.parse({
+      commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "run-detail", family: "gate", type: "answer-gate-arm",
+      target: { runId: root.envelope.runId, gateId: "hire-review", expectedVersion }, payload });
+    const valueOf = (resolution: ReturnType<typeof resolveGateArmAnswer>) => resolution.state === "accepted" && resolution.request.family === "gate" && resolution.request.type === "resolve-gate"
+      ? resolution.request.payload.result.value : resolution;
+    assert.deepEqual(valueOf(resolveGateArmAnswer(deps, answer({ arm: "new-hire" }), undefined)), { decision: "new-hire", ruledOut: ["10800001", "10800002", "10800003"] });
+    assert.deepEqual(valueOf(resolveGateArmAnswer(deps, answer({ arm: "existing-person", rowId: "10800002" }), undefined)),
+      { decision: "existing-person", emplId: "10800002", confirmedBy: "operator" });
+    for (const refused of [answer({ arm: "existing-person", rowId: "10800009" }), answer({ arm: "new-hire", rowId: "10800002" }), answer({ arm: "new-hire" }, parked.run.version + 1)]) {
+      assert.deepEqual(resolveGateArmAnswer(deps, refused, undefined), { state: "refused", code: "invalid-state", message: "This review changed. Reload it before answering." });
+    }
+    const chosen = answer({ arm: "new-hire" }), accepted = resolveGateArmAnswer(deps, chosen, undefined);
+    assert.ok(accepted.state === "accepted");
+    assert.equal(resolveGateArmAnswer(deps, { ...chosen, payload: { arm: "existing-person", rowId: "10800002" } }, accepted.request).state, "refused");
+    assert.deepEqual(resolveGateArmAnswer(deps, chosen, accepted.request), accepted);
+    assert.equal(f.rawExecution.kernel.execute(accepted.request).state, "applied");
+    const done = await f.rawExecution.execute(root, new AbortController().signal);
+    assert.ok(done.run?.lifecycle.state === "terminal" && done.run.lifecycle.outcome === "done", JSON.stringify(f.database.authority.failures.listByRun(root.envelope.runId)));
+  });
+
+  it("refuses a new hire for a concurrent hire over dropped matches", async () => {
+    const dropped = [{ emplId: "10800001", name: "Other, Person" }];
+    const personMatch = SearchPersonMatchOutputSchema.parse({ hits: dropped, confirmed: [], dropped: dropped.map(hit => ({ ...hit, reason: "Last name does not match" })) });
+    const f = await runWorld.executionFixture(false, { match: "unique", dryRun: true, mode: "rehire", personMatch }), root = f.start();
+    const parked = await f.rawExecution.execute(root, new AbortController().signal);
+    assert.ok(parked.run?.lifecycle.state === "parked-gate");
+    const reader = testRunService(f.database, f.clock);
+    const deps = { runReader: reader, canonical: { reader, database: f.database, descriptors: { resolve: () => descriptor } } } as unknown as RunDetailQueryDeps;
+    const resolution = resolveGateArmAnswer(deps, GateArmAnswerRequestSchema.parse({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator",
+      source: "run-detail", family: "gate", type: "answer-gate-arm", target: { runId: root.envelope.runId, gateId: "hire-review", expectedVersion: parked.run.version }, payload: { arm: "new-hire" } }), undefined);
+    assert.equal(resolution.state, "refused");
   });
 
   it("files a resolved roster name and patches only the Employee ID and Transaction Number cells", async () => {

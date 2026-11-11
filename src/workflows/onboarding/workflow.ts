@@ -9,7 +9,7 @@ import { onboardingI9SearchDefinition } from "./steps/i9-search/step.js";
 import { onboardingHireWritesDefinition, buildHireReview } from "./steps/hire-review/step.js";
 
 export const onboardingWorkflow = defineWorkflow({
-  id: "onboarding", version: 2, code: "on", label: "Onboarding", icon: "UserPlus", category: "onboarding",
+  id: "onboarding", version: 3, code: "on", label: "Onboarding", icon: "UserPlus", category: "onboarding",
   requiredWorkbookFields: [...ONBOARDING_ROSTER_FIELDS],
   workbookReference: { id: ONBOARDING_ROSTER_TYPE_ID, keyFieldId: "email", mode: "keys", writableFields: [...ONBOARDING_ROSTER_OUTPUT_FIELDS] },
   referenceKeys: input => [input.email],

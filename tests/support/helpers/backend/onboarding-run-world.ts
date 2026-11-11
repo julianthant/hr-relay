@@ -192,7 +192,7 @@ export function createOnboardingRunWorld() {
       clock: f.clock, ids: { uuid: randomUUID }, scheduler: new ManualScheduler(f.clock), taskDeadlineMs: 60_000,
       log: recordingLogger().log }, f.database, f.profilePath,
       id => id === descriptor.id ? descriptor : id === "i9-lookup" ? childWorkflowModuleOf("onboarding", "i9-lookup").descriptor : undefined);
-    function approve(run: RunRecord, decision: { decision: "new-hire" } | { decision: "existing-person"; emplId: string }) {
+    function approve(run: RunRecord, decision: z.input<typeof OnboardingWriteApprovalSchema>) {
       const current = f.database.authority.runs.get(run.envelope.runId); assert.ok(current?.lifecycle.state === "parked-gate" && current.lifecycle.gateId === ONBOARDING_WRITE_REVIEW_GATE);
       return rawExecution.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(),
         requestedBy: "local-operator", source: "dashboard", family: "gate", type: "resolve-gate",
@@ -205,7 +205,7 @@ export function createOnboardingRunWorld() {
         if (first.run?.lifecycle.state !== "parked-gate" || first.run.lifecycle.gateId !== ONBOARDING_WRITE_REVIEW_GATE) return first;
         assert.deepEqual(f.database.authority.writeIntents.listByRun(root.envelope.runId), []);
         assert.deepEqual(f.repository.runOperations(root.envelope.runId), []);
-        assert.equal(approve(root, { decision: "new-hire" }).state, "applied");
+        assert.equal(approve(root, { decision: "new-hire", ruledOut: [] }).state, "applied");
         const next = await rawExecution.execute(root, signal);
         return { ...next, outcomes: [...first.outcomes, ...next.outcomes] };
       },

@@ -12,8 +12,8 @@ import { containsDryRunSample } from "../../workflow/dry-run.js";
 
 export const ONBOARDING_WRITE_REVIEW_GATE = "hire-review";
 export const OnboardingWriteApprovalSchema = z.discriminatedUnion("decision", [
-  z.strictObject({ decision: z.literal("new-hire") }),
-  z.strictObject({ decision: z.literal("existing-person"), emplId: EidSchema }),
+  z.strictObject({ decision: z.literal("new-hire"), ruledOut: z.array(EidSchema) }),
+  z.strictObject({ decision: z.literal("existing-person"), emplId: EidSchema, confirmedBy: z.enum(["person-org", "operator"]) }),
 ]);
 export const OnboardingWritePlanSchema = z.strictObject({
   roster: OnboardingRosterBindingSchema, hire: UcpathHireQuerySchema, subject: HireSubjectSchema, i9: I9ProfileTargetSchema.nullable(), comments: z.string().min(1),

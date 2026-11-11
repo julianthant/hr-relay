@@ -37,7 +37,7 @@ import { assertRunTimelineCompatible } from "./run-timeline-compatibility.js";
 
 export { availableSections } from "./run-trust.js";
 export { buildRunSection, readRunSection } from "./run-sections.js";
-export { resolveIdentityGateAnswer } from "./run-detail/gate-park.js";
+export { resolveGateArmAnswer, resolveIdentityGateAnswer } from "./run-detail/gate-park.js";
 export { createRunNoteScanCache } from "./run-logs.js";
 export type { RunLogScanEntry, RunNoteScanEntry, RunNoteScanCache } from "./run-logs.js";
 export type {
