@@ -61,20 +61,20 @@ it("sends no Settings command for the current workflow and canonically saves a d
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
   let settings: SettingsOverride = { preferences: { selectedWorkflowId: "person-lookup" } };
   let revision = 2;
-  let document = fixtureSettingsDocument(settings, revision);
+  let settingsDocument = fixtureSettingsDocument(settings, revision);
   const commands: ReturnType<typeof SettingsCommandRequestSchema.parse>[] = [];
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
-    if (url.endsWith("/settings/editable")) return Response.json(document);
+    if (url.endsWith("/settings/editable")) return Response.json(settingsDocument);
     assert.ok(url.endsWith("/commands"));
     assert.ok(typeof init?.body === "string");
     const command = SettingsCommandRequestSchema.parse(JSON.parse(init.body));
     commands.push(command);
     assert.equal(command.target.expectedRevision, revision);
     settings = mergeSettingsPatch(settings, command.payload.patch);
-    document = fixtureSettingsDocument(settings, ++revision);
+    settingsDocument = fixtureSettingsDocument(settings, ++revision);
     return Response.json(CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
       affectedTargets: [{ family: "settings", revision }], settingsRevision: revision,
-      settingsFingerprint: document.settingsFingerprint, restartRequired: false }));
+      settingsFingerprint: settingsDocument.settingsFingerprint, restartRequired: false }));
   } });
   const epoch = { client, bootstrap: { ...FIXTURE_BOOTSTRAP } };
   const scope: CommandExecutionScope = { client, actorId: "local-operator", authority: epoch, dayRequest: {} };

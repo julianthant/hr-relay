@@ -26,7 +26,7 @@ export async function delegationConfigResources(input: {
   const observations: { snapshotId: string; fingerprint: string; taskMs: number }[] = [];
   const preflight = composeRuntimePreflight({ admission, credentials: boundProfileCredentials(admission),
     database, clock: deps.clock, repoRoot: process.cwd(), isolation: rebuildRuntimeIsolation,
-    descriptors: { resolve: input.resolve }, descriptorSetHash: input.descriptor.contractFingerprint,
+    descriptors: { resolve: workflowId => input.resolve(workflowId) }, descriptorSetHash: input.descriptor.contractFingerprint,
     protectedSecrets: { read: () => initialProtectedStoreRecord() }, environment: {}, runnerFactory: selected => {
       observations.push({ snapshotId: selected.scope.configSnapshotId,
         fingerprint: selected.scope.configFingerprint, taskMs: selected.config.timeouts.taskMs });
