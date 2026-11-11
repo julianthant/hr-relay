@@ -10,7 +10,7 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 25;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 26;
 /** Runs stored before this version may omit buildId. Later versions keep the strict envelope. */
 export const BUILD_ID_ENVELOPE_SCHEMA_VERSION = 22;
 /** Migration 22 deletes every run approved before envelopes carried a build id, through the native run deletion. */
@@ -57,7 +57,7 @@ BEGIN SELECT RAISE(ABORT,'worker-slot-identity-conflict'); END`,
   `SELECT '${WORKER_CUSTODY_SCAN_ID}'`,
 ];
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24] as const;
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
@@ -1007,11 +1007,32 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
       payload_json TEXT NOT NULL CHECK(json_valid(payload_json))
     ) STRICT`,
   ] },
+  // Item 6: an ordinary done parent's receipt is derived again from its children's receipts; a preview receipt does not change and stays.
+  { version: 26, statements: [
+    `CREATE TEMP TABLE receipt_rederivation AS SELECT receipt.id AS id, receipt.run_id AS run_id FROM run_receipts receipt
+       JOIN run_results settlement ON settlement.run_id=receipt.run_id AND settlement.settlement_version=receipt.settlement_version
+       JOIN runs run ON run.id=settlement.run_id
+       WHERE run.state='terminal'
+         AND json_extract(settlement.terminal_run_json,'$.lifecycle.state')=run.state
+         AND json_extract(settlement.terminal_run_json,'$.lifecycle.outcome')=run.outcome
+         AND json_extract(settlement.terminal_run_json,'$.lifecycle.endedAt') IS json_extract(run.lifecycle_json,'$.lifecycle.endedAt') AND json_extract(settlement.terminal_run_json,'$.lifecycle.failureId') IS json_extract(run.lifecycle_json,'$.lifecycle.failureId') AND json_extract(settlement.terminal_run_json,'$.lifecycle.errorSummary') IS json_extract(run.lifecycle_json,'$.lifecycle.errorSummary') AND json_extract(settlement.terminal_run_json,'$.lifecycle.diagnosticSafetyVersion') IS json_extract(run.lifecycle_json,'$.lifecycle.diagnosticSafetyVersion') AND json_extract(settlement.terminal_run_json,'$.lifecycle.verdict') IS json_extract(run.lifecycle_json,'$.lifecycle.verdict') AND json_extract(settlement.terminal_run_json,'$.lifecycle.evidenceReceiptId') IS json_extract(run.lifecycle_json,'$.lifecycle.evidenceReceiptId')
+         AND ((run.outcome IN ('done','failed') AND settlement.settlement_version=json_extract(run.lifecycle_json,'$.completion.expectedVersion')+1)
+           OR (run.outcome NOT IN ('done','failed','interrupted') AND settlement.settlement_version=json_extract(settlement.payload_json,'$.result.value.appliedVersion'))) AND run.outcome='done'
+         AND EXISTS(SELECT 1 FROM run_delegations WHERE parent_run_id=receipt.run_id)
+         AND NOT EXISTS(SELECT 1 FROM json_each(receipt.payload_json,'$.warnings') WHERE json_extract(value,'$.code')='DRY_RUN_PREVIEW')`,
+    "DROP TRIGGER run_receipts_owner_delete",
+    "DELETE FROM run_receipts WHERE id IN (SELECT id FROM receipt_rederivation)",
+    `CREATE TRIGGER run_receipts_owner_delete BEFORE DELETE ON run_receipts
+      WHEN NOT EXISTS(SELECT 1 FROM deleted_runs WHERE run_id=OLD.run_id) BEGIN SELECT RAISE(ABORT,'owner-deletion-required'); END`,
+    `UPDATE run_search SET has_receipt=0, metadata_json=json_set(metadata_json,'$.metadata.evidence.receipt',json('false'))
+      WHERE run_id IN (SELECT run_id FROM receipt_rederivation)`,
+    "DROP TABLE receipt_rederivation",
+  ] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
-  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
-  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18 && toSchemaVersion !== 19 && toSchemaVersion !== 20 && toSchemaVersion !== 21 && toSchemaVersion !== 22 && toSchemaVersion !== 23 && toSchemaVersion !== 24)
+  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18 && toSchemaVersion !== 19 && toSchemaVersion !== 20 && toSchemaVersion !== 21 && toSchemaVersion !== 22 && toSchemaVersion !== 23 && toSchemaVersion !== 24 && toSchemaVersion !== 25)
     || !isSupportedStoppedAuthoritySchemaVersion(fromSchemaVersion) || fromSchemaVersion < 7 || fromSchemaVersion >= toSchemaVersion)) throw new Error('authority-upgrade-plan-target-unsupported');
   const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
   return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,

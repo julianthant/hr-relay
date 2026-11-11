@@ -724,10 +724,10 @@ it.each(workbookFormats.flatMap(format => (['run', 'terminal-run', 'plan', 'cons
     const result = await (owner === 'run'
       ? upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)
       : upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock));
-    assert.deepEqual(result, { state: 'upgraded', fromSchemaVersion: 24, toSchemaVersion: 25, credentials: 'unchanged' });
-    const after = rawEight(f.path, 25);
+    assert.deepEqual(result, { state: 'upgraded', fromSchemaVersion: 24, toSchemaVersion: 26, credentials: 'unchanged' });
+    const after = rawEight(f.path, 26);
     for (const [table, rows] of Object.entries(before)) {
-      if (table === 'database_states') assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: 25 })));
+      if (table === 'database_states') assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: 26 })));
       else if (table === 'database_upgrades') assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows);
     }
@@ -764,11 +764,11 @@ it("upgrades a frozen schema 23 older-build store through its original fingerpri
     const originalFingerprint = replantOlderBuildAuthority(f.path, 23);
     const before = rawEight(f.path, 23);
     const result = await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock);
-    assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 23, toSchemaVersion: 25, credentials: "unchanged" });
-    const after = rawEight(f.path, 25);
+    assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 23, toSchemaVersion: 26, credentials: "unchanged" });
+    const after = rawEight(f.path, 26);
     for (const [table, rows] of Object.entries(before)) {
       if (table === "worker_slots") continue;
-      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: 25 })));
+      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: 26 })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows, table);
     }
