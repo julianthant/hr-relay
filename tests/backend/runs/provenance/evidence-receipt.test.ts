@@ -8,7 +8,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { deriveIdempotencyKeyDigest, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
 import { KUALI_CONFIRMED_AT, KUALI_DOCUMENT_NUMBER, KUALI_EID, KUALI_IDEMPOTENCY_KEY, KUALI_RUN_ID, KUALI_VALUE, kualiReceiptEvidence } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
+import { RunCheckpointRecordSchema, checkpointRecordKey } from "../../../../src/models/workflow/checkpoint.js";
 
 {
 
@@ -218,14 +218,18 @@ describe("current receipt identity", () => {
       run: observedEvidence.run,
       result: observedEvidence.result,
       checkpoints,
-      writes: [{ intent: observed, attempts: [] }],
+      writes: [],
+      writeForCheckpoint: (_node, checkpoint) => ({ checkpointKey: checkpointRecordKey(checkpoint), system: observed.system,
+        keyDigest: observed.idempotencyKeyDigest, intent: observed }),
     }, 5);
     const decision = receipt.decisions.find(({ kind }) => kind === "identity");
     assert.equal(
       decision?.reason,
       `the permanent ${observed.system} key digest ${observed.idempotencyKeyDigest.slice(0, 12)}… was already satisfied and `
-        + "observed present; this run bound no fresh subject because it performed no write",
+        + "reused from its settled permanent record; this run bound no fresh subject because it performed no write",
     );
+    const commit = commitActionOfReceipt(receipt);
+    assert.deepEqual([commit.writeState, "proofRef" in commit, commit.proved?.proofSource], ["committed", false, "durable-intent"]);
     assert.equal(decision?.reason.includes(observed.idempotencyKey), false);
   });
 });
@@ -287,7 +291,7 @@ describe("deriveActionWriteProof — the already-present arms", () => {
 
   it("an already-present outcome carries its probe's proof source and OBSERVED instant", () => {
     const stored = (record as { output: { value: Record<string, unknown> } }).output.value;
-    const observedAt = "2026-08-14T17:08:50.000Z";
+    const observedAt = "2026-08-14T17:09:00.000Z";
     const alreadyPresent = {
       ...record as object,
       output: {
@@ -305,10 +309,46 @@ describe("deriveActionWriteProof — the already-present arms", () => {
       commitContract: KualiSaveSeparationFinalization,
       record: alreadyPresent,
       intent: write.intent,
+      pairing: pairingOf(alreadyPresent),
     });
     assert.ok(proved);
     assert.equal(proved.proofSource, "durable-intent");
     assert.equal(proved.recordedAt, observedAt);
+  });
+
+  function pairingOf(checkpoint: unknown) {
+    assert.ok(write);
+    return { checkpointKey: checkpointRecordKey(RunCheckpointRecordSchema.parse(checkpoint)), system: write.intent.system, keyDigest: write.intent.idempotencyKeyDigest };
+  }
+
+  function alreadyPresentRecord(change: (value: Record<string, unknown>) => Record<string, unknown> = value => value) {
+    const stored = (record as { output: { value: Record<string, unknown> } }).output.value;
+    return { ...record as object, output: { ...(record as { output: object }).output, value: change({ disposition: "already-present",
+      proofSource: "durable-intent", proof: stored["proof"], output: stored["output"], observedAt: "2026-08-14T17:09:00.000Z" }) } };
+  }
+
+  it("refuses every already-present pair that does not bind this checkpoint to its exact settled permanent write, and accepts the exact pair", () => {
+    assert.ok(write?.intent.status === "committed");
+    const intent = write.intent, alreadyPresent = alreadyPresentRecord();
+    const proofValue = intent.completionProof.value as Record<string, unknown>;
+    const changedProof = { ...intent, completionProof: { ...intent.completionProof, value: { ...proofValue, documentNumber: "9999999" } } };
+    const otherOutput = alreadyPresentRecord(value => ({ ...value, output: { ...(value["output"] as object), value: { savedState: { ...proofValue, documentNumber: "9999999" } } } }));
+    const otherCheckpoint = { ...record as object, claimGeneration: (record as { claimGeneration: number }).claimGeneration + 1 };
+    const cases: readonly [string, Parameters<typeof deriveActionWriteProof>[0]][] = [
+      ["checkpoint", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent }],
+      ["checkpoint", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent, pairing: pairingOf(otherCheckpoint) }],
+      ["identity", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent: { ...intent, taskId: "kuali/other-task" }, pairing: pairingOf(alreadyPresent) }],
+      ["identity", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent, pairing: { ...pairingOf(alreadyPresent), system: "ucpath" } }],
+      ["identity", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent, pairing: { ...pairingOf(alreadyPresent), keyDigest: deriveIdempotencyKeyDigest(intent.system, "another-key") } }],
+      ["status", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresentRecord(value => ({ ...value, proofSource: "live-probe" })), intent, pairing: pairingOf(alreadyPresent) }],
+      ["order", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresentRecord(value => ({ ...value, observedAt: "2026-08-14T17:08:50.000Z" })), intent, pairing: pairingOf(alreadyPresent) }],
+      ["proof", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent: changedProof, pairing: pairingOf(alreadyPresent) }],
+      ["output", { commitContract: KualiSaveSeparationFinalization, record: otherOutput, intent, pairing: pairingOf(alreadyPresent) }],
+    ];
+    for (const [category, input] of cases) assert.throws(() => deriveActionWriteProof(input), new RegExp(`receipt-write-pair-${category}`, "u"), category);
+    const unfinished = WriteIntentRecordSchema.parse({ ...intent, status: "attempting", currentAttemptId: intent.writeIntentId, completionProof: undefined, confirmedAt: undefined });
+    assert.throws(() => deriveActionWriteProof({ commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent: unfinished, pairing: pairingOf(alreadyPresent) }), /receipt-write-pair-|completion proof/u);
+    assert.equal(deriveActionWriteProof({ commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent, pairing: pairingOf(alreadyPresent) }).proofSource, "durable-intent");
   });
 
   it("refuses a settled outcome handed no intent row, naming the disposition and the fail-loud reason", () => {

@@ -82,3 +82,40 @@ it("verifies the parent's members node from every saved member's own receipt", a
   assert.deepEqual({ state: rederived.state, receipt: rederived.receipt }, { state: "derived", receipt: parentReceipt });
   assert.equal(receipts.ensure(f.parentRun.envelope.runId).state, "existing");
 });
+
+it("re-derives the parent receipt that migration 26 deletes when a member settled already-present", async () => {
+  const f = await world.fixture({ secondMemberAlreadyPresent: true });
+  const original = f.children().find(child => child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed"); assert.ok(original);
+  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", original)).state, "applied");
+  const replacement = f.children().find(child => child.envelope.retryOf === original.envelope.runId); assert.ok(replacement);
+  assert.equal((await f.canonical.step(f.parentRun, new AbortController().signal)).outcome.state, "done");
+  assert.equal(f.canonical.kernel.execute(f.runCommand("resume", f.current())).state, "applied");
+  assert.equal((await f.canonical.step(f.parentRun, new AbortController().signal)).outcome.state, "done");
+  assert.deepEqual(["10800000", "10800001"].map(eid => f.persistence.get(eid)?.submissions.length), [1, 0], "exact presence needed no Save");
+  const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: EC_TREE_DESCRIPTORS });
+  const parentRunId = f.parentRun.envelope.runId;
+  const parentReceipt = receipts.ensureReceipt(parentRunId);
+  const memberReceipt = f.database.authority.evidenceReceipts.findByRun(replacement.envelope.runId); assert.ok(memberReceipt);
+  const membersRow = parentReceipt.verification.find(row => row.obligation === "node.members");
+  assert.ok(membersRow?.verdict === "verified");
+  assert.ok(membersRow.evidence.includes(`receipt:${String(memberReceipt.receiptId)}`), "the already-present member's own receipt backs the node");
+  const durable = () => {
+    using raw = new DatabaseSync(f.path, { readOnly: true });
+    return ["write_intents", "write_attempts", "run_checkpoints"].map(table => raw.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
+  };
+  const before = durable();
+  const statements = SQLITE_MIGRATIONS.find(migration => migration.version === 26)?.statements; assert.ok(statements);
+  {
+    using raw = new DatabaseSync(f.path);
+    raw.exec("BEGIN IMMEDIATE");
+    for (const statement of statements) raw.exec(statement);
+    raw.exec("COMMIT");
+  }
+  assert.equal(f.database.authority.evidenceReceipts.findByRun(parentRunId), undefined, "migration 26 deletes the delegation parent's receipt");
+  const rederived = receipts.ensure(parentRunId);
+  assert.deepEqual({ state: rederived.state, receipt: rederived.receipt }, { state: "derived", receipt: parentReceipt });
+  assert.equal(rederived.receipt.receiptId, parentReceipt.receiptId);
+  assert.deepEqual(f.database.authority.evidenceReceipts.findByRun(replacement.envelope.runId), memberReceipt);
+  assert.equal(receipts.ensure(parentRunId).state, "existing");
+  assert.deepEqual(durable(), before, "re-derivation reads durable intents, attempts and checkpoints and writes none");
+});

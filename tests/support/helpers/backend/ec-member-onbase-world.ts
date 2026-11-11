@@ -67,7 +67,12 @@ export function createEcMemberOnbaseWorld() {
     } }, database, path, id => id === compiled.descriptor.id ? compiled.descriptor : id === onbaseModule.descriptor.id ? onbaseModule.descriptor : undefined);
     const run = execution.start(compiled.descriptor, approved, { dryRun: false });
     await execution.execute(run, world.SIGNAL);
-    return { database, execution, run, descriptors: [compiled.descriptor, onbaseModule.descriptor] };
+    const again = async (recordId: string) => {
+      const next = execution.start(compiled.descriptor, { ...approved, record: { ...approved.record, recordId } }, { dryRun: false });
+      await execution.execute(next, world.SIGNAL);
+      return next;
+    };
+    return { database, execution, run, again, persistence, descriptors: [compiled.descriptor, onbaseModule.descriptor] };
   }
   return { savedMember, cleanup: world.cleanup };
 }

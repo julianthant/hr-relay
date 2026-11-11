@@ -41,6 +41,11 @@ import { ONBASE_SOURCE_DOCUMENT, onbaseChildFixture } from "../../support/helper
 import { onbaseModule } from "../../support/helpers/registered-workflows.js";
 import { OnbaseInputSchema } from "../../../src/models/systems/onbase/import-document.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
+import { readRunCheckpoint } from "../../../src/backend/storage/sqlite/run-continuation.js";
+import { UcpathSaveEmergencyContact } from "../../../src/models/systems/ucpath/save-emergency-contact.js";
+import { PlanApprovedEmergencyContact } from "../../../src/models/workflows/emergency-contact-member/read-contact-plan.js";
+import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
+import { TransactionOutcomeSchema } from "../../../src/rules/write-safety/write-safety-primitives.js";
 
 const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
 
@@ -169,6 +174,17 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
   };
 }
 
+type Fixture = Awaited<ReturnType<typeof memberFixture>>;
+const receiptsOf = (f: Fixture) => createReceiptService({ database: f.database, runReader: f.execution.lifecycle, descriptors: [compiled.descriptor, onbaseModule.descriptor] });
+const commitActionOf = (receipt: ReturnType<ReturnType<typeof receiptsOf>["ensureReceipt"]>) => { const action = receipt.actions.find(entry => entry.kind === "commit" && entry.taskId === UcpathSaveEmergencyContact.id); assert.ok(action); return action; };
+const checkpointOutcome = (f: Fixture, run: Fixture["run"]) => { const checkpoint = f.database.authority.runCheckpoints.latest(run.envelope.workflow, run.envelope.itemId, "contact-preview"); assert.ok(checkpoint); return TransactionOutcomeSchema.parse(checkpoint.output.value); };
+function permanentRows(f: Fixture, run: Fixture["run"]) {
+  const plan = readRunCheckpoint(f.database.authority, run.envelope, "contact-plan", true); assert.ok(plan);
+  const key = UcpathSaveEmergencyContact.writeSafety.idempotency.key(PlanApprovedEmergencyContact.output.parse(plan.output.value).target);
+  const intents = f.database.authority.writeIntents.listByBusinessKey("ucpath", deriveIdempotencyKeyDigest("ucpath", key));
+  return { intents, attempts: intents.flatMap(intent => f.database.authority.writeAttempts.listByIntent(intent.writeIntentId)) };
+}
+
 it("emergency-contact/verified-save — commits the declared primary demotion and addition once, then independently verifies and durably settles the persisted whole set", async () => {
   const f = await memberFixture();
   assert.deepEqual(f.failures, []);
@@ -236,6 +252,25 @@ it("uses complete persisted exact presence without a new intent or Save", async 
   assert.deepEqual(f.failures, []);
   assert.equal(f.persistence.submissions.length, 0);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
+  const before = permanentRows(f, f.run);
+  assert.deepEqual(before.intents.map(intent => intent.status), ["observed-present"]);
+  assert.deepEqual(before.attempts, []);
+  const receipts = receiptsOf(f);
+  const receipt = receipts.ensureReceipt(f.run.envelope.runId);
+  const outcome = checkpointOutcome(f, f.run);
+  assert.equal(outcome.disposition, "already-present");
+  const action = commitActionOf(receipt);
+  assert.equal(action.proved?.proofSource, "live-probe");
+  assert.equal(action.proved?.recordedAt, outcome.observedAt);
+  assert.equal(action.occurredAt, outcome.observedAt);
+  assert.equal(action.proofRef, undefined, "this run made no fresh subject binding");
+  assert.equal(receipt.decisions.find(decision => decision.kind === "dedupe")?.outcome, "not-taken");
+  assert.deepEqual(receipts.ensureReceipt(f.run.envelope.runId), receipt);
+  const onbaseChild = f.children()[0]; assert.ok(onbaseChild);
+  assert.ok(f.database.authority.evidenceReceipts.findByRun(onbaseChild.envelope.runId));
+  assert.equal(f.persistence.submissions.length, 0);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
+  assert.deepEqual(permanentRows(f, f.run), before, "deriving the receipt writes no intent or attempt");
 });
 
 it("keeps interrupted Save ownership until callback settlement, verifies and commits it once, then abandons the run without a result or another click", async () => {
@@ -265,6 +300,12 @@ it("keeps interrupted Save ownership until callback settlement, verifies and com
   const reused = f.database.authority.runResults.get(retry.envelope.runId); assert.ok(reused);
   assert.equal(EmergencyContactMemberResultSchema.parse(reused.result.value).disposition, "already-present");
   assert.equal(f.onbase.imports(), 1);
+  const before = permanentRows(f, f.run);
+  const receipt = receiptsOf(f).ensureReceipt(retry.envelope.runId);
+  assert.equal(commitActionOf(receipt).proved?.proofSource, "durable-intent");
+  assert.equal(f.persistence.submissions.length, 1);
+  assert.deepEqual(permanentRows(f, f.run), before, "deriving the consumer's receipt adds no intent or attempt");
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(retry.envelope.runId), []);
 });
 
 it("saves an addition with no demotion when the complete original set has no primary", async () => {
@@ -315,4 +356,23 @@ it("recovers a failed OnBase import by running the record again: the Save resolv
   const stored = f.database.authority.runResults.get(again.envelope.runId); assert.ok(stored);
   const result = EmergencyContactMemberResultSchema.parse(stored.result.value);
   assert.deepEqual([result.disposition, result.onbase.disposition], ["already-present", "committed"]);
+  assert.notEqual(again.envelope.itemId, f.run.envelope.itemId);
+  const receipts = receiptsOf(f);
+  const originalIntents = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
+  assert.equal(originalIntents.length, 1);
+  const originalReceipt = receipts.ensureReceipt(f.run.envelope.runId);
+  const originalBytes = f.database.authority.evidenceReceipts.findByRun(f.run.envelope.runId);
+  const againReceipt = receipts.ensureReceipt(again.envelope.runId);
+  const againAction = commitActionOf(againReceipt);
+  assert.equal(againAction.proved?.proofSource, "durable-intent");
+  assert.equal(againAction.proved?.idempotencyKeyDigest, commitActionOf(originalReceipt).proved?.idempotencyKeyDigest);
+  assert.equal(againReceipt.decisions.find(decision => decision.kind === "dedupe")?.outcome, "not-taken");
+  const againChild = f.database.authority.runs.listChildren(again.envelope.runId)[0]; assert.ok(againChild);
+  assert.ok(f.database.authority.evidenceReceipts.findByRun(againChild.envelope.runId));
+  assert.equal(f.persistence.submissions.length, 1);
+  assert.equal(f.onbase.imports(), 1);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), originalIntents, "the original intent keeps its owner");
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(again.envelope.runId), []);
+  assert.deepEqual(receipts.ensureReceipt(f.run.envelope.runId), originalReceipt);
+  assert.deepEqual(f.database.authority.evidenceReceipts.findByRun(f.run.envelope.runId), originalBytes);
 });
