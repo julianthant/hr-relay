@@ -835,11 +835,9 @@ async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unkno
     const initialRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
     let candidates: readonly CandidateWithMtime[] = [];
     let candidateInspectionFailed = false;
-    if (!readiness) {
-      try {
-        candidates = await inspectCandidates(admission,backupDirectory, authorityInspection, stateRoot, clock);
-      } catch { candidateInspectionFailed = true; }
-    }
+    if (!readiness) try {
+      candidates = await inspectCandidates(admission,backupDirectory, authorityInspection, stateRoot, clock);
+    } catch { candidateInspectionFailed = true; }
     const first = candidates[0];
     const latestVerified = candidates
       .filter((entry): entry is CandidateWithMtime & { candidate: Extract<RestoreCandidate, { state: "verified-compatible" }> } => (
