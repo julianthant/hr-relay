@@ -149,7 +149,7 @@ describe("onboarding workflow", () => {
     const input = ONBOARDING_INPUT_EXAMPLE;
     const planned = { ...plan, employee: { ...plan.employee, firstName: "Legal", preferredFirstName: "Lived" } };
     const other = { emplId: "10800000", name: "Hire, Other" };
-    const bind = (match: unknown, mode: "new-hire" | "rehire" = "new-hire") => child.bind({ input: { ...input, mode }, outputs: { "hire-plan": planned, "ucpath-source": match } });
+    const bind = (match: unknown, mode: "new-hire" | "rehire" = "new-hire") => child.bind({ input: { ...input, mode }, outputs: { "hire-plan": planned, "ucpath-source": SearchPersonMatchOutputSchema.parse(match) } });
     assert.deepEqual(bind({ hits: [], confirmed: [], dropped: [] }), [{ firstName: "Legal", lastName: "Hire" }]);
     const dropped = { hits: [other], confirmed: [], dropped: [{ ...other, reason: "Last name does not match" }] };
     assert.deepEqual(bind(dropped), [{ firstName: "Legal", lastName: "Hire" }], "an all-dropped match may still become a new hire");
