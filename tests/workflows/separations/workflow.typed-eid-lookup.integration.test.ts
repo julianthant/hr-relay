@@ -13,14 +13,16 @@ import { createTimelineEmitter } from "../../../src/backend/storage/events/timel
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { deriveJobRowFromCells } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { readJobSummaryTask } from "../../../src/backend/systems/ucpath/tasks/read-job-summary.js";
+import { verifyIdentityApprovalTask } from "../../../src/workflows/separations/tasks/verify-identity-approval.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import { MatchIdentityOutputSchema } from "../../../src/models/workflows/separations/match-identity.js";
 import { FingerprintSchema, NodeIdSchema } from "../../../src/rules/identity/ids.js";
+import { failureCodeFromTaskCode } from "../../../src/models/failures/error-catalog.js";
 import { buildIdentityEvidencePacket, deriveIdentityEvidenceDigest } from "../../../src/rules/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../src/rules/separations/write-plan.js";
-import { JOB_SUMMARY_NODE } from "../../../src/workflows/separations/steps/identity-check/step.js";
+import { APPROVAL_NODE, JOB_SUMMARY_NODE } from "../../../src/workflows/separations/steps/identity-check/step.js";
 import { taskImplFingerprint } from "../../../src/workflow-kit/fingerprints.js";
 import { taskFailer } from "../../../src/workflow-kit/task.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
@@ -37,13 +39,16 @@ afterEach(async () => { for (const dispose of disposers.splice(0).reverse()) awa
 
 type Harness = Awaited<ReturnType<typeof sourceBoundHarness>>;
 
-function twoCandidatePacket(observedAt: string) {
+/** The checked person found by a name search with a second candidate, or the person found for the entered ID under a different UCPath name. */
+function packetFor(observedAt: string, source: "name-resolved" | "operator-entered") {
+  const eid = source === "operator-entered" ? TYPED : CHECKED;
   const rows = [deriveJobRowFromCells(["0", "07/01/2025", "Active", "SDCMP", "40012345", "000414",
     "Housing Dining Hospitality", "004920", "STDT 3", "", "0.500000", "Student"], 0)];
   return buildIdentityEvidencePacket({
     documentNumber: "4510", documentName: "Hernandez, Jose Santos", documentEidText: "the separation document carried no EID",
-    emplIdSource: "name-resolved", documentEidConflicts: false,
-    jobSummary: { pageStateId: "ucpath.person-org.detail-ready", emplId: CHECKED as never, displayedName: "Hernandez, Jose Santos",
+    emplIdSource: source, documentEidConflicts: false,
+    jobSummary: { pageStateId: "ucpath.person-org.detail-ready", emplId: eid as never,
+      displayedName: source === "operator-entered" ? "Okafor, Adaeze" : "Hernandez, Jose Santos",
       jobRows: rows, rowCount: rows.length, renderContext: { entry: "auto-detail", searchResultRows: 0, employmentInstances: "already-complete" },
       observedAt: observedAt as never },
     nameSelection: { status: "resolved",
@@ -78,7 +83,7 @@ function parkAtIdentityGate(h: Harness, queued: RunRecord) {
   const now = h.clock.now().toISOString();
   const comparison = descriptorRuntimeNodes(separationsDescriptor).find(node => node.kind === "task" && String(node.id) === "comparison");
   assert.ok(comparison?.kind === "task");
-  const packet = twoCandidatePacket(now);
+  const packet = packetFor(now, "name-resolved");
   h.database.authority.runCheckpoints.insert(RunCheckpointRecordSchema.parse({
     workflowId: run.envelope.workflow, itemId: run.envelope.itemId, nodeId: "comparison", attempt: run.envelope.attempt,
     claimGeneration: run.claimGeneration, runId: run.envelope.runId,
@@ -96,23 +101,32 @@ function parkAtIdentityGate(h: Harness, queued: RunRecord) {
   return parked.run;
 }
 
-/** The replacement's lookup: the real job-summary task reads UCPath's "no record" page, and the run fails as the executor fails it. */
-async function failUnknownLookup(h: Harness, queued: RunRecord) {
-  const { run } = claimRunning(h, queued, JOB_SUMMARY_NODE);
-  const ctx = { signal: new AbortController().signal, log: { debug() {}, info() {}, warn() {} }, recordData() {},
-    captureScreenshot: async () => {}, fail: taskFailer(readJobSummaryTask.contract as never),
-    driver: { system: "ucpath", readJobSummary: async ({ emplId }: { emplId: string }) =>
-      ({ state: "employee-not-found", emplId, observedMarker: "No matching values were found." }) } };
-  const error = await (readJobSummaryTask.impl as { run: (input: unknown) => Promise<unknown> }).run({ input: { emplId: TYPED }, ctx })
-    .then(() => undefined, (thrown: unknown) => thrown);
-  assert.ok(error instanceof Error && error.message.includes(`EID ••••${TYPED.slice(-4)} `) && !error.message.includes(TYPED));
+type Outcome = "unknown-id" | "other-person-opened" | "rejected";
+
+/** The replacement fails as the executor fails it, from the real task: UCPath's no-record page, a detail page for another person, or the operator's Reject of the person found. */
+async function failReplacement(h: Harness, queued: RunRecord, outcome: Outcome) {
+  const nodeId = outcome === "rejected" ? APPROVAL_NODE : JOB_SUMMARY_NODE;
+  const { run } = claimRunning(h, queued, nodeId);
   const now = h.clock.now().toISOString();
-  const failure = buildNodeFailureRecord({ run, failureId: h.ids.uuid(), nodeId: NodeIdSchema.parse(JOB_SUMMARY_NODE), taskId: readJobSummaryTask.contract.id,
+  const packet = packetFor(now, "operator-entered");
+  const task = outcome === "rejected" ? verifyIdentityApprovalTask : readJobSummaryTask;
+  const input = outcome === "rejected"
+    ? { packet, evidenceDigest: deriveIdentityEvidenceDigest(packet),
+      approval: { decision: "rejected", reason: "the operator rejected this person", evidenceDigest: deriveIdentityEvidenceDigest(packet) } }
+    : { emplId: TYPED };
+  const ctx = { signal: new AbortController().signal, log: { debug() {}, info() {}, warn() {} }, recordData() {},
+    captureScreenshot: async () => {}, fail: taskFailer(task.contract as never),
+    driver: { system: "ucpath", readJobSummary: async ({ emplId }: { emplId: string }) => outcome === "unknown-id"
+      ? { state: "employee-not-found", emplId, observedMarker: "No matching values were found." }
+      : { state: "subject-mismatch", observedEid: CHECKED, expectedEid: emplId } } };
+  const error = await (task.impl as { run: (input: unknown) => Promise<unknown> }).run({ input, ctx }).then(() => undefined, (thrown: unknown) => thrown);
+  assert.ok(error instanceof Error && error.message.includes(`••••${TYPED.slice(-4)}`) && !error.message.includes(TYPED), String(error));
+  const failure = buildNodeFailureRecord({ run, failureId: h.ids.uuid(), nodeId: NodeIdSchema.parse(nodeId), taskId: task.contract.id,
     error, occurredAt: now, writes: [] });
-  const outcome = h.lifecycle.terminalize({ kind: "failure", commandId: h.ids.uuid(),
+  const terminal = h.lifecycle.terminalize({ kind: "failure", commandId: h.ids.uuid(),
     terminal: { failure, authorization: buildTerminalAuthorization({ run, authorizedAt: now, consequence: { kind: "failed", failure } }) },
   }, separationsDescriptor);
-  assert.equal(outcome.state, "applied");
+  assert.equal(terminal.state, "applied");
   return failure;
 }
 
@@ -129,7 +143,11 @@ function typedPaths(value: unknown, path = ""): string[] {
   return Object.entries(value).flatMap(([key, entry]) => typedPaths(entry, Array.isArray(value) ? `${path}[${key}]` : `${path}.${key}`));
 }
 
-it("looks up a typed Employee ID UCPath does not know: the replacement fails employee-not-found with the prefilled correction, and serves the full ID only there and in its own Run data", async () => {
+it.each<Readonly<{ outcome: Outcome; code: string; prefilled: boolean }>>([
+  { outcome: "unknown-id", code: "employee-not-found", prefilled: true },
+  { outcome: "other-person-opened", code: "subject-mismatch", prefilled: false },
+  { outcome: "rejected", code: "identity-approval-rejected", prefilled: false },
+])("a typed Employee ID lookup ending $outcome serves the full ID only in its own Run data and the rejected-value correction", async ({ outcome, code, prefilled }) => {
   const h = await sourceBoundHarness(separationsDescriptor, undefined, undefined, protectedSecretSource({ profileName: "Synthetic Timekeeper" }));
   disposers.push(h.dispose);
   const artifactReader = createServerVerifiedArtifactReader({ admission: h.profile.admission });
@@ -162,16 +180,16 @@ it("looks up a typed Employee ID UCPath does not know: the replacement fails emp
   const replacement = h.database.authority.runs.listByWorkflow(separationsDescriptor.id).find(run => run.envelope.runId !== source.envelope.runId);
   assert.ok(replacement);
   assert.equal((replacement.input.parsed.value as Record<string, unknown>).operatorEmployeeId, TYPED);
-  const failure = await failUnknownLookup(h, replacement);
+  const failure = await failReplacement(h, replacement, outcome);
 
   const sourceServed = servedRun(served(), source.envelope.runId);
   const replacementServed = servedRun(served(), replacement.envelope.runId);
   const failed = replacementServed.sections.failure;
   assert.ok(failed?.section === "failure" && failed.payload.state === "available");
   assert.equal(failed.payload.value.failureId, failure.failureId);
-  assert.equal(failed.payload.value.recovery?.correction.code, "employee-not-found");
-  assert.equal(failed.payload.value.recovery?.prefill, TYPED);
-  assert.equal(failed.payload.value.decision?.type, "correct-value");
+  assert.equal(failed.payload.value.code, failureCodeFromTaskCode(code));
+  assert.equal(failed.payload.value.recovery?.prefill, prefilled ? TYPED : undefined);
+  if (prefilled) assert.equal(failed.payload.value.decision?.type, "correct-value");
   const logs = sourceServed.sections.logs;
   assert.ok(logs !== undefined);
   assert.ok(JSON.stringify(logs).includes("Replaced: Relay is looking up the Employee ID you entered."));
@@ -180,8 +198,8 @@ it("looks up a typed Employee ID UCPath does not know: the replacement fails emp
   assert.ok(JSON.stringify(day).includes(replacement.envelope.runId), "the day wire lists the replacement");
   // Local evidence keeps the run's complete input (`retainLocalEvidenceValue`), so Run data shows the entered ID like every other input value.
   assert.deepEqual(typedPaths({ source: sourceServed, replacement: replacementServed, day }).sort(), [
-    ".replacement.sections.failure.payload.value.decision.options[0].input.prefill",
-    ".replacement.sections.failure.payload.value.recovery.prefill",
+    ...(prefilled ? [".replacement.sections.failure.payload.value.decision.options[0].input.prefill",
+      ".replacement.sections.failure.payload.value.recovery.prefill"] : []),
     ".replacement.sections.receipt.payload.value.input[1].value.value",
   ]);
 });
