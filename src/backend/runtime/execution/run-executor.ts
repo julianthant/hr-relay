@@ -1910,7 +1910,9 @@ export async function executeClaimedRun(
           }
           const transactionScope = scopeFor(node.dependsOn);
           if (!envelope.dryRun && envelope.continuation !== undefined) {
-            const checkpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
+            const settled = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
+            // A run's own settlement replays from its receipt: its input is fixed, so a later re-read is an observation, not a correction.
+            const checkpoint = settled?.runId === runId && envelope.injected === undefined ? undefined : settled;
             if (checkpoint !== undefined) {
               const originalScope = sourceScopeFor(checkpoint.runId, node.dependsOn, boundBefore(checkpoint));
               const mappings = (scope: RuntimeScope) => ({ prepare: node.prepare.uses.input.parse(node.prepare.bind(scope)),
