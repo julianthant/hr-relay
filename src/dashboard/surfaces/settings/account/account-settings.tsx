@@ -26,6 +26,7 @@ export function AccountSettings({ page, ucpath, deleteAccount }: { page: Account
     {ucpath}
     <Group label="Workflow configuration">
       <ResultRow label="Timekeeper name" value={values.timekeeper} />
+      <ResultRow label="Timekeeper initials" value={values.initials} />
     </Group>
     <Group label="Security">
       <ResultRow label="Duo" value={duo === "ready" ? "Ready" : "Needs setup"} />

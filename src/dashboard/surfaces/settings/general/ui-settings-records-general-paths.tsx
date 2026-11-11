@@ -10,7 +10,7 @@ import { SettingsSaveFeedback } from "../editor/settings-feedback.js";
 import { settingNote,settingTitle } from "../settings-presentation.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
 import type { DeleteAccountPresentation } from "./delete-account-model.js";
-import { HubBrowserWindowSettings } from "./hub-preferences.js";
+import { BrowserWindowRow } from "./browser-window-row.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
@@ -77,8 +77,7 @@ function GeneralContent({ editor, year, appearance }: { editor: Editor; year: nu
     <PathRow editor={editor} field="paths.downloadsDir" />
     <ScalarRow editor={editor} leaf={date} />
     {appearance}
-    <ScalarRow editor={editor} leaf={servedLeaf(editor, "browser.headless")} />
-    <HubBrowserWindowSettings binding={{ width: rawValue(servedLeaf(editor, "display.screenWidth"), editor.draft["display.screenWidth"]), height: rawValue(servedLeaf(editor, "display.screenHeight"), editor.draft["display.screenHeight"]), disabled: editor.locked, error: [editor.errors["display.screenWidth"], editor.errors["display.screenHeight"]].filter(Boolean).join(" · ") || undefined, onChange: (path, value) => editor.update(path, value) }} />
+    <BrowserWindowRow binding={{ headless: rawValue(servedLeaf(editor, "browser.headless"), editor.draft["browser.headless"]), width: rawValue(servedLeaf(editor, "display.screenWidth"), editor.draft["display.screenWidth"]), height: rawValue(servedLeaf(editor, "display.screenHeight"), editor.draft["display.screenHeight"]), disabled: editor.locked, error: [editor.errors["browser.headless"], editor.errors["display.screenWidth"], editor.errors["display.screenHeight"]].filter(Boolean).join(" · ") || undefined, update: (path, value) => editor.update(path, value) }} />
   </FormGroup></BodySection>;
 }
 
