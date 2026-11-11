@@ -125,6 +125,11 @@ it("emergency-contact/dry-run — previews the contact Save then the OnBase chil
   assert.equal(f.onbase.imports(), 0);
   assert.deepEqual(f.database.authority.writeIntents.countDryRunEvidenceByRun(child.envelope.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
   assert.ok(f.emitter.events().every(event => event.t !== "transaction.fenced"));
+  const member = f.emitter.events().filter(event => "runId" in event && event.runId === f.run.envelope.runId);
+  assert.equal(member.filter(event => event.t === "transaction.previewed").length, 1, "the member re-entry after its child reuses the kept preview");
+  for (const role of ["probe", "prepare"]) assert.equal(member.filter(event => event.t === "span.started" && event.spanPath.endsWith(`/contact-preview/${role}`)).length, 1);
+  assert.deepEqual(f.database.authority.runCheckpoints.listByItem(f.run.envelope.workflow, f.run.envelope.itemId)
+    .filter(row => row.runId === f.run.envelope.runId && row.nodeId === "contact-preview"), []);
   f.assertNoWrites();
 });
 it("emergency-contact/unambiguous-addition — prepares the approved primary without demotion when none exists", async () => {

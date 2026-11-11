@@ -355,6 +355,10 @@ graph, including its gates and nested delegation. It returns the normal typed ob
 and receipt for its parent to consume. A child with an unsupported transaction still refuses; child
 and parent dry-run flags must match. This exception does not offer standalone read-only previews.
 
+A dry-run transaction preview is not stored. The worker process that staged it keeps it until the
+run ends, so a run that continues in that process after a child run or a pause does not stage the
+same transaction twice. Another worker process stages it again.
+
 ### 2.1 Preview terminal result
 
 For a transaction preview, `executeClaimedRun` traverses the declared graph and stores

@@ -14,12 +14,15 @@ import { type FinalizationHarness } from "../kuali-finalization-fixtures.js";
 import { ManualScheduler, recordingLogger, recordingTimelineEmitter } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 
+// `stopOn` stops the worker after the matching event; `enqueue: false` re-claims the queued fixture run instead of adding one.
+type RunOptions = Readonly<{ dryRun?: boolean; probe?: unknown; stopOn?: (event: unknown) => boolean; enqueue?: boolean }>;
+
 interface Harness {
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
   readonly world: WriteFixtureWorld;
   readonly emitter: ReturnType<typeof recordingTimelineEmitter>;
-  readonly run: (options?: Readonly<{ dryRun?: boolean; probe?: unknown }>) => Promise<void>;
+  readonly run: (options?: RunOptions) => Promise<void>;
 }
 
 
@@ -52,10 +55,12 @@ export function createDryRunPreviewResultTestWorld() {
     const log = recordingLogger().log;
     const emitter = recordingTimelineEmitter(database, clock);
 
-    const run = async (options: Readonly<{ dryRun?: boolean; probe?: unknown }> = {}): Promise<void> => {
+    const run = async (options: RunOptions = {}): Promise<void> => {
       const dryRun = options.dryRun ?? true;
       const workerPorts = testWorkerPorts(database, clock, { path: profile.path, descriptor, poolIndex: 1 });
-      assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun })).state, "inserted");
+      if (options.enqueue !== false) assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun })).state, "inserted");
+      const stop = new AbortController(), stopOn = options.stopOn;
+      const emitted = stopOn === undefined ? emitter.emitter : Object.freeze({ emit(event: unknown) { emitter.emitter.emit(event); if (stopOn(event)) stop.abort(); } });
 
       world.probeResults.push(options.probe ?? absentProbeEvidence(WRITE_FIXTURE_NOW));
       await runWorkerLoop({
@@ -67,7 +72,7 @@ export function createDryRunPreviewResultTestWorld() {
         authority: database,
         sessionFactory: sessions.factory,
         browserScreenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } },
-        emitter: emitter.emitter,
+        emitter: emitted,
         clock,
         ids,
         scheduler,
@@ -77,14 +82,14 @@ export function createDryRunPreviewResultTestWorld() {
         heartbeatIntervalMs: 600_000,
         idleRepollMs: 1_000,
         log,
-        stopSignal: new AbortController().signal,
+        stopSignal: stop.signal,
         exitWhenIdle: true,
         writeSequencerFor: (manager) => createWriteSequencer({
           lifecycle: testRunLifecycle(database, clock),
           stores,
           authority: database,
           sessions: manager,
-          emitter: emitter.emitter,
+          emitter: emitted,
           clock,
           ids,
           scheduler,

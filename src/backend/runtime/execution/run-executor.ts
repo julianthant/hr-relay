@@ -331,6 +331,11 @@ type PlanEntry =
 
 /* ── the interpreter ─────────────────────────────────────────────────────── */
 
+type TransactionPreviewStep = Extract<RunPreviewStep, { state: "transaction-preview" }>;
+// A dry-run transaction preview has no durable row. The worker process that staged it keeps it for the run,
+// so a later claim reuses it instead of opening the preview's spans a second time.
+const retainedTransactionPreviews = new WeakMap<object, Map<string, Map<string, TransactionPreviewStep>>>();
+
 export async function executeClaimedRun(
   deps: RunExecutorDependencies,
   input: ClaimedRunInput,
@@ -340,6 +345,12 @@ export async function executeClaimedRun(
   const { descriptor, clock } = deps;
   const envelope = initial.envelope;
   const runId = envelope.runId;
+  let retainedByRun = retainedTransactionPreviews.get(deps.authority);
+  if (retainedByRun === undefined) retainedTransactionPreviews.set(deps.authority, retainedByRun = new Map());
+  const settled = (outcome: RunExecutionOutcome): RunExecutionOutcome => {
+    if (outcome.state === "done" || outcome.state === "failed") retainedByRun.delete(runId);
+    return outcome;
+  };
   if (envelope.workflow !== descriptor.id
     || envelope.descriptorVersion !== descriptor.version
     || envelope.contractFingerprint !== descriptor.contractFingerprint) {
@@ -1915,6 +1926,12 @@ export async function executeClaimedRun(
               markUnavailable(node);
               continue;
             }
+            const retained = retainedByRun.get(runId)?.get(String(node.id));
+            if (retained !== undefined) {
+              dryRunSteps.set(String(node.id), retained);
+              previewOnly.add(String(node.id));
+              continue;
+            }
           }
           try {
             const captureLog: Pick<TaskLogger, "warn"> = {
@@ -1958,7 +1975,11 @@ export async function executeClaimedRun(
                   : "not-observed",
                 externalCommit: "none",
               });
-              dryRunSteps.set(String(node.id), { nodeId: node.id, state: "transaction-preview", preview, samples: preview.outcome.state === "would-prepare" ? samples : [] });
+              const step: TransactionPreviewStep = { nodeId: node.id, state: "transaction-preview", preview, samples: preview.outcome.state === "would-prepare" ? samples : [] };
+              dryRunSteps.set(String(node.id), step);
+              let kept = retainedByRun.get(runId);
+              if (kept === undefined) retainedByRun.set(runId, kept = new Map());
+              kept.set(String(node.id), step);
               previewOnly.add(String(node.id));
               continue;
             }
@@ -2218,19 +2239,19 @@ export async function executeClaimedRun(
   };
 
   try {
-    return await interpret();
+    return settled(await interpret());
   } catch (error) {
     const interrupted = handleInterruption(error);
-    if (interrupted.state === "handled") return interrupted.outcome;
+    if (interrupted.state === "handled") return settled(interrupted.outcome);
     const failure = interrupted.failure;
     if (failure instanceof RunContinuationRefusedError) {
       try {
-        return await terminalizeAsFailure(buildEntryValidationFailureRecord({
+        return settled(await terminalizeAsFailure(buildEntryValidationFailureRecord({
           run: getRun(), failureId: deps.ids.uuid(), code: failure.code, problems: [failure.message], occurredAt: instant(),
-        }));
+        })));
       } catch (terminalFailure) {
         const terminal = handleInterruption(terminalFailure);
-        if (terminal.state === "handled") return terminal.outcome;
+        if (terminal.state === "handled") return settled(terminal.outcome);
         throw terminal.failure;
       }
     }
