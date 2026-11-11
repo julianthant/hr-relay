@@ -75,6 +75,7 @@ describe("publication preview boundary", () => {
     })));
     const task = defineTask(providersOnlyContract, { sessions: [], async run({ ctx }) {
       await ctx.providers["geocode.census"].call({ schemaHash: FingerprintSchema.parse(HASH_A), value: {} });
+      ctx.recordData([{ direction: "read", field: "value", value: "saved" }]);
       return { value: "saved" };
     } });
     const store = defineServiceStore("ocr", { fixture: task });
@@ -101,14 +102,14 @@ describe("publication preview boundary", () => {
 
   it("previews the declared save, leaves dependents unavailable, and never calls the provider in a dry run", async () => {
     const { outcome, database, clock, calls, logs, failure } = await run({ dryRun: true });
-    assert.equal(outcome.state, "done", failure?.summary);
+    assert.equal(outcome.state, "done", failure?.summary ?? "");
     const stored = database.authority.runResults.get(RUN_ID);
     assert.ok(stored);
     const preview = z.looseObject({ kind: z.string(), steps: z.array(z.looseObject({ nodeId: z.string(), state: z.string() })) }).parse(stored.result.value);
     assert.equal(preview.kind, "publication-dry-run-preview");
     assert.deepEqual(preview.steps.map(step => [step.nodeId, step.state]), [["extract", "publication-preview"], ["after", "unavailable"]]);
     assert.equal(calls, 0);
-    assert.ok(logs.some(log => log.level === "info" && log.message === PREVIEW_LOG));
+    assert.ok(logs.some(log => log.level === "step" && log.message === PREVIEW_LOG));
     const world = await makeWorld();
     try {
       const finished = database.authority.runs.get(RUN_ID); assert.ok(finished);
@@ -128,7 +129,7 @@ describe("publication preview boundary", () => {
   it("fails the declared node on an invalid bound input in a dry run without calling the provider", async () => {
     const { outcome, calls, failure } = await run({ dryRun: true, name: "invalid-bound" });
     assert.equal(outcome.state, "failed");
-    assert.equal(failure?.nodeId, "extract", failure?.summary);
+    assert.equal(failure?.nodeId, "extract", failure?.summary ?? "");
     assert.equal(calls, 0);
   });
 

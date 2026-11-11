@@ -236,7 +236,7 @@ describe_m1("frontend workflow catalog", () => {
     for (const owner of ["ocr", "onboarding"]) expect_m1(childWorkflowModuleOf(owner, "i9-lookup").descriptor.id).toBe("i9-lookup");
     const module = WORKFLOW_MODULES.find(entry => entry.descriptor.id === "i9-check-start");
     assert_m0.ok(module);
-    expect_m1(workflowDryRunSupport(module.descriptor)).toEqual({ state: "unsupported", reason: "no-transaction-node" });
+    expect_m1(workflowDryRunSupport(module.descriptor)).toEqual({ state: "supported", firstPublicationNodeId: "save-workbook" });
   });
 });
 }

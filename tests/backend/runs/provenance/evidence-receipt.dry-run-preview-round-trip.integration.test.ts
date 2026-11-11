@@ -288,7 +288,7 @@ describe("a dry run retains transaction preview accounting", () => {
 
 describe("a publication preview receipt", () => {
   it("names the publication node and the unavailable stage in the DRY_RUN_PREVIEW warning", async () => {
-    const descriptor = wiring.publicationDescriptor("publication-receipt-fixture", "pr");
+    const descriptor = wiring.publicationDescriptor("wiring-projection", "pr");
     const store = defineServiceStore("ocr", { fixture: defineTask(wiring.providersOnlyContract, { sessions: [], async run() { return { value: "unused" }; } }) });
     const harness = await wiring.wiringHarness(descriptor, defineTaskStoreRegistry([store], { scenarioIds: [wiring.SCENARIO],
       tasks: [{ id: wiring.providersOnlyContract.id, effect: wiring.providersOnlyContract.effect }] }));
