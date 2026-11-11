@@ -91,7 +91,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           flags={<>
             {!source && planSteps.length > 0 && <Checkbox label="Customize steps" description="Choose optional steps." checked={optionalSteps} onCheckedChange={value => { setOptionalSteps(value === true); if (value !== true) patch({ selectedSteps: flow.steps.map(step => step.key), manualSteps: [] }); }} />}
             {pdf && !uploadOnly && <Checkbox label="Extract with OCR" description="Turn off to enter records manually in OCR review." checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value === true ? "extract" : "manual" })} />}
-            {flow.dryRun && <Switch label="Dry run" description="Fill and check every step without submitting." checked={draft.dryRun} onCheckedChange={value => patch({ dryRun: value === true })} />}
+            {flow.dryRun && <Switch label="Dry run" description="Fill and check every step without submitting or saving." checked={draft.dryRun} onCheckedChange={value => patch({ dryRun: value === true })} />}
             <RequiredCaptureStatus state="required" />
           </>}>
           {workflowId === "onboarding" && <Field orientation="horizontal" label="Hire type" description="Applies to every item.">

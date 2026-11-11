@@ -489,7 +489,7 @@ export function RunStartDialog({
     rowReadReady, rowReference?.libraryId ?? "", rowVersion, workbookReference?.keyFieldId, rowReference?.sheetId);
   const rowSelectionFresh = selectedWorkbookRows === undefined || selectedWorkbookRows.authority === workbookRows.authority;
   const rowChoices = rowSelectionFresh ? workbookRows.choices : selectedWorkbookRows?.choices ?? [];
-  const supportsDryRun = inputRun.state === "present" && inputRun.surface.supportsDryRun === true;
+  const supportsDryRun = (inputRun.state === "present" && inputRun.surface.supportsDryRun === true) || workflow?.uploadRun?.supportsDryRun === true;
   const dryRun = supportsDryRun && dryRunRequested;
   const launchStages = useMemo(() => runStartStages(customizeSteps, "typed", isRerun), [customizeSteps, isRerun]);
 
@@ -1009,7 +1009,7 @@ export function RunStartDialog({
                 <RunOptionsLayout workflowLabel={workflow?.label} priority={priority} onPriorityChange={setPriority} browserMode={browserMode} onBrowserModeChange={setBrowserMode}
                   flags={<>
                     {!isRerun && <Checkbox checked={customizeSteps} onCheckedChange={next => changeCustomizeSteps(next === true)} label="Customize steps" description="Choose optional steps." />}
-                    {supportsDryRun && <Switch checked={dryRun} onCheckedChange={next => setDryRunRequested(next === true)} label="Dry run" description="Fill and check every step without submitting." />}
+                    {supportsDryRun && <Switch checked={dryRun} onCheckedChange={next => setDryRunRequested(next === true)} label="Dry run" description="Fill and check every step without submitting or saving." />}
                     <RequiredCaptureStatus state="required" />
                   </>}
                   references={referenceControls(requiredTypes.filter(typeId => typeId !== rowCapability?.typeId))}>
