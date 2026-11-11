@@ -47,10 +47,10 @@ async function fill(node: HTMLInputElement | HTMLTextAreaElement, value: string)
   const setter: { set?: (this: unknown, value: string) => void } | undefined = Object.getOwnPropertyDescriptor(node instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype, "value");
   assert.ok(setter?.set); await act(async () => { setter.set?.call(node, value); node.dispatchEvent(new Event("input", { bubbles: true })); });
 }
-async function mount(h: Harness, source: RunRecord, client: DashboardClient = h.client, workersStopped?: (workflowId: string) => boolean) {
-  const workflows = [h.workflow]; const sourceRef = { runId: source.envelope.runId, expectedVersion: source.version };
+async function mount(h: Harness, source: RunRecord | undefined, client: DashboardClient = h.client, workersStopped?: (workflowId: string) => boolean) {
+  const workflows = [h.workflow]; const sourceRef = source === undefined ? undefined : { runId: source.envelope.runId, expectedVersion: source.version };
   function Launcher({ actorId }: { actorId: string }) { const controller = useRunLaunch(false, "launch-main"); return createElement("main", { id: "launch-main", tabIndex: -1 },
-    createElement("button", { onClick: () => controller.openRerun(sourceRef) }, "Rerun source"),
+    createElement("button", { onClick: () => sourceRef === undefined ? controller.openStart() : controller.openRerun(sourceRef) }, sourceRef === undefined ? "Run workflow" : "Rerun source"),
     createElement(ToastProvider, { children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId, workersStopped, onOpenIntake: () => { throw new Error("unexpected intake"); } }) })); }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   async function replaceBinding(nextClient: DashboardClient, { actorId = "local-operator", requestKey = 0, nowIso = h.clock.now().toISOString(), bound = true } = {}) {
@@ -59,7 +59,7 @@ async function mount(h: Harness, source: RunRecord, client: DashboardClient = h.
       children: bound ? createElement(FixtureCommandBinding, { actorId, requestKey, nowIso, children: launcher }) : launcher })));
   }
   await replaceBinding(client);
-  button("Rerun source").focus(); await press("Rerun source");
+  button(source === undefined ? "Run workflow" : "Rerun source").focus(); await press(source === undefined ? "Run workflow" : "Rerun source");
   return replaceBinding;
 }
 return { setup, text, button, press, checkbox, field, fill, mount, cleanup, unmount };
