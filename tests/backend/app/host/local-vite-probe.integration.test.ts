@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { createServer } from "node:http";
+import { createServer } from "node:net";
 import { afterEach,describe,it } from "vitest";
 import { probeOwnedViteServer } from "../../../../src/backend/app/host/local-vite-probe.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -14,16 +14,19 @@ afterEach(() => {
 });
 
 describe("dashboard preflight runner composition", () => {
-  it("returns probe-request-failed for a closed allocated loopback port", async () => {
-    const server = createServer();
+  it("returns probe-request-failed when a held loopback listener refuses transport", async () => {
+    const server = createServer(socket => socket.destroy());
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
     if (address === null || typeof address === "string") throw new Error("test server exposed no TCP address");
-    await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
-    assert.deepEqual(await probeOwnedViteServer({
-      port: address.port, signal: new AbortController().signal,
-      deadlineMonotonicMs: CLOCK.monotonicMs() + 1_000,
-      clock: CLOCK, ownerNonce: OWNER_NONCE,
-    }), { state: "not-owned", reason: "probe-request-failed" });
+    try {
+      assert.deepEqual(await probeOwnedViteServer({
+        port: address.port, signal: new AbortController().signal,
+        deadlineMonotonicMs: CLOCK.monotonicMs() + 1_000,
+        clock: CLOCK, ownerNonce: OWNER_NONCE,
+      }), { state: "not-owned", reason: "probe-request-failed" });
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+    }
   });
 });
