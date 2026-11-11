@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { queryQueueSummaries } from "../../../../src/backend/runs/queries/queue-summaries.js";
@@ -95,21 +95,17 @@ it("reuses delegation reads in one write transaction until a row changes or a sa
   const f = await fixture(childExecutionStores, "ok", childPolicyModules("cascade", "inline"));
   assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "yielded-delegation");
   const manifest = f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId)[0]; assert.ok(manifest);
-  const prepare = DatabaseSync.prototype.prepare;
-  let invocationReads = 0;
-  DatabaseSync.prototype.prepare = function (this: DatabaseSync, sql: string) {
-    if (sql.includes("'$.request.manifestId'")) invocationReads += 1;
-    return prepare.call(this, sql);
-  };
+  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  const invocationReads = () => prepare.mock.calls.filter(([sql]) => sql.includes("'$.request.manifestId'")).length;
   const write = (repositories: Parameters<Parameters<typeof f.database.withAuthorityTransaction>[0]>[0]) => repositories.commands.insert(CommandRequestSchema.parse({
     commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
     family: "run", type: "cancel", target: { runId: f.run.envelope.runId, expectedVersion: f.run.version } }));
   try {
     f.database.withAuthorityTransaction(repositories => {
       const read = () => {
-        const before = invocationReads;
+        const before = invocationReads();
         assert.equal(repositories.dependencies.authenticateGroup(manifest).children.length, manifest.children.length);
-        return invocationReads - before;
+        return invocationReads() - before;
       };
       assert.ok(read() > 0);
       assert.equal(read(), 0);
@@ -119,7 +115,7 @@ it("reuses delegation reads in one write transaction until a row changes or a sa
       assert.ok(read() > 0);
       assert.equal(read(), 0);
     });
-  } finally { DatabaseSync.prototype.prepare = prepare; }
+  } finally { prepare.mockRestore(); }
 });
 
 it("keeps later-day inline children under their original parent day with exact attempt metadata", async () => {
