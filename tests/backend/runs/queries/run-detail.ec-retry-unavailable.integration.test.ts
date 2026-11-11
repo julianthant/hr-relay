@@ -113,7 +113,7 @@ for (const dryRun of [false, true]) describe(`settled EC ${dryRun ? "dry run" : 
     const parent = repos.runs.get(f.parentRun.envelope.runId); assert.ok(parent?.lifecycle.state === "terminal" && parent.lifecycle.outcome === "done");
     const children = repos.runs.listChildren(parent.envelope.runId);
     const failed = children.find(run => run.envelope.workflow === "emergency-contact-member" && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed"); assert.ok(failed);
-    const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor, f.member.descriptor, ...["emergency-contact", "ocr", "ocr-page", "onbase"].map(f.resolve)].filter(entry => entry !== undefined) });
+    const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor, f.member.descriptor, ...["emergency-contact", "ocr", "ocr-page", "person-lookup", "i9-lookup", "onbase"].map(f.resolve)].filter(entry => entry !== undefined) });
     const receipt = receipts.ensureReceipt(parent.envelope.runId);
     assert.deepEqual(repos.evidenceReceipts.findByRun(parent.envelope.runId), receipt);
     assert.ok(parent.completion);

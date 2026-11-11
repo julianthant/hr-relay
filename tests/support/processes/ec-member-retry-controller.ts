@@ -2,7 +2,7 @@ import { unusedWorkerPool } from "../helpers/backend/unused-worker-pool.js";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { createEmergencyContactRetryWorld } from "../helpers/backend/emergency-contact-retry-world.js";
+import { createEmergencyContactRetryWorld, EC_TREE_DESCRIPTORS } from "../helpers/backend/emergency-contact-retry-world.js";
 import { FakeKeyringEntry } from "../helpers/credential-keychain-fake.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
@@ -34,7 +34,7 @@ if (serialized === undefined) {
   f.control.failAccounting = mode?.endsWith("-failed") === true;
   await f.canonical.execute(f.parentRun, new AbortController().signal);
   const parent = f.current(); assert.ok(parent.completion);
-  const receipt = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor] }).ensureReceipt(parent.envelope.runId);
+  const receipt = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [...EC_TREE_DESCRIPTORS, f.root.descriptor] }).ensureReceipt(parent.envelope.runId);
   const failed = f.children().find(run => run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed"); assert.ok(failed);
   const request = f.runCommand("retry", failed);
   const source = f.database.authority.runResults.get(parent.envelope.runId); assert.ok(source);
@@ -95,7 +95,7 @@ if (serialized === undefined) {
   if (boundary === "settlement") {
     f.control.failAccounting = false;
     assert.equal((await f.canonical.step(f.parentRun, new AbortController().signal)).outcome.state, "done");
-    const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor] });
+    const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [...EC_TREE_DESCRIPTORS, f.root.descriptor] });
     receipts.ensureReceipt(parent.envelope.runId);
     const next = f.children().find(run => run.envelope.retryOf !== undefined && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed"); assert.ok(next);
     assert.equal(f.canonical.kernel.execute(f.runCommand("retry", next)).state, "applied");

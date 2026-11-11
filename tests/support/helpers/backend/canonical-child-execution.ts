@@ -40,9 +40,11 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
   const unused = (): never => { throw new Error("unrequested canonical fixture effect"); };
   const kernel = createCommandKernel({ authority: database, lifecycle, clock, ids: { uuid: randomUUID }, appVersion: "0.1.0",
     ensureReceipt: runId => {
-      const run = database.authority.runs.get(runId); assert.ok(run);
-      const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
-      return createReceiptService({ database, runReader: lifecycle, descriptors: [descriptor] }).ensureReceipt(runId);
+      const tree = (id: string): string[] => [id, ...database.authority.runs.listChildren(id).flatMap(child => tree(child.envelope.runId))];
+      const descriptors = [...new Set(tree(runId).map(id => database.authority.runs.get(id)?.envelope.workflow))].map(workflow => {
+        assert.ok(workflow !== undefined); const descriptor = resolve(workflow); assert.ok(descriptor); return descriptor;
+      });
+      return createReceiptService({ database, runReader: lifecycle, descriptors }).ensureReceipt(runId);
     },
     descriptors: { resolve }, configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { recheck: unused, resolveAbsent: unused },
