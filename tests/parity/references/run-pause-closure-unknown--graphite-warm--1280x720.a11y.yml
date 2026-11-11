@@ -8,8 +8,9 @@
 
 - complementary "Workspace":
   - heading "Relay" [level=2]
+  - button "Collapse sidebar" [expanded]
   - button "Notifications, 0 unread"
-  - button "Search runs"
+  - button "Search"
   - navigation "Workflows":
     - heading "Search" [level=3]
     - list:
@@ -38,7 +39,6 @@
     - text: "9:20 AM #1 SP99300911"
   - region "Selected run logs":
     - heading "Alex Morgan" [level=2]
-    - text: Running
     - button "Pause"
     - navigation "Run timeline":
       - list:
@@ -55,11 +55,8 @@
         - time: 09:31:00
         - heading "Verify employee" [level=3]
         - text: UCPath
-        - time: 09:31:04
         - paragraph: Search by EID 10777012
-        - time: 09:31:09
         - paragraph: Read job record
-        - time: 09:31:10
         - paragraph: Closure is unknown. Keep Relay open and check active runs.
     - group:
       - searchbox "Search logs"

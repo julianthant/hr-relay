@@ -1,3 +1,10 @@
+import { projectRunLogs } from "../../../../src/dashboard/state/run-wiring-adapter.js";
+import { NotePageSchema, RunDetailSectionResponseSchema } from "../../../../src/models/dashboard/run-detail.js";
+import { FIXTURE_RUN_DETAILS } from "../../../support/fixtures/dashboard/run-detail/timeline.js";
+import { FIXTURE_FAILURE_SECTIONS } from "../../../support/fixtures/dashboard/run-detail/receipts-failures.js";
+import { FIXTURE_IDS } from "../../../support/fixtures/dashboard/fixture-queue.js";
+import { DelegationConfigUnavailableError } from "../../../../src/backend/runs/lifecycle/delegation-admission.js";
+import { resolveErrorCatalogFailure } from "../../../../src/models/failures/error-catalog.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import {
@@ -70,4 +77,43 @@ describe("node failure write state", () => {
     assert.equal(stateAfter([{ status: "committed" }]), "committed");
     assert.equal(stateAfter([{ status: "committed" }, { status: "observed-present" }]), "verified");
   });
+});
+
+it.each(["not-attempted", "committed", "verified"] as const)("maps retained delegation config failure with independent %s write evidence", writeState => {
+  const cause = new Error("private retained config snapshot mismatch");
+  const error = new DelegationConfigUnavailableError(cause);
+  const failure = buildNodeFailureRecord({ run: QUEUED_RUN,
+    failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID,
+    error, occurredAt: "2026-08-29T08:00:00.000Z",
+    writes: writeState === "not-attempted" ? [] : [{ status: writeState === "verified" ? "observed-present" : "committed" }] });
+  assert.equal(error.cause, cause);
+  assert.equal(failure.code, "DELEGATION_CONFIG_UNAVAILABLE");
+  assert.equal(failure.causeChain[0]?.code, "DELEGATION_CONFIG_UNAVAILABLE");
+  assert.equal(failure.writeState, writeState);
+  assert.equal(failure.taskId, undefined, "a child control node owns no task");
+  assert.ok(failure.debug?.causes.some(value => value.includes(cause.message)));
+  const resolved = resolveErrorCatalogFailure({ code: failure.code, parameters: {}, summary: failure.summary }, "http-response");
+  assert.equal(resolved.state, "resolved");
+  assert.equal(resolved.code, "DELEGATION_CONFIG_UNAVAILABLE");
+  assert.equal(resolved.text, "Relay could not verify this run's saved settings, so the child workflow did not start. Review the run evidence before continuing.");
+  assert.equal(resolved.text.includes(cause.message), false);
+});
+
+it.each(["not-attempted", "unknown"] as const)("shows the registered delegation config sentence in Logs while preserving %s write state", writeState => {
+  const original = FIXTURE_FAILURE_SECTIONS[FIXTURE_IDS.failedRun].failure;
+  assert.ok(original.section === "failure" && original.payload.state === "available");
+  const source = original.payload.value;
+  const section = RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: {
+    ...source, code: "DELEGATION_CONFIG_UNAVAILABLE", writeState, summary: "private retained snapshot details",
+  } } });
+  const detail = FIXTURE_RUN_DETAILS[FIXTURE_IDS.failedRun]; assert.ok(detail);
+  const logs = NotePageSchema.parse({ runId: detail.runId, rows: [], notes: [], nextCursor: { state: "absent", reason: "end-of-page" } });
+  const projection = projectRunLogs({ detail, logs, sections: [section], unavailableEvidence: [] },
+    { artifactUrl: () => { throw new Error("config failure must not request an artifact"); } });
+  const entry = projection.steps.find(step => step.id === source.failureId)?.entries[0];
+  assert.ok(entry?.kind === "decision");
+  assert.equal(entry.decision.message, "Relay could not verify this run's saved settings, so the child workflow did not start. Review the run evidence before continuing.");
+  assert.equal(entry.decision.state, writeState === "unknown" ? "unconfirmed" : "failed");
+  assert.equal(entry.decision.message.includes("private retained snapshot details"), false);
+  if (writeState === "unknown") assert.equal(entry.decision.caution, "The result is unknown. Check the system before continuing.");
 });

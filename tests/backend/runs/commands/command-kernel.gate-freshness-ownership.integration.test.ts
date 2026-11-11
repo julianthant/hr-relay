@@ -84,7 +84,7 @@ const finiteGateCanonicalInput = defineCanonicalInput(
 const finiteGateFlow = flow(finiteGateInputSchema)
   .step("job-summary", UcpathReadJobSummary, {
     dependsOn: [],
-    replay: "always-rerun",
+    replay: "checkpoint",
     bind: ({ input }) => ({ emplId: input.emplId }),
   })
   .gate("approval", {
@@ -157,7 +157,7 @@ describe("gate resolution", () => {
     return result;
   }
 
-  it("refuses a stale direct gate dependency under its finite declared freshness bound", async () => {
+  it("refuses a stale checkpoint gate dependency under its finite declared freshness bound", async () => {
     const harness = await createHarness(undefined, { descriptors: [...DESCRIPTOR_SET, finiteGateDescriptor] });
     const plan = planStart(
       { authority: harness.database, clock: harness.clock, ids: harness.plannerIds, planTtlMs: 600_000 },

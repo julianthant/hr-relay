@@ -30,7 +30,7 @@ export function PickTable({ table, chosen, onChoose, text, onText, disabled = fa
     </tr>;
   };
   return <div className="overflow-hidden rounded-lg border border-ui-stroke bg-ui-table">
-    <div className="flex min-h-11 items-center gap-2.5 border-b border-ui-stroke px-3 py-2.5"><PanelsTopLeft aria-hidden className="size-4 shrink-0 text-ui-muted" /><h4 className="m-0 text-control font-semibold">{table.title}</h4><span className="ml-auto text-caption text-ui-muted">Pick</span></div>
+    <div className="flex min-h-11 items-center gap-2.5 border-b border-ui-stroke px-3 py-2.5"><PanelsTopLeft aria-hidden className="size-4 shrink-0 text-ui-muted" /><h4 className="m-0 text-control font-medium">{table.title}</h4><span className="ml-auto text-caption text-ui-muted">Pick</span></div>
     <table aria-label={table.title} className="w-full border-collapse text-left text-body">
       <thead><tr className="text-caption text-ui-muted"><th className="w-9 pl-3"><span className="sr-only">Choose</span></th>{columns.map((column, index) => <th key={column.id} className={cn("px-3 py-2 font-normal whitespace-nowrap", index === last && "text-right")}>{column.label}</th>)}</tr></thead>
       <tbody>

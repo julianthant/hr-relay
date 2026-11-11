@@ -20,7 +20,6 @@ describe("the app-wide storage notice", () => {
 
     assert.equal(healthy, "");
     assert.match(unavailable, /Storage unavailable/u);
-    assert.match(unavailable, /Open Settings &gt; Storage/u);
     assert.doesNotMatch(unavailable, /<button/u);
   });
 });

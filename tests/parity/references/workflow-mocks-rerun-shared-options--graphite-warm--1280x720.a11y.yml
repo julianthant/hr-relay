@@ -19,42 +19,28 @@
       - button "2 Values": Values
     - listitem:
       - button "3 Options": Options
-    - listitem:
-      - button "4 Confirm" [disabled]: Confirm
-  - region "Options":
-    - heading "Run" [level=2]
-    - group "Run options":
-      - switch "Dry run Fill and check every step without submitting."
-      - text: Dry run Fill and check every step without submitting. Screenshots
-      - paragraph: Required by this workflow.
-      - text: Always on Priority
-      - paragraph: Interactive runs go first.
-      - group "Priority":
-        - text: Priority
-        - radio "Interactive"
-        - text: Interactive
-        - radio "Bulk" [checked]
-        - text: Bulk
-      - text: Browser
-      - paragraph: Headless runs in the background.
-      - group "Browser mode":
-        - text: Browser mode
-        - radio "Headed"
-        - text: Headed
-        - radio "Headless" [checked]
-        - text: Headless
-    - heading "Onboarding" [level=2]
-    - group "Workflow options":
+  - region "Run":
+    - heading "Run" [level=4]
+    - text: Dry run Fill and check every step without submitting.
+    - switch "Dry run"
+    - text: Dry run Screenshots Required by this workflow. Always on Priority Runs before bulk batches.
+    - switch "Priority" [checked]
+    - text: Priority Browser Headless runs in the background.
+    - group "Browser mode":
+      - text: Browser mode
+      - radio "Headed"
+      - text: Headed
+      - radio "Headless" [checked]
+      - text: Headless
+    - text: Hire type Applies to every item.
+    - group "Hire type":
       - text: Hire type
-      - paragraph: Applies to every item.
-      - group "Hire type":
-        - text: Hire type
-        - radio "New hire" [checked]
-        - text: New hire
-        - radio "Rehire"
-        - text: Rehire
+      - radio "New hire" [checked]
+      - text: New hire
+      - radio "Rehire"
+      - text: Rehire
   - contentinfo:
-    - text: Source run · new runOnboarding
+    - text: Onboarding7 of 8 stepsPriority Enter to start
     - button "Back"
     - button "Cancel"
-    - button "Preview plan"
+    - button "Start live run"

@@ -5,6 +5,7 @@ import { default as assert_m0,default as assert_m1 } from 'node:assert/strict';
 import { act as act_m0,createElement as createElement_m0,createElement as createElement_m1 } from 'react';
 import { createRoot as createRoot_m0 } from 'react-dom/client';
 import { renderToStaticMarkup as renderToStaticMarkup_m1 } from "react-dom/server";
+import { TooltipProvider as TooltipProvider_m1 } from "../../../../src/dashboard/ds/ui.js";
 import { afterEach as afterEach_m0,beforeEach as beforeEach_m0,describe as describe_m0,describe as describe_m1,it as it_m0,it as it_m1 } from 'vitest';
 import { ACTIVITY_SAMPLE_TODAY as ACTIVITY_SAMPLE_TODAY_m0 } from '../../../../src/dashboard/surfaces/activity/activity-fixture.js';
 import { activityPresetRange as activityPresetRange_m0,activityRangeValue as activityRangeValue_m0 } from '../../../../src/dashboard/surfaces/activity/activity-model.js';
@@ -35,7 +36,7 @@ afterEach_m0(_afterEachFixture1);
       await act_m0(async () => element.click());
     };
     try {
-      await act_m0(async () => root.render(createElement_m0(ActivityReport_m0, { source: "mock", range: '', onRange: () => {} })));
+      await act_m0(async () => root.render(createElement_m0(TooltipProvider_m1, null, createElement_m0(ActivityReport_m0, { source: "mock", range: '', onRange: () => {} }))));
       assert_m0.equal(host.querySelector('h1')?.textContent, 'Analytics');
       await click('button[aria-label="View completed runs (38)"]');
       assert_m0.equal(host.querySelectorAll('tbody tr').length, 20);
@@ -102,14 +103,14 @@ afterEach_m0(_afterEachFixture1);
 const noop = () => {};
 describe_m1("frontend presentation producers", () => {
   it_m1("renders canonical surfaces without a client provider or registered-definition fallback", () => {
-    const activity = renderToStaticMarkup_m1(createElement_m1(ActivityReport_m1, { source: "mock", range: "", onRange: noop }));
+    const activity = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(ActivityReport_m1, { source: "mock", range: "", onRange: noop })));
     assert_m1.match(activity, /Workflow outcomes/);
     assert_m1.match(activity, /34 measured/);
     assert_m1.doesNotMatch(activity, /Sample data/);
-    const explorer = renderToStaticMarkup_m1(createElement_m1(WorkflowExplorer_m1, { catalog: buildWorkflowCatalog_m1([], true, previewFixtureSources([])) }));
+    const explorer = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(WorkflowExplorer_m1, { catalog: buildWorkflowCatalog_m1([], true, previewFixtureSources([])) })));
     assert_m1.equal((explorer.match(/data-step-number=/g) ?? []).length, 22);
     assert_m1.doesNotMatch(explorer, /Registered definition|Back to dashboard/);
-    const logs = renderToStaticMarkup_m1(createElement_m1(LogSample_m1));
+    const logs = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(LogSample_m1)));
     assert_m1.match(logs, /Save and Submit/);
     assert_m1.doesNotMatch(logs, /Load more actions|No captures|dry run|Rerun|0s working/);
   });

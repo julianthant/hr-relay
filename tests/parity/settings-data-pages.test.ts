@@ -31,7 +31,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
    await expect(page.locator('html')).not.toHaveAttribute('data-dashboard-density', 'compact');
    expect(await page.evaluate(() => getComputedStyle(document.documentElement).zoom)).toBe('1');
    await expect(page.getByRole('banner')).toHaveCount(0);
-   expect((await nav.boundingBox())!.width).toBe(width === 1024 ? 210 : 244);
+   expect((await nav.boundingBox())!.width).toBe(312);
    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
    expect(errors).toEqual([]); expect(writes).toEqual([]);

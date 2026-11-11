@@ -42,7 +42,6 @@ test("production PanelHeaders use explicit semantic heading levels", async ({ pa
 
   for (const [section, title] of [
     ["", "General"],
-    ["storage", "Storage checks"],
     ["keyboard", "Keyboard shortcuts"],
   ] as const) {
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: section });

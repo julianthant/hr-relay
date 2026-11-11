@@ -36,9 +36,9 @@
         - group "Thinking effort":
           - group:
             - menuitemradio "Light"
-            - menuitemradio "Low"
             - menuitemradio "Medium" [checked]
             - menuitemradio "High"
             - menuitemradio "xHigh"
+            - menuitemradio "Max"
       - button "Voice input"
       - button "Send message" [disabled]

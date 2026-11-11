@@ -8,8 +8,9 @@
 
 - complementary "Workspace":
   - heading "Relay" [level=2]
+  - button "Collapse sidebar" [expanded]
   - button "Notifications, 0 unread"
-  - button "Search runs"
+  - button "Search"
   - navigation "Workflows":
     - heading "Search" [level=3]
     - list:
@@ -39,9 +40,7 @@
       - region "Submit termination":
         - time: 09:00:02
         - heading "Submit termination" [level=3]
-        - text: UCPath
-        - time: 09:00:02
-        - text: Submit termination
+        - text: UCPath Submit termination
         - figure "Before submit 09:00:01":
           - button "Enlarge screenshot captured at 09:00:01":
             - img "UCPath before submit"

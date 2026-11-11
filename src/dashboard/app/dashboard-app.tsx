@@ -15,7 +15,7 @@ import type { AssistantPorts } from "../surfaces/shell/assistant-panel-model.js"
 import { HubShell } from "../surfaces/shell/hub-shell.js";
 import { useHubMotion } from "../ds/theme/motion.js";
 import "../ds/theme/hub-theme.css";
-import { useInboxWiring } from "../state/inbox-wiring-adapter.js";
+import { useInboxWiring, type InboxWiring } from "../state/inbox-wiring-adapter.js";
 import { useSearchWiring } from "../state/search-wiring-adapter.js";
 import { useQueueWiring } from "../state/queue-wiring-adapter.js";
 import { useApplicationLifecycle } from "../state/application-lifecycle-model.js";
@@ -41,17 +41,20 @@ import { Component,useCallback,useContext,useEffect,useLayoutEffect,useMemo,useR
 import { CommandRequestSchema, BulkRunCommandRequestSchema, WorkflowBatchCommandRequestSchema, type BulkRunCommandResponse } from "../../rules/commands/commands.js";
 import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
-SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
-import { Banner,Button,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
+import { StatusMockHost } from "../surfaces/settings/status-mock/status-mock.js";
+import { STATUS_MOCK_BULK_OUTCOME, STATUS_MOCK_COMMAND_RESULTS, STATUS_MOCK_UNKNOWN_COMMAND, statusMock } from "../surfaces/settings/status-mock/status-mock-model.js";
+import { Button,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { useServedNow } from "../state/served-clock.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
 import {
+commandResultDetail,
 commandResultFeedEntry,
+commandResultTitle,
 type CommandResultFeedEntry,
 } from "../surfaces/shared/actions/actions-model.js";
 import {
@@ -60,7 +63,8 @@ ConfirmCommandDialog,
 type ActionTarget,
 type PendingCommand,
 } from "../surfaces/shared/actions/actions.js";
-import { CommandRecovery, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery.js";
+import { CommandRecovery } from "../surfaces/shared/actions/command-recovery.js";
+import { recoveryDetail, recoveryTitle, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery-model.js";
 import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
 import { fmtClock } from "../surfaces/shared/status/format.js";
 import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
@@ -78,6 +82,7 @@ BulkCommandFeedback,
 PauseAllQuitControls,
 type PendingBulkCommand,
 } from "../surfaces/queue/queue-toolbar.js";
+import { bulkResultNotice } from "../surfaces/queue/queue-toolbar-model.js";
 import { FocusQueueHeader, FocusQueueToolbar } from '../surfaces/queue/queue-focus.js';
 import type { QueueHandlers } from "../surfaces/queue/queue.js";
 import { QueuePanel,type QueueFilterScope } from "../surfaces/queue/queue.js";
@@ -85,12 +90,12 @@ import { RenameRunDialog,type PendingRename } from "../surfaces/run-detail/ident
 import { RunStartButton } from "../surfaces/run-start/run-start.js";
 import { SessionPanel } from "../surfaces/sessions/session-panel.js";
 import {
-DASHBOARD_MAIN_REGION_ID, SETTINGS_PREFLIGHT_SECTION_ID, buildSettingsNav, resolveSettingsSection
+DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
 } from "../surfaces/settings/settings-model.js";
 import {parseWorkflows,useSelectedWorkflow,workflowStatusCounts,type StatusBucket } from "../surfaces/shell/shell-model.js";
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflows/mocks/workflow-mock-queue.js";
 import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../surfaces/workflows/mocks/workflow-mock-catalog.js";
-import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockReviewRun, mockRunsForDraft, retryMockFault, mockRunSubset, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockReviewRun, mockRunsForDraft, retryMockFault, mockRunSubset, initialMockDraft, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
 import { completeMockReviewAction, type MockReviewAction } from "../surfaces/workflows/mocks/workflow-review-action-model.js";
 import { mockQueueId } from "../surfaces/workflows/mocks/workflow-queue-model.js";
 import { updateMockReview } from "../surfaces/workflows/mocks/workflow-review-model.js";
@@ -100,8 +105,9 @@ import { StorageNotice } from "../surfaces/settings/storage/storage-settings.js"
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { notificationTargetUnavailable, resolveRunNavigation } from "./navigation/run-navigation.js";
+import type { NotificationReads } from "../surfaces/notifications/notification-rail-model.js";
 import { notificationDestinationRefusal, useWorkspaceNotifications } from "../surfaces/notifications/notifications-preview-model.js";
-import type { NotificationDestination } from "../surfaces/notifications/notifications-view-model.js";
+import { withCommandNotices, type NotificationDestination, type NotificationItem } from "../surfaces/notifications/notifications-view-model.js";
 import {
 bulkSubjectsOf,
 composeBulkRunCommand,
@@ -125,6 +131,8 @@ import type { NativeRouteHistory,PopstateRouteHandler } from "./navigation/route
 import { useRoute } from "./navigation/route-history-model.js";
 import { SHELL_PANEL_TABS } from "./navigation/shell-selection-model.js";
 import { useTakeoverCloseFocus } from "./navigation/takeover-focus-model.js";
+import { mockParam } from "./mock-surfaces.js";
+import { assistantNeeds } from "../surfaces/shell/assistant-launcher-model.js";
 import {
 activeTakeover,
 routeForCrossDateSearchResult,
@@ -140,6 +148,10 @@ const NO_QUEUE_ROWS: readonly QueueSurfaceWire[] = Object.freeze([]);
 
 
 
+
+/** Read once at load: the route rewrites the URL after first render. */
+let loadedNotificationScenario: string | undefined;
+const notificationScenario = () => loadedNotificationScenario ??= mockParam("notificationsPreview") ?? "normal";
 
 export function DashboardApp({ workflowComposition = productWorkflowComposition, profileSource = "mock", previewPreferences }: { previewPreferences?: PersonPreferencesOwner; profileSource?: "served" | "mock"; workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
   const profileClient = useDashboardClient();
@@ -204,7 +216,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
     <PersonPreferencesContext.Provider value={preferences}><div
       data-app-root=""
       data-demo-theme={theme}
-      style={{ "--ds-toast-inset-bottom": "calc(var(--ds-h-bar) + var(--ds-space-loose))" } as CSSProperties}
+      style={{ "--ds-toast-inset-bottom": "calc(2 * (var(--ds-h-bar) + var(--ds-space-loose)))" } as CSSProperties}
       className="flex h-screen min-h-[var(--ds-h-desktop-min)] min-w-[var(--ds-w-desktop-min)] flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]"
     >
     <ChatGptAccountContext.Provider value={account ?? inheritedAccount}>
@@ -267,6 +279,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           startupPreflight={profileSource === "served"}
         /></DashboardPageBoundary></ViewNavigationProvider>
       )}
+      <StatusMockHost />
     </ToastProvider>
     </TooltipProvider>
     </PreflightAssistantContext.Provider>
@@ -315,7 +328,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
       className="flex min-h-0 flex-1 flex-col bg-[color:var(--ds-surface-page)]"
     >
       <DashboardSkeleton settings={new URLSearchParams(window.location.search).has("settings")} settingsContent={
-        ["general", "paths", "performance", "providers", "routes", "credentials"].includes(new URLSearchParams(window.location.search).get("settings") ?? "")
+        ["general", "paths", "performance", "providers", "routes", "credentials", "account"].includes(new URLSearchParams(window.location.search).get("settings") ?? "")
           ? <SettingsSectionSkeleton section={new URLSearchParams(window.location.search).get("settings")!} /> : undefined
       } />
     </main>
@@ -411,7 +424,7 @@ function LoadedApp({
   }, [dayResource]);
 
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
-  const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>([]);
+  const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>(() => statusMock() === "command-results" ? STATUS_MOCK_COMMAND_RESULTS : []);
 
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: requestActiveWorkflowId, canSelectWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
     ? workflows.filter(flow => workflowSource(flow.id, workflowComposition.sources) === "served") : workflowCatalog);
@@ -440,8 +453,8 @@ function LoadedApp({
   const [deletedMockRuns, setDeletedMockRuns] = useState<ReadonlySet<string>>(() => new Set());
   const launchWorkflow = route.view?.launchWorkflow;
   const launchSource = route.view?.launchSource;
-  const mockLaunch = useMemo(() => route.start && launchWorkflow && MOCK_WORKFLOWS.some(flow => flow.id === launchWorkflow) && workflowComposition.sourceForRoute(launchWorkflow, true) === "mock" ? { workflowId: mockWorkflow(launchWorkflow).id,
-    source: launchSource ? mockRuns.find(run => run.id === launchSource) : undefined } : null, [route.start, launchWorkflow, launchSource, mockRuns, workflowComposition]);
+  const mockLaunch = useMemo(() => route.start && launchWorkflow && MOCK_WORKFLOWS.some(flow => flow.id === launchWorkflow) && (statusMock() !== undefined || workflowComposition.sourceForRoute(launchWorkflow, true) === "mock") ? { workflowId: mockWorkflow(launchWorkflow).id,
+    source: launchSource ? allMockRuns.find(run => run.id === launchSource) : undefined } : null, [route.start, launchWorkflow, launchSource, allMockRuns, workflowComposition]);
   const setMockLaunch = useCallback((next: { workflowId: MockWorkflowId; source?: MockRun } | null) => setRoute(current => ({ ...current, start: next !== null,
     view: { ...current.view, launchWorkflow: next?.workflowId, launchSource: next?.source?.id, launchStage: next ? next.source ? "Steps" : "Input" : undefined, launchCustomize: next ? false : undefined } })), [setRoute]);
   const rememberLauncher = launch.rememberLauncher;
@@ -453,7 +466,9 @@ function LoadedApp({
   const [mockNotificationTimes, setMockNotificationTimes] = useState<Readonly<Record<string, string>>>({});
   const servedOpenStart = launch.openStart;
   const openStart = useCallback(() => {
-    if (railPreview && mockWorkflow(railPreview).runnable) openMockLaunch({ workflowId: mockWorkflow(railPreview).id });
+    // The design mock opens the redesigned dialog for every workflow that has a mock definition, served ones included.
+    const mockStartId = railPreview ?? (statusMock() !== undefined ? MOCK_WORKFLOWS.find(flow => flow.id === activeWorkflowId && flow.runnable)?.id ?? MOCK_WORKFLOWS.find(flow => flow.runnable)?.id ?? null : null);
+    if (mockStartId && mockWorkflow(mockStartId).runnable) openMockLaunch({ workflowId: mockWorkflow(mockStartId).id });
     else { setRoute(current => ({ ...current, view: { ...current.view, launchServed: activeWorkflowId, launchWorkflow: undefined, launchSource: undefined, launchStage: "Input", launchCustomize: false } })); servedOpenStart(); }
   }, [railPreview, servedOpenStart, openMockLaunch, activeWorkflowId, setRoute]);
   const openRerun = launch.openRerun;
@@ -464,7 +479,9 @@ function LoadedApp({
   /** Keep partial batch results until dismissed so every outcome can be read. */
 type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: RetainedCommandRequest };
   const [pendingBulk, setPendingBulk] = useState<(PendingBulkCommand & { readonly scope: CommandExecutionScope }) | null>(null);
-  const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(null);
+  const [bulkReview, setBulkReview] = useState(false);
+  const [noticeRead, setNoticeRead] = useState<ReadonlySet<string>>(() => new Set());
+  const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(() => statusMock() === "command-results" ? STATUS_MOCK_BULK_OUTCOME : null);
   const [, refreshCommandRecovery] = useState(0);
   const [pendingRecovery, setPendingRecovery] = useState<string | null>(null);
   const commandLabels = useRef(new Map<string, string>());
@@ -762,6 +779,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       if (action.kind === "navigation") {
         if (action.navigate.kind === "rerun") {
           const row = dayWire?.queueSurfaces.find(entry => String(entry.runId) === target.runId);
+          const rerunFlow = row !== undefined && statusMock() !== undefined ? MOCK_WORKFLOWS.find(flow => flow.id === row.workflowId && flow.runnable) : undefined;
+          if (row !== undefined && rerunFlow !== undefined) {
+            // The design mock reruns a served run in the redesigned dialog, from a mock run that stands for it.
+            const source: MockRun = { id: String(row.runId), workflowId: rerunFlow.id, title: row.title, subject: row.title, draft: initialMockDraft(rerunFlow.id), approved: true, seeded: true };
+            setMockRuns(previous => previous.some(run => run.id === source.id) ? previous : [...previous, source]);
+            openMockLaunch({ workflowId: rerunFlow.id, source });
+            return;
+          }
           openRerun({ ...RerunValuesRequestSchema.parse({ runId: target.runId, expectedVersion: action.navigate.expectedVersion }),
             ...(row === undefined ? {} : { label: row.title, traceId: String(row.traceId) }) });
         }
@@ -818,7 +843,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }
       dispatchCommand(action, target, { source });
     },
-    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, nowIso, openRerun, unresolvedRunAction, commandScope],
+    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, nowIso, openRerun, openMockLaunch, unresolvedRunAction, commandScope],
   );
 
   const confirmLogDecision = useCallback<RunWiringConfirm>((pending, onConfirmed) => setPendingCommand({ ...pending, scope: commandScope, onConfirmed }), [commandScope]);
@@ -908,11 +933,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     onTab,
   });
 
-  // Parse owner-composed bootstrap projections once; unknown arrays are not permission to cast.
-  const settingsSections = useMemo(
-    () => SettingsSectionPrimitiveSchema.array().parse(boot.settingsSections),
-    [boot.settingsSections],
-  );
   const ready = !hasServedWorkflows || dayResource.state === "loaded" || dayResource.state === "failed";
   // One resolution of "which takeover owns the main region", so the JSX below
   // cannot disagree with a link that carries more than one key.
@@ -920,15 +940,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
   const closeTakeoverTo = useTakeoverCloseFocus(takeover, setRoute);
 
-  const returnToDashboard = useCallback((): void => {
-    leaveSettings(() => setRoute(routeWithoutTakeovers(route)));
-  }, [route, setRoute, leaveSettings]);
-
   /** Settings navigation creates history so Back returns to the previous view. */
   const [sessionsOpen, setSessionsOpen] = useViewState("sessions", false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const openSettings = useCallback((section = ""): void => {
-    setRoute({
-      ...route,
+    setRoute(current => ({
+      ...current,
       intake: undefined,
       archive: undefined,
       archiveView: undefined,
@@ -939,10 +956,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       catalog: undefined,
       catalogView: undefined,
       settings: section,
-    });
-  }, [route, setRoute]);
-  const openReadiness = useRef(openSettings);
-  openReadiness.current = openSettings;
+    }));
+  }, [setRoute]);
   const shownPreflight = useRef(new Set<string>());
   useEffect(() => {
     if (!startupPreflight) return;
@@ -950,14 +965,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     void (async () => {
       let wire: Awaited<ReturnType<typeof client.readPreflight>>;
       try { wire = await client.readPreflight(); }
-      catch { return; } // no served report; Settings readiness reports the failed read
+      catch { return; }
       if (!active || wire.state !== "present") return;
       const attention = preflightAttentionToast(wire.report);
       if (attention === undefined) return;
       const key = `${wire.report.configFingerprint}:${wire.report.descriptorFingerprint ?? ""}:${wire.report.checkedAt}`;
       if (shownPreflight.current.has(key)) return;
       shownPreflight.current.add(key);
-      toast({ tone: attention.tone, title: attention.title, sticky: true, action: { label: attention.action, onClick: () => openReadiness.current(SETTINGS_PREFLIGHT_SECTION_ID) } });
+      toast({ tone: attention.tone, title: attention.title, sticky: true });
     })();
     return () => { active = false; };
   }, [startupPreflight, client, toast]);
@@ -968,7 +983,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   ), [filter, scopedStatusCounts, onFilter]);
 
   const settingsOpen = ["settings", "archive", "activity", "explore"].includes(takeover);
-  const settingsResolution = resolveSettingsSection(buildSettingsNav(settingsSections), route.settings ?? "");
+  const settingsResolution = resolveSettingsSection(buildSettingsNav(), route.settings ?? "");
   const pageName = takeover === "settings" ? settingsResolution.state === "open" ? settingsResolution.entry.label : "Settings"
     : takeover === "archive" ? "Archive" : takeover === "activity" ? "Analytics" : takeover === "explore" ? "Explorer"
     : takeover === "intake" ? "Edit Data" : route.start ? route.view?.launchSource || route.view?.launchRerun ? "Rerun" : "Run" : railPreview ? MOCK_WORKFLOWS.find(flow => flow.id === railPreview)?.label ?? "Unavailable workflow"
@@ -1014,23 +1029,65 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const runs = mockRuns.filter(run => run.workflowId === id);
     setRoute(current => ({ ...current, view: { ...current.view, preview: id, mockRun: (runs.find(run => run.id === `mock:${id}:sample`) ?? runs.find(run => !run.parentId) ?? runs[0])?.id, records: undefined } }));
   }, [mockRuns, setRoute]);
+  const openWorkflowQueue = useCallback((id: string) => leaveSettings(() => {
+    setRoute(current => ({ ...routeWithoutTakeovers(current), start: false, run: undefined, section: undefined }));
+    onFilter(["all"]);
+    if (workflowCatalog.some(flow => flow.id === id)) onRailSelect(id); else onRailPreview(id);
+  }), [leaveSettings, setRoute, onFilter, workflowCatalog, onRailSelect, onRailPreview]);
   const previewSearchData = useWorkspaceSearchData({ today, day, unavailable: dateError, rows: queueRows, workflowLabel: workflowLabelOf, mockRuns });
   const servedSearchData = useSearchWiring({ client, enabled: workflowComposition.search === "served" && route.view?.search === true,
     query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows });
   const searchData = workflowComposition.search === "mock" ? previewSearchData : servedSearchData;
   const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast });
-  const notificationScenario = new URLSearchParams(window.location.search).get("notificationsPreview") ?? "normal";
-  const notifications = useWorkspaceNotifications(notificationScenario, {
+  const [notificationReads, setNotificationReads] = useState<NotificationReads>({});
+  const notifications = useWorkspaceNotifications(notificationScenario(), {
     day, nowIso, anchorIso: boot.serverClock.now, rows: !hasServedWorkflows || dayWire ? queueRows : undefined, runs: mockRuns,
     workflowLabel: workflowLabelOf, eventTimes: mockNotificationTimes,
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),
   });
+  const shownRecovery: readonly CommandRecoveryEntry[] = statusMock() === "command-unknown" ? [...recoveryEntries, STATUS_MOCK_UNKNOWN_COMMAND] : recoveryEntries;
+  const commandNotices: readonly NotificationItem[] = [
+    ...shownRecovery.map((entry): NotificationItem => ({ id: `command:${entry.inFlightKey}`, kind: "command", priority: true, title: recoveryTitle(entry), subject: "", workflow: "",
+      detail: `${recoveryDetail(entry)}. Review the original request to recover its result.`, tone: "warning", age: "Just now", read: false, action: "Review", destination: { kind: "local-recovery", key: entry.inFlightKey } })),
+    ...commandResults.map((entry): NotificationItem => ({ id: `command-result:${entry.id}`, kind: "command", priority: true, title: commandResultTitle(entry), subject: "", workflow: "",
+      detail: commandResultDetail(entry), tone: entry.settlement.reason === "conflict" ? "warning" : "danger", age: entry.clock, read: false,
+      action: entry.settlement.reason === "conflict" ? "Refresh row" : "Open run", destination: { kind: "local-command-result", id: entry.id } })),
+    ...(bulkOutcome === null ? [] : [bulkResultNotice(bulkOutcome)]),
+  ];
+  const railNotifications = withCommandNotices(notifications, commandNotices);
+  const openInbox: InboxWiring["open"] = (item, navigate, opened, refused) => item.kind === "command" ? navigate(item.destination, opened, refused) : inbox.open(item, navigate, opened, refused);
+  // Local command notices are not server rows: their read state lives here, never in the served inbox.
+  const localNoticeIds = new Set(commandNotices.map(notice => notice.id));
+  const railInbox = workflowComposition.inbox === "served" ? { ...inbox, open: openInbox,
+    state: withCommandNotices(inbox.state, commandNotices.map(notice => noticeRead.has(notice.id) ? { ...notice, read: true } : notice)),
+    control: async (id: string, action: Parameters<InboxWiring["control"]>[1]) => {
+      if (!localNoticeIds.has(id)) return inbox.control(id, action);
+      if (action === "read" || action === "unread") setNoticeRead(previous => { const next = new Set(previous); if (action === "read") next.add(id); else next.delete(id); return next; });
+      return true;
+    },
+    readAll: async () => { setNoticeRead(previous => new Set([...previous, ...localNoticeIds])); await inbox.readAll(); } } : undefined;
+  const servedNeedsYou = railInbox?.state.state === "ready" ? railInbox.state.items.filter(item => !item.read && item.priority === true).length : 0;
+  useEffect(() => { assistantNeeds.report(servedNeedsYou); }, [servedNeedsYou]);
   const canOpenRegisteredWorkflow = useCallback((id: string) => workflows.some(flow => flow.id === id), [workflows]);
   const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId });
   notificationContext.current = { day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId };
   const notificationNavigation = useRef(0);
   const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
     const request = ++notificationNavigation.current;
+    if (destination.kind === "local-recovery") { setPendingRecovery(destination.key); opened(); return; }
+    if (destination.kind === "local-bulk-result") { setBulkReview(true); opened(); return; }
+    if (destination.kind === "local-command-result") {
+      const entry = commandResults.find(result => result.id === destination.id);
+      setCommandResults(previous => previous.filter(result => result.id !== destination.id));
+      if (entry !== undefined) selectRun(entry.targetRunId);
+      opened();
+      return;
+    }
+    if (destination.kind === "settings") {
+      leaveSettings(() => { setRoute({ ...routeWithoutTakeovers(routeRef.current), settings: destination.section }); opened(); });
+      return;
+    }
+    if (destination.kind === "none") return;
     if (source === "mock" && destination.kind === "run") {
       const validate = () => {
         const context = notificationContext.current;
@@ -1048,7 +1105,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         if (!setActiveWorkflowId(row.workflowId)) return;
         setLaunchOpen(false); exitQueueSelection(); onFilter(["all"]);
         setRoute({ ...routeWithoutTakeovers(routeRef.current), day: destination.day, start: false, run: destination.runId, section: "logs",
-          view: { ...routeRef.current.view, queueFilter: ["all"], workflow: row.workflowId, preview: null, mockRun: undefined, records: undefined, logFailure: undefined, notifications: false } });
+          view: { ...routeRef.current.view, queueFilter: ["all"], workflow: row.workflowId, preview: null, mockRun: undefined, records: undefined, logFailure: undefined } });
         opened();
         requestAnimationFrame(() => {
           const row = document.querySelector<HTMLElement>(`.dashboard-queue-column [data-demo-row-id="${CSS.escape(destination.runId)}"]`);
@@ -1107,7 +1164,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       const run = context.runs.find(item => item.id === destination.runId)!;
       setRailPreview(run.workflowId); setRailRun(run.id);
       if (destination.records) setRailReviewId(run.id);
-      setRoute(current => ({ ...next, day: destination.day, view: { ...current.view, preview: run.workflowId, mockRun: run.id, records: destination.records ? run.id : undefined, notifications: false } }));
+      setRoute(current => ({ ...next, day: destination.day, view: { ...current.view, preview: run.workflowId, mockRun: run.id, records: destination.records ? run.id : undefined } }));
       opened();
       requestAnimationFrame(() => {
         const queueId = mockQueueId(destination.runId);
@@ -1120,12 +1177,15 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         target?.focus({ preventScroll: true });
       });
     });
-  }, [client, commandScope, leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId, setMockLaunch, setRailPreview, setRailReviewId, setRailRun]);
+  }, [client, commandScope, leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId, setMockLaunch, setRailPreview, setRailReviewId, setRailRun, commandResults, selectRun]);
 
   const onInboxNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
     openNotification(destination, opened, refused, workflowComposition.inbox);
   }, [openNotification, workflowComposition.inbox]);
 
+  const onSearchAction = useCallback((action: "start" | "spreadsheets" | "settings") => {
+    if (action === "start") openStart(); else openSettings(action === "spreadsheets" ? "spreadsheets" : "");
+  }, [openStart, openSettings]);
   const onSearch = useCallback((result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => {
     if (!result.destination) { refused("This run is unavailable. Refresh search and try again."); return; }
     openNotification(result.destination, opened, refused, workflowComposition.search);
@@ -1159,7 +1219,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
-        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} inbox={workflowComposition.inbox === "served" ? inbox : undefined} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} />
+        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={railNotifications} reads={notificationReads} setReads={setNotificationReads} inbox={railInbox} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
@@ -1174,7 +1234,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           key={JSON.stringify([activeTakeover(route), route.settings, route.run, route.intake, route.explore])}
           storage={boot.storage}
         />
-        {quitting && <Banner tone="info" shape="band" title="Relay quits after runs pause">{PAUSE_ALL_EFFECT}</Banner>}
+        {quitting && <Notice sticky tone="info" title="Relay quits after runs pause" description={PAUSE_ALL_EFFECT} />}
         {lifecycle.resource.state === "failed" && <Notice sticky tone="danger" title="Run controls unavailable" description="Work remains held. Reload Relay to check the connection." />}
         {dayResource.state === "loaded" && stoppedWorkerToasts(dayResource.value, id => workflowCatalog.find(entry => entry.id === id)?.label ?? id)
           .map(warning => <Notice key={warning.description} sticky tone={warning.tone} title={warning.title} description={warning.description} />)}
@@ -1185,15 +1245,15 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
           {/* Intake is a durable workspace; leaving it must not discard mapping progress. */}
-          <DashboardTakeovers deleteAccount={deleteAccount} onOpenRun={selectRun} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
-            client={client} workflowCatalog={explorerCatalog} settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
-            workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
+          <DashboardTakeovers deleteAccount={deleteAccount} onOpenRun={selectRun} onOpenWorkflow={openWorkflowQueue} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
+            client={client} workflowCatalog={explorerCatalog} activeWorkflowId={activeWorkflowId}
+            workflowLabelOf={workflowLabelOf} spreadsheetSource={workflowComposition.spreadsheets} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
-            spreadsheetSource={workflowComposition.spreadsheets} onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} theme={theme} onToggleTheme={onToggleTheme}>
+            onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} theme={theme} onToggleTheme={onToggleTheme}>
           <>
           {}
           <CommandRecovery
-            entries={recoveryEntries}
+            entries={shownRecovery}
             pendingKey={pendingRecovery}
             onReview={setPendingRecovery}
             onReplay={(entry) => {
@@ -1205,17 +1265,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               void executeShell(request, retained.label, plan, true);
             }}
           />
-          <BulkCommandFeedback bulkOutcome={bulkOutcome} onDismissBulkOutcome={() => setBulkOutcome(null)} onSelectRun={selectRun} />
+          <BulkCommandFeedback bulkOutcome={bulkOutcome} reviewing={bulkReview} onReviewed={() => { setBulkReview(false); setBulkOutcome(null); }} onSelectRun={selectRun} />
 
 
-          <CommandResultFeed
-            results={commandResults}
-            onDismiss={(id) => setCommandResults((previous) => previous.filter((entry) => entry.id !== id))}
-            onRefreshRow={(entry) => {
-              setCommandResults((previous) => previous.filter((result) => result.id !== entry.id));
-              selectRun(entry.targetRunId);
-            }}
-          />
+          <CommandResultFeed results={commandResults} />
 
           <div className="flex min-h-0 flex-1">
 
@@ -1265,14 +1318,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
-            {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} anchorIso={boot.serverClock.now} nowIso={nowIso} onRerun={() => openMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onRetry={() => setMockRuns(previous => retryMockFault(previous, [railRow.id, ...(railRow.ocrRunId ? [railRow.ocrRunId] : [])]))} onApprove={() => completeReview(mockReviewRun(railRow, mockRuns).id, "approve")}
+            {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} onRerun={() => openMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onRetry={() => setMockRuns(previous => retryMockFault(previous, [railRow.id, ...(railRow.ocrRunId ? [railRow.ocrRunId] : [])]))} onApprove={() => completeReview(mockReviewRun(railRow, mockRuns).id, "approve")}
               reviewOpen={railReviewId === railRow.id} onReviewOpenChange={open => setRailReviewId(open ? railRow.id : undefined)}
               onChange={records => setMockRuns(previous => updateMockReview(previous, mockReviewRun(railRow, previous).id, records))} onDiscard={() => completeReview(mockReviewRun(railRow, mockRuns).id, "discard")} onRestore={() => completeReview(mockReviewRun(railRow, mockRuns).id, "restore")}
               onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRoute(current => ({ ...current, view: { ...current.view, preview: next.workflowId, mockRun: next.id, records: undefined } })); }} /> : !previewFlow && route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? (
               <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} confirm={confirmLogDecision} onAction={runLogAction}
                 reviewOpen={route.section === "review"} reviewFocus={route.view?.queueMember?.kind === "record" ? route.view.queueMember.record : undefined}
                 onReview={() => setRoute(current => ({ ...current, section: "review" }))} onLogs={() => setRoute(current => ({ ...current, section: "logs" }))}
-                initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={logRow.parent === null && workflowComposition.logsSources ? surfaceSource(logRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
+                initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} source={workflowComposition.logsSources && (logRow.parent === null || statusMock() !== undefined) ? surfaceSource(logRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
             ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
                 icon={<PanelRight aria-hidden className={dsIcon.lg} />}
@@ -1293,18 +1346,21 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       </main>
       </div>
 
-      <HubShell subjectRef={selectedRow === undefined || selectedRow.parent === null && workflowSource(selectedRow.workflowId, workflowComposition.sources) !== "served" ? undefined : `run_${selectedRow.runId}_${selectedRow.rowRevision}`} commands={commandBinding} source={workflowComposition.assistant ?? "served"} authority={authorityEpoch} onOpenSettings={openSettings} onRunWorkflow={runAssistantWorkflow} settingsOpen={settingsOpen} onLogout={() => leaveSettings(() => {
+      <HubShell subjectRef={selectedRow === undefined || selectedRow.parent === null && workflowSource(selectedRow.workflowId, workflowComposition.sources) !== "served" ? undefined : `run_${selectedRow.runId}_${selectedRow.rowRevision}`} commands={commandBinding} source={workflowComposition.assistant ?? "served"} authority={authorityEpoch} onOpenSettings={openSettings} onRunWorkflow={runAssistantWorkflow} settingsOpen={settingsOpen} logoutOpen={logoutOpen} onLogoutOpenChange={setLogoutOpen} onLogout={() => leaveSettings(() => {
         if (onProfileLogout === undefined) setRoute({ start: false, onboarding: "login" });
         else void onProfileLogout();
       })} />
-      <SessionPanel
-        source={workflowComposition.sessions ?? "served"}
-        binding={{ client, executor, scope: commandScope, dayState, day, nowIso }}
-        catalog={workflowCatalog}
-        open={sessionsOpen}
-        onOpenChange={setSessionsOpen}
-        settingsOpen={settingsOpen} onSettings={() => settingsOpen ? returnToDashboard() : openSettings()}
-      />
+      {/* The Sessions bar and its Ask control belong to the workflow workspace: every Settings page hides them. */}
+      {!settingsOpen && (
+        <SessionPanel
+          source={workflowComposition.sessions ?? "served"}
+          binding={{ client, executor, scope: commandScope, dayState, day, nowIso }}
+          catalog={workflowCatalog}
+          open={sessionsOpen}
+          onOpenChange={setSessionsOpen}
+          account={{ onSettings: () => openSettings(), onLogout: () => setLogoutOpen(true) }}
+        />
+      )}
 
       <RunLaunchHost
         controller={launch}

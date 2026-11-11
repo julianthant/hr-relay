@@ -3,7 +3,7 @@
 .workflow-operations-heading h3 { margin: 0; font-size: var(--ds-text-body-description); line-height: var(--ds-lh-body-description); font-weight: 500; }
 .workflow-operations-card { overflow: hidden; border: 1px solid var(--ui-stroke); border-radius: var(--ds-radius-body-group); background: var(--ui-panel); }
 .ds-body-scope .workflow-operations-card .ds-disclosure-trigger { min-height: 48px; padding: 12px 16px; }
-.workflow-operations-card .ds-disclosure-body-title { font-size: var(--ds-text-body-row); line-height: var(--ds-lh-body-row); font-weight: 500; }
+.workflow-operations-card .ds-disclosure-body-title { font-size: var(--ds-text-body-row); line-height: var(--ds-lh-body-row); font-weight: 400; }
 .workflow-operations-card .ds-disclosure-body-meta { margin-left: 12px; font-size: var(--ds-text-body-description); line-height: var(--ds-lh-body-description); }
 .workflow-operations-count { color: var(--ui-secondary); font-weight: 400; }
 .workflow-operations-gap { color: var(--ui-warning); }

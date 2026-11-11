@@ -12,8 +12,8 @@ export function RunOptionsLayout({ flags, children, priority, onPriorityChange, 
     <BodySection title="Run"><FormGroup label="Run options">
       <div className="launch-flags">{flags}</div>
       <div className="launch-options-grid">
-        <Field orientation="horizontal" label="Priority" description="Interactive runs go first."><SegmentedChoice label="Priority" value={priority} onChange={onPriorityChange} options={[{ value: "interactive", label: "Interactive" }, { value: "bulk", label: "Bulk" }]} /></Field>
-        <Field orientation="horizontal" label="Browser" description="Headless runs in the background."><SegmentedChoice label="Browser mode" value={browserMode} onChange={onBrowserModeChange} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} /></Field>
+        <Field orientation="horizontal" label="Priority" description="Interactive runs go first."><SegmentedChoice hideLabel label="Priority" value={priority} onChange={onPriorityChange} options={[{ value: "interactive", label: "Interactive" }, { value: "bulk", label: "Bulk" }]} /></Field>
+        <Field orientation="horizontal" label="Browser" description="Headless runs in the background."><SegmentedChoice hideLabel label="Browser mode" value={browserMode} onChange={onBrowserModeChange} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} /></Field>
       </div>
     </FormGroup></BodySection>
     {references && <BodySection title="Reference data"><FormGroup label="Reference data">{references}</FormGroup></BodySection>}

@@ -10,9 +10,9 @@ function fixture() {
   return { bytes, storage, refuse: () => { refuse = true; } };
 }
 const state = (): AssistantState => ({ draft: 'draft', messages: [{ id: 'one', role: 'operator', text: 'help permissions' }, { id: 'two', role: 'assistant', text: 'Recorded reply' }], sequence: 1, turn: { state: 'idle' } });
-it('retains chat titles, selected chat, composer drafts and transcripts across a fresh store/controller', () => {
-  const f = fixture(), store = createAssistantHistory(f.storage, profile), chat = store.chats.create();
-  store.chats.rename(chat.id, 'Useful chat'); store.chats.select?.(chat.id);
+it('retains chat titles, selected chat, composer drafts and transcripts across a fresh store/controller', async () => {
+  const f = fixture(), store = createAssistantHistory(f.storage, profile), chat = await store.chats.create();
+  await store.chats.rename(chat.id, 'Useful chat'); await store.chats.select?.(chat.id);
   store.retain(chat.id, state()); store.draft(chat.id).retain('unsent text');
   const refreshed = createAssistantHistory(f.storage, profile);
   assert.equal(refreshed.chats.selectedId?.(), chat.id); assert.equal(refreshed.chats.read()[0].title, 'Useful chat');
@@ -21,7 +21,7 @@ it('retains chat titles, selected chat, composer drafts and transcripts across a
   assert.deepEqual(controller.snapshot().messages, state().messages); assert.equal(controller.snapshot().restored, true);
   const other = createAssistantHistory(f.storage, '00000000-0000-4000-8000-000000000002');
   assert.equal(other.read(other.chats.read()[0].id), undefined);
-  refreshed.chats.remove(chat.id);
+  await refreshed.chats.remove(chat.id);
   assert.equal(createAssistantHistory(f.storage, profile).chats.read().some(value => value.id === chat.id), false);
 });
 it('restores pending effects as UNKNOWN and never restores confirmation authority or verification proof', () => {
@@ -42,7 +42,7 @@ it('refuses corrupt or foreign stored data and visibly reports failed persistenc
   f.bytes.set(key, JSON.stringify({ format: 1, profileId: crypto.randomUUID(), chats: [], transcripts: {} })); assert.throws(() => createAssistantHistory(f.storage, profile));
 });
 it('keeps the whole transcript when a message carries sent files, drops only the file names, and isolates chats', async () => {
-  const f = fixture(), store = createAssistantHistory(f.storage, profile), first = store.chats.read()[0].id, second = store.chats.create().id;
+  const f = fixture(), store = createAssistantHistory(f.storage, profile), first = store.chats.read()[0].id, second = (await store.chats.create()).id;
   const open = (id: string) => createAssistantController({ assistantRespond: async () => ({ state: 'answered', text: 'Recorded reply', citations: [] }) }, { authority: 'current' }, { read: () => store.read(id), retain: next => store.retain(id, next) });
   const controller = open(first);
   controller.action({ type: 'edit', value: 'Review this file' }); controller.action({ type: 'send', attachments: [{ id: 'f1', name: 'Notes.pdf' }] });

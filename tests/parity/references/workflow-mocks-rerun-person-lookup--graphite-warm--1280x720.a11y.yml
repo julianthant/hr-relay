@@ -16,44 +16,38 @@
     - listitem:
       - button "1 Steps": Steps
     - listitem:
-      - button "2 Values" [disabled]: Values
+      - button "2 Values": Values
     - listitem:
       - button "3 Options" [disabled]: Options
-    - listitem:
-      - button "4 Confirm" [disabled]: Confirm
-  - heading "Choose what to run again" [level=3]
-  - text: 3 / 4 included
+  - heading "Steps" [level=3]
+  - text: 3 of 4 included
   - paragraph: Select steps for the new run. Statuses show the source outcome.
   - region "Steps":
-    - heading "Steps" [level=4]
-    - list:
-      - listitem:
-        - checkbox "Search for person"
-        - text: Search for person UCPath Skipped
-        - group "Manual values for Search for person":
-          - paragraph: Enter the values this step would read. Use “None” for an absent value. These values are operator supplied.
-          - text: Employee ID
-          - textbox "Employee ID": "10000001"
-          - text: Name
-          - textbox "Name": Jordan Lee
-          - text: Department
-          - textbox "Department": None
-          - text: Job title
-          - textbox "Job title": None
-          - text: Job record
-          - textbox "Job record": None
-          - text: HR status
-          - textbox "HR status": None
-      - listitem:
-        - checkbox "Cross-check identity" [checked]
-        - text: Cross-check identity CRM Skipped
-      - listitem:
-        - checkbox "Read employment status" [checked]
-        - text: Read employment status UCPath Completed
-      - listitem:
-        - checkbox "Read CRM dates" [checked]
-        - text: Read CRM dates CRM Skipped
+    - region "Steps":
+      - text: Search for person UCPath Skipped
+      - switch "Include Search for person"
+      - text: Include Search for person
+      - group "Manual values for Search for person":
+        - text: Employee ID
+        - textbox "Employee ID": "10000001"
+        - text: Name
+        - textbox "Name": Jordan Lee
+        - text: Department
+        - textbox "Department": None
+        - text: Job title
+        - textbox "Job title": None
+        - text: Job record
+        - textbox "Job record": None
+        - text: HR status
+        - textbox "HR status": None
+      - text: Cross-check identity CRM Skipped
+      - switch "Include Cross-check identity" [checked]
+      - text: Include Cross-check identity Read employment status UCPath Completed
+      - switch "Include Read employment status" [checked]
+      - text: Include Read employment status Read CRM dates CRM Skipped
+      - switch "Include Read CRM dates" [checked]
+      - text: Include Read CRM dates
   - contentinfo:
-    - text: Source run · new runPerson Lookup
+    - text: Person Lookup3 of 4 stepsPriority Enter to continue
     - button "Cancel"
     - button "Continue"

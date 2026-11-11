@@ -5,7 +5,6 @@ import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chat
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
 import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantResult, type AssistantActionResult } from '../../../../src/models/dashboard/assistant.js';
 import { AssistantPanel as ShellAssistantPanel } from '../../../../src/dashboard/surfaces/shell/assistant-panel.js';
-import { AssistantPanel as StandaloneAssistantPanel } from '../../../../src/dashboard/surfaces/assistant/assistant-panel.js';
 import { TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
 import { createAssistantMockProducer as createSetupAssistantProducer, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
 
@@ -90,7 +89,7 @@ it('renders served proposal facts and citations in HUB and keeps confirmation an
   assert.match(host.textContent ?? '', /Confirmation is unavailable/u);
   const confirm = [...host.querySelectorAll('button')].find(button => button.textContent === 'Confirm'); assert.ok(confirm); assert.equal(confirm.disabled, true);
   await act(async () => { confirm.click(); current.onAction({ type: 'confirm' }); }); assert.equal(calls, 1);
-  for (const prefix of ['Model:', 'Thinking effort:', 'Ask before every action', 'Voice input']) {
+  for (const prefix of ['Model:', 'Ask before every action', 'Voice input']) {
     const control = [...host.querySelectorAll('button')].find(button => button.getAttribute('aria-label')?.startsWith(prefix)); assert.ok(control); assert.equal(control.disabled, true);
   }
   await act(async () => current.onAction({ type: 'cancel' }));
@@ -264,7 +263,7 @@ it.each([
 ] as const)('retires a deleted retained chat before deferred $decision settles (failure=$fail)', async ({ decision, fail }) => {
   const rows = new Map<string, string>();
   const history = createAssistantHistory({ getItem: key => rows.get(key) ?? null, setItem: (key, value) => { rows.set(key, value); } }, crypto.randomUUID());
-  const oldId = history.chats.read()[0].id, replacementId = history.chats.create().id;
+  const oldId = history.chats.read()[0].id, replacementId = (await history.chats.create()).id;
   const held = Promise.withResolvers<AssistantActionResult>();
   let decisions = 0, requests = 0, signal: AbortSignal | undefined;
   const action = { chatId: crypto.randomUUID(), actionId: crypto.randomUUID(), revision: 1 };
@@ -291,7 +290,7 @@ it.each([
     if (retired?.turn.state !== 'proposal') throw Error('pending decision must remain represented');
     assert.equal(retired.turn.disposition, 'unknown');
     assert.equal(signal?.aborted, true);
-    history.chats.remove(oldId);
+    await history.chats.remove(oldId);
   });
   await render(replacementId);
   const replacement = current.state, retained = [...rows.values()];
@@ -316,7 +315,7 @@ it.each([
   retain.mockRestore();
 });
 
-it.each(['shell', 'standalone'] as const)('shows run and notification reconciliation guidance after a lost response in the %s panel without replay', async surface => {
+it('shows run and notification reconciliation guidance after a lost response in the shell panel without replay', async () => {
   vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver);
   let current!: ReturnType<typeof useAssistantController>, calls = 0;
   const client = { async assistantRespond(): Promise<AssistantResult> { calls++; throw Error('lost workflow proposal response'); } };
@@ -324,8 +323,7 @@ it.each(['shell', 'standalone'] as const)('shows run and notification reconcilia
   const account = { ...preview, mode: 'live' as const }, producer = createSetupAssistantProducer();
   function Harness() {
     current = useAssistantController(client, 'current', undefined, false);
-    return surface === 'shell' ? createElement(ShellAssistantPanel, { producer, served: current, accountClient: { async chatGptAccount() { return chatGptStatusFixture({ state: 'signed-out' as const }); } } })
-      : createElement(StandaloneAssistantPanel, { ...current, defaultOpen: true });
+    return createElement(ShellAssistantPanel, { producer, served: current, accountClient: { async chatGptAccount() { return chatGptStatusFixture({ state: 'signed-out' as const }); } } })
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));

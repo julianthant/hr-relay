@@ -7,9 +7,9 @@
 # capturedAt: 2026-08-03
 
 - region "Notifications"
-- dialog "Start a run":
+- dialog "Start run":
   - banner:
-    - heading "Start a run" [level=2]
+    - heading "Start run" [level=2]
     - paragraph: OnBase · Workflow preview
     - button "Close"
   - complementary:
@@ -47,7 +47,7 @@
       - heading "Utils" [level=3]
       - list:
         - listitem:
-          - button "CRM Doc Download"
+          - button "Onboarding Documents"
       - heading "OnBase" [level=3]
       - list:
         - listitem:
@@ -61,28 +61,35 @@
       - button "1 Input": Input
     - listitem:
       - button "2 Options" [disabled]: Options
-    - listitem:
-      - button "3 Confirm" [disabled]: Confirm
-  - heading "Run input" [level=3]
-  - paragraph: Choose the documents to process.
   - region "Input":
+    - region "Documents setup":
+      - text: Document type How OnBase files the imported pages. Document type
+      - button "Emergency Contact Document type" [expanded]: Emergency Contact
+      - menu "Emergency Contact Document type":
+        - group:
+          - group:
+            - menuitemradio "Oath"
+            - menuitemradio "I-9 Section 1"
+            - menuitemradio "I-9 Section 2"
+            - menuitemradio "Emergency Contact" [checked]
     - region "PDF documents":
       - heading "PDF documents" [level=4]
-      - button "Choose PDFs"
+      - paragraph: Choose the scans to read.
       - status: No PDFs selected
-    - text: Roster
-    - button "Existing Onboarding Roster Roster": Existing Onboarding Roster
-    - text: Document type
-    - button "Emergency Contact Document type" [expanded]: Emergency Contact
-    - menu "Emergency Contact Document type":
-      - group:
-        - group:
-          - menuitemradio "Oath"
-          - menuitemradio "I-9 Section 1"
-          - menuitemradio "I-9 Section 2"
-          - menuitemradio "Emergency Contact" [checked]
-    - paragraph: Selected PDFs merge into one document. Approved pages import separately for each person.
+      - button "Choose PDFs"
+    - region "Reference spreadsheets":
+      - heading "Reference spreadsheets" [level=4]
+      - paragraph: Spreadsheets this run looks people up in. Needs Employee ID and Name.
+      - text: Contact roster Roster
+      - button "Contact roster worksheets, Roster": Roster
+      - combobox "Contact roster version": v6
+      - button "Remove Contact roster"
+      - text: I-9 tracker Sheet1
+      - button "I-9 tracker worksheets, Sheet1": Sheet1
+      - combobox "I-9 tracker version": v3
+      - button "Remove I-9 tracker"
+    - button "Add spreadsheet"
   - contentinfo:
-    - text: 0 runsOnBase
+    - text: OnBase7 of 7 stepsOCR onPriority
     - button "Cancel"
     - button "Continue" [disabled]

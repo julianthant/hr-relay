@@ -204,7 +204,7 @@ describe_m1("frontend workflow catalog", () => {
     expect_m1(catalog.find(entry => entry.id === "ocr")).toBeUndefined();
     const hiddenOcr = { ...served[0], workflowId: "ocr", label: "OCR" };
     expect_m1(buildWorkflowCatalog_m1([hiddenOcr, ...served], true, { ...servedFixtureSources_m1(served), ocr: "hidden" }).some(entry => entry.id === "ocr")).toBe(false);
-    expect_m1(catalog.filter(entry => entry.launch.state === "unavailable").map(entry => entry.id).sort()).toEqual(["i9-lookup", "sharepoint-download"]);
+    expect_m1(catalog.filter(entry => entry.launch.state === "unavailable").map(entry => entry.id).sort()).toEqual(["i9-lookup"]);
   });
 });
 }

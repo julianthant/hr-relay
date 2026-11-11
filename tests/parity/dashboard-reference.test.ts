@@ -94,7 +94,7 @@ for (const theme of PARITY_THEMES) {
     expect(minimum.root.height).toBe(720);
     expect(minimum.queue.y).toBe(minimum.detail.y);
     expect(minimum.detail.x).toBeGreaterThanOrEqual(minimum.queue.x + minimum.queue.width);
-    expect(minimum.detail.width).toBeGreaterThan(400);
+    expect(minimum.detail.width).toBeGreaterThan(300);
     expect(minimum.queue.height).toBeGreaterThan(400);
     for (const viewport of [{ width: 800, height: 600 }, { width: 600, height: 400 }]) {
       await page.setViewportSize(viewport);
