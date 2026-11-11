@@ -2096,6 +2096,8 @@ export class AuthorityDatabase implements Disposable {
     waits: Map<string, ReturnType<typeof readDelegationWaitState>>;
     groups: Map<string, { manifest: string; group: ReturnType<typeof authenticateDelegationGroup> }>;
   } | undefined;
+  /** Group proofs authenticated inside one write transaction, valid while the connection's total_changes() stays the same. */
+  #transactionDelegationGroups: { changes: number; groups: Map<string, { manifest: string; group: ReturnType<typeof authenticateDelegationGroup> }> } | undefined;
   #authorityDirty = false;
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
@@ -4494,6 +4496,7 @@ export class AuthorityDatabase implements Disposable {
             this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
             this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
           } catch (rollback) { this.#failNativeClosure([error, rollback]); }
+          this.#transactionDelegationGroups = undefined;
           this.#authorityDirty = dirtyBefore;
           this.#authorityCommitCallbacks.splice(callbacksBefore);
           throw error;
@@ -4548,6 +4551,7 @@ export class AuthorityDatabase implements Disposable {
         clearOperationProofSlots();
         this.#transactionDepth = 0;
         this.#transactionMode = undefined;
+        this.#transactionDelegationGroups = undefined;
         this.#snapshotExternalDataVersion = undefined;
         this.#authorityDirty = false;
       }
@@ -4558,13 +4562,23 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #readDelegationGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup> {
-    const snapshot = this.#delegationReadSnapshot;
-    const fingerprint = snapshot === undefined ? undefined : canonicalJsonStringify(manifest);
-    const cached = snapshot?.groups.get(manifest.manifestId);
+    const groups = this.#delegationReadSnapshot?.groups ?? this.#writeTransactionDelegationGroups();
+    const fingerprint = groups === undefined ? undefined : canonicalJsonStringify(manifest);
+    const cached = groups?.get(manifest.manifestId);
     if (cached !== undefined && cached.manifest === fingerprint) return structuredClone(cached.group);
     const group = authenticateDelegationGroup(this.authority, manifest);
-    if (snapshot !== undefined && fingerprint !== undefined) snapshot.groups.set(manifest.manifestId, { manifest: fingerprint, group: structuredClone(group) });
+    // Store only when authenticating changed no row (the map is still the current one).
+    const current = this.#delegationReadSnapshot?.groups ?? this.#writeTransactionDelegationGroups();
+    if (groups !== undefined && fingerprint !== undefined && groups === current) groups.set(manifest.manifestId, { manifest: fingerprint, group: structuredClone(group) });
     return group;
+  }
+
+  // Any row change, trigger rows included, advances total_changes() and drops every cached proof; a savepoint rollback drops them too.
+  #writeTransactionDelegationGroups() {
+    if (this.#transactionDepth === 0 || this.#transactionMode === "read") return undefined;
+    const changes = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare("SELECT total_changes() AS count").get()).count;
+    if (this.#transactionDelegationGroups?.changes !== changes) this.#transactionDelegationGroups = { changes, groups: new Map() };
+    return this.#transactionDelegationGroups.groups;
   }
 
   #withReadSnapshot<Result>(read: () => Result): Result {
