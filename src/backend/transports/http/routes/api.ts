@@ -33,6 +33,7 @@ import { staticBundleHandler } from "../static-bundle.js";
 import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "./operator-mutation-ingress.js";
 import { type RequestIdentityCheckpoint } from "../request-identity.js";
 import { failureStatus, wireError } from "./failure-status.js";
+import { preflightRunnerTimeout } from "../../../../models/preflight/preflight.js";
 
 export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   const app = new Hono<{ Variables: { requestActorId: ReturnType<RequestIdentityCheckpoint["identify"]> } }>();
@@ -54,6 +55,14 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
       } catch {
         return c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
       }
+    }
+    const timeout = preflightRunnerTimeout(error);
+    if (timeout !== undefined) {
+      const correlationId = randomUUID();
+      afterRequestOutcome(c.req.raw, () => {
+        debugEvents.emit({ category: "http", phase: "failed", correlationId, area: "request", reason: "preflight-timeout",
+          code: "PREFLIGHT_TIMEOUT", status, message: timeout.message });
+      });
     }
     return c.json(body, status);
   });
