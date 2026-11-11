@@ -1007,7 +1007,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
       payload_json TEXT NOT NULL CHECK(json_valid(payload_json))
     ) STRICT`,
   ] },
-  // Item 6: an ordinary done parent's receipt is derived again from its children's receipts; a preview receipt does not change and stays.
+  // An ordinary done parent's receipt is derived again from its children's receipts, and an ordinary already-present Save's from its exact permanent record; a preview receipt stays.
   { version: 26, statements: [
     `CREATE TEMP TABLE receipt_rederivation AS SELECT receipt.id AS id, receipt.run_id AS run_id FROM run_receipts receipt
        JOIN run_results settlement ON settlement.run_id=receipt.run_id AND settlement.settlement_version=receipt.settlement_version
@@ -1017,8 +1017,9 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
          AND json_extract(settlement.terminal_run_json,'$.lifecycle.outcome')=run.outcome
          AND json_extract(settlement.terminal_run_json,'$.lifecycle.endedAt') IS json_extract(run.lifecycle_json,'$.lifecycle.endedAt') AND json_extract(settlement.terminal_run_json,'$.lifecycle.failureId') IS json_extract(run.lifecycle_json,'$.lifecycle.failureId') AND json_extract(settlement.terminal_run_json,'$.lifecycle.errorSummary') IS json_extract(run.lifecycle_json,'$.lifecycle.errorSummary') AND json_extract(settlement.terminal_run_json,'$.lifecycle.diagnosticSafetyVersion') IS json_extract(run.lifecycle_json,'$.lifecycle.diagnosticSafetyVersion') AND json_extract(settlement.terminal_run_json,'$.lifecycle.verdict') IS json_extract(run.lifecycle_json,'$.lifecycle.verdict') AND json_extract(settlement.terminal_run_json,'$.lifecycle.evidenceReceiptId') IS json_extract(run.lifecycle_json,'$.lifecycle.evidenceReceiptId')
          AND ((run.outcome IN ('done','failed') AND settlement.settlement_version=json_extract(run.lifecycle_json,'$.completion.expectedVersion')+1)
-           OR (run.outcome NOT IN ('done','failed','interrupted') AND settlement.settlement_version=json_extract(settlement.payload_json,'$.result.value.appliedVersion'))) AND run.outcome='done'
-         AND EXISTS(SELECT 1 FROM run_delegations WHERE parent_run_id=receipt.run_id)
+           OR (run.outcome NOT IN ('done','failed','interrupted') AND settlement.settlement_version=json_extract(settlement.payload_json,'$.result.value.appliedVersion')))
+         AND ((run.outcome='done' AND EXISTS(SELECT 1 FROM run_delegations WHERE parent_run_id=receipt.run_id))
+           OR EXISTS(SELECT 1 FROM json_each(receipt.payload_json,'$.actions') WHERE json_extract(value,'$.proved.proofSource') IN ('live-probe','durable-intent')))
          AND NOT EXISTS(SELECT 1 FROM json_each(receipt.payload_json,'$.warnings') WHERE json_extract(value,'$.code')='DRY_RUN_PREVIEW')`,
     "DROP TRIGGER run_receipts_owner_delete",
     "DELETE FROM run_receipts WHERE id IN (SELECT id FROM receipt_rederivation)",
