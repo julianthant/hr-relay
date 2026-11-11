@@ -685,17 +685,17 @@ export async function executeClaimedRun(
       : deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, envelope));
     if (envelope.continuation !== undefined && continuationAuthority === undefined) throw new RunContinuationRefusedError("run-continuation-authority-unavailable");
     const memberRetry = continuationAuthority === undefined ? undefined : deps.lifecycle.delegationRetryExecution({ runId, claim });
-    const sourceScopeFor = (sourceRunId: string, dependsOn: readonly NodeId[]): RuntimeScope => {
+    const boundBefore = (consumer: RunCheckpointRecord) => (row: RunCheckpointRecord) => row.claimGeneration <= consumer.claimGeneration;
+    // `original` keeps only the source run's rows the consumer was bound from; a later re-read never vouches for the value it replaced.
+    const sourceScopeFor = (sourceRunId: string, dependsOn: readonly NodeId[], original: (row: RunCheckpointRecord) => boolean): RuntimeScope => {
       const source = sourceRunId === runId ? getRun() : continuationSources.find(row => row.envelope.runId === sourceRunId);
       if (source === undefined) throw new RunContinuationRefusedError("run-continuation-input-source-unavailable");
       const values: Record<string, JsonValue> = {};
       for (const dependency of dependsOn) {
-        // A row this claim wrote is a re-read, never the original the comparison checks it against.
         const own = deps.authority.authority.runCheckpoints.listByAttempt(source.envelope.workflow, source.envelope.itemId, String(dependency), source.envelope.attempt)
-          .filter(row => row.runId === sourceRunId && (sourceRunId !== runId || row.claimGeneration < claim.claimGeneration)).at(-1);
-        const reference = source.envelope.continuation?.checkpoints.find(row => row.nodeId === dependency);
-        const checkpoint = own ?? (sourceRunId === runId ? reference && retainedCheckpoint(deps.authority.authority, source.envelope, reference)
-          : source.envelope.continuation === undefined ? undefined : readRunCheckpoint(deps.authority.authority, source.envelope, String(dependency), true));
+          .filter(row => row.runId === sourceRunId && original(row)).at(-1);
+        const reference = source.envelope.continuation?.checkpoints.find(row => row.nodeId === dependency && row.runId !== sourceRunId);
+        const checkpoint = own ?? (reference && retainedCheckpoint(deps.authority.authority, source.envelope, reference));
         const gate = readContinuationGate(deps.authority.authority, source.envelope, String(dependency));
         if (checkpoint !== undefined) {
           const dependencyNode = nodes.find(node => node.id === dependency);
@@ -711,7 +711,7 @@ export async function executeClaimedRun(
             if (child !== undefined) { values[String(dependency)] = JsonValueSchema.parse(delegationEvidenceOutput(child, dependencyNode.target.result, deps.authority.evidenceSchemaHash?.bind(deps.authority))); continue; }
           }
           if ((dependencyNode?.kind === "task" || dependencyNode?.kind === "gate" && dependencyNode.resolvedBy === "operator") && dependencyNode.when !== undefined
-            && !evaluateNodeCondition(dependencyNode.when, sourceScopeFor(sourceRunId, dependencyNode.dependsOn))) continue;
+            && !evaluateNodeCondition(dependencyNode.when, sourceScopeFor(sourceRunId, dependencyNode.dependsOn, original))) continue;
           throw new RunContinuationRefusedError("run-continuation-input-context-unavailable");
         }
       }
@@ -871,7 +871,7 @@ export async function executeClaimedRun(
           }
           const deferred = node.dependsOn.some(dependency => !Object.hasOwn(outputs, String(dependency)));
           if (!deferred && envelope.continuation !== undefined) {
-            const original = node.uses.input.parse(node.bind(sourceScopeFor(record.runId, node.dependsOn)));
+            const original = node.uses.input.parse(node.bind(sourceScopeFor(record.runId, node.dependsOn, boundBefore(record))));
             const continued = node.uses.input.parse(node.bind(scopeFor(node.dependsOn)));
             if (boundInputIdentity(original) !== boundInputIdentity(continued)) {
               problems.push(`Completed node "${node.id}" has incompatible corrected input; continuation refused`);
@@ -1578,7 +1578,8 @@ export async function executeClaimedRun(
       if (accounting?.plan.joinNodeId === node.id) return undefined;
       const sourceEvidence = continuationAuthority?.delegation(String(node.id), String(node.edgeId));
       if (sourceEvidence !== undefined) {
-        const original = node.bind(sourceScopeFor(sourceEvidence.parentRunId, node.dependsOn));
+        const original = node.bind(sourceScopeFor(sourceEvidence.parentRunId, node.dependsOn,
+          row => Date.parse(row.writtenAt) <= Date.parse(sourceEvidence.manifest.createdAt)));
         const continued = node.bind(scopeFor(node.dependsOn));
         if (boundInputIdentity(original) !== boundInputIdentity(continued)
           || sourceEvidence.manifest.cardinality !== node.cardinality || sourceEvidence.manifest.join !== node.join
@@ -1608,7 +1609,7 @@ export async function executeClaimedRun(
             throw new RunContinuationRefusedError("run-continuation-task-context-unavailable");
           }
           if (envelope.continuation !== undefined
-            && boundInputIdentity(node.uses.input.parse(node.bind(sourceScopeFor(entry.record.runId, node.dependsOn))))
+            && boundInputIdentity(node.uses.input.parse(node.bind(sourceScopeFor(entry.record.runId, node.dependsOn, boundBefore(entry.record)))))
               !== boundInputIdentity(node.uses.input.parse(node.bind(scope)))) {
             throw new RunContinuationRefusedError("run-continuation-task-input-mismatch");
           }
@@ -1910,7 +1911,7 @@ export async function executeClaimedRun(
           if (!envelope.dryRun && envelope.continuation !== undefined) {
             const checkpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
             if (checkpoint !== undefined) {
-              const originalScope = sourceScopeFor(checkpoint.runId, node.dependsOn);
+              const originalScope = sourceScopeFor(checkpoint.runId, node.dependsOn, boundBefore(checkpoint));
               const mappings = (scope: RuntimeScope) => ({ prepare: node.prepare.uses.input.parse(node.prepare.bind(scope)),
                 commit: node.commit.uses.input.parse(node.commit.bind(scope)) });
               if (canonicalJsonStringify(mappings(originalScope)) !== canonicalJsonStringify(mappings(transactionScope))) {
