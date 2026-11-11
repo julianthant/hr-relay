@@ -61,8 +61,8 @@ it("previews both ordered writes and accounts for a skipped gate and unavailable
 });
 
 describe("publication preview boundary", () => {
-  const { SIGNAL, SCENARIO, providersOnlyContract, fixtureDescriptor, queuedRunFor, wiringHarness, claim } = wiring;
-  const descriptor = fixtureDescriptor("publication-preview-fixture", "pp", providersOnlyContract, true);
+  const { SIGNAL, SCENARIO, providersOnlyContract, publicationDescriptor, queuedRunFor, wiringHarness, claim } = wiring;
+  const descriptor = publicationDescriptor("publication-preview-fixture", "pp");
   const PREVIEW_LOG = "Dry run: this save was prepared and checked. Nothing was saved.";
 
   async function run(options: Readonly<{ dryRun: boolean; name?: string }>) {
@@ -93,12 +93,15 @@ describe("publication preview boundary", () => {
       providers: Object.freeze({ adapters: { "geocode.census": adapter.adapter }, configSnapshots: database.authority.configSnapshots,
         idFactory: { next: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, "0")}` } }) },
     { ...claimed, signal: SIGNAL });
-    return { outcome, database, clock, calls: adapter.calls().length, logs };
+    const finished = database.authority.runs.get(RUN_ID);
+    const failure = finished?.lifecycle.state === "terminal" && finished.lifecycle.failureId !== undefined
+      ? database.authority.failures.get(finished.lifecycle.failureId) : undefined;
+    return { outcome, database, clock, calls: adapter.calls().length, logs, failure };
   }
 
   it("previews the declared save, leaves dependents unavailable, and never calls the provider in a dry run", async () => {
-    const { outcome, database, clock, calls, logs } = await run({ dryRun: true });
-    assert.equal(outcome.state, "done");
+    const { outcome, database, clock, calls, logs, failure } = await run({ dryRun: true });
+    assert.equal(outcome.state, "done", failure?.summary);
     const stored = database.authority.runResults.get(RUN_ID);
     assert.ok(stored);
     const preview = z.looseObject({ kind: z.string(), steps: z.array(z.looseObject({ nodeId: z.string(), state: z.string() })) }).parse(stored.result.value);
@@ -123,17 +126,15 @@ describe("publication preview boundary", () => {
   });
 
   it("fails the declared node on an invalid bound input in a dry run without calling the provider", async () => {
-    const { outcome, database, calls } = await run({ dryRun: true, name: "" });
+    const { outcome, calls, failure } = await run({ dryRun: true, name: "invalid-bound" });
     assert.equal(outcome.state, "failed");
-    const failed = database.authority.runs.get(RUN_ID);
-    assert.ok(failed?.lifecycle.state === "terminal" && failed.lifecycle.failureId !== undefined);
-    assert.equal(database.authority.failures.get(failed.lifecycle.failureId)?.nodeId, "extract");
+    assert.equal(failure?.nodeId, "extract", failure?.summary);
     assert.equal(calls, 0);
   });
 
   it("calls the provider on the declared node in an ordinary run", async () => {
-    const { outcome, calls, logs } = await run({ dryRun: false });
-    assert.equal(outcome.state, "done");
+    const { outcome, calls, logs, failure } = await run({ dryRun: false });
+    assert.equal(outcome.state, "done", `${failure?.code ?? ""} ${failure?.summary ?? ""} ${JSON.stringify(failure?.causeChain ?? [])}`);
     assert.equal(calls, 2);
     assert.equal(logs.some(log => log.message === PREVIEW_LOG), false);
   });

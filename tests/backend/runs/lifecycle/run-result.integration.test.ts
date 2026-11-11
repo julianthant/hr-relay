@@ -63,16 +63,15 @@ describe("a publication preview is built only for a declared publication node", 
   const Input = z.strictObject({ eid: EidSchema });
   const command = () => ({ name: "Results", table: { name: "Results", columns: ["a"], rows: [{ id: "1", values: ["v"] }] } });
   const descriptor = (delegating: boolean) => {
-    const saved = flow(Input).step("read", ReadWorkbookResult, { dependsOn: [], replay: "checkpoint", bind: command })
-      .step("save", ReadWorkbookResult, { dependsOn: ["read"], replay: "checkpoint", bind: command,
-        dryRun: "stop-before-publish" });
+    const saved = flow(Input).step("save", ReadWorkbookResult, { dependsOn: [], replay: "checkpoint", bind: command, dryRun: "stop-before-publish" })
+      .step("read", ReadWorkbookResult, { dependsOn: ["save"], replay: "checkpoint", bind: command });
     const built = delegating ? saved.childRun("members", {
       id: WorkflowIdSchema.parse("person-lookup"), input: z.strictObject({ emplId: z.string().min(1) }), result: z.strictObject({ ok: z.boolean() }),
     }, { dependsOn: [], edgeId: DelegationEdgeIdSchema.parse("members"), cardinality: "one", bind: () => ({ emplId: WRITE_FIXTURE_EID }),
       deriveChildItemId: () => ItemIdSchema.parse(UUID_7), await: "terminal", join: "one",
       policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" } })
-      .build({ schema: z.strictObject({ ok: z.boolean() }), dependsOn: ["save"], derive: () => ({ ok: true }) })
-      : saved.build({ schema: z.strictObject({ ok: z.boolean() }), dependsOn: ["save"], derive: () => ({ ok: true }) });
+      .build({ schema: z.strictObject({ ok: z.boolean() }), dependsOn: ["read"], derive: () => ({ ok: true }) })
+      : saved.build({ schema: z.strictObject({ ok: z.boolean() }), dependsOn: ["read"], derive: () => ({ ok: true }) });
     return defineWorkflowDescriptor({ id: "write-fixture", version: 1, contractFingerprint: WRITE_FIXTURE_FINGERPRINT, code: "wf", label: "Publication fixture",
       icon: "ShieldCheck", category: "operations", canonicalInput: defineCanonicalInput(Input, Input, [{ eid: WRITE_FIXTURE_EID }]), inputSubject: "eid",
       surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [],
@@ -83,25 +82,25 @@ describe("a publication preview is built only for a declared publication node", 
     lifecycle: { state: "running", workerId: WRITE_FIXTURE_WORKER_ID, claimedAt: WRITE_FIXTURE_NOW, heartbeatAt: WRITE_FIXTURE_NOW } });
   const build = (steps: unknown, delegating = false) =>
     buildRunPreviewResult(descriptor(delegating), running(), steps, [], manualClock(new Date(WRITE_FIXTURE_NOW)));
-  const read = { nodeId: "read", state: "exercised" };
+  const read = { nodeId: "read", state: "unavailable", reason: "requires-unsubmitted-output" };
   const publication = { nodeId: "save", state: "publication-preview" };
 
   it("builds a publication-dry-run-preview result for a declared node", () => {
-    const { record } = build([read, publication]);
+    const { record } = build([publication, read]);
     assert.equal((record.result.value as { kind: string }).kind, "publication-dry-run-preview");
   });
 
   it("refuses a publication-preview step on a node that does not declare stop-before-publish", () => {
-    assert.throws(() => build([{ nodeId: "read", state: "publication-preview" }, publication]),
+    assert.throws(() => build([publication, { nodeId: "read", state: "publication-preview" }]),
       /dry-run preview publication membership mismatch/u);
   });
 
   it("refuses an exercised step on a declared publication node", () => {
-    assert.throws(() => build([read, { nodeId: "save", state: "exercised" }]), /a preview cannot claim a publication executed/u);
+    assert.throws(() => build([{ nodeId: "save", state: "exercised" }, read]), /a preview cannot claim a publication executed/u);
   });
 
   it("refuses a publication preview combined with a delegated preview", () => {
-    assert.throws(() => build([read, publication, { nodeId: "members", state: "delegation-preview" }], true),
+    assert.throws(() => build([publication, read, { nodeId: "members", state: "delegation-preview" }], true),
       /dry-run preview cannot combine publication and delegated previews/u);
   });
 });

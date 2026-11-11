@@ -198,6 +198,6 @@ export function createI9CheckStartWorld() {
       return child.envelope.runId;
     };
     return { harness, database, clock, admission, artifacts, canonical, run, input, root, library, referenceId: saved.libraryId,
-      selectedReference, changeReference, readRefusals, approveNext, publishCalls, projections };
+      selectedReference, changeReference, readRefusals, approveNext, publishCalls, projections, plan: canonical.plans.at(-1) };
   } };
 }

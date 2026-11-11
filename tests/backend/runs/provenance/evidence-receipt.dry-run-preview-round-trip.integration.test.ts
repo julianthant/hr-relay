@@ -288,13 +288,14 @@ describe("a dry run retains transaction preview accounting", () => {
 
 describe("a publication preview receipt", () => {
   it("names the publication node and the unavailable stage in the DRY_RUN_PREVIEW warning", async () => {
-    const descriptor = wiring.fixtureDescriptor("publication-receipt-fixture", "pr", wiring.providersOnlyContract, true);
+    const descriptor = wiring.publicationDescriptor("publication-receipt-fixture", "pr");
     const store = defineServiceStore("ocr", { fixture: defineTask(wiring.providersOnlyContract, { sessions: [], async run() { return { value: "unused" }; } }) });
     const harness = await wiring.wiringHarness(descriptor, defineTaskStoreRegistry([store], { scenarioIds: [wiring.SCENARIO],
       tasks: [{ id: wiring.providersOnlyContract.id, effect: wiring.providersOnlyContract.effect }] }));
     const queued = wiring.queuedRunFor(descriptor);
     harness.authority.database.authority.runs.enqueue({ ...queued, envelope: { ...queued.envelope, dryRun: true } });
-    const { run, claim } = wiring.claim(harness.authority, descriptor);
+    const claimed = wiring.claim(harness.authority, descriptor), claim = claimed.claim;
+    const run = { ...claimed.run, lifecycle: { ...claimed.run.lifecycle, state: "running" as const } };
     const built = buildRunPreviewResult(descriptor, run, [
       { nodeId: "extract", state: "publication-preview" },
       { nodeId: "after", state: "unavailable", reason: "requires-unsubmitted-output" },

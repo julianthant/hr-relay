@@ -93,6 +93,7 @@ describe("one I-9 PDF Start through admitted children", () => {
     expect(f.database.authority.artifactOutbox.listPending()).toHaveLength(0);
     expect(f.publishCalls).toHaveLength(1);
     expect(f.projections).toHaveLength(1);
+    expect(f.plan?.planned[0]?.outputs).toHaveLength(1);
     expect(f.database.readProfileResourceCustody().writeIntents).toHaveLength(0);
     const people = f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "i9-check");
     expect(people).toHaveLength(2);
@@ -115,6 +116,7 @@ describe("one I-9 PDF dry run previews the workbook and leaves every local outpu
 
   it("i9-check-start/dry-run — reads for real, previews the save, never starts the tracker", async () => {
     const f = await world.fixture({ dryRun: true });
+    expect(f.plan?.planned[0]?.outputs).toBeUndefined();
     const config = f.database.authority.configSnapshots.get(f.run.envelope.configSnapshotId); assert.ok(config);
     const trackerPath = config.config.paths.i9CheckTrackerPath;
     const trackerBytes = () => existsSync(trackerPath) ? readFileSync(trackerPath) : null;

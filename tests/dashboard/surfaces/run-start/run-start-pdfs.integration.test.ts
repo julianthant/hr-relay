@@ -125,7 +125,7 @@ it("offers the Dry run switch for the PDF workflow and plans and confirms a dry 
   await dialog.press("Continue");
   expect(StartPlanRequestSchema.parse(plans[0]).dryRun).toBe(true);
   const confirm = document.querySelector('[aria-label="Confirm"]'); assert.ok(confirm);
-  expect(confirm.textContent).toContain("Dry run: On");
+  expect(confirm.textContent).toMatch(/Dry run\s*On/u);
   expect(dialog.text()).not.toContain("I-9 Check results");
   expect(dialog.text()).toContain("Start dry run");
 });

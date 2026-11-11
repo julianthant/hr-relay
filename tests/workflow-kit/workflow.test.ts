@@ -16,9 +16,9 @@ const command = () => ({ name: "Results", table: { name: "Results", columns: ["a
 const base = () => flow(Input);
 const save = (graph: ReturnType<typeof base>, opts: object = stopBeforePublish) => graph.step("save", ReadWorkbookResult,
   { dependsOn: [], replay: "checkpoint", ...opts, bind: command });
-const write = (graph: ReturnType<typeof base>, dryRun: "stop-after-prepare" | "unsupported") => graph.transaction("write", {
+const write = (graph: ReturnType<typeof base>, dryRun: "stop-after-prepare" | "unsupported"): ReturnType<typeof base> => graph.transaction("write", {
   dependsOn: [], prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
-  commit: { uses: WriteFixtureCommit, bind: ({ input }) => ({ eid: input.eid }) }, dryRun, probePolicy: "always", probeToFenceMaxMs: 30_000 });
+  commit: { uses: WriteFixtureCommit, bind: ({ input }) => ({ eid: input.eid }) }, dryRun, probePolicy: "always", probeToFenceMaxMs: 30_000 }) as never;
 const define = (built: unknown, extra: object = {}) => defineWorkflowDescriptor({
   id: "preview-boundary-fixture", version: 1, contractFingerprint: "a".repeat(64), code: "pb", label: "Preview boundary fixture", icon: "Search", category: "operations",
   canonicalInput: defineCanonicalInput(Input, Input, [{ eid: WRITE_FIXTURE_EID }]), inputSubject: "eid", surface: { shape: "single" }, enqueue: "reject-active",
@@ -62,7 +62,7 @@ describe("workflow flow builder", () => {
 
     it("refuses an artifact projection whose source does not depend on a boundary", () => {
       const projection = { id: "batch-archive", source: { nodeId: "archive", fieldPath: "archive" }, keyFields: ["archive.artifact.sha256"], sink: "documents-file", blocking: true } as const;
-      const archive = (dependsOn: string[]) => save(base()).step("archive", namedFileOutputContract, { dependsOn, replay: "checkpoint", bind: () => ({ name: "x" }) });
+      const archive = (dependsOn: readonly "save"[]) => save(base()).step("archive", namedFileOutputContract, { dependsOn, replay: "checkpoint", bind: () => ({ name: "x" }) });
       assert.doesNotThrow(() => define(finish(archive(["save"]), ["archive"]), { artifactProjections: [projection] }));
       assert.throws(() => define(finish(archive([]), ["archive"]), { artifactProjections: [projection] }), /boundary/u);
     });
