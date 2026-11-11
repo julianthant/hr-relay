@@ -471,7 +471,7 @@ const changedSourceDescriptor = defineWorkflowDescriptor({ ...metadata, flow: fl
     commit: { uses: WriteFixtureCommit, bind: ({ outputs }) => ({ eid: outputs.mapped.eid }) }, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
   .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
 
-it("refuses a paused run whose completed downstream checkpoint no longer matches its re-read source", async () => {
+for (const interrupted of [false, true]) it(`refuses a paused run whose completed downstream checkpoint no longer matches its re-read source${interrupted ? " after a pause inside the re-read" : ""}`, async () => {
   const sourceValues = [WRITE_FIXTURE_EID, EidSchema.parse("10899999")];
   const hooks: { onSource?: () => void; onMapped?: () => void } = {};
   const h = await sourceBoundHarness(changedSourceDescriptor, world => {
@@ -499,11 +499,22 @@ it("refuses a paused run whose completed downstream checkpoint no longer matches
   assert.equal((await h.execute(source)).state, "abandoned", JSON.stringify(h.database.authority.failures.listByRun(source.envelope.runId)));
   delete hooks.onSource; delete hooks.onMapped;
   const paused = h.fresh(source); assert.equal(paused.pause?.state, "paused");
-  const resumed = requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: randomUUID(), runId: paused.envelope.runId, expectedVersion: paused.version }));
+  let resumed = requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: randomUUID(), runId: paused.envelope.runId, expectedVersion: paused.version }));
+  if (interrupted) {
+    // The re-read publishes its row, then the claim ends before "mapped" is compared; both rows are fresh on the next resume.
+    hooks.onSource = () => {
+      const active = h.fresh(source);
+      requireLifecycleApplied(h.lifecycle.pause({ commandId: randomUUID(), runId: active.envelope.runId, expectedVersion: active.version }));
+    };
+    assert.equal((await h.execute(resumed)).state, "abandoned", JSON.stringify(h.database.authority.failures.listByRun(source.envelope.runId)));
+    delete hooks.onSource;
+    const again = h.fresh(source); assert.equal(again.pause?.state, "paused");
+    resumed = requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: randomUUID(), runId: again.envelope.runId, expectedVersion: again.version }));
+  }
   assert.equal((await h.execute(resumed)).state, "failed");
-  const failure = h.database.authority.failures.listByRun(resumed.envelope.runId)[0];
-  assert.equal(failure?.code, "RUN_CONTINUATION_REFUSED", JSON.stringify(failure));
-  assert.match(JSON.stringify(failure), /run-continuation-task-input-mismatch/u);
+  const failure = h.database.authority.failures.listByRun(resumed.envelope.runId).at(-1);
+  assert.equal(failure?.code, interrupted ? "RESUME_VALIDATION_FAILED" : "RUN_CONTINUATION_REFUSED", JSON.stringify(failure));
+  assert.match(JSON.stringify(failure), interrupted ? /Completed node \\"mapped\\" has incompatible corrected input/u : /run-continuation-task-input-mismatch/u);
   assert.deepEqual(sourceValues, []);
   assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, 0);
   assert.deepEqual(h.database.authority.writeIntents.listByBusinessKey("ucpath", WRITE_FIXTURE_KEY_DIGEST), []);
