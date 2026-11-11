@@ -1965,6 +1965,8 @@ function verifyGateEvidenceCurrent(
     const checkpoint = scope.checkpoints.get(String(nodeId));
     if (checkpoint === undefined) continue;
     const { node, record } = checkpoint;
+    // The run re-reads always-rerun dependencies after the decision.
+    if (node.replay === "always-rerun") continue;
     for (const fact of record.provenance) {
       const bound = resolveFreshnessBound(node.uses.freshness, fact.path).maxAgeMs;
       if (!Number.isFinite(bound)) continue;
