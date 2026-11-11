@@ -14,6 +14,7 @@ export async function serveWorkbookLibrary(page: Page, names: readonly string[])
     await post("/api/v1/workbooks", { workbook: { name, hasFormulas: false, themes: [], sheets: [{ id: "people", name: "July 6", width: 2, hidden: [], headerRow: 1,
       columnBindings: ["email", "fullName"].map((fieldId, index) => ({ id: `column-${index}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" })),
       rows: [["email", "fullName"], ["example@example.edu", "Example, Person"]].map((cells, index) => ({ id: `row-${index}`, cells: cells.map(value => ({ value })) })) }] } });
+    h.clock.advanceWall(1000); // distinct creation times keep the library order stable
   }
   await page.route("**/api/v1/workbooks**", async route => {
     const request = route.request(), path = new URL(request.url()).pathname;
