@@ -592,7 +592,7 @@ const inheritedChildDescriptor = defineWorkflowDescriptor({ id: sourceBoundReadD
 function inheritedInputDescriptor(child: boolean) {
   const start = flow(Input)
     .step("before", staleRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid, memo: "source" }) })
-    .step("check", staleRead, { dependsOn: ["before"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid, memo: "check" }) });
+    .step("check", staleRead, { dependsOn: ["before"], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid, memo: "check" }) });
   if (child) return defineWorkflowDescriptor({ ...metadata, flow: start
     .childRun("child", { id: sourceBoundReadDescriptor.id, input: Input, result: staleRead.output }, {
       dependsOn: ["before"], edgeId: DelegationEdgeIdSchema.parse("child"), cardinality: "one", await: "terminal", join: "one",
