@@ -362,3 +362,103 @@ it("keeps an ordinary acknowledged repeat's own occurrence proof through Pause a
   assert.equal((await h.execute(repeated)).state, "done");
   assert.deepEqual(effects(h), before);
 });
+
+const staleRead = defineTaskContract({ id: sourceBoundReadContract.id, title: sourceBoundReadContract.title, effect: sourceBoundReadContract.effect,
+  input: sourceBoundReadContract.input, output: sourceBoundReadContract.output, errorCodes: sourceBoundReadContract.errorCodes,
+  subject: sourceBoundReadContract.subject, scenarios: sourceBoundReadContract.scenarios, freshness: { defaultMaxAgeMs: 0, defaultOverride: "forbidden" },
+  provenance: sourceBoundReadContract.provenance, example: sourceBoundReadContract.example });
+const staleReadDescriptor = (beforeReplay: "always-rerun" | "checkpoint") => defineWorkflowDescriptor({ ...metadata, flow: flow(Input)
+  .step("before", staleRead, { dependsOn: [], replay: beforeReplay, bind: ({ input }) => ({ eid: input.eid }) })
+  .step("check", staleRead, { dependsOn: ["before"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid }) })
+  .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: ["check"], prepare: { uses: WriteFixturePrepare, bind: ({ outputs }) => ({ eid: outputs.check.eid }) },
+    commit: { uses: WriteFixtureCommit, bind: ({ outputs }) => ({ eid: outputs.check.eid }) }, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
+  .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
+
+async function staleReadFixture(beforeReplay: "always-rerun" | "checkpoint", failOn: readonly number[], dryRun = false) {
+  const hooks: { onRead?: () => void } = {};
+  const h = await sourceBoundHarness(staleReadDescriptor(beforeReplay), world => {
+    const reads = sourceBoundReadStores(world, failOn, () => hooks.onRead?.(), staleRead), writes = buildWriteFixtureRegistry(world);
+    return defineTaskStoreRegistry([...reads.stores, ...writes.stores], {
+      scenarioIds: [...reads.corpus.scenarioIds, ...writes.corpus.scenarioIds], tasks: [...reads.corpus.tasks, ...writes.corpus.tasks],
+    });
+  });
+  cleanups.push(h.dispose);
+  h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+  const source = h.start(h.proposal(undefined, undefined, dryRun, WRITE_FIXTURE_EID));
+  const beforeRows = () => h.database.authority.runCheckpoints.listByItem(source.envelope.workflow, source.envelope.itemId).filter(row => row.nodeId === "before");
+  const commits = () => h.world.events.filter(event => event.startsWith("commit-click:")).length;
+  const intents = () => h.database.authority.writeIntents.listByBusinessKey("ucpath", WRITE_FIXTURE_KEY_DIGEST);
+  return { h, hooks, source, beforeRows, commits, intents };
+}
+
+async function pausedInsideFirstRead(beforeReplay: "always-rerun" | "checkpoint", dryRun = false) {
+  const f = await staleReadFixture(beforeReplay, [], dryRun), { h, source } = f;
+  let reads = 0;
+  f.hooks.onRead = () => {
+    reads += 1;
+    if (reads === 1) {
+      const active = h.fresh(source);
+      requireLifecycleApplied(h.lifecycle.pause({ commandId: randomUUID(), runId: active.envelope.runId, expectedVersion: active.version }));
+    }
+    h.clock.advanceWall(1);
+  };
+  assert.equal((await h.execute(source)).state, "abandoned");
+  const paused = h.fresh(source); assert.equal(paused.pause?.state, "paused");
+  assert.equal(f.beforeRows().length, 1); assert.deepEqual(f.intents(), []);
+  h.clock.advanceWall(1_000);
+  const resumed = requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: randomUUID(), runId: paused.envelope.runId, expectedVersion: paused.version }));
+  assert.ok(resumed.envelope.continuation);
+  return { ...f, resumed, outcome: await h.execute(resumed) };
+}
+
+function assertReadAgain(f: Awaited<ReturnType<typeof staleReadFixture>>, runId: string, firstObservedAt: string) {
+  const rows = f.beforeRows(); assert.equal(rows.length, 2);
+  const latest = rows.at(-1); assert.ok(latest); assert.equal(latest.runId, runId);
+  assert.ok(Date.parse(latest.provenance[0]?.observedAt ?? "") > Date.parse(firstObservedAt));
+}
+
+it("reads a stale always-rerun checkpoint again when Recover continues before the write", async () => {
+  const f = await staleReadFixture("always-rerun", [2]), { h } = f;
+  f.hooks.onRead = () => h.clock.advanceWall(1);
+  assert.equal((await h.execute(f.source)).state, "failed");
+  const failed = h.fresh(f.source);
+  assert.equal(h.database.authority.failures.listByRun(failed.envelope.runId)[0]?.nodeId, "check");
+  const firstObservedAt = f.beforeRows()[0]?.provenance[0]?.observedAt; assert.ok(firstObservedAt);
+  h.clock.advanceWall(1_000);
+  const next = operatorRecover({ ...h, failed }, failed);
+  assert.ok(next.envelope.continuation);
+  const outcome = await h.execute(next);
+  assert.equal(outcome.state, "done", JSON.stringify(h.database.authority.failures.listByRun(next.envelope.runId)));
+  assertReadAgain(f, next.envelope.runId, firstObservedAt);
+  assert.equal(f.commits(), 1);
+  assert.deepEqual(f.intents().map(intent => intent.status), ["committed"]);
+});
+
+it("reads a stale always-rerun checkpoint again when a paused run resumes before the write", async () => {
+  const f = await pausedInsideFirstRead("always-rerun");
+  const firstObservedAt = f.beforeRows()[0]?.provenance[0]?.observedAt; assert.ok(firstObservedAt);
+  assert.equal(f.outcome.state, "done", JSON.stringify(f.h.database.authority.failures.listByRun(f.resumed.envelope.runId)));
+  assertReadAgain(f, f.resumed.envelope.runId, firstObservedAt);
+  assert.equal(f.commits(), 1);
+  assert.deepEqual(f.intents().map(intent => intent.status), ["committed"]);
+});
+
+it("reads a stale always-rerun checkpoint again when a paused dry run resumes", async () => {
+  const f = await pausedInsideFirstRead("always-rerun", true);
+  const firstObservedAt = f.beforeRows()[0]?.provenance[0]?.observedAt; assert.ok(firstObservedAt);
+  assert.equal(f.outcome.state, "done", JSON.stringify(f.h.database.authority.failures.listByRun(f.resumed.envelope.runId)));
+  assertReadAgain(f, f.resumed.envelope.runId, firstObservedAt);
+  assert.equal(f.commits(), 0);
+  assert.deepEqual(f.intents(), []);
+});
+
+it("still refuses a stale checkpoint-policy fact when a paused run resumes before the write", async () => {
+  const f = await pausedInsideFirstRead("checkpoint");
+  assert.equal(f.outcome.state, "failed");
+  const failure = f.h.database.authority.failures.listByRun(f.resumed.envelope.runId)[0];
+  assert.equal(failure?.code, "RESUME_VALIDATION_FAILED");
+  assert.match(JSON.stringify(failure), /CheckpointFreshnessError/u);
+  assert.equal(f.beforeRows().length, 1);
+  assert.equal(f.commits(), 0);
+  assert.deepEqual(f.intents(), []);
+});
