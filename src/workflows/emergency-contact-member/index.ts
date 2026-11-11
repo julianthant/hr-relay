@@ -4,11 +4,13 @@ import { emergencyContactMemberWorkflow } from "./workflow.js";
 import { emergencyContactMemberStore } from "./task-registry.js";
 import { contactPlanDefinition } from "./steps/contact-plan/step.js";
 import { contactPreviewDefinition } from "./steps/contact-preview/step.js";
+import { onbaseImportDefinition } from "./steps/onbase-import/step.js";
 export const registration = deepFreeze({
   definition: emergencyContactMemberWorkflow,
   store: emergencyContactMemberStore,
   proofs: [
     defineStepProof(emergencyContactMemberWorkflow, contactPlanDefinition),
     defineStepProof(emergencyContactMemberWorkflow, contactPreviewDefinition),
+    defineStepProof(emergencyContactMemberWorkflow, onbaseImportDefinition),
   ],
 } as const);

@@ -25,6 +25,7 @@ import { EmergencyContactMemberInputSchema } from "../../../../src/models/workfl
 import { EmergencyContactResultSchema, EmergencyContactMemberResultSchema } from "../../../../src/models/workflows/emergency-contact/result.js";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
+import { onbaseOcrWorldChild } from "../../../support/helpers/backend/onbase-child-fixture.js";
 import { ocrProofReadDatabase } from "../../../support/helpers/backend/ocr-proof-reads.js";
 
 import { createDeterministicUcpathContactPage } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
@@ -208,6 +209,7 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
     }
     return createDeterministicUcpathPersonOrgDriver(undefined, undefined, port);
   }
+  const onbaseChild = onbaseOcrWorldChild();
   const sessions = sessionFactoryHarness({ ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
     const driver = createDeterministicUcpathPersonOrgDriver();
     let activeEid: string | undefined;
@@ -225,8 +227,8 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
       async stageEmergencyContact(input, plan) { activeEid = input.emplId; return contactDriver(input.emplId).stageEmergencyContact(input, plan); },
       async read(id) { if (id !== UCPATH_CONTACT_DISPLAYED_NAME) return driver.read(id); assert.ok(activeEid); return contactDriver(activeEid).read(id); },
     };
-  }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
-  const f = await world.fixture({ coordinator: true, record: true, pageCount: 3, reviewedPages, operatorEvidence: true, dryRun: true, sessions,
+  }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }), onbase: onbaseChild.session });
+  const f = await world.fixture({ coordinator: true, record: true, pageCount: 3, reviewedPages, operatorEvidence: true, dryRun: true, sessions, ...onbaseChild.fixture,
     screenshotCapture: { capture: async context => {
       assert.equal(context.screenshot.state, "available");
       const member = nativeMembers.get(context.runId);

@@ -1,3 +1,4 @@
+import { onbaseOcrWorldChild } from "../../../support/helpers/backend/onbase-child-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
@@ -106,13 +107,14 @@ for (const dryRun of [true, false]) {
     let ticks = Date.parse(contactPage.page.observedAt);
     const persistence = createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
       displayedEid: employee.emplId, displayedName: employee.name }), () => new Date(++ticks).toISOString());
+    const onbaseChild = onbaseOcrWorldChild();
     const sessions = sessionFactoryHarness({ ucpath: () => {
       const session = persistence.session();
       return createDeterministicUcpathPersonOrgDriver({ results: [employee],
         selection: { status: "resolved", selected: employee, candidateEids: [employee.emplId] } }, undefined, session.port, session.save);
-    }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
+    }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }), onbase: onbaseChild.session });
     const f = await world.fixture({ coordinator: true, member: childWorkflowModuleOf("emergency-contact", "emergency-contact-member"),
-      record: true, pageCount: 3, dryRun, sessions, operatorEvidence: true,
+      record: true, pageCount: 3, dryRun, sessions, operatorEvidence: true, ...onbaseChild.fixture,
       reviewedPages: Array.from({ length: 3 }, () => ({ employeeName: employee.name,
         contactName: "Original Contact", correctedContactName: "Released Contact" })),
       screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });

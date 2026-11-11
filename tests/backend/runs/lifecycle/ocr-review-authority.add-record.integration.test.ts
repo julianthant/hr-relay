@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
+import { onbaseOcrWorldChild } from "../../../support/helpers/backend/onbase-child-fixture.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
@@ -75,14 +76,15 @@ it.each(["oath", "emergency-contact", "i9"] as const)("creates and approves an o
 it("durably creates, corrects and approves an operator-added record through native downstream dry-run execution and restart", async () => {
   const contact = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
     displayedEid: "10800001", displayedName: "Example, Manual" }) });
+  const onbaseChild = onbaseOcrWorldChild();
   const sessions = sessionFactoryHarness({ ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
     const driver = createDeterministicUcpathPersonOrgDriver(undefined, undefined, contact);
     return { ...driver, async searchPersonOrg(input) {
       return input.kind === "by-name" ? SearchPersonOrgOutputSchema.parse({ results: [],
         selection: { status: "not-found", selected: null, candidateEids: [], searchName: input.name } }) : driver.searchPersonOrg(input);
     } };
-  }, crm: healthyCrmDriver });
-  const f = await world.fixture({ coordinator: true, record: true, release: true, pageCount: 2, dryRun: true, sessions });
+  }, crm: healthyCrmDriver, onbase: onbaseChild.session });
+  const f = await world.fixture({ coordinator: true, record: true, release: true, pageCount: 2, dryRun: true, sessions, ...onbaseChild.fixture });
   const read = reviewReader(f), original = read(); assert.ok(original.ocr);
   const request = add(f), runId = f.run.envelope.runId, repositories = f.database.authority;
   assert.equal(f.canonical.kernel.execute(request).state, "applied");

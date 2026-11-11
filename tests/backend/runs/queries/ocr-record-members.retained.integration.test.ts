@@ -54,7 +54,7 @@ const historicalParent = composeWorkflowModule(compileWorkflow(defineWorkflow({ 
 const historicalOcr = composeWorkflowModule(compileWorkflow({ ...ocrWorkflow, version: ocrWorkflow.version + 1 }), ocrModule.stores);
 const historicalMember = composeWorkflowModule(compileWorkflow({ ...contactSaveMember.definition, version: contactSaveMember.definition.version + 1 }), taskStoreRegistry.stores);
 bindWorkflowDelegationTargets([historicalParent.descriptor, historicalOcr.descriptor, historicalMember.descriptor,
-  ...["ocr-page", "person-lookup", "i9-lookup"].map(id => childWorkflowModuleOf("ocr", id).descriptor)]);
+  ...["ocr-page", "person-lookup", "i9-lookup"].map(id => childWorkflowModuleOf("ocr", id).descriptor), childWorkflowModuleOf("emergency-contact-member", "onbase").descriptor]);
 
 for (const dryRun of [false, true]) {
   it(`reads the full day and restarts a retained approved ${dryRun ? "preview" : "ordinary"} tree with its original record schema and omitted member associations`, async () => {

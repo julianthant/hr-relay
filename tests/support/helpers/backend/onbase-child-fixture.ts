@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
 import { PDFDocument } from "pdf-lib";
@@ -6,7 +7,7 @@ import { OnbaseInputSchema } from "../../../../src/models/systems/onbase/import-
 import type { Clock } from "../../../../src/rules/time/clock.js";
 import { fakeOnbasePage, type SavedOnbaseFixture } from "../browser/fake-onbase-page.js";
 
-const pdf = await PDFDocument.create({ updateMetadata: false }); pdf.addPage([100, 200]); pdf.addPage([300, 400]);
+const pdf = await PDFDocument.create({ updateMetadata: false }); pdf.addPage([100, 200]); pdf.addPage([300, 400]); pdf.addPage([500, 600]);
 export const ONBASE_SOURCE_PDF = await pdf.save();
 export const ONBASE_SOURCE_DOCUMENT = OnbaseInputSchema.shape.document.parse({ id: "11111111-2222-4333-8444-555555555555",
   sha256: createHash("sha256").update(ONBASE_SOURCE_PDF).digest("hex"), bytes: ONBASE_SOURCE_PDF.length, mediaType: "application/pdf" });
@@ -24,4 +25,12 @@ export function onbaseChildFixture(options: { noMatch?: boolean; saved?: readonl
       return createOnbaseDriver(() => undefined, page.page, clock);
     },
     artifacts: { open: async () => Readable.from([ONBASE_SOURCE_PDF]), put: async () => { throw new Error("unexpected artifact write"); } } };
+}
+
+/** OnBase child wiring for an OCR review world: the session to register as `onbase` and the fixture options that give it the real PDF and the world clock. */
+export function onbaseOcrWorldChild(options: Parameters<typeof onbaseChildFixture>[0] = {}) {
+  const onbase = onbaseChildFixture(options), clock: { current?: Clock } = {};
+  return { onbase,
+    session: () => { assert.ok(clock.current); return onbase.driver(clock.current); },
+    fixture: { sourcePdf: ONBASE_SOURCE_PDF, onHarness: (harness: { readonly authority: { readonly clock: Clock } }) => { clock.current = harness.authority.clock; } } };
 }

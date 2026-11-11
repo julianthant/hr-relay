@@ -60,7 +60,7 @@ export function createDryRunPreviewResultTestWorld() {
       const workerPorts = testWorkerPorts(database, clock, { path: profile.path, descriptor, poolIndex: 1 });
       if (options.enqueue !== false) assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun })).state, "inserted");
       const stop = new AbortController(), stopOn = options.stopOn;
-      const emitted = stopOn === undefined ? emitter.emitter : Object.freeze({ emit(event: unknown) { emitter.emitter.emit(event); if (stopOn(event)) stop.abort(); } });
+      const emitted = stopOn === undefined ? emitter.emitter : Object.freeze({ emit(event: Parameters<typeof emitter.emitter.emit>[0]) { emitter.emitter.emit(event); if (stopOn(event)) stop.abort(); } });
 
       world.probeResults.push(options.probe ?? absentProbeEvidence(WRITE_FIXTURE_NOW));
       await runWorkerLoop({
