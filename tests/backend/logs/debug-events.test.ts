@@ -5,7 +5,7 @@ import { createDebugEventWriter, emitFaultWithCauses } from "../../../src/backen
 import { mirrorDebugEvent } from "../../../src/backend/storage/events/local-debug-log.js";
 import { PreflightObservationChangedError } from "../../../src/rules/preflight/preflight-admission.js";
 import { debugTimelineFixture as fixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
-import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
+import { RunIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { debugEventLevel } from "../../../src/models/events/timeline.js";
 const AT = new Date("2026-10-10T12:00:00.000Z");
@@ -141,7 +141,7 @@ describe("bounded native debug events", () => {
     const { records, repository } = fixture(); const lines: string[] = [];
     const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test", development: true,
       writeStderr: line => { lines.push(line); } });
-    const scope = { kind: "run" as const, runId: "00000000-0000-4000-8000-0000000000a1" };
+    const scope = { kind: "run" as const, runId: RunIdSchema.parse("00000000-0000-4000-8000-0000000000a1") };
     writer.emit({ category: "worker", phase: "failed", area: "run-execution", reason: "run-failed", code: "TASK_FAILED", correlationId: "failure-1" },
       scope, WorkflowIdSchema.parse("person-lookup"));
     assert.equal(records.length, 1);
