@@ -536,10 +536,16 @@ export function deriveRunEvidenceReceipt(
         if (!evaluateNodeCondition(node.when, { input: run.input.parsed.value, outputs })) {
           if (gateResultsByNode.has(id)) throw new Error(`inapplicable gate ${id} carries an operator result`);
           const decisionId = entryId("decision", `not-run.${id}`);
+          const operand = node.when.of;
+          if (operand.from === "input" && !inputValues.has(String(operand.path))) {
+            throw new Error(`inapplicable gate ${id} reads input field ${String(operand.path)}, which carries no input fact`);
+          }
           decisions.push({
             id: decisionId, kind: "branch", outcome: "not-taken",
             reason: `gate "${id}" was not required by its declared evidence condition; no operator decision was made`,
-            evidence: node.dependsOn.map((dependency) => evidenceEntryRef(entryId("verification", `node.${dependency}`))),
+            evidence: operand.from === "input"
+              ? [evidenceEntryRef(entryId("input", String(operand.path)))]
+              : node.dependsOn.map((dependency) => evidenceEntryRef(entryId("verification", `node.${dependency}`))),
           });
           verification.push({ id: evidence.verificationId, obligation: `node.${id}`, mandatory: false,
             verdict: "absent", evidence: [evidenceEntryRef(decisionId)] });
