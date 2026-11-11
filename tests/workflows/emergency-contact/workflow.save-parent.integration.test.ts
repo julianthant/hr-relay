@@ -94,6 +94,9 @@ it("re-derives the parent receipt that migration 26 deletes when a member settle
   f.markContactPresent("10800001");
   assert.equal(f.canonical.kernel.execute(f.runCommand("retry", original)).state, "applied");
   const presentMember = f.children().find(child => child.envelope.retryOf === original.envelope.runId); assert.ok(presentMember);
+  // The Retry holds the parent paused: settle the member and its OnBase child, then resume the parent to finish.
+  while (f.current(presentMember.envelope.runId).lifecycle.state !== "terminal") await f.canonical.step(f.parentRun, new AbortController().signal);
+  if (f.current().pause?.state === "paused") assert.equal(f.canonical.kernel.execute(f.runCommand("resume", f.current())).state, "applied");
   await f.canonical.execute(f.parentRun, new AbortController().signal);
   const parentNow = f.current();
   assert.ok(parentNow.lifecycle.state === "terminal" && parentNow.lifecycle.outcome === "done", JSON.stringify(parentNow.lifecycle));

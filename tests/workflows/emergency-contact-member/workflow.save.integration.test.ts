@@ -3,6 +3,7 @@ import type { UcpathContactPagePort } from "../../../src/backend/systems/ucpath/
 import { EmergencyContactMemberResultSchema } from "../../../src/models/workflows/emergency-contact/result.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { afterEach,it } from "vitest";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { readApprovedOcrRecordTask } from "../../../src/backend/processing/ocr/tasks/read-approved-record.js";
@@ -37,7 +38,9 @@ import { canonicalChildExecution } from "../../support/helpers/backend/canonical
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import { seedUnknownContactWrite } from "../../support/helpers/backend/unknown-contact-write.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
-import { ONBASE_SOURCE_DOCUMENT, onbaseChildFixture } from "../../support/helpers/backend/onbase-child-fixture.js";
+import { ONBASE_SOURCE_DOCUMENT, ONBASE_SOURCE_PDF, onbaseChildFixture } from "../../support/helpers/backend/onbase-child-fixture.js";
+import { boundProfileAdmission } from "../../support/helpers/synthetic-database-admission.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { onbaseModule } from "../../support/helpers/registered-workflows.js";
 import { OnbaseInputSchema } from "../../../src/models/systems/onbase/import-document.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
@@ -353,7 +356,7 @@ it("pairs a rerun's already-present Save after the item's failed run, and a late
   const thirdReceipt = receiptsOf(f).ensureReceipt(third.envelope.runId);
   assert.equal(commitActionOf(thirdReceipt).proved?.proofSource, "live-probe");
   const identity = thirdReceipt.decisions.find(decision => decision.kind === "identity" && decision.reason.includes("already satisfied"));
-  assert.ok(identity?.reason.includes(`observed present by run ${again.envelope.runId}'s probe`), identity?.reason);
+  assert.ok(identity?.reason.includes(`observed present by run ${again.envelope.runId}'s probe`), String(identity?.reason));
   assert.equal(f.persistence.submissions.length, 0);
 });
 it("saves an addition with no demotion when the complete original set has no primary", async () => {
@@ -432,6 +435,9 @@ it("refuses deleting a producer whose committed OnBase checkpoint a retained don
   assert.equal(f.onbase.imports(), 1);
   const [intent] = f.database.authority.writeIntents.listByRun(producer.envelope.runId); assert.ok(intent);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(consumer.envelope.runId), []);
+  // Deletion inspects every artifact its rows name; the world serves the source PDF without storing it.
+  const artifacts = createContentAddressedArtifactWriter({ admission: boundProfileAdmission(realpathSync(f.authority.path)) }); await artifacts.ready;
+  assert.equal((await artifacts.put(Buffer.from(ONBASE_SOURCE_PDF), { mediaType: "application/pdf" })).sha256, ONBASE_SOURCE_DOCUMENT.sha256);
   const remove = (runId: string) => {
     const current = f.database.authority.runs.get(runId); assert.ok(current);
     return f.execution.lifecycle.delete({ commandId: randomUUID(), runId, expectedVersion: current.version });

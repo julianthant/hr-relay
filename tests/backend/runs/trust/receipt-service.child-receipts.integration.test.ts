@@ -104,7 +104,7 @@ it("pairs a new item's already-present Save with its exact original permanent re
   const imported = childReceipt.actions.find(action => action.kind === "commit");
   assert.deepEqual(imported && [imported.writeState, "proofRef" in imported, imported.proved?.proofSource], ["committed", false, "normal-output"]);
   const dedupe = childReceipt.decisions.find(decision => decision.kind === "dedupe");
-  assert.ok(dedupe?.outcome === "not-taken" && dedupe.reason.includes(firstChild.envelope.runId), dedupe?.reason);
+  assert.ok(dedupe?.outcome === "not-taken" && dedupe.reason.includes(firstChild.envelope.runId), String(dedupe?.reason));
   assert.deepEqual(f.database.authority.writeIntents.listByRun(secondChild.envelope.runId), []);
   assert.equal(receipt.verification.find(row => row.obligation === "node.onbase-import")?.verdict, "verified");
   const missing = createReceiptService({ database: withPlanRows(f.database, () => []), runReader: f.execution.lifecycle, descriptors: f.descriptors });
