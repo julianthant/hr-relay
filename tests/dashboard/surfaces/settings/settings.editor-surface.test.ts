@@ -3,7 +3,7 @@ import { FixtureCommandBinding } from "../../../support/helpers/dashboard/comman
 import { syntheticSettingsAuthority } from "../../../support/helpers/dashboard/settings-harness.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act,createElement } from "react";
+import { act,createElement, type ComponentProps } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it,vi } from "vitest";
 import { createDashboardClient,type DashboardClient } from "../../../../src/dashboard/client/index.js";
@@ -52,7 +52,7 @@ async function settingsClient(applied: unknown[], mode: "confirmed" | "held" | "
 
 async function mountSettingsPage(client: DashboardClient, section: string,
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void,
-  nowIso = "2026-08-28T18:00:00.000Z", profileName = "Synthetic Operator") {
+  nowIso = "2026-08-28T18:00:00.000Z", profileName = "Synthetic Operator", accountPage?: ComponentProps<typeof SettingsPage>["accountPage"]) {
   const element = document.createElement("div");
   host = element;
   document.body.append(element);
@@ -63,7 +63,7 @@ async function mountSettingsPage(client: DashboardClient, section: string,
         children: createElement(SettingsPage, { profileName, onClose: () => undefined,
           section, actorId: "local-operator",
           descriptorFingerprint: "d".repeat(64), onSection: () => undefined,
-          ...(onExitGuardChange === undefined ? {} : { onExitGuardChange }) }),
+          ...(onExitGuardChange === undefined ? {} : { onExitGuardChange }), ...(accountPage === undefined ? {} : { accountPage }) }),
       }),
     }));
   });
@@ -217,7 +217,8 @@ describe("editable Settings surface", () => {
     vi.useFakeTimers();
     const datePath = `annualDates.FY${String(DOCUMENT.currentFiscalYear)}.jobEndDate`;
     assert.equal(host.querySelector('[data-settings-path="display.viewport"]'), null);
-    assert.equal(host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 2);
+    assert.equal(host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Hidden");
+    assert.equal(host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 0);
     const date = host.querySelector(`[data-settings-path="${datePath}"] .ds-date-picker`);
     assert.ok(date);
     assert.equal(date.querySelectorAll('.ds-date-text-input').length, 0);
@@ -228,6 +229,47 @@ describe("editable Settings surface", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(701); });
     assert.equal(applied.length, 0, "incomplete date edits cannot produce a settings command");
     assert.ok(date.querySelector('button[aria-label="Choose job end date"]'));
+  });
+
+  it("holds a UCPath pencil-dialog draft through the timer, blur, Escape and Cancel and writes only on Save", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const applied: unknown[] = [];
+    const transport = await settingsClient(applied);
+    host = await mountSettingsPage(transport.client, "account", undefined, undefined, undefined,
+      { values: { name: "Synthetic Operator", initials: "SO", timekeeper: "Synthetic Operator", lastSignedInAt: "2026-08-28T08:00:00-08:00" }, duo: "ready", onSignOut: () => undefined });
+    const open = async (): Promise<HTMLInputElement> => {
+      const pencil = host?.querySelector<HTMLButtonElement>('button[aria-label="Edit UCPath username"]');
+      assert.ok(pencil);
+      await act(async () => pencil.click());
+      const field = document.body.querySelector<HTMLInputElement>('[role="dialog"] input[name="ucpathUserId"]');
+      assert.ok(field);
+      return field;
+    };
+    const type = async (field: HTMLInputElement, value: string): Promise<void> => {
+      await act(async () => { // eslint-disable-next-line @typescript-eslint/unbound-method
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+        if (setter === undefined) throw new Error("input setter unavailable");
+        Reflect.apply(setter, field, [value]); field.dispatchEvent(new Event("input", { bubbles: true })); });
+    };
+    const wait = async (): Promise<void> => { await act(async () => { await vi.advanceTimersByTimeAsync(5000); }); };
+    let field = await open();
+    await type(field, "held-operator"); await wait();
+    assert.equal(applied.length, 0, "the autosave timer does not write the dialog draft");
+    await act(async () => { field.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); }); await wait();
+    assert.equal(applied.length, 0, "blur does not write the dialog draft");
+    await act(async () => { document.body.querySelector('[role="dialog"]')?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); }); await wait();
+    assert.equal(document.body.querySelector('[role="dialog"]'), null);
+    assert.equal(applied.length, 0, "Escape discards without a write");
+    field = await open();
+    assert.equal(field.value, "", "the discarded draft is gone");
+    await type(field, "cancelled-operator");
+    await act(async () => overlayButton("Cancel").click()); await wait();
+    assert.equal(applied.length, 0, "Cancel discards without a write");
+    field = await open();
+    await type(field, "saved-operator");
+    await act(async () => overlayButton("Save").click());
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    assert.equal(applied.length, 1, "Save writes exactly once");
   });
 });
 

@@ -2,13 +2,10 @@ import { ArrowLeft,ArrowUp,Check,CircleAlert,CreditCard,Database,Folder,Gauge,Us
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, Notice } from "../../ds/ui.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,PageHeading,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, Notice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
 import { SheetsV2 } from "../spreadsheets/design/sheets-v2.js";
-import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
-import type { EditableWorkbook } from "../../../rules/spreadsheets/workbook-io.js";
-import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
 import type { SettingsSaveListener,SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
 import { useEditableSettings } from "./editor/settings-editor-model.js";
@@ -18,10 +15,9 @@ import "./hub-settings.css";
 import { KeyboardSection } from "./navigation/settings-keyboard.js";
 import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./navigation/settings-search-model.js";
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
-import { StatusMockAccount,StatusMockSubscription } from "./status-mock/status-mock.js";
-import { StatusMockAnalytics } from "./status-mock/status-mock-analytics.js";
-import { StatusMockGeneral } from "./status-mock/status-mock-general.js";
-import { statusMock } from "./status-mock/status-mock-model.js";
+import { AccountSettings, type AccountPage } from "./account/account-settings.js";
+import { ChatGptAccountSettings } from "./general/chatgpt-account.js";
+import { DeleteAccountControl } from "./general/ui-settings-records-general-paths.js";
 import { SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import {type StorageHealthSummary } from "./storage/storage-settings-model.js";
 
@@ -114,9 +110,8 @@ export function SettingsPage({
   dataContent,
   appearance,
   deleteAccount,
+  accountPage,
   onOpenRun,
-  spreadsheetSource,
-  onOpenWorkflow,
   actorId,
   profileName,
   descriptorFingerprint,
@@ -132,28 +127,23 @@ export function SettingsPage({
   dataContent?: ReactNode;
   appearance?: ReactNode;
   deleteAccount?: ReactNode;
+  accountPage?: AccountPage;
   onOpenRun?: (runId: string, partitionDay: string) => void;
-  onOpenWorkflow?: (workflowId: string) => void;
   actorId: string;
   profileName: string;
   descriptorFingerprint: string;
   onSection: (next: string, target?: string) => void;
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onClose: () => void;
-  spreadsheetSource?: "mock" | "served";
   onSaved?: SettingsSaveListener;
   onSaveProblem?: SettingsSaveProblemListener;
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
 }) {
-  const [workbookDraft, setWorkbookDraft] = useState<{ document: EditableWorkbook | null; dirty: boolean }>({ document: null, dirty: false });
-  const spreadsheets = useSpreadsheetWiringAdapter(false, null);
-  const onWorkbook = (document: EditableWorkbook | null, dirty: boolean) => setWorkbookDraft({ document, dirty });
   const editor = useEditableSettings({ actorId, descriptorFingerprint, onSaved, onSaveProblem });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const exitFocusTarget = useRef<HTMLElement | null>(null);
   const settingsDocument = editor.editor.state === "loaded" ? editor.editor.document : undefined;
   const groups = useMemo(() => buildSettingsNav(settingsDocument), [settingsDocument]);
-  const mockStatus = statusMock();
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
   const isDataSection = activeId !== undefined && SETTINGS_DATA_SECTION_IDS.has(activeId);
@@ -180,7 +170,7 @@ export function SettingsPage({
   useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label);
   const settingsEntries = groups.filter(group => group.id === "personal" || group.id === "advanced").flatMap(group => group.entries);
   const activeSettingsEditorSection = activeId !== undefined && (settingsEntries.some(entry => entry.id === activeId) || activeId === "performance");
-  const totalDirty = (workbookDraft.dirty ? 1 : 0) + editor.dirtyCount + editor.protectedEditor.dirtyCount;
+  const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount;
   const hasDirtyDraft = totalDirty > 0;
 
   useEffect(() => {
@@ -212,8 +202,6 @@ export function SettingsPage({
   const discardAndExit = (): void => {
     if (pendingExit === undefined) throw new Error("Settings discard was confirmed without a pending exit");
     exitFocusTarget.current = null;
-    if (spreadsheetSource !== "mock") spreadsheets.adapter.discard();
-    setWorkbookDraft({ document: null, dirty: false });
     editor.discard();
     editor.protectedEditor.discard();
     setPendingExit(undefined);
@@ -264,15 +252,14 @@ export function SettingsPage({
         {resolution.state === "empty" && (
           <Notice tone="warning" title="No settings sections" />
         )}
-        {isDataSection && (activeId === "activity" && mockStatus !== undefined ? <StatusMockAnalytics variant={mockStatus === "analytics-b" ? "b" : "a"} onOpenWorkflow={onOpenWorkflow} /> : dataContent)}
-        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && (spreadsheetSource === "mock" ? <SheetsV2 onOpenRun={onOpenRun} /> : <SpreadsheetsSettings onOpenRun={onOpenRun} source={spreadsheetSource} workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />)}
+        {isDataSection && dataContent}
+        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SheetsV2 onOpenRun={onOpenRun} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
-        {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && !(resolution.entry.id === "general" && mockStatus !== undefined) && (
-          <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} deleteAccount={deleteAccount} />
+        {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
+          <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} />
         )}
-        {resolution.state === "open" && resolution.entry.id === "general" && mockStatus !== undefined && <StatusMockGeneral />}
-        {resolution.state === "open" && resolution.entry.id === "account" && (mockStatus !== undefined ? <StatusMockAccount frame={mockStatus} /> : <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} />)}
-        {resolution.state === "open" && resolution.entry.id === "subscription" && <StatusMockSubscription frame={mockStatus ?? "subscription"} />}
+        {resolution.state === "open" && resolution.entry.id === "account" && (accountPage === undefined ? <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} /> : <AccountSettings page={accountPage} ucpath={<SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} embedded />} deleteAccount={deleteAccount ?? <DeleteAccountControl presentation={{ state: "unavailable" }} />} />)}
+        {resolution.state === "open" && resolution.entry.id === "subscription" && <section className="settings-compact-page"><PageHeading title="Subscription" /><ChatGptAccountSettings /></section>}
         {resolution.state === "open"
           && resolution.entry.source === "served"
           && !RENDERED_SERVED_SECTION_IDS.has(resolution.entry.id) && (

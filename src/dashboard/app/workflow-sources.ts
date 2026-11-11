@@ -37,13 +37,12 @@ export interface WorkflowComposition {
   readonly activity?: SurfaceSource;
   readonly inbox: SurfaceSource;
   readonly search: SurfaceSource;
-  readonly spreadsheets?: SurfaceSource;
   readonly assistant?: SurfaceSource;
   readonly sourceForRoute: (id: string, requestedPreview: boolean) => WorkflowSource;
 }
 
 export function workflowComposition(sources: WorkflowSourcePolicy): WorkflowComposition {
-  return Object.freeze({ sources, initialMockRuns: () => [], sessions: "served" as const, activity: "served" as const, inbox: "served" as const, search: "served" as const, spreadsheets: "served" as const, sourceForRoute: (id: string) => workflowSource(id, sources) });
+  return Object.freeze({ sources, initialMockRuns: () => [], sessions: "served" as const, activity: "served" as const, inbox: "served" as const, search: "served" as const, sourceForRoute: (id: string) => workflowSource(id, sources) });
 }
 
 export const PRODUCT_WORKFLOW_COMPOSITION = workflowComposition(WORKFLOW_SOURCES);
