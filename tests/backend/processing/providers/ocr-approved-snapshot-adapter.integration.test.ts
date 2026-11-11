@@ -105,7 +105,7 @@ it("admits the members delegation once wall time has passed since the approved s
   f.canonical.lifecycle.admitDelegation = (context, plan) => { admitted++; f.clock.advanceWall(1); return admit(context, plan); };
   assert.equal((await f.canonical.step(f.parentRun, new AbortController().signal)).outcome.state, "done");
   const parent = await f.canonical.step(f.parentRun, new AbortController().signal);
-  assert.equal(parent.outcome.state, "yielded-delegation", parent.outcome.state === "failed" ? f.database.authority.failures.get(parent.outcome.failureId)?.summary : parent.outcome.state);
+  assert.equal(parent.outcome.state, "yielded-delegation", parent.outcome.state === "failed" ? String(f.database.authority.failures.get(parent.outcome.failureId)?.summary) : parent.outcome.state);
   assert.ok(admitted > 0);
   assert.equal(f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(run => run.envelope.workflow === "emergency-contact-member").length, 1);
 });
