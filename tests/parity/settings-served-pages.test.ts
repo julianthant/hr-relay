@@ -34,6 +34,9 @@ for (const theme of ["dark", "light"] as const) {
       await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: /Delete/u }).first()).toBeVisible();
       await shot("settings-account");
+      await page.setViewportSize({ width: 1280, height: 1300 });
+      await shot("settings-account-full");
+      await page.setViewportSize({ width: 1280, height: 720 });
 
       await page.getByRole("link", { name: "Subscription", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Subscription", exact: true, level: 1 })).toBeVisible();
