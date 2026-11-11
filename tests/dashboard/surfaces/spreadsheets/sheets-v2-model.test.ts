@@ -10,7 +10,7 @@ describe('sheets-v2 model', () => {
     const sheet = { ...base, width: 3, rows: [{ ...row, cells }, ...base.rows.slice(1)] };
     const { headers } = datasetOf(sheet);
     assert.equal(new Set(headers).size, 3);
-    const mapped = withMapping(sheet, { name: headers[2] });
-    assert.equal(mappingOf(mapped, [{ key: 'name', label: 'Name' }]).name, headers[2]);
+    const mapped = withMapping(sheet, { eid: headers[2] });
+    assert.equal(mappingOf(mapped, [{ key: 'eid', label: 'Employee ID' }]).eid, headers[2]);
   });
 });
