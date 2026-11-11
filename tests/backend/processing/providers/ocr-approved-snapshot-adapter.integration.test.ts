@@ -312,7 +312,7 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
     for (const run of all) {
       assert.equal(run.envelope.dryRun, true);
       const stored = f.database.authority.runResults.get(run.envelope.runId); assert.ok(stored);
-      assert.equal(readRunPreviewResult(stored) !== undefined, ["emergency-contact", "emergency-contact-member"].includes(run.envelope.workflow));
+      assert.equal(readRunPreviewResult(stored) !== undefined, ["emergency-contact", "emergency-contact-member", "onbase"].includes(run.envelope.workflow), run.envelope.workflow);
       assert.deepEqual(f.database.authority.writeIntents.listByRun(run.envelope.runId), []);
       assert.deepEqual(f.database.authority.writeIntents.countDryRunEvidenceByRun(run.envelope.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
     }
@@ -326,7 +326,9 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
     assert.ok(port.actions.indexOf("demote-primary:0") < port.actions.indexOf("fill-fields:1"));
     assert.ok(port.actions.indexOf("fill-fields:1") < port.actions.indexOf("fill-name:1"));
     const pair = captures.get(member.envelope.runId); assert.ok(pair && pair.length >= 2);
-    const original = pair[0], final = pair.at(-1); assert.ok(original && final);
+    const stagedAt = pair.findLastIndex(page => page.observation === "staged"), original = pair[0], final = pair[stagedAt]; assert.ok(original && final);
+    // The member's re-entry after its OnBase child opens a fresh session on the unsaved page.
+    assert.ok(pair.slice(stagedAt + 1).every(page => page.observation === "persisted" && page.rows[0]?.primary === true));
     assert.equal(original.observation, "persisted"); assert.equal(original.rows[0]?.primary, true);
     assert.equal(final.observation, "staged"); assert.equal(final.rows[0]?.primary, false);
     const primaries = interpretContactPage(final, approvedEmergencyContact(input.record)).rows.filter(row => row.kind === "contact" && row.effect.primary);
