@@ -190,7 +190,7 @@ describe("failureStatus", () => {
 
   it("classifies a detector timeout ahead of the prepare refusal wrapper", async () => {
     const timeout = new PreflightRunnerTimeoutError(PreflightCheckIdSchema.parse("config.valid"), 1_000);
-    const expected = { status: 409, body: { state: "error", code: "PREFLIGHT_TIMEOUT", message: ERROR_CATALOG.PREFLIGHT_TIMEOUT.text, retryable: false } };
+    const expected = { status: 409, body: { state: "error", code: "PREFLIGHT_TIMEOUT", message: `${ERROR_CATALOG.PREFLIGHT_TIMEOUT.text} (config.valid)`, retryable: false } };
     const wrapped = (cause: unknown) => new PreflightAdmissionRefusal("unavailable", "Preflight detectors could not verify readiness.", { cause });
     assert.deepEqual(failureStatus(timeout), expected);
     assert.deepEqual(failureStatus(new Error("outer", { cause: timeout })), expected);

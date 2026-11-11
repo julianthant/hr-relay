@@ -10,9 +10,9 @@ import {
   doctorAuthorityStorage,
   StorageDoctorObservationChangedError,
   StorageDoctorOptionsSchema,
+  type StorageReadinessReport,
 } from "./storage-doctor.js";
 
-import type { StorageDoctorReport } from "./recovery-contracts.js";
 import type { AuthorityImageOwner } from "./readonly-authority-snapshot.js";
 
 export class AuthorityHealthPreflightRunner implements PreflightRunner {
@@ -33,10 +33,10 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
   }
 
   async run(context: PreflightRunnerContext) {
-    let report: StorageDoctorReport;
+    let report: StorageReadinessReport;
     try {
       if (context.signal.aborted) throw new Error("authority.health preflight was aborted before inspection");
-      report = await doctorAuthorityStorage(this.#admission, this.#options, this.#clock, this.#credentials, this.#owner);
+      report = await doctorAuthorityStorage(this.#admission, this.#options, this.#clock, this.#credentials, this.#owner, true);
       if (context.signal.aborted) throw new Error("authority.health preflight was aborted during inspection");
     } catch (error) {
       if (error instanceof StorageDoctorObservationChangedError) throw new PreflightObservationChangedError({ cause: error });
@@ -54,13 +54,10 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
     if (report.authority.state === "healthy"
       && report.spanAuthority.state === "reconciled"
       && report.protectedSettings.state === "available" && upgradeSettled) {
-      const backupState = report.backup.state === "current" || report.backup.state === "stale"
-        ? `${report.backup.state} verified backup at generation ${String(report.backup.latest.authorityGeneration)}`
-        : `backup ${report.backup.state}`;
       return PreflightObservationSchema.parse({
         check: this.check,
         state: "healthy",
-        summary: `authority schema ${String(report.authority.inspection.schemaVersion)}, ${backupState}, `
+        summary: `authority schema ${String(report.authority.inspection.schemaVersion)} `
           + `and ${String(report.spanAuthority.streamRunCount)} span run(s) are reconciled`
           + ` (${String(report.spanAuthority.archived.length)} archived, ${String(report.spanAuthority.deleted.length)} deleted); ${protectedSummary}; ${upgradeSummary}`,
       });
@@ -74,7 +71,7 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
     return PreflightObservationSchema.parse({
       check: this.check,
       state: "unhealthy",
-      summary: `${authorityState}; backup state is ${report.backup.state}; span authority is ${spanState}; ${protectedSummary}; ${upgradeSummary}`,
+      summary: `${authorityState}; span authority is ${spanState}; ${protectedSummary}; ${upgradeSummary}`,
       impact: "authority mutations remain blocked until storage health and exact span authority reconcile",
     });
   }
