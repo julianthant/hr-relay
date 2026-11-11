@@ -624,7 +624,6 @@ for (const child of [true, false]) for (const changed of [false, true]) it(`R-${
       ctx.recordData({ direction: "read", field: "eid", value: eid });
       if (input.memo === "source") hooks.onSource?.();
       else if (input.memo !== "check") hooks.onMapped?.();
-      if (input.memo === "skipped") hooks.onMapped?.();
       return { eid };
     } });
     const writes = buildWriteFixtureRegistry(world);
