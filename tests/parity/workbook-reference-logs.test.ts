@@ -51,7 +51,6 @@ for (const theme of ['light', 'dark'] as const) for (const width of [1024, 1440]
         await page.goto(`${server.baseUrl}/?fixture=picked-a&day=${day.day}&run=${row.runId}&view=${encodeURIComponent(JSON.stringify({ workflow: row.workflowId, preview: null }))}`);
         const logs = page.getByRole('region', { name: 'Run logs', exact: true });
         await expect(logs).toBeVisible();
-        await page.getByRole('button', { name: 'Close assistant', exact: true }).click();
         const decision = logs.locator('[data-decision-state]');
         await expect(decision).toHaveCount(1);
         await expect(page.getByText('Write parked', { exact: true })).toHaveCount(0);
@@ -81,9 +80,9 @@ for (const theme of ['light', 'dark'] as const) for (const width of [1024, 1440]
           await expect(next).toBeDisabled(); await expect(radios.nth(1)).toBeDisabled();
           await expect(page.getByRole('dialog')).toHaveCount(0);
           // The shell paints recovery on its next render after publish; capture that settled state.
-          const recovery = page.getByRole('region', { name: 'Commands awaiting recovery' });
+          const recovery = page.getByRole('status').filter({ hasText: ': outcome unknown' });
           await expect(recovery).toBeVisible();
-          await expect(recovery.getByRole('button', { name: 'Review resolve-workbook-reference-row (1 run)', exact: true })).toBeVisible();
+          await expect(recovery.getByText('1 run', { exact: true })).toBeVisible();
           await capturePresentationReference(page, info, 'uncertain', day.descriptorHash);
           expect(writes).toHaveLength(1);
         }

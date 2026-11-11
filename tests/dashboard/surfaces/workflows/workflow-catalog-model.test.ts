@@ -183,7 +183,7 @@ describe_m1("frontend workflow catalog", () => {
     const future = { ...served[0], workflowId: "new-workflow", label: "New workflow", categoryId: "Payroll", code: "NW" };
     const renamed = { ...served[0], label: "Registered name" };
     const entries = buildWorkflowCatalog_m1([renamed, served[1], future], true, servedFixtureSources_m1([renamed, served[1], future]));
-    expect_m1(entries).toHaveLength(14);
+    expect_m1(entries).toHaveLength(13);
     expect_m1(new Set(entries.map(entry => entry.id)).size).toBe(entries.length);
     expect_m1(entries.find(entry => entry.id === renamed.workflowId)).toMatchObject({ label: "Registered name", source: "served", launch: { state: "served" }, served: renamed });
     expect_m1(entries.find(entry => entry.id === future.workflowId)).toMatchObject({ label: future.label, code: "NW", launch: { state: "served" }, served: future });
@@ -203,14 +203,15 @@ describe_m1("frontend workflow catalog", () => {
     expect_m1(picker.match(/disabled=""/gu) ?? []).toHaveLength(0);
     expect_m1(picker).not.toContain("Started by a parent workflow.");
   });
-  it_m1("keeps hidden OCR and I-9 Lookup out of the catalog and leaves SharePoint Download parent-only", () => {
+  it_m1("keeps hidden OCR and I-9 Lookup and removed SharePoint Download out of the catalog", () => {
     expect_m1(WORKFLOW_SOURCES_m1.ocr).toBe("hidden");
     expect_m1(catalog.find(entry => entry.id === "ocr")).toBeUndefined();
     expect_m1(WORKFLOW_SOURCES_m1["i9-lookup"]).toBe("hidden");
     expect_m1(catalog.find(entry => entry.id === "i9-lookup")).toBeUndefined();
+    expect_m1(catalog.find(entry => entry.id === "sharepoint-download")).toBeUndefined();
     const hiddenOcr = { ...served[0], workflowId: "ocr", label: "OCR" };
     expect_m1(buildWorkflowCatalog_m1([hiddenOcr, ...served], true, { ...servedFixtureSources_m1(served), ocr: "hidden" }).some(entry => entry.id === "ocr")).toBe(false);
-    expect_m1(catalog.filter(entry => entry.launch.state === "unavailable").map(entry => entry.id).sort()).toEqual(["sharepoint-download"]);
+    expect_m1(catalog.filter(entry => entry.launch.state === "unavailable").map(entry => entry.id).sort()).toEqual([]);
   });
   it_m1("boots the product catalog from public definitions without exposing or disabling the I-9 PDF parent", () => {
     const publicStarts = WORKFLOW_MODULES.map(({ descriptor, role }) => ({

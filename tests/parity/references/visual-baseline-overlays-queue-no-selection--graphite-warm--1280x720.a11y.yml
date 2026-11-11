@@ -10,8 +10,9 @@
   - /url: "#dashboard-main-region"
 - complementary "Workspace":
   - heading "Relay" [level=2]
+  - button "Collapse sidebar" [expanded]
   - button "Notifications, 3 unread"
-  - button "Search runs"
+  - button "Search"
   - navigation "Workflows":
     - heading "Search" [level=3]
     - list:
@@ -46,9 +47,7 @@
     - heading "Utils" [level=3]
     - list:
       - listitem:
-        - button "CRM Doc Download"
-      - listitem:
-        - button "SharePoint Download"
+        - button "Onboarding Documents"
     - heading "OnBase" [level=3]
     - list:
       - listitem:
@@ -93,7 +92,7 @@
       - text: 9:20 AM
       - button "Attempts for Rehire eligibility sweep": "#1"
       - text: PL33065442 45m 0s
-      - button "Cancel group"
+      - button "Stop all 1"
     - button "EID 10555001 — failed":
       - text: EID 10555001 Failed 9:33 AM
       - button "Attempts for EID 10555001": "#1"
@@ -126,7 +125,7 @@
       - text: 9:30 AM
       - button "Attempts for Weekly HDH roster check (1)": "#1"
       - text: PL20000427 35m 0s
-      - button "Cancel group"
+      - button "Stop all 1"
     - button "New-hire lookups — batch 3 — running":
       - text: New-hire lookups — batch 3 Running 1/3
       - table "Members of New-hire lookups — batch 3":
@@ -150,7 +149,7 @@
       - text: 9:28 AM
       - button "Attempts for New-hire lookups — batch 3": "#1"
       - text: PL22034266 37m 0s
-      - button "Cancel group"
+      - button "Stop all 2"
     - text: Queued 2
     - button "EID 10873698 — queued":
       - text: EID 10873698 dry run Queued 9:57 AM
@@ -312,7 +311,7 @@
       - button "Delete run"
   - region "Action panel":
     - group "Action panel controls":
-      - button "Start a run"
+      - button "Start run"
       - button "Filter queue by status": Status
       - combobox "Sort the queue": Newest first
       - button "Attention first" [pressed]
@@ -325,37 +324,6 @@
         - spinbutton "year, Dashboard date*": "2026"
         - button "Choose date Dashboard date*"
   - text: No run open Select a run from the queue to open its logs.
-- region "Assistant panel":
-  - region "Relay assistant":
-    - button "Update Alex Rivera work email"
-    - button "Chats"
-    - button "New chat"
-    - button "Close assistant"
-    - log "Assistant conversation":
-      - text: Update Alex Rivera’s work email. I found the record. Review the change before I save it.
-      - article "Save to UCPath":
-        - heading "Save to UCPath" [level=3]
-        - term: Person
-        - definition: Alex Rivera
-        - term: Work email
-        - definition:
-          - strong: alex.rivera@example.edu
-        - text: Ready to save
-        - button "Not now"
-        - button "Approve"
-      - status: ChatGPT is unavailable. Open Settings to review your account.
-    - group "Message composer":
-      - text: Message Relay
-      - textbox "Message Relay" [disabled]:
-        - /placeholder: Ask Relay…
-      - group "Message controls":
-        - button "Add files" [disabled]
-        - button "Ask before every action" [disabled]
-        - 'button "Model: GPT-6.1 Sol" [disabled]': GPT-6.1 Sol
-        - 'button "Thinking effort: Medium" [disabled]': Medium
-        - button "Voice input" [disabled]
-        - button "Send message" [disabled]
-- button "Assistant" [expanded]
 - status
 - region "Session Panel":
   - group "Session actions":
@@ -363,4 +331,5 @@
     - button "Add workers"
     - button "Settings"
     - button "Log out"
+    - button "Assistant": Ask
 - region "Notifications"

@@ -10,7 +10,7 @@ import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { FIXTURE_DAY } from './helpers/fixture-identity.js';
 import { FIXTURE_DAY_WIRE } from './helpers/fixture-queue.js';
 import { startRunRerunServer } from './helpers/run-rerun-server.js';
-import { gotoAppState } from './helpers/app-driver.js';
+import { gotoAppState, installServedSurfaces } from './helpers/app-driver.js';
 import { absentProbeEvidence } from '../support/fixtures/write-sequencer-fixtures.js';
 import { CommandRequestSchema } from '../../src/rules/commands/commands.js';
 
@@ -28,6 +28,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     ] } : row) } });
     let parityBodyFailure: { error: unknown } | undefined;
   try {
+      await installServedSurfaces(page);
       const writes: string[] = [], errors: string[] = [];
       const commands: unknown[] = [];
       page.on('request', request => {
@@ -40,14 +41,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const bar = page.getByRole('group', { name: 'Action panel controls', exact: true });
-      const start = bar.getByRole('button', { name: 'Start a run', exact: true });
+      const start = bar.getByRole('button', { name: 'Start run', exact: true });
       const status = bar.getByRole('button', { name: 'Filter queue by status', exact: true });
       const sort = bar.getByRole('combobox', { name: 'Sort the queue', exact: true });
       await expect(bar).toBeVisible();
       await expect(page.getByRole('button', { name: /^Workflow Panel/ })).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: 'Workflows', exact: true })).toBeVisible();
       const bounds = await Promise.all([start, status, sort].map(control => control.boundingBox()));
-      expect(bounds.every(bound => bound?.height === 32)).toBe(true);
+      expect(bounds.every(bound => bound?.height === 28)).toBe(true);
       expect(bounds[0]!.x + bounds[0]!.width).toBeLessThan(bounds[1]!.x);
       expect(bounds[1]!.x + bounds[1]!.width).toBeLessThan(bounds[2]!.x);
       await expect(bar.getByRole('button', { name: /^(Select|Done|Clear)$/ })).toHaveCount(0);
@@ -84,7 +85,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(writes).toEqual([]);
 
       await start.click();
-      const run = page.getByRole('dialog', { name: 'Start a run', exact: true });
+      const run = page.getByRole('dialog', { name: 'Start run', exact: true });
       await expect(run.getByRole('heading', { name: 'Run input', exact: true })).toBeVisible();
       await expect(run.getByText('Examples', { exact: true })).toHaveCount(0);
       await expect(run.getByRole('button', { name: 'One EID', exact: true })).toHaveCount(0);

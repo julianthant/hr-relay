@@ -24,7 +24,6 @@ async function witness(page: Page, info: TestInfo, name: string) {
 async function mountedLogs(page: Page, info: TestInfo, baseUrl: string, theme: (typeof PARITY_THEMES)[number]) {
   for (const scenario of previewScenarios) {
     await page.goto(`${baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}&logPreview=${scenario.id}`);
-    await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
     await expect(logs).toBeVisible();
     if (["empty", "waiting", "failed"].includes(scenario.id)) await attachPresentationReference(page, info, `logs-${scenario.id}-${theme.attribute}.png`);
@@ -36,7 +35,6 @@ async function mountedLogs(page: Page, info: TestInfo, baseUrl: string, theme: (
       await page.goto(`${baseUrl}/?day=${FIXTURE_DAY}`);
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: flow.label, exact: true }).click();
     }
-    await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     await expect(page.getByRole("region", { name: "Queue", exact: true })).toBeVisible();
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
     await expect(logs).toBeVisible();
@@ -45,7 +43,7 @@ async function mountedLogs(page: Page, info: TestInfo, baseUrl: string, theme: (
     await attachPresentationReference(page, info, `workflow-queue-logs-${workflowReferenceId(flow.id)}.png`);
     if (["oath-signature", "oath-upload", "emergency-contact", "i9-check-start", "onbase"].includes(flow.id)) {
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
-      await expect(logs.getByRole("region", { name: "OCR records", exact: true })).toBeVisible();
+      await expect(page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true })).toBeVisible();
       await attachPresentationReference(page, info, `workflow-records-${workflowReferenceId(flow.id)}.png`);
     }
   }
@@ -104,7 +102,7 @@ for (const theme of PARITY_THEMES) {
     let release!: () => void;
     const pending = new Promise<void>(resolve => { release = resolve; });
     try {
-      await page.setViewportSize({ width: 1280, height: 720 }); await installTheme(page, theme);
+      await page.setViewportSize({ width: 1280, height: 720 }); await installTheme(page, theme); await installFrozenMonotonic(page);
       await page.route(`**/api/v1/intake/${FIXTURE_INTAKE_IDS.mapping}`, async route => { await pending; await route.fulfill({ status: 503, json: { error: "fixture-intake-unavailable" } }); });
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&intake=${FIXTURE_INTAKE_IDS.mapping}`);
       await expect(page.getByRole("region", { name: "Spreadsheet intake" })).toBeVisible();

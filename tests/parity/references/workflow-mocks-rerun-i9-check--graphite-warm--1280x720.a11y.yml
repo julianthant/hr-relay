@@ -16,52 +16,54 @@
     - listitem:
       - button "1 Steps": Steps
     - listitem:
-      - button "2 Values" [disabled]: Values
+      - button "2 Values": Values
     - listitem:
       - button "3 Options" [disabled]: Options
-    - listitem:
-      - button "4 Confirm" [disabled]: Confirm
-  - heading "Choose what to run again" [level=3]
-  - text: 5 / 6 included
+  - heading "Steps" [level=3]
+  - text: 5 of 6 included
   - paragraph: Select steps for the new run. Statuses show the source outcome.
   - region "Steps":
-    - heading "Steps" [level=4]
-    - list:
-      - listitem:
-        - checkbox "Read I-9 forms" [checked]
-        - text: Read I-9 forms OCR Completed
-      - listitem: Match extracted people Automatic Completed
-      - listitem: Review extracted records Approval required Not started
-      - listitem:
-        - checkbox "Match person in UCPath"
-        - text: Match person in UCPath UCPath Not started
-        - group "Manual values for Match person in UCPath":
-          - paragraph: Enter the values this step would read. Use “None” for an absent value. These values are operator supplied.
-          - text: Employee
-          - textbox "Employee": Jordan Lee
-          - text: Section 1 page
-          - textbox "Section 1 page": None
-          - text: Section 2 page
-          - textbox "Section 2 page": None
-          - text: Hire date from I-9
-          - textbox "Hire date from I-9":
-            - /placeholder: MM/DD/YYYY
-            - text: 10/06/2026
-          - text: Matched Employee ID
-          - textbox "Matched Employee ID": "10000001"
-          - text: Candidates
-          - textbox "Candidates": None
-          - text: Found in UCPath
-          - combobox "Found in UCPath": "Yes"
-      - listitem:
-        - checkbox "Read employment dates" [checked]
-        - text: Read employment dates UCPath Not started
-      - listitem:
-        - checkbox "Append retention tracker row" [checked] [disabled]
-        - text: Append retention tracker row Form action · required Not started
-        - checkbox "Enter reading values manually for append retention tracker row"
-        - text: Enter reading values manually for append retention tracker row
+    - region "Steps":
+      - text: Read I-9 forms OCR Completed
+      - switch "Include Read I-9 forms" [checked]
+      - text: Include Read I-9 forms
+      - img "Required"
+      - text: Match extracted people Automatic Completed
+      - switch "Match extracted people (required)" [checked] [disabled]
+      - text: Match extracted people (required)
+      - img "Required"
+      - text: Review extracted records Approval required Not started
+      - switch "Review extracted records (required)" [checked] [disabled]
+      - text: Review extracted records (required) Match person in UCPath UCPath Not started
+      - switch "Include Match person in UCPath"
+      - text: Include Match person in UCPath
+      - group "Manual values for Match person in UCPath":
+        - text: Employee
+        - textbox "Employee": Jordan Lee
+        - text: Section 1 page
+        - textbox "Section 1 page": None
+        - text: Section 2 page
+        - textbox "Section 2 page": None
+        - text: Hire date from I-9
+        - textbox "Hire date from I-9":
+          - /placeholder: MM/DD/YYYY
+          - text: 10/06/2026
+        - text: Matched Employee ID
+        - textbox "Matched Employee ID": "10000001"
+        - text: Candidates
+        - textbox "Candidates": None
+        - text: Found in UCPath
+        - combobox "Found in UCPath": "Yes"
+      - text: Read employment dates UCPath Not started
+      - switch "Include Read employment dates" [checked]
+      - text: Include Read employment dates
+      - img "Required"
+      - text: Append retention tracker row Form action · required Not started
+      - switch "Enter manually for Append retention tracker row"
+      - text: Enter manually for Append retention tracker row
+      - switch "Append retention tracker row (required)" [checked] [disabled]
+      - text: Append retention tracker row (required)
   - contentinfo:
-    - text: Source run · new runI-9 Check
+    - text: I-9 Check5 of 6 stepsOCR onPriority Enter to continue
     - button "Cancel"
     - button "Continue"

@@ -156,7 +156,8 @@ it("refuses the same PDF bytes under another filename without replacing the acce
   await attach([pdf("renamed.pdf", "%PDF same content")]);
   expect(dialog.text()).toContain("PDF selection refused");
   expect(dialog.text()).toContain("original.pdf");
-  expect(document.querySelector('[aria-label="Selected PDFs"]')?.textContent).not.toContain("renamed.pdf");
+  expect(document.querySelector('[aria-label="Remove original.pdf"]')).not.toBeNull();
+  expect(document.querySelector('[aria-label="Remove renamed.pdf"]')).toBeNull();
   expect(dialog.disabled("Continue")).toBe(true);
 });
 

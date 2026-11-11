@@ -12,6 +12,5 @@
   "onbase": "mock",
   "i9-check-start": "served",
   "crm-doc-download": "mock",
-  "sharepoint-download": "mock",
   "old-kronos-reports": "mock"
 }

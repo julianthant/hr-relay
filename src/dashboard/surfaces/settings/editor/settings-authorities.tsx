@@ -42,7 +42,7 @@ function CredentialsSection({ editor, profileName }: { editor: Editor; profileNa
     setRemoval(null);
   };
   return <div className="settings-compact-page settings-credentials-page">
-    <PageHeading title="Credentials" description="Sign-in details and protected workflow configuration." />
+    <PageHeading title="Account" description="Sign-in details and protected workflow configuration." />
     {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current values unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
     {authority.state === "unknown" && <Notice sticky tone="warning" title="Credentials unavailable" description="Reopen Settings to try again." />}
     <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />

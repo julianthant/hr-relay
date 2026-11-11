@@ -38,7 +38,13 @@ Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} di
 Reflect.set(globalThis, "requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0));
 Reflect.set(globalThis, "cancelAnimationFrame", clearTimeout);
 let root: Root | undefined;
+Element.prototype.scrollIntoView = () => {}; // jsdom lacks it; the search palette list needs it
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); localStorage.clear(); vi.restoreAllMocks(); window.history.replaceState(null, "", "/"); });
+function rowAction(host: HTMLElement, title: string, label: string): HTMLButtonElement {
+  const row = [...host.querySelectorAll<HTMLElement>("li.notification-row")].find(item => item.querySelector(".notification-item-title")?.textContent === title); assert(row, title);
+  const found = row.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`); assert(found, label); return found;
+}
+
 async function mount(missing = false, mixed = false) {
   const sources: WorkflowSourcePolicy = mixed ? { ...mockProductSources(), "person-lookup": "served" } : mockProductSources();
   const { app } = createFixtureBff();
@@ -61,7 +67,7 @@ async function mount(missing = false, mixed = false) {
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(sources) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert(bell);
   await act(async () => { bell.click(); await new Promise(resolve => setTimeout(resolve, 10)); });
-  const targetButton = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Open log"); assert(targetButton);
+  const targetButton = document.querySelector<HTMLButtonElement>("button.notification-item"); assert(targetButton);
   await act(async () => { targetButton.click(); await new Promise(resolve => setTimeout(resolve, 30)); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
   return { host, reads, sources };
@@ -131,22 +137,22 @@ it("mounts served inbox controls and reports only the served search authority to
   const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 1 unread"]'); assert(bell);
   await act(async () => bell.click());
   assert(host.textContent?.includes("Storage degraded")); assert.equal(host.textContent?.includes("Canonical history"), false);
-  const read = host.querySelector<HTMLButtonElement>('button[aria-label="Mark read: Storage degraded"]'); assert(read);
+  const read = rowAction(host, "Storage degraded", "Mark as read");
   await act(async () => { read.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
   assert.equal(writes.length, 1); assert(host.querySelector('button[aria-label="Notifications, 0 unread"]'));
   assert.equal(queries.length, 0);
-  const search = host.querySelector<HTMLButtonElement>('button[aria-label="Search runs"]'); assert(search);
+  const search = host.querySelector<HTMLButtonElement>('button[aria-label="Search"]'); assert(search);
   await act(async () => { search.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
   assert.equal(queries.length, 1); assert(document.body.textContent?.includes("Exact served subject"));
-  assert([...document.querySelectorAll('[role="status"]')].some(node => node.textContent === "1 run"));
-  const query = document.querySelector<HTMLInputElement>('input[aria-label="Search runs"]'); assert(query);
+  assert.equal([...document.querySelectorAll(".search-palette-row")].filter(row => row.textContent?.includes("Exact served subject")).length, 1);
+  const query = document.querySelector<HTMLInputElement>('input[aria-label="Search Relay"]'); assert(query);
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(query, "local-operator");
     query.dispatchEvent(new Event("input", { bubbles: true }));
     await new Promise(resolve => setTimeout(resolve, 20));
   });
   assert(queries.includes("local-operator"));
-  assert(document.body.textContent?.includes("Exact served subject"));
+  await vi.waitFor(() => assert(document.body.textContent?.includes("Exact served subject")));
 });
 
 it("admits a canonical Separations historical target while Person Lookup is served and Separations stays mock", async () => {
@@ -194,7 +200,7 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(mockProductSources()) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 1 unread"]'); assert(bell);
   await act(async () => bell.click());
-  const open = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Open log"); assert(open);
+  const open = host.querySelector<HTMLButtonElement>("button.notification-item"); assert(open);
   await act(async () => { open.click(); await new Promise(resolve => setTimeout(resolve, 30)); });
   assert.equal(new URLSearchParams(location.search).get("day"), FIXTURE_DAY_WIRE.day);
   assert.equal(writes, 1); assert.deepEqual(days, ["2026-08-02", FIXTURE_DAY_WIRE.day]);
@@ -203,7 +209,6 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   await act(async () => { commit(); await new Promise(resolve => setTimeout(resolve, 30)); });
   assert(inboxReads > before, "settlement must read current destination authority");
   assert(host.querySelector('button[aria-label="Notifications, 0 unread"]'));
-  await act(async () => bell.click());
-  assert(host.querySelector('button[aria-label="Mark unread: Delayed read"]'));
+  assert(rowAction(host, "Delayed read", "Mark as unread"));
   assert.equal(writes, 1);
 });

@@ -18,13 +18,10 @@
       - text: Personal
       - link "General":
         - /url: "?settings=general"
-      - link "Credentials":
-        - /url: "?settings=credentials"
-      - text: Advanced
-      - link "Paths":
-        - /url: "?settings=paths"
-      - link "Routes":
-        - /url: "?settings=routes"
+      - link "Account":
+        - /url: "?settings=account"
+      - link "Subscription":
+        - /url: "?settings=subscription"
       - text: Data
       - link "Spreadsheets":
         - /url: "?settings=spreadsheets"
@@ -32,21 +29,16 @@
         - /url: "?settings=explorer"
       - link "Analytics":
         - /url: "?settings=activity"
-      - text: Status
-      - link "Storage":
-        - /url: "?settings=storage"
-      - link "Preflight":
-        - /url: "?settings=preflight"
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
     - region "Workflow explorer preview":
       - heading "Explorer" [level=1]
       - paragraph: Browse workflows, their steps and field sources.
-      - combobox "Explorer workflow": CRM Doc Download
+      - combobox "Explorer workflow": Onboarding Documents
       - list "Workflow steps":
         - listitem:
-          - heading "CRM Doc Download" [level=2]
+          - heading "Onboarding Documents" [level=2]
           - text: You
           - paragraph: Finds a person's onboarding record in CRM and downloads the iDocs attached to it. CRM is read-only throughout — every change this workflow makes is to a local folder — so there is nothing a rehearsal would stop short of.
           - text: CRM search result
@@ -101,10 +93,4 @@
             - strong: Archive output
             - text: Read PDFs 2 Folder Jordan Lee Archive ZIP Jordan-Lee-documents.zip
 - status
-- region "Session Panel":
-  - group "Session actions":
-    - button "Sessions 2 running·1 starting·1 idle"
-    - button "Add workers"
-    - button "Settings" [pressed]
-    - button "Log out"
 - region "Notifications"

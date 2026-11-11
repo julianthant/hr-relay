@@ -63,8 +63,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
       const palette = theme.attribute === "dark"
-        ? { canvas: "rgb(24, 24, 24)", panel: "rgb(34, 34, 34)", table: "rgb(43, 43, 43)" }
-        : { canvas: "rgb(250, 250, 250)", panel: "rgb(255, 255, 255)", table: "rgb(244, 244, 244)" };
+        ? { canvas: "rgb(15, 15, 17)", panel: "rgb(24, 24, 27)", table: "rgb(31, 31, 35)" }
+        : { canvas: "rgb(249, 249, 249)", panel: "rgb(253, 253, 253)", table: "rgb(246, 246, 246)" };
       const writes: string[] = [];
       page.on("request", request => { if (request.method() !== "GET") writes.push(request.method() + " " + new URL(request.url()).pathname); });
       for (const [name, path] of [
@@ -92,18 +92,22 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         } else if (name === "settings") {
           expect(await paintedBackground(page.getByRole("region", { name: "Settings", exact: true }))).toBe(palette.canvas);
         }
-        const sessions = page.getByRole("region", { name: "Session Panel", exact: true });
-        await page.getByRole("button", { name: /^Sessions\b/ }).click();
-        const strip = sessions.locator("[data-session-strip]");
-        await expect(strip.locator("..")).toHaveCSS("background-color", palette.canvas);
-        await expect(sessions.getByRole("article").first()).toHaveCSS("background-color", palette.panel);
-        await expect(sessions.getByRole("listitem").first()).toHaveCSS("background-color", palette.table);
-        await checkAliases(sessions);
+        if (name === "logs") {
+          const sessions = page.getByRole("region", { name: "Session Panel", exact: true });
+          await page.getByRole("button", { name: /^Sessions\b/ }).click();
+          await expect(sessions).toHaveCSS("background-color", palette.panel);
+          const fill = (node: Locator) => node.evaluate(element => getComputedStyle(element).backgroundColor);
+          const cardFill = await fill(sessions.getByRole("article").first());
+          expect(cardFill).not.toBe(palette.panel);
+          expect(await fill(sessions.getByRole("listitem").first())).not.toBe(cardFill);
+          await checkAliases(sessions);
+        } else await expect(page.getByRole("region", { name: "Session Panel", exact: true })).toHaveCount(0);
         await page.mouse.move(0, 0);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
         await attachTree(page.locator("body"), `palette-${name}-${theme.attribute}-${width}.a11y.yml`);
       }
+      await page.goto(server.baseUrl + `/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}`);
       const add = page.getByRole("region", { name: "Session Panel", exact: true }).getByRole("button", { name: "Add workers", exact: true });
       await add.click();
       const dialog = page.getByRole("dialog", { name: "Add workers", exact: true });

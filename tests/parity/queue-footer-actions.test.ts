@@ -41,6 +41,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920])
           expect(metadata.height).toBe(24);
           expect(await footer.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
           for (const fact of await metadataRow.locator(":scope > *").all()) {
+            if (!await fact.isVisible()) { expect(page.viewportSize()!.width).toBeLessThan(1100); continue; }
             const box = (await fact.boundingBox())!;
             expect(Math.abs(box.y + box.height / 2 - metadata.y - metadata.height / 2)).toBeLessThanOrEqual(1);
             expect(box.x).toBeGreaterThanOrEqual(metadata.x);
@@ -70,7 +71,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920])
         for (const resizedWidth of [1100, 1215, 1216, 1217, 1366, 1439, 1440, 1920, 1024]) {
           await page.setViewportSize({ width: resizedWidth, height: 900 });
           await checkFooters();
-          expect((await page.locator('.dashboard-queue-column').boundingBox())!.width).toBeGreaterThanOrEqual(376);
+          expect((await page.locator('.dashboard-queue-column').boundingBox())!.width).toBe(resizedWidth < 1100 ? 336 : 360);
           expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         }
         await page.setViewportSize({ width: 900, height: 600 });
