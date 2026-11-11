@@ -22,7 +22,7 @@ import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run
 import { reconcileExitedWorker } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
+import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH, type SettingsPatch } from "../../../../src/models/config/settings.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { RunResultRecordSchema, terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
@@ -42,7 +42,7 @@ function terminal(run: RunRecord, outcome: "cancelled" | "done" | "failed"): voi
   assert.equal(run.lifecycle.outcome, outcome);
 }
 
-async function fixture(policy: "cascade" | "independent", unawaited = false, continuation = false, stores = plan1Stores) {
+async function fixture(policy: "cascade" | "independent", unawaited = false, continuation = false, stores = plan1Stores, observeExecution?: (run: RunRecord) => void) {
   const { root: compiled, modules } = continuation ? { root: childContinuationRoot, modules: childContinuationModules }
     : unawaited ? childUnawaitedModules(policy) : childPolicyModules(policy);
   bindWorkflowDelegationTargets(modules.map(module => module.descriptor));
@@ -61,14 +61,60 @@ async function fixture(policy: "cascade" | "independent", unawaited = false, con
     requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { expectedRevision: 1 },
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
   }).state, "applied");
-  const execution = canonicalChildExecution(h.deps, database, path, id => modules.find(module => module.descriptor.id === id)?.descriptor);
+  const applySettings = (patch: SettingsPatch) => {
+    const active = database.authority.runtimeConfig.get(); assert.ok(active);
+    const result = executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
+      settings: createSettingsApplicationExecutor(settings => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock),
+        createCredentialStore({ stateRoot })) }, {
+      commandId: randomUUID(), family: "settings", type: "apply-settings", source: "person-preferences",
+      requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { expectedRevision: active.settingsRevision },
+      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
+    });
+    assert.equal(result.state, "applied", JSON.stringify(result));
+    const changed = database.authority.runtimeConfig.get(); assert.ok(changed);
+    assert.equal(changed.settingsRevision, active.settingsRevision + 1);
+    assert.notEqual(changed.configSnapshotId, active.configSnapshotId);
+    return changed;
+  };
+  const execution = canonicalChildExecution(h.deps, database, path, id => modules.find(module => module.descriptor.id === id)?.descriptor,
+    undefined, { resources: (_reader, run) => { observeExecution?.(run); return {}; } });
   const root = execution.start(compiled.descriptor, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
   const currentRoot = () => { const run = database.authority.runs.get(root.envelope.runId); assert.ok(run); return run; };
   const child = () => { const children = database.authority.runs.listChildren(root.envelope.runId); assert.equal(children.length, 1); assert.ok(children[0]); return children[0]; };
   const cancel = () => CommandRequestSchema.parse({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard",
     requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { runId: root.envelope.runId, expectedVersion: currentRoot().version } });
-  return { ...h.authority, deps: h.deps, execution, root, currentRoot, child, cancel, modules };
+  return { ...h.authority, deps: h.deps, execution, root, currentRoot, child, cancel, modules, applySettings };
 }
+
+it("keeps the exact parent snapshot after a real apply-settings workflow selection save rotates the active UUID", async () => {
+  let saves = 0;
+  const f = await fixture("cascade", false, false, plan1Stores, run => {
+    if (saves > 0) return;
+    assert.equal(run.lifecycle.state, "running");
+    assert.equal(run.envelope.runId, f.root.envelope.runId);
+    const active = f.applySettings({ "preferences.selectedWorkflowId": { set: f.root.envelope.workflow } });
+    assert.equal(active.configFingerprint, run.envelope.configFingerprint);
+    assert.notEqual(active.configSnapshotId, run.envelope.configSnapshotId);
+    saves++;
+  });
+  const pinned = f.root.envelope;
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
+  assert.equal(saves, 1);
+  const child = f.child();
+  const invocations = f.database.authority.lifecycleJournal.listDelegationInvocations(pinned.runId);
+  assert.equal(invocations.length, 1);
+  for (const identity of [f.currentRoot().envelope, child.envelope, ...invocations]) {
+    assert.equal(identity.configSnapshotId, pinned.configSnapshotId);
+    assert.equal(identity.configFingerprint, pinned.configFingerprint);
+  }
+  assert.equal(f.database.authority.failures.listByRun(pinned.runId).length, 0);
+  for (const runId of [pinned.runId, child.envelope.runId]) {
+    assert.equal(f.database.authority.writeIntents.listByRun(runId).length, 0);
+  }
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "done");
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "done");
+  terminal(f.currentRoot(), "done");
+});
 
 /** The parent's OS exit event: its claimed runs settle while the in-process execution still holds the old claim. */
 function exitWorker(f: Awaited<ReturnType<typeof fixture>>, workerId: string): void {
