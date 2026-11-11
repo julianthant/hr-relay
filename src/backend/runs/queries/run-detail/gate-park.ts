@@ -34,7 +34,7 @@ import { findGateDecision } from "../../../../models/trust/gate-decisions.js";
 import type { RunRecord } from "../../../../models/run/record.js";
 import type { RunFoldRecord } from "../../projections/run-queue-projection.js";
 import { deterministicUuid } from "../../lifecycle/support.js";
-import { directIdentifierDisplay, idempotencyKeyDigestReference } from "../../../../rules/redaction/redaction.js";
+import { idempotencyKeyDigestReference, maskedEid } from "../../../../rules/redaction/redaction.js";
 import { SectionUnavailableError } from "../../commands/refusals.js";
 import type { RunDetailQueryDeps } from "../run-detail-types.js";
 import { correctionStartRequest } from "./receipts-failures.js";
@@ -143,7 +143,7 @@ export function hireReviewDecision(match: z.infer<typeof SearchPersonMatchOutput
       title: "Confirmed UCPath matches",
       columns: [{ id: "name", label: "Name" }, { id: "eid", label: "Employee ID" }],
       rows: confirmed.map(person => ({ id: person.emplId, name: person.name, eid: person.emplId, cells: [
-        { columnId: "name", value: person.name }, { columnId: "eid", value: `••••${directIdentifierDisplay(person.emplId.slice(-4))}` },
+        { columnId: "name", value: person.name }, { columnId: "eid", value: maskedEid(person.emplId) },
       ] })),
     } } }];
     return [];
@@ -322,7 +322,6 @@ function identityGateRef(runId: string, gateId: string, version: number, evidenc
 }
 /** Keyed by the unserved evidence digest: a served ref plus the served last four digits must not recover the Employee ID. */
 const identityOptionRef = (evidenceDigest: string, eid: string): string => deriveStableUuid("identity-gate-option", canonicalJsonStringify([evidenceDigest, eid]));
-const maskedEid = (eid: string): string => `••••${directIdentifierDisplay(eid.slice(-4))}`;
 
 function readIdentityGate(
   deps: RunDetailQueryDeps,
@@ -489,9 +488,10 @@ function identityGateCorrection(deps: RunDetailQueryDeps, authority: RunRecord, 
 function identityReviewReason(packet: IdentityEvidencePacket, candidates: number): string {
   const { reason } = IDENTITY_REVIEW_TEXT;
   if (candidates > 1) return reason["several-people"];
+  if (packet.emplIdSource === "operator-entered") return reason["eid-entered"];
   const first = packet.comparisons.find(({ agrees }) => !agrees);
   if (first === undefined) return reason.agreed;
-  if (first.field === "eid") return packet.emplIdSource === "operator-entered" ? reason["eid-entered"] : reason.eid;
+  if (first.field === "eid") return reason.eid;
   return reason[first.field];
 }
 
@@ -505,7 +505,7 @@ function identityComparisons(packet: IdentityEvidencePacket): readonly Readonly<
     employment: [value.oneActiveJob, jobs.disposition === "single-active-job" ? value.oneActiveJob
       : jobs.disposition === "no-active-job" ? value.noActiveJob
         : jobs.disposition === "concurrent-active-jobs" ? `${String(jobs.activeRowCount)} active jobs` : value.unknownJob],
-    "name-search": [packet.documentName, nameSearch.status === "resolved" ? `${nameSearch.candidate.name} · ••••${directIdentifierDisplay(nameSearch.candidate.eid.slice(-4))}`
+    "name-search": [packet.documentName, nameSearch.status === "resolved" ? `${nameSearch.candidate.name} · ${maskedEid(nameSearch.candidate.eid)}`
       : nameSearch.status === "ambiguous" ? `${String(nameSearch.candidateEids.length)} people` : value.noMatch],
   };
   return packet.comparisons.map(({ field, agrees }) => ({ label: label[field], request: cells[field][0], ucpath: cells[field][1], agrees }));

@@ -713,11 +713,12 @@ describe("the typed Employee ID lookup served with the Separations pick-person g
   });
 
   it.each([
-    { search: "matches the entered ID", searchEid: undefined },
-    { search: "resolves an old candidate", searchEid: SEARCH_EID },
-  ])("serves the replacement run's park with one option, Approve and Reject, and no typed row when the name search $search", async ({ searchEid }) => {
+    { search: "matches the entered ID", searchEid: undefined, ucpathName: undefined },
+    { search: "resolves an old candidate", searchEid: SEARCH_EID, ucpathName: undefined },
+    { search: "matches the entered ID, whose UCPath name differs from the form", searchEid: undefined, ucpathName: "Okafor, Adaeze" },
+  ])("serves the replacement run's park with one option, Approve and Reject, and no typed row when the name search $search", async ({ searchEid, ucpathName }) => {
     const typed = "10800002";
-    const packet = packetOf({ eid: typed, source: "operator-entered", ...(searchEid === undefined ? {} : { searchEid }) });
+    const packet = packetOf({ eid: typed, source: "operator-entered", ...(searchEid === undefined ? {} : { searchEid }), ...(ucpathName === undefined ? {} : { ucpathName }) });
     const { value } = await separationsWorld(packet);
     assert.deepEqual(packet.approvableEids, [typed]);
     if (searchEid !== undefined) {
