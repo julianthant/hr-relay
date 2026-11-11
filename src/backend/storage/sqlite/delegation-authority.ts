@@ -54,6 +54,8 @@ function memoizedProof<Proof>(proofs: MemoizedProofs<Proof>, manifest: Delegatio
   return cached !== undefined && cached.manifest === canonicalJsonStringify(manifest) ? cached.proof : undefined;
 }
 
+export const memoizedDelegationGroup = (memo: DelegationAuthenticationMemo, manifest: DelegationManifest) => memoizedProof(memo.groups, manifest);
+
 export function authenticateOriginalDelegationGroup(repositories: AuthorityRepositories, manifest: DelegationManifest, scopePath = new Set<string>()): OriginalDelegationProof {
   return authenticateOriginalGroup(repositories,manifest,scopePath,newDelegationAuthenticationMemo());
 }

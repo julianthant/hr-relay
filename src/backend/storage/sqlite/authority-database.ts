@@ -120,7 +120,7 @@ import { assertWorkflowRunResultAuthorization,workflowDelegationAccounting,descr
 import { assertCredentialCopyResourcesClosed, assertLogoutResourcesClosed } from "../maintenance/profile-custody.js";
 import type { VerifiedBackup } from "./backup-service.js";
 import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegationRefresh } from "./delegation-refresh.js";
-import { newDelegationAuthenticationMemo,type DelegationAuthenticationMemo,currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,retainedDelegationManifests } from "./delegation-authority.js";
+import { newDelegationAuthenticationMemo,type DelegationAuthenticationMemo,currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,memoizedDelegationGroup,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,retainedDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
@@ -4569,7 +4569,8 @@ export class AuthorityDatabase implements Disposable {
   #readDelegationGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup> {
     const memo = this.#operationDelegationReads()?.memo;
     // The memo shares proofs between authentications, so each caller gets its own copy.
-    return memo === undefined ? authenticateDelegationGroup(this.authority, manifest) : structuredClone(authenticateDelegationGroup(this.authority, manifest, new Set(), memo));
+    if (memo === undefined) return authenticateDelegationGroup(this.authority, manifest);
+    return structuredClone(memoizedDelegationGroup(memo, manifest) ?? authenticateDelegationGroup(this.authority, manifest, new Set(), memo));
   }
 
   // Any row change, trigger rows included, advances total_changes() and drops every cached read; a savepoint rollback drops them too.
