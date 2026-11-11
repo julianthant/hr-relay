@@ -532,7 +532,8 @@ A gate result or ordinary Rerun cannot substitute for write resolution.
 Every read entry explicitly declares `replay: "checkpoint"` or `"always-rerun"`.
 The executor validates and replays checkpoint ancestors. Ordinary execution runs `always-rerun`
 ancestors again; an authenticated Pause/Resume or failed-run continuation reuses their completed
-checkpoints after the same schema, fingerprint, provenance and freshness checks. Replay restores values, never browser
+checkpoints after the same schema, fingerprint, provenance and freshness checks. A completed `always-rerun` checkpoint
+that fails the freshness check toward a transaction the continuation does not retain is run again. Replay restores values, never browser
 page state. Transactions recover through permanent write authority, not a read replay flag.
 
 ### 5.4 Entry validation
@@ -556,6 +557,8 @@ whose policy is `override: "audited"`. A forbidden override refuses. Correcting 
 refresh untouched live facts. Gate decisions are separate upstream evidence and cannot make an
 older observed input fresh.
 A gate decision ages only `checkpoint` dependencies; an `always-rerun` dependency is read again when the run resumes.
+A stale fact of a `checkpoint` task refuses the run. A stale fact of an `always-rerun` task makes the executor run that
+task again, so the refusal is never reported for it.
 
 ### 5.6 Recovery and Rerun
 
