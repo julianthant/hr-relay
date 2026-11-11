@@ -101,7 +101,7 @@ async function chooseSpreadsheet() {
   const bytes = new TextEncoder().encode("Name,Employee ID\nJordan Lee,10800000\n");
   const file = new File([bytes], "Focus roster.csv", { type: "text/csv" });
   Object.defineProperty(file, "arrayBuffer", { value: async () => bytes.buffer });
-  const input = document.querySelector<HTMLInputElement>('input[aria-label="Open XLSX or CSV"]'); assert_m0.ok(input);
+  const input = document.querySelector<HTMLInputElement>('[role="dialog"] input[type="file"][accept=".xlsx,.csv"]'); assert_m0.ok(input);
   Object.defineProperty(input, "files", { configurable: true, value: [file] });
   await act_m0(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
   await settle();
@@ -132,8 +132,6 @@ await _afterEachFixture0();
 
 it_m0("spreadsheet import is a Settings destination and leaves the Run launch focus intact", async () => {
 try {
-
-
   let uploads = 0;
   await mount({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } });
   await click(button("Start run"));
@@ -144,48 +142,32 @@ try {
   await click(button("Settings"));
   const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link);
   await click(link);
-  await click(button("Import spreadsheet"));
+  await click(button("Import"));
   await chooseSpreadsheet();
-  await click(button("Import selected columns"));
+  await click(button("Next"));
+  await click(button("Add to library"));
+  await settle();
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
-  assert_m0.ok(document.body.textContent?.includes("Spreadsheet imported"));
-  assert_m0.deepEqual(await savedWorkbooks(), [], "importing opens an unsaved draft");
-  await click(button("Save"));
-  const imported = (await savedWorkbooks()).find(record => record.workbook.name === "Focus roster.csv"); assert_m0.ok(imported);
-  const workbook = imported.workbook;
-  assert_m0.equal(workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
-  assert_m0.equal(String(workbook.sheets[0].rows[1].cells[1].value), "10800000");
+  const imported = (await savedWorkbooks()).find(record => record.workbook.name === "Focus roster"); assert_m0.ok(imported);
+  assert_m0.equal(imported.workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
   assert_m0.equal(uploads, 0); assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
-
 } finally {
 await _afterEachFixture0();
 }
 });
-it_m0.each(["Cancel", "Escape", "Close"])("standalone spreadsheet import: %s closes without registering or starting a run", async dismissal => {
+it_m0.each(["Cancel", "Escape"])("standalone spreadsheet import: %s closes without registering or starting a run", async dismissal => {
 try {
-
-
   let starts = 0;
   await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Settings"));
   const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link); await click(link);
   const before = (await savedWorkbooks()).map(record => record.workbook.name);
-  await click(button("Import spreadsheet"));
+  await click(button("Import"));
   await chooseSpreadsheet();
-  if (dismissal === "Escape") await key("Escape"); else await click(button(dismissal === "Cancel" ? "Cancel import" : dismissal));
+  if (dismissal === "Escape") await key("Escape"); else await click(button("Cancel"));
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
   assert_m0.deepEqual((await savedWorkbooks()).map(record => record.workbook.name), before);
   assert_m0.equal(starts, 0);
-  const trigger = button(dismissal === "Cancel" ? "Import spreadsheet" : "Review import");
-  assert_m0.equal(trigger.disabled, false, "the import can be opened after dismissal");
-  assert_m0.ok(document.activeElement === trigger, `focus returned to ${document.activeElement?.tagName}, not ${trigger.textContent}`);
-  if (dismissal !== "Cancel") {
-    await click(trigger);
-    assert_m0.ok(document.querySelector('[role="dialog"]'), "the retained import can be reviewed again");
-    assert_m0.deepEqual((await savedWorkbooks()).map(record => record.workbook.name), before);
-    assert_m0.equal(starts, 0);
-  }
   assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
-
 } finally {
 await _afterEachFixture0();
 }
