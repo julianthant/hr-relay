@@ -281,11 +281,15 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
     const statusLabel = status === "failed" ? "Failed" : status === "blocked" ? "Blocked" : status === "cancelled" ? "Cancelled"
       : terminal?.state === "satisfied" ? terminal.kind === "preview" ? "Previewed" : !exactDescriptor ? "Done" : readOnly ? "Verified" : "Saved"
       : !exactDescriptor ? "Running" : readOnly ? "Looking up" : child.envelope.dryRun ? "Previewing" : "Saving";
+    const stuck = repositories.dependencies.groups(child.envelope.runId).flatMap(({ group }) => group.children).map(nested =>
+      ({ nested, status: deriveRunStatus({ ...nested.child,delegationWait: repositories.dependencies.waitState(nested.child.envelope.runId) }) }))
+      .find(entry => entry.status === "failed" || entry.status === "blocked");
+    const focus = stuck?.nested.child ?? child, focusStatus = stuck?.status ?? status;
     return { ...row, status: status === "done" || status === "failed" || status === "blocked" || status === "cancelled" ? status : "running", statusLabel,
-      childRunIds: [...new Set([...row.childRunIds,...member.history])],
-      target: { runId: child.envelope.runId, workflowId: child.envelope.workflow,
-        partitionDay: LocalDateSchema.parse(localDatePart(new Date(child.envelope.enqueuedAt))), label: descriptor?.label ?? child.envelope.workflow,
-        status, panelKind: panelKindOf(child.envelope.shape, false), section: "logs" } };
+      childRunIds: [...new Set([...row.childRunIds,...member.history,...stuck?.nested.history ?? []])],
+      target: { runId: focus.envelope.runId, workflowId: focus.envelope.workflow,
+        partitionDay: LocalDateSchema.parse(localDatePart(new Date(focus.envelope.enqueuedAt))), label: resolve(focus.envelope.workflow)?.label ?? focus.envelope.workflow,
+        status: focusStatus, panelKind: panelKindOf(focus.envelope.shape, false), section: "logs" } };
   }) });
 }
 
