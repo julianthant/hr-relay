@@ -464,7 +464,7 @@ it("still refuses a stale checkpoint-policy fact when a paused run resumes befor
   assert.deepEqual(f.intents(), []);
 });
 
-const mappedRead = defineTaskContract({ id: taskId("ocr/map-source-record"), title: "Map source record", effect: "read",
+const mappedRead = defineTaskContract({ id: taskId("ocr/read-source-mapping"), title: "Read source mapping", effect: "read",
   input: sourceBoundReadContract.input, output: sourceBoundReadContract.output, errorCodes: sourceBoundReadContract.errorCodes,
   subject: sourceBoundReadContract.subject, scenarios: sourceBoundReadContract.scenarios, freshness: sourceBoundReadContract.freshness,
   provenance: sourceBoundReadContract.provenance, example: sourceBoundReadContract.example });
