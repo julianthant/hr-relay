@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { closeDraft, editMapping, importWorkbook, pendingImportName } from './sheets-v2-writes.js';
 import { PageHeading, SearchInput, useToasts } from '../../../ds/ui.js';
 import { useSpreadsheetWiringAdapter, type LibraryChangeResult } from '../../../state/spreadsheet-wiring-adapter.js';
 import { decodeEditableWorkbook } from '../../../../models/dashboard/workbooks.js';
@@ -6,7 +7,7 @@ import type { WorkbookLibraryAction } from '../../../../models/dashboard/workboo
 import type { EditableWorkbook } from '../../../../rules/spreadsheets/workbook-io.js';
 import { saveSpreadsheetDownload, spreadsheetDownload } from '../spreadsheet-chat-registration-model.js';
 import { TagFilter } from './sheets-v2-tagfilter.js';
-import { fieldsOf, newestFirst, sheetOf, tableOf, tagsOf, withMapping, workflowTags } from './sheets-v2-model.js';
+import { fieldsOf, newestFirst, sheetOf, tableOf, tagsOf, workflowTags } from './sheets-v2-model.js';
 import { SheetDialog, type DialogKind } from './sheets-v2-dialogs.js';
 import { SheetDetail } from './sheets-v2-detail.js';
 import { ImportDialog } from './sheets-v2-import.js';
@@ -54,31 +55,29 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     else setDialog({ kind: action, id });
   };
   const rows: RowActions = { open: setOpenId, version: id => setDialog({ kind: 'rollback', id }), menu, logs: sheet => { if (sheet.run) onOpenRun?.(sheet.run.id, sheet.run.day); } };
-  const queue = useRef<Promise<unknown>>(Promise.resolve());
-  const edits = useRef(0);
-  const back = () => { const id = openId; setOpenId(undefined); if (id) void queue.current.then(() => adapter.close(id)); };
-  const saveMapping = (worksheet: string, patch: Record<string, string | null>) => {
-    const id = openId, current = id ? adapter.draft(id)?.document : undefined;
-    if (!id || !current) return;
-    adapter.change(id, { ...current, sheets: current.sheets.map(item => item.id === worksheet ? withMapping(item, patch) : item) }, true);
-    const mine = ++edits.current;
-    // Saves run one at a time and each sends the newest draft, so a quick second edit is never dropped.
-    queue.current = queue.current.then(async () => {
-      const latest = adapter.draft(id)?.document;
-      if (!latest) return;
-      const result = await adapter.save(id, latest);
-      if (result.state !== 'confirmed' && mine === edits.current) toast({ tone: 'danger', title: "Couldn't save the columns", description: result.reason });
+  const warned = useRef(false);
+  const back = () => {
+    const id = openId;
+    if (!id) return;
+    void closeDraft(adapter, id, warned.current).then(closed => {
+      if (closed) { warned.current = false; setOpenId(undefined); return; }
+      warned.current = true;
+      toast({ tone: 'danger', title: "Your column changes aren't saved", description: 'Change a column to try again, or choose Back again to discard them.' });
     });
   };
-  // A retried import resumes the original save instead of creating a second workbook.
-  const importAttempt = useRef<{ key: string; document: string } | undefined>(undefined);
+  const saveMapping = (worksheet: string, patch: Record<string, string | null>) => {
+    if (!openId) return;
+    warned.current = false;
+    void editMapping(adapter, openId, worksheet, patch).then(({ result, latest }) => {
+      if (result && result.state !== 'confirmed' && latest) toast({ tone: 'danger', title: "Couldn't save the columns", description: result.reason });
+    });
+  };
   const add = async (document: EditableWorkbook) => {
-    const text = JSON.stringify(document), held = importAttempt.current?.document === text ? importAttempt.current.key : undefined;
-    const key = held ?? adapter.create(document), result = await adapter.save(key, document);
-    if (result.state === 'confirmed') { importAttempt.current = undefined; toast({ tone: 'success', title: `Added ${document.name}` }); return true; }
-    if (result.state === 'uncertain') importAttempt.current = { key, document: text };
-    else { importAttempt.current = undefined; adapter.close(key); }
-    toast({ tone: 'danger', title: "Couldn't add the spreadsheet", description: result.reason }); return false;
+    const outcome = await importWorkbook(adapter, document);
+    if (outcome.state === 'added') { toast({ tone: 'success', title: `Added ${outcome.name}` }); return true; }
+    toast({ tone: 'danger', title: outcome.state === 'pending' ? `Still confirming ${pendingImportName(adapter)}` : "Couldn't add the spreadsheet",
+      description: outcome.state === 'pending' ? 'Choose Add to library again to check it. It is not added twice.' : outcome.reason });
+    return false;
   };
   const checkPending = async (id: string) => {
     const result = await adapter.settleLibrary(id);
