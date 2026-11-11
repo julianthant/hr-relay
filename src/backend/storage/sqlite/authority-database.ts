@@ -120,7 +120,7 @@ import { assertWorkflowRunResultAuthorization,workflowDelegationAccounting,descr
 import { assertCredentialCopyResourcesClosed, assertLogoutResourcesClosed } from "../maintenance/profile-custody.js";
 import type { VerifiedBackup } from "./backup-service.js";
 import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegationRefresh } from "./delegation-refresh.js";
-import { currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,retainedDelegationManifests } from "./delegation-authority.js";
+import { newDelegationAuthenticationMemo,type DelegationAuthenticationMemo,currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,retainedDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
@@ -202,7 +202,7 @@ export const DiagnosticPurgeDispositionSchema = z.enum(["purged", "absent"]);
 
 /** Delegation reads one locked operation reuses: group proofs and invocation commands. */
 type DelegationOperationReads = {
-  groups: Map<string, { manifest: string; group: ReturnType<typeof authenticateDelegationGroup> }>;
+  memo: DelegationAuthenticationMemo;
   invocations: Map<string, readonly z.infer<typeof RunLifecycleCommandRecordSchema>[]>;
 };
 
@@ -288,7 +288,7 @@ type SettingsCurrentRepository = Readonly<{
 
 
 type DependencyRepository = Readonly<{
-  authenticateGroup(manifest: DelegationManifest, scopePath?: Set<string>): ReturnType<typeof authenticateDelegationGroup>;
+  authenticateGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup>;
   parents(envelopes: readonly RunRecord["envelope"][]): ReturnType<typeof readQueueParents>;
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof DependencyRecordSchema>>;
   get(dependencyId: string): z.infer<typeof DependencyRecordSchema> | undefined;
@@ -4088,7 +4088,7 @@ export class AuthorityDatabase implements Disposable {
 
   #assertCurrentExecution(runId: string, claim: z.infer<typeof RunClaimTokenSchema>): void {
     const previous = this.#delegationReadSnapshot;
-    this.#delegationReadSnapshot ??= { waits: new Map(), groups: new Map(), invocations: new Map() };
+    this.#delegationReadSnapshot ??= { waits: new Map(), memo: newDelegationAuthenticationMemo(), invocations: new Map() };
     try {
       this.#admission.assertProfileRuntime();
       const run = this.#readRunRow(runId), held = run === undefined ? undefined : runClaim(run);
@@ -4566,17 +4566,10 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #readDelegationGroup(manifest: DelegationManifest, scopePath = new Set<string>()): ReturnType<typeof authenticateDelegationGroup> {
-    if (scopePath.has(manifest.manifestId)) throw new Error("delegation-scope-cycle");
-    const groups = this.#operationDelegationReads()?.groups;
-    const fingerprint = groups === undefined ? undefined : canonicalJsonStringify(manifest);
-    const cached = groups?.get(manifest.manifestId);
-    if (cached !== undefined && cached.manifest === fingerprint) return structuredClone(cached.group);
-    const group = authenticateDelegationGroup(this.authority, manifest, scopePath);
-    // Store only when authenticating changed no row (the map is still the current one).
-    const current = this.#operationDelegationReads()?.groups;
-    if (groups !== undefined && fingerprint !== undefined && groups === current) groups.set(manifest.manifestId, { manifest: fingerprint, group: structuredClone(group) });
-    return group;
+  #readDelegationGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup> {
+    const memo = this.#operationDelegationReads()?.memo;
+    // The memo shares proofs between authentications, so each caller gets its own copy.
+    return memo === undefined ? authenticateDelegationGroup(this.authority, manifest) : structuredClone(authenticateDelegationGroup(this.authority, manifest, new Set(), memo));
   }
 
   // Any row change, trigger rows included, advances total_changes() and drops every cached read; a savepoint rollback drops them too.
@@ -4584,7 +4577,7 @@ export class AuthorityDatabase implements Disposable {
     if (this.#delegationReadSnapshot !== undefined) return this.#delegationReadSnapshot;
     if (this.#transactionDepth === 0 || this.#transactionMode === "read") return undefined;
     const changes = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare("SELECT total_changes() AS count").get()).count;
-    if (this.#transactionDelegationReads?.changes !== changes) this.#transactionDelegationReads = { changes, groups: new Map(), invocations: new Map() };
+    if (this.#transactionDelegationReads?.changes !== changes) this.#transactionDelegationReads = { changes, memo: newDelegationAuthenticationMemo(), invocations: new Map() };
     return this.#transactionDelegationReads;
   }
 
@@ -4607,7 +4600,7 @@ export class AuthorityDatabase implements Disposable {
       this.#database.exec("BEGIN");
       this.#transactionDepth = 1;
       this.#transactionMode = "read";
-      this.#delegationReadSnapshot = { waits: new Map(), groups: new Map(), invocations: new Map() };
+      this.#delegationReadSnapshot = { waits: new Map(), memo: newDelegationAuthenticationMemo(), invocations: new Map() };
       this.#authorityDirty = false;
       try {
         const result = read();
@@ -5514,7 +5507,7 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       dependencies: Object.freeze({
-        authenticateGroup: (manifest: DelegationManifest, scopePath?: Set<string>) => this.#readDelegationGroup(manifest, scopePath),
+        authenticateGroup: (manifest: DelegationManifest) => this.#readDelegationGroup(manifest),
         parents: (envelopes: readonly RunRecord["envelope"][]) => readQueueParents(this.authority, envelopes),
         groups: (parentRunId: string, selection: "current" | "retained" = "current") => {
           const parent = this.authority.runs.get(parentRunId);

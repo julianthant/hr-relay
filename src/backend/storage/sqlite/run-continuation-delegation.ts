@@ -1,4 +1,4 @@
-import { type authenticateDelegationGroup, childTerminalSettlement, delegationCancellationAvailability, currentDelegationManifests, readDelegationScopeEvidence } from "./delegation-authority.js";
+import { authenticateDelegationGroup, childTerminalSettlement, delegationCancellationAvailability, currentDelegationManifests, readDelegationScopeEvidence } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema } from "./delegation-contracts.js";
 import { DelegationTerminalEvidenceSchema } from "../../../models/run/result.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
@@ -14,7 +14,7 @@ export function continuationDelegationGroups(repositories: AuthorityRepositories
   for (const source of [...validateRunContinuation(repositories, envelope)].reverse()) {
     if (source.envelope.runId === envelope.runId) continue;
     for (const manifest of currentDelegationManifests(repositories, source.envelope.runId)) {
-      const group = repositories.dependencies.authenticateGroup(manifest);
+      const group = authenticateDelegationGroup(repositories, manifest);
       const key = `${group.invocation.nodeId}/${manifest.edgeId}`;
       const previous = groups.get(key);
       if (previous !== undefined && previous.manifest.manifestId !== manifest.manifestId) throw new RunContinuationRefusedError("run-continuation-delegation-ambiguous");
@@ -46,7 +46,7 @@ export class AuthenticatedRunContinuation {
   dependency(nodeId: string, edgeId: string, historical = false) {
     const own = currentDelegationManifests(this.repositories, this.envelope.runId)
       .filter(manifest => manifest.edgeId === edgeId)
-      .map(manifest => ({ manifest, group: this.repositories.dependencies.authenticateGroup(manifest) }))
+      .map(manifest => ({ manifest, group: authenticateDelegationGroup(this.repositories, manifest) }))
       .filter(({ group }) => group.invocation.nodeId === nodeId);
     if (own.length > 1) throw new RunContinuationRefusedError("run-continuation-delegation-ambiguous");
     const retained = own.length > 0 ? own : continuationDelegationGroups(this.repositories, this.envelope)
