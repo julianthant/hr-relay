@@ -757,6 +757,10 @@ export async function executeClaimedRun(
 
     // An explicit start node requires every ancestor to resolve without executing it.
     let ancestorRegionOpen = canonicalInput !== undefined;
+    const publicationRegion = new Set<string>();
+    if (envelope.dryRun) for (const node of nodes) {
+      if (node.kind === "task" && node.dryRun === "stop-before-publish" || node.dependsOn.some(id => publicationRegion.has(String(id)))) publicationRegion.add(String(node.id));
+    }
     for (const [index, node] of nodes.entries()) {
 
       if (omissionPlan.omitted.has(String(node.id))) {
@@ -773,6 +777,11 @@ export async function executeClaimedRun(
           ? ownRecord
           : undefined;
         plan.set(String(node.id), replay === undefined ? { mode: "asserted" } : { mode: "asserted", replay });
+        continue;
+      }
+      // A dry run re-derives a publication boundary and everything behind it; stored state never stands in.
+      if (publicationRegion.has(String(node.id))) {
+        plan.set(String(node.id), { mode: "execute" });
         continue;
       }
       const retainedAccounting = accounting?.plan.retain.includes(String(node.id)) === true;
@@ -792,12 +801,6 @@ export async function executeClaimedRun(
         continue;
       }
       if (node.kind === "task") {
-        if (envelope.dryRun && node.dryRun === "stop-before-publish") {
-          // A dry run previews its publication; it never replays a saved one or anything after it.
-          ancestorRegionOpen = false;
-          plan.set(String(node.id), { mode: "execute" });
-          continue;
-        }
         if (node.replay === "always-rerun" && (envelope.continuation === undefined || retainedAccounting || memberRetry !== undefined)) {
           // NEVER consult loadCheckpoint for an always-rerun node (§5.3).
           plan.set(String(node.id), { mode: "execute" });

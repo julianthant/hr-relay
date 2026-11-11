@@ -350,10 +350,13 @@ whose contract declares at least one provider. A graph may prepare locally, stop
 publication or delegate preparation to a registered descendant; `firstTransactionNodeId`,
 `firstPublicationNodeId` or `firstDelegationNodeId` names the first boundary in node order. An
 unsupported transaction in the graph or its descendants refuses preview. A standalone graph with no
-boundary refuses as `no-transaction-node`. In a graph with a publication boundary, every artifact
-projection source must depend on a boundary, so a dry run never reaches a sink. `supportsDryRun` on
-the input-run and upload-run surfaces is derived and cannot be authored. A dry-run plan carries no
-planned outputs.
+boundary refuses as `no-transaction-node`. In a graph that supports preview, every artifact
+projection source must depend on a boundary with no `when` condition, and the executor fails a dry
+run at any projection source, so a dry run never reaches a sink. In a dry run, a publication
+boundary and every node that depends on it are always re-derived: the boundary is previewed again
+and its dependents are unavailable. A stored checkpoint, gate result or child result never stands in
+for them, on a fresh start, a resume, a retry or a recovery. `supportsDryRun` on the input-run and
+upload-run surfaces is derived and cannot be authored. A dry-run plan carries no planned outputs.
 
 A delegated child with no transaction inherits `dryRun: true` and executes its normal read-only
 graph, including its gates and nested delegation. It returns the normal typed observational result
