@@ -330,6 +330,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       refreshAccount: async () => { assertCurrent(); const result = await chatGptAccount.refreshAccount(); assertCurrent(); return result; },
       signIn: async fields => { assertCurrent(); const result = await chatGptAccount.signIn(fields); assertCurrent(); return result; },
       signOut: async () => { assertCurrent(); const result = await chatGptAccount.signOut(); assertCurrent(); return result; },
+      forgetAccount: async () => { assertCurrent(); const result = await chatGptAccount.forgetAccount(); assertCurrent(); return result; },
     },
     notifications: composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget }),
     ...(staticBundle === undefined ? {} : { staticBundle }),

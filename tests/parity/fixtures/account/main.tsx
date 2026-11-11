@@ -56,6 +56,7 @@ const port: ChatGptAccountPort = {
   getSnapshot: () => snapshot,
   subscribe: () => () => {},
   signIn: action,
+  forgetAccount: action,
   signOut: action,
   cancelSignIn: action,
 };
