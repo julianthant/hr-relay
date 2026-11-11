@@ -1,4 +1,5 @@
 import { expect } from "@playwright/test";
+import { mkdirSync } from "node:fs";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installServedSurfaces } from "./helpers/app-driver.js";
@@ -7,7 +8,7 @@ import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js"
 import { chatGptStatusFixture } from "../support/helpers/chatgpt-status-fixture.js";
 
 for (const theme of ["dark", "light"] as const) {
-  test(`Settings General, Account and Subscription render the approved pages on served data ${theme}`, async ({ page }, testInfo) => {
+  test(`Settings General, Account and Subscription render the approved pages on served data ${theme}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width: 1280, height: 720 });
@@ -21,7 +22,7 @@ for (const theme of ["dark", "light"] as const) {
         state: "connected", name: "Fixture Operator", email: "operator@example.edu", expiresAt: "2099-10-19T00:00:00Z", planUsage: "enabled",
       }) }));
       await installServedSurfaces(page);
-      const shot = async (name: string) => { await testInfo.attach(`${name}-${theme}.png`, { body: await page.screenshot(), contentType: "image/png" }); };
+      const shot = async (name: string) => { mkdirSync("tests/parity/.output/settings-served-preview", { recursive: true }); await page.screenshot({ path: `tests/parity/.output/settings-served-preview/${name}-${theme}.png` }); };
 
       await page.goto(`${server.baseUrl}/?settings=general`);
       await expect(page.getByRole("heading", { name: "General", exact: true, level: 1 })).toBeVisible();
