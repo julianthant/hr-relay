@@ -12,6 +12,7 @@ export interface ChatGptAccountQueries {
   completeChatGptSignIn(attemptId: string, signal?: AbortSignal): Promise<z.infer<typeof ChatGptSignInCompletionSchema>>;
   cancelChatGptSignIn(attemptId: string, signal?: AbortSignal): Promise<z.infer<typeof ChatGptCancelResultSchema>>;
   testChatGptOcr(signal?: AbortSignal): Promise<z.infer<typeof ChatGptOcrTestResultSchema>>;
+  forgetChatGptAccount(): Promise<z.infer<typeof ChatGptSignOutResultSchema>>;
   signOutChatGpt(): Promise<z.infer<typeof ChatGptSignOutResultSchema>>;
 }
 export function createChatGptAccountQueries(transport: DashboardTransport): ChatGptAccountQueries {
@@ -42,6 +43,11 @@ export function createChatGptAccountQueries(transport: DashboardTransport): Chat
     },
     async signOutChatGpt() {
       const path = "/api/v1/settings/chatgpt-account/sign-out";
+      return parseOrThrow(ChatGptSignOutResultSchema, `POST ${path}`, await transport.requestJson(path,
+        { method: "POST", body: JSON.stringify(ChatGptEmptyRequestSchema.parse({})) }));
+    },
+    async forgetChatGptAccount() {
+      const path = "/api/v1/settings/chatgpt-account/forget-account";
       return parseOrThrow(ChatGptSignOutResultSchema, `POST ${path}`, await transport.requestJson(path,
         { method: "POST", body: JSON.stringify(ChatGptEmptyRequestSchema.parse({})) }));
     },

@@ -9,7 +9,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
   const contextPort = useContext(ChatGptAccountContext);
   const port = override ?? contextPort;
   const account = useChatGptAccount(port);
-  const [pending, setPending] = useState<"sign-in" | "sign-out" | "cancel">();
+  const [pending, setPending] = useState<"sign-in" | "sign-out" | "forget" | "cancel">();
   const [error, setError] = useState<string>();
   const mounted = useRef(false);
   const locked = useRef(false);
@@ -31,7 +31,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
       setPending(undefined);
     }
   }, [account.state]);
-  const perform = async (action: "sign-in" | "sign-out" | "cancel") => {
+  const perform = async (action: "sign-in" | "sign-out" | "forget" | "cancel") => {
     if (locked.current) return;
     locked.current = true;
     const request = ++actionEpoch.current;
@@ -42,6 +42,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
     try {
       if (action === "sign-in") await port.signIn({ usePlan: true });
       else if (action === "cancel") await port.cancelSignIn();
+      else if (action === "forget") await port.forgetAccount();
       else await port.signOut();
     } catch {
       if (mounted.current && request === actionEpoch.current) setError(action === "cancel"
@@ -66,6 +67,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
   const description = connected ? <><span className="block break-all">{displayed.email}</span>{plan !== "enabled" && <span className="block">{plan === "limit-reached" ? "Usage limit reached" : "ChatGPT plan access not enabled"}</span>}</>
     : signingIn ? "Waiting for you to finish signing in in your browser"
       : signInExpired ? "Your sign-in attempt expired. Sign in to try again."
+        : displayed.state === "signed-out" && displayed.account !== undefined ? `Signs in as ${displayed.account.email}.`
         : displayed.state === "expired" ? "Your ChatGPT session expired. Reconnect to continue." : "Not connected. Connect your ChatGPT account to Relay.";
   return <BodySection title="ChatGPT account">
       {account.state === "unavailable" && <Notice sticky tone="warning" title="ChatGPT account unavailable" description={account.message} />}
@@ -81,6 +83,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
             </>}
             {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : displayed.state === "expired" ? "Reconnect" : "Connect ChatGPT"}</Button>}
             {(connected || displayed.state === "expired") && <Button variant="ghost" disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => { void perform("sign-out"); }}>Disconnect</Button>}
+            {(connected || displayed.state === "expired" || displayed.state === "signed-out" && displayed.account !== undefined) && <Button variant="ghost" disabled={pending !== undefined} loading={pending === "forget"} onClick={() => { void perform("forget"); }}>Use a different account</Button>}
           </div>} />}
     </div></FormGroup>
   </BodySection>;

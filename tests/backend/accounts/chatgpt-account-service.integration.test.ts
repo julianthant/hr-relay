@@ -68,7 +68,7 @@ it("signout revokes then clears tokens and retains issued client and host for re
   } finally { await f.cleanup(); }
 });
 it("local signout is confirmed separately from unconfirmed revocation", async () => {
-  const f = await chatGptFixture(); try { await f.connected(); f.setRevocation(503); assert.deepEqual(await f.service.signOut(), { state: "signed-out", remoteRevocation: "unconfirmed" }); assert.deepEqual(f.service.readAccount(), { state: "signed-out" }); } finally { await f.cleanup(); }
+  const f = await chatGptFixture(); try { await f.connected(); f.setRevocation(503); assert.deepEqual(await f.service.signOut(), { state: "signed-out", remoteRevocation: "unconfirmed" }); assert.deepEqual(f.service.readAccount(), { state: "signed-out", account: { email: "synthetic@example.com" } }); } finally { await f.cleanup(); }
 });
 it("returning sign-in rejects changed callback client and signed subject", async () => {
   const f = await chatGptFixture(); try {
@@ -253,7 +253,7 @@ it("signout drains actual graceful stream cancellation before clearing credentia
     release.resolve(); await rejected; await signingOut;
     assert.equal(signedOut, true);
     assert.equal(cancelCalls, 1); assert.equal(releaseCalls, 1);
-    assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+    assert.deepEqual(f.service.readAccount(), { state: "signed-out", account: { email: "synthetic@example.com" } });
   } finally {
     release.resolve();
     try { await signingOut; }
@@ -275,14 +275,14 @@ it("signout drains an aborted refresh before clearing the renewable session", as
     let entered: () => void = () => { throw new Error("not started"); }; const started = new Promise<void>(resolve => { entered = resolve; });
     f.setTokenHook(async () => { entered(); await new Promise<void>(() => undefined); });
     const running = f.service.extractText(image), rejected = assert.rejects(running, { code: "CHATGPT_OCR_CANCELLED" }); await started;
-    assert.deepEqual(await f.service.signOut(), { state: "signed-out", remoteRevocation: "confirmed" }); await rejected; assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+    assert.deepEqual(await f.service.signOut(), { state: "signed-out", remoteRevocation: "confirmed" }); await rejected; assert.deepEqual(f.service.readAccount(), { state: "signed-out", account: { email: "synthetic@example.com" } });
   } finally { await f.cleanup(); }
 });
 it("signout reports local persistence uncertainty while readback proves tokens cleared", async () => {
   const f = await chatGptFixture(); try {
     await f.connected(); const uncertain = createChatGptAccountService({ admission: f.admission, stateRoot: f.root, clock: f.clock, fetch: f.transport,
       credentialHooks: { afterRename() { throw new Error("synthetic-sensitive"); } } });
-    await assert.rejects(uncertain.signOut(), { code: "CHATGPT_CREDENTIAL_UNCERTAIN" }); assert.deepEqual(uncertain.readAccount(), { state: "signed-out" }); await uncertain.close();
+    await assert.rejects(uncertain.signOut(), { code: "CHATGPT_CREDENTIAL_UNCERTAIN" }); assert.deepEqual(uncertain.readAccount(), { state: "signed-out", account: { email: "synthetic@example.com" } }); await uncertain.close();
   } finally { await f.cleanup(); }
 });
 
@@ -347,7 +347,7 @@ it("terminal refresh failure clears tokens, preserves the issued client and reau
   const f = await chatGptFixture(); try {
     await f.connected(); f.clock.advanceWall(3_600_000); f.setTokenStatus(400);
     await assert.rejects(f.service.extractText(image), { code: "CHATGPT_ACCOUNT_EXPIRED" });
-    assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+    assert.deepEqual(f.service.readAccount(), { state: "signed-out", account: { email: "synthetic@example.com" } });
     const contents = readFileSync(join(f.root, "credentials/chatgpt-account.json"), "utf8");
     assert.equal(contents.includes("synthetic-access"), false); assert.equal(contents.includes("oaiapp_fixture"), false);
     assert.equal(f.repository.read()?.clientId, "oaiapp_fixture"); assert.equal(f.repository.read()?.session, null);
@@ -633,6 +633,8 @@ it("forgets the registered identity and allows a different account on the next s
     const revoke = f.calls.find(call => call.url.endsWith("/revoke")); assert.ok(revoke?.init.body instanceof URLSearchParams);
     assert.equal(revoke.init.body.get("token"), original.session?.refreshToken);
     assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+    assert.deepEqual(await f.service.forgetAccount(), { state: "signed-out", remoteRevocation: "not-needed" });
+    assert.deepEqual(f.repository.read(), fresh);
     const attempt = await f.service.signIn({ usePlan: true }), url = new URL(attempt.authorizationUrl);
     assert.equal(url.searchParams.get("client_id"), "dynamic_agent_client"); assert.equal(url.searchParams.has("login_hint"), false);
     f.setClaims({ sub: "different-subject", email: "different@example.com" });
@@ -663,5 +665,17 @@ it("forget cancels a pending sign-in and is a durable no-op on a fresh record", 
     const before = f.repository.read();
     assert.deepEqual(await f.service.forgetAccount(), { state: "signed-out", remoteRevocation: "not-needed" }); await cancelled;
     assert.deepEqual(f.repository.read(), before);
+  } finally { await f.cleanup(); }
+});
+
+it("forget cancels a returning sign-in and retains an unconfirmed revocation result", async () => {
+  const f = await chatGptFixture();
+  try {
+    await f.connected(); const attempt = await f.service.signIn({ usePlan: true });
+    const cancelled = assert.rejects(attempt.completion, { code: "CHATGPT_AUTH_CANCELLED" });
+    f.setRevocation(503);
+    assert.deepEqual(await f.service.forgetAccount(), { state: "signed-out", remoteRevocation: "unconfirmed" });
+    await cancelled; assert.equal(f.repository.read()?.registration, null); assert.equal(f.repository.read()?.session, null);
+    assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
   } finally { await f.cleanup(); }
 });
