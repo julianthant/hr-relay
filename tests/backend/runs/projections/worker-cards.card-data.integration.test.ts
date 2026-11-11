@@ -6,6 +6,7 @@ import { claimEventOf, DAY, declareProjectionWorker, instantOffsetOf, taskEvents
   type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { WorkerBrowserObservationSchema } from "../../../../src/models/run/worker-control.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { WRITE_FIXTURE_NODE_ID, writeFixtureDescriptor, WriteFixturePrepare } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -41,6 +42,25 @@ describe("worker card data the Sessions panel reads", () => {
     assert.deepEqual(card?.lastRun, { state: "present", runId: uuidOf(1), traceId: traceOf(1), outcome: "done", endedAt: ENDED,
       step: { nodeId: "crm-dates", taskId: "crm/read-onboarding-dates", state: "done", startedAt: stepStartedAt } });
     assert.deepEqual(card?.timeline, { state: "present" });
+  });
+
+  it("names the transaction task a last run ended in from its claim-generation span path", async () => {
+    const w = await world({ descriptors: { resolve: () => writeFixtureDescriptor } });
+    declareProjectionWorker(w.authority, workerId, 1);
+    queuedEventOf(w, { seed: 3, descriptor: writeFixtureDescriptor });
+    claimEventOf(w, 3);
+    const base = { ts: w.clock.now().toISOString(), workflow: "person-lookup", runId: uuidOf(3), attempt: 1, traceId: traceOf(3) } as const;
+    for (const role of ["probe", "prepare"]) {
+      const spanPath = `${traceOf(3)}/${WRITE_FIXTURE_NODE_ID}/${role}#2`;
+      w.writer.emit({ ...base, t: "span.started", kind: "task", spanPath, parentSpanPath: traceOf(3), name: role });
+      w.writer.emit({ ...base, t: "span.ended", kind: "task", spanPath, outcome: "done" });
+    }
+    w.writer.emit({ ...base, t: "span.ended", kind: "run", spanPath: traceOf(3), outcome: "done" });
+    w.authority.put(runRecordOf({ seed: 3, lifecycle: { state: "terminal", outcome: "done", endedAt: ENDED }, version: 3, descriptor: writeFixtureDescriptor }));
+    w.authority.putWorkerMember(workerMemberOf(w.authority, { workerId }));
+    const card = w.projection.buildDashboardDayWire(DAY).workerCards[0];
+    assert.ok(card?.lastRun?.state === "present");
+    assert.deepEqual(card.lastRun.step, { nodeId: WRITE_FIXTURE_NODE_ID, taskId: String(WriteFixturePrepare.id), state: "done", startedAt: base.ts });
   });
 
   it("names the step a crashed worker died in while its run is still unsettled", async () => {
