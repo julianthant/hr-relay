@@ -50,6 +50,7 @@ async function addSecondProfile(profile: BoundProfileStorageFixture): Promise<st
   const first = registry.read().activeProfileId; assert.ok(first);
   const session = createSyntheticProfileSession({ admission: profile.machine, machineRoot: profile.machine.stateRoot, activity: { hasUnquiescedWork: () => false } });
   try {
+    registry.advanceSession(null);
     const draft = session.signUp({ firstName: "Second", lastName: "Example", email: "second@ucsd.edu", password: "disposable-fixture-password", createdAt: "2026-10-02T12:00:00.000Z" });
     assert.equal(draft.state, "onboarding");
     const active = await finishProfileOnboarding(session, draft);
@@ -226,8 +227,8 @@ describe("explain run", () => {
     const registry = createProfileRegistry(profile.machine);
     const selected = registry.read().activeProfileId; assert.ok(selected);
     const admitted: { release(): void; assertLive(): void }[] = [];
-    const admit = profile.machine.admitProfile.bind(profile.machine);
-    vi.spyOn(profile.machine, "admitProfile").mockImplementation(id => { const person = admit(id); admitted.push(person); return person; });
+    const admit = RuntimeAdmission.prototype.admitProfile;
+    vi.spyOn(RuntimeAdmission.prototype, "admitProfile").mockImplementation(function (this: RuntimeAdmission, id) { const person = admit.call(this, id); admitted.push(person); return person; });
     const real = ProductionAuthorityDatabase.inspectTimelinePageReadOnly.bind(ProductionAuthorityDatabase);
     vi.spyOn(ProductionAuthorityDatabase, "inspectTimelinePageReadOnly").mockImplementation((...args) => {
       const page = real(...args); registry.advanceSession(selected); return page;
