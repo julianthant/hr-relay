@@ -192,26 +192,27 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
     { employeeName: "Fixture, Cameron", contactName: "Drew Draft", correctedContactName: "Drew Corrected" },
   ];
   const selection = [2, 0];
-  const ports = new Map<string, ReturnType<typeof createDeterministicUcpathContactPage>>();
+  // Each browser session opens the saved page; a dry run never saves, so every session sees the initial page.
+  const ports = new Map<string, ReturnType<typeof createDeterministicUcpathContactPage>[]>();
   const captures = new Map<string, UcpathContactPageSnapshot[]>(), searched: string[] = [];
   const target = childWorkflowModuleOf("emergency-contact", "emergency-contact-member");
   const nativeMembers = new Map<string, { input: z.output<typeof EmergencyContactMemberInputSchema>; fingerprint: string }>();
   let released = false;
-  function contactDriver(eid: string) {
+  function contactDriver(eid: string, pages: Map<string, ReturnType<typeof createDeterministicUcpathContactPage>>) {
     assert.equal(released, true, "contact acquisition must follow the native OCR release");
     const index = selection.find(index => String(10800000 + index) === eid); assert.ok(index !== undefined);
     const facts = reviewedPages[index]; assert.ok(facts);
-    let port = ports.get(eid);
+    let port = pages.get(eid);
     if (port === undefined) {
       port = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
         displayedEid: eid, displayedName: facts.employeeName }) });
-      ports.set(eid, port);
+      pages.set(eid, port); ports.set(eid, [...ports.get(eid) ?? [], port]);
     }
     return createDeterministicUcpathPersonOrgDriver(undefined, undefined, port);
   }
   const onbaseChild = onbaseOcrWorldChild();
   const sessions = sessionFactoryHarness({ ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
-    const driver = createDeterministicUcpathPersonOrgDriver();
+    const driver = createDeterministicUcpathPersonOrgDriver(), pages = new Map<string, ReturnType<typeof createDeterministicUcpathContactPage>>();
     let activeEid: string | undefined;
     return { ...driver,
       async searchPersonOrg(input) {
@@ -223,9 +224,9 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
           employeeStatus: "active", hdh: true, hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" };
         return SearchPersonOrgOutputSchema.parse({ results: [candidate], selection: { status: "resolved", selected: candidate, candidateEids: [candidate.emplId] } });
       },
-      async readEmergencyContacts(input) { activeEid = input.emplId; return contactDriver(input.emplId).readEmergencyContacts(input); },
-      async stageEmergencyContact(input, plan) { activeEid = input.emplId; return contactDriver(input.emplId).stageEmergencyContact(input, plan); },
-      async read(id) { if (id !== UCPATH_CONTACT_DISPLAYED_NAME) return driver.read(id); assert.ok(activeEid); return contactDriver(activeEid).read(id); },
+      async readEmergencyContacts(input) { activeEid = input.emplId; return contactDriver(input.emplId, pages).readEmergencyContacts(input); },
+      async stageEmergencyContact(input, plan) { activeEid = input.emplId; return contactDriver(input.emplId, pages).stageEmergencyContact(input, plan); },
+      async read(id) { if (id !== UCPATH_CONTACT_DISPLAYED_NAME) return driver.read(id); assert.ok(activeEid); return contactDriver(activeEid, pages).read(id); },
     };
   }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }), onbase: onbaseChild.session });
   const f = await world.fixture({ coordinator: true, record: true, pageCount: 3, reviewedPages, operatorEvidence: true, dryRun: true, sessions, ...onbaseChild.fixture,
@@ -235,7 +236,7 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
       if (member === undefined) { assert.notEqual(context.descriptorFingerprint, target.descriptor.contractFingerprint); return; }
       assert.equal(context.descriptorFingerprint, member.fingerprint);
       assert.ok(member.input.record.assertedEid);
-      const port = ports.get(member.input.record.assertedEid); assert.ok(port);
+      const port = ports.get(member.input.record.assertedEid)?.at(-1); assert.ok(port);
       const snapshot = await port.snapshot(); assert.equal(snapshot.displayedEid, member.input.record.assertedEid);
       const previous = captures.get(context.runId) ?? []; previous.push(snapshot); captures.set(context.runId, previous);
     } },
@@ -320,7 +321,7 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
   for (const member of members) {
     const input = EmergencyContactMemberInputSchema.parse(member.input.parsed.value), desired = contactEffect(approvedEmergencyContact(input.record));
     assert.ok(input.record.assertedEid);
-    const port = ports.get(input.record.assertedEid); assert.ok(port);
+    const port = ports.get(input.record.assertedEid)?.find(page => page.actions.includes("fill-fields:1")); assert.ok(port);
     assert.ok(port.actions.includes("demote-primary:0") && port.actions.includes("fill-fields:1") && port.actions.includes("fill-name:1"));
     assert.ok(port.actions.indexOf("demote-primary:0") < port.actions.indexOf("fill-fields:1"));
     assert.ok(port.actions.indexOf("fill-fields:1") < port.actions.indexOf("fill-name:1"));
