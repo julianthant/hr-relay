@@ -19,7 +19,7 @@ for (const rerun of [false, true]) {
   }
   it(`${rerun ? "Rerun" : "Run"} re-previews an expired plan and requires another Start`, async () => {
     const h = await setup(); await review(h);
-    h.clock.advanceWall(600_000); h.clock.advanceMono(600_000);
+    h.clock.advanceWall(600_000); h.clock.advanceMonotonic(600_000);
     await press("Start dry run");
     assert.ok(text().includes("This plan expired, so it was checked again. Review it and press Start again."));
     assert.equal(document.querySelector('[role="dialog"]') !== null, true);
