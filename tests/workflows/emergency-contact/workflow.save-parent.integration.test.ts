@@ -98,7 +98,7 @@ it("re-derives the parent receipt that migration 26 deletes when a member settle
   const memberReceipt = f.database.authority.evidenceReceipts.findByRun(replacement.envelope.runId); assert.ok(memberReceipt);
   const membersRow = parentReceipt.verification.find(row => row.obligation === "node.members");
   assert.ok(membersRow?.verdict === "verified");
-  assert.ok(membersRow.evidence.includes(`receipt:${String(memberReceipt.receiptId)}`), "the already-present member's own receipt backs the node");
+  assert.ok(membersRow.evidence.some(ref => ref === `receipt:${String(memberReceipt.receiptId)}`), "the already-present member's own receipt backs the node");
   const durable = () => {
     using raw = new DatabaseSync(f.path, { readOnly: true });
     return ["write_intents", "write_attempts", "run_checkpoints"].map(table => raw.prepare(`SELECT * FROM ${table} ORDER BY id`).all());

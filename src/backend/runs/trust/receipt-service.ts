@@ -9,7 +9,7 @@ import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js"
 import { readDelegationEvidence,currentDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
 import { ReceiptDerivationRefusedError } from "../../runtime/writes/receipt-derivation-binding.js";
 import { commitPermanentKey, rebuildCheckpointCommitInput } from "../../runtime/writes/write-resolution-binding.js";
-import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
+import { checkpointRecordKey, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { deriveIdempotencyKeyDigest } from "../../../rules/write-safety/write-safety.js";
 import { DelegationInvocationRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/index.js";
@@ -75,7 +75,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
         intent,
         attempts: authority.writeAttempts.listByIntent(intent.writeIntentId),
       })),
-    writeForCheckpoint: (node, checkpoint) => {
+    writeForCheckpoint: (node: Parameters<NonNullable<EvidenceReceiptStore["writeForCheckpoint"]>>[0], checkpoint: RunCheckpointRecord) => {
       const producer = requireTrustRun(deps.runReader, checkpoint.runId);
       const descriptor = byId.get(producer.envelope.workflow);
       if (descriptor === undefined || producer.envelope.dryRun) throw new Error("receipt-write-pair-producer-unavailable");

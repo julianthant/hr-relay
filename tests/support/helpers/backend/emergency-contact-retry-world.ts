@@ -1,5 +1,6 @@
 import { OcrReviewRefusedError } from "../../../../src/backend/processing/ocr/review-authority.js";
 import { emergencyContactModule, i9LookupModule, ocrModule, ocrPageModule, onbaseModule, personLookupModule } from "../registered-workflows.js";
+import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { OcrReviewRecordSchema } from "../../../../src/models/ocr/review-record.js";
 import { OcrApprovedSnapshotSchema } from "../../../../src/models/ocr/review.js";
 import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
@@ -41,8 +42,8 @@ import { ONBASE_SOURCE_PDF, onbaseChildFixture } from "./onbase-child-fixture.js
 
 export const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
 /** Every workflow an Emergency Contact tree runs, so a parent receipt can read each child's own receipt. */
-export const EC_TREE_DESCRIPTORS = [emergencyContactModule, ocrModule, ocrPageModule, personLookupModule, i9LookupModule, onbaseModule]
-  .map(module => module.descriptor).concat(contactSaveMember.descriptor);
+export const EC_TREE_DESCRIPTORS: readonly AnyWorkflowDescriptor[] = [...[emergencyContactModule, ocrModule, ocrPageModule, personLookupModule, i9LookupModule, onbaseModule]
+  .map(module => module.descriptor), contactSaveMember.descriptor];
 
 const facts = ["Example, Avery", "Example, Blake"].map((employeeName, index) => ({ employeeName, contactName: `Original Contact ${String(index)}`, correctedContactName: `Released Contact ${String(index)}` }));
 const SqliteTableSchema = z.object({ name: z.string(), sql: z.string().nullable() });

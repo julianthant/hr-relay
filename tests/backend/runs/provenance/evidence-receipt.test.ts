@@ -337,7 +337,7 @@ describe("deriveActionWriteProof — the already-present arms", () => {
     const cases: readonly [string, Parameters<typeof deriveActionWriteProof>[0]][] = [
       ["checkpoint", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent }],
       ["checkpoint", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent, pairing: pairingOf(otherCheckpoint) }],
-      ["identity", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent: { ...intent, taskId: "kuali/other-task" }, pairing: pairingOf(alreadyPresent) }],
+      ["identity", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent: WriteIntentRecordSchema.parse({ ...intent, taskId: "kuali/other-task" }), pairing: pairingOf(alreadyPresent) }],
       ["identity", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent, pairing: { ...pairingOf(alreadyPresent), system: "ucpath" } }],
       ["identity", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent, pairing: { ...pairingOf(alreadyPresent), keyDigest: deriveIdempotencyKeyDigest(intent.system, "another-key") } }],
       ["status", { commitContract: KualiSaveSeparationFinalization, record: alreadyPresentRecord(value => ({ ...value, proofSource: "live-probe" })), intent, pairing: pairingOf(alreadyPresent) }],
@@ -346,7 +346,8 @@ describe("deriveActionWriteProof — the already-present arms", () => {
       ["output", { commitContract: KualiSaveSeparationFinalization, record: otherOutput, intent, pairing: pairingOf(alreadyPresent) }],
     ];
     for (const [category, input] of cases) assert.throws(() => deriveActionWriteProof(input), new RegExp(`receipt-write-pair-${category}`, "u"), category);
-    const unfinished = WriteIntentRecordSchema.parse({ ...intent, status: "attempting", currentAttemptId: intent.writeIntentId, completionProof: undefined, confirmedAt: undefined });
+    const { completionProof: _proof, confirmedAt: _confirmed, ...fenced } = intent;
+    const unfinished = WriteIntentRecordSchema.parse({ ...fenced, status: "attempting" });
     assert.throws(() => deriveActionWriteProof({ commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent: unfinished, pairing: pairingOf(alreadyPresent) }), /receipt-write-pair-|completion proof/u);
     assert.equal(deriveActionWriteProof({ commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent, pairing: pairingOf(alreadyPresent) }).proofSource, "durable-intent");
   });

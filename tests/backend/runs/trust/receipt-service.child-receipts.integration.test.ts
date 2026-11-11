@@ -6,7 +6,7 @@ import { onbaseWorkflow } from "../../../../src/workflows/onbase/workflow.js";
 import { createEcMemberOnbaseWorld } from "../../../support/helpers/backend/ec-member-onbase-world.js";
 import { UcpathSaveEmergencyContact } from "../../../../src/models/systems/ucpath/save-emergency-contact.js";
 import { deriveIdempotencyKeyDigest, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
-import type { RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
+import { RunCheckpointRecordSchema, type RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
 import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";
 
 const world = createEcMemberOnbaseWorld();
@@ -83,8 +83,8 @@ it("pairs a new item's already-present Save with its exact original permanent re
   // A later claim's planning row for another employee would derive another key; the checkpoint's bound excludes it.
   const later = withPlanRows(f.database, actual => {
     const last = actual.at(-1); assert.ok(last);
-    return [...actual, { ...last, claimGeneration: last.claimGeneration + 1, writtenAt: new Date(Date.parse(last.writtenAt) + 60_000).toISOString(),
-      output: { ...last.output, value: JSON.parse(JSON.stringify(last.output.value).replaceAll(assertedEid, "10899999")) as typeof last.output.value } }];
+    return [...actual, RunCheckpointRecordSchema.parse({ ...last, claimGeneration: last.claimGeneration + 1, writtenAt: new Date(Date.parse(last.writtenAt) + 60_000).toISOString(),
+      output: { ...last.output, value: JSON.parse(JSON.stringify(last.output.value).replaceAll(assertedEid, "10899999")) as unknown } })];
   });
   const service = createReceiptService({ database: later, runReader: f.execution.lifecycle, descriptors: f.descriptors });
   const receipt = service.ensureReceipt(second.envelope.runId);
