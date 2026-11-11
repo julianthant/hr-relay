@@ -24,7 +24,7 @@ import { readHireDataTask } from "../../../src/backend/systems/crm/tasks/read-hi
 import { readHirePlanTask } from "../../../src/workflows/onboarding/tasks/read-hire-plan.js";
 import { onboardingWorkflow } from "../../../src/workflows/onboarding/workflow.js";
 import { i9LookupInput, i9LookupItemId } from "../../../src/workflows/onboarding/steps/i9-search/step.js";
-import { SearchPersonMatch } from "../../../src/models/systems/ucpath/search-person-match.js";
+import { SearchPersonMatch, SearchPersonMatchOutputSchema } from "../../../src/models/systems/ucpath/search-person-match.js";
 import { registration } from "../../../src/workflows/onboarding/index.js";
 import { PUBLIC_WORKFLOWS } from "../../../src/workflows/registry.js";
 import { DESCRIPTORS, childWorkflowModuleOf, workflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
@@ -39,7 +39,10 @@ import { readI9LookupTask } from "../../../src/workflows/onboarding/tasks/read-i
 import { TaskRefusal, createSeparationTaskFixtures } from "../../support/helpers/separation-task-fixtures.js";
 import { classifyEvidenceLeaf, evidenceLeaves, redactEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
 import { DataPointSchema } from "../../../src/rules/workflow/task-provenance.js";
-import { GateIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
+import { FingerprintSchema, GateIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
+import { createOperatorProjection, createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/operator.js";
+import { buildRunDetail } from "../../../src/backend/runs/queries/run-detail.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 
 const descriptor = compileWorkflow(onboardingWorkflow).descriptor;
 const nodes = descriptorRuntimeNodes(descriptor);
@@ -355,6 +358,28 @@ describe("onboarding roster names in a real run", () => {
     assert.ok(gate.state === "open" && gate.decision !== undefined);
     assert.deepEqual(gate.decision.options.map(option => option.id), ["new-hire"]);
     assert.equal(gate.decision.context, "Legal name: first Fixture, middle Marie, last Hire. Preferred name: first Fix, no middle name, last Hire.");
+  });
+
+  it("reads the settled CRM and I-9 steps as done while parked at the hire review with every UCPath hit dropped", async () => {
+    const dropped = ["10800001", "10800002", "10800003"].map(emplId => ({ emplId, name: "Other, Person" }));
+    const f = await runWorld.executionFixture(false, { match: "unique",
+      personMatch: SearchPersonMatchOutputSchema.parse({ hits: dropped, confirmed: [], dropped: dropped.map(hit => ({ ...hit, reason: "Last name does not match" })) }) }), root = f.start();
+    const parked = await f.rawExecution.execute(root, new AbortController().signal);
+    assert.ok(parked.run?.lifecycle.state === "parked-gate" && parked.run.lifecycle.gateId === "hire-review");
+    assert.deepEqual(f.calls.map(call => call.system), ["crm", "ucpath"], "no I-9 lookup child ran");
+    const reader = testRunService(f.database, f.clock);
+    const descriptors = { resolve: (id: string) => id === descriptor.id ? descriptor : undefined };
+    const projection = createOperatorProjection({ database: f.database, stateRoot: f.stateRoot, clock: f.clock, reader, appVersion: "0.1.0",
+      descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(f.database.authority), descriptors });
+    projection.ingestFromTimeline();
+    const detail = buildRunDetail(createOperatorRunDetail({ database: f.database, stateRoot: f.stateRoot, projection, runReader: reader,
+      canonical: { database: f.database, reader, descriptors } }), root.envelope.runId);
+    assert.deepEqual(detail.timeline.steps?.slice(0, 4).map(step => [step.key, step.state, step.members.map(member => [member.nodeId, member.state, member.notRunReason])]), [
+      ["crm-data", "done", [["roster-choice", "skipped", "condition-false"], ["crm-source", "done", undefined], ["hire-plan", "done", undefined]]],
+      ["ucpath-search", "done", [["ucpath-source", "done", undefined], ["hire-subject", "done", undefined]]],
+      ["i9-search", "done", [["i9-lookup-child", "skipped", "condition-false"], ["i9-lookup", "done", undefined]]],
+      ["hire-review", "blocked", [["hire-findings", "done", undefined], ["hire-review", "blocked", undefined]]],
+    ]);
   });
 
   it("files a resolved roster name and patches only the Employee ID and Transaction Number cells", async () => {

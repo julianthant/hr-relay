@@ -22,7 +22,7 @@ import { TaskError, taskErrorCause, wrapUnhandledTaskError } from "../../../work
 import type { ProviderClient } from "../../../workflow-kit/providers.js";
 import type { AnyTask, TaskLogger } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
-import { descriptorRuntimeNodes, workflowDryRunSupport, workflowPreviewDependencyIds, workflowTerminalResultExecution, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, runtimeNodeLabel, workflowDryRunSupport, workflowPreviewDependencyIds, workflowTerminalResultExecution, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { observationLeafPaths, resolveObservationOrigin } from "../../../models/events/data-observation-origin.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
@@ -1574,6 +1574,17 @@ export async function executeClaimedRun(
       });
     };
 
+    const emitConditionSkipSpan = (node: RuntimeFlowNode): void => {
+      const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
+      emit({ t: "span.started", kind: "task", ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath, name: runtimeNodeLabel(node) });
+      emit({ t: "span.ended", kind: "task", ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath, outcome: "skipped", notRunReason: "condition-false" });
+    };
+    const recordConditionSkip = (node: RuntimeFlowNode): void => {
+      skippedReasons.set(String(node.id), "condition-false");
+      if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "condition-false" });
+      emitConditionSkipSpan(node);
+    };
+
     const childSourceEvidence = (node: ChildRunRuntimeNode) => {
       const entry = plan.get(String(node.id));
       if (entry === undefined) throw new Error("delegation-branch-plan-unavailable");
@@ -1652,8 +1663,11 @@ export async function executeClaimedRun(
         continue;
       }
       if (entry.mode === "skipped-condition") {
-        skippedReasons.set(String(node.id), "condition-false");
-        if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "condition-false" });
+        // An explicit start re-walks nodes whose skip this run already recorded.
+        if (startIndex !== undefined && envelope.continuation === undefined) {
+          skippedReasons.set(String(node.id), "condition-false");
+          if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "condition-false" });
+        } else recordConditionSkip(node);
         continue;
       }
       if (entry.mode === "replay-gate") {
@@ -1811,21 +1825,7 @@ export async function executeClaimedRun(
           if (node.when !== undefined) {
             const condition = evaluateNodeCondition(node.when, scope);
             if (!condition) {
-              skippedReasons.set(String(node.id), "condition-false");
-              if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "condition-false" });
-              const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
-              emit({
-                t: "span.started", kind: "task",
-                ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,
-                name: labelOf(node),
-              });
-              emit({
-                t: "span.ended", kind: "task",
-                ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,
-                outcome: "skipped",
-
-                notRunReason: "condition-false",
-              });
+              recordConditionSkip(node);
               continue;
             }
           }
@@ -1869,8 +1869,7 @@ export async function executeClaimedRun(
             if (readContinuationGate(deps.authority.authority, envelope, String(node.id)) !== undefined) {
               return await failNode(node, undefined, new Error(`inapplicable gate "${node.id}" carries a stored operator result; evidence changed`));
             }
-            skippedReasons.set(String(node.id), "condition-false");
-            if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "condition-false" });
+            recordConditionSkip(node);
             continue;
           }
           transitionTo(runningLifecycle(node.id));
@@ -2161,6 +2160,8 @@ export async function executeClaimedRun(
               continue;
             }
             outputs[String(node.id)] = JsonValueSchema.parse(resolution.output);
+            // A delegation that bound no members ran nothing: only its timeline step reads not needed; its dry-run and dependency accounting stay resolved.
+            if (entry.mode !== "replay-child" && evidence.manifest.join !== "none" && evidence.manifest.children.length === 0) emitConditionSkipSpan(node);
           } catch (error) {
             if (error instanceof RunAbandonedError || error instanceof WorkerSessionClosureUnprovedError
               || error instanceof RunLifecycleRefusedError && error.outcome.state === "refused" && error.outcome.refusal.reason === "lost") throw error;
