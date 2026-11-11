@@ -486,6 +486,7 @@ function LoadedApp({
 type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: RetainedCommandRequest };
   const [pendingBulk, setPendingBulk] = useState<(PendingBulkCommand & { readonly scope: CommandExecutionScope }) | null>(null);
   const [bulkReview, setBulkReview] = useState(false);
+  const [openedBulk, setOpenedBulk] = useState<BulkBatchOutcome | null>(null);
   const [noticeRead, setNoticeRead] = useState<ReadonlySet<string>>(() => new Set());
   const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(() => statusMock() === "command-results" ? STATUS_MOCK_BULK_OUTCOME : null);
   const [, refreshCommandRecovery] = useState(0);
@@ -1059,9 +1060,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     ...(bulkOutcome === null ? [] : [bulkResultNotice(bulkOutcome)]),
   ];
   const railNotifications = withCommandNotices(notifications, commandNotices);
-  const openInbox: InboxWiring["open"] = (item, navigate, opened, refused) => item.kind === "command" ? navigate(item.destination, opened, refused) : inbox.open(item, navigate, opened, refused);
   // Local command notices are not server rows: their read state lives here, never in the served inbox.
   const localNoticeIds = new Set(commandNotices.map(notice => notice.id));
+  const openInbox: InboxWiring["open"] = (item, navigate, opened, refused) => localNoticeIds.has(item.id) ? navigate(item.destination, opened, refused) : inbox.open(item, navigate, opened, refused);
   const railInbox = workflowComposition.inbox === "served" ? { ...inbox, open: openInbox,
     state: withCommandNotices(inbox.state, commandNotices.map(notice => noticeRead.has(notice.id) ? { ...notice, read: true } : notice)),
     control: async (id: string, action: Parameters<InboxWiring["control"]>[1]) => {
@@ -1093,7 +1094,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       const response = BulkRunCommandResponseSchema.safeParse({ state: "vector", bulkCommandId: destination.bulkCommandId, type: destination.type, requestedCount: destination.requestedCount, results: destination.results });
       if (!response.success) { refused(notificationTargetUnavailable()); return; }
       const ids = [...destination.results.map(result => result.runId), ...destination.notAttempted];
-      setBulkOutcome({ plan: { verb: destination.type, label: BULK_VERB_LABEL[destination.type], eligible: [], skipped: destination.notAttempted.map(runId => ({ runId, title: title(runId) })), unavailable: [] },
+      setOpenedBulk({ plan: { verb: destination.type, label: BULK_VERB_LABEL[destination.type], eligible: [], skipped: destination.notAttempted.map(runId => ({ runId, title: title(runId) })), unavailable: [] },
         subjects: new Map(ids.map(runId => [runId, title(runId)])), response: response.data });
       setBulkReview(true); opened();
       return;
@@ -1286,7 +1287,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               void executeShell(request, retained.label, plan, true);
             }}
           />
-          <BulkCommandFeedback bulkOutcome={bulkOutcome} reviewing={bulkReview} onReviewed={() => { setBulkReview(false); setBulkOutcome(null); }} onSelectRun={selectRun} />
+          <BulkCommandFeedback bulkOutcome={openedBulk ?? bulkOutcome} reviewing={bulkReview} onReviewed={() => { setBulkReview(false); if (openedBulk === null) setBulkOutcome(null); setOpenedBulk(null); }} onSelectRun={selectRun} />
 
 
           <CommandResultFeed results={commandResults} />

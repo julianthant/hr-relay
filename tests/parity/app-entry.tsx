@@ -24,6 +24,8 @@ const previewLoader = new Map(Object.entries(controlPreviews)).get(`../support/h
 const ControlPreview = previewLoader ? lazy(() => previewLoader().then(module => ({ default: module.ControlPreview }))) : undefined;
 const composition = fixture === "product-workflows" || Reflect.get(window, "relayParityProductWorkflows") === true
   ? productWorkflowComposition
+  : Reflect.get(window, "relayParityServedNotifications") === true
+  ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), inbox: "served" as const, search: "served" as const })
   : fixture === "picked-a"
   ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), logsSources: servedFixtureSources(workflows) })
   : fixture === "hub-served"
