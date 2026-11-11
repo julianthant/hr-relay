@@ -13,6 +13,7 @@ import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../../../s
 import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
+import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";
 import type { AppRouteState } from "../../../../src/dashboard/app/navigation/url-state.js";
 import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
@@ -89,10 +90,10 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previ
     const workflows = loaded ? [h.WORKFLOWS[0], workflow] : [];
     return createElement(ViewNavigationProvider, { route, setRoute,
       children: createElement(DashboardClientProvider, { client,
-        children: createElement(FixtureCommandBinding, { actorId: h.ACTOR_ID,
+        children: createElement(ToastProvider, { children: createElement(FixtureCommandBinding, { actorId: h.ACTOR_ID,
           children: createElement(RunStartDialog, { open: route.start === true, onOpenChange() {},
             catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)),
-            panelWorkflowId: h.WORKFLOWS[0].workflowId, actorId: h.ACTOR_ID, onOpenIntake() {} }) }) }) });
+            panelWorkflowId: h.WORKFLOWS[0].workflowId, actorId: h.ACTOR_ID, onOpenIntake() {} }) }) }) }) });
   }
   await act(async () => root.render(createElement(Harness)));
   if (path !== "restored route") await act(async () => openOnboarding());
