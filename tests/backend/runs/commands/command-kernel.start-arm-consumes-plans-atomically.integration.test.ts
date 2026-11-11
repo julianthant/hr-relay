@@ -163,7 +163,7 @@ describe("start arm consumes plans atomically", () => {
     assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "conflict");
   });
 
-  it("rejects binding drift as schema-mismatch and an expired plan as invalid-state", async () => {
+  it("rejects binding drift as schema-mismatch and an expired plan with its typed code", async () => {
     const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
     const base = startCommand(plan);
@@ -177,7 +177,7 @@ describe("start arm consumes plans atomically", () => {
     const expired = harness.kernel.execute(startCommand(plan));
     assert.equal(expired.state, "rejected");
     if (expired.state === "rejected") {
-      assert.equal(expired.code, "invalid-state");
+      assert.equal(expired.code, "RUN_START_PLAN_EXPIRED");
       assert.match(expired.message, /expired/);
     }
   });

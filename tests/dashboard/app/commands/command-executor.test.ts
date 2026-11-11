@@ -478,3 +478,19 @@ it('retains the unknown preference lock for the same profile while allowing a di
   assert.equal(separate.kind, "uncertain"); assert.equal(h.sent.length, 2);
   assert.equal(h.executor.retainedAttempts().filter(attempt => attempt.outcome?.kind === "uncertain").length, 2);
 });
+
+for (const code of ["RUN_START_READINESS_BLOCKED", "RUN_START_READINESS_UNAVAILABLE", "RUN_START_READINESS_CHANGED", "PREFLIGHT_EVIDENCE_EXPIRED", "PREFLIGHT_TIMEOUT"]) {
+  it(`uses catalog feedback for Start ${code} and retains private prose only as evidence`, async () => {
+    const h = harness();
+    const request = CommandRequestSchema.parse({ ...command(), family: "start", type: "start-run",
+      target: { workflowId: "person-lookup", startPlanId: id(80), expectedVersion: 1 },
+      payload: Object.fromEntries(["descriptorFingerprint", "configFingerprint", "ingressSchemaHash", "canonicalInputSchemaHash", "inputFingerprint"].map(key => [key, "a".repeat(64)])) });
+    const reply = { state: "rejected", commandId: request.commandId, code, message: "PRIVATE_KERNEL_MARKER" };
+    h.setReply(() => reply);
+    const outcome = await h.executor.execute(request, h.options());
+    assert.equal(outcome.kind, "refused");
+    assert.equal(outcome.feedback?.code, code);
+    assert.equal(outcome.feedback?.text.includes("PRIVATE_KERNEL_MARKER"), false);
+    assert.deepEqual(outcome.reply, reply);
+  });
+}

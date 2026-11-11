@@ -178,7 +178,7 @@ for (const fault of ["unhealthy", "throw", "missing", "timeout"] as const) it(`S
     const result = await service.submit(command);
     assert.equal(result.state, "rejected");
     if (result.state === "rejected") {
-      assert.equal(result.code, "capability-unavailable");
+      assert.equal(result.code, fault === "unhealthy" ? "RUN_START_READINESS_BLOCKED" : fault === "timeout" ? "PREFLIGHT_TIMEOUT" : "RUN_START_READINESS_UNAVAILABLE");
       if (fault === "missing") {
         assert.ok(prepareError instanceof Error);
         assert.match(prepareError.message, /no runner for selected checks: browser\.assets/u);
@@ -199,6 +199,25 @@ for (const fault of ["unhealthy", "throw", "missing", "timeout"] as const) it(`S
     await assert.rejects(service.submit({ ...command, source: "other-source" }),
       /command id 99999999-9999-4999-8999-999999999999 was reused with different content/u);
     assert.equal(h.probes.length, probes); assert.equal(h.publications, 0); assert.equal(h.capacityCalls, 0);
+  } finally { await _afterEachFixture0(); }
+});
+
+for (const reason of ["stale", "observation-changed", "unavailable", "scope-mismatch"] as const) it(`Start maps typed ${reason} admission refusal without enqueue effects`, async () => {
+  try {
+    const h = await harness(); await h.plans.prepare?.(h.ingress, signal());
+    const plan = h.plans.plan(h.ingress), command = h.command(plan);
+    const service = h.serviceWithKernel(h.kernelWithDependencies({ preflight: { ...h.preflight.admission,
+      async prepare() { throw new PreflightAdmissionRefusal(reason, "PRIVATE_TYPED_REFUSAL"); } } }));
+    const reply = await service.submit(command);
+    assert.equal(reply.state, "rejected");
+    if (reply.state === "rejected") {
+      assert.equal(reply.code, reason === "stale" || reason === "observation-changed" ? "RUN_START_READINESS_CHANGED" : "RUN_START_READINESS_UNAVAILABLE");
+      assert.equal(reply.message, "PRIVATE_TYPED_REFUSAL");
+    }
+    assert.deepEqual(h.database.authority.commandAudits.findByCommand(command.commandId)?.result, reply);
+    assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+    assert.equal(h.database.authority.runs.listByWorkflow(plan.workflowId).length, 0);
+    assert.equal(h.publications, 0); assert.equal(h.capacityCalls, 0);
   } finally { await _afterEachFixture0(); }
 });
 
