@@ -156,7 +156,6 @@ function safeHireReviewChoices(mode: "new-hire" | "rehire", match: z.infer<typeo
 type HireNames = Pick<z.infer<typeof HirePlanSchema>["employee"], "firstName" | "middleName" | "lastName"
   | "preferredFirstName" | "preferredMiddleName" | "preferredLastName" | "ssn">;
 const nameParts = (first: string, middle: string, last: string) => `first ${first}, ${middle === "" ? "no middle name" : `middle ${middle}`}, last ${last}`;
-const maskedEid = (emplId: string) => `••••${directIdentifierDisplay(emplId.slice(-4))}`;
 
 /** The split legal and preferred names are served before approval because the hire writes them; an unconfirmed match lists every dropped hit with its reason. No SSN or date of birth is served. */
 export function hireReviewDecision(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>, names: HireNames,

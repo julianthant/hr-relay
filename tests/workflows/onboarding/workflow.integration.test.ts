@@ -390,13 +390,14 @@ describe("onboarding roster names in a real run", () => {
     const f = await runWorld.executionFixture(false, { match: "unique", dryRun: true, personMatch }), root = f.start();
     const parked = await f.rawExecution.execute(root, new AbortController().signal);
     assert.ok(parked.run?.lifecycle.state === "parked-gate" && parked.run.lifecycle.gateId === "hire-review");
+    const version: number = parked.run.version;
     const reader = testRunService(f.database, f.clock);
     const deps = { runReader: reader, authority: { listGateResults: (runId: string) => f.database.authority.gateResults.listByRun(runId) },
       canonical: { reader, database: f.database, descriptors: { resolve: (id: string) => id === descriptor.id ? descriptor : undefined } } } as unknown as RunDetailQueryDeps;
     const gate = GateDecisionWireSchema.parse(buildRunGate(deps, root.envelope.runId, undefined, parked.run));
     assert.ok(gate.state === "open" && gate.decision !== undefined);
     assert.deepEqual(gate.decision.options.map(option => option.id), ["existing-person", "new-hire"]);
-    const answer = (payload: { arm: string; rowId?: string }, expectedVersion = parked.run.version) => GateArmAnswerRequestSchema.parse({
+    const answer = (payload: { arm: string; rowId?: string }, expectedVersion = version) => GateArmAnswerRequestSchema.parse({
       commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "run-detail", family: "gate", type: "answer-gate-arm",
       target: { runId: root.envelope.runId, gateId: "hire-review", expectedVersion }, payload });
     const valueOf = (resolution: ReturnType<typeof resolveGateArmAnswer>) => resolution.state === "accepted" && resolution.request.family === "gate" && resolution.request.type === "resolve-gate"
@@ -404,7 +405,7 @@ describe("onboarding roster names in a real run", () => {
     assert.deepEqual(valueOf(resolveGateArmAnswer(deps, answer({ arm: "new-hire" }), undefined)), { decision: "new-hire", ruledOut: ["10800001", "10800002", "10800003"] });
     assert.deepEqual(valueOf(resolveGateArmAnswer(deps, answer({ arm: "existing-person", rowId: "10800002" }), undefined)),
       { decision: "existing-person", emplId: "10800002", confirmedBy: "operator" });
-    for (const refused of [answer({ arm: "existing-person", rowId: "10800009" }), answer({ arm: "new-hire", rowId: "10800002" }), answer({ arm: "new-hire" }, parked.run.version + 1)]) {
+    for (const refused of [answer({ arm: "existing-person", rowId: "10800009" }), answer({ arm: "new-hire", rowId: "10800002" }), answer({ arm: "new-hire" }, version + 1)]) {
       assert.deepEqual(resolveGateArmAnswer(deps, refused, undefined), { state: "refused", code: "invalid-state", message: "This review changed. Reload it before answering." });
     }
     const chosen = answer({ arm: "new-hire" }), accepted = resolveGateArmAnswer(deps, chosen, undefined);

@@ -386,7 +386,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     const gateCard = gateDecisionShown || gate.state === "absent" || gate.nodeId === undefined || requireNative(event.native).nodeId !== gate.nodeId ? undefined
       : gate.state === "open" && event.state === "blocked" && gate.decision !== undefined ? { title: gate.decision.title, served: gate.decision }
         : gate.state === "resolved" && gate.answer !== undefined ? { title: plainStepLabel(gate.label), answered: gate.answer } : undefined;
-    if (gateCard !== undefined) {
+    if (gateCard !== undefined && gate.state !== "absent") {
       gateDecisionShown = true;
       const time = fmtActionClock(event.at);
       order.set(gate.gateId, requireNative(event.native).order); node.set(gate.gateId, requireNative(event.native).nodeId);

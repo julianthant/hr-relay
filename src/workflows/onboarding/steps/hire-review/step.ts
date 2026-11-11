@@ -599,7 +599,7 @@ export function buildHireWrites(author: WorkflowAuthor<typeof OnboardingInput>, 
   ({ outputs }) => outputs["write-plan"].hire.mode === "new-hire" ? "create" : "existing");
   const notRequired = author.task(entries.task("i9-profile-plan", OnboardingReadI9ProfilePlan, { replay: "always-rerun" }), [crm.plan, i9.lookup, plan], ({ outputs }) => ({
     // Only the existing-person branch runs this node: a concurrent hire never records an I-9 creation plan.
-    plan: outputs["hire-plan"], lookup: outputs["i9-lookup"].state === "checked" ? { state: "not-required", subjectState: "review-required" } : outputs["i9-lookup"],
+    plan: outputs["hire-plan"], lookup: outputs["i9-lookup"].state === "checked" ? { state: "not-required" as const, subjectState: "review-required" as const } : outputs["i9-lookup"],
   }));
   const profile = author.transaction(entries.transaction("i9-profile-save", { label: "Save I-9 profile", prepare: I9StageProfile, commit: I9CreateProfile,
     dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000 }), [plan, approval], {
