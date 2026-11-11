@@ -390,6 +390,26 @@ it("resumes the same saved member Retry after a pause without another Save", asy
   assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), [1, 1]);
 });
 
+it("finishes a served member Retry with one Save, one OnBase child and one Import while the wall clock moves", async () => {
+  const f = fixture;
+  await f.canonical.execute(f.parentRun, signal());
+  const previous = failed(f);
+  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", previous)).state, "applied");
+  const replacement = f.children().find(child => child.envelope.retryOf === previous.envelope.runId); assert.ok(replacement);
+  const imports = f.onbase.imports();
+  f.hooks.onSpan = () => { f.clock.advanceWall(1); };
+  for (let index = 0; index < 4 && f.current(replacement.envelope.runId).lifecycle.state !== "terminal"; index++) {
+    f.clock.advanceWall(1_000);
+    const stepped = await f.canonical.step(f.parentRun, signal());
+    assert.notEqual(stepped.outcome.state, "failed", stepped.outcome.state === "failed" ? JSON.stringify(f.database.authority.failures.get(stepped.outcome.failureId)) : stepped.outcome.state);
+  }
+  const settled = f.current(replacement.envelope.runId);
+  assert.ok(settled.lifecycle.state === "terminal" && settled.lifecycle.outcome === "done");
+  assert.deepEqual(f.database.authority.runs.listChildren(replacement.envelope.runId).map(run => run.envelope.workflow), ["onbase"]);
+  assert.equal(f.onbase.imports(), imports + 1);
+  assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), [1, 1]);
+});
+
 it("resumes a member Retry paused before its Save by reading its stale contacts again", async () => {
   const f = fixture;
   await f.canonical.execute(f.parentRun, signal());
