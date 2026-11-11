@@ -49,7 +49,7 @@ import type { z } from "zod";
 
 export function createI9CheckStartWorld() {
   const world = createRunExecutorTestWorld();
-  return { cleanup: world.cleanup, async fixture(options: Readonly<{ dryRun?: boolean }> = {}) {
+  return { cleanup: world.cleanup, async fixture(options: Readonly<{ dryRun?: boolean; documents?: number }> = {}) {
     const publishCalls: string[] = [], projections: (readonly string[])[] = [];
     const pages = new Map<string, z.output<typeof ExtractPdfPagesOutputSchema>>();
     const renderer = defineTask(ExtractPdfPages, { sessions: [], async run({ input, ctx }) {
@@ -116,7 +116,7 @@ export function createI9CheckStartWorld() {
             publicationSource: () => { const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
               return { workflowId: descriptor.id, workflowLabel: descriptor.label, partitionDay: searchPartitionDay(new Date(run.envelope.enqueuedAt)) }; },
             references: { runId: run.envelope.runId, write: () => { throw new Error("I-9 fixture must not patch a reference"); }, read: request => {
-              assert.equal(request.typeId, I9_CHECK_REFERENCE.typeId); assert.deepEqual(request.keys, candidates.map(candidate => candidate.emplId));
+              assert.equal(request.typeId, I9_CHECK_REFERENCE.typeId); assert.deepEqual(request.keys, [...expected.values()]);
               for (const [name, captured] of [
                 ["missing run", { ...run, envelope: { ...run.envelope, runId: randomUUID() } }],
                 ["foreign claim", { ...run, claimGeneration: Number(run.claimGeneration) + 1 }],
@@ -140,7 +140,7 @@ export function createI9CheckStartWorld() {
     const sources = createOcrSourceService({ database, reader: canonical.lifecycle, clock, artifacts, artifactReader, assertCurrent: () => admission.assertProfileRuntime() });
     const image = await artifacts.put(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGvwAAAAASUVORK5CYII=", "base64"), { mediaType: "image/png" });
     const documents = [], expected = new Map<string, string>();
-    for (const [index, candidate] of candidates.entries()) {
+    for (const [index, candidate] of candidates.slice(0, options.documents ?? candidates.length).entries()) {
       const upload = await sources.upload({ actorId: "local-operator", fileName: `source-${index}.pdf`, mediaType: "application/pdf",
         bytes: new TextEncoder().encode(`%PDF-1.7\nSynthetic I-9 ${index}\n%%EOF`) });
       const rendered = { pageCount: 2, pages: [{ sourcePage: 1, image }, { sourcePage: 2, image }] }; pages.set(upload.artifact.id, rendered);

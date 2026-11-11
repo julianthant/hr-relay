@@ -115,7 +115,7 @@ describe("one I-9 PDF dry run previews the workbook and leaves every local outpu
   afterAll(world.cleanup);
 
   it("i9-check-start/dry-run — reads for real, previews the save, never starts the tracker", async () => {
-    const f = await world.fixture({ dryRun: true });
+    const f = await world.fixture({ dryRun: true, documents: 1 });
     expect(f.plan?.planned[0]?.outputs).toBeUndefined();
     const config = f.database.authority.configSnapshots.get(f.run.envelope.configSnapshotId); assert.ok(config);
     const trackerPath = config.config.paths.i9CheckTrackerPath;
