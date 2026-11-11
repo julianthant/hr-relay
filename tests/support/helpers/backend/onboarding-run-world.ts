@@ -95,8 +95,8 @@ export function createOnboardingRunWorld() {
     const plan = (value: unknown = request) => {
       const wire = planner.plan(value), record = h.database.authority.startPlans.get(wire.startPlanId); assert.ok(record); return record;
     };
-    const start = () => {
-      const planned = plan(); assert.equal(planned.refused.length, 0);
+    const start = (value: unknown = request) => {
+      const planned = plan(value); assert.equal(planned.refused.length, 0);
       const result = h.kernel.execute(world.startCommand(planned));
       const run = h.database.authority.runs.get(singleAppliedRunId(result)); assert.ok(run); return run;
     };

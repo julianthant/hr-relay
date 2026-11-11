@@ -329,6 +329,20 @@ describe("onboarding roster names in a real run", () => {
     assert.deepEqual(f.repository.runOperations(root.envelope.runId), []);
   });
 
+  it("computes a fresh Start's hire plan from its own input after an earlier run left a hire-plan checkpoint", async () => {
+    const f = await runWorld.executionFixture(false, { match: "unique" }), first = f.start();
+    const done = await f.execution.execute(first, new AbortController().signal);
+    assert.ok(done.run?.lifecycle.state === "terminal" && done.run.lifecycle.outcome === "done");
+    const [submission] = f.request.submissions; assert.ok(submission);
+    const second = f.start({ ...f.request, submissions: [{ ...submission, postalCodeOverride: "92101" }] });
+    assert.equal(second.envelope.itemId, first.envelope.itemId);
+    await f.rawExecution.execute(second, new AbortController().signal);
+    const planOf = (runId: string) => f.database.authority.runCheckpoints.listByItem(descriptor.id, first.envelope.itemId)
+      .find(row => row.runId === runId && row.nodeId === "hire-plan")?.output.value;
+    assert.equal(OnboardingReadHirePlan.output.parse(planOf(first.envelope.runId)).postalCodeOverride, null);
+    assert.equal(OnboardingReadHirePlan.output.parse(planOf(second.envelope.runId)).postalCodeOverride, "92101");
+  });
+
   it("serves the split legal and preferred names at the hire review before approval", async () => {
     const f = await runWorld.executionFixture(false, { match: "unique", legalName: "Fixture  Marie Hire", livedName: "Fix Hire" }), root = f.start();
     const parked = await f.rawExecution.execute(root, new AbortController().signal);
