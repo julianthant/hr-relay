@@ -442,8 +442,13 @@ it("resumes a member Retry paused before its Save by reading its stale contacts 
   assert.equal(completed.outcome.state, "done", completed.outcome.state === "failed"
     ? JSON.stringify(f.database.authority.failures.get(completed.outcome.failureId)) : JSON.stringify(completed.outcome));
   f.hooks.onSpan = undefined;
-  const rows = approvedRows(); assert.equal(rows.length, 2);
+  // approved-record is an always-rerun read: one row per claim, and onbase-import brings the member back for a third claim.
+  const rows = approvedRows(); assert.equal(rows.length, 3);
   assert.ok(Date.parse(rows[1]?.provenance[0]?.observedAt ?? "") >= resumedAt);
+  const onbase = f.database.authority.runs.listChildren(held.envelope.runId);
+  assert.deepEqual(onbase.map(child => child.envelope.workflow), ["onbase"]);
+  const child = onbase[0]; assert.ok(child?.lifecycle.state === "terminal");
+  assert.ok(Date.parse(rows[2]?.provenance[0]?.observedAt ?? "") >= Date.parse(child.lifecycle.endedAt));
   assert.deepEqual(f.database.authority.writeIntents.listByRun(held.envelope.runId).map(intent => intent.status), ["committed"]);
   assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), [1, 1]);
 });
