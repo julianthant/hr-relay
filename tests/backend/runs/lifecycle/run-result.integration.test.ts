@@ -62,9 +62,10 @@ describe("a dry run retains transaction preview accounting", () => {
 describe("a publication preview is built only for a declared publication node", () => {
   const Input = z.strictObject({ eid: EidSchema });
   const command = () => ({ name: "Results", table: { name: "Results", columns: ["a"], rows: [{ id: "1", values: ["v"] }] } });
-  const descriptor = (declared: boolean, delegating = false) => {
-    const saved = flow(Input).step("save", ReadWorkbookResult, { dependsOn: [], replay: "checkpoint", bind: command,
-      ...(declared ? { dryRun: "stop-before-publish" as const } : {}) });
+  const descriptor = (delegating: boolean) => {
+    const saved = flow(Input).step("read", ReadWorkbookResult, { dependsOn: [], replay: "checkpoint", bind: command })
+      .step("save", ReadWorkbookResult, { dependsOn: ["read"], replay: "checkpoint", bind: command,
+        dryRun: "stop-before-publish" });
     const built = delegating ? saved.childRun("members", {
       id: WorkflowIdSchema.parse("person-lookup"), input: z.strictObject({ emplId: z.string().min(1) }), result: z.strictObject({ ok: z.boolean() }),
     }, { dependsOn: [], edgeId: DelegationEdgeIdSchema.parse("members"), cardinality: "one", bind: () => ({ emplId: WRITE_FIXTURE_EID }),
@@ -80,25 +81,27 @@ describe("a publication preview is built only for a declared publication node", 
   };
   const running = () => RunRecordSchema.parse({ ...writeFixtureQueuedRun({ dryRun: true }), claimGeneration: 1, version: 2,
     lifecycle: { state: "running", workerId: WRITE_FIXTURE_WORKER_ID, claimedAt: WRITE_FIXTURE_NOW, heartbeatAt: WRITE_FIXTURE_NOW } });
-  const build = (declared: boolean, steps: unknown, delegating = false) =>
-    buildRunPreviewResult(descriptor(declared, delegating), running(), steps, [], manualClock(new Date(WRITE_FIXTURE_NOW)));
+  const build = (steps: unknown, delegating = false) =>
+    buildRunPreviewResult(descriptor(delegating), running(), steps, [], manualClock(new Date(WRITE_FIXTURE_NOW)));
+  const read = { nodeId: "read", state: "exercised" };
   const publication = { nodeId: "save", state: "publication-preview" };
 
   it("builds a publication-dry-run-preview result for a declared node", () => {
-    const { record } = build(true, [publication]);
+    const { record } = build([read, publication]);
     assert.equal((record.result.value as { kind: string }).kind, "publication-dry-run-preview");
   });
 
   it("refuses a publication-preview step on a node that does not declare stop-before-publish", () => {
-    assert.throws(() => build(false, [publication]), /publication/u);
+    assert.throws(() => build([{ nodeId: "read", state: "publication-preview" }, publication]),
+      /dry-run preview publication membership mismatch/u);
   });
 
   it("refuses an exercised step on a declared publication node", () => {
-    assert.throws(() => build(true, [{ nodeId: "save", state: "exercised" }]), /publication/u);
+    assert.throws(() => build([read, { nodeId: "save", state: "exercised" }]), /a preview cannot claim a publication executed/u);
   });
 
   it("refuses a publication preview combined with a delegated preview", () => {
-    assert.throws(() => build(true, [publication, { nodeId: "members", state: "delegation-preview" }], true),
+    assert.throws(() => build([read, publication, { nodeId: "members", state: "delegation-preview" }], true),
       /dry-run preview cannot combine publication and delegated previews/u);
   });
 });

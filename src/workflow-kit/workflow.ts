@@ -1756,20 +1756,23 @@ export function defineWorkflowDescriptor<
         if (step.state === "publication-preview" && !publication) throw new Error("dry-run preview publication membership mismatch");
         if (publication && step.state === "exercised") throw new Error("a preview cannot claim a publication executed");
       }
-      const { dependencies } = resolveTerminalDependencies(currentRun, evidenceInput,
-        dependencySpecFor(workflowPreviewDependencyIds(descriptor, steps), "dry-run preview"), "dry-run preview", true, schemaReader);
-      const previewNodes = new Set(dependencies.filter(dependency => dependency.state === "delegation-resolved"
-        && dependency.members.some(member => isRunPreviewSchemaHash(member.resultSchemaHash))).map(dependency => dependency.nodeId));
-      if (steps.some(step => (step.state === "delegation-preview") !== previewNodes.has(step.nodeId))) throw new Error("dry-run preview delegation accounting mismatch");
       const targets = projectionStateOf(descriptor).targets;
       const dispatched = nodes.find(node => {
         if (node.kind !== "child-run" || node.join !== "none" || !steps.some(step => step.nodeId === node.id && step.state === "exercised")) return false;
         const target = targets?.get(node.id);
         return target !== undefined && workflowDryRunSupport(target).state === "supported";
       });
-      const delegated = "firstDelegationNodeId" in support || previewNodes.size > 0 || dispatched !== undefined;
       const published = steps.some(step => step.state === "publication-preview");
-      if (published && delegated) throw new Error("dry-run preview cannot combine publication and delegated previews");
+      // Delegation-preview steps equal the resolved preview members (checked below), so this sees every delegated preview.
+      if (published && ("firstDelegationNodeId" in support || dispatched !== undefined || steps.some(step => step.state === "delegation-preview"))) {
+        throw new Error("dry-run preview cannot combine publication and delegated previews");
+      }
+      const { dependencies } = resolveTerminalDependencies(currentRun, evidenceInput,
+        dependencySpecFor(workflowPreviewDependencyIds(descriptor, steps), "dry-run preview"), "dry-run preview", true, schemaReader);
+      const previewNodes = new Set(dependencies.filter(dependency => dependency.state === "delegation-resolved"
+        && dependency.members.some(member => isRunPreviewSchemaHash(member.resultSchemaHash))).map(dependency => dependency.nodeId));
+      if (steps.some(step => (step.state === "delegation-preview") !== previewNodes.has(step.nodeId))) throw new Error("dry-run preview delegation accounting mismatch");
+      const delegated = "firstDelegationNodeId" in support || previewNodes.size > 0 || dispatched !== undefined;
       const schema = published ? RunPublicationDryRunPreviewResultSchema
         : delegated ? RunDelegatedDryRunPreviewResultSchema : RunDryRunPreviewResultSchema;
       const previewValue = JsonValueSchema.parse(schema.parse({
