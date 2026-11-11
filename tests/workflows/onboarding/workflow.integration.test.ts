@@ -101,7 +101,7 @@ describe("onboarding workflow", () => {
       { id: "hire-plan", kind: "task", nodeIds: ["hire-plan"], dependsOn: ["crm-source", "roster-choice"], taskIds: ["workflow:onboarding/read-hire-plan"] },
       { id: "ucpath-source", kind: "task", nodeIds: ["ucpath-source"], dependsOn: ["hire-plan"], taskIds: ["ucpath/search-person-match"] },
       { id: "hire-subject", kind: "task", nodeIds: ["hire-subject"], dependsOn: ["hire-plan", "ucpath-source"], taskIds: ["workflow:onboarding/match-hire-subject"] },
-      { id: "i9-lookup-child", kind: "delegate", nodeIds: ["i9-lookup-child"], dependsOn: ["hire-plan", "hire-subject"], taskIds: [] },
+      { id: "i9-lookup-child", kind: "delegate", nodeIds: ["i9-lookup-child"], dependsOn: ["hire-plan", "ucpath-source", "hire-subject"], taskIds: [] },
       { id: "i9-lookup", kind: "task", nodeIds: ["i9-lookup"], dependsOn: ["hire-plan", "hire-subject", "i9-lookup-child"], taskIds: ["workflow:onboarding/read-i9-lookup"] },
       { id: "hire-findings", kind: "task", nodeIds: ["hire-findings"], dependsOn: ["hire-plan", "hire-subject", "i9-lookup"], taskIds: ["ucpath/read-hire-findings"] },
       { id: "hire-review", kind: "gate", nodeIds: ["hire-review"], dependsOn: ["hire-plan", "ucpath-source", "hire-subject", "i9-lookup", "hire-findings"], taskIds: [] },
@@ -138,7 +138,7 @@ describe("onboarding workflow", () => {
     }
   });
 
-  it("delegates only new hires to the actual I-9 child schemas using snapshot legal names", () => {
+  it("delegates the I-9 lookup whenever a new hire is still possible, using snapshot legal names", () => {
     const child = nodes.find(node => node.id === "i9-lookup-child");
     assert.ok(child?.kind === "child-run" && child.cardinality === "many");
     assert.equal(child.target.id, "i9-lookup");
@@ -148,11 +148,13 @@ describe("onboarding workflow", () => {
     assert.equal(child.join, "all-settled");
     const input = ONBOARDING_INPUT_EXAMPLE;
     const planned = { ...plan, employee: { ...plan.employee, firstName: "Legal", preferredFirstName: "Lived" } };
-    assert.deepEqual(child.bind({ input, outputs: { "hire-plan": planned, "hire-subject": { state: "new-hire", candidateEids: [] } } }),
-      [{ firstName: "Legal", lastName: "Hire" }]);
-    assert.deepEqual(child.bind({ input, outputs: { "hire-plan": planned, "hire-subject": {
-      state: "review-required", candidates: [{ emplId: "10800000", name: "Hire, Other" }],
-    } } }), []);
+    const other = { emplId: "10800000", name: "Hire, Other" };
+    const bind = (match: unknown, mode: "new-hire" | "rehire" = "new-hire") => child.bind({ input: { ...input, mode }, outputs: { "hire-plan": planned, "ucpath-source": match } });
+    assert.deepEqual(bind({ hits: [], confirmed: [], dropped: [] }), [{ firstName: "Legal", lastName: "Hire" }]);
+    const dropped = { hits: [other], confirmed: [], dropped: [{ ...other, reason: "Last name does not match" }] };
+    assert.deepEqual(bind(dropped), [{ firstName: "Legal", lastName: "Hire" }], "an all-dropped match may still become a new hire");
+    assert.deepEqual(bind(dropped, "rehire"), []);
+    assert.deepEqual(bind({ hits: [other], confirmed: [other], dropped: [] }), []);
     const request = i9LookupInput(planned);
     assert.equal(child.deriveChildItemId(request, { canonicalItemId: i9LookupItemId(request) }), i9LookupItemId(request));
   });
@@ -362,13 +364,18 @@ describe("onboarding roster names in a real run", () => {
     assert.equal(gate.decision.context, "Legal name: first Fixture, middle Marie, last Hire. Preferred name: first Fix, no middle name, last Hire.");
   });
 
-  it("reads the settled CRM and I-9 steps as done while parked at the hire review with every UCPath hit dropped", async () => {
+  const allDroppedMatch = () => {
     const dropped = ["10800001", "10800002", "10800003"].map(emplId => ({ emplId, name: "Other, Person" }));
-    const f = await runWorld.executionFixture(false, { match: "unique",
-      personMatch: SearchPersonMatchOutputSchema.parse({ hits: dropped, confirmed: [], dropped: dropped.map(hit => ({ ...hit, reason: "Last name does not match" })) }) }), root = f.start();
+    return SearchPersonMatchOutputSchema.parse({ hits: dropped, confirmed: [], dropped: dropped.map(hit => ({ ...hit, reason: "Last name does not match" })) });
+  };
+  for (const shape of ["every UCPath hit dropped", "a confirmed existing person"] as const) it(`reads the settled CRM and I-9 steps as done while parked at the hire review with ${shape}`, async () => {
+    const lookupRuns = shape === "every UCPath hit dropped";
+    const person = { emplId: "10800000", name: "Hire, Fixture" };
+    const personMatch = lookupRuns ? allDroppedMatch() : SearchPersonMatchOutputSchema.parse({ hits: [person], confirmed: [person], dropped: [] });
+    const f = await runWorld.executionFixture(false, { match: "unique", personMatch }), root = f.start();
     const parked = await f.rawExecution.execute(root, new AbortController().signal);
     assert.ok(parked.run?.lifecycle.state === "parked-gate" && parked.run.lifecycle.gateId === "hire-review");
-    assert.deepEqual(f.calls.map(call => call.system), ["crm", "ucpath"], "no I-9 lookup child ran");
+    assert.equal(f.database.authority.runs.listChildren(root.envelope.runId).length, lookupRuns ? 1 : 0, "the I-9 lookup runs only while a new hire is possible");
     const reader = testRunService(f.database, f.clock);
     const descriptors = { resolve: (id: string) => id === descriptor.id ? descriptor : undefined };
     const projection = createOperatorProjection({ database: f.database, stateRoot: f.stateRoot, clock: f.clock, reader, appVersion: "0.1.0",
@@ -379,7 +386,7 @@ describe("onboarding roster names in a real run", () => {
     assert.deepEqual(detail.timeline.steps?.slice(0, 4).map(step => [step.key, step.state, step.members.map(member => [member.nodeId, member.state, member.notRunReason])]), [
       ["crm-data", "done", [["roster-choice", "skipped", "condition-false"], ["crm-source", "done", undefined], ["hire-plan", "done", undefined]]],
       ["ucpath-search", "done", [["ucpath-source", "done", undefined], ["hire-subject", "done", undefined]]],
-      ["i9-search", "done", [["i9-lookup-child", "skipped", "condition-false"], ["i9-lookup", "done", undefined]]],
+      ["i9-search", "done", [lookupRuns ? ["i9-lookup-child", "done", undefined] : ["i9-lookup-child", "skipped", "condition-false"], ["i9-lookup", "done", undefined]]],
       ["hire-review", "blocked", [["hire-findings", "done", undefined], ["hire-review", "blocked", undefined]]],
     ]);
   });
@@ -398,14 +405,14 @@ describe("onboarding roster names in a real run", () => {
     assert.ok(gate.state === "open" && gate.decision !== undefined);
     assert.deepEqual(gate.decision.options.map(option => option.id), ["existing-person", "new-hire"]);
     const answer = (payload: { arm: string; rowId?: string }, expectedVersion = version) => GateArmAnswerRequestSchema.parse({
-      commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "run-detail", family: "gate", type: "answer-gate-arm",
+      commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "gate", type: "answer-gate-arm",
       target: { runId: root.envelope.runId, gateId: "hire-review", expectedVersion }, payload });
     const valueOf = (resolution: ReturnType<typeof resolveGateArmAnswer>) => resolution.state === "accepted" && resolution.request.family === "gate" && resolution.request.type === "resolve-gate"
       ? resolution.request.payload.result.value : resolution;
     assert.deepEqual(valueOf(resolveGateArmAnswer(deps, answer({ arm: "new-hire" }), undefined)), { decision: "new-hire", ruledOut: ["10800001", "10800002", "10800003"] });
     assert.deepEqual(valueOf(resolveGateArmAnswer(deps, answer({ arm: "existing-person", rowId: "10800002" }), undefined)),
       { decision: "existing-person", emplId: "10800002", confirmedBy: "operator" });
-    for (const refused of [answer({ arm: "existing-person", rowId: "10800009" }), answer({ arm: "new-hire", rowId: "10800002" }), answer({ arm: "new-hire" }, version + 1)]) {
+    for (const refused of [answer({ arm: "existing-person", rowId: "10800004" }), answer({ arm: "new-hire", rowId: "10800002" }), answer({ arm: "new-hire" }, version + 1)]) {
       assert.deepEqual(resolveGateArmAnswer(deps, refused, undefined), { state: "refused", code: "invalid-state", message: "This review changed. Reload it before answering." });
     }
     const chosen = answer({ arm: "new-hire" }), accepted = resolveGateArmAnswer(deps, chosen, undefined);

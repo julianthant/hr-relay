@@ -188,7 +188,7 @@ export function hireReviewDecision(mode: "new-hire" | "rehire", match: z.infer<t
   const context = `Legal name: ${nameParts(names.firstName, names.middleName, names.lastName)}. `
     + `Preferred name: ${nameParts(names.preferredFirstName, names.preferredMiddleName, names.preferredLastName)}.`
     + (unconfirmed ? ` UCPath returned ${String(count)} possible ${count === 1 ? "match" : "matches"} and Relay confirmed none. `
-      + `Searched by name, date of birth${names.ssn === null ? "" : " and SSN"}.` : "");
+      + (names.ssn === null ? "Searched by name and date of birth." : "Searched by name, date of birth and SSN.") : "");
   return ordered.length === 0 ? undefined : projectDecision("review-before-write", ordered, { context });
 }
 

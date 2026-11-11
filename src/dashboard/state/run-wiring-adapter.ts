@@ -548,7 +548,11 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   }, [binding]);
   const launch = useMemo(() => binding === undefined ? undefined : createRunLaunchService(client, binding.scope.actorId,
     { uuid: () => crypto.randomUUID(), now: () => binding.authority.nowIso }), [client, binding]);
-  const matchesGate = useCallback((envelope: DashboardCommandRequest) => envelope.family === "gate" && gate?.section === "identity-gate" && gate.payload.state === "available"
+  const matchesGate = useCallback((envelope: DashboardCommandRequest) => envelope.family === "gate" && envelope.type === "answer-gate-arm"
+    ? detailGate?.state === "open" && row.rowRevision.valueOf() === envelope.target.expectedVersion.valueOf()
+      && detailGate.decision?.options.some(({ send }) => send.via === "gate-arm" && send.gateNodeId === envelope.target.gateId.valueOf()
+        && send.expectedVersion === envelope.target.expectedVersion.valueOf() && send.arm === envelope.payload.arm) === true
+    : envelope.family === "gate" && gate?.section === "identity-gate" && gate.payload.state === "available"
     && detailGate?.state === "open" && detailGate.nodeId?.valueOf() === envelope.target.gateId.valueOf() && gate.payload.value.expectedVersion === envelope.target.expectedVersion
     && row.rowRevision.valueOf() === envelope.target.expectedVersion.valueOf(), [gate, detailGate, row.rowRevision]);
   const matchesDecision = useCallback((envelope: DashboardCommandRequest) => {

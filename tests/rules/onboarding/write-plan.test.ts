@@ -34,7 +34,7 @@ describe("reviewed onboarding write plan", () => {
     const result = readOnboardingWritePlan(unconfirmed);
     assert.equal(result.hire.mode, "new-hire"); assert.equal(result.hire.emplId, null); assert.notEqual(result.i9, null);
     assert.deepEqual(result.subject, { state: "new-hire", candidateEids: [] });
-    for (const ruledOut of [["10800001", "10800002"], ["10800001", "10800002", "10800009"], []]) {
+    for (const ruledOut of [["10800001", "10800002"], ["10800001", "10800002", "10800004"], []]) {
       assert.throws(() => readOnboardingWritePlan({ ...unconfirmed, approval: { decision: "new-hire", ruledOut } }), /new-hire-choice-has-existing-or-unresolved-identity/u);
     }
     assert.throws(() => readOnboardingWritePlan({ ...unconfirmed, lookup: { state: "not-required", subjectState: "review-required" } }), /i9-skip-source-disagrees/u);
@@ -48,7 +48,7 @@ describe("reviewed onboarding write plan", () => {
     assert.equal(result.hire.mode, "rehire"); assert.equal(result.hire.emplId, "10800002");
     assert.equal(result.hire.expectedName, "Other, Person"); assert.equal(result.i9, null);
     assert.throws(() => readOnboardingWritePlan({ ...picked, approval: { ...picked.approval, confirmedBy: "person-org" } }), /existing-hire-choice-not-independently-confirmed/u);
-    assert.throws(() => readOnboardingWritePlan({ ...picked, approval: { ...picked.approval, emplId: EidSchema.parse("10800009") } }), /existing-hire-choice-not-independently-confirmed/u);
+    assert.throws(() => readOnboardingWritePlan({ ...picked, approval: { ...picked.approval, emplId: EidSchema.parse("10800004") } }), /existing-hire-choice-not-independently-confirmed/u);
   });
   it("refuses an operator pick or a new hire while Person Org confirmed a hit", () => {
     const other = { emplId: EidSchema.parse("10800001"), name: "Other, Person" };
