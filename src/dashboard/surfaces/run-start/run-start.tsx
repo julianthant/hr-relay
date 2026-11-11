@@ -350,7 +350,7 @@ export function RunStartDialog({
     selectedWorkflow?.requiredWorkbookFields ?? [], referenceSources);
   const initialWorkflow = workflows.find((entry) => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId));
   const [customizeSteps, setCustomizeSteps] = useViewState("launchCustomize", false);
-  const [selectedStepKeys, setSelectedStepKeys] = useState<string[]>(() =>
+  const [stepSelection, setSelectedStepKeys] = useState<string[]>(() =>
     initialWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
   /** Keep drafts across checkbox toggles, but clear them across workflow or customization exits. */
   const [stepDrafts, setStepDrafts] = useState<Readonly<Record<string, StepOmissionDraft>>>({});
@@ -476,10 +476,17 @@ export function RunStartDialog({
     for (const step of workflow?.steps ?? []) {
       const control = step.control;
       if (control.state === "selectable" && typedDeclaration.controls.some(field => field.field === control.inputField && field.placement === "step"))
-        values[control.inputField] = typedControlAvailable(typedDeclaration, values, control.inputField) && selectedStepKeys.includes(step.key);
+        values[control.inputField] = typedControlAvailable(typedDeclaration, values, control.inputField) && (customizeSteps || isRerun ? stepSelection.includes(step.key) : step.includedByDefault);
     }
     return values;
-  }, [typedDeclaration, typedDraft, workflow, selectedStepKeys]);
+  }, [typedDeclaration, typedDraft, workflow, customizeSteps, isRerun, stepSelection]);
+  const defaultStepKeys = useMemo(() => workflow?.steps.filter(step => {
+    const control = step.control;
+    return declaredInput && control.state === "selectable"
+      ? typedValues[control.inputField] === true
+      : step.includedByDefault;
+  }).map(step => step.key) ?? [], [workflow, declaredInput, typedValues]);
+  const selectedStepKeys = customizeSteps || isRerun ? stepSelection : defaultStepKeys;
   const rowCapability = !isRerun && inputRun.state === "present" ? inputRun.surface.workbookRows : undefined;
   const rowReference = rowCapability === undefined ? undefined : selectedReferences[rowCapability.typeId];
   const rowLibrary = library.catalog.find(entry => entry.libraryId === rowReference?.libraryId && entry.state.origin.kind === "local" && !entry.state.removed);
@@ -593,12 +600,7 @@ export function RunStartDialog({
         ...(requiredTypes.length ? { workbookReferences: launchWorkbookReferences(requiredTypes, library.catalog, selectedReferences, values === null ? preview.submissions.length : 1,
           versionSources.sources, (workbookReference?.writableFields.length ?? 0) > 0,
           rowCapability === undefined ? undefined : { typeId: rowCapability.typeId, rows: selectedWorkbookRows?.choices ?? [] }) } : {}),
-        selectedStepKeys: customizeSteps || isRerun ? selectedStepKeys : workflow?.steps.filter(step => {
-          const control = step.control;
-          return declaredInput && control.state === "selectable"
-            ? typedValues[control.inputField] === true
-            : step.includedByDefault;
-        }).map(step => step.key) ?? [],
+        selectedStepKeys,
         // Send omission facts only after every declared form parses.
         ...(customizeSteps && stepOmissions !== null && stepOmissions.length > 0 ? { stepOmissions } : {}),
       });
@@ -616,7 +618,7 @@ export function RunStartDialog({
     } finally {
       if (launchInstance.current === instance) setBusy(false);
     }
-  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput, typedValues, workflow, requiredTypes, library.catalog, library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility, versionSources, workbookReference, selectedReferences, rowCapability, selectedWorkbookRows, pdfSurface]);
+  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput, requiredTypes, library.catalog, library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility, versionSources, workbookReference, selectedReferences, rowCapability, selectedWorkbookRows, pdfSurface]);
 
   const sendFinal = useCallback(async (command: LaunchFinalCommand, dispatchedFor: string): Promise<void> => {
     if (sending.current) return;
@@ -715,13 +717,8 @@ export function RunStartDialog({
 
   const changeCustomizeSteps = useCallback((next: boolean) => {
     setCustomizeSteps(next);
+    setSelectedStepKeys(defaultStepKeys);
     if (!next) {
-      setSelectedStepKeys(workflow?.steps.filter(step => {
-        const control = step.control;
-        return declaredInput && control.state === "selectable"
-          ? typedDeclaration.controls.some(field => field.placement === "input" && field.field === control.inputField) && typedValues[control.inputField] === true
-          : step.includedByDefault;
-      }).map(({ key }) => key) ?? []);
       // Leaving customization clears facts so unchosen assertions cannot survive invisibly.
       setStepDrafts({});
       setTouchedFacts(new Set());
@@ -729,7 +726,7 @@ export function RunStartDialog({
     } else if (currentStage === "Confirm") {
       setCurrentStage("Steps");
     }
-  }, [currentStage, workflow, setCurrentStage, setCustomizeSteps, declaredInput, typedDeclaration, typedValues]);
+  }, [currentStage, defaultStepKeys, setCurrentStage, setCustomizeSteps]);
 
   /** Use the shared cascade; locked omissions cannot be changed by another checkbox path. */
   const toggleStep = useCallback((key: string, next: boolean) => {
