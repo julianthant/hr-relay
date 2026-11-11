@@ -1,11 +1,11 @@
 # hr-debug — this repo's failure classes, and the loop for each
 
-> Internal repository playbook. Read through the global `debug` router or `hr-workflow`; it is not
-> an independent operator command.
+> Internal repository playbook. Read through the `hr-debug` skill or `hr-workflow`; it is not an
+> independent operator command.
 
-The general method is the global `debug` skill: red gate → minimise → hypothesise → instrument → fix
-→ regression test → cleanup. Use `sup_sol` at high reasoning for a subtle seam only when `/supervise`
-or the user explicitly authorizes delegation. This skill adds the repo-specific evidence sources,
+The general method is the global `diagnose` skill: red gate → minimise → hypothesise → instrument →
+fix → regression test → cleanup. Use `sup_sol` at high reasoning for a subtle seam only when the user
+explicitly authorizes delegation. This skill adds the repo-specific evidence sources,
 failure classes, and forbidden first moves. Read the owning reference and nearest module `AGENTS.md`
 before forming a theory.
 
@@ -79,4 +79,4 @@ For a workflow (or all of them):
 5. Record the matrix: `| workflow | rehearsal manifest (available/unavailable) | last verified live dry run (date, run id) | durable deltas | gaps |`.
 
 ## Close
-Failing test pinned → fix → gate green → under `/supervise` or an explicit review request, run the retained `review` skill's Correctness + Silent failures axes; otherwise inspect those two concerns inline → record (migration doc line / store AGENTS.md invariant) → tell the operator if it is lesson-worthy.
+Failing test pinned → fix → gate green → on an explicit review request, run the `review` skill and check correctness and silent failures; otherwise inspect those two concerns inline → record (migration doc line / store AGENTS.md invariant) → tell the operator if it is lesson-worthy.

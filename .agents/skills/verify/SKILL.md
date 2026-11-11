@@ -6,7 +6,7 @@ description: >-
 
 # /verify — live dry run of Relay through the dashboard
 
-Proves a change the way the operator uses it: sign in, Run, read Logs, check the result. Read-only and `dryRun=true` only. Start and stop through `.agents/skills/hr-manage/SKILL.md`; browser commands follow `~/.agents/skill-library/playwright-cli/REFERENCE.md`. Features and their passing states: [features/README.md](features/README.md).
+Proves a change the way the operator uses it: sign in, Run, read Logs, check the result. Read-only and `dryRun=true` only. Start and stop through `.agents/skills/hr-manage/SKILL.md`; browser commands follow `~/.agents/skills/playwright-cli/SKILL.md`. Features and their passing states: [features/README.md](features/README.md).
 
 ## Rules
 

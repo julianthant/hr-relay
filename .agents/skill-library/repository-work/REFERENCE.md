@@ -80,6 +80,6 @@ retained credentials into trusted session storage before login. New credential e
 the operator.
 
 [Live verification](../../skills/verify/SKILL.md) and its feature map describe dashboard dry runs.
-The global playwright-cli reference owns browser tool usage. The root instructions own
+The global `playwright-cli` skill owns browser tool usage. The root instructions own
 [production isolation and copy provenance](../../../AGENTS.md#runtime-safety); source and selector
 fixture owners are in the codebase map.

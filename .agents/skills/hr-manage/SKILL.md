@@ -11,7 +11,7 @@ The operator's standing rules, applied without being told: **dryRun=true by defa
 For a named workflow, apply `hr-workflow`'s short-id rule and read the exact existing
 `.agents/skill-library/hr-<short-id>/REFERENCE.md` before operating it. Do not select a workflow
 resource by recency or fuzzy name; when the exact resource is absent, read the descriptor directly.
-Browser operations read `~/.agents/skill-library/playwright-cli/REFERENCE.md`. Platform defects read
+Browser operations read `~/.agents/skills/playwright-cli/SKILL.md`. Platform defects read
 `.agents/skill-library/hr-debug/REFERENCE.md` before forming a theory.
 
 ## 1 · Runtime commands
