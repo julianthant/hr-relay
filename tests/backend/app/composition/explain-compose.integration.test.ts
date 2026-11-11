@@ -60,6 +60,14 @@ async function addSecondProfile(profile: BoundProfileStorageFixture): Promise<st
   } finally { await session.close(); }
 }
 
+// Seeds a run-scoped debug event and closes the writer so the test may change the profile selection.
+async function seededWithRunEvent(): Promise<void> {
+  const database = await seeded();
+  createDebugEventWriter({ repository: database.authority.timelineEvents, clock: manualClock(new Date("2026-08-04T00:11:13.500Z")), build: "fixture" })
+    .emit({ category: "http", phase: "failed", correlationId: "run-scoped" }, { kind: "run", runId: RunIdSchema.parse(EXIT_RUN_ID) }, WorkflowIdSchema.parse("person-lookup"));
+  databases.splice(databases.indexOf(database), 1); database.close();
+}
+
 async function seeded(seedRun = true): Promise<AuthorityDatabase> {
   const profile = await profiles.create(); heldProfiles.push(profile);
   const root = profile.stateRoot;
@@ -198,7 +206,7 @@ describe("explain run", () => {
   });
 
   it("serves diagnostics --run only from the selected profile when two profiles share one machine", async () => {
-    await seeded();
+    await seededWithRunEvent();
     const profile = heldProfiles.at(-1); assert.ok(profile);
     const first = await addSecondProfile(profile);
     const registry = createProfileRegistry(profile.machine);
@@ -222,16 +230,14 @@ describe("explain run", () => {
   });
 
   it("refuses the page and releases the person admission when the selection changes during the read", async () => {
-    await seeded();
+    await seededWithRunEvent();
     const profile = heldProfiles.at(-1); assert.ok(profile);
     const registry = createProfileRegistry(profile.machine);
     const selected = registry.read().activeProfileId; assert.ok(selected);
-    const admitted: { release(): void; assertLive(): void }[] = [];
-    const admit = RuntimeAdmission.prototype.admitProfile;
-    vi.spyOn(RuntimeAdmission.prototype, "admitProfile").mockImplementation(function (this: RuntimeAdmission, id) { const person = admit.call(this, id); admitted.push(person); return person; });
+    const admitted: RuntimeAdmission[] = [];
     const real = ProductionAuthorityDatabase.inspectTimelinePageReadOnly.bind(ProductionAuthorityDatabase);
     vi.spyOn(ProductionAuthorityDatabase, "inspectTimelinePageReadOnly").mockImplementation((...args) => {
-      const page = real(...args); registry.advanceSession(selected); return page;
+      admitted.push(args[0]); const page = real(...args); registry.advanceSession(selected); return page;
     });
     const run = () => composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID, "--json"] });
 
