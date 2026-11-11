@@ -762,7 +762,7 @@ describe("Onboarding captured roster admission and row choice", () => {
       assert.deepEqual(f.database.authority.writeIntents.listByRun(run.envelope.runId), []);
     });
 
-    it("refuses the receipt of a failed run whose required roster gate result is missing, and cites the taken gate otherwise", async () => {
+    it("reports a missing required roster gate on a failed run as unknown, never verified or not-taken, and cites the taken gate otherwise", async () => {
       const f = await executionFixture(false, { match: "duplicate", dryRun: true, crmReadFails: true });
       const root = f.start(), runId = root.envelope.runId;
       assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "parked-gate");
@@ -771,16 +771,23 @@ describe("Onboarding captured roster admission and row choice", () => {
       const run = f.database.authority.runs.get(runId); assert.ok(run?.lifecycle.state === "terminal");
       assert.equal(OnboardingCanonicalValueSchema.parse(run.input.parsed.value).roster.state, "resolve-required");
       assert.deepEqual(f.database.authority.gateResults.listByRun(runId).map(gate => gate.gateId), [ONBOARDING_ROSTER_GATE_ID]);
+      const result = f.database.authority.runResults.get(runId); assert.ok(result);
+      const failure = run.lifecycle.failureId === undefined ? undefined : f.database.authority.failures.get(run.lifecycle.failureId); assert.ok(failure);
+      const taken = buildRunEvidenceReceipt({ descriptor, run, result, failure, writes: [],
+        checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId), gateResults: f.database.authority.gateResults.listByRun(runId) });
+      assert.ok(!taken.decisions.some(value => value.id === deriveEvidenceEntryId(taken.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`)));
+      assert.ok(taken.decisions.some(value => value.kind === "gate" && value.outcome === "taken"));
+      // A failed-evidence record binds no gates, so a missing gate result is reported unknown rather than refused (done runs refuse above).
       const receipts = createReceiptService({ database: f.database, runReader: testRunService(f.database, f.clock), descriptors: [descriptor] });
       f.setFault("gate-missing");
       try {
-        assert.throws(() => receipts.ensureReceipt(runId));
-        assert.equal(f.database.authority.evidenceReceipts.findByRun(runId), undefined);
+        const ensured = receipts.ensure(runId); assert.equal(ensured.state, "derived");
+        const receipt = ensured.receipt;
+        const gate = receipt.verification.find(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "verification", `node.${ONBOARDING_ROSTER_GATE_ID}`));
+        assert.equal(gate?.verdict, "unknown");
+        assert.ok(!receipt.decisions.some(value => value.kind === "gate"));
+        assert.ok(!receipt.decisions.some(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`)));
       } finally { f.setFault(undefined); }
-      const ensured = receipts.ensure(runId); assert.equal(ensured.state, "derived");
-      const receipt = ensured.receipt;
-      assert.ok(!receipt.decisions.some(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`)));
-      assert.ok(receipt.decisions.some(value => value.kind === "gate" && value.outcome === "taken"));
     });
 
     it("refuses a corrupt failure digest and a result of another run or attempt", async () => {
