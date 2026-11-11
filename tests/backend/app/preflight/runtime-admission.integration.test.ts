@@ -622,8 +622,8 @@ async function harness(beforeCrmEndpoint?: () => Promise<void>) {
 
 it("opens CRM during authority writes while the full doctor still rejects mixed snapshots", async () => {
   const endpointReached = Promise.withResolvers<void>();
-  let release = Promise.withResolvers<void>();
-  let backupReadReached = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const backupReadReached = Promise.withResolvers<void>();
   let gateSession = false;
   const h = await harness(async () => {
     if (!gateSession) return;

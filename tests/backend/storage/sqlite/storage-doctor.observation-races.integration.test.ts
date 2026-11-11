@@ -132,11 +132,12 @@ for (const change of ["same-generation-content", "backwards-generation", "unavai
   using raw = new DatabaseSync(f.options.authorityPath);
   const meta = raw.prepare("SELECT schema_version FROM database_states WHERE id=1").get();
   assert.ok(meta && typeof meta.schema_version === "number");
+  const schemaVersion = meta.schema_version;
   try {
     writeDuringPass(() => {
       if (change === "same-generation-content") raw.prepare("UPDATE notifications SET payload_json=json_set(payload_json,'$.summary',?) WHERE id=?").run("Unjournaled content drift", notificationId);
       else if (change === "backwards-generation") raw.prepare("UPDATE database_states SET authority_generation=?,search_state='invalid' WHERE id=1").run(generation - 1);
-      else raw.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(meta.schema_version + 1);
+      else raw.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(schemaVersion + 1);
     });
     const checking = new AuthorityHealthPreflightRunner(f.admission, f.options, undefined, f.credentialStore).run(context);
     if (change === "same-generation-content") assert.equal(f.database.getMeta().authorityGeneration, generation);
