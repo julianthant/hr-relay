@@ -87,6 +87,8 @@ export function useSearchWiring({ client, enabled, query, today, epoch, workflow
     Promise.resolve().then(() => client.workbookList()).then(records => { if (live) setSheets(paletteSheets(records)); }, () => { if (live) setSheets([]); });
     return () => { live = false; };
   }, [client, enabled]);
-  const data = settled?.request === request ? settled.data : { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_LOADING") };
-  return useMemo(() => ({ ...data, results: withQueueSubjects(data.results, titles), sheets }), [data, titles, sheets]);
+  return useMemo(() => {
+    const data = settled?.request === request ? settled.data : { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_LOADING") };
+    return { ...data, results: withQueueSubjects(data.results, titles), sheets };
+  }, [settled, request, today, titles, sheets]);
 }
