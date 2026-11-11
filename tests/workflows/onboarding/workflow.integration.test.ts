@@ -334,7 +334,8 @@ describe("onboarding roster names in a real run", () => {
     const done = await f.execution.execute(first, new AbortController().signal);
     assert.ok(done.run?.lifecycle.state === "terminal" && done.run.lifecycle.outcome === "done");
     const [submission] = f.request.submissions; assert.ok(submission);
-    const second = f.start({ ...f.request, submissions: [{ ...submission, postalCodeOverride: "92101" }] });
+    const selection = { ...f.selection, versionId: f.library.libraryVersion(f.id).version.id, expectedVersion: f.library.read(f.id).version };
+    const second = f.start({ ...f.request, submissions: [{ ...submission, postalCodeOverride: "92101" }], workbookReferences: [selection] });
     assert.equal(second.envelope.itemId, first.envelope.itemId);
     await f.rawExecution.execute(second, new AbortController().signal);
     const planOf = (runId: string) => f.database.authority.runCheckpoints.listByItem(descriptor.id, first.envelope.itemId)
