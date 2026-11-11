@@ -1282,7 +1282,7 @@ function inspectionRunReader(expectedSchemaVersion: number): (raw: unknown) => P
   };
 }
 
-function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION): number {
+function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, workbookPayloads = true): number {
   const predecessorCustody = expectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
   const read: StoredReaders = { ...(predecessorCustody ? PREDECESSOR_CUSTODY_READERS : CURRENT_READERS), run: inspectionRunReader(expectedSchemaVersion) };
   const convertPreferences = (table: string, row: unknown) => {
@@ -1376,7 +1376,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
   }
   if (expectedSchemaVersion >= 8 && database.prepare("SELECT 1 FROM assistant_grants WHERE id='current'").get() === undefined
     && database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' ORDER BY rowid DESC LIMIT 1) WHERE ?<11 OR mode IS NULL OR mode NOT IN ('before-submits','without-asking')").get(expectedSchemaVersion) !== undefined) throw new Error("assistant-grant-missing-with-history");
-  if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18);
+  if (workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18);
   if (expectedSchemaVersion >= 9) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
   return validated;
@@ -1552,7 +1552,7 @@ function assertNativeSchema(database: DatabaseSync, version = CURRENT_AUTHORITY_
 }
 
 export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas = false,
-  missingRunSearch = false) {
+  missingRunSearch = false, workbookPayloads = true) {
   const applicationId = readIntPragma(database, "application_id");
   if (applicationId !== AUTHORITY_APPLICATION_ID) {
     throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
@@ -1572,7 +1572,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   if (meta.schema_version !== schemaVersion) {
     throw new Error(`authority schema metadata ${String(meta.schema_version)} disagrees with user_version ${String(schemaVersion)}`);
   }
-  validateAuthorityRecordSchemas(database, !missingRunSearch, expectedSchemaVersion);
+  validateAuthorityRecordSchemas(database, !missingRunSearch, expectedSchemaVersion, workbookPayloads);
   validateNotificationMetadata(database);
   const violations = invariantViolations(database);
   if (violations.length > 0) throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
@@ -1606,8 +1606,8 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   });
 }
 
-function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: boolean): AuthorityCopyInspection {
-  return AuthorityCopyInspectionSchema.parse(inspectNativeAuthority(database, CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas));
+function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: boolean, workbookPayloads = true): AuthorityCopyInspection {
+  return AuthorityCopyInspectionSchema.parse(inspectNativeAuthority(database, CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas, false, workbookPayloads));
 }
 
 /** Internal stopped-upgrade barrier; never exported through the repository entrypoint. */
@@ -1766,7 +1766,7 @@ function requireStoppedUpgradeSource(admission: RuntimeAdmission, path: string, 
   assertOfflineMaintenanceForProcessRoot(operation, processLockRoot);
 }
 
-function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): AuthorityCopyInspection {
+function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number, workbookPayloads = true): AuthorityCopyInspection {
   const parsedPath = z.string().min(1).parse(path);
   if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
     throw new Error(`authority database ${parsedPath} is missing or empty`);
@@ -1793,7 +1793,7 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
     database.exec("PRAGMA query_only = ON");
     database.exec("BEGIN");
     transactionOpen = true;
-    const inspection = inspectOpenDatabase(database, false);
+    const inspection = inspectOpenDatabase(database, false, workbookPayloads);
     database.exec("COMMIT");
     transactionOpen = false;
     return inspection;
@@ -2564,10 +2564,10 @@ export class AuthorityDatabase implements Disposable {
     return authoritySourceDatabaseIdentity(source);
   }
 
-  static inspectExistingReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
+  static inspectExistingReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250, workbookPayloads = true): AuthorityCopyInspection {
     return withOperationProof(() => {
       requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
-      return withDirectReaderAdmission(admission, () => inspectExistingDatabaseReadOnly(path, busyTimeoutMs));
+      return withDirectReaderAdmission(admission, () => inspectExistingDatabaseReadOnly(path, busyTimeoutMs, workbookPayloads));
     });
   }
 
