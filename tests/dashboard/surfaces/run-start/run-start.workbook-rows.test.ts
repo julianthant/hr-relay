@@ -68,7 +68,7 @@ function proposal(request: StartPlanRequest, partial = false) {
   });
 }
 
-it.each(["late catalog", "sidebar workflow", "restored route"])("plans default Onboarding steps after %s opens the mounted launcher", async path => {
+it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previews the same default Onboarding steps after %s opens the mounted launcher", async path => {
   let planned: StartPlanRequest | undefined;
   const client = h.stubClient({ ...libraryReads, submitStartPlan: async input => {
     planned = StartPlanRequestSchema.parse(input);
@@ -105,6 +105,11 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("plans default O
   assert.ok(planned, document.body.textContent ?? "Planner was not called");
   assert.deepEqual(planned.selectedStepKeys, workflow.steps.filter(step => step.includedByDefault).map(step => step.key));
   assert.match(document.body.textContent ?? "", /Entry 1 · Accepted/u);
+  const stepsRow = [...document.querySelectorAll("dt")].find(row => row.textContent === "Steps");
+  assert.ok(stepsRow, "Confirm must show the Steps summary");
+  const count = stepsRow.nextElementSibling?.textContent;
+  assert.equal(count, `${planned.selectedStepKeys.length} / ${workflow.steps.length} included`);
+  assert.equal(planned.selectedStepKeys.length, 7, "Onboarding defaults include all seven steps");
 });
 
 it("uses saved rows only, requires a common explicit mode and preserves duplicate physical entry/refusal correspondence", async () => {
