@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
-import { createRoot } from "react-dom/client";
-import { afterEach, it, onTestFinished } from "vitest";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, it } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
@@ -20,7 +20,8 @@ import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflo
 import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 
 const h = createRunStartDialogHarness();
-afterEach(h.cleanup);
+let routedRoot: Root | undefined;
+afterEach(async () => { await act(async () => routedRoot?.unmount()); routedRoot = undefined; await h.cleanup(); });
 const descriptor = DESCRIPTORS.find(flow => flow.id === "onboarding"); assert.ok(descriptor?.surfaces.inputRun);
 const descriptorId = descriptor.id;
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
@@ -75,7 +76,7 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("plans default O
   } });
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
-  onTestFinished(async () => { await act(async () => root.unmount()); });
+  routedRoot = root;
   let openOnboarding = () => {};
   function Harness() {
     const [loaded, setLoaded] = useState(path !== "late catalog");
@@ -100,7 +101,7 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("plans default O
     const button = h.buttons().find(button => h.buttonName(button) === name); assert.ok(button, name);
     await act(async () => button.click());
   };
-  await press("Continue"); await press("Continue");
+  await press("Continue"); await press("Preview plan");
   assert.ok(planned, document.body.textContent ?? "Planner was not called");
   assert.deepEqual(planned.selectedStepKeys, workflow.steps.filter(step => step.includedByDefault).map(step => step.key));
   assert.match(document.body.textContent ?? "", /Entry 1 · Accepted/u);
