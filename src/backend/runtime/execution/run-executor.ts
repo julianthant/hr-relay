@@ -687,13 +687,14 @@ export async function executeClaimedRun(
     const memberRetry = continuationAuthority === undefined ? undefined : deps.lifecycle.delegationRetryExecution({ runId, claim });
     const boundAt = (consumer: RunCheckpointRecord) => (source: RunRecord, dependency: NodeId) => originalCheckpoint(deps.authority.authority, source, String(dependency), consumer.claimGeneration);
     // `pick` names the one row the consumer was bound from; nothing is searched by time or taken as latest.
-    const sourceScopeFor = (sourceRunId: string, dependsOn: readonly NodeId[], pick: (source: RunRecord, dependency: NodeId) => RunCheckpointRecord | undefined): RuntimeScope => {
+    // `conditions` is false where the record already holds every dependency's value, so none was skipped by its `when`.
+    const sourceScopeFor = (sourceRunId: string, dependsOn: readonly NodeId[], pick: (source: RunRecord, dependency: NodeId) => RunCheckpointRecord | undefined, conditions = true): RuntimeScope => {
       const source = sourceRunId === runId ? getRun() : continuationSources.find(row => row.envelope.runId === sourceRunId);
       if (source === undefined) throw new RunContinuationRefusedError("run-continuation-input-source-unavailable");
       const values: Record<string, JsonValue> = {};
       for (const dependency of dependsOn) {
         const dependencyNode = nodes.find(node => node.id === dependency);
-        if ((dependencyNode?.kind === "task" || dependencyNode?.kind === "gate" && dependencyNode.resolvedBy === "operator") && dependencyNode.when !== undefined
+        if (conditions && (dependencyNode?.kind === "task" || dependencyNode?.kind === "gate" && dependencyNode.resolvedBy === "operator") && dependencyNode.when !== undefined
           && !evaluateNodeCondition(dependencyNode.when, sourceScopeFor(sourceRunId, dependencyNode.dependsOn, pick))) continue;
         const checkpoint = pick(source, dependency);
         const gate = readContinuationGate(deps.authority.authority, source.envelope, String(dependency));
@@ -1578,7 +1579,7 @@ export async function executeClaimedRun(
         const original = node.bind(sourceScopeFor(sourceEvidence.parentRunId, node.dependsOn, (_source, dependency) => {
           const entry = admitted.find(row => row.nodeId === dependency);
           return entry !== undefined && "checkpoint" in entry ? entry.checkpoint : undefined;
-        }));
+        }, false));
         const continued = node.bind(scopeFor(node.dependsOn));
         if (boundInputIdentity(original) !== boundInputIdentity(continued)
           || sourceEvidence.manifest.cardinality !== node.cardinality || sourceEvidence.manifest.join !== node.join
