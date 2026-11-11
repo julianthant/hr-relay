@@ -19,7 +19,10 @@ interface Harness {
   readonly clock: TestClock;
   readonly world: WriteFixtureWorld;
   readonly emitter: ReturnType<typeof recordingTimelineEmitter>;
+  readonly scheduler: ManualScheduler;
   readonly run: (options?: Readonly<{ dryRun?: boolean; probe?: unknown }>) => Promise<void>;
+  /** Runs the worker loop over already queued runs until `stopSignal` aborts. */
+  readonly loop: (stopSignal?: AbortSignal) => ReturnType<typeof runWorkerLoop>;
 }
 
 
@@ -52,13 +55,9 @@ export function createDryRunPreviewResultTestWorld() {
     const log = recordingLogger().log;
     const emitter = recordingTimelineEmitter(database, clock);
 
-    const run = async (options: Readonly<{ dryRun?: boolean; probe?: unknown }> = {}): Promise<void> => {
-      const dryRun = options.dryRun ?? true;
+    const loop = (stopSignal?: AbortSignal) => {
       const workerPorts = testWorkerPorts(database, clock, { path: profile.path, descriptor, poolIndex: 1 });
-      assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun })).state, "inserted");
-
-      world.probeResults.push(options.probe ?? absentProbeEvidence(WRITE_FIXTURE_NOW));
-      await runWorkerLoop({
+      return runWorkerLoop({
         ...workerPorts,
         workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
         workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
@@ -77,8 +76,8 @@ export function createDryRunPreviewResultTestWorld() {
         heartbeatIntervalMs: 600_000,
         idleRepollMs: 1_000,
         log,
-        stopSignal: new AbortController().signal,
-        exitWhenIdle: true,
+        stopSignal: stopSignal ?? new AbortController().signal,
+        exitWhenIdle: stopSignal === undefined,
         writeSequencerFor: (manager) => createWriteSequencer({
           lifecycle: testRunLifecycle(database, clock),
           stores,
@@ -95,7 +94,13 @@ export function createDryRunPreviewResultTestWorld() {
       });
     };
 
-    return { database, clock, world, emitter, run };
+    const run = async (options: Readonly<{ dryRun?: boolean; probe?: unknown }> = {}): Promise<void> => {
+      assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun: options.dryRun ?? true })).state, "inserted");
+      world.probeResults.push(options.probe ?? absentProbeEvidence(WRITE_FIXTURE_NOW));
+      await loop();
+    };
+
+    return { database, clock, world, emitter, scheduler, run, loop };
   }
   const cleanup = async () => {
     for (const open of kualiOpen.splice(0)) await open.dispose();
