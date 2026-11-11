@@ -100,7 +100,7 @@ export function directIdentifierDigestReference(value: string): string {
 export function directIdentifierDisplay(value: string): string { return value; }
 
 /** An Employee ID in operator text: its last four digits only. */
-export function maskedEid(eid: string): string { return `••••${directIdentifierDisplay(eid.slice(-4))}`; }
+export function maskedEid(value: string): string { return `••••${value.slice(-4)}`; }
 
 /** Every Employee ID inside free operator text, masked. */
 export function maskEidsInText(text: string): string { return text.replace(/\b10\d{6}\b/gu, maskedEid); }
