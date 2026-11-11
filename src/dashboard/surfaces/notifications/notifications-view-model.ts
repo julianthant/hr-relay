@@ -43,7 +43,8 @@ export function updateNotification(state: NotificationsState, id: string, contro
 
 /** Commands whose outcome is unknown or refused stay Priority until the operator opens them. */
 export function withCommandNotices(state: NotificationsState, notices: readonly NotificationItem[]): NotificationsState {
-  return state.state === "ready" && notices.length > 0 ? { ...state, items: [...notices, ...state.items] } : state;
+  if (notices.length === 0) return state;
+  return state.state === "ready" ? { ...state, items: [...notices, ...state.items] } : { state: "ready", items: notices, pinned: [] };
 }
 
 export function applyNotificationReads(state: NotificationsState, reads: Readonly<Record<string, boolean>>): NotificationsState {
