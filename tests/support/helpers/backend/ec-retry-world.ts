@@ -9,6 +9,7 @@ import { emergencyContactMemberWorkflow } from "../../../../src/workflows/emerge
 import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import fixture from "../../fixtures/ui/ucpath/emergency-contact.fixture.json";
 import { createOcrReviewWorld } from "./ocr-review-world.js";
+import { onbaseOcrWorldChild } from "./onbase-child-fixture.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../phase1f-executor-harness.js";
 
 export function createEcRetryWorld() {
@@ -18,6 +19,7 @@ export function createEcRetryWorld() {
   let remainingFailures = 1;
   let ticks = Date.parse(fixture.page.observedAt);
   const persistence = new Map<string, ReturnType<typeof createDeterministicContactPersistence>>();
+  const onbaseChild = onbaseOcrWorldChild();
   const sessions = sessionFactoryHarness({ ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
     const base = createDeterministicUcpathPersonOrgDriver();
     let activeEid: string | undefined;
@@ -53,9 +55,9 @@ export function createEcRetryWorld() {
       saveEmergencyContact: (input, capability) => forSubject(input).saveEmergencyContact(input, capability),
       read: id => id === UCPATH_CONTACT_DISPLAYED_NAME && active !== undefined ? active.read(id) : base.read(id),
     };
-  }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
+  }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }), onbase: onbaseChild.session });
   const member = composeWorkflowModule(compileWorkflow(emergencyContactMemberWorkflow), taskStoreRegistry.stores);
-  const f = await world.fixture({ coordinator: true, member, record: true, release: true, pageCount: 2, reviewedPages: facts, operatorEvidence: true, dryRun: options.dryRun, sessions, screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
+  const f = await world.fixture({ coordinator: true, member, record: true, release: true, pageCount: 2, reviewedPages: facts, operatorEvidence: true, dryRun: options.dryRun, sessions, ...onbaseChild.fixture, screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
   assert.equal(persistence.size, 0);
   for (let index = 0; index < facts.length; index++) {
     const command = f.command("correct-ocr-record", index + 1, index);
