@@ -75,3 +75,14 @@ it("rejects extra private fields and untrusted OCR failure text without retry", 
     await assert.rejects(client.testChatGptOcr(), { kind: "schema" }); assert.equal(calls, 1);
   }
 });
+
+it("forgets the account with one guarded empty mutation request", async () => {
+  const calls: { url: string; init: RequestInit | undefined }[] = [];
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {
+    calls.push({ url, init }); return Response.json({ state: "signed-out", remoteRevocation: "confirmed" });
+  } });
+  assert.deepEqual(await client.forgetChatGptAccount(), { state: "signed-out", remoteRevocation: "confirmed" });
+  assert.equal(calls.length, 1); assert.equal(calls[0].url, "http://127.0.0.1:3938/api/v1/settings/chatgpt-account/forget-account");
+  assert.equal(calls[0].init?.method, "POST"); assert.equal(calls[0].init?.body, "{}");
+  assert.equal(new Headers(calls[0].init?.headers).get("origin"), "http://127.0.0.1:3938");
+});
