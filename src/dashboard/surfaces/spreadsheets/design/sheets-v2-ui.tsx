@@ -21,12 +21,12 @@ export const Grey = ({ children, className = '' }: { children: ReactNode; classN
 // The workflow chip carries the workflow's sidebar icon (category icons where the rail has one, the workflow's own icon otherwise).
 const WORKFLOW_ICONS: Readonly<Record<string, LucideIcon>> = { 'Person Lookup': Search, Separations: LogOut, Onboarding: UserPlus, 'Emergency Contact': Users };
 export const WorkflowIcon = ({ name }: { name: string }) => { const Icon = WORKFLOW_ICONS[name]; return Icon ? <Icon size={14} aria-hidden className="shrink-0" /> : null; };
-export const Tag = ({ children, onRemove, workflow }: { children: string; onRemove?: () => void; workflow?: boolean }) => {
+export const Tag = ({ children, workflow }: { children: string; workflow?: boolean }) => {
   const Icon = workflow ? WORKFLOW_ICONS[children] : undefined;
-  return <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-[5px] bg-ui-hover px-1.5 text-[11px] text-ui-secondary">{Icon && <Icon size={11} aria-hidden />}{children}{onRemove && <button type="button" aria-label={`Remove ${children}`} className={`rounded-sm ${dsFocus}`} onClick={onRemove}><X size={11} aria-hidden /></button>}</span>;
+  return <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-[5px] bg-ui-hover px-1.5 text-[11px] text-ui-secondary">{Icon && <Icon size={11} aria-hidden />}{children}</span>;
 };
 /** Chips for a spreadsheet: the automatic workflow chip first, then its own tags. */
-export const SheetChips = ({ sheet }: { sheet: Sheet }) => <>{sheet.workflow && <Tag workflow>{sheet.workflow}</Tag>}{sheet.tags.map(tag => <Tag key={tag}>{tag}</Tag>)}</>;
+export const SheetChips = ({ sheet }: { sheet: Sheet }) => <>{sheet.workflow && <Tag workflow>{sheet.workflow}</Tag>}</>;
 
 const GAP = 4;
 /** Shows the chips that fit the available width, then a +N chip whose tooltip lists every tag. */
@@ -52,32 +52,17 @@ export function TagsFit({ sheet }: { sheet: Sheet }) {
   </div>;
 }
 
-export function TagEditor({ tags, onChange, workflow }: { tags: readonly string[]; onChange: (tags: readonly string[]) => void; workflow?: string }) {
-  const [draft, setDraft] = useState('');
-  const add = () => { const next = draft.trim(); if (next && !tags.includes(next)) onChange([...tags, next]); setDraft(''); };
-  return <div className="flex min-h-8 flex-wrap items-center gap-1.5 rounded-md border border-ui-stroke px-2 py-1">
-    {workflow && <Tag workflow>{workflow}</Tag>}
-    {tags.map(tag => <Tag key={tag} onRemove={() => onChange(tags.filter(item => item !== tag))}>{tag}</Tag>)}
-    <input aria-label="Add a tag" placeholder={tags.length ? '' : 'Add a tag'} value={draft} onChange={event => setDraft(event.target.value)} onBlur={add} onKeyDown={event => { if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); add(); } }} className="h-5 min-w-16 flex-1 bg-transparent text-[13px] outline-none placeholder:text-ui-muted" />
-  </div>;
-}
-
-export type MenuAction = 'pin' | 'sync' | 'link' | 'clone' | 'merge' | 'mergeDelete' | 'rename' | 'tags' | 'delete' | 'download';
+export type MenuAction = 'sync' | 'link' | 'rename' | 'delete' | 'download';
 /** Same menu on every row and on the detail page. */
-export function SheetMenu({ sheet, original, onAction, withDownload, label }: { sheet: Sheet; original?: Sheet; onAction: (action: MenuAction) => void; withDownload: boolean; label: string }) {
+export function SheetMenu({ sheet, onAction, withDownload, label }: { sheet: Sheet; onAction: (action: MenuAction) => void; withDownload: boolean; label: string }) {
   const item = (action: MenuAction, text: string) => <DropdownMenuItem onSelect={() => onAction(action)}>{text}</DropdownMenuItem>;
   return <DropdownMenu><DropdownMenuTrigger render={<V2Icon label={`Actions for ${label}`}><MoreHorizontal size={16} aria-hidden /></V2Icon>} /><DropdownMenuContent align="end" className={`min-w-[210px] ${MENU}`}>
     {withDownload && item('download', 'Download')}
-    {item('pin', sheet.pinned ? 'Unpin' : 'Pin')}
     {sheet.sharePoint && item('sync', 'Sync now')}
     {item('link', sheet.sharePoint ? 'Change SharePoint link…' : 'Link to SharePoint…')}
-    {item('clone', 'Clone')}
-    {original && <>{item('merge', `Merge into ${original.name}`)}{item('mergeDelete', 'Merge and delete')}</>}
     {item('rename', 'Rename')}
-    {item('tags', 'Edit tags')}
     <DropdownMenuSeparator />
     <DropdownMenuItem variant="destructive" onSelect={() => onAction('delete')}>Delete</DropdownMenuItem>
   </DropdownMenuContent></DropdownMenu>;
 }
-export const DownloadIcon = ({ name }: { name: string }) => <V2Icon label={`Download ${name}`}><Download size={16} aria-hidden /></V2Icon>;
-
+export const DownloadIcon = ({ name, onClick }: { name: string; onClick: () => void }) => <V2Icon label={`Download ${name}`} onClick={onClick}><Download size={16} aria-hidden /></V2Icon>;

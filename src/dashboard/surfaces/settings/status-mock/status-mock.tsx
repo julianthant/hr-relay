@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { RunList, RunListRow } from "../../../ds/primitives/run-list.js";
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, IconButton, Select, dsIcon, useToasts } from "../../../ds/ui.js";
 import { DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../../ds/primitives/dropdown-menu.js";
-import { DATASETS, missingRequired, samplesOf, withMapping, type Sheet, type Worksheet } from "../../spreadsheets/design/sheets-v2-model.js";
+import { DATASETS, missingRequired, samplesOf, withMapping, type Sheet, type Worksheet } from "./status-mock-sheets.js";
 import { sheetKey, ticked, type StatusMockPicks } from "./status-mock-picks.js";
 import { AccountSettings, type AccountValues } from "../account/account-settings.js";
 import { SubscriptionSettings, type SubscriptionAccount } from "../subscription/subscription-settings.js";

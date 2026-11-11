@@ -77,7 +77,7 @@ async function mount(overrides: Partial<DashboardClient_m0> = {}) {
     ...overrides,
   };
   const host=document.createElement("div"); document.body.append(host); root=createRoot_m0(host);
-  await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(DashboardApp_m0, { workflowComposition: workflows => ({ ...PARITY_WORKFLOW_COMPOSITION_m0(workflows), spreadsheets: "served" as const }), previewPreferences: preview })})));
+  await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(DashboardApp_m0, { workflowComposition: workflows => ({ ...PARITY_WORKFLOW_COMPOSITION_m0(workflows) }), previewPreferences: preview })})));
   await settle();
 }
 it_m0("command binding never renders implementation comment text", async () => {
