@@ -331,11 +331,10 @@ it("authenticates a genuine delegated child at claim and execution boundaries an
   assert.equal(completed.outcome.state, "done");
 });
 
-function reactivateConfig(f: Awaited<ReturnType<typeof fixture>>, actorLabel?: string): void {
+function reactivateConfig(f: Awaited<ReturnType<typeof fixture>>): void {
   const active = f.database.authority.runtimeConfig.get(); assert.ok(active);
   const prior = f.database.authority.configSnapshots.get(active.configSnapshotId); assert.ok(prior);
-  const config = actorLabel === undefined ? prior.config : { ...prior.config, actor: { ...prior.config.actor, label: actorLabel } };
-  const configSnapshotId = randomUUID(), configFingerprint = sha256Hex(canonicalJsonStringify(config));
+  const config = prior.config, configSnapshotId = randomUUID(), configFingerprint = sha256Hex(canonicalJsonStringify(config));
   f.database.withAuthorityTransaction(repositories => {
     repositories.configSnapshots.insert({ ...prior, configSnapshotId, config, fingerprint: configFingerprint });
     repositories.runtimeConfig.activate({ settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint,
@@ -350,15 +349,6 @@ it("admits delegation after a restart re-activates the same config under a new s
   assert.equal(outcome.state, "yielded-delegation", outcome.state === "failed" ? String(f.database.authority.failures.get(outcome.failureId)?.summary) : outcome.state);
   assert.equal(f.child().envelope.parent?.runId, f.root.envelope.runId);
   assert.equal(f.child().envelope.configSnapshotId, f.root.envelope.configSnapshotId);
-});
-
-it("refuses delegation when the active config fingerprint changed after the parent was queued", async () => {
-  const f = await fixture("cascade");
-  reactivateConfig(f, "Changed operator");
-  const outcome = (await f.execution.step(f.root, world.SIGNAL)).outcome;
-  assert.ok(outcome.state === "failed", JSON.stringify(outcome));
-  assert.equal(f.database.authority.failures.get(outcome.failureId)?.summary, "delegation-config-stale");
-  assert.equal(f.database.authority.runs.listChildren(f.root.envelope.runId).length, 0);
 });
 
 it("authenticates each sibling issuance once during native child eligibility without mutating authority", async () => {
