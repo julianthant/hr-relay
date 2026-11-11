@@ -306,8 +306,56 @@ it("keeps interrupted Save ownership until callback settlement, verifies and com
   assert.equal(f.persistence.submissions.length, 1);
   assert.deepEqual(permanentRows(f, f.run), before, "deriving the consumer's receipt adds no intent or attempt");
   assert.deepEqual(f.database.authority.writeIntents.listByRun(retry.envelope.runId), []);
+  // The second OnBase child replays the first child's committed Import on the same OnBase item; the first child's intent proves it.
+  const firstChild = f.children()[0], retryChild = f.children(retry.envelope.runId)[0]; assert.ok(firstChild && retryChild);
+  assert.equal(retryChild.envelope.itemId, firstChild.envelope.itemId);
+  const childReceipt = f.database.authority.evidenceReceipts.findByRun(retryChild.envelope.runId); assert.ok(childReceipt);
+  const imported = childReceipt.actions.find(action => action.kind === "commit");
+  assert.deepEqual(imported && [imported.writeState, "proofRef" in imported, imported.proved?.proofSource], ["committed", false, "normal-output"]);
+  const dedupe = childReceipt.decisions.find(decision => decision.kind === "dedupe");
+  assert.equal(dedupe?.outcome, "not-taken");
+  assert.ok(dedupe.reason.includes(firstChild.envelope.runId), dedupe.reason);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(retryChild.envelope.runId), []);
+  assert.equal(receipt.verification.find(row => row.obligation === "node.onbase-import")?.verdict, "verified");
+  assert.equal(f.onbase.imports(), 1);
 });
 
+it("pairs a rerun's already-present Save through the upstream rows it replayed from the item's failed run", async () => {
+  const options: { failure?: FailurePoint } = { failure: "prepare" };
+  const f = await memberFixture(options);
+  assert.ok(f.failures.length > 0);
+  delete options.failure;
+  const rows = UcpathContactPageSnapshotSchema.parse(fixture.page).rows;
+  rows[0] = { ...rows[0], primary: false };
+  rows[1] = { ...rows[1], rowIndex: 1, name: desired.name, relationship: desired.relationship, primary: true, phone: desired.phone ?? "", sameAddressAsEmployee: false,
+    address: desired.address.kind === "explicit" ? desired.address.fields : null };
+  f.persistence.replacePersisted({ ...f.persistence.snapshot(), rows, totalRows: rows.length });
+  const again = f.execution.start(compiled.descriptor, approved, { dryRun: false });
+  assert.equal(again.envelope.itemId, f.run.envelope.itemId);
+  // An ordinary run replays the item's latest upstream rows, here the failed run's.
+  assert.deepEqual([again.envelope.continuation, again.envelope.sourceBound, again.envelope.recovery], [undefined, undefined, undefined]);
+  await f.execution.execute(again, world.SIGNAL);
+  assert.deepEqual(f.database.authority.failures.listByRun(again.envelope.runId), []);
+  assert.equal(f.persistence.submissions.length, 0);
+  assert.equal(checkpointOutcome(f, again).disposition, "already-present");
+  const plans = f.database.authority.runCheckpoints.listByItem(again.envelope.workflow, again.envelope.itemId).filter(row => row.nodeId === "contact-plan");
+  assert.deepEqual(plans.map(row => row.runId), [f.run.envelope.runId], "the rerun replayed the failed run's plan");
+  const receipt = receiptsOf(f).ensureReceipt(again.envelope.runId);
+  assert.equal(commitActionOf(receipt).proved?.proofSource, "live-probe");
+  assert.deepEqual(receiptsOf(f).ensureReceipt(again.envelope.runId), receipt);
+  assert.equal(f.persistence.submissions.length, 0);
+  // A third run replays the rerun's already-present row; its receipt names the run whose probe observed it.
+  const third = f.execution.start(compiled.descriptor, approved, { dryRun: false });
+  await f.execution.execute(third, world.SIGNAL);
+  assert.deepEqual(f.database.authority.failures.listByRun(third.envelope.runId), []);
+  const replayedRow = f.database.authority.runCheckpoints.latest(third.envelope.workflow, third.envelope.itemId, "contact-preview");
+  assert.equal(replayedRow?.runId, again.envelope.runId);
+  const thirdReceipt = receiptsOf(f).ensureReceipt(third.envelope.runId);
+  assert.equal(commitActionOf(thirdReceipt).proved?.proofSource, "live-probe");
+  const identity = thirdReceipt.decisions.find(decision => decision.kind === "identity" && decision.reason.includes("already satisfied"));
+  assert.ok(identity?.reason.includes(`observed present by run ${again.envelope.runId}'s probe`), identity?.reason);
+  assert.equal(f.persistence.submissions.length, 0);
+});
 it("saves an addition with no demotion when the complete original set has no primary", async () => {
   const rows = UcpathContactPageSnapshotSchema.parse(fixture.page).rows.map(row => ({ ...row, primary: false }));
   const f = await memberFixture({ rows });

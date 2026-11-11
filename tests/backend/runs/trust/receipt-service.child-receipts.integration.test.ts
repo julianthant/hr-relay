@@ -58,6 +58,9 @@ function withPlanRows(database: AuthorityDatabase, rows: (actual: readonly RunCh
   const runCheckpoints = { ...checkpoints, listByAttempt: (workflowId: string, itemId: string, nodeId: string, attempt: number) => {
     const actual = checkpoints.listByAttempt(workflowId, itemId, nodeId, attempt);
     return nodeId === "contact-plan" ? rows(actual) : actual;
+  }, listByItem: (workflowId: string, itemId: string) => {
+    const actual = checkpoints.listByItem(workflowId, itemId);
+    return [...actual.filter(row => row.nodeId !== "contact-plan"), ...rows(actual.filter(row => row.nodeId === "contact-plan"))];
   } };
   const authority = { ...database.authority, runCheckpoints };
   return new Proxy(database, { get: (target, key) => {

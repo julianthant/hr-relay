@@ -352,6 +352,35 @@ describe("deriveActionWriteProof — the already-present arms", () => {
     assert.equal(deriveActionWriteProof({ commitContract: KualiSaveSeparationFinalization, record: alreadyPresent, intent, pairing: pairingOf(alreadyPresent) }).proofSource, "durable-intent");
   });
 
+  it("pairs a committed checkpoint another run wrote only with that run's exact settlement of it", () => {
+    assert.ok(write?.intent.status === "committed");
+    const producer = "0d5c1b3a-7f2e-4c61-9a8b-3e4f5a6b7c8d";
+    const replayed = { ...record as object, runId: producer };
+    const intent = { ...write.intent, runId: producer };
+    const proofValue = intent.completionProof.value as Record<string, unknown>;
+    const stored = (record as { output: { value: Record<string, unknown> } }).output.value;
+    const withOutcome = (change: (value: Record<string, unknown>) => Record<string, unknown>) => ({ ...replayed, output: { ...(record as { output: object }).output, value: change(stored) } });
+    const { completionProof: _proof, confirmedAt: _confirmed, resolution: _resolution, ...fenced } = intent;
+    const { currentAttemptId: _a, runId: _r, runAttempt: _ra, bindingProof: _b, bindingProofDigest: _bd, fencedAt: _f, status: _s, completionProof, confirmedAt, resolution: _res, occurrence: _o, ...identity } = intent;
+    const pair = (candidate: Parameters<typeof deriveActionWriteProof>[0]["intent"], checkpoint: unknown = replayed) =>
+      () => deriveActionWriteProof({ commitContract: KualiSaveSeparationFinalization, record: checkpoint, intent: candidate, replayed: true });
+    const cases: readonly [string, () => unknown][] = [
+      ["producer", pair({ ...intent, runId: "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b" })],
+      ["producer", pair({ ...intent, itemId: "6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c" })],
+      ["producer", pair({ ...intent, workflowId: "onboarding" })],
+      ["identity", pair({ ...intent, taskId: "kuali/other-task" })],
+      ["identity", pair({ ...intent, system: "ucpath" })],
+      ["status", pair(WriteIntentRecordSchema.parse({ ...identity, status: "observed-present", observedProof: completionProof, observedAt: confirmedAt }))],
+      ["status", pair(WriteIntentRecordSchema.parse({ ...fenced, status: "attempting" }))],
+      ["order", pair({ ...intent, confirmedAt: "2026-08-14T17:08:50.000Z" })],
+      ["proof", pair({ ...intent, completionProof: { ...intent.completionProof, value: { ...proofValue, documentNumber: "9999999" } } })],
+      ["output", pair(intent, withOutcome(value => ({ ...value, output: { ...(value["output"] as object), value: { savedState: { ...proofValue, documentNumber: "9999999" } } } })))],
+    ];
+    for (const [category, derive] of cases) assert.throws(derive, new RegExp(`receipt-write-pair-${category}`, "u"), category);
+    const proved = pair(intent)() as ReturnType<typeof deriveActionWriteProof>;
+    assert.equal(proved.recordedAt, intent.confirmedAt);
+  });
+
   it("refuses a settled outcome handed no intent row, naming the disposition and the fail-loud reason", () => {
     assert.throws(
       () => deriveActionWriteProof({
@@ -382,6 +411,31 @@ describe("deriveActionWriteProof — the already-present arms", () => {
       }),
       /transaction outcome/u,
     );
+  });
+});
+describe("replayed committed checkpoint — the receipt attributes the write to the run that committed it", () => {
+  const evidence = kualiReceiptEvidence();
+  const producer = "0d5c1b3a-7f2e-4c61-9a8b-3e4f5a6b7c8d";
+  const write = evidence.writes[0];
+  assert.ok(write?.intent.status === "committed");
+  const producerWrite: ReceiptWriteEvidence = { intent: WriteIntentRecordSchema.parse({ ...write.intent, runId: producer }), attempts: write.attempts };
+  const checkpoints = evidence.checkpoints.map((row, index) => index === 2 ? { ...row as object, runId: producer } : row);
+  const build = (writesByRun: (runId: string) => readonly ReceiptWriteEvidence[]) => () => buildRunEvidenceReceipt({ descriptor: separationsKualiFinalizationDescriptor,
+    run: evidence.run, result: evidence.result, checkpoints, writes: [], writesByRun });
+
+  it("reads committed without this run's proofRef and names the producer in dedupe and identity", () => {
+    const receipt = build(runId => runId === producer ? [producerWrite] : [])();
+    const commit = commitActionOfReceipt(receipt);
+    assert.deepEqual([commit.writeState, "proofRef" in commit, commit.occurredAt, commit.proved?.recordedAt], ["committed", false, KUALI_CONFIRMED_AT, KUALI_CONFIRMED_AT]);
+    const dedupe = receipt.decisions.find(decision => decision.kind === "dedupe");
+    assert.equal(dedupe?.outcome, "not-taken");
+    assert.ok(dedupe.reason.includes(`settled by run ${producer}`), dedupe.reason);
+    assert.ok(receipt.decisions.some(decision => decision.kind === "identity" && decision.reason.includes(`was committed by run ${producer}`)));
+  });
+
+  it("refuses two producer intents for the commit task and a producer with none", () => {
+    assert.throws(build(() => [producerWrite, producerWrite]), /supplies 2 write intents/u);
+    assert.throws(build(() => []), /no durable write intent/u);
   });
 });
 }

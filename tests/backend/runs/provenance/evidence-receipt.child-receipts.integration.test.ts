@@ -44,6 +44,8 @@ it("keeps the child-run node unknown when the child's own receipt is partial", a
   assert.deepEqual({ verdict: row(verified).verdict, evidence: row(verified).evidence }, { verdict: "verified", evidence: [`receipt:${childReceipt.receiptId}`] });
   const partial = buildRunEvidenceReceipt({ ...input, childReceipt: reader(stub({ result: "partial" })) });
   assert.deepEqual({ verdict: row(partial).verdict, evidence: row(partial).evidence }, { verdict: "unknown", evidence: [] });
+  assertUnverifiedWarning(partial);
+  // The node is a terminal dependency, so its unknown row keeps the result partial.
   assert.equal(partial.result, "partial");
 });
 
@@ -65,8 +67,17 @@ it("refuses a child receipt that belongs to another run", async () => {
 
 it("leaves the node unknown with no reader or when the reader has no receipt for the child", async () => {
   const { input, row, reader } = await setup();
-  for (const receipt of [buildRunEvidenceReceipt(input), buildRunEvidenceReceipt({ ...input, childReceipt: reader(undefined) })]) {
+  const [unread, missing] = [buildRunEvidenceReceipt(input), buildRunEvidenceReceipt({ ...input, childReceipt: reader(undefined) })];
+  for (const receipt of [unread, missing]) {
     assert.deepEqual({ verdict: row(receipt).verdict, evidence: row(receipt).evidence }, { verdict: "unknown", evidence: [] });
     assert.equal(receipt.result, "partial");
   }
+  assert.equal(unread.warnings.some(warning => warning.code === "DELEGATED_CHILD_UNVERIFIED"), false, "no reader, no warning");
+  assertUnverifiedWarning(missing);
 });
+
+function assertUnverifiedWarning(receipt: RunEvidenceReceipt) {
+  const warnings = receipt.warnings.filter(warning => warning.code === "DELEGATED_CHILD_UNVERIFIED");
+  assert.deepEqual(warnings.map(warning => ({ loadBearing: warning.loadBearing, evidence: warning.evidence, summary: warning.summary })),
+    [{ loadBearing: false, evidence: [], summary: `1 of 1 child run(s) under "onbase-import" have no verified receipt; this run's result records each child's outcome` }]);
+}

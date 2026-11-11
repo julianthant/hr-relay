@@ -39,11 +39,14 @@ it("keeps the one OCR release and native member lineage while reporting one veri
   assert.equal(createTransactionHistory(f.database.authority).query({ from: date, to: date, runId: succeeded.envelope.runId }).rows.length, 1);
   const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: EC_TREE_DESCRIPTORS });
   assert.equal(receipts.ensureReceipt(succeeded.envelope.runId).result, "verified-done");
-  // One member failed, so the parent's members node stays unknown; it is not a terminal dependency, so the receipt still verifies the parent's own result, which names the failure.
+  // One member failed, so the parent's members node stays unknown and the parent reads done-with-warnings, never verified-done.
   const parentReceipt = receipts.ensureReceipt(f.parentRun.envelope.runId);
+  assert.notEqual(parentReceipt.result, "verified-done");
+  assert.equal(parentReceipt.result, "done-with-warnings");
   const membersRow = parentReceipt.verification.find(row => row.obligation === "node.members");
   assert.deepEqual(membersRow && { verdict: membersRow.verdict, evidence: membersRow.evidence, mandatory: membersRow.mandatory }, { verdict: "unknown", evidence: [], mandatory: false });
-  assert.equal(parentReceipt.result, "verified-done");
+  assert.deepEqual(parentReceipt.warnings.filter(warning => warning.code === "DELEGATED_CHILD_UNVERIFIED").map(warning => [warning.loadBearing, warning.summary]),
+    [[false, `1 of 2 child run(s) under "members" have no verified receipt; this run's result records each child's outcome`]]);
   assert.equal(persistence.get("10800001")?.submissions.length, 0);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(children[1].envelope.runId), []);
   const rows = f.database.withAuthorityReadSnapshot(() => {
