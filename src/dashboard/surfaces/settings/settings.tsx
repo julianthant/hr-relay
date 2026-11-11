@@ -6,9 +6,6 @@ import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
 import { SheetsV2 } from "../spreadsheets/design/sheets-v2.js";
-import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
-import type { EditableWorkbook } from "../../../rules/spreadsheets/workbook-io.js";
-import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
 import type { SettingsSaveListener,SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
 import { useEditableSettings } from "./editor/settings-editor-model.js";
@@ -114,7 +111,6 @@ export function SettingsPage({
   appearance,
   deleteAccount,
   onOpenRun,
-  spreadsheetSource,
   actorId,
   profileName,
   descriptorFingerprint,
@@ -137,14 +133,10 @@ export function SettingsPage({
   onSection: (next: string, target?: string) => void;
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onClose: () => void;
-  spreadsheetSource?: "mock" | "served";
   onSaved?: SettingsSaveListener;
   onSaveProblem?: SettingsSaveProblemListener;
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
 }) {
-  const [workbookDraft, setWorkbookDraft] = useState<{ document: EditableWorkbook | null; dirty: boolean }>({ document: null, dirty: false });
-  const spreadsheets = useSpreadsheetWiringAdapter(false, null);
-  const onWorkbook = (document: EditableWorkbook | null, dirty: boolean) => setWorkbookDraft({ document, dirty });
   const editor = useEditableSettings({ actorId, descriptorFingerprint, onSaved, onSaveProblem });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const exitFocusTarget = useRef<HTMLElement | null>(null);
@@ -177,7 +169,7 @@ export function SettingsPage({
   useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label);
   const settingsEntries = groups.filter(group => group.id === "personal" || group.id === "advanced").flatMap(group => group.entries);
   const activeSettingsEditorSection = activeId !== undefined && (settingsEntries.some(entry => entry.id === activeId) || activeId === "performance");
-  const totalDirty = (workbookDraft.dirty ? 1 : 0) + editor.dirtyCount + editor.protectedEditor.dirtyCount;
+  const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount;
   const hasDirtyDraft = totalDirty > 0;
 
   useEffect(() => {
@@ -209,8 +201,6 @@ export function SettingsPage({
   const discardAndExit = (): void => {
     if (pendingExit === undefined) throw new Error("Settings discard was confirmed without a pending exit");
     exitFocusTarget.current = null;
-    if (spreadsheetSource !== "mock") spreadsheets.adapter.discard();
-    setWorkbookDraft({ document: null, dirty: false });
     editor.discard();
     editor.protectedEditor.discard();
     setPendingExit(undefined);
@@ -262,7 +252,7 @@ export function SettingsPage({
           <Notice tone="warning" title="No settings sections" />
         )}
         {isDataSection && dataContent}
-        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && (spreadsheetSource === "mock" ? <SheetsV2 onOpenRun={onOpenRun} /> : <SpreadsheetsSettings onOpenRun={onOpenRun} source={spreadsheetSource} workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />)}
+        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SheetsV2 onOpenRun={onOpenRun} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
         {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && !(resolution.entry.id === "general" && mockStatus !== undefined) && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} deleteAccount={deleteAccount} />

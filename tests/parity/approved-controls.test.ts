@@ -15,7 +15,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   if (server) await new Promise<void>((done, reject) => server.httpServer.close(error => error ? reject(error) : done()));
 });
-for (const state of ['queue', 'export-pending', 'export-refused', 'save-pending', 'save-refused', 'save-conflict', 'save-uncertain', 'save-mismatch', 'save-confirmed']) {
+for (const state of ['queue', 'export-pending', 'export-refused']) {
   const evidence = `approved-controls-${state}.a11y.yml`;
   test(`approved controls ${state}`, { annotation: [{ type: 'required-a11y-evidence', description: evidence }] }, async ({ page }, info) => {
     const errors: string[] = [], mutations: string[] = [];
@@ -31,14 +31,6 @@ for (const state of ['queue', 'export-pending', 'export-refused', 'save-pending'
       const button = page.getByRole('button', { name: 'Export CSV', exact: true }); await button.click();
       if (mode === 'pending') { await expect(button).toBeDisabled(); await expect(button).toHaveAttribute('aria-busy', 'true'); }
       else { await expect(page.getByRole('alert')).toContainText('CSV export unavailable'); await expect(button).toBeEnabled(); }
-    } else {
-      const cell = page.getByRole('textbox', { name: 'A2', exact: true }); await cell.fill('Draft kept');
-      const button = page.getByRole('button', { name: 'Save', exact: true }); await button.click();
-      if (mode === 'pending') { await expect(button).toBeDisabled(); await expect(page.getByRole('status')).toContainText('Saving…'); }
-      else if (mode === 'confirmed') await expect(page.getByRole('status')).toHaveText('Saved · version 7');
-      else await expect(page.getByText(mode === 'conflict' ? 'Save version conflict' : mode === 'refused' ? 'Save refused' : 'Save uncertain', { exact: true })).toBeVisible();
-      await expect(cell).toHaveValue('Draft kept'); await expect(page.getByRole('button', { name: 'Export copy', exact: true })).toBeEnabled();
-      if (mode !== 'confirmed') await expect(page.getByText(/Saved · version/)).toHaveCount(0);
     }
     if (surface !== 'queue') await expect(page.locator('body')).toHaveAttribute('data-action-calls', '1');
     await attachShellA11y(page, info, evidence);

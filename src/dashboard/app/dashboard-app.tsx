@@ -1242,7 +1242,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           {/* Intake is a durable workspace; leaving it must not discard mapping progress. */}
           <DashboardTakeovers deleteAccount={deleteAccount} onOpenRun={selectRun} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
             client={client} workflowCatalog={explorerCatalog} activeWorkflowId={activeWorkflowId}
-            workflowLabelOf={workflowLabelOf} spreadsheetSource={workflowComposition.spreadsheets} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
+            workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
             onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} theme={theme} onToggleTheme={onToggleTheme}>
           <>
