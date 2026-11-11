@@ -74,7 +74,7 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
   let starts = 0, reads = 0, disconnected = false;
   const queries: ChatGptAccountQueries = { chatGptAccount: async () => { reads++; if (scenario === "initial read failure" && reads === 1) throw new Error("synthetic failed read"); return chatGptStatusFixture(disconnected ? { state: "signed-out" } : account); },
-    startChatGptSignIn: async () => { starts++; return started; },
+    startChatGptSignIn: async () => { starts++; disconnected = false; return started; },
     completeChatGptSignIn: () => completion.promise,
     cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId: started.attemptId }),
     testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }),

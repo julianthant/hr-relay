@@ -94,6 +94,6 @@ it("does not resurrect credentials when sign-out supersedes a pending account re
     await entered.promise;
     const signingOut = f.service.signOut(); release.resolve();
     await reading; await signingOut;
-    assert.equal(f.repository.read()?.session, null); assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+    assert.equal(f.repository.read()?.session, null); assert.deepEqual(f.service.readAccount(), { state: "signed-out", account: { email: "synthetic@example.com" } });
   } finally { release.resolve(); await f.cleanup(); }
 });
