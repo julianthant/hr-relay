@@ -114,7 +114,7 @@ it("emergency-contact/dry-run — previews ordered primary demotion and addition
   assert.ok(f.ports.some(port => port.actions.includes("demote-primary:0")));
   f.assertNoWrites();
 });
-it("emergency-contact/dry-run — previews the contact Save then the OnBase child import with zero Save clicks, Import clicks or fenced intents", async () => {
+it("previews the contact Save then the OnBase child import with zero Save clicks, Import clicks or fenced intents", async () => {
   const f = await memberFixture();
   assert.deepEqual(f.failures, []);
   assert.deepEqual(f.preview().steps.filter(step => step.state === "transaction-preview" || step.state === "delegation-preview")

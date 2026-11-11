@@ -91,7 +91,7 @@ it('adds an empty selection authority at 25 and preserves prior mappings, metada
     expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
     expect(f.repository.lastUsed('person-lookup')).toBeUndefined();
     expect(f.database.prepare('SELECT * FROM workflow_workbook_selections').all()).toEqual([]);
-    expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(25);
+    expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(26);
     expect(migrationTableNames(25).filter(table => !migrationTableNames(24).includes(table))).toEqual(['workflow_workbook_selections']);
     expect(tableClassification('workflow_workbook_selections')).toBe('authority');
     expect(auditMigrationTableCoverage()).toEqual([]);
@@ -175,7 +175,7 @@ it('binds the pending-operation guard to the plan digest while retaining histori
   const fingerprint = '1'.repeat(64);
   expect(deriveAuthorityUpgradePlanDigest(7, fingerprint, 8)).toBe('61f8506ea8223f57ea6e272847da8cf4eb384f9b1a0de118932f277eda9d71d6');
   expect(deriveAuthorityUpgradePlanDigest(7, fingerprint, 23)).not.toBe(deriveAuthorityUpgradePlanDigest(7, fingerprint));
-  expect(deriveAuthorityUpgradePlanDigest(24, fingerprint)).toBe(deriveAuthorityUpgradePlanDigest(24, fingerprint, 25));
+  expect(deriveAuthorityUpgradePlanDigest(24, fingerprint)).toBe(deriveAuthorityUpgradePlanDigest(24, fingerprint, CURRENT_AUTHORITY_SCHEMA_VERSION));
 });
 
 function capturedPatch() {

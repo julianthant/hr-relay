@@ -1,3 +1,4 @@
+import { childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
 import { createOnboardingRunWorld } from "../../support/helpers/backend/onboarding-run-world.js";
 import { readRunCheckpoint, continuationEvidenceDigest, validateRunContinuation } from "../../../src/backend/storage/sqlite/run-continuation.js";
 import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
@@ -502,7 +503,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     const children = f.database.authority.runs.listChildren(root.envelope.runId);
     assert.equal(children.length, 1); assert.equal(children[0].envelope.workflow, "i9-lookup");
     assert.ok(children[0].lifecycle.state === "terminal" && children[0].lifecycle.outcome === "done");
-    const receipts = createReceiptService({ database: f.database, runReader: testRunService(f.database, f.clock), descriptors: [descriptor] });
+    const receipts = createReceiptService({ database: f.database, runReader: testRunService(f.database, f.clock), descriptors: [descriptor, childWorkflowModuleOf("onboarding", "i9-lookup").descriptor] });
     assert.equal(f.database.authority.evidenceReceipts.findByRun(root.envelope.runId), undefined);
     for (const fault of ["gate-missing", "legal-name", "lived-name", "checkpoint", "command", "audit-missing", "audit-changed", "native-missing", "native-changed"] as const) {
       f.setFault(fault);
@@ -632,7 +633,7 @@ describe("Onboarding captured roster admission and row choice", () => {
       assert.equal(f.calls.filter(call => call.system === "i9").length, 1);
       assert.deepEqual(f.database.authority.gateResults.listByRun(recoveredId).map(gate => gate.gateId), ["hire-review"]);
       const original = f.database.authority.gateResults.get(`${root.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(original && "commandId" in original);
-      const receipts = createReceiptService({ database: f.database, runReader: testRunService(f.database, f.clock), descriptors: [descriptor] });
+      const receipts = createReceiptService({ database: f.database, runReader: testRunService(f.database, f.clock), descriptors: [descriptor, childWorkflowModuleOf("onboarding", "i9-lookup").descriptor] });
       assert.equal(f.database.authority.evidenceReceipts.findByRun(recoveredId), undefined);
       for (const fault of ["gate-missing", "legal-name", "checkpoint", "command", "audit-missing", "audit-changed", "native-missing", "native-changed"] as const) {
         f.setFault(fault);

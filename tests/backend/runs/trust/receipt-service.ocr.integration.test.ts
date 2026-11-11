@@ -23,7 +23,7 @@ it("derives ordinary read-only OCR receipts under a delegated parent dry run wit
   assert.equal(completed.run.envelope.runId, f.run.envelope.runId);
   assert.equal(completed.outcome.state, "done");
   const descriptor = f.resolve("ocr"); assert.ok(descriptor);
-  const service = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [descriptor] });
+  const service = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [descriptor, f.resolve("ocr-page")].filter(entry => entry !== undefined) });
   const receipt = service.ensureReceipt(f.run.envelope.runId);
   assert.deepEqual(service.ensureReceipt(f.run.envelope.runId), receipt);
   assert.equal(receipt.warnings.some(warning => warning.code === "DRY_RUN_PREVIEW"), false);
@@ -36,7 +36,7 @@ it("derives the existing receipt format from the exact authenticated OCR snapsho
   const approval = f.approval();
   assert.equal(f.canonical.kernel.execute(approval).state, "applied");
   await f.canonical.execute(f.run, new AbortController().signal);
-  const service = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor] });
+  const service = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor, f.resolve("ocr-page")].filter(entry => entry !== undefined) });
   const receipt = service.ensureReceipt(f.run.envelope.runId);
   assert.equal(receipt.composition, 5);
   assert.equal(receipt.decisions.find(decision => decision.kind === "gate" && decision.outcome === "approved")?.outcome, "approved");
@@ -99,7 +99,7 @@ it("derives the existing receipt format from the exact authenticated OCR snapsho
       : { name: "OcrReviewRefusedError", message: "OCR_REVIEW_REFUSED" };
     assert.throws(() => buildRunEvidenceReceipt({ ...input,
       authenticateSnapshotApproval: row => authenticateOcrSnapshotApproval(altered, f.canonical.lifecycle, row, f.resolve) }), expected, name);
-    const refused = createReceiptService({ database: ocrProofReadDatabase(f.database, altered), runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor] });
+    const refused = createReceiptService({ database: ocrProofReadDatabase(f.database, altered), runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor, f.resolve("ocr-page")].filter(entry => entry !== undefined) });
     assert.throws(() => refused.ensureReceipt(run.envelope.runId), expected, name);
   }
   assert.equal(f.database.getMeta().authorityGeneration, generation);

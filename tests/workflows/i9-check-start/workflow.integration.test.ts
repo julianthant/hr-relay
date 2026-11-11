@@ -6,6 +6,7 @@ import { createI9CheckStartWorld } from "../../support/helpers/backend/i9-check-
 import { I9CheckStartResultSchema } from "../../../src/models/workflows/i9-check/batch.js";
 import { I9CheckCanonicalInput } from "../../../src/models/workflows/i9-check/input.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
+import { READABLE_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 
 describe("one I-9 PDF Start through admitted children", () => {
   const world = createI9CheckStartWorld();
@@ -98,7 +99,7 @@ describe("one I-9 PDF Start through admitted children", () => {
     expect(f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId)).toHaveLength(2);
   });
   it("derives the unchanged receipt format from the completed native parent and replays it exactly", () => {
-    const service = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor] });
+    const service = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [...READABLE_WORKFLOW_MODULES.map(module => module.descriptor), f.root.descriptor] });
     const receipt = service.ensureReceipt(f.run.envelope.runId);
     expect(receipt.composition).toBe(5);
     expect(receipt.runId).toBe(f.run.envelope.runId);

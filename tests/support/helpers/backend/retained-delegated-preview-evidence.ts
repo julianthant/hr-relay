@@ -9,6 +9,7 @@ import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backen
 import { UcpathContactPageSnapshotSchema } from "../../../../src/models/ui/ucpath-emergency-contact.js";
 import { sessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { createOcrReviewWorld } from "./ocr-review-world.js";
+import { onbaseOcrWorldChild } from "./onbase-child-fixture.js";
 import contactPage from "../../fixtures/ui/ucpath/emergency-contact.fixture.json";
 
 import type { BoundProfileStorageFixture } from "../admission-fixture.js";
@@ -25,8 +26,9 @@ export async function verifyRetainedDelegatedPreviewEvidence(
   try {
     const port = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
       displayedEid: "10800000", displayedName: "Example, Avery" }) });
-    const sessions = sessionFactoryHarness({ ucpath: () => createDeterministicUcpathPersonOrgDriver(undefined, undefined, port) });
-    const f = await world.fixture({ coordinator: true, record: true, dryRun: true, sessions,
+    const onbaseChild = onbaseOcrWorldChild();
+    const sessions = sessionFactoryHarness({ ucpath: () => createDeterministicUcpathPersonOrgDriver(undefined, undefined, port), onbase: onbaseChild.session });
+    const f = await world.fixture({ coordinator: true, record: true, dryRun: true, sessions, ...onbaseChild.fixture,
       screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); await port.snapshot(); } } });
     assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
     assert.equal(f.canonical.kernel.execute(f.approval()).state, "applied");
@@ -54,7 +56,7 @@ export async function verifyRetainedDelegatedPreviewEvidence(
       && entry.members.some(entry => entry.runId === member.envelope.runId));
     assert.ok(dependency?.state === "delegation-resolved");
     assert.equal(dependency.members.find(entry => entry.runId === member.envelope.runId)?.resultDigest, child.result.resultDigest);
-    const modules = [workflowModuleOf("emergency-contact"), childWorkflowModuleOf("emergency-contact", "ocr"), childWorkflowModuleOf("emergency-contact", "emergency-contact-member")];
+    const modules = [workflowModuleOf("emergency-contact"), childWorkflowModuleOf("emergency-contact", "ocr"), childWorkflowModuleOf("emergency-contact", "emergency-contact-member"), childWorkflowModuleOf("emergency-contact-member", "onbase")];
     const beforeReceipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle,
       descriptors: modules.map(module => module.descriptor) });
     const originalReceipts = previews.map(({ run }) => beforeReceipts.ensureReceipt(run.envelope.runId));
