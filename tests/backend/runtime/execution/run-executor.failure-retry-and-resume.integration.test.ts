@@ -1,5 +1,6 @@
 import { afterAll } from "vitest";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { DiagnosticBundleSchema } from "../../../../src/models/trust/diagnostic.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { lifecycleCommandId, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -105,6 +106,38 @@ describe("failure, retry, and resume", () => {
     assert.equal(outcome.state, "abandoned");
     assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "running");
     assert.deepEqual(runDebugRecords(database), []);
+  });
+
+  it.each(["append", "mirror"] as const)("keeps the committed failure and its bundle when the failure event %s faults, then raises the fault", async (fault) => {
+    const harness = await executorHarness({ sessions: failingUcpath(), stores: registryWithUcpathSearch(directUcpathSearchFixtureTask) });
+    const { database, clock } = harness.authority;
+    const timeline = database.authority.timelineEvents;
+    const debugEvents = fault === "append"
+      ? createDebugEventWriter({ repository: { ...timeline, append: (input) => {
+        if (input.payload.kind === "debug") throw new Error("debug-append-fault");
+        return timeline.append(input);
+      } }, clock, build: "test" })
+      : createDebugEventWriter({ repository: timeline, clock, build: "test", development: true,
+        writeStderr: () => { throw new Error("debug-mirror-fault"); } });
+    const bundles = { persisted: 0, discarded: 0 };
+    const bundleId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const diagnostics: NonNullable<Parameters<typeof executeClaimedRun>[0]["diagnostics"]> = {
+      captureForFailure: async (context) => DiagnosticBundleSchema.parse({ bundleId, runId: RUN_ID,
+        origin: { kind: "failure", failureId: context.failure.failureId }, createdAt: clock.now().toISOString(), contentDigest: "a".repeat(64),
+        configFingerprint: context.configFingerprint, descriptorFingerprint: context.descriptorFingerprint,
+        redaction: { fields: [], warnings: [] }, attachments: [], retention: { kind: "pinned", reason: "write-recovery" } }),
+      persist: () => { bundles.persisted += 1; },
+      discard: () => { bundles.discarded += 1; },
+    };
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+
+    await assert.rejects(executeClaimedRun({ ...harness.deps, debugEvents, diagnostics }, { ...claimed, signal: SIGNAL }), new RegExp(`debug-${fault}-fault`, "u"));
+    const run = database.authority.runs.get(RUN_ID);
+    assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed" && run.lifecycle.failureId !== undefined);
+    assert.equal(database.authority.failures.get(run.lifecycle.failureId)?.diagnosticBundleId, bundleId);
+    assert.ok(database.authority.runResults.get(RUN_ID));
+    assert.deepEqual(bundles, { persisted: 1, discarded: 0 });
+    assert.equal(runDebugRecords(database).length, fault === "append" ? 0 : 1);
   });
 
   it("rolls back an ordinary checkpoint when its required timeline event cannot persist", async () => {
