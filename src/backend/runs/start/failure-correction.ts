@@ -21,7 +21,7 @@ export function failureCorrectionSubmission(descriptor: AnyWorkflowDescriptor, r
     || failure.traceId !== run.envelope.traceId || failure.attempt !== run.envelope.attempt || failure.workflowId !== descriptor.id || declaration === undefined || failure.writeState !== "not-attempted") {
     throw new RerunRefusedError("invalid-value", "Failure correction requires exactly its declared input value");
   }
-  return correctedSubmission(descriptor, run, request, declaration.inputField);
+  return correctedSubmission(descriptor, run, request, declaration);
 }
 
 /** A typed value at a gate restarts the parked run's lookup with that one input; it never answers the gate. */
@@ -34,7 +34,7 @@ export function gateCorrectionSubmission(descriptor: AnyWorkflowDescriptor, run:
     || String(run.lifecycle.gateId) !== correction.gateId) throw new RerunRefusedError("invalid-state", "Gate correction source is unavailable");
   const declaration = descriptor.gateCorrections?.find(entry => entry.gateId === correction.gateId && entry.inputField === correction.inputField);
   if (declaration === undefined) throw new RerunRefusedError("invalid-value", "Gate correction requires exactly its declared input value");
-  return correctedSubmission(descriptor, run, request, declaration.inputField);
+  return correctedSubmission(descriptor, run, request, declaration);
 }
 
 function sourceMatches(descriptor: AnyWorkflowDescriptor, run: RunRecord, runId: string): boolean {
@@ -42,12 +42,13 @@ function sourceMatches(descriptor: AnyWorkflowDescriptor, run: RunRecord, runId:
     && run.envelope.descriptorVersion === descriptor.version;
 }
 
-function correctedSubmission(descriptor: AnyWorkflowDescriptor, run: RunRecord, request: StartPlanIngress, inputField: string) {
+function correctedSubmission(descriptor: AnyWorkflowDescriptor, run: RunRecord, request: StartPlanIngress, { inputField, pattern }: Readonly<{ inputField: string; pattern?: string }>) {
   const source = request.rerunSource;
   const patch = z.record(z.string(), JsonValueSchema).safeParse(request.submissions[0]);
   const value = patch.success ? patch.data[inputField] : undefined;
   if (source === undefined || request.submissions.length !== 1 || !patch.success
-    || Object.keys(patch.data).length !== 1 || typeof value !== "string" || !rerunInputFieldAccepts(descriptor.input, inputField, value)) {
+    || Object.keys(patch.data).length !== 1 || typeof value !== "string" || !rerunInputFieldAccepts(descriptor.input, inputField, value)
+    || (pattern !== undefined && !new RegExp(pattern, "u").test(value))) {
     throw new RerunRefusedError("invalid-value", "Correction requires exactly its declared input value");
   }
   if (request.dryRun !== run.envelope.dryRun || request.browserMode !== (run.envelope.browserMode ?? "headless")
