@@ -1,3 +1,4 @@
+import { runStartRefusalToast } from "./commands/command-result.js";
 import { createPersonPreferences, type PersonPreferencesOwner } from "../state/person-preferences-model.js";
 import { PersonPreferencesContext, usePersonPreferences } from "../lib/person-preferences.js";
 import { PROFILE_ONBOARDING_STATE } from "../../models/profiles/public-profile.js";
@@ -520,7 +521,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     }
     const original = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
     if (original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")) return; // SettingsSaveFeedback shows these
-    const toastId = toast({ tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
+    const toastId = toast(original?.family === "start" && (outcome.kind === "refused" || outcome.kind === "conflict")
+      ? runStartRefusalToast(outcome.feedback.text) : { tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
     if (outcome.kind === "uncertain") unknownWarnings.current.set(outcome.commandId, toastId);
   }, [executor, toast, dismiss]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);

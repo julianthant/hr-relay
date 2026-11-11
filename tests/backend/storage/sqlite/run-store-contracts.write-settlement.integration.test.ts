@@ -45,7 +45,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
 
     assert.deepEqual(
       h.emitter.events()
-        .filter((event) => event.spanPath.endsWith("/commit"))
+        .filter((event) => event.spanPath.includes("/commit#"))
         .map((event) => event.t),
       ["span.started"],
       "deadline alone cannot flush the fenced commit lane before callback settlement",
@@ -272,7 +272,7 @@ describe("durable cancellation at a retained write fence", () => {
     assert.equal(finished, false);
     assert.equal(intentByKey(h.database)?.status, "attempting");
     assert.deepEqual(h.sessions.closeReasons(), []);
-    assert.deepEqual(h.emitter.events().filter((event) => event.spanPath.endsWith("/commit")).map((event) => event.t), ["span.started"]);
+    assert.deepEqual(h.emitter.events().filter((event) => event.spanPath.includes("/commit#")).map((event) => event.t), ["span.started"]);
     release();
     await execution;
     assert.equal(intentByKey(h.database)?.status, "committed");

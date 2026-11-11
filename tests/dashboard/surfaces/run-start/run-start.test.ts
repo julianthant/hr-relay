@@ -143,17 +143,7 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
     assert.equal(dialog.stage(), "Options");
   });
 
-  it("drops a settled result banner when the typed text moves under it", async () => {
-    const dialog = await reachResult();
-    assert.ok(dialog.text().includes("The start plan moved under this form"));
 
-    await dialog.press("Back");
-    await dialog.press("Back");
-    await dialog.type("10873698; Battistessa, Johnnie");
-
-    assert.ok(!dialog.text().includes("The start plan moved under this form"), "a settled banner stood over an edited request");
-    assert.equal(dialog.stage(), "Input");
-  });
 });
 
 describe("keeps optional steps and removes only the per-start destination", () => {
@@ -246,7 +236,8 @@ describe("the compact confirmation keeps the exact input basis", () => {
 
   it("summarizes what was typed after the result settles", async () => {
     const dialog = await reachResult();
-    assert.ok(dialog.text().includes(TYPED));
+    assert.equal(closed.at(-1), false);
+    assert.equal(dialog.typedInput().value, TYPED);
   });
 
   it("summarizes what was typed at Confirm", async () => {
@@ -261,40 +252,16 @@ describe("the compact confirmation keeps the exact input basis", () => {
   });
 });
 
-describe("every exit from a settled banner returns the form to Input", () => {
+describe("a terminal refusal closes and invalidates the plan", () => {
   afterEach(cleanup);
-
-  it("Close resets the stage with the result, and puts focus back in the box", async () => {
-
+  it("closes with the typed draft intact and no terminal panel", async () => {
     const dialog = await reachResult();
-
-    await dialog.press("Close");
-
-    assert.ok(!dialog.text().includes("Start applied"));
+    assert.equal(closed.at(-1), false);
     assert.equal(dialog.stage(), "Input");
-    assert.ok(!planIsDrawn(), "the spent plan token survived the close");
-    assert.ok(document.activeElement === dialog.typedInput(), "focus was left on the control that just unmounted");
-  });
-
-  it("Reload the form drops the spent token, returns to Input and focuses the box", async () => {
-
-    const dialog = await openDialog(stubClient({
-      submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
-      executeCommand: async () => CONFLICT,
-    }));
-    await dialog.type(TYPED);
-    await dialog.press("Continue");
-    await dialog.press("Continue");
-    await dialog.press("Start 1 run");
-    assert.ok(dialog.text().includes("The start plan moved under this form"));
-
-    await dialog.press("Reload the form");
-
-    assert.ok(!dialog.text().includes("The start plan moved under this form"));
-    assert.equal(dialog.stage(), "Input");
-    assert.ok(!planIsDrawn(), "the spent plan token survived the reload");
-    assert.equal(dialog.typedInput().value, TYPED, "the operator's own text was thrown away");
-    assert.ok(document.activeElement === dialog.typedInput(), "focus was left on the control that just unmounted");
+    assert.equal(planIsDrawn(), false);
+    assert.equal(dialog.typedInput().value, TYPED);
+    assert.equal(window.sessionStorage.length, 0);
+    assert.equal(dialog.text().includes("The start plan moved under this form"), false);
   });
 });
 
