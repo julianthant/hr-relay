@@ -719,3 +719,46 @@ it("omits a stored conditional dependency that the completed consumer never saw"
   assert.equal(sourceCalls, 2);
   assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, 1);
 });
+
+it("reuses a retained delegation whose conditional prerequisite depends on a node it was not admitted from", async () => {
+  const selected = defineWorkflowDescriptor({ ...metadata, flow: flow(Input)
+    .step("before", sourceBoundReadContract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => input })
+    .step("optional", sourceBoundReadContract, { dependsOn: ["before"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid }),
+      when: { kind: "is-present", of: { from: "node", nodeId: "before", path: "eid" } } })
+    .childRun("child", { id: sourceBoundReadDescriptor.id, input: Input, result: sourceBoundReadContract.output }, {
+      dependsOn: ["optional"], edgeId: DelegationEdgeIdSchema.parse("child"), cardinality: "one", await: "terminal", join: "one",
+      policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" },
+      bind: ({ outputs }) => { assert.ok(outputs.optional); return { eid: outputs.optional.eid }; },
+      deriveChildItemId: (_input, identity) => identity.canonicalItemId })
+    .step("finish", sourceBoundReadContract, { dependsOn: ["child"], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid, memo: "finish" }) })
+    .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: ["child", "finish"],
+      prepare: { uses: WriteFixturePrepare, bind: ({ outputs }) => { if (outputs.child.state !== "done") throw new Error("child not done"); return { eid: outputs.child.output.eid }; } },
+      commit: { uses: WriteFixtureCommit, bind: ({ outputs }) => { if (outputs.child.state !== "done") throw new Error("child not done"); return { eid: outputs.child.output.eid }; } },
+      dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
+    .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
+  let finishCalls = 0;
+  const h = await sourceBoundHarness(selected, world => {
+    const read = defineTask(sourceBoundReadContract, { sessions: [], async run({ input, ctx }) {
+      if (input.memo === "finish" && ++finishCalls === 1) throw new Error("fixture downstream failure");
+      ctx.recordData({ direction: "read", field: "eid", value: input.eid }); return { eid: input.eid };
+    } });
+    const writes = buildWriteFixtureRegistry(world);
+    return defineTaskStoreRegistry([defineServiceStore("ocr", { read }), ...writes.stores], {
+      scenarioIds: [...sourceBoundReadContract.scenarios, ...writes.corpus.scenarioIds],
+      tasks: [{ id: sourceBoundReadContract.id, effect: sourceBoundReadContract.effect }, ...writes.corpus.tasks],
+    });
+  }, undefined, undefined, undefined, [sourceBoundReadDescriptor], undefined, true);
+  cleanups.push(h.dispose);
+  h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+  const source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID));
+  assert.equal((await h.execute(source)).state, "yielded-delegation");
+  const [child] = h.database.authority.runs.listChildren(source.envelope.runId); assert.ok(child);
+  assert.equal((await h.execute(child)).state, "done");
+  assert.equal((await h.execute(source)).state, "failed");
+  const failed = h.fresh(source); assert.equal(h.database.authority.failures.listByRun(failed.envelope.runId)[0]?.nodeId, "finish");
+  const next = operatorRecover({ ...h, failed });
+  assert.equal((await h.execute(next)).state, "done", JSON.stringify(h.database.authority.failures.listByRun(next.envelope.runId)));
+  assert.equal(h.database.authority.runs.listByWorkflow(sourceBoundReadDescriptor.id).length, 1);
+  assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, 1);
+  assert.deepEqual(h.database.authority.writeIntents.listByBusinessKey("ucpath", WRITE_FIXTURE_KEY_DIGEST).map(intent => intent.status), ["committed"]);
+});
