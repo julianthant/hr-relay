@@ -626,9 +626,9 @@ commit mappings before passing its unchanged native run and restored scope to th
 The sequencer retains all schema, implementation, proof, key and unresolved-sibling checks and reuses
 an eligible completion with no new probe, prepare, submit, intent, transaction checkpoint or
 confirmation publication. A correction that changes a completed task or transaction's mapped input
-refuses reuse. A settlement the run made itself is not compared unless the transaction depends on a
-child run: the run's input is fixed, so a later read is an observation, and the sequencer's key and
-proof checks decide the replay. UNKNOWN, attempting and parked writes refuse Rerun; saved results
+refuses reuse. A settlement the run made itself is not compared unless the transaction reaches a
+child run, directly or through a conditional dependency: the run's input is fixed, so a later read is
+an observation, and the sequencer's key and proof checks decide the replay. UNKNOWN, attempting and parked writes refuse Rerun; saved results
 never authorize another submit.
 
 Completed tasks whose dependencies include a transaction wait for its authenticated semantic output

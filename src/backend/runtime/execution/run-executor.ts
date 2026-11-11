@@ -715,6 +715,12 @@ export async function executeClaimedRun(
       return { input: source.input.parsed.value, outputs: values,
         protectedInputBindings: retainedRunProtectedBindings(source) };
     };
+    // Mirrors sourceScopeFor's walk: a child reached directly or through a conditional dependency is authenticated only there.
+    const reachesChild = (dependsOn: readonly NodeId[]): boolean => dependsOn.some(id => {
+      const dependency = nodes.find(candidate => candidate.id === id);
+      return dependency?.kind === "child-run" || (dependency?.kind === "task" || dependency?.kind === "gate" && dependency.resolvedBy === "operator")
+        && dependency.when !== undefined && reachesChild(dependency.dependsOn);
+    });
     const startAt = envelope.startAt;
     let startIndex: number | undefined;
     if (startAt !== undefined) {
@@ -1912,8 +1918,7 @@ export async function executeClaimedRun(
             const settled = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
             // A run's own settlement replays from its receipt: its input is fixed, so a later re-read is an observation, not a correction.
             // A child-run dependency keeps the guard, which alone authenticates the original member authority.
-            const checkpoint = settled?.runId === runId && envelope.injected === undefined
-              && !node.dependsOn.some(id => nodes.find(dependency => dependency.id === id)?.kind === "child-run") ? undefined : settled;
+            const checkpoint = settled?.runId === runId && envelope.injected === undefined && !reachesChild(node.dependsOn) ? undefined : settled;
             if (checkpoint !== undefined) {
               const originalScope = sourceScopeFor(checkpoint.runId, node.dependsOn, boundAt(checkpoint));
               const mappings = (scope: RuntimeScope) => ({ prepare: node.prepare.uses.input.parse(node.prepare.bind(scope)),
