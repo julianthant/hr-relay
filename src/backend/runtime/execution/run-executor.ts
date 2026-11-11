@@ -755,6 +755,10 @@ export async function executeClaimedRun(
       outputSchemaHash: deriveSchemaHash(node.uses.output, "output"),
     });
 
+    const retainedTransaction = (node: RuntimeFlowNode) => node.kind === "transaction"
+      && envelope.continuation?.checkpoints.some(row => row.nodeId === node.id) === true;
+    const pendingCommits = nodes.filter(node => node.kind === "transaction" && !retainedTransaction(node)
+      && !omissionPlan.omitted.has(String(node.id)) && !omissionPlan.asserted.has(String(node.id))).map(node => node.id);
     // An explicit start node requires every ancestor to resolve without executing it.
     let ancestorRegionOpen = canonicalInput !== undefined;
     for (const [index, node] of nodes.entries()) {
@@ -854,6 +858,14 @@ export async function executeClaimedRun(
         }
         if (load.found) {
           const record = requireStoredCheckpoint(stored, String(node.id));
+          // A stale always-rerun fact is read again; only checkpoint tasks refuse.
+          if (node.replay === "always-rerun" && auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
+            replayed: [{ nodeId: node.id, taskId: node.uses.id, freshness: node.uses.freshness, provenance: record.provenance }],
+            scheduled: pendingCommits, now: clock.now(), attempt: envelope.attempt,
+            ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) }).length > 0) {
+            plan.set(String(node.id), { mode: "execute" });
+            continue;
+          }
           const deferred = node.dependsOn.some(dependency => !Object.hasOwn(outputs, String(dependency)));
           if (!deferred && envelope.continuation !== undefined) {
             const original = node.uses.input.parse(node.bind(sourceScopeFor(record.runId, node.dependsOn)));
@@ -975,7 +987,7 @@ export async function executeClaimedRun(
 
     if (canonicalInput !== undefined) {
       const scheduled = nodes
-        .filter((node) => plan.get(String(node.id))?.mode === "execute" && !(node.kind === "transaction" && envelope.continuation?.checkpoints.some(row => row.nodeId === node.id)))
+        .filter((node) => plan.get(String(node.id))?.mode === "execute" && !retainedTransaction(node))
         .map((node) => node.id);
       const firstNode = nodes[0];
       if (firstNode === undefined) throw new Error(`${descriptor.id} declares no nodes`);
@@ -1599,8 +1611,7 @@ export async function executeClaimedRun(
           }
           const freshness = auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
             replayed: [{ nodeId: node.id, taskId: node.uses.id, freshness: node.uses.freshness, provenance: entry.record.provenance }],
-            scheduled: nodes.filter(candidate => plan.get(String(candidate.id))?.mode === "execute"
-              && !(candidate.kind === "transaction" && envelope.continuation?.checkpoints.some(row => row.nodeId === candidate.id))).map(candidate => candidate.id),
+            scheduled: nodes.filter(candidate => plan.get(String(candidate.id))?.mode === "execute" && !retainedTransaction(candidate)).map(candidate => candidate.id),
             now: clock.now(), attempt: envelope.attempt, ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) });
           if (freshness.length > 0) return await terminalizeAsFailure(buildEntryValidationFailureRecord({ run: getRun(), failureId: deps.ids.uuid(),
             problems: freshness, occurredAt: instant() }));
