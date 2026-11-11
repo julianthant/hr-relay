@@ -38,7 +38,7 @@ for (const theme of ["dark", "light"] as const) {
 test("served Account, Subscription and General controls: pencil dialogs, Sign out, Delete, ChatGPT actions; deferred capabilities stay absent", async ({ page }) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
-    await serve(page, "dark");
+    await serveSettings(page, "dark");
     await page.goto(`${server.baseUrl}/?settings=account`);
     const nav = page.locator("nav.settings-panel-nav");
     for (const name of ["General", "Account", "Subscription"]) await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
