@@ -98,10 +98,8 @@ it("combines failure codes across workflows for the global most common failure",
   const host = document.createElement("div"); const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(ActivityView, { data: { state: "loaded", report: projected }, range: projected.range, today: selected.report.to, period: "custom", onPreset: () => {}, onRange: () => {} })));
-    const common = [...host.querySelectorAll('table[aria-label="Run performance"] tr')].find(row => row.querySelector("th span")?.textContent === "Most common failure");
-    assert.ok(common);
-    assert.equal(common.querySelector("td")?.textContent, "A");
-    assert.equal(common.querySelectorAll("th span")[1]?.textContent, "5 runs");
+    assert.deepEqual(projected.analytics.reasons.map(row => [row.label, row.runs]), [["Synthetic failure A", 3], ["Synthetic failure A", 2], ["Synthetic failure B", 4]]);
+    assert.match(host.textContent ?? "", /Why runs failed/); assert.match(host.textContent ?? "", /Synthetic failure B/);
   } finally { await act(async () => root.unmount()); }
 });
 it("uses authoritative page rows once and refuses fixture logs for served identities", async () => {
@@ -185,9 +183,11 @@ it("uses the served calendar for the product producer and never substitutes work
   try {
     await act(async () => root.render(createElement(ActivityReport, { client, today: "2026-08-07", range: "", onRange: () => {}, workflowSources: sources })));
     assert.deepEqual(vi.mocked(client.activityPopulation).mock.calls[0]?.slice(0, 2), ["2026-08-01", "2026-08-07"]);
-    assert.match(host.textContent ?? "", /1 runs in this period/);
-    const completed = host.querySelector<HTMLButtonElement>('button[aria-label="View completed runs (1)"]'); assert.ok(completed);
-    await act(async () => completed.click());
+    assert.match(host.textContent ?? "", /1 finished runs/);
+    const details = host.querySelector<HTMLButtonElement>('button[aria-label^="Show "]'); assert.ok(details);
+    await act(async () => details.click());
+    const openRuns = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Open runs"); assert.ok(openRuns);
+    await act(async () => openRuns.click());
     const run = host.querySelector<HTMLButtonElement>('button[aria-label^="Open logs for"]'); assert.ok(run);
     await act(async () => run.click());
     assert.match(host.textContent ?? "", /Logs unavailable/);
