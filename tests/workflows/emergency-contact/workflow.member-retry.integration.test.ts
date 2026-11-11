@@ -820,6 +820,29 @@ it("fails a member at onbase-import after its committed Save and serves no Retry
   assert.deepEqual(memberRowTarget(f, member), { runId: child.envelope.runId, listed: true });
 });
 
+it("fails a member at onbase-import after its committed Save while the wall clock moves", async () => {
+  const f = fixture;
+  const original = failed(f);
+  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", original)).state, "applied");
+  const replacement = f.children().find(child => child.envelope.retryOf === original.envelope.runId); assert.ok(replacement);
+  f.onbase.control.noMatch = true;
+  f.hooks.onSpan = () => { f.clock.advanceWall(1); };
+  f.clock.advanceWall(1_000);
+  await f.canonical.execute(f.parentRun, signal());
+  f.clock.advanceWall(1_000);
+  await f.canonical.execute(f.parentRun, signal());
+  const member = f.current(replacement.envelope.runId);
+  assert.ok(member.lifecycle.state === "terminal" && member.lifecycle.outcome === "failed");
+  assert.equal(f.database.authority.failures.listByRun(member.envelope.runId)[0]?.nodeId, "onbase-import",
+    JSON.stringify(f.database.authority.failures.listByRun(member.envelope.runId)[0]));
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(member.envelope.runId).map(intent => intent.status), ["committed"]);
+  const onbase = f.database.authority.runs.listChildren(member.envelope.runId);
+  assert.deepEqual(onbase.map(child => child.envelope.workflow), ["onbase"]);
+  const child = onbase[0]; assert.ok(child?.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed");
+  assert.equal(f.onbase.imports(), 0);
+  assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), [1, 1]);
+});
+
 function memberRowTarget(f: Fixture, member: RunRecord) {
   const rows = readQueueRecordMembers(f.database.authority, f.canonical.lifecycle, f.current(),
     f.database.authority.runs.listChildren(f.parentRun.envelope.runId), f.resolve); assert.ok(rows);
