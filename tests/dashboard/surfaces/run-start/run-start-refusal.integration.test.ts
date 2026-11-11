@@ -14,7 +14,7 @@ import { createMountedRerunWorld } from "../../../support/helpers/dashboard/moun
 
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
-const { setup, mount, cleanup, press, checkbox, button, fill, text } = createMountedRerunWorld(profiles.create);
+const { setup, mount, cleanup, press, checkbox, button, fill, text, unmount } = createMountedRerunWorld(profiles.create);
 afterEach(async () => { vi.restoreAllMocks(); await cleanup(); });
 
 for (const rerun of [false, true]) {
@@ -115,6 +115,21 @@ for (const rerun of [false, true]) {
     assert.equal(text().includes("This plan expired, so it was checked again."), false);
     assert.equal(text().includes("Run not started"), false);
     assert.equal(h.finalCommands.length, 1);
+  });
+
+  it(`${rerun ? "Rerun" : "Run"} recovers an expired command without re-preview or resubmitting new bytes`, async () => {
+    const h = await setup(); await review(h);
+    h.clock.advanceWall(600_000); h.clock.advanceMonotonic(600_000); h.loseResponse();
+    await press("Start dry run");
+    assert.equal(document.querySelector('[role="dialog"]') !== null, true);
+    assert.equal(window.sessionStorage.length, 1); assert.equal(h.submissions.length, 1);
+    await unmount(); document.body.replaceChildren();
+    await mount(h, rerun ? h.database.authority.runs.listByWorkflow(h.descriptor.id)[0] : undefined);
+    await press("Replay exact submission");
+    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.deepEqual(h.finalCommands[1], h.finalCommands[0]);
+    assert.equal(h.submissions.length, 1); assert.equal(window.sessionStorage.length, 0);
+    assert.equal(text().split("Run not started").length - 1, 1);
   });
 
 }

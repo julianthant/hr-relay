@@ -594,7 +594,6 @@ export function RunStartDialog({
       // Ignore superseded plan responses; their tokens describe text no longer in the form.
       if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
       reviewedRequest.current = { planId: next.startPlanId, request };
-      setExpiredPlan(false);
       setPlan(next);
       setResult(null);
       if (next.rerun !== undefined && next.rerun.warnings.length > 0 && next.rerun.acknowledgment !== next.rerun.warningDigest) {
@@ -930,7 +929,6 @@ export function RunStartDialog({
                       text={text}
                       onText={next => { setText(next); setSourceInputUnchanged(false); }}
                       preview={preview}
-                      inputRef={typedInputRef}
                       draft={typedValues}
                       rowInput={rowCapability === undefined ? undefined : <>
                         {referenceControls([rowCapability.typeId])}
@@ -1124,7 +1122,7 @@ export function RunStartDialog({
             Cancel
           </Button>
           {currentStage === "Warning" && warning !== null ? (
-            <Button variant="primary" onClick={() => { setAcknowledgment(warning.rerun.warningDigest); setPlan(null); reviewedRequest.current = null; setExpiredPlan(false); setCurrentStage("Values"); }}>Confirm</Button>
+            <Button variant="primary" onClick={() => { setAcknowledgment(warning.rerun.warningDigest); setPlan(null); reviewedRequest.current = null; setCurrentStage("Values"); }}>Confirm</Button>
           ) : currentStage === "Confirm" && plan !== null ? (
             <Button
               variant="primary"
