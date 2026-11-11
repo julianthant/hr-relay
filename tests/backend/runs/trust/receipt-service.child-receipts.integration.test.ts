@@ -85,7 +85,8 @@ it("pairs a new item's already-present Save with its exact original permanent re
   const assertedEid = String(f.run.input.parsed.value && (f.run.input.parsed.value as { record: { assertedEid: string } }).record.assertedEid);
   // A later claim's planning row for another employee would derive another key; the checkpoint's bound excludes it.
   const later = withPlanRows(f.database, actual => {
-    const last = actual.at(-1); assert.ok(last);
+    const last = actual.at(-1);
+    if (last === undefined) return actual;
     return [...actual, RunCheckpointRecordSchema.parse({ ...last, claimGeneration: last.claimGeneration + 1, writtenAt: new Date(Date.parse(last.writtenAt) + 60_000).toISOString(),
       output: { ...last.output, value: JSON.parse(JSON.stringify(last.output.value).replaceAll(assertedEid, "10899999")) as unknown } })];
   });
@@ -96,6 +97,16 @@ it("pairs a new item's already-present Save with its exact original permanent re
     ["committed", false, "durable-intent", original.idempotencyKeyDigest]);
   assert.deepEqual(service.ensure(second.envelope.runId), { state: "existing", receipt });
   assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), [original]);
+  // The new member's OnBase child replays the first child's committed Import; the first child's intent proves it.
+  const [firstChild] = f.database.authority.runs.listChildren(f.run.envelope.runId), [secondChild] = f.database.authority.runs.listChildren(second.envelope.runId);
+  assert.ok(firstChild && secondChild);
+  const childReceipt = f.database.authority.evidenceReceipts.findByRun(secondChild.envelope.runId); assert.ok(childReceipt);
+  const imported = childReceipt.actions.find(action => action.kind === "commit");
+  assert.deepEqual(imported && [imported.writeState, "proofRef" in imported, imported.proved?.proofSource], ["committed", false, "normal-output"]);
+  const dedupe = childReceipt.decisions.find(decision => decision.kind === "dedupe");
+  assert.ok(dedupe?.outcome === "not-taken" && dedupe.reason.includes(firstChild.envelope.runId), dedupe?.reason);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(secondChild.envelope.runId), []);
+  assert.equal(receipt.verification.find(row => row.obligation === "node.onbase-import")?.verdict, "verified");
   const missing = createReceiptService({ database: withPlanRows(f.database, () => []), runReader: f.execution.lifecycle, descriptors: f.descriptors });
   const third = await f.again(`${"d".repeat(64)}#emergency-contact#3`);
   assert.throws(() => missing.ensureReceipt(third.envelope.runId), /commit-input re-derivation refused \(missing-evidence/u);

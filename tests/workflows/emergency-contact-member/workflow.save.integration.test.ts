@@ -320,7 +320,7 @@ it("keeps interrupted Save ownership until callback settlement, verifies and com
   assert.equal(f.onbase.imports(), 1);
 });
 
-it("pairs a rerun's already-present Save through the upstream rows it replayed from the item's failed run", async () => {
+it("pairs a rerun's already-present Save after the item's failed run, and a later replay names the run whose probe observed it", async () => {
   const options: { failure?: FailurePoint } = { failure: "prepare" };
   const f = await memberFixture(options);
   assert.ok(f.failures.length > 0);
@@ -332,14 +332,14 @@ it("pairs a rerun's already-present Save through the upstream rows it replayed f
   f.persistence.replacePersisted({ ...f.persistence.snapshot(), rows, totalRows: rows.length });
   const again = f.execution.start(compiled.descriptor, approved, { dryRun: false });
   assert.equal(again.envelope.itemId, f.run.envelope.itemId);
-  // An ordinary run replays the item's latest upstream rows, here the failed run's.
   assert.deepEqual([again.envelope.continuation, again.envelope.sourceBound, again.envelope.recovery], [undefined, undefined, undefined]);
   await f.execution.execute(again, world.SIGNAL);
   assert.deepEqual(f.database.authority.failures.listByRun(again.envelope.runId), []);
   assert.equal(f.persistence.submissions.length, 0);
   assert.equal(checkpointOutcome(f, again).disposition, "already-present");
   const plans = f.database.authority.runCheckpoints.listByItem(again.envelope.workflow, again.envelope.itemId).filter(row => row.nodeId === "contact-plan");
-  assert.deepEqual(plans.map(row => row.runId), [f.run.envelope.runId], "the rerun replayed the failed run's plan");
+  // contact-plan is always-rerun, so an ordinary rerun plans itself after the failed run's row.
+  assert.deepEqual([plans[0]?.runId, plans.at(-1)?.runId], [f.run.envelope.runId, again.envelope.runId]);
   const receipt = receiptsOf(f).ensureReceipt(again.envelope.runId);
   assert.equal(commitActionOf(receipt).proved?.proofSource, "live-probe");
   assert.deepEqual(receiptsOf(f).ensureReceipt(again.envelope.runId), receipt);
@@ -423,4 +423,23 @@ it("recovers a failed OnBase import by running the record again: the Save resolv
   assert.deepEqual(f.database.authority.writeIntents.listByRun(again.envelope.runId), []);
   assert.deepEqual(receipts.ensureReceipt(f.run.envelope.runId), originalReceipt);
   assert.deepEqual(f.database.authority.evidenceReceipts.findByRun(f.run.envelope.runId), originalBytes);
+});
+it("refuses deleting a producer whose committed OnBase checkpoint a retained done run replayed; the consumer deletes first and the producer's intent outlives both", async () => {
+  const f = await memberFixture();
+  const again = f.execution.start(compiled.descriptor, { ...approved, record: { ...approved.record, recordId: `${"b".repeat(64)}#emergency-contact#2` } }, { dryRun: false });
+  await f.execution.execute(again, world.SIGNAL);
+  const producer = f.children()[0], consumer = f.children(again.envelope.runId)[0]; assert.ok(producer && consumer);
+  assert.equal(f.onbase.imports(), 1);
+  const [intent] = f.database.authority.writeIntents.listByRun(producer.envelope.runId); assert.ok(intent);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(consumer.envelope.runId), []);
+  const remove = (runId: string) => {
+    const current = f.database.authority.runs.get(runId); assert.ok(current);
+    return f.execution.lifecycle.delete({ commandId: randomUUID(), runId, expectedVersion: current.version });
+  };
+  const refusedFirst = remove(f.run.envelope.runId);
+  assert.deepEqual(refusedFirst.state === "refused" && refusedFirst.refusal.reason, "shared-checkpoint");
+  assert.equal(remove(again.envelope.runId).state, "deleted");
+  assert.equal(remove(f.run.envelope.runId).state, "deleted");
+  assert.equal(f.database.authority.runs.get(producer.envelope.runId), undefined);
+  assert.deepEqual(f.database.authority.writeIntents.findByPermanentKey(intent.system, intent.idempotencyKey), intent);
 });

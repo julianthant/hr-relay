@@ -362,8 +362,9 @@ describe("deriveActionWriteProof — the already-present arms", () => {
     const withOutcome = (change: (value: Record<string, unknown>) => Record<string, unknown>) => ({ ...replayed, output: { ...(record as { output: object }).output, value: change(stored) } });
     const { completionProof: _proof, confirmedAt: _confirmed, resolution: _resolution, ...fenced } = intent;
     const { currentAttemptId: _a, runId: _r, runAttempt: _ra, bindingProof: _b, bindingProofDigest: _bd, fencedAt: _f, status: _s, completionProof, confirmedAt, resolution: _res, occurrence: _o, ...identity } = intent;
-    const pair = (candidate: Parameters<typeof deriveActionWriteProof>[0]["intent"], checkpoint: unknown = replayed) =>
-      () => deriveActionWriteProof({ commitContract: KualiSaveSeparationFinalization, record: checkpoint, intent: candidate, replayed: true });
+    // Malformed intents on purpose: several cannot pass WriteIntentRecordSchema's digest re-derivation.
+    const pair = (candidate: unknown, checkpoint: unknown = replayed) =>
+      () => deriveActionWriteProof({ commitContract: KualiSaveSeparationFinalization, record: checkpoint, intent: candidate as Parameters<typeof deriveActionWriteProof>[0]["intent"], replayed: true });
     const cases: readonly [string, () => unknown][] = [
       ["producer", pair({ ...intent, runId: "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b" })],
       ["producer", pair({ ...intent, itemId: "6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c" })],
