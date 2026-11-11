@@ -83,7 +83,12 @@ export interface WorkerPoolDependencies {
   readonly timeouts?: Partial<Readonly<{ readyMs: number; gracefulMs: number; sigtermMs: number; exitObservationMs: number }>>;
   readonly onChange?: (view: WorkerMemberView) => void;
   readonly onFault?: (member: WorkerPoolMember, error: unknown) => void;
+  /** A stop send that failed only because the member's channel had closed and its exit was observed. */
+  readonly onStopChannelClosed?: (member: WorkerPoolMember, error: unknown) => void;
 }
+
+const isChannelClosed = (error: unknown): boolean =>
+  error instanceof Error && "code" in error && (error.code === "EPIPE" || error.code === "ERR_IPC_CHANNEL_CLOSED");
 
 interface PendingReply {
   resolve(result: JsonValue): void;
@@ -169,6 +174,20 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     if (!record.port.kill(deps.platform === "win32" ? undefined : signal)) { record.held = "kill-undelivered"; changed(record); }
   };
 
+  // A child that already exited closes its channel before its exit event arrives; that send failure is the stop's expected end once the exit is seen.
+  const stopSendFailed = (record: MemberRecord, error: Error): void => {
+    let reported = false;
+    const report = (): void => {
+      if (reported) return;
+      reported = true;
+      if (isChannelClosed(error) && record.state === "exited") deps.onStopChannelClosed?.(record.member, error);
+      else deps.onFault?.(record.member, error);
+    };
+    if (!isChannelClosed(error) || record.state === "exited") { report(); return; }
+    const window = after(timeouts.exitObservationMs, report);
+    void record.exited.then(() => { window.cancel(); report(); });
+  };
+
   /** Bounded escalation; resolves when the OS exit is observed or the observation window closes. */
   const escalate = (record: MemberRecord, reason: WorkerStopReason, immediate: boolean): Promise<void> => {
     if (record.stopping !== undefined) return record.stopping;
@@ -177,7 +196,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     record.stopping = record.exited;
     const lastResort = (): void => { kill(record, "SIGKILL"); observeExit(record); };
     if (immediate) { lastResort(); return record.stopping; }
-    record.port.send({ kind: "worker-stop", reason, mode: "after-run" }, error => { if (error !== null) deps.onFault?.(record.member, error); });
+    record.port.send({ kind: "worker-stop", reason, mode: "after-run" }, error => { if (error !== null) stopSendFailed(record, error); });
     record.timers.push(after(timeouts.gracefulMs, () => {
       if (deps.platform === "win32") { lastResort(); return; }
       kill(record, "SIGTERM");
