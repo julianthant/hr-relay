@@ -559,7 +559,7 @@ function readStartPlan(
     }
     selectedSources = sources;
   }
-  return { descriptor, plan };
+  return { descriptor, plan, selectedSources };
 }
 
 function executeStartRun(
@@ -568,7 +568,7 @@ function executeStartRun(
   request: Extract<CommandRequest, { family: "start" }>,
   now: string,
 ): CommandApplication {
-  const { descriptor, plan } = readStartPlan(dependencies, repositories, request, now);
+  const { descriptor, plan, selectedSources } = readStartPlan(dependencies, repositories, request, now);
   dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
   const consumption = repositories.startPlans.consume({
     startPlanId: request.target.startPlanId,
