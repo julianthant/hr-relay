@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { newEditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
-import { datasetOf, mappingOf, withMapping } from '../../../../src/dashboard/surfaces/spreadsheets/design/sheets-v2-model.js';
+import { newEditableWorkbook } from '../../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { datasetOf, mappingOf, withMapping } from '../../../../../src/dashboard/surfaces/spreadsheets/design/sheets-v2-model.js';
 
 describe('sheets-v2 model', () => {
   it('keeps header labels unique even when a literal suffix collides with a generated one', () => {
