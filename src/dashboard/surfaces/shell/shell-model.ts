@@ -52,7 +52,7 @@ export function useSelectedWorkflow(workflows: readonly { readonly id: string }[
   const setSelectedWorkflowId = useCallback((id: string) => {
     if (!canSelectWorkflowId(id)) return false;
     setChoice({ change, saved: selected, id });
-    void change?.({ "preferences.selectedWorkflowId": { set: id } });
+    if (id !== selected) void change?.({ "preferences.selectedWorkflowId": { set: id } });
     return true;
   }, [canSelectWorkflowId, change, selected]);
   return { selectedWorkflowId, setSelectedWorkflowId, canSelectWorkflowId };
