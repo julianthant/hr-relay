@@ -37,18 +37,22 @@ import { canonicalChildExecution } from "../../support/helpers/backend/canonical
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import { seedUnknownContactWrite } from "../../support/helpers/backend/unknown-contact-write.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
+import { ONBASE_SOURCE_DOCUMENT, onbaseChildFixture } from "../../support/helpers/backend/onbase-child-fixture.js";
+import { onbaseModule } from "../../support/helpers/registered-workflows.js";
+import { OnbaseInputSchema } from "../../../src/models/systems/onbase/import-document.js";
+import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 
 const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
 
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
 const compiled = contactSaveMember;
-const approved = EMERGENCY_CONTACT_MEMBER_EXAMPLE;
+const approved = { ...EMERGENCY_CONTACT_MEMBER_EXAMPLE, document: ONBASE_SOURCE_DOCUMENT, sourcePage: 2 };
 const contact = approvedEmergencyContact(approved.record);
 const desired = contactEffect(contact);
 
 type FailurePoint = "pending" | "save-before" | "save-after" | "partial" | "primary-conflict" | "unreadable" | "mismatch" | "staged-readback" | "stale-readback" | "verifier" | "prepare" | "identity" | "drift" | "capture-before" | "capture-after" | "read" | "probe" | "capture-prepare" | "staged-page-drift" | "timeout" | "lost-page" | "unknown-response" | "foreign-eid" | "foreign-name" | "identity-before-click";
-async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]; failure?: FailurePoint; priorWrite?: "attempting" | "parked"; interrupt?: boolean; dryRun?: boolean } = {}) {
+async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]; failure?: FailurePoint; priorWrite?: "attempting" | "parked"; interrupt?: boolean; dryRun?: boolean; onbaseNoMatch?: boolean } = {}) {
   const browser = defineBrowserStore("ucpath", ucpathDriver, ucpathSession, { readContacts: readEmergencyContactsTask,
     stageContact: stageEmergencyContactTask, probeContact: probeEmergencyContactTask, verifyContact: verifyEmergencyContactTask, saveContact: saveEmergencyContactTask });
   const service = defineServiceStore("ocr", { readRecord: readApprovedOcrRecordTask });
@@ -63,7 +67,8 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
   let entered = (): void => undefined, release = (): void => undefined;
   const inFlight = new Promise<void>(resolve => { entered = resolve; });
   const maySettle = new Promise<void>(resolve => { release = resolve; });
-  const sessions = sessionFactoryHarness({ ucpath: () => {
+  const onbase = onbaseChildFixture({ noMatch: options.onbaseNoMatch });
+  const sessions = sessionFactoryHarness({ onbase: () => onbase.driver(h.authority.clock), ucpath: () => {
     const session = persistence.session();
     const port: UcpathContactPagePort = { ...session.port, async snapshot() {
       const observed = await session.port.snapshot();
@@ -130,7 +135,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
     sessions: h.manager, emitter: h.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: h.scheduler, taskDeadlineMs: 60_000,
     operator: "local-operator", log: h.deps.log });
   const taskNotes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });
-  const execution = canonicalChildExecution({ ...h.deps, taskNotes, writeSequencer: sequencer, providers: {
+  const execution = canonicalChildExecution({ ...h.deps, taskNotes, writeSequencer: sequencer, artifacts: onbase.artifacts, providers: {
     configSnapshots: database.authority.configSnapshots, idFactory: { next: () => randomUUID() }, adapters: {
       "ocr.approved-snapshot": { capability: "ocr.approved-snapshot", async invoke(_request, options) {
         providerCalls++;
@@ -141,7 +146,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
           evidence: { summary: "Synthetic isolated approved member", capturedAt: IsoInstantSchema.parse(clock.now().toISOString()), providerRequestId: options.requestId } };
       } },
     },
-  } }, database, path, id => id === compiled.descriptor.id ? compiled.descriptor : undefined);
+  } }, database, path, id => id === compiled.descriptor.id ? compiled.descriptor : id === onbaseModule.descriptor.id ? onbaseModule.descriptor : undefined);
   const prior = options.priorWrite === undefined ? undefined : seedUnknownContactWrite(database, { ...contact, plan: planEmergencyContact(interpretContactPage(page, contact), desired) }, clock.now().toISOString(), options.priorWrite === "parked");
   const run = execution.start(compiled.descriptor, approved, { dryRun: options.dryRun ?? false });
   const signal = new AbortController();
@@ -158,7 +163,8 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
   }
   const result = await running;
   const failures = database.authority.failures.listByRun(run.envelope.runId);
-  return { ...h, clock, database, run, result, failures, ports, captures, providerCalls, reads, prior, execution, stores, persistence,
+  return { ...h, clock, database, run, result, failures, ports, captures, providerCalls, reads, prior, execution, stores, persistence, onbase,
+    children: (runId = run.envelope.runId) => database.authority.runs.listChildren(runId),
 
   };
 }
@@ -188,6 +194,7 @@ for (const failure of ["identity-before-click", "timeout", "lost-page", "unknown
   const f = await memberFixture({ failure });
   const intents = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
   assert.equal(intents.length, 1); assert.equal(intents[0]?.status, "parked");
+  assert.deepEqual(f.children(), [], "a parked Save admits no OnBase child");
   const intent = intents[0]; assert.ok(intent);
   assert.equal(f.database.authority.writeAttempts.get(intent.currentAttemptId)?.outcome.state, "parked");
   assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state, "parked-write");
@@ -210,6 +217,9 @@ for (const failure of ["read", "probe", "prepare", "identity", "drift", "capture
   assert.ok(f.failures.length > 0);
   assert.equal(f.persistence.submissions.length, 0);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
+  assert.ok(descriptorRuntimeNodes(compiled.descriptor).some(node => node.id === "onbase-import"));
+  assert.deepEqual(f.children(), [], "a refused Save admits no OnBase child");
+  assert.equal(f.onbase.imports(), 0);
 });
 it("uses complete persisted exact presence without a new intent or Save", async () => {
   const rows = UcpathContactPageSnapshotSchema.parse(fixture.page).rows;
@@ -260,4 +270,36 @@ it("prepares the real production workflow in dry run with zero Save clicks and n
   assert.equal(f.persistence.submissions.length, 0);
   assert.ok(f.captures.some(snapshot => snapshot.observation === "staged"));
   assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
+});
+
+it("imports the approved page to OnBase once after a committed Save and records the saved document on the member", async () => {
+  const f = await memberFixture();
+  assert.deepEqual(f.failures, []);
+  const children = f.children();
+  assert.deepEqual(children.map(child => [child.envelope.workflow, child.envelope.dryRun]), [["onbase", false]]);
+  const child = children[0]; assert.ok(child);
+  assert.deepEqual(OnbaseInputSchema.parse(child.input.parsed.value), { ucpathId: approved.record.assertedEid, document: approved.document, sourcePage: 2 });
+  assert.equal(f.onbase.imports(), 1);
+  const stored = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(stored);
+  const result = EmergencyContactMemberResultSchema.parse(stored.result.value);
+  assert.equal(result.onbase.disposition, "committed");
+  assert.equal(result.onbase.savedDocument.ucpathId, approved.record.assertedEid);
+  assert.match(result.onbase.savedDocument.documentId, /^[1-9]\d*$/u);
+});
+
+it("recovers a failed OnBase import by running the record again: the Save resolves already-present and OnBase imports once", async () => {
+  const f = await memberFixture({ onbaseNoMatch: true });
+  assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state, "terminal");
+  assert.equal(f.failures[0]?.nodeId, "onbase-import");
+  assert.equal(f.persistence.submissions.length, 1);
+  assert.equal(f.onbase.imports(), 0);
+  f.onbase.control.noMatch = false;
+  const again = f.execution.start(compiled.descriptor, { ...approved, record: { ...approved.record, recordId: `${"b".repeat(64)}#emergency-contact#2` } }, { dryRun: false });
+  await f.execution.execute(again, world.SIGNAL);
+  assert.deepEqual(f.database.authority.failures.listByRun(again.envelope.runId), []);
+  assert.equal(f.persistence.submissions.length, 1, "no second Save click");
+  assert.equal(f.onbase.imports(), 1);
+  const stored = f.database.authority.runResults.get(again.envelope.runId); assert.ok(stored);
+  const result = EmergencyContactMemberResultSchema.parse(stored.result.value);
+  assert.deepEqual([result.disposition, result.onbase.disposition], ["already-present", "committed"]);
 });

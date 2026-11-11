@@ -55,6 +55,13 @@ describe("workflow descriptor registry", () => {
     expect(Object.isFrozen(registry.descriptors)).toBe(true);
   });
 
+  it("resolves OnBase only through the Emergency Contact member edge and keeps it unlisted", () => {
+    const registry = createWorkflowDescriptorRegistry(DESCRIPTORS, CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor));
+    expect(registry.resolveChild("emergency-contact-member", "onbase")?.id).toBe("onbase");
+    expect(registry.resolve("onbase")).toBeUndefined();
+    expect(registry.descriptors.map(descriptor => descriptor.id)).not.toContain("onbase");
+  });
+
   it("refuses unknown targets and undeclared or unknown parents", () => {
     expect(() => createWorkflowDescriptorRegistry([plan1Parent.descriptor], [plan1Child.descriptor]))
       .toThrow(`workflow delegation target ${plan1Leaf.descriptor.id} is not registered`);

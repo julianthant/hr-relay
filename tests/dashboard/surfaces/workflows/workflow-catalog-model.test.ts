@@ -169,6 +169,12 @@ describe_m1("frontend workflow catalog", () => {
     expect_m1(workflowComposition_m1(configured).sourceForRoute("person-lookup", true)).toBe("served");
     expect_m1(() => buildWorkflowCatalog_m1([], true, configured)).toThrow("WORKFLOW_SERVED_REGISTRATION_MISSING");
   });
+  it_m1("builds the product sources without OnBase", () => {
+    const product = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows), FIXTURE_START_PICKER_BOOTSTRAP_m1.workbookCompatibility)
+      .filter(flow => WORKFLOW_SOURCES_m1[flow.workflowId] === "served");
+    const entries = buildWorkflowCatalog_m1(product, true, WORKFLOW_SOURCES_m1);
+    expect_m1(entries.map(entry => entry.id)).not.toContain("onbase");
+  });
   it_m1("uses each served declaration once, retains exact authority and admits future registrations", () => {
     const future = { ...served[0], workflowId: "new-workflow", label: "New workflow", categoryId: "Payroll", code: "NW" };
     const renamed = { ...served[0], label: "Registered name" };

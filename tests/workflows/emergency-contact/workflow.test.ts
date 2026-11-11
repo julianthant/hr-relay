@@ -13,12 +13,18 @@ import { descriptorRuntimeNodes, workflowPlanning } from "../../../src/workflow-
 import type { RuntimeScope } from "../../../src/models/workflow/graph.js";
 import { TaskError } from "../../../src/workflow-kit/errors.js";
 import { ApprovedOcrRecordInputSchema } from "../../../src/models/workflows/ocr/approved-record.js";
+import { EmergencyContactMemberInputSchema } from "../../../src/models/workflows/emergency-contact-member/input.js";
+import { OcrReviewCheckpointSchema } from "../../../src/models/workflows/ocr/review-seed.js";
 import { EmergencyContactInputSchema } from "../../../src/models/workflows/emergency-contact/input.js";
 
 const descriptor = compileWorkflow(emergencyContactWorkflow).descriptor;
 const members = descriptorRuntimeNodes(descriptor).find(node => node.id === "members");
 assert.ok(members?.kind === "child-run" && members.cardinality === "many");
 const first = EMERGENCY_CONTACT_MEMBER_EXAMPLE.record;
+const reviewRecord = (recordId: string, sourcePage: number) => OcrReviewCheckpointSchema.shape.records.element.parse({ recordId, sourcePage,
+  extractionId: "c".repeat(64), subjectName: null, assertedEid: null, identitySource: "document", rosterMatch: null,
+  lookup: { state: "unavailable", reason: "missing-identity" }, issues: ["unidentified-subject"] });
+const recordIds = [1, 2, 3].map(index => `${"b".repeat(64)}#emergency-contact#${String(index)}`);
 function scope(different = false): RuntimeScope {
   const second = { ...first, recordId: `${"b".repeat(64)}#emergency-contact#2`, fields: { ...first.fields,
     answers: first.fields.answers.map(answer => different && answer.path === "contact.name" && answer.state === "read"
@@ -26,13 +32,13 @@ function scope(different = false): RuntimeScope {
   const { sourceRunId: _sourceRunId, formType: _formType, approval: _approval, ...input } = OCR_INPUT_EXAMPLE;
   return { input: EmergencyContactInputSchema.parse(input), outputs: {
     "read-document": { state: "done", runId: EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval.sourceRunId, itemId: OCR_INPUT_EXAMPLE.readingId,
-      output: OcrWorkflowResultSchema.parse({ review: ReadOcrReviewSeed.example, identities: [],
+      output: OcrWorkflowResultSchema.parse({ review: { ...ReadOcrReviewSeed.example, records: recordIds.map((recordId, index) => reviewRecord(recordId, index + 3)) }, identities: [],
         approvedSnapshot: EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval }) },
     "approved-records": { snapshot: { ...ReadApprovedOcrSnapshot.example.snapshot, records: [first, second], selectedRecordIds: [first.recordId, second.recordId] } },
   } };
 }
 it("preserves equal primary effects for the same employee as two ordered approved members", () => {
-  const inputs = z.array(ApprovedOcrRecordInputSchema).parse(members.bind(scope()));
+  const inputs = z.array(EmergencyContactMemberInputSchema).parse(members.bind(scope()));
   assert.equal(inputs.length, 2);
   const records = inputs.map(input => input.record);
   assert.deepEqual(records.map(record => record.recordId), [first.recordId, `${"b".repeat(64)}#emergency-contact#2`]);
@@ -49,12 +55,21 @@ it("binds a three-record approved subset in selected order through the registere
   const snapshot = OcrApprovedSnapshotSchema.parse({ ...ReadApprovedOcrSnapshot.example.snapshot,
     records: selected, selectedRecordIds: selected.map(record => record?.recordId) });
   const initial = scope();
-  const bound = z.array(ApprovedOcrRecordInputSchema).parse(members.bind({ ...initial, outputs: { ...initial.outputs,
+  const bound = z.array(EmergencyContactMemberInputSchema).parse(members.bind({ ...initial, outputs: { ...initial.outputs,
     "approved-records": ReadApprovedOcrSnapshot.output.parse({ snapshot }) } }));
   assert.deepEqual(bound.map(member => member.record), selected);
   assert.deepEqual(bound.map(member => member.record.assertedEid), ["10800002", "10800000"]);
   assert.ok(bound.every(member => member.record.recordId !== records[1]?.recordId));
   assert.ok(bound.every(member => JSON.stringify(member.approval) === JSON.stringify(EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval)));
+});
+
+it("carries the parent PDF and each record's first source page on every member input", () => {
+  const current = scope();
+  const inputs = z.array(EmergencyContactMemberInputSchema).parse(members.bind(current));
+  assert.ok(typeof current.input === "object" && current.input !== null);
+  const document: unknown = Reflect.get(current.input, "document");
+  assert.deepEqual(inputs.map(input => input.document), [document, document]);
+  assert.deepEqual(inputs.map(input => input.sourcePage), [3, 4]);
 });
 
 it("titles an Emergency Contact run by its PDF name, else the generic PDF title", () => {

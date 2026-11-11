@@ -34,6 +34,9 @@ import { registerBoundFixtureWorker, registerBoundProfile, unregisterBoundProfil
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { createOcrReviewWorld } from "./ocr-review-world.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../phase1f-executor-harness.js";
+import type { Clock } from "../../../../src/rules/time/clock.js";
+import type { SavedOnbaseFixture } from "../browser/fake-onbase-page.js";
+import { ONBASE_SOURCE_PDF, onbaseChildFixture } from "./onbase-child-fixture.js";
 
 export const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
 
@@ -41,11 +44,11 @@ const facts = ["Example, Avery", "Example, Blake"].map((employeeName, index) => 
 const SqliteTableSchema = z.object({ name: z.string(), sql: z.string().nullable() });
 const SqliteColumnSchema = z.object({ name: z.string(), type: z.string() });
 
-type RetryOptions = Readonly<{ failures?: number; failApprovedRecordOnce?: boolean; onFencedSave?: () => void; secondMemberAlreadyPresent?: boolean }>;
+type RetryOptions = Readonly<{ failures?: number; failApprovedRecordOnce?: boolean; onFencedSave?: () => void; secondMemberAlreadyPresent?: boolean; onbaseNoMatch?: boolean }>;
 type ContactSeed = Readonly<{ emplId: string; persisted: ReturnType<ReturnType<typeof createDeterministicContactPersistence>["snapshot"]>; submissions: ReturnType<ReturnType<typeof createDeterministicContactPersistence>["snapshot"]>[] }>;
 type MemberStageSeed = Readonly<{
   ticks: number; approvedReadFailed: boolean; failuresRemaining: number; failAfterSave: boolean;
-  snapshotReads: number; recordReads: number; wall: string; monotonic: number; mintedIds: number; contacts: readonly ContactSeed[];
+  snapshotReads: number; recordReads: number; wall: string; monotonic: number; mintedIds: number; contacts: readonly ContactSeed[]; onbaseSaved: readonly SavedOnbaseFixture[];
 }>;
 type MemberStageTemplate = Readonly<{ workspace: string; profileId: string; dbRelative: string; seed: MemberStageSeed }>;
 
@@ -153,7 +156,7 @@ function adoptWorkers(database: AuthorityDatabase, path: string, clock: TestCloc
 }
 
 function templateKey(options: RetryOptions) {
-  return JSON.stringify({ failures: options.failures ?? 1, failApprovedRecordOnce: options.failApprovedRecordOnce === true, secondMemberAlreadyPresent: options.secondMemberAlreadyPresent === true });
+  return JSON.stringify({ failures: options.failures ?? 1, failApprovedRecordOnce: options.failApprovedRecordOnce === true, secondMemberAlreadyPresent: options.secondMemberAlreadyPresent === true, onbaseNoMatch: options.onbaseNoMatch === true });
 }
 
 export function createEmergencyContactRetryWorld() {
@@ -166,6 +169,7 @@ export function createEmergencyContactRetryWorld() {
     let ticks = seed?.ticks ?? Date.parse(fixture.page.observedAt);
     const now = () => new Date(++ticks).toISOString();
     const persistence = new Map<string, ReturnType<typeof createDeterministicContactPersistence>>();
+    const onbase = onbaseChildFixture({ noMatch: options.onbaseNoMatch, saved: seed?.onbaseSaved }), onbaseClock: { current?: Clock } = {};
     for (const contact of seed?.contacts ?? []) {
       const backend = createDeterministicContactPersistence(contact.persisted, now);
       for (const submission of contact.submissions) backend.submissions.push(UcpathContactPageSnapshotSchema.parse(submission));
@@ -211,7 +215,10 @@ export function createEmergencyContactRetryWorld() {
         },
         read: id => id === UCPATH_CONTACT_DISPLAYED_NAME && active !== undefined ? active.read(id) : base.read(id),
       };
-    }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
+    }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }), onbase: () => {
+      assert.ok(onbaseClock.current);
+      return onbase.driver(onbaseClock.current);
+    } });
     const member = composeWorkflowModule(contactSaveMember, taskStoreRegistry.stores);
     let approvedReadFailed = seed?.approvedReadFailed === true;
     const approvedReader = (context: Parameters<typeof createApprovedOcrRecordReader>[0]): ReturnType<typeof createApprovedOcrRecordReader> => {
@@ -237,12 +244,13 @@ export function createEmergencyContactRetryWorld() {
         return readEmergencyContactResultTask.impl.run(args);
       },
     }) });
-    return { control, hooks, persistence, sessions, approvedReader, accountingStore, member, now, tickCount: () => ticks, approvedReadFailed: () => approvedReadFailed };
+    return { control, hooks, persistence, onbase, onbaseClock, sessions, approvedReader, accountingStore, member, now, tickCount: () => ticks, approvedReadFailed: () => approvedReadFailed };
   }
   async function build(options: RetryOptions) {
     const live = pieces({ ...options, onFencedSave: undefined });
     const ids = sequentialIdFactory("b");
-    const f = await world.fixture({ ids, coordinator: true, member: live.member, approvedStore: live.accountingStore,
+    const f = await world.fixture({ ids, coordinator: true, member: live.member, approvedStore: live.accountingStore, sourcePdf: ONBASE_SOURCE_PDF,
+      onHarness: harness => { live.onbaseClock.current = harness.authority.clock; },
       approvedReader: live.approvedReader, onSpan: event => live.hooks.onSpan?.(event),
       onTransactionSettled: run => {
         live.hooks.onTransactionSettled?.();
@@ -278,7 +286,7 @@ export function createEmergencyContactRetryWorld() {
       type, source: "run-detail" as const, requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(),
       target: { runId: run.envelope.runId, expectedVersion: run.version } });
     const children = () => f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(run => run.envelope.workflow === "emergency-contact-member");
-    return { ...f, facts, persistence: live.persistence, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children };
+    return { ...f, facts, persistence: live.persistence, onbase: live.onbase, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children };
   }
   async function capture(built: Awaited<ReturnType<typeof build>>): Promise<MemberStageTemplate> {
     const source = built.harness.authority.profile.workspace;
@@ -302,6 +310,7 @@ export function createEmergencyContactRetryWorld() {
       ticks: live.tickCount(), approvedReadFailed: live.approvedReadFailed(), failuresRemaining: live.control.failuresRemaining, failAfterSave: live.control.failAfterSave,
       snapshotReads: live.control.snapshotReads, recordReads: live.control.recordReads, wall: built.clock.now().toISOString(), monotonic: built.clock.monotonicMs(), mintedIds: built.mintedIds,
       contacts: [...live.persistence.entries()].map(([emplId, backend]) => ({ emplId, persisted: backend.snapshot(), submissions: backend.submissions.map(submission => UcpathContactPageSnapshotSchema.parse(submission)) })),
+      onbaseSaved: live.onbase.saved(),
     } };
   }
   async function reopen(template: MemberStageTemplate, options: RetryOptions) {
@@ -314,6 +323,7 @@ export function createEmergencyContactRetryWorld() {
       const ids = sequentialIdFactory("b");
       for (let index = 0; index < template.seed.mintedIds; index += 1) ids.uuid();
       const f = await adoptedWorld.fixture({ ids, adoptExisting: true, coordinator: true, member: live.member, approvedStore: live.accountingStore,
+        onHarness: harness => { live.onbaseClock.current = harness.authority.clock; },
         approvedReader: live.approvedReader, onSpan: event => live.hooks.onSpan?.(event),
         onTransactionSettled: run => {
           live.hooks.onTransactionSettled?.();

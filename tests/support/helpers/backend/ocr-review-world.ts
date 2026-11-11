@@ -67,7 +67,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       signerLookup?: Readonly<{ firstNames: readonly string[]; failOnce?: string }>;
       reviewedPages?: readonly ReviewedPageFacts[]; operatorEvidence?: boolean;
       screenshotCapture?: NonNullable<Parameters<typeof world.executorHarness>[0]>["screenshotCapture"];
-      member?: WorkflowModule;
+      member?: WorkflowModule; sourcePdf?: Uint8Array;
       approvedReader?: typeof createRetainedApprovedRecordReader;
       approvedStore?: RegisteredTaskStore;
       manualPageFailure?: (sourcePage: number) => boolean;
@@ -221,7 +221,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
           } };
       }
       const upload = await sources.upload({ actorId: "local-operator", fileName: "source.pdf", mediaType: "application/pdf",
-        bytes: new TextEncoder().encode("%PDF-1.7\nSynthetic renderer fixture\n%%EOF") });
+        bytes: options.sourcePdf ?? new TextEncoder().encode("%PDF-1.7\nSynthetic renderer fixture\n%%EOF") });
       const pageBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGvwAAAAASUVORK5CYII=", "base64");
       const image = await artifacts.put(pageBytes, { mediaType: "image/png" });
       rendered.value = { pageCount: options.pageCount ?? 1, pages: Array.from({ length: options.pageCount ?? 1 }, (_, index) => ({ sourcePage: index + 1, image })) };

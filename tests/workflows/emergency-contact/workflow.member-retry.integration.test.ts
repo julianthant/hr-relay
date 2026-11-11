@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeEach, it } from "vitest";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { aggregateMemberRetryAvailable } from "../../../src/backend/runs/queries/run-retry.js";
 import { assertDelegationRetryUnwritten, delegationAccountingExecution } from "../../../src/backend/storage/sqlite/delegation-authority.js";
-import { runClaim } from "../../../src/models/run/record.js";
+import { runClaim, type RunRecord } from "../../../src/models/run/record.js";
 import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
 import { CanonicalTerminalizeRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { readQueueRecordMembers } from "../../../src/backend/runs/queries/ocr-record-members.js";
@@ -723,4 +723,54 @@ it("offers and applies a member Retry after a restart re-activates the same conf
   const applied = f.canonical.kernel.execute(f.runCommand("retry", previous)); assert.equal(applied.state, "applied", JSON.stringify(applied));
   const replacement = f.children().find(child => child.envelope.retryOf === previous.envelope.runId); assert.ok(replacement);
   assert.equal(replacement.envelope.configSnapshotId, previous.envelope.configSnapshotId);
+});
+
+it("fails a member at onbase-import after its committed Save and serves no Retry for the member or its OnBase child", async () => {
+  const f = fixture;
+  const original = failed(f);
+  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", original)).state, "applied");
+  const replacement = f.children().find(child => child.envelope.retryOf === original.envelope.runId); assert.ok(replacement);
+  f.onbase.control.noMatch = true;
+  await f.canonical.execute(f.parentRun, signal());
+  const member = f.current(replacement.envelope.runId);
+  assert.ok(member.lifecycle.state === "terminal" && member.lifecycle.outcome === "failed");
+  assert.equal(f.database.authority.failures.listByRun(member.envelope.runId)[0]?.nodeId, "onbase-import");
+  const intents = f.database.authority.writeIntents.listByRun(member.envelope.runId);
+  assert.deepEqual(intents.map(intent => intent.status), ["committed"]);
+  const onbase = f.database.authority.runs.listChildren(member.envelope.runId);
+  assert.deepEqual(onbase.map(child => child.envelope.workflow), ["onbase"]);
+  const child = onbase[0]; assert.ok(child?.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed");
+  assert.equal(f.onbase.imports(), 0);
+  const before = canonicalJsonStringify(f.children()), saves = [...f.persistence.values()].map(value => value.submissions.length);
+  assert.deepEqual(saves, [1, 1]);
+  assert.equal(aggregateMemberRetryAvailable(f.database.authority, f.canonical.lifecycle, member, f.resolve), false);
+  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", member)).state, "rejected");
+  assert.equal(aggregateMemberRetryAvailable(f.database.authority, f.canonical.lifecycle, child, f.resolve), false);
+  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", child)).state, "rejected");
+  assert.equal(canonicalJsonStringify(f.children()), before);
+  assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), saves);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(member.envelope.runId), intents);
+  assert.deepEqual(memberRowTarget(f, member), { runId: child.envelope.runId, listed: true });
+});
+
+function memberRowTarget(f: Fixture, member: RunRecord) {
+  const rows = readQueueRecordMembers(f.database.authority, f.canonical.lifecycle, f.current(),
+    f.database.authority.runs.listChildren(f.parentRun.envelope.runId), f.resolve); assert.ok(rows);
+  const row = rows.members.find(candidate => candidate.kind === "record" && candidate.childRunIds.includes(member.envelope.runId));
+  assert.ok(row?.kind === "record");
+  return { runId: row.target.runId, listed: row.childRunIds.includes(row.target.runId) };
+}
+
+it("points the member row at a parked OnBase child and keeps the member waiting without another Import", async () => {
+  const f = fixture;
+  const original = failed(f);
+  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", original)).state, "applied");
+  const replacement = f.children().find(child => child.envelope.retryOf === original.envelope.runId); assert.ok(replacement);
+  f.onbase.control.lostClick = true;
+  await f.canonical.execute(f.parentRun, signal());
+  const child = f.database.authority.runs.listChildren(replacement.envelope.runId)[0];
+  assert.equal(child?.lifecycle.state, "parked-write");
+  assert.notEqual(f.current(replacement.envelope.runId).lifecycle.state, "terminal");
+  assert.equal(f.onbase.imports(), 1);
+  assert.deepEqual(memberRowTarget(f, replacement), { runId: child.envelope.runId, listed: true });
 });

@@ -62,6 +62,14 @@ describe("workflow descriptor registry", () => {
     }
   });
 
+  it("admits OnBase only as the Emergency Contact member's child and never publicly", () => {
+    const production = createWorkflowRegistry(WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES);
+    expect(production.childModuleOf("emergency-contact-member", "onbase").descriptor.id).toBe("onbase");
+    expect(() => production.childModuleOf("emergency-contact", "onbase")).toThrow(/does not declare delegation/u);
+    expect(() => production.moduleOf("onbase")).toThrow(/is not registered/u);
+    expect(production.publicRegistry["onbase"]).toBeUndefined();
+  });
+
   it("allows a declared delegation to another public workflow without changing its public admission", () => {
     const parent = syntheticModule("registry-parent", ["registry-public-target"]);
     const target = syntheticModule("registry-public-target");

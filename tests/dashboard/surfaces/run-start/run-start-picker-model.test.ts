@@ -19,7 +19,7 @@ describe("shared run catalog", () => {
     expect(() => launchWorkflows([required!], { workflows: [], libraries: [] })).toThrow(/WORKBOOK_COMPATIBILITY_UNAVAILABLE/u);
   });
   it("omits only parent-only previews from the picker while retaining the complete catalog", () => {
-    const visible = ["crm-doc-download", "emergency-contact", "i9-check-start", "kronos-pay-rule", "oath-signature", "oath-upload", "old-kronos-reports", "onbase", "onboarding", "person-lookup", "separations", "work-study"];
+    const visible = ["crm-doc-download", "emergency-contact", "i9-check-start", "kronos-pay-rule", "oath-signature", "oath-upload", "old-kronos-reports", "onboarding", "person-lookup", "separations", "work-study"];
     expect(ids().sort()).toEqual(visible);
     expect(catalog.map(flow => flow.id).sort()).toEqual([...visible, "i9-lookup", "sharepoint-download"].sort());
     expect(ids()).not.toContain("i9-lookup"); expect(ids()).not.toContain("sharepoint-download");
@@ -43,7 +43,7 @@ describe("shared run catalog", () => {
     expect(runPickerGroups(buildWorkflowCatalog([{ ...served[0], code: "zz" }], false, servedFixtureSources([served[0]])), "zz")[0].entries[0].entry.id).toBe(served[0].workflowId);
   });
   it("shares sidebar category order and retains subordinate proving harnesses", () => {
-    expect(runPickerGroups(catalog, "").map(group => group.label)).toEqual(["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"]);
+    expect(runPickerGroups(catalog, "").map(group => group.label)).toEqual(["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "Timekeeping"]);
     const composition: RunStartWorkflow = { ...served[0], workflowId: "test-composition", role: defineWorkflowRole({ kind: "composition" }) };
     const harness: RunStartWorkflow = { ...served[0], workflowId: "test-harness", role: defineWorkflowRole({ kind: "chunk-harness", of: "test-composition", step: composition.steps[0].key }) };
     const groups = runPickerGroups(buildWorkflowCatalog([composition, harness], false, servedFixtureSources([composition, harness])), "");
