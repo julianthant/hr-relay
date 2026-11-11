@@ -12,7 +12,7 @@ import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../../.
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
-import { DelegationEdgeIdSchema, EidSchema, RunIdSchema, taskId } from "../../../../src/rules/identity/ids.js";
+import { DelegationEdgeIdSchema, EidSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { RerunSourceSchema } from "../../../../src/models/run/rerun.js";
@@ -464,49 +464,45 @@ it("still refuses a stale checkpoint-policy fact when a paused run resumes befor
   assert.deepEqual(f.intents(), []);
 });
 
-const mappedRead = defineTaskContract({ id: taskId("ocr/read-source-mapping"), title: "Read source mapping", effect: "read",
-  input: sourceBoundReadContract.input, output: sourceBoundReadContract.output, errorCodes: sourceBoundReadContract.errorCodes,
-  subject: sourceBoundReadContract.subject, scenarios: sourceBoundReadContract.scenarios, freshness: sourceBoundReadContract.freshness,
-  provenance: sourceBoundReadContract.provenance, example: sourceBoundReadContract.example });
 const changedSourceDescriptor = defineWorkflowDescriptor({ ...metadata, flow: flow(Input)
-  .step("before", staleRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid }) })
-  .step("mapped", mappedRead, { dependsOn: ["before"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid }) })
+  .step("before", staleRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid, memo: "source" }) })
+  .step("mapped", staleRead, { dependsOn: ["before"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid }) })
   .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: ["mapped"], prepare: { uses: WriteFixturePrepare, bind: ({ outputs }) => ({ eid: outputs.mapped.eid }) },
     commit: { uses: WriteFixtureCommit, bind: ({ outputs }) => ({ eid: outputs.mapped.eid }) }, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
   .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
 
 it("refuses a paused run whose completed downstream checkpoint no longer matches its re-read source", async () => {
   const sourceValues = [WRITE_FIXTURE_EID, EidSchema.parse("10899999")];
-  const hooks: { onMapped?: () => void } = {};
+  const hooks: { onSource?: () => void; onMapped?: () => void } = {};
   const h = await sourceBoundHarness(changedSourceDescriptor, world => {
-    const before = defineTask(staleRead, { sessions: [], async run({ ctx }) {
-      const eid = sourceValues.shift(); assert.ok(eid);
-      ctx.recordData({ direction: "read", field: "eid", value: eid }); return { eid };
-    } });
-    const mapped = defineTask(mappedRead, { sessions: [], async run({ input, ctx }) {
-      ctx.recordData({ direction: "read", field: "eid", value: input.eid }); hooks.onMapped?.(); return { eid: input.eid };
+    const read = defineTask(staleRead, { sessions: [], async run({ input, ctx }) {
+      const eid = input.memo === "source" ? sourceValues.shift() : input.eid; assert.ok(eid);
+      ctx.recordData({ direction: "read", field: "eid", value: eid });
+      if (input.memo === "source") hooks.onSource?.(); else hooks.onMapped?.();
+      return { eid };
     } });
     const writes = buildWriteFixtureRegistry(world);
-    return defineTaskStoreRegistry([defineServiceStore("ocr", { before, mapped }), ...writes.stores], {
-      scenarioIds: [...sourceBoundReadContract.scenarios, ...writes.corpus.scenarioIds],
-      tasks: [{ id: staleRead.id, effect: staleRead.effect }, { id: mappedRead.id, effect: mappedRead.effect }, ...writes.corpus.tasks],
+    return defineTaskStoreRegistry([defineServiceStore("ocr", { read }), ...writes.stores], {
+      scenarioIds: [...staleRead.scenarios, ...writes.corpus.scenarioIds],
+      tasks: [{ id: staleRead.id, effect: staleRead.effect }, ...writes.corpus.tasks],
     });
   });
   cleanups.push(h.dispose);
   h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
   const source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID));
+  // Only "before" ages past its 0 ms bound; "mapped" stays fresh, so the input comparison alone guards the write.
+  hooks.onSource = () => h.clock.advanceWall(1);
   hooks.onMapped = () => {
     const active = h.fresh(source);
     requireLifecycleApplied(h.lifecycle.pause({ commandId: randomUUID(), runId: active.envelope.runId, expectedVersion: active.version }));
   };
   assert.equal((await h.execute(source)).state, "abandoned", JSON.stringify(h.database.authority.failures.listByRun(source.envelope.runId)));
-  delete hooks.onMapped;
+  delete hooks.onSource; delete hooks.onMapped;
   const paused = h.fresh(source); assert.equal(paused.pause?.state, "paused");
-  h.clock.advanceWall(1_000);
   const resumed = requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: randomUUID(), runId: paused.envelope.runId, expectedVersion: paused.version }));
   assert.equal((await h.execute(resumed)).state, "failed");
   const failure = h.database.authority.failures.listByRun(resumed.envelope.runId)[0];
-  assert.equal(failure?.code, "RUN_CONTINUATION_REFUSED");
+  assert.equal(failure?.code, "RUN_CONTINUATION_REFUSED", JSON.stringify(failure));
   assert.match(JSON.stringify(failure), /run-continuation-task-input-mismatch/u);
   assert.deepEqual(sourceValues, []);
   assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, 0);
