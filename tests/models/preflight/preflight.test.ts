@@ -648,7 +648,8 @@ describe("preflight selection and reports", () => {
 
     release.resolve();
     await assert.rejects(execution, (error: unknown) => error instanceof PreflightRunnerTimeoutError
-      && error.message === "preflight runner config.valid exceeded its registered 1000ms timeout");
+      && error.message === "preflight runner config.valid exceeded its registered 1000ms timeout"
+      && error.check === CONFIG_VALID_CHECK && error.timeoutMs === 1_000);
     assert.equal(scheduler.cancelled, true);
   });
 

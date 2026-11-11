@@ -347,7 +347,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const body = await json(response);
     assert.equal(body.code, "PREFLIGHT_TIMEOUT");
     assert.equal(body.retryable, false);
-    assert.equal(body.message, "A readiness check took too long. Check again.");
+    const named = /^A readiness check took too long\. Check again\. \((.+)\)$/u.exec(String(body.message));
+    assert.ok(named !== null && requiredPreflightChecks(["dashboard.serve"]).some(check => check === named[1]), String(body.message));
   });
 
 });
