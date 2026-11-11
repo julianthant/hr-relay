@@ -10,6 +10,7 @@ import { join } from "node:path";
 import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { describe,it,vi } from "vitest";
+import { z } from "zod";
 import { writeDashboardBuildIdentity } from "../src/backend/app/composition/dashboard/build-identity.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../src/backend/app/config/runtime-isolation.js";
 import { RuntimeLifetimeLock, RuntimeAlreadyRunningError } from "../src/backend/storage/admission/lifetime-lock.js";
@@ -26,18 +27,11 @@ const SHUTDOWN_TIMEOUT_MS = 60_000;
 
 
 
-async function ownedFixturePort(): Promise<number> {
-  return new Promise<number>((resolve, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.once("listening", () => {
-      const address = probe.address();
-      assert.ok(address !== null && typeof address !== "string");
-      probe.close(error => error === undefined ? resolve(address.port) : reject(error));
-    });
-    probe.listen(0, "127.0.0.1");
-  });
-}
+const DashboardReadySchema = z.strictObject({
+  type: z.literal("hrauto-dashboard-ready"),
+  backendPort: z.number().int().positive().max(65535),
+  lockPort: z.number().int().positive().max(65535),
+});
 
 async function waitForIngressToClose(port: number, child: DashboardChild, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -96,6 +90,21 @@ function createScratchRepoRoot(backendPort: number = rebuildRuntimeIsolation.bac
   writeFileSync(isolationSchemaPath, isolationSchemaSource
     .replace(`backendPort: z.literal(${String(rebuildRuntimeIsolation.backendPort)})`, `backendPort: z.literal(${String(backendPort)})`)
     .replace(`lockPort: z.literal(${String(rebuildRuntimeIsolation.lockPort)})`, `lockPort: z.literal(${String(lockPort)})`));
+  const cliPath = join(root, "src", "cli.ts");
+  const cliSource = readFileSync(cliPath, "utf8");
+  const returnApplication = "    return application;";
+  assert.ok(cliSource.includes(returnApplication));
+  writeFileSync(cliPath, cliSource.replace(returnApplication, `
+    const fixtureReady = { type: "hrauto-dashboard-ready", backendPort: application.port, lockPort: lifetime.lock.port };
+    return { ...application, fixtureReady };`));
+  const runtimePath = join(root, "src", "backend", "app", "composition", "runtime-composition.ts");
+  const runtimeSource = readFileSync(runtimePath, "utf8");
+  const readyMessage = 'send({ type: "hrauto-dashboard-ready" },';
+  assert.ok(runtimeSource.includes(readyMessage));
+  // Only the copied CLI reports fixture ports; production readiness stays unchanged.
+  writeFileSync(runtimePath, runtimeSource
+    .replace("readonly port: number;", "readonly port: number; readonly fixtureReady: { type: string; backendPort: number; lockPort: number };")
+    .replace(readyMessage, 'send(running.fixtureReady,'));
   mkdirSync(join(root, "config"), { recursive: true });
   cpSync(join(REPO_ROOT, "config", "dashboard-workflow-sources.json"), join(root, "config", "dashboard-workflow-sources.json"));
   const bundleRoot = join(root, "dist", "dashboard");
@@ -195,10 +204,8 @@ function checkoutStateFingerprint(): Readonly<{ authority: string; lock: string 
 
 describe("the `dashboard` CLI command's shutdown lifecycle", () => {
   it("cancels an active HTTP transfer on Ctrl+C, exits 0, and releases its lifetime lock", async () => {
-    const backendPort = await ownedFixturePort();
-    let lockPort = await ownedFixturePort();
-    while (lockPort === backendPort) lockPort = await ownedFixturePort();
-    const scratchRoot = createScratchRepoRoot(backendPort, lockPort);
+    const scratchRoot = createScratchRepoRoot(0, 0);
+    let lockPort: number;
     requirePrivateEnvironmentFile(scratchRoot);
     const checkoutBefore = checkoutStateFingerprint();
     try {
@@ -228,12 +235,19 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
         const [, readinessMessage] = await Promise.all([
           waitForStdout(child, LISTENING_MARKER, BOOT_TIMEOUT_MS), readiness,
         ]);
-        assert.deepEqual(readinessMessage, { type: "hrauto-dashboard-ready" });
+        const ready = DashboardReadySchema.parse(readinessMessage);
+        const backendPort = ready.backendPort;
+        lockPort = ready.lockPort;
+        assert.notEqual(backendPort, lockPort, "the child holds distinct backend and lifetime listeners");
         const staticResponse = await fetch(`http://127.0.0.1:${String(backendPort)}/`);
         assert.equal(staticResponse.status, 200, "the production child serves the built dashboard bytes");
         assert.match(staticResponse.headers.get("content-type") ?? "", /text\/html/u);
         assert.match(await staticResponse.text(), /<script[^>]+type="module"/u);
 
+        const isolationPath = join(scratchRoot, "src", "backend", "app", "config", "runtime-isolation.ts");
+        const schemaPath = join(scratchRoot, "src", "models", "config", "define-runtime-isolation.ts");
+        writeFileSync(isolationPath, readFileSync(isolationPath, "utf8").replace("lockPort: 0", `lockPort: ${String(lockPort)}`));
+        writeFileSync(schemaPath, readFileSync(schemaPath, "utf8").replace("lockPort: z.literal(0)", `lockPort: z.literal(${String(lockPort)})`));
         const duplicate = spawn(
           process.execPath,
           ["--import", testProcessImport(), join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
