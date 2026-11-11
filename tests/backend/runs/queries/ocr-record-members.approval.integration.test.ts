@@ -18,7 +18,7 @@ import { UcpathCandidateSchema } from "../../../../src/models/systems/ucpath/sea
 import { EmergencyContactMemberInputSchema } from "../../../../src/models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactMemberResultSchema } from "../../../../src/models/workflows/emergency-contact/result.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
-import { RunDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
+import { RunDelegatedDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
 import { isQueueTopLevel, isQueueMember } from "../../../../src/models/dashboard/queue-parent.js";
 import type { QueueRecordMember, QueueSurfaceWire } from "../../../../src/models/dashboard/projection.js";
 import { correctedOcrRecord } from "../../../../src/dashboard/surfaces/run-detail/review/review-model.js";
@@ -256,7 +256,7 @@ for (const dryRun of [true, false]) {
     for (const member of members) {
       const result = repositories.runResults.get(member.child.envelope.runId); assert.ok(result);
       if (dryRun) {
-        assert.equal(RunDryRunPreviewResultSchema.parse(result.result.value).externalCommit, "none");
+        assert.equal(RunDelegatedDryRunPreviewResultSchema.parse(result.result.value).externalCommit, "none");
         assert.deepEqual(repositories.writeIntents.listByRun(member.child.envelope.runId), []);
       } else {
         const output = EmergencyContactMemberResultSchema.parse(result.result.value);

@@ -17,7 +17,7 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { replaceOcrCommandRead, replaceOcrAuditRead } from "../../../support/helpers/backend/ocr-proof-reads.js";
 import { EmergencyContactMemberInputSchema } from "../../../../src/models/workflows/emergency-contact-member/input.js";
-import { RunDelegatedDryRunPreviewResultSchema, RunDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
+import { RunDelegatedDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
 import { createDeterministicUcpathContactPage } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { UcpathContactPageSnapshotSchema } from "../../../../src/models/ui/ucpath-emergency-contact.js";
@@ -156,7 +156,7 @@ it("durably creates, corrects and approves an operator-added record through nati
   assert.equal(input.record.recordId, manual.recordId); assert.equal(input.record.assertedEid, "10800001");
   assert.deepEqual(input.record.provenance?.pages, [{ pageKind: "emergency-contact", sourcePage: 1 }]);
   const result = repositories.runResults.get(member.envelope.runId); assert.ok(result);
-  assert.equal(RunDryRunPreviewResultSchema.parse(result.result.value).externalCommit, "none");
+  assert.equal(RunDelegatedDryRunPreviewResultSchema.parse(result.result.value).externalCommit, "none");
   for (const run of [f.parentRun, f.run, member]) assert.deepEqual(repositories.writeIntents.listByRun(run.envelope.runId), []);
   assert.ok(contactPages.some(page => page.actions.includes("fill-fields:1")));
   const snapshot = repositories.ocrReviews.snapshots(runId)[0]; assert.ok(snapshot);

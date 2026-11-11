@@ -31,7 +31,7 @@ import { ocrProofReadDatabase } from "../../../support/helpers/backend/ocr-proof
 import { createDeterministicUcpathContactPage } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { UcpathContactPageSnapshotSchema, type UcpathContactPageSnapshot } from "../../../../src/models/ui/ucpath-emergency-contact.js";
-import { RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, RunTerminalEvidenceResultSchema, readRunPreviewResult } from "../../../../src/models/run/result.js";
+import { RunDelegatedDryRunPreviewResultSchema, RunTerminalEvidenceResultSchema, readRunPreviewResult } from "../../../../src/models/run/result.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 import contactPage from "../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 
@@ -301,7 +301,7 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
     for (const member of members) {
       assert.equal(member.envelope.dryRun, true);
       const stored = f.database.authority.runResults.get(member.envelope.runId); assert.ok(stored);
-      assert.equal(RunDryRunPreviewResultSchema.parse(stored.result.value).externalCommit, "none");
+      assert.equal(RunDelegatedDryRunPreviewResultSchema.parse(stored.result.value).externalCommit, "none");
       assert.equal(EmergencyContactMemberResultSchema.safeParse(stored.result.value).success, false);
     }
     const all = [f.parentRun];

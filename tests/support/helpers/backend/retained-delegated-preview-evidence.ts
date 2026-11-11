@@ -41,9 +41,8 @@ export async function verifyRetainedDelegatedPreviewEvidence(
     assert.equal(member.lifecycle.state === "terminal" ? member.lifecycle.outcome : member.lifecycle.state, "done");
     const previews = [completed.run, member].map(run => {
       const result = f.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
-      const hash = run.envelope.workflow === "emergency-contact"
-        ? "06bdc474498e86c00a7982fce5a5b223704504ccd91f8c4ed2f9fb5384c6984f"
-        : "56c14ccc71d195b045352f4a0c198b9fa0b87245ff4e399ff6f9ad4fe1589a1c";
+      // The member delegates its OnBase child, so both store the delegated preview.
+      const hash = "06bdc474498e86c00a7982fce5a5b223704504ccd91f8c4ed2f9fb5384c6984f";
       assert.equal(result.resultSchemaHash, hash);
       assert.equal(result.result.schemaHash, hash);
       assert.ok(readRunPreviewResult(result));
