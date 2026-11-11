@@ -72,7 +72,7 @@ describe("workflow flow builder", () => {
       const when = { kind: "equals", of: { from: "input", path: "eid" }, value: WRITE_FIXTURE_EID } as const;
       const conditional = save(base(), { ...stopBeforePublish, when }).step("archive", namedFileOutputContract, { dependsOn: ["save"], replay: "checkpoint", bind: () => ({ name: "x" }) });
       assert.throws(() => define(finish(conditional, ["archive"]), { artifactProjections: [projection] }), /unconditional dry-run preview boundary/u);
-      const mixed = save(write(base(), "stop-after-prepare")).step("archive", namedFileOutputContract, { dependsOn: ["write"], replay: "checkpoint", bind: () => ({ name: "x" }) });
+      const mixed = save(write(base(), "stop-after-prepare")).step("archive", namedFileOutputContract, { dependsOn: ["write"] as never, replay: "checkpoint", bind: () => ({ name: "x" }) });
       assert.doesNotThrow(() => define(finish(mixed, ["save", "archive"]), { artifactProjections: [projection] }));
     });
   });
