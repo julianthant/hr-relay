@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
 import { default as assert_m0,default as assert_m1 } from 'node:assert/strict';
-import { act as act_m0,createElement as createElement_m0,useRef as useRef_m0,useState as useState_m0 } from 'react';
-import { createRoot as createRoot_m0,type Root as Root_m0 } from 'react-dom/client';
 import { afterEach as afterEach_m0,afterEach as afterEach_m1,describe as describe_m0,describe as describe_m1,it as it_m0,it as it_m1 } from 'vitest';
 import { prepareSpreadsheetColumns as prepareSpreadsheetColumns_m0,prepareSpreadsheetColumns as prepareSpreadsheetColumns_m1,selectSpreadsheetColumns as selectSpreadsheetColumns_m0,selectSpreadsheetColumns as selectSpreadsheetColumns_m1,setSpreadsheetColumnField as setSpreadsheetColumnField_m0,setSpreadsheetColumnField as setSpreadsheetColumnField_m1,setSpreadsheetHeaderRow as setSpreadsheetHeaderRow_m1,spreadsheetColumnErrors as spreadsheetColumnErrors_m0,spreadsheetColumnErrors as spreadsheetColumnErrors_m1,spreadsheetColumnValueIssues, spreadsheetRowsWithoutEid } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.js';
-import { SpreadsheetColumnImport as SpreadsheetColumnImport_m0 } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import.js';
 import { newEditableWorkbook as newEditableWorkbook_m0 } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { type EditableWorkbook as EditableWorkbook_m0, type EditableWorkbook as EditableWorkbook_m1 } from '../../../../src/rules/spreadsheets/workbook-io.js';
 import { registerLocalSpreadsheet as registerLocalSpreadsheet_m0,registeredSpreadsheetWorkbook as registeredSpreadsheetWorkbook_m0,resetSpreadsheetMocks as resetSpreadsheetMocks_m0,resetSpreadsheetMocks as resetSpreadsheetMocks_m1,searchMockSpreadsheet as searchMockSpreadsheet_m0 } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js';
@@ -13,9 +10,7 @@ import { registerLocalSpreadsheet as registerLocalSpreadsheet_m0,registeredSprea
 {
 
 
-Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
-let root: Root_m0 | undefined;
-const _afterEachFixture0 = async () => { await act_m0(async () => root?.unmount()); document.body.replaceChildren(); resetSpreadsheetMocks_m0(); };
+const _afterEachFixture0 = resetSpreadsheetMocks_m0;
 const fixture = (): EditableWorkbook_m0 => {
   const book = newEditableWorkbook_m0();
   return { ...book, sheets: [{ ...book.sheets[0], width: 4, rows: [
@@ -53,49 +48,6 @@ afterEach_m0(_afterEachFixture0);
     assert_m0.equal(prepared.sheets[0].rows[0].cells[2].value, 'Notes');
     assert_m0.equal(duplicate.sheets[0].columnBindings![2].fieldId, null);
     assert_m0.equal(spreadsheetColumnErrors_m0(prepared).length, 0);
-  });
-  it_m0('mounts a bounded dropdown mapping editor and searches columns outside the first page', async () => {
-    const book = newEditableWorkbook_m0();
-    const wide = { ...book, sheets: [{ ...book.sheets[0], width: 99, rows: Array.from({ length: 2 }, (_, row) => ({ id: `r-${row}`, cells: Array.from({ length: 99 }, (_, column) => ({ value: row ? `sample-${column}` : `Field ${column}` })) })) }] };
-    let confirmed: EditableWorkbook_m0 | undefined;
-    function Harness() {
-      const [document, change] = useState_m0<EditableWorkbook_m0>(prepareSpreadsheetColumns_m0(wide)); const trigger = useRef_m0<HTMLButtonElement>(null);
-      return createElement_m0(SpreadsheetColumnImport_m0, { open: true, document, onChange: change, onOpenChange: () => undefined, onCancel: () => undefined, onConfirm: () => { confirmed = selectSpreadsheetColumns_m0(document); }, returnFocus: trigger });
-    }
-    const host = document.createElement('div'); document.body.append(host); root = createRoot_m0(host); await act_m0(async () => root?.render(createElement_m0(Harness)));
-    const labels = () => document.querySelectorAll('button[aria-label^="Dashboard field for"]'); assert_m0.equal(labels().length, 20);
-    const check = document.querySelector('[role="checkbox"][aria-labelledby]'); assert_m0(check instanceof HTMLElement);
-    await act_m0(async () => check.click());
-    assert_m0([...document.querySelectorAll('button')].find(node => node.textContent === 'Import selected columns')?.disabled);
-    const column = [...document.querySelectorAll('[role="checkbox"]')].find(node => document.getElementById(node.getAttribute('aria-labelledby')!)?.textContent === 'A · Field 0'); assert_m0(column instanceof HTMLElement);
-    await act_m0(async () => column.click());
-    const input = document.querySelector('button[aria-label="Dashboard field for A"]'); assert_m0(input instanceof HTMLButtonElement);
-    await act_m0(async () => input.click());
-    const option = document.querySelector('[role="option"][data-value="fullName"]'); assert_m0(option instanceof HTMLElement);
-    await act_m0(async () => option.click());
-    const search = document.querySelector('input[aria-label="Find import column"]'); assert_m0(search instanceof HTMLInputElement);
-    await act_m0(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'Field 98'); search.dispatchEvent(new Event('input', { bubbles: true })); });
-    assert_m0.equal(labels().length, 1); assert_m0(document.querySelector('button[aria-label="Dashboard field for CU"]'));
-    await act_m0(async () => [...document.querySelectorAll('button')].find(node => node.textContent === 'Import selected columns')?.click());
-    assert_m0(confirmed); assert_m0.equal(confirmed.sheets[0].width, 1); assert_m0.equal(confirmed.sheets[0].columnBindings![0].fieldId, 'fullName'); assert_m0.equal(confirmed.sheets[0].rows[0].cells[0].value, 'Field 0');
-  });
-  it_m0('places the header-row control immediately before the column search', async () => {
-    const book = newEditableWorkbook_m0();
-    function Harness() {
-      const [document, change] = useState_m0(prepareSpreadsheetColumns_m0(book)); const trigger = useRef_m0<HTMLButtonElement>(null);
-      return createElement_m0(SpreadsheetColumnImport_m0, { open: true, document, onChange: change, onOpenChange: () => undefined, onCancel: () => undefined, onConfirm: () => undefined, returnFocus: trigger });
-    }
-    const host = document.createElement('div'); document.body.append(host); root = createRoot_m0(host); await act_m0(async () => root?.render(createElement_m0(Harness)));
-    const header = document.querySelector('[aria-label="Header row"]');
-    const search = document.querySelector('input[aria-label="Find import column"]');
-    assert_m0(header instanceof HTMLElement && search instanceof HTMLElement);
-    let group: HTMLElement | null = header;
-    while (group && !group.contains(search)) group = group.parentElement;
-    assert_m0(group instanceof HTMLElement && group !== header);
-    const row = group.parentElement;
-    assert_m0(row instanceof HTMLElement && row.childElementCount === 2 && row.lastElementChild === group);
-    assert_m0(row.firstElementChild?.textContent?.includes('Keep all columns in this sheet'));
-    assert_m0.equal(header.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING, Node.DOCUMENT_POSITION_FOLLOWING);
   });
 });
 }

@@ -53,10 +53,10 @@ describe("notification composition and canonical navigation", () => {
     if (result.state !== "ready") throw new Error(result.message);
     expect(parseRoute(routeToSearch(result.route)).view?.logFailure).toEqual({ runId, failureId });
   });
-  it("opens Settings Storage without run reads", async () => {
+  it("refuses a storage notice without run reads", async () => {
     const client = clients();
     const result = await resolveRunNavigation(client, { kind: "storage" }, origin, () => true);
-    expect(result).toMatchObject({ state: "ready", route: { settings: "storage", start: false } });
+    expect(result.state).toBe("refused");
     expect(client.dashboardDay).not.toHaveBeenCalled();
   });
   it("refuses retired archives and every canonical refusal without guessing a run", async () => {

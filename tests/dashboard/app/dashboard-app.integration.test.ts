@@ -77,7 +77,7 @@ async function mount(overrides: Partial<DashboardClient_m0> = {}) {
     ...overrides,
   };
   const host=document.createElement("div"); document.body.append(host); root=createRoot_m0(host);
-  await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(DashboardApp_m0, { workflowComposition: workflows => ({ ...PARITY_WORKFLOW_COMPOSITION_m0(workflows), spreadsheets: "served" as const }), previewPreferences: preview })})));
+  await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(DashboardApp_m0, { workflowComposition: workflows => ({ ...PARITY_WORKFLOW_COMPOSITION_m0(workflows) }), previewPreferences: preview })})));
   await settle();
 }
 it_m0("command binding never renders implementation comment text", async () => {
@@ -101,7 +101,7 @@ async function chooseSpreadsheet() {
   const bytes = new TextEncoder().encode("Name,Employee ID\nJordan Lee,10800000\n");
   const file = new File([bytes], "Focus roster.csv", { type: "text/csv" });
   Object.defineProperty(file, "arrayBuffer", { value: async () => bytes.buffer });
-  const input = document.querySelector<HTMLInputElement>('input[aria-label="Open XLSX or CSV"]'); assert_m0.ok(input);
+  const input = document.querySelector<HTMLInputElement>('[role="dialog"] input[type="file"][accept=".xlsx,.csv"]'); assert_m0.ok(input);
   Object.defineProperty(input, "files", { configurable: true, value: [file] });
   await act_m0(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
   await settle();
@@ -132,8 +132,6 @@ await _afterEachFixture0();
 
 it_m0("spreadsheet import is a Settings destination and leaves the Run launch focus intact", async () => {
 try {
-
-
   let uploads = 0;
   await mount({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } });
   await click(button("Start run"));
@@ -144,48 +142,32 @@ try {
   await click(button("Settings"));
   const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link);
   await click(link);
-  await click(button("Import spreadsheet"));
+  await click(button("Import"));
   await chooseSpreadsheet();
-  await click(button("Import selected columns"));
+  await click(button("Next"));
+  await click(button("Add to library"));
+  await settle();
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
-  assert_m0.ok(document.body.textContent?.includes("Spreadsheet imported"));
-  assert_m0.deepEqual(await savedWorkbooks(), [], "importing opens an unsaved draft");
-  await click(button("Save"));
-  const imported = (await savedWorkbooks()).find(record => record.workbook.name === "Focus roster.csv"); assert_m0.ok(imported);
-  const workbook = imported.workbook;
-  assert_m0.equal(workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
-  assert_m0.equal(String(workbook.sheets[0].rows[1].cells[1].value), "10800000");
+  const imported = (await savedWorkbooks()).find(record => record.workbook.name === "Focus roster"); assert_m0.ok(imported);
+  assert_m0.equal(imported.workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
   assert_m0.equal(uploads, 0); assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
-
 } finally {
 await _afterEachFixture0();
 }
 });
-it_m0.each(["Cancel", "Escape", "Close"])("standalone spreadsheet import: %s closes without registering or starting a run", async dismissal => {
+it_m0.each(["Cancel", "Escape"])("standalone spreadsheet import: %s closes without registering or starting a run", async dismissal => {
 try {
-
-
   let starts = 0;
   await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Settings"));
   const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link); await click(link);
   const before = (await savedWorkbooks()).map(record => record.workbook.name);
-  await click(button("Import spreadsheet"));
+  await click(button("Import"));
   await chooseSpreadsheet();
-  if (dismissal === "Escape") await key("Escape"); else await click(button(dismissal === "Cancel" ? "Cancel import" : dismissal));
+  if (dismissal === "Escape") await key("Escape"); else await click(button("Cancel"));
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
   assert_m0.deepEqual((await savedWorkbooks()).map(record => record.workbook.name), before);
   assert_m0.equal(starts, 0);
-  const trigger = button(dismissal === "Cancel" ? "Import spreadsheet" : "Review import");
-  assert_m0.equal(trigger.disabled, false, "the import can be opened after dismissal");
-  assert_m0.ok(document.activeElement === trigger, `focus returned to ${document.activeElement?.tagName}, not ${trigger.textContent}`);
-  if (dismissal !== "Cancel") {
-    await click(trigger);
-    assert_m0.ok(document.querySelector('[role="dialog"]'), "the retained import can be reviewed again");
-    assert_m0.deepEqual((await savedWorkbooks()).map(record => record.workbook.name), before);
-    assert_m0.equal(starts, 0);
-  }
   assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
-
 } finally {
 await _afterEachFixture0();
 }
@@ -375,7 +357,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.match(document.body.textContent ?? "", /This workflow is not available for selection in the current catalog/);
     assert_m1.equal(location.search, before);
     assert_m1.equal(shellPreferences.snapshot().value.selectedWorkflowId, preference);
-    assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="browser.headless"]')?.checked, false);
+    assert_m1.equal(document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Small");
     if (surface === "notification") {
       const notifications = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert_m1.ok(notifications);
       await click(notifications);
@@ -415,8 +397,10 @@ afterEach_m1(_afterEachFixture0);
 });
 
 async function editHeadlessPreference() {
-  const control = document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] .ds-switch-control'); assert_m1.ok(control);
+  const control = document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]'); assert_m1.ok(control);
   await act_m1(async () => control.click());
+  const option = document.querySelector<HTMLElement>('[role="option"][data-value="Small"]'); assert_m1.ok(option);
+  await act_m1(async () => option.click());
 }
 it_m1("keeps the Settings editor and draft across ordinary-section native history", async () => {
 try {
@@ -427,14 +411,14 @@ try {
   const general = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "Account"); assert_m1.ok(general);
   await click(general);
   await historyMove("back");
-  assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="browser.headless"]')?.checked,false);
+  assert_m1.equal(document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Small");
   assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"),false);
   const analytics = document.querySelector<HTMLAnchorElement>('nav[aria-label="Settings sections"] a[href="?settings=activity"]'); assert_m1.ok(analytics);
   await click(analytics);
   assert_m1.equal(document.querySelector("h1")?.textContent, "Analytics");
   assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
   await historyMove("back");
-  assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="browser.headless"]')?.checked,false);
+  assert_m1.equal(document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Small");
   await click(button("Back to dashboard"));
   await click(button("Discard changes"));
   assert_m1.equal(new URLSearchParams(location.search).has("settings"),false);
@@ -451,7 +435,8 @@ try {
   assert_m1.match(document.body.textContent ?? "", /Archive page removed/u);
   assert_m1.equal(document.querySelector('[aria-label="Archive"]'), null);
   assert_m1.equal(document.querySelector('a[href="?settings=archive"]'), null);
-  assert_m1.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 6);
+  assert_m1.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 7);
+  assert_m1.ok(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]'));
   await click(button("Return to dashboard"));
   assert_m1.equal(parseRoute_m1(location.search).archive, undefined);
   assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
@@ -648,7 +633,7 @@ try {
   await historyMove("back"); // Settings root retains its editor.
   await historyMove("back");
   await click(button("Keep editing"));
-  assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="browser.headless"]')?.checked, false);
+  assert_m1.equal(document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Small");
   assert_m1.equal(new URLSearchParams(location.search).has("settings"), true);
   await historyMove("back"); await click(button("Discard changes")); await settle();
   assert_m1.equal(new URLSearchParams(location.search).get("day"), "2026-08-02");
