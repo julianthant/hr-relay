@@ -217,7 +217,8 @@ describe("editable Settings surface", () => {
     vi.useFakeTimers();
     const datePath = `annualDates.FY${String(DOCUMENT.currentFiscalYear)}.jobEndDate`;
     assert.equal(host.querySelector('[data-settings-path="display.viewport"]'), null);
-    assert.equal(host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 2);
+    assert.equal(host.querySelector<HTMLSelectElement>('[data-settings-path="browser.headless"] select[aria-label="Browser window"]')?.value, "Hidden");
+    assert.equal(host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 0);
     const date = host.querySelector(`[data-settings-path="${datePath}"] .ds-date-picker`);
     assert.ok(date);
     assert.equal(date.querySelectorAll('.ds-date-text-input').length, 0);

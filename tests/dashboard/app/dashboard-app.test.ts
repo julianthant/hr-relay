@@ -254,15 +254,16 @@ async function press(button: HTMLButtonElement): Promise<void> {
   });
 }
 
-async function dirtyBrowserSettings(): Promise<{ input: HTMLInputElement; value: boolean }> {
-  const row = document.querySelector('[data-settings-path="browser.headless"]');
-  const input = row?.querySelector('[role="switch"]');
-  const control = row?.querySelector(".ds-switch-control");
-  assert_m1.ok(input instanceof HTMLInputElement && control instanceof HTMLElement, "Settings browser switch did not mount");
-  const value = !input.checked;
-  await act_m1(async () => control.click());
-  assert_m1.equal(input.checked, value);
-  return { input, value };
+async function dirtyBrowserSettings(): Promise<{ input: HTMLSelectElement; value: string }> {
+  const input = document.querySelector('[data-settings-path="browser.headless"] select[aria-label="Browser window"]');
+  assert_m1.ok(input instanceof HTMLSelectElement, "Settings browser window select did not mount");
+  assert_m1.notEqual(input.value, "Small");
+  await act_m1(async () => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(input, "Small");
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  assert_m1.equal(input.value, "Small");
+  return { input, value: "Small" };
 }
 
 // jsdom does not implement Tab navigation; assert the first enabled descendant order directly.
@@ -634,7 +635,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.match(notifications.getAttribute("aria-label") ?? "", /^Notifications, \d+ unread$/u);
     await press(notifications);
     assert_m1.equal(frameOf("Settings"), frame, "opening notifications preserves the runtime draft owner");
-    assert_m1.equal(input.checked, value, "browser appearance and notification controls preserve runtime edits");
+    assert_m1.equal(input.value, value, "browser appearance and notification controls preserve runtime edits");
     await press(notifications);
     const sectionLink = (label: string): HTMLAnchorElement => {
       const link = [...document.querySelectorAll("nav[aria-label='Settings sections'] a")]
@@ -660,9 +661,9 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(document.querySelector('[role="dialog"]') === null, true, "Escape closes the pending dirty-exit dialog");
     assert_m1.equal(document.activeElement === dashboard, true, "Escape restores focus to the persistent navigation control");
     await act_m1(async () => sectionLink("General").click());
-    const restored = document.querySelector('[data-settings-path="browser.headless"] [role="switch"]');
-    assert_m1.ok(restored instanceof HTMLInputElement);
-    assert_m1.equal(restored.checked, value);
+    const restored = document.querySelector('[data-settings-path="browser.headless"] select');
+    assert_m1.ok(restored instanceof HTMLSelectElement);
+    assert_m1.equal(restored.value, value);
     await press(buttonNamed("Back to dashboard"));
     await press(buttonNamed("Discard changes"));
     assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);

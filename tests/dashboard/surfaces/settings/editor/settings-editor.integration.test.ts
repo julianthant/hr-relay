@@ -33,6 +33,11 @@ function settingsWithDistinctRuntimeValues() {
   assert.ok(actor); assert.equal(actor.settingsValue, "Saved operator"); assert.equal(actor.activeValue, "Running operator"); assert.equal(actor.defaultValue, defaultValue);
   return document;
 }
+function chooseBrowserWindow(select: HTMLSelectElement, value: string): void {
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(select, value);
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 describe("typed Settings catalog controls", () => {
   it("omits the actor label control while retaining the General settings", async () => {
     const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
@@ -51,45 +56,40 @@ describe("typed Settings catalog controls", () => {
   it("shows the approved General browser controls without observed host details", async () => {
     const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "general"); cleanups.push(mounted.close);
-    assert.ok(mounted.host.querySelector('[data-settings-path="browser.headless"] [role="switch"]'));
-    assert.equal(mounted.host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 2);
+    assert.equal(mounted.host.querySelector<HTMLSelectElement>('[data-settings-path="browser.headless"] select[aria-label="Browser window"]')?.value, "Hidden");
+    assert.equal(mounted.host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 0);
     assert.doesNotMatch(mounted.host.textContent ?? "", /Observed host/u);
   });
-  it("saves Browser window dimensions through canonical Settings authority and matching readback", async () => {
+  it("saves Browser window size through canonical Settings authority and matching readback", async () => {
     const h = await setup("general");
-    const width = h.host.querySelector<HTMLInputElement>('input[name="display.screenWidth"]');
-    const height = h.host.querySelector<HTMLInputElement>('input[name="display.screenHeight"]');
-    assert.ok(width); assert.ok(height); assert.equal(width.disabled, false);
-    assert.equal(width.value, "1920"); assert.equal(height.value, "1080");
-    await settingsAction(() => { width.focus(); width.stepDown(120); width.dispatchEvent(new Event("input", { bubbles: true })); });
-    await settingsAction(() => { height.focus(); height.stepDown(80); height.dispatchEvent(new Event("input", { bubbles: true })); });
-    assert.deepEqual(h.controller().draft["display.screenWidth"], { kind: "set", raw: "1800" });
+    const select = h.host.querySelector<HTMLSelectElement>('[data-settings-path="browser.headless"] select[aria-label="Browser window"]');
+    assert.ok(select); assert.equal(select.disabled, false);
+    await settingsAction(() => chooseBrowserWindow(select, "Medium"));
+    assert.deepEqual(h.controller().draft["browser.headless"], { kind: "set", raw: "false" });
+    assert.deepEqual(h.controller().draft["display.screenWidth"], { kind: "set", raw: "1440" });
     assert.deepEqual(h.controller().draft["display.screenHeight"], { kind: "set", raw: "1000" });
-    assert.equal(h.commands.length, 0, "moving within the dimensions field must not flush a partial pair");
-    await settingsAction(() => height.blur());
-    assert.equal(h.controller().save.state, "applied"); assert.equal(h.commands.length, 1);
+    await settingsAction(() => h.controller().submit());
+    assert.equal(h.controller().save.state, "applied");
     const leaves = h.authority.read().sections.flatMap(section => section.leaves);
-    assert.equal(leaves.find(leaf => leaf.path === "display.screenWidth")?.effectiveValue, 1800);
+    assert.equal(leaves.find(leaf => leaf.path === "display.screenWidth")?.effectiveValue, 1440);
     assert.equal(leaves.find(leaf => leaf.path === "display.screenHeight")?.effectiveValue, 1000);
-    assert.equal(width.value, "1800"); assert.equal(height.value, "1000");
+    assert.equal(select.value, "Medium");
   });
-  it("autosaves the approved General browser switch and omits retired controls", async () => {
+  it("autosaves the approved General browser window choice and omits retired controls", async () => {
     const h = await setup("general");
-    for (const path of ["browser.headless"] as const) {
-      const row = h.host.querySelector(`[data-settings-path="${path}"]`);
-      assert.ok(row);
-      const control = row.querySelector<HTMLInputElement>('[role="switch"]');
-      assert.ok(control);
-      const before = control.checked;
-      const pill = row.querySelector<HTMLElement>(".ds-switch-control");
-      assert.ok(pill);
-      await settingsAction(() => pill.click());
-      assert.equal(row.querySelector<HTMLInputElement>('[role="switch"]')?.checked, !before);
-      assert.deepEqual(h.controller().draft[path], { kind: "set", raw: String(!before) });
-      assert.equal(row.querySelector("button"), null);
-      await settingsAction(() => h.controller().submit());
-      assert.equal(h.controller().save.state, "applied");
-    }
+    const row = h.host.querySelector('[data-settings-path="browser.headless"]');
+    assert.ok(row);
+    const select = row.querySelector<HTMLSelectElement>("select");
+    assert.ok(select);
+    assert.equal(select.value, "Hidden");
+    await settingsAction(() => chooseBrowserWindow(select, "Small"));
+    assert.equal(row.querySelector("select")?.value, "Small");
+    assert.deepEqual(h.controller().draft["browser.headless"], { kind: "set", raw: "false" });
+    assert.deepEqual(h.controller().draft["display.screenWidth"], { kind: "set", raw: "1280" });
+    assert.deepEqual(h.controller().draft["display.screenHeight"], { kind: "set", raw: "800" });
+    assert.equal(row.querySelector("button"), null);
+    await settingsAction(() => h.controller().submit());
+    assert.equal(h.controller().save.state, "applied");
     assert.equal(h.commands.length, 1);
     assert.equal(h.host.querySelector('[data-settings-path="features.debugScreenshots"]'), null);
     assert.equal(h.host.querySelector('[data-settings-path="features.duoWebAuthn"]'), null);

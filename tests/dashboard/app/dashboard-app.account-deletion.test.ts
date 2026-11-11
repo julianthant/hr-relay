@@ -22,7 +22,7 @@ async function mount(deletion: () => Promise<Response>, profileSource: "served" 
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
-    if (path === "/api/v1/profile/state") return Response.json({ state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready" });
+    if (path === "/api/v1/profile/state") return Response.json({ state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready", account: { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", lastSignedInAt: "2026-11-10T08:30:00-08:00" } });
     if (path === "/api/v1/profile/delete-account") {
       const body = init?.body;
       assert.ok(typeof body === "string");
@@ -34,12 +34,12 @@ async function mount(deletion: () => Promise<Response>, profileSource: "served" 
   const client: DashboardClient = { ...transport, subscribeDay: options => {
     options.onDay(FIXTURE_DAY_WIRE); options.onState({ state: "live" }); return { close() {} };
   } };
-  window.history.replaceState(null, "", "/?settings=general");
+  window.history.replaceState(null, "", "/?settings=account");
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, {
     profileSource, workflowComposition: PARITY_WORKFLOW_COMPOSITION, previewPreferences: createPersonPreferences("preview"),
   }) })));
-  await vi.waitFor(() => assert.ok(document.querySelector('[aria-label="Account"]')));
+  await vi.waitFor(() => assert.ok(document.querySelector('[aria-label="UCPath sign-in"]')));
   return { requests, host };
 }
 
@@ -101,8 +101,6 @@ for (const outcome of ["refused", "error", "cancelling", "lost"] as const) it(`k
 
 it("does not invent deletion authority for the mock profile source", async () => {
   const { requests } = await mount(async () => { throw new Error("mock deletion must never dispatch"); }, "mock");
-  assert.equal(button("Delete account").disabled, true);
-  await act(async () => button("Delete account").click());
-  assert.equal(document.querySelector('[role="dialog"]'), null);
+  assert.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent?.trim() === "Delete account"), false);
   assert.deepEqual(requests, []);
 });
