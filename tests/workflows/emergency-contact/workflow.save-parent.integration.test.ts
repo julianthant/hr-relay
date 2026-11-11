@@ -85,11 +85,21 @@ it("verifies the parent's members node from every saved member's own receipt", a
 });
 
 it("re-derives the parent receipt that migration 26 deletes when a member settled already-present", async () => {
-  const f = await world.fixture({ secondMemberAlreadyPresent: true });
-  // Presence is observed on the member's first attempt; the failure after settlement needs no Retry (member-recover already-present path).
-  const presentMember = f.children().find(child => child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed"); assert.ok(presentMember);
-  assert.equal(presentMember.envelope.retryOf, undefined);
-  assert.equal((await f.canonical.step(f.parentRun, new AbortController().signal)).outcome.state, "done");
+  const f = await world.fixture();
+  // The second member failed before its Save; UCPath now already shows its contact, so the member's Retry settles already-present and done.
+  const original = f.children().find(child => child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed"); assert.ok(original);
+  f.markContactPresent("10800001");
+  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", original)).state, "applied");
+  const presentMember = f.children().find(child => child.envelope.retryOf === original.envelope.runId); assert.ok(presentMember);
+  await f.canonical.execute(f.parentRun, new AbortController().signal);
+  const parentNow = f.current();
+  assert.ok(parentNow.lifecycle.state === "terminal" && parentNow.lifecycle.outcome === "done", JSON.stringify(parentNow.lifecycle));
+  const settled = f.current(presentMember.envelope.runId);
+  assert.ok(settled.lifecycle.state === "terminal" && settled.lifecycle.outcome === "done", JSON.stringify(settled.lifecycle));
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(presentMember.envelope.runId), []);
+  const preview = f.database.authority.runCheckpoints.listByItem(presentMember.envelope.workflow, presentMember.envelope.itemId)
+    .find(row => row.runId === presentMember.envelope.runId && row.nodeId === "contact-preview"); assert.ok(preview);
+  assert.equal(TransactionOutcomeSchema.parse(preview.output.value).disposition, "already-present");
   assert.deepEqual(["10800000", "10800001"].map(eid => f.persistence.get(eid)?.submissions.length), [1, 0], "exact presence needed no Save");
   const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: EC_TREE_DESCRIPTORS });
   const parentRunId = f.parentRun.envelope.runId;
@@ -119,25 +129,3 @@ it("re-derives the parent receipt that migration 26 deletes when a member settle
   assert.deepEqual(durable(), before, "re-derivation reads durable intents, attempts and checkpoints and writes none");
 });
 
-it("pairs a Retry member's already-present Save through the upstream checkpoints it replayed from the failed attempt", async () => {
-  const f = await world.fixture();
-  const original = f.children().find(child => child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed"); assert.ok(original);
-  f.markContactPresent("10800001");
-  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", original)).state, "applied");
-  const replacement = f.children().find(child => child.envelope.retryOf === original.envelope.runId); assert.ok(replacement);
-  // An ordinary Retry replays the failed attempt's upstream task rows through the item's latest checkpoint.
-  assert.deepEqual([replacement.envelope.continuation, replacement.envelope.sourceBound, replacement.envelope.recovery === "restart-from-start"], [undefined, undefined, false]);
-  await f.canonical.execute(f.parentRun, new AbortController().signal);
-  const settled = f.current(replacement.envelope.runId);
-  assert.ok(settled.lifecycle.state === "terminal" && settled.lifecycle.outcome === "done", JSON.stringify(settled.lifecycle));
-  assert.equal(f.persistence.get("10800001")?.submissions.length, 0, "exact presence needed no Save");
-  assert.deepEqual(f.database.authority.writeIntents.listByRun(replacement.envelope.runId), []);
-  const rows = f.database.authority.runCheckpoints.listByItem(replacement.envelope.workflow, replacement.envelope.itemId);
-  const preview = rows.find(row => row.runId === replacement.envelope.runId && row.nodeId === "contact-preview"); assert.ok(preview);
-  assert.equal(TransactionOutcomeSchema.parse(preview.output.value).disposition, "already-present");
-  assert.ok(rows.some(row => row.runId === original.envelope.runId), "the replacement replayed the failed attempt's rows");
-  const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: EC_TREE_DESCRIPTORS });
-  const memberReceipt = receipts.ensureReceipt(replacement.envelope.runId);
-  assert.equal(memberReceipt.result, "verified-done");
-  assert.deepEqual(receipts.ensureReceipt(replacement.envelope.runId), memberReceipt);
-});

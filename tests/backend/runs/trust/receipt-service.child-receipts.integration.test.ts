@@ -54,12 +54,12 @@ it("throws when the child's descriptor is not registered", async () => {
 // A database whose checkpoint reader adds or drops `contact-plan` rows; everything else is the real authority.
 function withPlanRows(database: AuthorityDatabase, rows: (actual: readonly RunCheckpointRecord[]) => readonly RunCheckpointRecord[]): AuthorityDatabase {
   const checkpoints = database.authority.runCheckpoints;
-  const runCheckpoints = new Proxy(checkpoints, { get: (target, key) => key === "listByAttempt"
-    ? (workflowId: string, itemId: string, nodeId: string, attempt: number) => {
-      const actual = target.listByAttempt(workflowId, itemId, nodeId, attempt);
-      return nodeId === "contact-plan" ? rows(actual) : actual;
-    } : (Reflect.get(target, key) as unknown) });
-  const authority = new Proxy(database.authority, { get: (target, key) => key === "runCheckpoints" ? runCheckpoints : Reflect.get(target, key) as unknown });
+  // Plain overrides: the authority's repositories are frozen, so a Proxy may not return another value for them.
+  const runCheckpoints = { ...checkpoints, listByAttempt: (workflowId: string, itemId: string, nodeId: string, attempt: number) => {
+    const actual = checkpoints.listByAttempt(workflowId, itemId, nodeId, attempt);
+    return nodeId === "contact-plan" ? rows(actual) : actual;
+  } };
+  const authority = { ...database.authority, runCheckpoints };
   return new Proxy(database, { get: (target, key) => {
     if (key === "authority") return authority;
     const value: unknown = Reflect.get(target, key);
