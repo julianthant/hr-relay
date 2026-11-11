@@ -16,7 +16,7 @@ function Group({ label, description, children }: { label: string; description?: 
 /** Account page: read-only profile facts, the editable UCPath sign-in, Duo status with Sign out, and Delete account. */
 export function AccountSettings({ page, ucpath, deleteAccount }: { page: AccountPage; ucpath: ReactNode; deleteAccount: ReactNode }) {
   const { values, duo, onSignOut } = page;
-  return <section className="settings-compact-page">
+  return <section className="settings-compact-page settings-account-page">
     <PageHeading title="Account" />
     <Group label="Relay account" description="How you sign in to Relay.">
       <ResultRow label="Name" value={values.name} />

@@ -22,7 +22,7 @@ export function ProtectedPencilRow({ editor, name, label, description, onRemove 
   const disabled = credentials.locked || authority.state !== "available" || editor.readProblem !== undefined;
   const close = (): void => { credentials.reset(name); setOpen(false); };
   return <div data-settings-path={`protected.${name}`}>
-    <ResultRow label={label} value={<span className="inline-flex items-center justify-end gap-3">
+    <ResultRow label={label} value={<span className="inline-flex items-center justify-end gap-3 -mr-0.5">
       <span className="text-ui-muted">{shown}</span>
       <IconButton type="button" label={`Edit ${label}`} variant="ghost" size="sm" disabled={disabled} icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(true)} />
     </span>} />
