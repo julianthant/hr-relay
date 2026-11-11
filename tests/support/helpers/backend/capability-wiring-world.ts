@@ -65,6 +65,7 @@ export function createCapabilityWiringTestWorld() {
   }
 
   const FixtureOutput = z.strictObject({ value: z.string().min(1) });
+  const PublicationApprovalSchema = z.strictObject({ approved: z.boolean() });
 
   const providersOnlyContract = defineTaskContract({
     id: taskId("ocr/extract-form-page"),
@@ -163,6 +164,22 @@ export function createCapabilityWiringTestWorld() {
     return defineWorkflowDescriptor({ ...descriptorMeta(id, code), flow: fixtureFlow });
   }
 
+  /** `extract` is a dry-run publication boundary with `after` behind it; `approval` parks before `tail`. Each node binds its own id as `name`. */
+  function publicationGateDescriptor(id: string, code: string, replay: "checkpoint" | "always-rerun" = "checkpoint") {
+    const fixtureFlow = flow(FixtureInput)
+      .step("read", providersOnlyContract, { dependsOn: [], replay: "checkpoint", bind: () => ({ name: "read" }) })
+      .step("extract", providersOnlyContract, { dependsOn: [], replay, dryRun: "stop-before-publish", bind: () => ({ name: "extract" }) })
+      .step("after", providersOnlyContract, { dependsOn: ["extract"], replay: "checkpoint", bind: () => ({ name: "after" }) })
+      .gate("approval", { dependsOn: ["read"], label: "Approval", resolvedBy: "operator", result: PublicationApprovalSchema })
+      .step("tail", providersOnlyContract, { dependsOn: ["approval"], replay: "checkpoint", bind: () => ({ name: "tail" }) })
+      .build({
+        schema: z.strictObject({ done: z.boolean() }),
+        dependsOn: ["after", "tail"],
+        derive: () => ({ done: true }),
+      });
+    return defineWorkflowDescriptor({ ...descriptorMeta(id, code), flow: fixtureFlow });
+  }
+
   function queuedRunFor(descriptor: AnyWorkflowDescriptor) {
     return {
       ...QUEUED_RUN,
@@ -227,7 +244,7 @@ export function createCapabilityWiringTestWorld() {
   const cleanup = async () => {
     for (const dispose of disposers.splice(0)) await dispose();
   };
-  return { disposers, SIGNAL, SCENARIO, FIXTURE_BYTES, PAYLOAD, FixtureOutput, providersOnlyContract, artifactsOnlyContract, wiredContract, byteLength, fixtureDescriptor, publicationDescriptor, queuedRunFor, wiringHarness, claim, cleanup };
+  return { disposers, SIGNAL, SCENARIO, FIXTURE_BYTES, PAYLOAD, FixtureOutput, providersOnlyContract, artifactsOnlyContract, wiredContract, byteLength, fixtureDescriptor, publicationDescriptor, publicationGateDescriptor, PublicationApprovalSchema, queuedRunFor, wiringHarness, claim, cleanup };
 }
 
 export function createWiredCapabilityTask(wiredContract: ReturnType<typeof createCapabilityWiringTestWorld>["wiredContract"], FIXTURE_BYTES: Uint8Array, PAYLOAD: ReturnType<typeof createCapabilityWiringTestWorld>["PAYLOAD"], byteLength: (stream: AsyncIterable<unknown>) => Promise<number>, observed: () => { artifactSha?: string; artifactBytes?: number; providerState?: string }) {
