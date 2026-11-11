@@ -57,7 +57,9 @@ import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import {
 ErrorCodeSchema,
+EvidenceRefSchema,
 FingerprintSchema,
+type EvidenceRef,
 type EvidenceEntryId,
 } from "../../../rules/identity/ids.js";
 import {
@@ -82,6 +84,7 @@ import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js"
 import {
 evaluateReceiptDerivationBinding,
 evaluateReceiptRederivation,
+ReceiptDerivationRefusedError,
 type ReceiptBindingCheckResult,
 } from "../../runtime/writes/receipt-derivation-binding.js";
 
@@ -111,6 +114,8 @@ export interface ReceiptBuildInput {
   readonly continuedGateResults?: readonly unknown[];
   readonly delegations?: readonly unknown[];
   readonly authenticateSnapshotApproval?: (gate: OperatorGateResultRecord) => OcrApprovedSnapshot;
+  /** A bound child's receipt; `undefined` when this build cannot derive one for it. */
+  readonly childReceipt?: (childRunId: string) => unknown;
 }
 
 /* ── node helpers ────────────────────────────────────────────────────────── */
@@ -393,6 +398,9 @@ export function deriveRunEvidenceReceipt(
     gateResultsByNode.set(String(row.gateId), row);
   }
   const delegations = (input.delegations ?? []).map(row => DelegationTerminalEvidenceSchema.parse(row));
+  const delegationByNode = new Map(delegations.map(row => [String(row.nodeId), row]));
+  const childReceiptRefs: EvidenceRef[] = [];
+  const previewRun = result !== undefined && readRunPreviewResult(result) !== undefined;
 
 
   const binding = evaluateReceiptDerivationBinding({
@@ -405,7 +413,7 @@ export function deriveRunEvidenceReceipt(
     gateResults: admittedGateResults,
     delegations,
   });
-  if (binding.state === "incompatible") throw new Error(binding.message);
+  if (binding.state === "incompatible") throw new ReceiptDerivationRefusedError(binding.message);
 
   const receiptId = deriveEvidenceReceiptId(envelope.runId, envelope.attempt, input.settlementVersion);
   const generatedAt = lifecycle.endedAt;
@@ -567,6 +575,31 @@ export function deriveRunEvidenceReceipt(
         continue;
       }
       if (lifecycle.outcome === "done" && findSnapshotApprovalDecision(descriptor.id, id) !== undefined) throw new OcrReviewRefusedError();
+    }
+
+    const bound = node.kind === "child-run" && !previewRun ? delegationByNode.get(id) : undefined;
+    if (bound !== undefined && input.childReceipt !== undefined && bound.children.length > 0
+      && bound.children.length === bound.manifest.children.length) {
+      const childReceipts = bound.children.map(({ run: child }) => {
+        const raw = input.childReceipt?.(child.envelope.runId);
+        if (raw === undefined) return undefined;
+        const childReceipt = RunEvidenceReceiptSchema.parse(raw);
+        if (childReceipt.runId !== child.envelope.runId || childReceipt.attempt !== child.envelope.attempt) throw new Error("receipt-delegation-child-receipt-mismatch");
+        return childReceipt;
+      });
+      if (childReceipts.every((child): child is RunEvidenceReceipt => child !== undefined && (child.result === "verified-done" || child.result === "done-with-warnings"))) {
+        const ref = (child: RunEvidenceReceipt) => EvidenceRefSchema.parse(`receipt:${child.receiptId}`);
+        const refs = childReceipts.map(ref);
+        childReceiptRefs.push(...refs);
+        verification.push({ id: evidence.verificationId, obligation: `node.${id}`, mandatory: terminalDependencies.has(id), verdict: "verified", evidence: refs });
+        const warned = childReceipts.filter(child => child.result === "done-with-warnings");
+        if (warned.length > 0) warnings.push({
+          id: entryId("warning", `delegation.${id}`), code: ErrorCodeSchema.parse("DELEGATED_CHILD_WARNINGS"),
+          summary: `${String(warned.length)} of ${String(childReceipts.length)} child run(s) under "${id}" finished with warnings that are not load-bearing; each child's receipt names them`,
+          loadBearing: false, evidence: warned.map(ref),
+        });
+        continue;
+      }
     }
 
     if (record === undefined) {
@@ -970,14 +1003,15 @@ export function deriveRunEvidenceReceipt(
   };
   const parsedReceipt = RunEvidenceReceiptSchema.parse(receiptData);
   const receipt = RunEvidenceReceiptSchema.parse(JSON.parse(canonicalJsonStringify(parsedReceipt)));
-  assertEvidenceRefsResolve(receipt);
+  assertEvidenceRefsResolve(receipt, childReceiptRefs);
   return Object.freeze({ receipt, checks: binding.checks });
 }
 
-// Every observation or receipt reference must point to a row in this same receipt.
-export function assertEvidenceRefsResolve(receipt: RunEvidenceReceipt): void {
+// Every observation or receipt reference must point to a row in this same receipt, or to a cited child receipt.
+export function assertEvidenceRefsResolve(receipt: RunEvidenceReceipt, external: readonly string[] = []): void {
   const known = new Set<string>([
     `receipt:${receipt.receiptId}`,
+    ...external,
     ...[
       ...receipt.input, ...receipt.observations, ...receipt.output,
       ...receipt.decisions, ...receipt.actions, ...receipt.verification,
@@ -1030,6 +1064,7 @@ export interface EvidenceReceiptStore {
   listContinuedGateResultsByRun?(runId: string): readonly unknown[];
   readonly listDelegationsByRun?: (runId: string) => readonly unknown[];
   readonly authenticateSnapshotApproval?: ReceiptBuildInput["authenticateSnapshotApproval"];
+  readonly childReceipt?: ReceiptBuildInput["childReceipt"];
   findReceiptByRun(runId: string): unknown;
   insertReceipt(receipt: unknown): Readonly<{ state: "inserted" | "existing"; record: RunEvidenceReceipt }>;
 }
@@ -1069,6 +1104,7 @@ export function ensureRunEvidenceReceipt(
     continuedGateResults: store.listContinuedGateResultsByRun?.(runId),
     ...(store.listDelegationsByRun === undefined ? {} : { delegations: store.listDelegationsByRun(runId) }),
     ...(store.authenticateSnapshotApproval === undefined ? {} : { authenticateSnapshotApproval: store.authenticateSnapshotApproval }),
+    ...(store.childReceipt === undefined ? {} : { childReceipt: store.childReceipt }),
   }, composition);
   if (existing !== undefined) {
     const rederivation = evaluateReceiptRederivation({

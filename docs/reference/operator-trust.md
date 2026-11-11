@@ -243,6 +243,12 @@ The compatibility checks compare workflow identity, descriptor version, canonica
 graph, terminal dependency set, and declared evidence. Each reports `held`, `moved`, or
 `not-evaluated`; no waiver authorizes replacing an incompatible receipt.
 
+A child-run node is verified from its children's own receipts. When every child run named by the
+bound delegation evidence has a receipt that is verified-done or done-with-warnings, the node is
+verified and cites those receipts; a child's warnings surface on the parent as one warning that is
+not load-bearing. Any other child receipt leaves the node unknown, and so does a child with no
+receipt this build can derive. A dry-run preview does not read child receipts.
+
 ### Facts, decisions, and write proof
 
 Every evidence row has an `EvidenceEntryId`. Satisfied facts contain their declared local value and

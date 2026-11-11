@@ -6,6 +6,9 @@ import assert from "node:assert/strict";
 import { afterAll, afterEach, it } from "vitest";
 import { EmergencyContactMemberInputSchema } from "../../../src/models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactResultSchema } from "../../../src/models/workflows/emergency-contact/result.js";
+import { emergencyContactModule, ocrModule, ocrPageModule, onbaseModule } from "../../support/helpers/registered-workflows.js";
+
+const receiptDescriptors = [emergencyContactModule.descriptor, contactSaveMember.descriptor, onbaseModule.descriptor, ocrModule.descriptor, ocrPageModule.descriptor];
 
 
 const world = createEmergencyContactRetryWorld();
@@ -34,8 +37,13 @@ it("keeps the one OCR release and native member lineage while reporting one veri
   assert.ok(f.database.authority.runCheckpoints.latest(succeeded.envelope.workflow, succeeded.envelope.itemId, "contact-preview"));
   const date = f.clock.now().toISOString().slice(0, 10);
   assert.equal(createTransactionHistory(f.database.authority).query({ from: date, to: date, runId: succeeded.envelope.runId }).rows.length, 1);
-  const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [contactSaveMember.descriptor] });
+  const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: receiptDescriptors });
   assert.equal(receipts.ensureReceipt(succeeded.envelope.runId).result, "verified-done");
+  // One member failed, so the parent's members node stays unknown.
+  const parentReceipt = receipts.ensureReceipt(f.parentRun.envelope.runId);
+  assert.notEqual(parentReceipt.result, "verified-done");
+  const membersRow = parentReceipt.verification.find(row => row.obligation === "node.members");
+  assert.deepEqual(membersRow && { verdict: membersRow.verdict, evidence: membersRow.evidence }, { verdict: "unknown", evidence: [] });
   assert.equal(persistence.get("10800001")?.submissions.length, 0);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(children[1].envelope.runId), []);
   const rows = f.database.withAuthorityReadSnapshot(() => {
@@ -47,4 +55,20 @@ it("keeps the one OCR release and native member lineage while reporting one veri
   assert.deepEqual(rows.members.map(row => row.statusLabel), ["Saved", "Failed"]);
   assert.deepEqual(rows.members.map(row => row.target.runId), children.map(child => child.envelope.runId));
   assert.ok(rows.members.every(row => row.kind === "record" && row.record.runId === f.run.envelope.runId));
+});
+
+it("verifies the parent's members node from every saved member's own receipt", async () => {
+  const f = await world.fixture({ failures: 0 });
+  const execution = await f.canonical.execute(f.parentRun, new AbortController().signal);
+  assert.ok(execution.run?.lifecycle.state === "terminal" && execution.run.lifecycle.outcome === "done");
+  const children = f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(child => child.envelope.workflow === "emergency-contact-member");
+  assert.equal(children.length, 2);
+  const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: receiptDescriptors });
+  const parentReceipt = receipts.ensureReceipt(f.parentRun.envelope.runId);
+  const memberReceipts = children.map(child => f.database.authority.evidenceReceipts.findByRun(child.envelope.runId));
+  assert.ok(memberReceipts.every(receipt => receipt?.result === "verified-done"));
+  const membersRow = parentReceipt.verification.find(row => row.obligation === "node.members");
+  assert.deepEqual(membersRow && { verdict: membersRow.verdict, evidence: [...membersRow.evidence].sort() },
+    { verdict: "verified", evidence: memberReceipts.map(receipt => `receipt:${String(receipt?.receiptId)}`).sort() });
+  assert.deepEqual(receipts.ensureReceipt(f.parentRun.envelope.runId), parentReceipt);
 });

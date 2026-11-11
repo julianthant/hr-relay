@@ -7,6 +7,7 @@ import type { FailureRecord } from "../../../models/trust/failure.js";
 import { descriptorRuntimeNodes,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import { readDelegationEvidence,currentDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
+import { ReceiptDerivationRefusedError } from "../../runtime/writes/receipt-derivation-binding.js";
 import { DelegationInvocationRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/index.js";
 import { authenticateOcrSnapshotApproval } from "../lifecycle/ocr-review-authority.js";
@@ -93,6 +94,14 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
     authenticateSnapshotApproval: (gate: Parameters<typeof authenticateOcrSnapshotApproval>[2]) => {
       if (deps.runReader === undefined) throw new OcrReviewRefusedError();
       return authenticateOcrSnapshotApproval(authority, deps.runReader, gate, workflowId => byId.get(workflowId));
+    },
+    childReceipt: (childRunId: string) => {
+      const stored = authority.evidenceReceipts.findByRun(childRunId);
+      if (stored !== undefined) return stored;
+      const { lifecycle } = requireTrustRun(deps.runReader, childRunId);
+      if (lifecycle.state !== "terminal" || lifecycle.outcome === "interrupted") return undefined;
+      try { return ensure(childRunId).receipt; }
+      catch (error) { if (error instanceof ReceiptDerivationRefusedError) return undefined; throw error; }
     },
     findReceiptByRun: (runId: string) => authority.evidenceReceipts.findByRun(runId),
     insertReceipt: (receipt: unknown) => authority.evidenceReceipts.insert(receipt),

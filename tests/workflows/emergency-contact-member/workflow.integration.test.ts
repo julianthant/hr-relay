@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach,it } from "vitest";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { readApprovedOcrRecordTask } from "../../../src/backend/processing/ocr/tasks/read-approved-record.js";
+import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { createWriteSequencer } from "../../../src/backend/runtime/writes/write-sequencer.js";
 import { createNoteTimelineWriter } from "../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
@@ -130,6 +131,12 @@ it("emergency-contact/dry-run — previews the contact Save then the OnBase chil
   for (const role of ["probe", "prepare"]) assert.equal(member.filter(event => event.t === "span.started" && event.spanPath.endsWith(`/contact-preview/${role}`)).length, 1);
   assert.deepEqual(f.database.authority.runCheckpoints.listByItem(f.run.envelope.workflow, f.run.envelope.itemId)
     .filter(row => row.runId === f.run.envelope.runId && row.nodeId === "contact-preview"), []);
+  // A dry-run preview does not read child receipts.
+  const receipt = createReceiptService({ database: f.database, runReader: f.execution.lifecycle, descriptors: [compiled.descriptor, onbaseModule.descriptor] }).ensureReceipt(f.run.envelope.runId);
+  assert.equal(receipt.result, "partial");
+  const onbaseRow = receipt.verification.find(row => row.obligation === "node.onbase-import");
+  assert.deepEqual(onbaseRow && { verdict: onbaseRow.verdict, evidence: onbaseRow.evidence }, { verdict: "unknown", evidence: [] });
+  assert.equal(f.database.authority.evidenceReceipts.findByRun(child.envelope.runId), undefined);
   f.assertNoWrites();
 });
 it("emergency-contact/unambiguous-addition — prepares the approved primary without demotion when none exists", async () => {

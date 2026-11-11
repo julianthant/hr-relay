@@ -371,6 +371,8 @@ export function evaluateReceiptRederivation(input: {
 
 /* ── refusal ─────────────────────────────────────────────────────────────── */
 
+export class ReceiptDerivationRefusedError extends Error {}
+
 function refuse(
   stored: string,
   current: string,

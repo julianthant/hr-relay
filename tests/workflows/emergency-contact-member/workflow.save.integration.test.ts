@@ -179,10 +179,16 @@ it("emergency-contact/verified-save — commits the declared primary demotion an
   assert.deepEqual(output.contacts.rows, [{ kind: "contact", rowIndex: 0, effect: { ...original.effect, primary: false } }, { kind: "contact", rowIndex: 1, effect: desired }]);
   assert.equal(output.contacts.observation, "persisted");
   assert.ok(f.captures.some(snapshot => snapshot.observation === "staged" && snapshot.rows[0]?.primary === false && snapshot.rows[1]?.primary === true));
-  const receipts = createReceiptService({ database: f.database, runReader: f.execution.lifecycle, descriptors: [compiled.descriptor] });
+  const receipts = createReceiptService({ database: f.database, runReader: f.execution.lifecycle, descriptors: [compiled.descriptor, onbaseModule.descriptor] });
   const receipt = receipts.ensureReceipt(f.run.envelope.runId);
   assert.equal(receipt.result, "verified-done");
   assert.deepEqual(receipts.ensureReceipt(f.run.envelope.runId), receipt);
+  const onbaseChild = f.database.authority.runs.listByWorkflow("onbase").find(run => run.envelope.parent?.runId === f.run.envelope.runId); assert.ok(onbaseChild);
+  const onbaseReceipt = f.database.authority.evidenceReceipts.findByRun(onbaseChild.envelope.runId); assert.ok(onbaseReceipt);
+  assert.equal(onbaseReceipt.result, "verified-done");
+  const onbaseRow = receipt.verification.find(row => row.obligation === "node.onbase-import");
+  assert.deepEqual(onbaseRow && { verdict: onbaseRow.verdict, mandatory: onbaseRow.mandatory, evidence: onbaseRow.evidence },
+    { verdict: "verified", mandatory: true, evidence: [`receipt:${onbaseReceipt.receiptId}`] });
   assert.equal(f.reads, 3, "initial read, native probe and mandatory native verifier");
   const intents = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
   assert.equal(intents.length, 1); assert.equal(intents[0]?.status, "committed");
