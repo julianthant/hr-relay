@@ -97,6 +97,18 @@ it("ocr/approved-snapshot — consumes a corrected released record and admits it
   assert.deepEqual(readRows(), rows);
   assert.equal(f.harness.sessions.opens(), 0);
 });
+it("admits the members delegation once wall time has passed since the approved snapshot read", async () => {
+  const f = await world.fixture({ coordinator: true, record: true, pageCount: 1 });
+  release(f, [0]);
+  const admit = f.canonical.lifecycle.admitDelegation.bind(f.canonical.lifecycle);
+  let admitted = 0;
+  f.canonical.lifecycle.admitDelegation = (context, plan) => { admitted++; f.clock.advanceWall(1); return admit(context, plan); };
+  assert.equal((await f.canonical.step(f.parentRun, new AbortController().signal)).outcome.state, "done");
+  const parent = await f.canonical.step(f.parentRun, new AbortController().signal);
+  assert.equal(parent.outcome.state, "yielded-delegation", parent.outcome.state === "failed" ? f.database.authority.failures.get(parent.outcome.failureId)?.summary : parent.outcome.state);
+  assert.ok(admitted > 0);
+  assert.equal(f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(run => run.envelope.workflow === "emergency-contact-member").length, 1);
+});
 it("authenticates record reads under an admitted member's actual claim and node, refusing task, claim, record, reference and stale-snapshot substitutions while freezing approved authority", async () => {
   const f = await world.fixture({ coordinator: true, record: true }); release(f, [0]);
   const [member] = await admitMembers(f); assert.ok(member);
