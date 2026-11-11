@@ -61,11 +61,19 @@ it("keeps the one OCR release and native member lineage while reporting one veri
 });
 
 it("verifies the parent's members node from every saved member's own receipt", async () => {
-  const f = await world.fixture({ failures: 0 });
+  const f = await world.fixture();
+  // The shared template holds one saved member and one failed before its Save; its Retry saves the second.
+  const original = f.children().find(child => child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed"); assert.ok(original);
+  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", original)).state, "applied");
+  const replacement = f.children().find(child => child.envelope.retryOf === original.envelope.runId); assert.ok(replacement);
+  while (f.current(replacement.envelope.runId).lifecycle.state !== "terminal") await f.canonical.step(f.parentRun, new AbortController().signal);
+  if (f.current().pause?.state === "paused") assert.equal(f.canonical.kernel.execute(f.runCommand("resume", f.current())).state, "applied");
   const execution = await f.canonical.execute(f.parentRun, new AbortController().signal);
   assert.ok(execution.run?.lifecycle.state === "terminal" && execution.run.lifecycle.outcome === "done");
-  const children = f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(child => child.envelope.workflow === "emergency-contact-member");
-  assert.equal(children.length, 2);
+  const children = f.database.authority.runs.listChildren(f.parentRun.envelope.runId)
+    .filter(child => child.envelope.workflow === "emergency-contact-member" && child.lifecycle.state === "terminal" && child.lifecycle.outcome === "done");
+  assert.equal(children.length, 2); assert.ok(children.some(child => child.envelope.runId === replacement.envelope.runId));
+  assert.deepEqual(["10800000", "10800001"].map(eid => f.persistence.get(eid)?.submissions.length), [1, 1]);
   const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: EC_TREE_DESCRIPTORS });
   const parentReceipt = receipts.ensureReceipt(f.parentRun.envelope.runId);
   const memberReceipts = children.map(child => f.database.authority.evidenceReceipts.findByRun(child.envelope.runId));
