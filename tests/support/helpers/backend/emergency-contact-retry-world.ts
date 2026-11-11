@@ -1,4 +1,5 @@
 import { OcrReviewRefusedError } from "../../../../src/backend/processing/ocr/review-authority.js";
+import { emergencyContactModule, i9LookupModule, ocrModule, ocrPageModule, onbaseModule, personLookupModule } from "../registered-workflows.js";
 import { OcrReviewRecordSchema } from "../../../../src/models/ocr/review-record.js";
 import { OcrApprovedSnapshotSchema } from "../../../../src/models/ocr/review.js";
 import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
@@ -39,6 +40,9 @@ import type { SavedOnbaseFixture } from "../browser/fake-onbase-page.js";
 import { ONBASE_SOURCE_PDF, onbaseChildFixture } from "./onbase-child-fixture.js";
 
 export const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
+/** Every workflow an Emergency Contact tree runs, so a parent receipt can read each child's own receipt. */
+export const EC_TREE_DESCRIPTORS = [emergencyContactModule, ocrModule, ocrPageModule, personLookupModule, i9LookupModule, onbaseModule]
+  .map(module => module.descriptor).concat(contactSaveMember.descriptor);
 
 const facts = ["Example, Avery", "Example, Blake"].map((employeeName, index) => ({ employeeName, contactName: `Original Contact ${String(index)}`, correctedContactName: `Released Contact ${String(index)}` }));
 const SqliteTableSchema = z.object({ name: z.string(), sql: z.string().nullable() });
@@ -277,7 +281,7 @@ export function createEmergencyContactRetryWorld() {
         displayedEid: input.emplId, displayedName: input.expectedName, rows }), live.now));
     }
     const interrupted = await f.canonical.execute(f.parentRun, new AbortController().signal);
-    assert.equal(interrupted.run?.lifecycle.state, "queued", "a terminal failed sibling requeues the allow-partial parent");
+    if ((options.failures ?? 1) > 0) assert.equal(interrupted.run?.lifecycle.state, "queued", "a terminal failed sibling requeues the allow-partial parent");
     // The failed sibling ends execute while the saved member's OnBase child can still be queued; settle it so the template holds only the parent.
     for (const child of f.database.authority.runs.listChildren(f.parentRun.envelope.runId)
       .flatMap(member => f.database.authority.runs.listChildren(member.envelope.runId)).filter(run => run.lifecycle.state === "queued")) {

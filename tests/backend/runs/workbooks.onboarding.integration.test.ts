@@ -656,7 +656,8 @@ describe("Onboarding captured roster admission and row choice", () => {
         checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, root.envelope.itemId),
         writes: f.database.authority.writeIntents.listByRun(recoveredId).map(intent => ({ intent, attempts: f.database.authority.writeAttempts.listByIntent(intent.writeIntentId) })),
         gateResults: f.database.authority.gateResults.listByRun(recoveredId), continuedGateResults: [original],
-        delegations: f.database.withAuthorityTransaction(repositories => [readDelegationEvidence(repositories, recoveredId, "i9-lookup-child")]) };
+        delegations: f.database.withAuthorityTransaction(repositories => [readDelegationEvidence(repositories, recoveredId, "i9-lookup-child")]),
+        childReceipt: (childRunId: string) => receipts.ensureReceipt(childRunId) };
       assert.deepEqual(buildRunEvidenceReceipt(input), receipt);
       assert.throws(() => buildRunEvidenceReceipt({ ...input, gateResults: [original], continuedGateResults: [] }), /belongs to run/u);
       assert.throws(() => buildRunEvidenceReceipt({ ...input, continuedGateResults: [original, original] }), /duplicate/u);

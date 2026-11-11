@@ -7,7 +7,7 @@ import { SQLITE_MIGRATIONS, migrationTableNames } from "../../../../src/backend/
 import { updateRunRecord } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { createEmergencyContactRetryWorld } from "../../../support/helpers/backend/emergency-contact-retry-world.js";
+import { createEmergencyContactRetryWorld, EC_TREE_DESCRIPTORS } from "../../../support/helpers/backend/emergency-contact-retry-world.js";
 import { restoreSchema20CompletionFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 
 const world = createEmergencyContactRetryWorld();
@@ -21,7 +21,7 @@ for (const failed of [false, true]) it(`upgrades populated schema 20 with a ${fa
   f.control.failAccounting = failed;
   await f.canonical.execute(f.parentRun, new AbortController().signal);
   const parent = f.current(); assert.ok(parent.completion);
-  createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor] }).ensureReceipt(parent.envelope.runId);
+  createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [...EC_TREE_DESCRIPTORS, f.root.descriptor] }).ensureReceipt(parent.envelope.runId);
   const path = join(f.harness.authority.profile.workspace, "schema20-copy.db");
   const source = new DatabaseSync(f.path, { readOnly: true });
   try { await backup(source, path); } finally { source.close(); }

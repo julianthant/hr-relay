@@ -13,7 +13,7 @@ import { EmergencyContactResultSchema, EmergencyContactMemberResultSchema } from
 import { EmergencyContactMemberInputSchema } from "../../../src/models/workflows/emergency-contact-member/input.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { delegationEvidenceOutput, deriveRunResultDigest, deriveTerminalDependencyDigest, RunTerminalEvidenceResultSchema } from "../../../src/models/run/result.js";
-import { contactSaveMember, createEmergencyContactRetryWorld } from "../../support/helpers/backend/emergency-contact-retry-world.js";
+import { contactSaveMember, createEmergencyContactRetryWorld, EC_TREE_DESCRIPTORS } from "../../support/helpers/backend/emergency-contact-retry-world.js";
 import { authorizeWorkflowDelegationRefresh, workflowDelegationAccounting } from "../../../src/workflow-kit/workflow.js";
 import { runWorkerLoop } from "../../../src/backend/runtime/workers/worker-loop.js";
 import { workerRunLifecyclePort } from "../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -64,7 +64,7 @@ function delegationAuthorityIds(f: Fixture) {
 
 function trust(f: Fixture) {
   return createReceiptService({ database: f.database, runReader: f.canonical.lifecycle,
-    descriptors: [f.root.descriptor] });
+    descriptors: [...EC_TREE_DESCRIPTORS, f.root.descriptor] });
 }
 
 function ocrBytes(f: Fixture) {
@@ -144,7 +144,7 @@ for (const parentFailure of [false, true]) it(`retries a settled ${parentFailure
   const originalRows = originalBytes(f);
   const successful = f.children().find(child => child.lifecycle.state === "terminal" && child.lifecycle.outcome === "done"); assert.ok(successful);
   const successfulReceipt = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle,
-    descriptors: [contactSaveMember.descriptor] }).ensureReceipt(successful.envelope.runId);
+    descriptors: EC_TREE_DESCRIPTORS }).ensureReceipt(successful.envelope.runId);
   assert.equal(aggregateMemberRetryAvailable(f.database.authority, f.canonical.lifecycle, failed(f), f.resolve), true);
   const successfulBytes = canonicalJsonStringify({ run: successful, result: f.database.authority.runResults.get(successful.envelope.runId),
     checkpoints: f.database.authority.runCheckpoints.listByItem(successful.envelope.workflow, successful.envelope.itemId) });

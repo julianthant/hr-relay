@@ -1,4 +1,4 @@
-import { createEmergencyContactRetryWorld, contactSaveMember } from "../../support/helpers/backend/emergency-contact-retry-world.js";
+import { createEmergencyContactRetryWorld, EC_TREE_DESCRIPTORS } from "../../support/helpers/backend/emergency-contact-retry-world.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { readQueueRecordMembers } from "../../../src/backend/runs/queries/ocr-record-members.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
@@ -8,9 +8,6 @@ import { SQLITE_MIGRATIONS } from "../../../src/backend/storage/sqlite/migration
 import { afterAll, afterEach, it } from "vitest";
 import { EmergencyContactMemberInputSchema } from "../../../src/models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactResultSchema } from "../../../src/models/workflows/emergency-contact/result.js";
-import { emergencyContactModule, ocrModule, ocrPageModule, onbaseModule } from "../../support/helpers/registered-workflows.js";
-
-const receiptDescriptors = [emergencyContactModule.descriptor, contactSaveMember.descriptor, onbaseModule.descriptor, ocrModule.descriptor, ocrPageModule.descriptor];
 
 
 const world = createEmergencyContactRetryWorld();
@@ -39,7 +36,7 @@ it("keeps the one OCR release and native member lineage while reporting one veri
   assert.ok(f.database.authority.runCheckpoints.latest(succeeded.envelope.workflow, succeeded.envelope.itemId, "contact-preview"));
   const date = f.clock.now().toISOString().slice(0, 10);
   assert.equal(createTransactionHistory(f.database.authority).query({ from: date, to: date, runId: succeeded.envelope.runId }).rows.length, 1);
-  const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: receiptDescriptors });
+  const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: EC_TREE_DESCRIPTORS });
   assert.equal(receipts.ensureReceipt(succeeded.envelope.runId).result, "verified-done");
   // One member failed, so the parent's members node stays unknown.
   const parentReceipt = receipts.ensureReceipt(f.parentRun.envelope.runId);
@@ -65,7 +62,7 @@ it("verifies the parent's members node from every saved member's own receipt", a
   assert.ok(execution.run?.lifecycle.state === "terminal" && execution.run.lifecycle.outcome === "done");
   const children = f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(child => child.envelope.workflow === "emergency-contact-member");
   assert.equal(children.length, 2);
-  const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: receiptDescriptors });
+  const receipts = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: EC_TREE_DESCRIPTORS });
   const parentReceipt = receipts.ensureReceipt(f.parentRun.envelope.runId);
   const memberReceipts = children.map(child => f.database.authority.evidenceReceipts.findByRun(child.envelope.runId));
   assert.ok(memberReceipts.every(receipt => receipt?.result === "verified-done"));

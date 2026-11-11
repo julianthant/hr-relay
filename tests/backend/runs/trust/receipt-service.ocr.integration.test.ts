@@ -64,7 +64,8 @@ it("derives the existing receipt format from the exact authenticated OCR snapsho
   const input: ReceiptBuildInput = { descriptor: f.root.descriptor, run, result,
     checkpoints: repositories.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId), gateResults: [gate],
     delegations,
-    authenticateSnapshotApproval: row => authenticateOcrSnapshotApproval(repositories, f.canonical.lifecycle, row, f.resolve) };
+    authenticateSnapshotApproval: row => authenticateOcrSnapshotApproval(repositories, f.canonical.lifecycle, row, f.resolve),
+    childReceipt: childRunId => service.ensureReceipt(childRunId) };
   assert.deepEqual(buildRunEvidenceReceipt(input), receipt);
   const { authenticateSnapshotApproval: _authenticate, ...unproved } = input;
   assert.throws(() => buildRunEvidenceReceipt(unproved), /OCR_REVIEW_REFUSED/u);

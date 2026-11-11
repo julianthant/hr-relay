@@ -9,7 +9,7 @@ import { UcpathSaveEmergencyContact } from "../../../src/models/systems/ucpath/s
 import { PlanApprovedEmergencyContact } from "../../../src/models/workflows/emergency-contact-member/read-contact-plan.js";
 import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
 import { TransactionOutcomeSchema } from "../../../src/rules/write-safety/write-safety-primitives.js";
-import { createEmergencyContactRetryWorld, contactSaveMember } from "../../support/helpers/backend/emergency-contact-retry-world.js";
+import { createEmergencyContactRetryWorld, EC_TREE_DESCRIPTORS } from "../../support/helpers/backend/emergency-contact-retry-world.js";
 
 const world = createEmergencyContactRetryWorld();
 type Fixture = Awaited<ReturnType<typeof world.fixture>>;
@@ -93,7 +93,7 @@ function refuseDirectRecover(f: Fixture, target: RunRecord) {
 
 function receipts(f: Fixture) {
   return createReceiptService({ database: f.database, runReader: f.canonical.lifecycle,
-    descriptors: [f.root.descriptor, contactSaveMember.descriptor] });
+    descriptors: [...EC_TREE_DESCRIPTORS, f.root.descriptor] });
 }
 
 it("refuses direct Recover before Save under a settled parent with no receipt, then permits Retry with an exact retained receipt", async () => {
