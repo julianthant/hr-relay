@@ -110,7 +110,7 @@ describe("canonical Settings navigation", () => {
 
   it("shows the read refusal without hiding tabs while an independent page is open", async () => {
     const page = await mountFailedRead("keyboard");
-    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 6);
+    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 7);
     assert.ok(page.textContent?.includes("Settings unavailable"), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Reopen Settings to try again."), page.textContent ?? "");
