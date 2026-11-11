@@ -278,6 +278,15 @@ export function createEmergencyContactRetryWorld() {
     }
     const interrupted = await f.canonical.execute(f.parentRun, new AbortController().signal);
     assert.equal(interrupted.run?.lifecycle.state, "queued", "a terminal failed sibling requeues the allow-partial parent");
+    // The failed sibling ends execute while the saved member's OnBase child can still be queued; settle it so the template holds only the parent.
+    for (const child of f.database.authority.runs.listChildren(f.parentRun.envelope.runId)
+      .flatMap(member => f.database.authority.runs.listChildren(member.envelope.runId)).filter(run => run.lifecycle.state === "queued")) {
+      const imported = await f.canonical.step(f.parentRun, new AbortController().signal);
+      assert.equal(imported.run.envelope.runId, child.envelope.runId);
+      const member = await f.canonical.step(f.parentRun, new AbortController().signal);
+      assert.equal(member.run.envelope.runId, child.envelope.parent?.runId);
+      assert.equal(member.outcome.state, "done");
+    }
     return { ...f, live, mintedIds: ids.minted().length };
   }
   function present(f: Awaited<ReturnType<typeof world.fixture>>, live: ReturnType<typeof pieces>) {
@@ -286,7 +295,18 @@ export function createEmergencyContactRetryWorld() {
       type, source: "run-detail" as const, requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(),
       target: { runId: run.envelope.runId, expectedVersion: run.version } });
     const children = () => f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(run => run.envelope.workflow === "emergency-contact-member");
-    return { ...f, facts, persistence: live.persistence, onbase: live.onbase, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children };
+    // A member yields to its hidden OnBase child; one step settles the child and the member's resumption with it.
+    const step: typeof f.canonical.step = async (root, signal) => {
+      const first = await f.canonical.step(root, signal);
+      if (first.run.envelope.workflow !== "emergency-contact-member" || first.outcome.state !== "yielded-delegation") return first;
+      const child = await f.canonical.step(root, signal);
+      assert.equal(child.run.envelope.parent?.runId, first.run.envelope.runId);
+      if (current(first.run.envelope.runId).lifecycle.state !== "queued") return child;
+      const resumed = await f.canonical.step(root, signal);
+      assert.equal(resumed.run.envelope.runId, first.run.envelope.runId);
+      return resumed;
+    };
+    return { ...f, canonical: { ...f.canonical, step }, facts, persistence: live.persistence, onbase: live.onbase, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children };
   }
   async function capture(built: Awaited<ReturnType<typeof build>>): Promise<MemberStageTemplate> {
     const source = built.harness.authority.profile.workspace;

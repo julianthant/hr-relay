@@ -247,6 +247,10 @@ it("keeps interrupted Save ownership until callback settlement, verifies and com
   assert.notEqual(f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state, "terminal");
   // The controller recovers the abandoned claim when the interrupted worker exits.
   releaseSeededWriteOwners(f.database, f.clock.now().toISOString());
+  // Recovery finishes the abandoned run and its queued OnBase child before the record runs again.
+  const recovered = await f.execution.execute(f.run, world.SIGNAL);
+  assert.equal(recovered.run?.lifecycle.state, "terminal");
+  assert.equal(f.onbase.imports(), 1);
   const retry = f.execution.start(compiled.descriptor, { ...approved, record: { ...approved.record, recordId: `${"b".repeat(64)}#emergency-contact#2` } }, { dryRun: false });
   await f.execution.execute(retry, world.SIGNAL);
   assert.equal(f.persistence.submissions.length, 1);
@@ -254,6 +258,7 @@ it("keeps interrupted Save ownership until callback settlement, verifies and com
   assert.deepEqual(f.database.authority.failures.listByRun(retry.envelope.runId), []);
   const reused = f.database.authority.runResults.get(retry.envelope.runId); assert.ok(reused);
   assert.equal(EmergencyContactMemberResultSchema.parse(reused.result.value).disposition, "already-present");
+  assert.equal(f.onbase.imports(), 1);
 });
 
 it("saves an addition with no demotion when the complete original set has no primary", async () => {
@@ -289,8 +294,10 @@ it("imports the approved page to OnBase once after a committed Save and records 
 
 it("recovers a failed OnBase import by running the record again: the Save resolves already-present and OnBase imports once", async () => {
   const f = await memberFixture({ onbaseNoMatch: true });
+  // The child's failure requeues the member, which settles it on its next claim.
+  await f.execution.execute(f.run, world.SIGNAL);
   assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state, "terminal");
-  assert.equal(f.failures[0]?.nodeId, "onbase-import");
+  assert.equal(f.database.authority.failures.listByRun(f.run.envelope.runId)[0]?.nodeId, "onbase-import");
   assert.equal(f.persistence.submissions.length, 1);
   assert.equal(f.onbase.imports(), 0);
   f.onbase.control.noMatch = false;

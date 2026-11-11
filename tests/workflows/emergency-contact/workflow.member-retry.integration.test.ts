@@ -613,14 +613,17 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   // The hold check and its acknowledgment must share the first outer transaction after capture: no Retry or Pause can commit between them.
   if (settlementRetry) assert.deepEqual(holdAcknowledged, { transactionDepth: 1, outerTransaction: 1 });
   if (diagnosticCapture) assert.deepEqual(f.database.authority.failures.listByRun(f.parentRun.envelope.runId), []);
-  assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["abandoned", "done"]);
+  // The replacement yields to its OnBase child, which runs before the replacement settles.
+  assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["abandoned", "yielded-delegation", "done", "done"]);
   assert.equal(report.stopped, "idle"); assert.equal(report.closure, "proved");
   assert.equal(f.current().lifecycle.state, "queued");
   assert.equal(f.current().pause?.state, "paused");
   assert.equal(runClaim(f.current()), undefined);
   assert.equal(f.database.authority.runResults.get(f.parentRun.envelope.runId), undefined);
   const replacement = f.children().find(child => child.envelope.retryOf === previous.envelope.runId); assert.ok(replacement);
-  assert.deepEqual(claimed, [f.parentRun.envelope.runId, replacement.envelope.runId]);
+  const onbase = f.database.authority.runs.listByWorkflow("onbase").filter(run => run.envelope.parent?.runId === replacement.envelope.runId);
+  assert.equal(onbase.length, 1);
+  assert.deepEqual(claimed, [f.parentRun.envelope.runId, replacement.envelope.runId, onbase[0]?.envelope.runId, replacement.envelope.runId]);
   assert.equal(report.outcomes[1]?.runId, replacement.envelope.runId);
   assert.equal(canonicalJsonStringify(f.current().envelope), originalEnvelope);
   assert.deepEqual(originalBytes(f), originalRows);
@@ -732,6 +735,8 @@ it("fails a member at onbase-import after its committed Save and serves no Retry
   const replacement = f.children().find(child => child.envelope.retryOf === original.envelope.runId); assert.ok(replacement);
   f.onbase.control.noMatch = true;
   await f.canonical.execute(f.parentRun, signal());
+  // The child's failure requeues the member, which settles it on its next claim.
+  await f.canonical.execute(f.parentRun, signal());
   const member = f.current(replacement.envelope.runId);
   assert.ok(member.lifecycle.state === "terminal" && member.lifecycle.outcome === "failed");
   assert.equal(f.database.authority.failures.listByRun(member.envelope.runId)[0]?.nodeId, "onbase-import");
@@ -746,7 +751,8 @@ it("fails a member at onbase-import after its committed Save and serves no Retry
   assert.equal(aggregateMemberRetryAvailable(f.database.authority, f.canonical.lifecycle, member, f.resolve), false);
   assert.equal(f.canonical.kernel.execute(f.runCommand("retry", member)).state, "rejected");
   assert.equal(aggregateMemberRetryAvailable(f.database.authority, f.canonical.lifecycle, child, f.resolve), false);
-  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", child)).state, "rejected");
+  // Retry is not served for the child; a direct command reaches the delegation authority, which refuses a child of a failed member.
+  assert.throws(() => f.canonical.kernel.execute(f.runCommand("retry", child)), /delegation-retry-source-unavailable/);
   assert.equal(canonicalJsonStringify(f.children()), before);
   assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), saves);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(member.envelope.runId), intents);

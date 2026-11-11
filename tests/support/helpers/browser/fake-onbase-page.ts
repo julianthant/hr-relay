@@ -6,9 +6,10 @@ import { ONBASE_DOCUMENT_NAME, ONBASE_DOCUMENT_TYPE } from "../../../../src/mode
 export interface SavedOnbaseFixture { id: string; eid: string; bytes: Uint8Array; href?: string }
 export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stalled?: boolean; blankDepartment?: boolean;
   saved?: SavedOnbaseFixture[]; incomplete?: boolean; lostClick?: boolean; queue?: number; foreignRoute?: boolean;
-  ignoredFilter?: string; staleResults?: boolean; changeDuringDownload?: boolean; unreadablePdf?: boolean } = {}) {
+  ignoredFilter?: string; staleResults?: boolean; changeDuringDownload?: boolean; unreadablePdf?: boolean; searchFiltersByUcpathId?: boolean } = {}) {
   const actions: string[] = [], fields = new Map<string, string>(), queued: { name: string; buffer: Buffer }[] = [];
   const saved = [...options.saved ?? []];
+  let results = saved;
   for (let index = 0; index < (options.queue ?? 0); index++) queued.push({ name: `leftover-${index}.pdf`, buffer: Buffer.from("old page") });
   let mode = "retrieval", modal = false, searched = false, found = false;
   const headers = ["Document ID", "Document Type", "UCPath ID", "Document Name", "File"];
@@ -38,7 +39,7 @@ export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stall
     async waitFor(input: { state: string }) { assert.equal(this.visible(), input.state !== "hidden", `${this.name} did not become ${input.state}`); }
     async count() {
       if (this.name === "Remove") return queued.length;
-      if (this.name === "row") return mode === "import" ? queued.filter(row => this.text.every(text => `Pending Import ${row.name}`.includes(text))).length : saved.length;
+      if (this.name === "row") return mode === "import" ? queued.filter(row => this.text.every(text => `Pending Import ${row.name}`.includes(text))).length : results.length;
       return this.visible() ? 1 : 0;
     }
     async isVisible() { return this.visible(); }
@@ -52,7 +53,7 @@ export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stall
       if (this.name === "Remove") queued.splice(this.index, 1);
       if (this.name === "Clear Keywords") for (const name of ["UCPath ID", "Last Name", "First Name", "Document Name", "Department Name", "Department Code", "Vice Chancellor", "Vice Chancellor Code"]) fields.delete(`form:${name}`);
       if (this.name === "Keyset Lookup") modal = true;
-      if (this.name === "Find") { if (this.scope === "lookup") found = true; else searched = true; }
+      if (this.name === "Find") { if (this.scope === "lookup") found = true; else { searched = true; const eid = fields.get("form:UCPath ID"); results = eid === undefined || options.searchFiltersByUcpathId !== true ? saved : saved.filter(row => row.eid === eid); } }
       if (this.name === "Select Employee") {
         modal = false;
         for (const [name, value] of Object.entries({ "UCPath ID": options.eid ?? fields.get("lookup:UCPath ID"), "Last Name": "Example", "First Name": "Person",
@@ -77,14 +78,14 @@ export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stall
         dispose: async () => { actions.push(`dispose:${this.scope}:${this.name}`); },
       });
     }
-    async innerText() { return `${saved.length + (options.incomplete ? 1 : 0)} documents found`; }
+    async innerText() { return `${results.length + (options.incomplete ? 1 : 0)} documents found`; }
     async allTextContents() {
       if (this.name.startsWith("selected:")) { const selected = fields.get(`${this.scope}:${this.name.slice(9)}`); return selected === undefined ? [] : [selected]; }
       if (this.name === "columnheader") return headers;
-      const row = saved[this.index]; assert.ok(row);
+      const row = results[this.index]; assert.ok(row);
       return [row.id, ONBASE_DOCUMENT_TYPE, row.eid, ONBASE_DOCUMENT_NAME, "Download"];
     }
-    async getAttribute(name: string) { assert.equal(name, "href"); const row = saved[this.index]; assert.ok(row); return row.href ?? `/251ids/download.pdf?id=${row.id}`; }
+    async getAttribute(name: string) { assert.equal(name, "href"); const row = results[this.index]; assert.ok(row); return row.href ?? `/251ids/download.pdf?id=${row.id}`; }
   }
   const page = {
     on() {},

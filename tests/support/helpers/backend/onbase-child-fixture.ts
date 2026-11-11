@@ -11,7 +11,7 @@ export const ONBASE_SOURCE_PDF = await pdf.save();
 export const ONBASE_SOURCE_DOCUMENT = OnbaseInputSchema.shape.document.parse({ id: "11111111-2222-4333-8444-555555555555",
   sha256: createHash("sha256").update(ONBASE_SOURCE_PDF).digest("hex"), bytes: ONBASE_SOURCE_PDF.length, mediaType: "application/pdf" });
 
-/** A fake OnBase client whose saved documents carry across sessions; `noMatch` fails the employee lookup before any import; `lostClick` loses the Import acknowledgement. */
+/** A fake OnBase client whose saved documents carry across sessions and whose retrieval lists only the searched person's documents; `noMatch` fails the employee lookup before any import; `lostClick` loses the Import acknowledgement. */
 export function onbaseChildFixture(options: { noMatch?: boolean; saved?: readonly SavedOnbaseFixture[] } = {}) {
   const control = { noMatch: options.noMatch === true, lostClick: false };
   let saved = [...options.saved ?? []];
@@ -19,7 +19,7 @@ export function onbaseChildFixture(options: { noMatch?: boolean; saved?: readonl
   return { control, pages, saved: () => saved,
     imports: () => pages.flatMap(page => page.actions).filter(action => action === "click:Import").length,
     driver(clock: Clock) {
-      const page = fakeOnbasePage({ noMatch: control.noMatch, lostClick: control.lostClick, saved });
+      const page = fakeOnbasePage({ noMatch: control.noMatch, lostClick: control.lostClick, saved, searchFiltersByUcpathId: true });
       saved = page.saved; pages.push(page);
       return createOnbaseDriver(() => undefined, page.page, clock);
     },
