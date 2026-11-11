@@ -3,21 +3,8 @@ import type { BulkBatchOutcome } from "../../../app/commands/bulk-dispatch.js";
 import { BulkRunCommandResponseSchema } from "../../../../rules/commands/commands.js";
 import { MOCK_SURFACES_FLAG } from "../../../app/mock-surfaces.js";
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
-export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "rail", "rail-min", "rail-min-tooltip", "rail-min-bell", "command-unknown", "command-results", "search-keyboard", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "account", "account-edit", "account-delete", "account-password", "account-duo-setup", "subscription", "subscription-limit", "subscription-disconnected", "general-a-browser", "general-a-date", "run-sheets", "run-sheets-open", "run-sheets-add", "run-sheets-search", "run-sheets-nopins", "run-sheets-fix", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
+export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "rail", "rail-min", "rail-min-tooltip", "rail-min-bell", "command-unknown", "command-results", "search-keyboard", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "general-a-browser", "general-a-date", "run-sheets", "run-sheets-open", "run-sheets-add", "run-sheets-search", "run-sheets-nopins", "run-sheets-fix", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
-
-/** Account and Subscription fixtures. Email is not served after sign-in, so the Account page has no email row; the ChatGPT email comes with the connected account. */
-export const STATUS_MOCK_ACCOUNT = {
-  values: { name: "Jordan Lee", initials: "JL", timekeeper: "Lee, Jordan", lastSignedInAt: "2026-08-03T15:41:00Z" },
-  email: "jordan.lee@example.com",
-} as const;
-
-/** Plan and limits are not served today (backend gap); the 5-hour limit frame is the one that has run out. */
-export const STATUS_MOCK_SUBSCRIPTION = {
-  plan: "Plus plan",
-  limits: [{ label: "5-hour limit", resets: "2h 10m", left: 64 }, { label: "Weekly limit", resets: "5d 4h", left: 82 }],
-  limitReached: [{ label: "5-hour limit", resets: "1h 25m", left: 0 }, { label: "Weekly limit", resets: "5d 4h", left: 82 }],
-} as const;
 
 /** Read once at load: the dialog's view state rewrites the URL, and the frame must not change with it. The combined mock needs no parameter: without one the design renders as `general-a`. */
 let loadedMock: StatusMockId | undefined | null = null;

@@ -5,15 +5,12 @@ import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMe
 import { DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../../ds/primitives/dropdown-menu.js";
 import { DATASETS, missingRequired, samplesOf, withMapping, type Sheet, type Worksheet } from "../../spreadsheets/design/sheets-v2-model.js";
 import { sheetKey, ticked, type StatusMockPicks } from "./status-mock-picks.js";
-import { AccountSettings } from "../account/account-settings.js";
-import { SubscriptionSettings, type SubscriptionAccount } from "../subscription/subscription-settings.js";
 import { AppLockup } from "../../shell/app-lockup.js";
 import "../../shell/onboarding.css";
-import { STATUS_MOCK_ACCOUNT, STATUS_MOCK_BLOCKERS, STATUS_MOCK_SUBSCRIPTION, STATUS_MOCK_REQUIRED_FIELDS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockId } from "./status-mock-model.js";
+import { STATUS_MOCK_BLOCKERS, STATUS_MOCK_REQUIRED_FIELDS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockId } from "./status-mock-model.js";
 
 
 
-const noop = () => undefined;
 
 /** A readiness blocker at the top of the dialog: one row, reason on the left, its fix on the right. */
 export function StatusMockReadiness({ frame }: { frame: "run-a" | "run-b" }) {
@@ -109,20 +106,6 @@ function ToastsLiveMock() {
   const { toast } = useToasts();
   useEffect(() => { Reflect.set(window, "relayFireToast", toast); return () => { Reflect.deleteProperty(window, "relayFireToast"); }; }, [toast]);
   return null;
-}
-
-/** The Account page on fixtures. */
-export function StatusMockAccount({ frame }: { frame: StatusMockId }) {
-  return <AccountSettings page={{ values: STATUS_MOCK_ACCOUNT.values, duo: frame === "account-duo-setup" ? "setup" : "ready", onSignOut: noop }}
-    ucpath={null} deleteAccount={null} />;
-}
-
-/** The Subscription page on fixtures; the frame picks a connected plan, one whose 5-hour limit has run out, or a disconnected ChatGPT. */
-export function StatusMockSubscription({ frame }: { frame: StatusMockId }) {
-  const connected = (limits: typeof STATUS_MOCK_SUBSCRIPTION.limits | typeof STATUS_MOCK_SUBSCRIPTION.limitReached): SubscriptionAccount => ({ state: "connected", email: STATUS_MOCK_ACCOUNT.email, plan: STATUS_MOCK_SUBSCRIPTION.plan, limits });
-  const [account, setAccount] = useState<SubscriptionAccount>(frame === "subscription-disconnected" ? { state: "disconnected" } : connected(frame === "subscription-limit" ? STATUS_MOCK_SUBSCRIPTION.limitReached : STATUS_MOCK_SUBSCRIPTION.limits));
-  return <SubscriptionSettings account={account}
-    onConnect={() => setAccount(connected(STATUS_MOCK_SUBSCRIPTION.limits))} onDisconnect={() => setAccount({ state: "disconnected" })} />;
 }
 
 /** Sign-up frames: the first-run check, as the Ready step (A) or its own step before Ready (B). */

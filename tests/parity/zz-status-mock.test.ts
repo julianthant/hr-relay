@@ -16,8 +16,7 @@ const ONLY = process.env.STATUS_MOCK_ONLY?.split(",");
 test.use({ deviceScaleFactor: Number(process.env.STATUS_MOCK_SCALE ?? 1) });
 
 const SETTINGS_PAGE: Partial<Record<StatusMockId, string>> = {
-  "general-a": "general", "general-a-browser": "general", "general-a-date": "general", "account": "account", "account-edit": "account", "account-password": "account", "account-delete": "account", "account-duo-setup": "account",
-  "subscription": "subscription", "subscription-limit": "subscription", "subscription-disconnected": "subscription",
+  "general-a": "general", "general-a-browser": "general", "general-a-date": "general",
   "analytics-a": "activity", "analytics-b": "activity", "search-keyboard": "keyboard",
 };
 
@@ -117,18 +116,6 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
         await expect(id === "run-b" ? dialog.getByText("ChatGPT is disconnected") : dialog.getByRole("button", { name: /^Start (dry|live) run$/ })).toBeVisible();
       }
-    }
-    if (settings === "account") {
-      await expect(page.getByRole("heading", { name: "Account", exact: true }).or(page.locator(".ds-page-heading-title", { hasText: "Account" }))).toBeVisible();
-      if (id === "account-edit") await expect(page.getByRole("dialog", { name: "Edit name" })).toBeVisible();
-      if (id === "account-password") await expect(page.getByRole("dialog", { name: "Change password" })).toBeVisible();
-      if (id === "account-delete") await expect(page.getByRole("alertdialog").or(page.getByRole("dialog")).getByRole("button", { name: "Delete account", exact: true })).toBeVisible();
-      if (id === "account-duo-setup") await expect(page.getByText("Needs setup")).toBeVisible();
-    }
-    if (settings === "subscription") {
-      await expect(page.locator(".ds-page-heading-title", { hasText: "Subscription" })).toBeVisible();
-      if (id === "subscription-limit") await expect(page.getByText("0% left")).toBeVisible();
-      if (id === "subscription-disconnected") await expect(page.getByText("Not connected")).toBeVisible();
     }
     if (id === "general-a-browser") await page.getByRole("combobox", { name: "Browser window" }).or(page.getByRole("button", { name: "Browser window" })).first().click();
     if (id === "general-a-date") await page.getByRole("button", { name: /Choose job end date/i }).first().click();
@@ -384,9 +371,8 @@ for (const theme of THEMES) test(`settings pages @ ${theme} ${WIDTH}`, async ({ 
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
-  for (const id of ["general", "account", "subscription", "activity", "keyboard"]) {
-    // General and Account show the moved rows, which only the mock Account page carries.
-    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}${id === "general" ? "&statusMock=general-a" : id === "account" ? "&statusMock=account" : id === "subscription" ? "&statusMock=subscription" : id === "activity" ? "&statusMock=analytics-a" : "&statusMock=general-a"}`);
+  for (const id of ["general", "activity", "keyboard"]) {
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}${id === "general" ? "&statusMock=general-a" : id === "activity" ? "&statusMock=analytics-a" : "&statusMock=general-a"}`);
     await expect(page.getByRole("navigation", { name: "Settings sections", exact: true })).toBeVisible();
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     await settle(page);

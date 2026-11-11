@@ -104,8 +104,6 @@
   "src/dashboard/surfaces/settings/status-mock/status-mock-charts.tsx",
   "src/dashboard/surfaces/settings/status-mock/status-mock.tsx",
   "src/dashboard/surfaces/settings/storage/storage-settings.tsx",
-  "src/dashboard/surfaces/settings/subscription/subscription-settings.css",
-  "src/dashboard/surfaces/settings/subscription/subscription-settings.tsx",
   "src/dashboard/surfaces/shared/actions/actions.tsx",
   "src/dashboard/surfaces/shared/actions/command-recovery.tsx",
   "src/dashboard/surfaces/shared/actions/icon-action-button.tsx",
