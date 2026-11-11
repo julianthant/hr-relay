@@ -33,9 +33,11 @@ function settingsWithDistinctRuntimeValues() {
   assert.ok(actor); assert.equal(actor.settingsValue, "Saved operator"); assert.equal(actor.activeValue, "Running operator"); assert.equal(actor.defaultValue, defaultValue);
   return document;
 }
-function chooseBrowserWindow(select: HTMLSelectElement, value: string): void {
-  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(select, value);
-  select.dispatchEvent(new Event("change", { bubbles: true }));
+async function chooseBrowserWindow(trigger: HTMLElement, value: string): Promise<void> {
+  await settingsAction(() => trigger.click());
+  const option = document.querySelector<HTMLElement>(`[role="option"][data-value="${value}"]`);
+  assert.ok(option);
+  await settingsAction(() => option.click());
 }
 
 describe("typed Settings catalog controls", () => {
@@ -56,15 +58,15 @@ describe("typed Settings catalog controls", () => {
   it("shows the approved General browser controls without observed host details", async () => {
     const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "general"); cleanups.push(mounted.close);
-    assert.equal(mounted.host.querySelector<HTMLSelectElement>('[data-settings-path="browser.headless"] select[aria-label="Browser window"]')?.value, "Hidden");
+    assert.equal(mounted.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Hidden");
     assert.equal(mounted.host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 0);
     assert.doesNotMatch(mounted.host.textContent ?? "", /Observed host/u);
   });
   it("saves Browser window size through canonical Settings authority and matching readback", async () => {
     const h = await setup("general");
-    const select = h.host.querySelector<HTMLSelectElement>('[data-settings-path="browser.headless"] select[aria-label="Browser window"]');
-    assert.ok(select); assert.equal(select.disabled, false);
-    await settingsAction(() => chooseBrowserWindow(select, "Medium"));
+    const select = h.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
+    assert.ok(select); assert.equal(select.hasAttribute("disabled"), false);
+    await chooseBrowserWindow(select, "Medium");
     assert.deepEqual(h.controller().draft["browser.headless"], { kind: "set", raw: "false" });
     assert.deepEqual(h.controller().draft["display.screenWidth"], { kind: "set", raw: "1440" });
     assert.deepEqual(h.controller().draft["display.screenHeight"], { kind: "set", raw: "1000" });
@@ -73,21 +75,20 @@ describe("typed Settings catalog controls", () => {
     const leaves = h.authority.read().sections.flatMap(section => section.leaves);
     assert.equal(leaves.find(leaf => leaf.path === "display.screenWidth")?.effectiveValue, 1440);
     assert.equal(leaves.find(leaf => leaf.path === "display.screenHeight")?.effectiveValue, 1000);
-    assert.equal(select.value, "Medium");
+    assert.equal(select.dataset.value, "Medium");
   });
   it("autosaves the approved General browser window choice and omits retired controls", async () => {
     const h = await setup("general");
     const row = h.host.querySelector('[data-settings-path="browser.headless"]');
     assert.ok(row);
-    const select = row.querySelector<HTMLSelectElement>("select");
+    const select = row.querySelector<HTMLElement>('button[aria-label="Browser window"]');
     assert.ok(select);
-    assert.equal(select.value, "Hidden");
-    await settingsAction(() => chooseBrowserWindow(select, "Small"));
-    assert.equal(row.querySelector("select")?.value, "Small");
+    assert.equal(select.dataset.value, "Hidden");
+    await chooseBrowserWindow(select, "Small");
+    assert.equal(select.dataset.value, "Small");
     assert.deepEqual(h.controller().draft["browser.headless"], { kind: "set", raw: "false" });
     assert.deepEqual(h.controller().draft["display.screenWidth"], { kind: "set", raw: "1280" });
     assert.deepEqual(h.controller().draft["display.screenHeight"], { kind: "set", raw: "800" });
-    assert.equal(row.querySelector("button"), null);
     await settingsAction(() => h.controller().submit());
     assert.equal(h.controller().save.state, "applied");
     assert.equal(h.commands.length, 1);
@@ -121,7 +122,6 @@ describe("typed Settings catalog controls", () => {
     const mounted = await mountSettingsHarness(authority, "performance", () => fixtureSettingsDocument({ timeouts: { navigationMs: 22_000 } }, 2)); cleanups.push(mounted.close);
     const row = mounted.host.querySelector('[data-settings-path="timeouts.navigationMs"]'); assert.ok(row);
     assert.equal(row.querySelector("input")?.value, "22");
-    assert.equal(row.querySelector("button"), null);
     assert.equal(row.querySelectorAll(".ds-body-row").length, 1);
     assert.equal(row.querySelectorAll(".settings-row-actions").length, 0);
     await settingsAction(() => mounted.controller().clear("timeouts.navigationMs"));

@@ -1,7 +1,6 @@
 import { ResultRow, Select } from "../../../ds/ui.js";
 
 const SIZES = { Small: [1280, 800], Medium: [1440, 1000], "Full screen": [1920, 1080] } as const;
-type Choice = "Hidden" | keyof typeof SIZES;
 
 export interface BrowserWindowBinding {
   readonly headless: string;
@@ -12,7 +11,7 @@ export interface BrowserWindowBinding {
   readonly update: (path: "browser.headless" | "display.screenWidth" | "display.screenHeight", value: string) => void;
 }
 
-function current(binding: BrowserWindowBinding): Choice | `${number} × ${number}` {
+function current(binding: BrowserWindowBinding): string {
   if (binding.headless === "true") return "Hidden";
   const match = (Object.keys(SIZES) as (keyof typeof SIZES)[]).find(name => String(SIZES[name][0]) === binding.width && String(SIZES[name][1]) === binding.height);
   return match ?? `${binding.width} × ${binding.height}`;

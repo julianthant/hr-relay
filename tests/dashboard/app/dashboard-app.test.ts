@@ -254,15 +254,15 @@ async function press(button: HTMLButtonElement): Promise<void> {
   });
 }
 
-async function dirtyBrowserSettings(): Promise<{ input: HTMLSelectElement; value: string }> {
-  const input = document.querySelector('[data-settings-path="browser.headless"] select[aria-label="Browser window"]');
-  assert_m1.ok(input instanceof HTMLSelectElement, "Settings browser window select did not mount");
-  assert_m1.notEqual(input.value, "Small");
-  await act_m1(async () => {
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(input, "Small");
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-  assert_m1.equal(input.value, "Small");
+async function dirtyBrowserSettings(): Promise<{ input: HTMLButtonElement; value: string }> {
+  const input = document.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
+  assert_m1.ok(input instanceof HTMLButtonElement, "Settings browser window control did not mount");
+  assert_m1.notEqual(input.dataset.value, "Small");
+  await act_m1(async () => input.click());
+  const option = document.querySelector('[role="option"][data-value="Small"]');
+  assert_m1.ok(option instanceof HTMLElement);
+  await act_m1(async () => option.click());
+  assert_m1.equal(input.dataset.value, "Small");
   return { input, value: "Small" };
 }
 
@@ -635,7 +635,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.match(notifications.getAttribute("aria-label") ?? "", /^Notifications, \d+ unread$/u);
     await press(notifications);
     assert_m1.equal(frameOf("Settings"), frame, "opening notifications preserves the runtime draft owner");
-    assert_m1.equal(input.value, value, "browser appearance and notification controls preserve runtime edits");
+    assert_m1.equal(input.dataset.value, value, "browser appearance and notification controls preserve runtime edits");
     await press(notifications);
     const sectionLink = (label: string): HTMLAnchorElement => {
       const link = [...document.querySelectorAll("nav[aria-label='Settings sections'] a")]
@@ -661,9 +661,9 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(document.querySelector('[role="dialog"]') === null, true, "Escape closes the pending dirty-exit dialog");
     assert_m1.equal(document.activeElement === dashboard, true, "Escape restores focus to the persistent navigation control");
     await act_m1(async () => sectionLink("General").click());
-    const restored = document.querySelector('[data-settings-path="browser.headless"] select');
-    assert_m1.ok(restored instanceof HTMLSelectElement);
-    assert_m1.equal(restored.value, value);
+    const restored = document.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
+    assert_m1.ok(restored instanceof HTMLButtonElement);
+    assert_m1.equal(restored.dataset.value, value);
     await press(buttonNamed("Back to dashboard"));
     await press(buttonNamed("Discard changes"));
     assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
