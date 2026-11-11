@@ -60,7 +60,7 @@ it("uses the first served workflow when a remembered workflow is unavailable at 
 it("sends no Settings command for the current workflow and canonically saves a different selection once", async () => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
   let settings: SettingsOverride = { preferences: { selectedWorkflowId: "person-lookup" } };
-  let revision = 1;
+  let revision = 2;
   let document = fixtureSettingsDocument(settings, revision);
   const commands: ReturnType<typeof SettingsCommandRequestSchema.parse>[] = [];
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
@@ -100,14 +100,14 @@ it("sends no Settings command for the current workflow and canonically saves a d
     assert.equal(selections.at(-1)?.selectedWorkflowId, "person-lookup");
     await act(async () => { assert.equal(selections.at(-1)?.setSelectedWorkflowId("person-lookup"), true); await ready(); });
     assert.equal(commands.length, 0);
-    assert.equal(revision, 1);
+    assert.equal(revision, 2);
     await act(async () => { assert.equal(selections.at(-1)?.setSelectedWorkflowId("separations"), true); await ready(); });
     assert.equal(selections.at(-1)?.selectedWorkflowId, "separations");
     assert.equal(commands.length, 1);
     assert.equal(commands[0]?.source, "person-preferences");
     assert.equal(commands[0]?.type, "apply-settings");
     assert.deepEqual(commands[0]?.payload.patch, { "preferences.selectedWorkflowId": { set: "separations" } });
-    assert.equal(revision, 2);
+    assert.equal(revision, 3);
     await act(async () => { assert.equal(selections.at(-1)?.setSelectedWorkflowId("separations"), true); await ready(); });
     assert.equal(commands.length, 1);
     assert.equal(selections.at(-1)?.setSelectedWorkflowId("missing"), false);
