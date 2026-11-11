@@ -3,7 +3,7 @@ import type { BulkBatchOutcome } from "../../../app/commands/bulk-dispatch.js";
 import { BulkRunCommandResponseSchema } from "../../../../rules/commands/commands.js";
 import { MOCK_SURFACES_FLAG } from "../../../app/mock-surfaces.js";
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
-export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "rail", "rail-min", "rail-min-tooltip", "rail-min-bell", "command-unknown", "command-results", "search-keyboard", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "account", "account-edit", "account-delete", "account-password", "account-duo-setup", "subscription", "subscription-limit", "subscription-disconnected", "general-a-browser", "general-a-date", "run-sheets", "run-sheets-open", "run-sheets-add", "run-sheets-search", "run-sheets-nopins", "run-sheets-fix", "analytics-a", "analytics-b", "signup-a", "signup-b"] as const;
+export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "rail", "rail-min", "rail-min-tooltip", "rail-min-bell", "command-unknown", "command-results", "search-keyboard", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "account", "account-edit", "account-delete", "account-password", "account-duo-setup", "subscription", "subscription-limit", "subscription-disconnected", "general-a-browser", "general-a-date", "run-sheets", "run-sheets-open", "run-sheets-add", "run-sheets-search", "run-sheets-nopins", "run-sheets-fix", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
 
 /** Account and Subscription fixtures. Email is not served after sign-in, so the Account page has no email row; the ChatGPT email comes with the connected account. */
@@ -80,30 +80,3 @@ export const STATUS_MOCK_FIRST_RUN = [
   { id: "duo", label: "Duo sign-in", state: "ok" },
   { id: "folders", label: "Downloads folder", state: "running" },
 ] as const;
-
-/** Outcome vocabulary shared by the key figures, the daily chart and the workflow rows. Needs attention = finished but not checked after saving, or waiting for you. */
-export const STATUS_MOCK_OUTCOMES = [
-  { key: "done", label: "Done", color: "var(--chart-done)" },
-  { key: "failed", label: "Failed", color: "var(--chart-failed)" },
-  { key: "attention", label: "Needs attention", color: "var(--chart-attention)" },
-] as const;
-export type StatusMockOutcomeKey = (typeof STATUS_MOCK_OUTCOMES)[number]["key"];
-export type StatusMockCounts = Readonly<Record<StatusMockOutcomeKey, number>>;
-
-/** Synthetic week; each workflow's per-day [done, failed, needs attention] counts are the one source for the chart, key figures and table. Served today: finished and running totals, per-workflow counts, per-day run totals, one median time, failure counts by reason. The per-day outcome split, per-workflow lines under a row, the failing workflow per reason, per-day times per workflow and the workflow filter are backend gaps. */
-export const STATUS_MOCK_ANALYTICS = {
-  running: 5,
-  typicalTime: "2m 14s",
-  workflows: [
-    { id: "separations", label: "Separations", time: "2m 41s", failedAt: [["Reading the scan", 1]], seconds: [190, 170, 160, 165, 150, 175, 155],
-      byDay: [[2, 0, 1], [3, 0, 0], [4, 0, 1], [2, 0, 0], [4, 0, 1], [2, 1, 0], [2, 0, 0]] },
-    { id: "emergency-contact", label: "Emergency Contact", time: "1m 38s", failedAt: [["UCPath save", 2]], seconds: [110, 95, 100, 92, 98, 90, 96],
-      byDay: [[1, 0, 0], [2, 1, 0], [2, 0, 1], [2, 1, 1], [3, 0, 0], [1, 0, 0], [1, 0, 0]] },
-    { id: "person-lookup", label: "Person Lookup", time: "0m 52s", failedAt: [], seconds: [60, 55, 52, 50, 54, 48, 51],
-      byDay: [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0], [2, 0, 0], [0, 0, 1]] },
-  ],
-  reasons: [
-    { label: "UCPath did not answer", runs: 2, workflow: "Emergency Contact" },
-    { label: "The scan could not be read", runs: 1, workflow: "Separations" },
-  ],
-} as const;
