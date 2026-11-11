@@ -59,7 +59,7 @@ import { buildRunPreviewResult, buildRunResult } from "../../runs/lifecycle/run-
 import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath, type SpanEmitter } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
 import { createTaskProvenanceCollector } from "../../runs/provenance/task-provenance.js";
-import { RunResultRecordSchema, RunPreviewStepSchema, delegationEvidenceOutput, resolveDelegationEvidenceOutput, type RunPreviewStep, terminalGateDependencyRecord } from "../../../models/run/result.js";
+import { RunResultRecordSchema, AnyRunPreviewStepSchema, delegationEvidenceOutput, resolveDelegationEvidenceOutput, type RunPreviewStep, terminalGateDependencyRecord } from "../../../models/run/result.js";
 import { buildTerminalAuthorization } from "../../runs/lifecycle/terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type RunMutationOutcome, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
 import { WorkerSessionClosureUnprovedError, type WorkerSessionManager } from "../workers/worker-sessions.js";
@@ -1804,6 +1804,20 @@ export async function executeClaimedRun(
               continue;
             }
           }
+          if (envelope.dryRun && node.dryRun === "stop-before-publish") {
+            try {
+              node.uses.input.parse(node.bind(scope));
+            } catch (error) {
+              return await failNode(node, node.uses.id, wrapUnhandledTaskError(node.uses.id, error));
+            }
+            previewOnly.add(String(node.id));
+            dryRunSteps.set(String(node.id), { nodeId: node.id, state: "publication-preview" });
+            deps.taskNotes?.emitRunLog({ workflow: descriptor.id,
+              address: { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath: `${envelope.traceId}/${node.id}` },
+              level: "info", message: "Dry run: this save was prepared and checked. Nothing was saved.",
+            }, getRun());
+            continue;
+          }
           const outcome = await executeTaskNode(node, scope);
           if (outcome !== undefined) return outcome;
           continue;
@@ -2151,7 +2165,7 @@ export async function executeClaimedRun(
     if (envelope.dryRun) {
       const support = workflowDryRunSupport(descriptor);
       if (support.state === "supported") {
-        const steps = RunPreviewStepSchema.array().parse(nodes.map(node => dryRunSteps.get(String(node.id))));
+        const steps = AnyRunPreviewStepSchema.array().parse(nodes.map(node => dryRunSteps.get(String(node.id))));
         return settleSuccess(getRun(), buildRunPreviewResult(descriptor, getRun(), steps,
           dependencyEvidenceFor(workflowPreviewDependencyIds(descriptor, steps), "dry-run preview"), clock, deps.authority.evidenceSchemaHash?.bind(deps.authority)));
       }
