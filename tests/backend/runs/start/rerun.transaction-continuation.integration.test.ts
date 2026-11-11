@@ -650,3 +650,186 @@ for (const changed of [false, true]) it(`${changed ? "refuses" : "reuses"} a ret
   assert.equal(commits, 0);
   assert.deepEqual(h.database.authority.writeIntents.listByBusinessKey("ucpath", WRITE_FIXTURE_KEY_DIGEST), []);
 });
+
+const inheritedChildDescriptor = defineWorkflowDescriptor({ id: sourceBoundReadDescriptor.id, version: 1,
+  contractFingerprint: sourceBoundReadDescriptor.contractFingerprint, code: "sr", label: "Source read", icon: "Search", category: "operations",
+  canonicalInput: sourceBoundReadDescriptor.canonicalInput, inputSubject: "eid", surface: { shape: "single" }, enqueue: "reject-active",
+  actions: sourceBoundReadDescriptor.actions, surfaces: {}, details: [], identity: { matchKey: (input) => input.eid },
+  presentation: { title: (input) => input.eid }, scenarios: ["source-read/happy"],
+  flow: flow(Input).step("read", staleRead, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => input })
+    .build({ schema: staleRead.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
+});
+
+function inheritedInputDescriptor(child: boolean) {
+  const start = flow(Input)
+    .step("before", staleRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid, memo: "source" }) })
+    .step("check", staleRead, { dependsOn: ["before"], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid, memo: "check" }) });
+  if (child) return defineWorkflowDescriptor({ ...metadata, flow: start
+    .childRun("child", { id: sourceBoundReadDescriptor.id, input: Input, result: staleRead.output }, {
+      dependsOn: ["before"], edgeId: DelegationEdgeIdSchema.parse("child"), cardinality: "one", await: "terminal", join: "one",
+      policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" },
+      bind: ({ outputs }) => ({ eid: outputs.before.eid }), deriveChildItemId: (_input, identity) => identity.canonicalItemId })
+    .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: ["before", "child"],
+      prepare: { uses: WriteFixturePrepare, bind: ({ outputs }) => { if (outputs.child.state !== "done") throw new Error("child not done"); return { eid: outputs.child.output.eid }; } },
+      commit: { uses: WriteFixtureCommit, bind: ({ outputs }) => { if (outputs.child.state !== "done") throw new Error("child not done"); return { eid: outputs.child.output.eid }; } },
+      dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
+    .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
+  return defineWorkflowDescriptor({ ...metadata, flow: start
+    .step("mapped", staleRead, { dependsOn: ["before", "check"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid }) })
+    .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: ["mapped"], prepare: { uses: WriteFixturePrepare, bind: ({ outputs }) => ({ eid: outputs.mapped.eid }) },
+      commit: { uses: WriteFixtureCommit, bind: ({ outputs }) => ({ eid: outputs.mapped.eid }) }, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
+    .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
+}
+
+for (const child of [true, false]) for (const changed of [false, true]) it(`R-${child ? 4 : 5} ${changed ? "refuses changed" : "reuses unchanged"} inherited ${child ? "delegation" : "task"} input after its reference was replaced on Resume`, async () => {
+  const sourceValues = [WRITE_FIXTURE_EID, changed ? EidSchema.parse("10899999") : WRITE_FIXTURE_EID];
+  const hooks: { onSource?: () => void; onMapped?: () => void; onCheck?: () => void } = {};
+  let checkCalls = 0;
+  const h = await sourceBoundHarness(inheritedInputDescriptor(child), world => {
+    const read = defineTask(staleRead, { sessions: [], async run({ input, ctx }) {
+      if (input.memo === "check") {
+        if (++checkCalls === 1) throw new Error("fixture downstream failure");
+        hooks.onCheck?.();
+      }
+      const eid = input.memo === "source" ? sourceValues.shift() : input.eid; assert.ok(eid);
+      ctx.recordData({ direction: "read", field: "eid", value: eid });
+      if (input.memo === "source") hooks.onSource?.();
+      else if (input.memo !== "check") hooks.onMapped?.();
+      return { eid };
+    } });
+    const writes = buildWriteFixtureRegistry(world);
+    return defineTaskStoreRegistry([defineServiceStore("ocr", { read }), ...writes.stores], {
+      scenarioIds: [...staleRead.scenarios, ...writes.corpus.scenarioIds],
+      tasks: [{ id: staleRead.id, effect: staleRead.effect }, ...writes.corpus.tasks],
+    });
+  }, undefined, undefined, undefined, child ? [inheritedChildDescriptor] : [], undefined, true);
+  cleanups.push(h.dispose);
+  h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+  const source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID));
+  if (!child) hooks.onCheck = () => h.clock.advanceWall(1);
+  assert.equal((await h.execute(source)).state, "failed");
+  const failed = h.fresh(source), parent = operatorRecover({ ...h, failed });
+  const failures = (run = parent) => JSON.stringify(h.database.authority.failures.listByRun(run.envelope.runId));
+  const pause = () => { const active = h.fresh(parent); requireLifecycleApplied(h.lifecycle.pause({ commandId: randomUUID(), runId: active.envelope.runId, expectedVersion: active.version })); };
+  const resume = () => { const active = h.fresh(parent); return requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: randomUUID(), runId: active.envelope.runId, expectedVersion: active.version })); };
+  if (child) {
+    assert.equal((await h.execute(parent)).state, "yielded-delegation", failures());
+    const members = h.database.authority.runs.listChildren(parent.envelope.runId); assert.equal(members.length, 1);
+    const member = members[0]; assert.ok(member);
+    assert.equal((await h.execute(member)).state, "done");
+    h.clock.advanceWall(1);
+  } else {
+    hooks.onMapped = pause;
+    assert.equal((await h.execute(parent)).state, "abandoned", failures());
+    delete hooks.onMapped;
+    assert.equal(h.database.authority.runCheckpoints.listByAttempt(parent.envelope.workflow, parent.envelope.itemId, "before", parent.envelope.attempt).length, 0);
+    resume();
+  }
+  hooks.onSource = pause;
+  assert.equal((await h.execute(h.fresh(parent))).state, "abandoned", failures());
+  delete hooks.onSource;
+  let next = resume();
+  assert.equal(next.envelope.continuation?.checkpoints.find(row => row.nodeId === "before")?.runId, parent.envelope.runId);
+  if (child) {
+    assert.equal((await h.execute(next)).state, "failed", failures());
+    assert.match(failures(), /delegation-replay-divergent/u);
+    const stopped = h.fresh(parent);
+    next = operatorRecover({ ...h, failed: stopped });
+  }
+  const outcome = await h.execute(next), detail = failures(next);
+  assert.equal(outcome.state, changed ? "failed" : "done", detail);
+  assert.deepEqual(sourceValues, []);
+  assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, changed ? 0 : 1);
+  if (child) assert.equal(h.database.authority.runs.listByWorkflow(sourceBoundReadDescriptor.id).length, 1);
+  if (changed) {
+    const failure = h.database.authority.failures.listByRun(next.envelope.runId).at(-1);
+    assert.equal(failure?.code, child ? "RUN_CONTINUATION_REFUSED" : "RESUME_VALIDATION_FAILED", detail);
+    assert.match(detail, child ? /run-continuation-child-input-mismatch/u : /Completed node \\"mapped\\" has incompatible corrected input/u);
+    assert.deepEqual(h.database.authority.writeIntents.listByBusinessKey("ucpath", WRITE_FIXTURE_KEY_DIGEST), []);
+  }
+});
+
+it("omits a stored conditional dependency that the completed consumer never saw", async () => {
+  const selected = defineWorkflowDescriptor({ ...metadata, flow: flow(Input)
+    .step("before", staleRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid, memo: "source" }) })
+    .step("optional", staleRead, { dependsOn: ["before"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid }),
+      when: { kind: "equals", of: { from: "node", nodeId: "before", path: "eid" }, value: WRITE_FIXTURE_EID } })
+    .step("check", staleRead, { dependsOn: ["before"], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid, memo: "check" }) })
+    .step("mapped", staleRead, { dependsOn: ["before", "optional", "check"], replay: "checkpoint",
+      bind: ({ input, outputs }) => ({ eid: input.eid, memo: outputs.optional === undefined ? "skipped" : "present" }) })
+    .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: ["mapped"], prepare: { uses: WriteFixturePrepare, bind: ({ outputs }) => ({ eid: outputs.mapped.eid }) },
+      commit: { uses: WriteFixtureCommit, bind: ({ outputs }) => ({ eid: outputs.mapped.eid }) }, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
+    .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
+  let checkCalls = 0, sourceCalls = 0;
+  const hooks: { onMapped?: () => void } = {};
+  const h = await sourceBoundHarness(selected, world => {
+    const read = defineTask(staleRead, { sessions: [], async run({ input, ctx }) {
+      if (input.memo === "check" && ++checkCalls === 1) throw new Error("fixture downstream failure");
+      const eid = input.memo === "source" && ++sourceCalls > 1 ? EidSchema.parse("10899999") : input.eid;
+      ctx.recordData({ direction: "read", field: "eid", value: eid });
+      if (input.memo === "skipped") hooks.onMapped?.();
+      return { eid };
+    } });
+    const writes = buildWriteFixtureRegistry(world);
+    return defineTaskStoreRegistry([defineServiceStore("ocr", { read }), ...writes.stores], {
+      scenarioIds: [...staleRead.scenarios, ...writes.corpus.scenarioIds],
+      tasks: [{ id: staleRead.id, effect: staleRead.effect }, ...writes.corpus.tasks],
+    });
+  });
+  cleanups.push(h.dispose);
+  h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+  const source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID));
+  assert.equal((await h.execute(source)).state, "failed");
+  h.clock.advanceWall(1);
+  const failed = h.fresh(source), next = operatorRecover({ ...h, failed });
+  hooks.onMapped = () => { const active = h.fresh(next); requireLifecycleApplied(h.lifecycle.pause({ commandId: randomUUID(), runId: active.envelope.runId, expectedVersion: active.version })); };
+  assert.equal((await h.execute(next)).state, "abandoned", JSON.stringify(h.database.authority.failures.listByRun(next.envelope.runId)));
+  delete hooks.onMapped;
+  const paused = h.fresh(next), resumed = requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: randomUUID(), runId: paused.envelope.runId, expectedVersion: paused.version }));
+  assert.equal((await h.execute(resumed)).state, "done", JSON.stringify(h.database.authority.failures.listByRun(resumed.envelope.runId)));
+  assert.equal(sourceCalls, 2);
+  assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, 1);
+});
+
+it("reuses a retained delegation whose conditional prerequisite depends on a node it was not admitted from", async () => {
+  const selected = defineWorkflowDescriptor({ ...metadata, flow: flow(Input)
+    .step("before", sourceBoundReadContract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => input })
+    .step("optional", sourceBoundReadContract, { dependsOn: ["before"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid }),
+      when: { kind: "is-present", of: { from: "node", nodeId: "before", path: "eid" } } })
+    .childRun("child", { id: sourceBoundReadDescriptor.id, input: Input, result: sourceBoundReadContract.output }, {
+      dependsOn: ["optional"], edgeId: DelegationEdgeIdSchema.parse("child"), cardinality: "one", await: "terminal", join: "one",
+      policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" },
+      bind: ({ outputs }) => { assert.ok(outputs.optional); return { eid: outputs.optional.eid }; },
+      deriveChildItemId: (_input, identity) => identity.canonicalItemId })
+    .step("finish", sourceBoundReadContract, { dependsOn: ["child"], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid, memo: "finish" }) })
+    .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: ["child", "finish"],
+      prepare: { uses: WriteFixturePrepare, bind: ({ outputs }) => { if (outputs.child.state !== "done") throw new Error("child not done"); return { eid: outputs.child.output.eid }; } },
+      commit: { uses: WriteFixtureCommit, bind: ({ outputs }) => { if (outputs.child.state !== "done") throw new Error("child not done"); return { eid: outputs.child.output.eid }; } },
+      dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
+    .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
+  let finishCalls = 0;
+  const h = await sourceBoundHarness(selected, world => {
+    const read = defineTask(sourceBoundReadContract, { sessions: [], async run({ input, ctx }) {
+      if (input.memo === "finish" && ++finishCalls === 1) throw new Error("fixture downstream failure");
+      ctx.recordData({ direction: "read", field: "eid", value: input.eid }); return { eid: input.eid };
+    } });
+    const writes = buildWriteFixtureRegistry(world);
+    return defineTaskStoreRegistry([defineServiceStore("ocr", { read }), ...writes.stores], {
+      scenarioIds: [...sourceBoundReadContract.scenarios, ...writes.corpus.scenarioIds],
+      tasks: [{ id: sourceBoundReadContract.id, effect: sourceBoundReadContract.effect }, ...writes.corpus.tasks],
+    });
+  }, undefined, undefined, undefined, [sourceBoundReadDescriptor], undefined, true);
+  cleanups.push(h.dispose);
+  h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+  const source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID));
+  assert.equal((await h.execute(source)).state, "yielded-delegation");
+  const [child] = h.database.authority.runs.listChildren(source.envelope.runId); assert.ok(child);
+  assert.equal((await h.execute(child)).state, "done");
+  assert.equal((await h.execute(source)).state, "failed");
+  const failed = h.fresh(source); assert.equal(h.database.authority.failures.listByRun(failed.envelope.runId)[0]?.nodeId, "finish");
+  const next = operatorRecover({ ...h, failed });
+  assert.equal((await h.execute(next)).state, "done", JSON.stringify(h.database.authority.failures.listByRun(next.envelope.runId)));
+  assert.equal(h.database.authority.runs.listByWorkflow(sourceBoundReadDescriptor.id).length, 1);
+  assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, 1);
+  assert.deepEqual(h.database.authority.writeIntents.listByBusinessKey("ucpath", WRITE_FIXTURE_KEY_DIGEST).map(intent => intent.status), ["committed"]);
+});

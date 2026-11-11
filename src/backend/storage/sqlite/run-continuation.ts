@@ -100,6 +100,20 @@ export function retainedCheckpoint(repositories: Pick<AuthorityRepositories, "ru
   return row;
 }
 
+/** The row a run's consumer at `claimGeneration` was bound from: its newest row up to that claim, else the row it was created with. */
+export function originalCheckpoint(repositories: Pick<AuthorityRepositories, "runCheckpoints"> & Pick<ContinuationRepositories, "lifecycleJournal">,
+  source: RunRecord, nodeId: string, claimGeneration: number) {
+  const own = repositories.runCheckpoints.listByAttempt(source.envelope.workflow, source.envelope.itemId, nodeId, source.envelope.attempt)
+    .filter(row => row.runId === source.envelope.runId && row.claimGeneration <= claimGeneration).at(-1);
+  if (own !== undefined) return own;
+  if (source.envelope.continuation === undefined) return undefined;
+  if (repositories.lifecycleJournal === undefined) throw new RunContinuationRefusedError("run-continuation-authority-unavailable");
+  const created = repositories.lifecycleJournal.findContinuationIssue(source.envelope.runId, 1);
+  const reference = created?.result.kind === "run" && ["create", "retry", "recover"].includes(created.request.operation)
+    ? created.result.continuation?.checkpoints.find(row => row.nodeId === nodeId && row.runId !== source.envelope.runId) : undefined;
+  return reference === undefined ? undefined : retainedCheckpoint(repositories, source.envelope, reference);
+}
+
 /** Fresh executions may resume their own checkpoints, never another run's latest row. */
 export function readRunCheckpoint(repositories: Pick<AuthorityRepositories, "runCheckpoints"> & { readonly runs?: Pick<AuthorityRepositories["runs"], "get">; readonly lifecycleJournal?: Pick<AuthorityRepositories["lifecycleJournal"], "findContinuationIssue">; readonly gateResults?: AuthorityRepositories["gateResults"] }, envelope: RunEnvelope, nodeId: string, freshTasks = false) {
   if (envelope.continuation !== undefined) {
