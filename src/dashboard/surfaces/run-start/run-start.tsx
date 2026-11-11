@@ -593,7 +593,12 @@ export function RunStartDialog({
         ...(requiredTypes.length ? { workbookReferences: launchWorkbookReferences(requiredTypes, library.catalog, selectedReferences, values === null ? preview.submissions.length : 1,
           versionSources.sources, (workbookReference?.writableFields.length ?? 0) > 0,
           rowCapability === undefined ? undefined : { typeId: rowCapability.typeId, rows: selectedWorkbookRows?.choices ?? [] }) } : {}),
-        ...(customizeSteps || declaredInput ? { selectedStepKeys } : {}),
+        selectedStepKeys: customizeSteps || isRerun ? selectedStepKeys : workflow?.steps.filter(step => {
+          const control = step.control;
+          return declaredInput && control.state === "selectable"
+            ? typedValues[control.inputField] === true
+            : step.includedByDefault;
+        }).map(step => step.key) ?? [],
         // Send omission facts only after every declared form parses.
         ...(customizeSteps && stepOmissions !== null && stepOmissions.length > 0 ? { stepOmissions } : {}),
       });
@@ -611,7 +616,7 @@ export function RunStartDialog({
     } finally {
       if (launchInstance.current === instance) setBusy(false);
     }
-  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput, requiredTypes, library.catalog, library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility, versionSources, workbookReference, selectedReferences, rowCapability, selectedWorkbookRows, pdfSurface]);
+  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput, typedValues, workflow, requiredTypes, library.catalog, library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility, versionSources, workbookReference, selectedReferences, rowCapability, selectedWorkbookRows, pdfSurface]);
 
   const sendFinal = useCallback(async (command: LaunchFinalCommand, dispatchedFor: string): Promise<void> => {
     if (sending.current) return;
