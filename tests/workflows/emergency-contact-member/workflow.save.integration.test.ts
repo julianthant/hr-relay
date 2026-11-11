@@ -427,7 +427,7 @@ it("recovers a failed OnBase import by running the record again: the Save resolv
   assert.deepEqual(receipts.ensureReceipt(f.run.envelope.runId), originalReceipt);
   assert.deepEqual(f.database.authority.evidenceReceipts.findByRun(f.run.envelope.runId), originalBytes);
 });
-it("refuses deleting a producer whose committed OnBase checkpoint a retained done run replayed; the consumer deletes first and the producer's intent outlives both", async () => {
+it("refuses deleting a producer whose committed OnBase checkpoint a retained done run replayed; the consumer deletes and the producer's intent stays findable", async () => {
   const f = await memberFixture();
   const again = f.execution.start(compiled.descriptor, { ...approved, record: { ...approved.record, recordId: `${"b".repeat(64)}#emergency-contact#2` } }, { dryRun: false });
   await f.execution.execute(again, world.SIGNAL);
@@ -442,6 +442,14 @@ it("refuses deleting a producer whose committed OnBase checkpoint a retained don
   const remove = (runId: string) => {
     const current = f.database.authority.runs.get(runId); assert.ok(current);
     return f.execution.lifecycle.delete({ commandId: randomUUID(), runId, expectedVersion: current.version });
+  };
+  const refusedFirst = remove(f.run.envelope.runId);
+  assert.deepEqual(refusedFirst.state === "refused" && refusedFirst.refusal.reason, "shared-checkpoint");
+  const consumerDeleted = remove(again.envelope.runId);
+  assert.equal(consumerDeleted.state, "deleted", JSON.stringify(consumerDeleted));
+  assert.equal(f.database.authority.runs.get(consumer.envelope.runId), undefined);
+  assert.deepEqual(f.database.authority.writeIntents.findByPermanentKey(intent.system, intent.idempotencyKey), intent);
+});
   };
   const refusedFirst = remove(f.run.envelope.runId);
   assert.deepEqual(refusedFirst.state === "refused" && refusedFirst.refusal.reason, "shared-checkpoint");
