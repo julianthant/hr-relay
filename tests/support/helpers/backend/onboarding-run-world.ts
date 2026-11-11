@@ -144,7 +144,7 @@ export function createOnboardingRunWorld() {
   type ExecutionFault = "gate-missing" | "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
 
   async function executionFixture(corruptAssertedSubject = false, options: {
-    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; legalName?: string; livedName?: string;
+    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; legalName?: string; livedName?: string; crmReadFails?: boolean;
     personMatch?: z.output<typeof SearchPersonMatchOutputSchema>;
     hire?: Omit<Parameters<typeof deterministicHireOperations>[0], "now">;
     i9?: Partial<Omit<Parameters<typeof createDeterministicI9Driver>[0], "now">>;
@@ -155,7 +155,9 @@ export function createOnboardingRunWorld() {
     const calls: { system: string; input: unknown }[] = [];
     const sessions = sessionFactoryHarness({
       crm: () => ({ ...healthyCrmDriver(), readHireData: async (input: { email: string }) => {
-        calls.push({ system: "crm", input }); return CrmReadHireData.example;
+        calls.push({ system: "crm", input });
+        if (options.crmReadFails === true) throw new Error("synthetic CRM read failure");
+        return CrmReadHireData.example;
       } }),
       ucpath: () => {
         const base = healthyUcpathDriver();

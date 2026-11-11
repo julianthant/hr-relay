@@ -6,6 +6,7 @@ import { TimelineEventRecordSchema, type TimelineEventRecord } from "../../../sr
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { redactEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
 import { GateIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
+import { deriveEvidenceEntryId } from "../../../src/models/trust/evidence-identity.js";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { runClaim } from "../../../src/models/run/record.js";
 import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding/result.js";
@@ -721,6 +722,52 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(f.calls.filter(call => call.system === "i9").length, 0);
     assert.deepEqual(f.database.authority.runs.listChildren(candidate.envelope.runId), []);
     assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(candidate.envelope.runId), []);
+  });
+
+  describe("explain run on a failed run whose roster resolved", () => {
+    async function failedAtCrmSource() {
+      const f = await executionFixture(false, { match: "unique", dryRun: true, crmReadFails: true });
+      const root = f.start();
+      assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "failed");
+      assert.deepEqual(f.calls.map(call => call.system), ["crm"]);
+      const run = f.database.authority.runs.get(root.envelope.runId); assert.ok(run?.lifecycle.state === "terminal");
+      const failure = f.database.authority.failures.listByRun(run.envelope.runId).find(value => value.code === "ONBOARDING_CRM_READ_FAILED");
+      assert.ok(failure);
+      const result = f.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
+      const input = { descriptor, run, result, failure, checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId),
+        writes: [], gateResults: f.database.authority.gateResults.listByRun(run.envelope.runId) };
+      return { f, run, failure, result, input };
+    }
+
+    it("derives a failed unknown receipt whose not-run roster-choice cites the roster.state input fact", async () => {
+      const { f, run, input } = await failedAtCrmSource();
+      assert.equal(OnboardingCanonicalValueSchema.parse(run.input.parsed.value).roster.state, "resolved");
+      const receipt = buildRunEvidenceReceipt(input);
+      assert.equal(receipt.result, "failed"); assert.equal(receipt.confidence, "unknown");
+      const inputFact = receipt.input.find(fact => fact.id === deriveEvidenceEntryId(receipt.receiptId, "input", "roster.state"));
+      assert.ok(inputFact);
+      const decision = receipt.decisions.find(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`));
+      assert.ok(decision?.outcome === "not-taken" && decision.kind === "branch");
+      assert.deepEqual(decision.evidence, [`observation:${inputFact.id}`]);
+      const known = new Set([...receipt.input, ...receipt.observations, ...receipt.output, ...receipt.decisions, ...receipt.actions,
+        ...receipt.verification, ...receipt.reuse, ...receipt.warnings].map(entry => String(entry.id)));
+      const references = [...receipt.decisions.flatMap(entry => entry.evidence), ...receipt.verification.flatMap(entry => entry.evidence),
+        ...receipt.warnings.flatMap(entry => entry.evidence), ...receipt.reuse.map(entry => entry.source)];
+      for (const reference of references) {
+        assert.ok(reference.startsWith("observation:") && known.has(reference.slice("observation:".length)), reference);
+      }
+      assert.ok(receipt.verification.every(entry => entry.verdict !== "verified"), "no unexecuted work is verified");
+      assert.ok(receipt.actions.every(action => action.kind !== "commit" && action.writeState === "not-attempted"));
+      assert.ok(!receipt.actions.some(action => action.taskId !== "read-hire-data" && action.kind === "external-read"));
+      assert.deepEqual(f.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+    });
+
+    it("refuses a corrupt failure digest and a result of another run or attempt", async () => {
+      const { failure, result, input } = await failedAtCrmSource();
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, failure: { ...failure, summary: `${failure.summary} altered` } }), /terminal-failure-result-mismatch/u);
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, result: { ...result, attempt: result.attempt + 1 } }), /terminal-evidence-receipt-identity-mismatch/u);
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, result: { ...result, runId: randomUUID() } }), /terminal-evidence-receipt-identity-mismatch/u);
+    });
   });
 
 });
