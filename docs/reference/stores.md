@@ -228,7 +228,7 @@ _No tasks registered — this store is a declaration-only placeholder._
 | Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
 |---|---|---|---|---|---|---|---|---|---|
 | `ocr/extract-form-page` | Reading form page | read | extract | — (sessionless) | `ocr.extract` | `formType`, `page`, `sourcePage` | `formType`, `source`, `readAt`, `sourceSha256`, `sourcePage`, `pageKind`, `record`, `pageFingerprint` | 4h | bound |
-| `ocr/read-approved-snapshot` | Read approved OCR snapshot | read | read | — (sessionless) | `ocr.approved-snapshot` | `snapshotId`, `sourceRunId`, `revision`, `digest` | `snapshot` | 0 (re-read every run) | bound |
+| `ocr/read-approved-snapshot` | Read approved OCR snapshot | read | read | — (sessionless) | `ocr.approved-snapshot` | `snapshotId`, `sourceRunId`, `revision`, `digest` | `snapshot` | ∞ | bound |
 | `ocr/read-approved-record` | Verify approved OCR member | read | read | — (sessionless) | `ocr.approved-snapshot` | `approval`, `record` | `record` | 0 (re-read every run) | bound |
 | `ocr/read-approved-records` | Read approved OCR selections | read | read | — (sessionless) | `ocr.review` | `delegationNodeId`, `outcomes` | `state="ready"` + `sources` / `state="refused"` + `code` | ∞ | bound |
 
@@ -272,7 +272,7 @@ _No tasks registered — this store is a declaration-only placeholder._
 
 | Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| `workflow:emergency-contact-member/read-approved-contact` | Map approved contact fields | read | read | — (sessionless) | — | `approval`, `record` | `emplId`, `expectedName`, `contact` | 0 (re-read every run) | bound |
+| `workflow:emergency-contact-member/read-approved-contact` | Map approved contact fields | read | read | — (sessionless) | — | `approval`, `record` | `emplId`, `expectedName`, `contact` | ∞ | bound |
 | `workflow:emergency-contact-member/read-contact-plan` | Plan ordered primary contact changes | read | read | — (sessionless) | — | `contact`, `contacts` | `target`, `changes`, `demotionLine`, `contactLine` | 0 (re-read every run) | bound |
 
 ### `workflow:i9-check`

@@ -369,10 +369,13 @@ it("resumes the same saved member Retry after a pause without another Save", asy
   const continuation = f.current(held.envelope.runId).envelope.continuation; assert.ok(continuation);
   assert.ok(continuation.checkpoints.some(row => row.runId === held.envelope.runId && row.nodeId === "approved-record"));
   assert.ok(continuation.checkpoints.some(row => row.runId === held.envelope.runId && row.nodeId === "contact-preview"));
+  const imports = f.onbase.imports();
   const completed = await f.canonical.step(f.parentRun, signal());
   assert.equal(completed.run.envelope.runId, held.envelope.runId);
   assert.equal(completed.outcome.state, "done", completed.outcome.state === "failed"
     ? JSON.stringify(f.database.authority.failures.get(completed.outcome.failureId)) : JSON.stringify(completed.outcome));
+  assert.deepEqual(f.database.authority.runs.listChildren(held.envelope.runId).map(run => run.envelope.workflow), ["onbase"]);
+  assert.equal(f.onbase.imports(), imports + 1);
   assert.deepEqual(f.database.authority.runCheckpoints.listByItem(held.envelope.workflow, held.envelope.itemId), checkpoints);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(held.envelope.runId), intents);
   assert.equal(f.canonical.kernel.execute(f.runCommand("resume", f.current())).state, "applied");

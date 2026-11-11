@@ -61,7 +61,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
     const port = createDeterministicUcpathContactPage({ initial: page }); ports.push(port);
     const driver = createDeterministicUcpathPersonOrgDriver(undefined, undefined, port);
     return { ...driver, async readEmergencyContacts(input: Parameters<typeof driver.readEmergencyContacts>[0]) {
-      const set = await driver.readEmergencyContacts(input); reads++;
+      const set = await driver.readEmergencyContacts(input); reads++; h.authority.clock.advanceWall(1_000);
       return options.unknownProbe === true && reads > 1 ? { ...set, rows: set.rows.map(row => row.kind === "contact" ? { ...row, effect: { ...row.effect, phone: "2025550101" } } : row) } : set;
     } };
   } });

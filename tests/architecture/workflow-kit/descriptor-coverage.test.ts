@@ -26,7 +26,7 @@ import {
 } from "../../../src/workflow-kit/validation/workflow-module-audit.js";
 import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { flow } from "../../../src/workflow-kit/flow.js";
-import { defineWorkflowDescriptor, workflowProjections } from "../../../src/workflow-kit/workflow.js";
+import { defineWorkflowDescriptor, descriptorRuntimeNodes, workflowProjections } from "../../../src/workflow-kit/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import { CANONICAL_FIELDS } from "../../../src/models/fields/registry.js";
 import {
@@ -113,6 +113,16 @@ describe("descriptor coverage", () => {
       assert.ok(descriptor.version >= 1, String(descriptor.id));
       assert.match(descriptor.contractFingerprint, /^[0-9a-f]{64}$/, String(descriptor.id));
     }
+  });
+
+  it("gives every task a delegate references an unbounded freshness policy, since admission ages scope facts on the wall clock", () => {
+    const bounded = ALL.flatMap(descriptor => {
+      const nodes = descriptorRuntimeNodes(descriptor), byId = new Map(nodes.map(node => [String(node.id), node]));
+      return nodes.filter(node => node.kind === "child-run").flatMap(node => node.dependsOn.map(id => byId.get(String(id)))
+        .filter(source => source?.kind === "task" && [source.uses.freshness.defaultMaxAgeMs, ...(source.uses.freshness.byField ?? []).map(rule => rule.maxAgeMs)].some(limit => limit !== Infinity))
+        .map(source => `${String(descriptor.id)} · ${String(node.id)} · ${String(source?.id)}`));
+    });
+    assert.deepEqual(bounded, []);
   });
 
   it("derives every registry key from the one module tuple, in both directions", () => {

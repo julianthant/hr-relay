@@ -109,7 +109,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
     const driver = createDeterministicUcpathPersonOrgDriver(undefined, undefined, port, options.failure === "pending" ? undefined : save);
     return { ...driver,
       async readEmergencyContacts(input: Parameters<typeof driver.readEmergencyContacts>[0]) {
-        reads++;
+        reads++; h.authority.clock.advanceWall(1_000);
         if (options.failure === "read" || options.failure === "probe" && reads > 1) throw new Error("fixture-contact-read-failed");
         if (options.failure === "verifier" && persistence.submissions.length > 0) throw new Error("fixture-native-verifier-failed");
         return driver.readEmergencyContacts(input);

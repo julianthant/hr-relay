@@ -562,6 +562,11 @@ whose policy is `override: "audited"`. A forbidden override refuses. Correcting 
 refresh untouched live facts. Gate decisions are separate upstream evidence and cannot make an
 older observed input fresh.
 
+Delegation admission is stricter. It ages every fact of every task checkpoint that a delegate
+references against the wall clock, whether the checkpoint was replayed or written in the same claim.
+A task that a delegate references therefore declares an unbounded freshness policy. Live re-checks
+belong in separate bounded tasks and in the child's own probes. An architecture test pins this.
+
 ### 5.6 Recovery and Rerun
 
 `RunRecord.pause` is an orthogonal scheduling hold. Queued work pauses immediately. Claimed work
