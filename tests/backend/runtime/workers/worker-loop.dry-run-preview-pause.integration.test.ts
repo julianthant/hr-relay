@@ -45,10 +45,10 @@ describe("a dry run paused mid-preview resumes in the same process (ref workers-
         h.world.prepareSteps = async () => { if (first) { first = false; entered(); await never; } };
       }
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW), absentProbeEvidence(WRITE_FIXTURE_NOW));
-      assert.equal(h.database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun: true })).state, "inserted");
       const stop = new AbortController();
       const loop = h.loop(stop.signal);
       try {
+        assert.equal(h.database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun: true })).state, "inserted");
         if (role === "probe") await pump(h, () => h.world.events.includes("probe")); else await blocked;
         const firstGeneration = current(h).claimGeneration;
         requireLifecycleApplied(testRunService(h.database, h.clock).pause({ commandId: randomUUID(), runId: WRITE_FIXTURE_RUN_ID, expectedVersion: current(h).version }));
