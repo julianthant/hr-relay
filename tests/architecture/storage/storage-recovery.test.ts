@@ -2535,7 +2535,7 @@ describe("authority.health preflight and static recovery boundary", () => {
     const withoutBackup = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
 
     assert.equal(withoutBackup.state, "healthy");
-    assert.match(withoutBackup.summary, /backup missing/);
+    assert.doesNotMatch(withoutBackup.summary, /backup/i);
   });
 
   it("keeps native browser preparation outside stopped backup IO", () => {
