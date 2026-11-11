@@ -1,3 +1,4 @@
+import type { CommandOutcome } from "../../../../src/dashboard/app/commands/command-executor.js";
 import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
 import { FrontendBootstrapWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
@@ -8,7 +9,7 @@ import type { DashboardAuthority } from "../../../../src/dashboard/app/dashboard
 import { FIXTURE_BOOTSTRAP } from "../../fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_DAY_WIRE } from "../../fixtures/dashboard/fixture-queue.js";
 
-export function FixtureCommandBinding({ children, actorId, requestKey = 0, nowIso = FIXTURE_BOOTSTRAP.serverClock.now }: { children: ReactNode; actorId: string; requestKey?: number; nowIso?: string }) {
+export function FixtureCommandBinding({ children, actorId, requestKey = 0, nowIso = FIXTURE_BOOTSTRAP.serverClock.now, feedback }: { children: ReactNode; actorId: string; requestKey?: number; nowIso?: string; feedback?: (outcome: CommandOutcome) => void }) {
   const client = useDashboardClient();
   const executor = useDashboardCommandExecutor();
   const scopeActorId = ActorIdSchema.parse(actorId);
@@ -26,7 +27,7 @@ export function FixtureCommandBinding({ children, actorId, requestKey = 0, nowIs
       dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request, day: { state: "loaded" as const, value: dayWire }, connection: { state: "connecting" as const }, refresh: () => { throw new Error("fixture day refresh is not served"); } },
       selection: { route: { start: false }, workflowId: "" },
     });
-    return Object.freeze({ authority, executor, scope: Object.freeze({ actorId: scopeActorId, client, authority: epoch, dayRequest: request }), feedback: () => undefined });
-  }, [client, executor, epoch, requestKey, scopeActorId]);
+    return Object.freeze({ authority, executor, scope: Object.freeze({ actorId: scopeActorId, client, authority: epoch, dayRequest: request }), feedback: feedback ?? (() => undefined) });
+  }, [client, executor, epoch, requestKey, scopeActorId, feedback]);
   return <DashboardCommandBindingProvider binding={binding}>{children}</DashboardCommandBindingProvider>;
 }

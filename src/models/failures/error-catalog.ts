@@ -240,6 +240,22 @@ export const ERROR_CATALOG = Object.freeze({
     "Preflight report is stale or empty. Re-check readiness.",
     EmptyParametersSchema,
   ),
+  RUN_START_PLAN_EXPIRED: catalogEntry(
+    "This plan expired. Review a fresh plan before starting again.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_READINESS_BLOCKED: catalogEntry(
+    "Readiness checks failed. Review Settings before starting again.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_READINESS_UNAVAILABLE: catalogEntry(
+    "Readiness could not be checked. Try Start again.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_READINESS_CHANGED: catalogEntry(
+    "Readiness changed during the check. Review the plan and try Start again.",
+    EmptyParametersSchema,
+  ),
   PREFLIGHT_EVIDENCE_EXPIRED: catalogEntry(
     "Preflight evidence expired; re-check readiness.",
     EmptyParametersSchema,
