@@ -123,13 +123,15 @@ export function fanOutQueuedRuns(
     // An authority read error here aborts the whole fan-out — never "continue
     // and enqueue anyway" (ref dashboard-surfaces  Enqueue).
     const active = activeRunsForItem(repositories, envelope.workflow, entry.itemId);
-    if (descriptor.enqueue === "reject-active" && active.length > 0) {
+    // The kernel has just checked a gate correction's active set equals its reviewed supersede targets.
+    const supersede = descriptor.enqueue === "supersede-active" || envelope.sourceBound?.source.gateCorrection !== undefined;
+    if (descriptor.enqueue === "reject-active" && !supersede && active.length > 0) {
       refuse(
         `${envelope.workflow} item ${entry.itemId} (${entry.matchKey}) already has an active run `
         + `(${active[0].envelope.traceId}); nothing from ${origin} was started`,
       );
     }
-    if (descriptor.enqueue === "supersede-active") {
+    if (supersede) {
       for (const activeRun of active) {
         const outcome = lifecycle.transition({
           commandId: lifecycleCommandId("operator-supersede", { commandId: envelope.commandId, runId: activeRun.envelope.runId }),
