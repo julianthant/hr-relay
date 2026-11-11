@@ -18,7 +18,7 @@ import { HubShell } from "../surfaces/shell/hub-shell.js";
 import { useHubMotion } from "../ds/theme/motion.js";
 import "../ds/theme/hub-theme.css";
 import { useInboxWiring, type InboxWiring } from "../state/inbox-wiring-adapter.js";
-import { useSearchWiring } from "../state/search-wiring-adapter.js";
+import { useLibrarySheets, useSearchWiring } from "../state/search-wiring-adapter.js";
 import { useQueueWiring } from "../state/queue-wiring-adapter.js";
 import { useApplicationLifecycle } from "../state/application-lifecycle-model.js";
 import type { RunWiringConfirm } from "../state/run-wiring-adapter.js";
@@ -1040,7 +1040,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const searchTitles = useMemo(() => new Map(queueRows.map(row => [String(row.runId), row.title])), [queueRows]);
   const servedSearchData = useSearchWiring({ client, enabled: workflowComposition.search === "served" && route.view?.search === true,
     query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows, titles: searchTitles });
-  const searchData = workflowComposition.search === "mock" ? previewSearchData : servedSearchData;
+  const librarySheets = useLibrarySheets(client, workflowComposition.search === "served" && route.view?.search === true);
+  const searchData = useMemo(() => workflowComposition.search === "mock" ? previewSearchData : { ...servedSearchData, sheets: librarySheets }, [workflowComposition.search, previewSearchData, servedSearchData, librarySheets]);
   const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast });
   const [notificationReads, setNotificationReads] = useState<NotificationReads>({});
   const notifications = useWorkspaceNotifications(notificationScenario(), {

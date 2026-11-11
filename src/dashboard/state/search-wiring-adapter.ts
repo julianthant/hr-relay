@@ -64,6 +64,18 @@ export function workspaceSearchQuery(query: string, workflows: readonly Pick<Wor
   return base;
 }
 
+/** The saved library as palette rows, read while the palette is open. */
+export function useLibrarySheets(client: Pick<DashboardClient, "workbookList">, enabled: boolean): readonly PaletteSheet[] {
+  const [sheets, setSheets] = useState<readonly PaletteSheet[]>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    client.workbookList().then(records => { if (live) setSheets(paletteSheets(records)); }, () => { if (live) setSheets([]); });
+    return () => { live = false; };
+  }, [client, enabled]);
+  return sheets;
+}
+
 const NO_TITLES: ReadonlyMap<string, string> = new Map();
 export function useSearchWiring({ client, enabled, query, today, epoch, workflows, titles = NO_TITLES }: { client: DashboardClient; enabled: boolean; query: string; today: string; epoch: object; workflows: readonly Pick<WorkflowBootstrapPrimitive, "id" | "label">[]; titles?: ReadonlyMap<string, string> }): NavbarData {
   const request = useMemo(() => ({ client, enabled, query, epoch, workflows }), [client, enabled, query, epoch, workflows]);
@@ -80,15 +92,8 @@ export function useSearchWiring({ client, enabled, query, today, epoch, workflow
     });
     return () => controller.abort();
   }, [client, enabled, query, today, workflows, request]);
-  const [sheets, setSheets] = useState<readonly PaletteSheet[]>([]);
-  useEffect(() => {
-    if (!enabled) return;
-    let live = true;
-    Promise.resolve().then(() => client.workbookList()).then(records => { if (live) setSheets(paletteSheets(records)); }, () => { if (live) setSheets([]); });
-    return () => { live = false; };
-  }, [client, enabled]);
   return useMemo(() => {
     const data = settled?.request === request ? settled.data : { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_LOADING") };
-    return { ...data, results: withQueueSubjects(data.results, titles), sheets };
-  }, [settled, request, today, titles, sheets]);
+    return { ...data, results: withQueueSubjects(data.results, titles) };
+  }, [settled, request, today, titles]);
 }
