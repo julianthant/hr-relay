@@ -138,7 +138,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await rerun.getByRole('button', { name: 'Confirm', exact: true }).click();
         await expect(rerun.getByRole('textbox', { name: 'Employee ID', exact: true })).toHaveValue('10812345');
         await rerun.getByRole('button', { name: 'Continue', exact: true }).click();
-        await setSwitchChecked(rerun.getByRole('switch', { name: 'Dry run Fill and check every step without submitting.', exact: true }), true);
+        await setSwitchChecked(rerun.getByRole('switch', { name: 'Dry run Fill and check every step without submitting or saving.', exact: true }), true);
         await rerun.getByRole('button', { name: 'Preview plan', exact: true }).click();
         const submit = rerun.getByRole('button', { name: 'Start dry run', exact: true });
         await expect(submit).toBeVisible();

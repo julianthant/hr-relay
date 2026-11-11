@@ -35,7 +35,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await dialog.getByRole("textbox", { name: "Employee IDs", exact: true }).fill("10000022");
       await advance(dialog);
       await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).check();
-      await setSwitchChecked(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true }), false);
+      await setSwitchChecked(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting or saving.", exact: true }), false);
       await advance(dialog);
       const read = dialog.getByRole("checkbox", { name: "Verify onboarding and oath date", exact: true });
       await expect(read).toBeEnabled(); await read.uncheck();

@@ -29,7 +29,7 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
 
   const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSchema.parse({
     ...FIXTURE_BOOTSTRAP,
-    workbookCompatibility: projectWorkbookCompatibility(START_PICKER_MODULES.map(module => module.descriptor), []),
+    workbookCompatibility: projectWorkbookCompatibility(WORKFLOW_MODULES.map(module => module.descriptor), []),
     descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
     workflows: WORKFLOW_MODULES.map((module) => ({
       id: module.descriptor.id,

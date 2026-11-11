@@ -9,8 +9,11 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildRunPreviewResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
+import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
+import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { WRITE_FIXTURE_NODE_ID } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { FINALIZATION_FIELDS, finalizationClaimRunning, finalizationContext, finalizationDurableFootprint, finalizationHarness, finalizationPreviewDependencies, finalizationQueuedRun } from "../../../support/helpers/kuali-finalization-fixtures.js";
+import { createCapabilityWiringTestWorld } from "../../../support/helpers/backend/capability-wiring-world.js";
 import { separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const retainedKualiPreviewOwners = new Set<object>();
@@ -18,7 +21,9 @@ const retainedKualiPreviewOwners = new Set<object>();
 const {kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness, cleanup } = createDryRunPreviewResultTestWorld();
 
 
+const wiring = createCapabilityWiringTestWorld();
 afterEach(cleanup);
+afterEach(wiring.cleanup);
 
 describe("a dry run retains transaction preview accounting", () => {
 
@@ -278,5 +283,30 @@ describe("a dry run retains transaction preview accounting", () => {
       const index = kualiOpen.indexOf(k); if (index >= 0) kualiOpen.splice(index, 1);
       throw retainAuthoritySourceClosure([error], { admission: held });
     }
+  });
+});
+
+describe("a publication preview receipt", () => {
+  it("names the publication node and the unavailable stage in the DRY_RUN_PREVIEW warning", async () => {
+    const descriptor = wiring.publicationDescriptor("wiring-projection", "pr");
+    const store = defineServiceStore("ocr", { fixture: defineTask(wiring.providersOnlyContract, { sessions: [], async run() { return { value: "unused" }; } }) });
+    const harness = await wiring.wiringHarness(descriptor, defineTaskStoreRegistry([store], { scenarioIds: [wiring.SCENARIO],
+      tasks: [{ id: wiring.providersOnlyContract.id, effect: wiring.providersOnlyContract.effect }] }));
+    const queued = wiring.queuedRunFor(descriptor);
+    harness.authority.database.authority.runs.enqueue({ ...queued, envelope: { ...queued.envelope, dryRun: true } });
+    const claimed = wiring.claim(harness.authority, descriptor), claim = claimed.claim;
+    const run = { ...claimed.run, lifecycle: { ...claimed.run.lifecycle, state: "running" as const } };
+    const built = buildRunPreviewResult(descriptor, run, [
+      { nodeId: "extract", state: "publication-preview" },
+      { nodeId: "after", state: "unavailable", reason: "requires-unsubmitted-output" },
+    ], [], harness.authority.clock);
+    const terminal = { ...run, version: run.version + 1,
+      completion: { schemaVersion: 1, kind: "done", expectedVersion: run.version, claim, authorizedAt: built.record.createdAt, resultDigest: deriveRunResultDigest(built.record) },
+      lifecycle: { state: "terminal", outcome: "done", endedAt: built.record.createdAt } };
+    const { receipt } = deriveRunEvidenceReceipt({ descriptor, run: terminal, result: built.record, checkpoints: [] });
+    const warning = receipt.warnings.find(({ code }) => code === "DRY_RUN_PREVIEW");
+    assert.ok(warning);
+    assert.match(warning.summary, /publication node "extract" prepared its output without saving/);
+    assert.match(warning.summary, /Unavailable stages: after/);
   });
 });

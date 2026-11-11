@@ -165,3 +165,32 @@ it.each([
     assert.equal(f.db.authority.artifactOutbox.get(row.outboxId)?.state, "pending");
   } finally { await f.dispose(); }
 });
+
+it("fails a dry run at a node that declares an artifact projection, before its task, outbox or sink runs", async () => {
+  const f = await foundationFixture();
+  let invoked = 0;
+  const task = defineTask(contract, { sessions: [], async run() { invoked += 1; throw new Error("dry run invoked the projection source task"); } });
+  try {
+    const artifacts = createContentAddressedArtifactWriter({ admission: f.profile.admission }); await artifacts.ready;
+    const projector = composeWorkerArtifactProjector({ admission: f.profile.admission, database: f.db, artifacts, clock: f.clock });
+    let projected = 0;
+    const artifactProjector = { ...projector, async projectOutbox(ids: Parameters<typeof projector.projectOutbox>[0]) { projected += 1; return projector.projectOutbox(ids); } };
+    const ports = testWorkerPorts(f.db, f.clock, { path: f.path, descriptor, poolIndex: 1 });
+    const slot = f.db.authority.workerSlots.list(descriptor.id).find(row => row.poolIndex === 1); assert.ok(slot);
+    const runId = randomUUID();
+    f.db.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, runId, itemId: runId, workflow: descriptor.id, contractFingerprint: descriptor.contractFingerprint, dryRun: true,
+      traceId: TraceIdSchema.parse("wj-170000-2223"), configSnapshotId: f.snapshot.configSnapshotId, configFingerprint: f.snapshot.fingerprint, resolvedInstance: {} },
+      input: { raw: { name: "Synthetic batch" }, parsed: { schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value: { name: "Synthetic batch" }, protectedBindings: [] }, ingressSchemaHash: "a".repeat(64) } });
+    const claimed = ports.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: slot.workerId }); assert.equal(claimed.state, "applied");
+    if (claimed.state !== "applied") throw new Error("synthetic output run was not claimed");
+    const result = await executeClaimedRun({ descriptor, lifecycle: testRunLifecycle(f.db, f.clock), stores: defineTaskStoreRegistry([defineWorkflowStore(descriptor.id, { publishArchive: task })],
+      { scenarioIds: [scenario], tasks: [{ id: contract.id, effect: "read" }] }), authority: f.db, sessions: await sessionManagerFor(happySessionHarness(), f.clock), emitter: recordingEmitter().emitter, clock: f.clock,
+      ids: sequentialIdFactory("f"), scheduler: new ManualScheduler(f.clock, 0), taskDeadlineMs: 60_000, log: recordingLogger().log, artifacts, artifactProjector },
+      { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration }, signal: new AbortController().signal });
+    assert.equal(result.state, "failed");
+    if (result.state !== "failed") return;
+    assert.match(f.db.authority.failures.get(result.failureId)?.summary ?? "", /dry run must never reach/u);
+    assert.deepEqual([invoked, projected], [0, 0]);
+    assert.equal(f.db.authority.generatedArtifacts.list().some(file => file.updates.some(update => update.record.sourceRunId === runId)), false);
+  } finally { await f.dispose(); }
+});

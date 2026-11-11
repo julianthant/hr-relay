@@ -216,7 +216,8 @@ describe_m1("frontend workflow catalog", () => {
     const publicStarts = WORKFLOW_MODULES.map(({ descriptor, role }) => ({
       workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category, code: descriptor.code, role,
       enqueue: descriptor.enqueue, version: descriptor.version, steps: projectWorkflowStartSteps(descriptor),
-      requiredWorkbookTypeIds: descriptor.requiredWorkbookTypeIds, spreadsheetIntake: false,
+      requiredWorkbookFields: descriptor.requiredWorkbookFields, referenceSources: [], spreadsheetIntake: false,
+      ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
       uploadRun: descriptor.surfaces.uploadRun,
       inputRun: descriptor.surfaces.inputRun === undefined
         ? { state: "absent" as const, reason: "No typed input" }
@@ -227,7 +228,7 @@ describe_m1("frontend workflow catalog", () => {
     expect_m1(parent).toHaveLength(1);
     expect_m1(parent[0]).toMatchObject({ source: "served", launch: { state: "served" },
       served: { uploadRun: { pdfInput: { documentsField: "documents", asOfField: "asOf", reviewerField: "reviewerName" } },
-        requiredWorkbookTypeIds: ["action-history"], steps: [{ key: "documents" }, { key: "roster-reference" }, { key: "retention" }] } });
+        workbookReference: { id: "action-history" }, steps: [{ key: "documents" }, { key: "roster-reference" }, { key: "retention" }] } });
     expect_m1(product.filter(entry => ["i9-check", "i9-lookup", "ocr"].includes(entry.id))).toEqual([]);
     expect_m1(() => buildWorkflowCatalog_m1(publicStarts.filter(flow => flow.workflowId !== "i9-check-start")))
       .toThrow("WORKFLOW_SERVED_REGISTRATION_MISSING: i9-check-start");
@@ -235,7 +236,7 @@ describe_m1("frontend workflow catalog", () => {
     for (const owner of ["ocr", "onboarding"]) expect_m1(childWorkflowModuleOf(owner, "i9-lookup").descriptor.id).toBe("i9-lookup");
     const module = WORKFLOW_MODULES.find(entry => entry.descriptor.id === "i9-check-start");
     assert_m0.ok(module);
-    expect_m1(workflowDryRunSupport(module.descriptor)).toEqual({ state: "unsupported", reason: "no-transaction-node" });
+    expect_m1(workflowDryRunSupport(module.descriptor)).toEqual({ state: "supported", firstPublicationNodeId: "save-workbook" });
   });
 });
 }

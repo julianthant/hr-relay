@@ -68,8 +68,8 @@
     - group "Run options":
       - checkbox "Customize steps"
       - text: Customize steps Choose optional steps.
-      - switch "Dry run Fill and check every step without submitting."
-      - text: Dry run Fill and check every step without submitting. Screenshots
+      - switch "Dry run Fill and check every step without submitting or saving."
+      - text: Dry run Fill and check every step without submitting or saving. Screenshots
       - paragraph: Required by this workflow.
       - text: Always on Priority
       - paragraph: Interactive runs go first.
