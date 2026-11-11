@@ -71,8 +71,8 @@ it("uploads both original PDFs through the typed client and plans one parent wit
   expect(uploads).toEqual(["first.pdf", "second.pdf"]);
   expect(dialog.text()).toContain("2 PDFs selected");
   expect(dialog.disabled("Continue")).toBe(false);
-  await dialog.press("Continue");
   await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
+  await dialog.press("Continue");
   await dialog.press("Continue");
   expect(plans).toHaveLength(1);
   const request = StartPlanRequestSchema.parse(plans[0]);

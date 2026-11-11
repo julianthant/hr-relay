@@ -164,7 +164,7 @@ describe("keeps optional steps and removes only the per-start destination", () =
     assert.ok(dialog.text().includes("Customize steps"));
     assert.ok(!dialog.text().includes("Destination"));
     assert.ok(!dialog.text().includes("Test instance"));
-    assert.equal(document.querySelectorAll('input[type="radio"][name^="Priority-"]').length, 2);
+    assert.ok(dialog.text().includes("Runs before bulk batches."));
     assert.equal(document.querySelectorAll('input[type="radio"][name^="Browser mode-"]').length, 2);
     assert.doesNotMatch(dialog.text(), /Active policy|Workflow version|Fixed by the selected workflow/u);
     const selectedWorkflow = document.body.querySelector('nav[aria-label="Workflow"] button[aria-current="page"]');
