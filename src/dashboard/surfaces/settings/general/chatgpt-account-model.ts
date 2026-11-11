@@ -7,7 +7,7 @@ import { createContext, useSyncExternalStore } from "react";
 
 export type ChatGptAccountSnapshot =
   | { readonly state: "loading" }
-  | { readonly state: "signed-out" }
+  | { readonly state: "signed-out"; readonly account?: { readonly email: string } }
   | { readonly state: "expired" | "sign-in-expired" }
   | { readonly state: "signing-in"; readonly attemptId: string; readonly expiresAt: string; readonly authorizationUrl?: string }
   | { readonly state: "unavailable"; readonly message: string; readonly account?: ChatGptAccountView }
@@ -22,6 +22,7 @@ export interface ChatGptAccountPort {
   readonly subscribe: (listener: () => void) => () => void;
   readonly signIn: (input: { readonly usePlan: boolean }) => Promise<void>;
   readonly signOut: () => Promise<void>;
+  readonly forgetAccount: () => Promise<void>;
   readonly cancelSignIn: () => Promise<void>;
 }
 
@@ -43,6 +44,7 @@ export function createPreviewChatGptAccountPort(): ChatGptAccountPort {
       publish({ state: "connected", name: "Jordan Lee", email: "jordan.lee@example.com", planUsage: usePlan ? "enabled" : "disabled" });
       return Promise.resolve();
     },
+    forgetAccount: () => { publish({ state: "signed-out" }); return Promise.resolve(); },
     signOut: () => { publish({ state: "signed-out" }); return Promise.resolve(); },
     cancelSignIn: () => { publish({ state: "signed-out" }); return Promise.resolve(); },
   };
@@ -201,6 +203,30 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
     refreshing = reading;
     return reading;
   }
+  const disconnect = async (forget: boolean) => {
+    if (disposed || busy) return;
+    clearTimeout(expiryTimer);
+    busy = true; notify();
+    const request = ++epoch;
+    try {
+      const result = await (forget ? client.forgetChatGptAccount() : client.signOutChatGpt());
+      if (!current(request)) return;
+      if (result.state === "signed-out") {
+        const account = forget ? { state: "signed-out" as const } : await readWithDeadline(async () => (await client.chatGptAccount()).account, "CHATGPT_AUTH_UNAVAILABLE");
+        if (!current(request)) return;
+        if (account.state === "signing-in") { problem("uncertain", "CHATGPT_AUTH_UNAVAILABLE", account); return; }
+        if (result.remoteRevocation === "unconfirmed") {
+          clearTimeout(expiryTimer);
+          resource = { state: account.state === "signed-out" ? "empty" : "loaded", account, warning: "CHATGPT_REVOCATION_UNCONFIRMED" };
+          snapshot = { state: "unavailable", message: ERROR_CATALOG.CHATGPT_REVOCATION_UNCONFIRMED.text, ...(account.state === "signed-out" && account.account === undefined ? {} : { account }) };
+          notify();
+        }
+        else accept(account);
+      } else if (result.state === "uncertain") await reconcileProblem(request, result.code);
+      else problem("refused", result.code);
+    } catch { await reconcileProblem(request); }
+    finally { if (current(request)) { busy = false; notify(); } }
+  };
   return {
     mode: "live", getSnapshot: () => snapshot, getResource: (): ChatGptAccountResource => resource.state === "loaded" && (busy || refreshing !== undefined) ? { state: "loading" } : resource,
     subscribe: listener => {
@@ -263,26 +289,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
       } catch { await reconcileProblem(request); }
       finally { if (cancelling === request) cancelling = undefined; if (current(request)) { busy = false; notify(); } }
     },
-    signOut: async () => {
-      if (disposed || busy) return;
-      clearTimeout(expiryTimer);
-      busy = true; notify();
-      const request = ++epoch;
-      try {
-        const result = await client.signOutChatGpt();
-        if (!current(request)) return;
-        if (result.state === "signed-out") {
-          if (result.remoteRevocation === "unconfirmed") {
-            clearTimeout(expiryTimer);
-            resource = { state: "empty", account: { state: "signed-out" }, warning: "CHATGPT_REVOCATION_UNCONFIRMED" };
-            snapshot = { state: "unavailable", message: ERROR_CATALOG.CHATGPT_REVOCATION_UNCONFIRMED.text };
-            notify();
-          }
-          else accept({ state: "signed-out" });
-        } else if (result.state === "uncertain") await reconcileProblem(request, result.code);
-        else problem("refused", result.code);
-      } catch { await reconcileProblem(request); }
-      finally { busy = false; notify(); }
-    },
+    signOut: () => disconnect(false),
+    forgetAccount: () => disconnect(true),
   };
 }
