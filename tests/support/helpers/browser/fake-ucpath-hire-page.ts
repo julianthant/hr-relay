@@ -57,7 +57,6 @@ export function fakeUcpathHirePage(options: Readonly<{
       click: async () => {
         actions.push(`click:${key}`);
         if (key.startsWith("tab:")) { tab = key.slice(4); visited.add(tab); }
-        if (key === "clear") view = "clear";
         if (key === "search") view = submitted || options.existingRows !== undefined ? records.length === 1 ? "detail" : "list" : "empty";
         if (key === "back") { view = "list"; expanded = !options.paged; returned = true; }
         if (key === "view-all") expanded = true;
@@ -100,7 +99,7 @@ export function fakeUcpathHirePage(options: Readonly<{
       if (role === "checkbox" && input.name === "Case Sensitive") return control("case-sensitive");
       if (role === "tab") return control(`tab:${input.name}`);
       if (role === "link" && input.name === "View All") return control("view-all");
-      const buttons: Record<string, string> = { "Create Transaction": "draft", "Continue": "continue", "Save and Submit": "save", "OK": "ok", "Clear": "clear" };
+      const buttons: Record<string, string> = { "Create Transaction": "draft", "Continue": "continue", "Save and Submit": "save", "OK": "ok" };
       const key = buttons[input.name]; if (role !== "button" || key === undefined) throw new Error(`Unexpected hire role ${role}:${input.name}`); return control(key);
     },
     getByLabel: (name: string) => { if (name !== "Reason Code") throw new Error("Unexpected hire label"); return control("reason"); },
