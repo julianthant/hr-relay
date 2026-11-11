@@ -2101,8 +2101,9 @@ export class AuthorityDatabase implements Disposable {
   #delegationReadSnapshot: DelegationOperationReads & {
     waits: Map<string, ReturnType<typeof readDelegationWaitState>>;
   } | undefined;
-  /** Delegation reads inside one write transaction, valid while the connection's total_changes() stays the same. */
-  #transactionDelegationReads: DelegationOperationReads & { changes: number } | undefined;
+  /** Delegation reads inside one write transaction, valid while total_changes() and the savepoint rollback count stay the same. */
+  #transactionDelegationReads: DelegationOperationReads & { changes: number; rollbacks: number } | undefined;
+  #savepointRollbacks = 0;
   #authorityDirty = false;
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
@@ -4501,7 +4502,7 @@ export class AuthorityDatabase implements Disposable {
             this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
             this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
           } catch (rollback) { this.#failNativeClosure([error, rollback]); }
-          this.#transactionDelegationReads = undefined;
+          this.#savepointRollbacks += 1;
           this.#authorityDirty = dirtyBefore;
           this.#authorityCommitCallbacks.splice(callbacksBefore);
           throw error;
@@ -4578,7 +4579,8 @@ export class AuthorityDatabase implements Disposable {
     if (this.#delegationReadSnapshot !== undefined) return this.#delegationReadSnapshot;
     if (this.#transactionDepth === 0 || this.#transactionMode === "read") return undefined;
     const changes = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare("SELECT total_changes() AS count").get()).count;
-    if (this.#transactionDelegationReads?.changes !== changes) this.#transactionDelegationReads = { changes, memo: newDelegationAuthenticationMemo(), invocations: new Map() };
+    const reads = this.#transactionDelegationReads, rollbacks = this.#savepointRollbacks;
+    if (reads?.changes !== changes || reads.rollbacks !== rollbacks) this.#transactionDelegationReads = { changes, rollbacks, memo: newDelegationAuthenticationMemo(), invocations: new Map() };
     return this.#transactionDelegationReads;
   }
 
