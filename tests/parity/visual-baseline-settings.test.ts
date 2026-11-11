@@ -7,7 +7,6 @@ import { ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema } f
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, captureParityPair, installTheme, PARITY_THEMES, type ParityTheme } from "./helpers/capture.js";
 import { gotoAppState, installServedSurfaces } from "./helpers/app-driver.js";
-import { disposeHttpRouteHarness } from "../support/helpers/backend/http-route-harness.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { EditableSettingsWireSchema } from "../../src/models/dashboard/settings-editor.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
