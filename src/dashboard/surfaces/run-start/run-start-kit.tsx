@@ -355,9 +355,7 @@ export function StepOmissionFactsForm({
   );
 }
 
-/** Short grey lines for the design mock's input controls. */
-const MOCK_CONTROL_NOTES: Readonly<Record<string, string>> = { crmCheck: "Cross-check each person against CRM." };
-
+/** The approved Lookup / Input / Parsed input layout, used by the served Run and Rerun dialogs and the design preview alike. */
 export function TypedInput({
   surface,
   workflowId,
@@ -367,7 +365,6 @@ export function TypedInput({
   inputRef,
   draft = {},
   onValue,
-  presentation = "served",
   rowInput,
 }: {
   rowInput?: ReactNode;
@@ -378,7 +375,6 @@ export function TypedInput({
   preview: RunInputPreview;
   draft?: TypedInputDraft;
   onValue?: (field: string, value: string | boolean) => void;
-  presentation?: "mock" | "served";
   /** the dialog's handle on the box, so an exit from a banner can focus it */
   inputRef?: RefObject<HTMLTextAreaElement | null>;
 }) {
@@ -393,8 +389,8 @@ export function TypedInput({
     : "";
   const entryText = (entries: RunInputPreview["entries"]) => entries.map(entry => entry.sourceText).join(separator);
   const inputLabel = mode?.inputLabel ?? inputRunFieldLabel(surface.parser);
-  const hint = (mode?.hint ?? inputRunDelimiterHint(surface.parser)).replace(presentation === "mock" ? /semicolon or a new line\./u : /$^/u, "semicolon or Shift+Enter.");
-  const box = <Textarea key={workflowId} ref={inputRef} autoFocus rows={4} value={text} aria-label={presentation === "mock" ? inputLabel : undefined}
+  const hint = (mode?.hint ?? inputRunDelimiterHint(surface.parser)).replace(/semicolon or a new line\./u, "semicolon or Shift+Enter.");
+  const box = <Textarea key={workflowId} ref={inputRef} autoFocus rows={4} value={text} aria-label={inputLabel}
       placeholder={mode?.placeholder ?? (inputRunFieldLabel(surface.parser) === "Kuali ID" ? surface.placeholder.replaceAll("Kuali document numbers", "Kuali IDs") : surface.placeholder)}
       onChange={event => onText(event.target.value)}
       onBlur={() => {
@@ -403,28 +399,21 @@ export function TypedInput({
           if (normalized !== text) onText(normalized);
         }
       }} />;
-  const field = <Field label={inputLabel} description={hint} error={presentation === "served" ? preview.problem : undefined}>{box}</Field>;
-  const controls = declaration && <>
-    <SegmentedChoice label={declaration.modeLabel} value={mode?.value ?? ""}
-      options={declaration.modes.map(candidate => ({ value: candidate.value, label: candidate.label }))}
-      onChange={value => onValue?.(declaration.modeField, value)} />
-    {declaration.controls.filter(control => control.placement === "input" && control.modes.includes(mode?.value ?? "")).map(control =>
-      <Checkbox key={control.field} label={control.label} checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value === true)} />)}
-  </>;
-  if (presentation === "mock" && declaration !== undefined) return <>
-    <RunList title="Lookup">
-      <RunListRow title={declaration.modeLabel} description="Search by ID or name, or match on details.">
+  return <>
+    {declaration && <RunList title="Lookup">
+      <RunListRow title={declaration.modeLabel} description={declaration.modeNote}>
         <div className="w-[250px]"><SegmentedChoice hideLabel label={declaration.modeLabel} value={mode?.value ?? ""}
           options={declaration.modes.map(candidate => ({ value: candidate.value, label: candidate.label }))}
           onChange={value => onValue?.(declaration.modeField, value)} /></div>
       </RunListRow>
       {declaration.controls.filter(control => control.placement === "input" && control.modes.includes(mode?.value ?? "")).map(control =>
-        <RunListRow key={control.field} title={control.label} description={MOCK_CONTROL_NOTES[control.field]}>
+        <RunListRow key={control.field} title={control.label} description={control.note}>
           <Switch hideLabel label={control.label} checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value)} className="!min-h-0 !w-auto !py-0" />
         </RunListRow>)}
-    </RunList>
-    <RunSection title="Input" description={`${inputLabel}. ${hint}`}>{box}</RunSection>
-    {preview.entries.length > 0 && <RunList title="Parsed input" label="Parsed input" aside={`${preview.entries.length} ${preview.entries.length === 1 ? "run" : "runs"}`}>
+    </RunList>}
+    {rowInput === undefined ? <RunSection title="Input" description={`${inputLabel}. ${hint}`}>{box}{preview.problem !== null && <p role="alert" className="m-0 text-caption text-ui-danger">{preview.problem}</p>}</RunSection>
+      : <>{rowInput}{preview.problem !== null && <Banner tone="danger" title="Selected rows need attention">{preview.problem}</Banner>}</>}
+    {rowInput === undefined && preview.entries.length > 0 && <RunList title="Parsed input" label="Parsed input" aside={`${preview.entries.length} ${preview.entries.length === 1 ? "run" : "runs"}`}>
       {preview.entries.map(entry => <RunListRow key={entry.index} title={<span className="font-mono">{entry.sourceText}</span>}>
         {editableParser !== undefined && <IconButton size="xs" label={`Remove ${entry.sourceText}`} icon={<X aria-hidden className={dsIcon.md} />}
           onClick={() => {
@@ -434,21 +423,4 @@ export function TypedInput({
       </RunListRow>)}
     </RunList>}
   </>;
-  if (rowInput !== undefined) return <>{controls}{rowInput}{preview.problem !== null && <Banner tone="danger" title="Selected rows need attention">{preview.problem}</Banner>}</>;
-  return <>{controls}<div className="flex flex-col gap-[var(--ds-space-snug)]">{field}
-    {preview.entries.length > 0 && <section aria-label="Parsed input" className="mt-3 flex flex-col gap-3">
-      <div className="flex items-center justify-between"><h4 className="text-body font-semibold">Parsed input</h4><Badge tone="neutral">{preview.entries.length} {preview.entries.length === 1 ? "run" : "runs"}</Badge></div>
-      <ul className={cn("launch-parsed-input m-0 grid list-none gap-2 p-0", editableParser !== undefined && "grid-cols-2")}>
-        {preview.entries.map(entry => <li key={entry.index} className="flex min-w-0 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-[10px] py-2">
-          <span className="text-body">{entry.index + 1}.</span>
-          <span className="min-w-0 flex-1 break-words font-mono text-caption">{entry.sourceText}</span>
-          {editableParser !== undefined && <IconButton size="xs" label={`Remove ${entry.sourceText}`} icon={<X aria-hidden className={dsIcon.md} />}
-            onClick={() => {
-              onText(entryText(preview.entries.filter(candidate => candidate.index !== entry.index)));
-              inputRef?.current?.focus();
-            }} />}
-        </li>)}
-      </ul>
-    </section>}
-  </div></>;
 }
