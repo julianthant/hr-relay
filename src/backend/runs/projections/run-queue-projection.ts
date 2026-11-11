@@ -513,7 +513,7 @@ export class RunQueueProjection {
     if (node?.kind !== "transaction") return undefined;
     const completion = node.commit.uses.writeSafety.completion;
     const contract = { probe: node.commit.uses.writeSafety.idempotency.probe, prepare: node.prepare.uses, commit: node.commit.uses,
-      verify: completion.kind === "receipt" ? undefined : completion.verify }[spanPath.split("/")[2] ?? ""];
+      verify: completion.kind === "receipt" ? undefined : completion.verify }[spanPath.split("/")[2]?.split("#")[0] ?? ""];
     return contract === undefined ? undefined : "id" in contract ? String(contract.id) : String(contract.taskId);
   }
 
