@@ -12,7 +12,7 @@ import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../../.
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
-import { DelegationEdgeIdSchema, EidSchema, RunIdSchema, TaskIdSchema } from "../../../../src/rules/identity/ids.js";
+import { DelegationEdgeIdSchema, EidSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { RerunSourceSchema } from "../../../../src/models/run/rerun.js";
@@ -580,16 +580,21 @@ for (const changed of [false, true]) it(`${changed ? "refuses" : "reuses"} a ret
   assert.deepEqual(h.database.authority.writeIntents.listByBusinessKey("ucpath", WRITE_FIXTURE_KEY_DIGEST), []);
 });
 
-const inheritedRead = defineTaskContract({ id: TaskIdSchema.parse("ocr/read-inherited-source"), title: staleRead.title, effect: staleRead.effect,
-  input: staleRead.input, output: staleRead.output, errorCodes: staleRead.errorCodes, subject: staleRead.subject,
-  scenarios: staleRead.scenarios, freshness: staleRead.freshness, provenance: staleRead.provenance, example: staleRead.example });
+const inheritedChildDescriptor = defineWorkflowDescriptor({ id: sourceBoundReadDescriptor.id, version: 1,
+  contractFingerprint: sourceBoundReadDescriptor.contractFingerprint, code: "sr", label: "Source read", icon: "Search", category: "operations",
+  canonicalInput: sourceBoundReadDescriptor.canonicalInput, inputSubject: "eid", surface: { shape: "single" }, enqueue: "reject-active",
+  actions: sourceBoundReadDescriptor.actions, surfaces: {}, details: [], identity: { matchKey: (input) => input.eid },
+  presentation: { title: (input) => input.eid }, scenarios: ["source-read/happy"],
+  flow: flow(Input).step("read", staleRead, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => input })
+    .build({ schema: staleRead.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
+});
 
 function inheritedInputDescriptor(child: boolean) {
   const start = flow(Input)
-    .step("before", inheritedRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid, memo: "source" }) })
-    .step("check", sourceBoundReadContract, { dependsOn: ["before"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid, memo: "check" }) });
+    .step("before", staleRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid, memo: "source" }) })
+    .step("check", staleRead, { dependsOn: ["before"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid, memo: "check" }) });
   if (child) return defineWorkflowDescriptor({ ...metadata, flow: start
-    .childRun("child", { id: sourceBoundReadDescriptor.id, input: Input, result: sourceBoundReadContract.output }, {
+    .childRun("child", { id: sourceBoundReadDescriptor.id, input: Input, result: staleRead.output }, {
       dependsOn: ["before"], edgeId: DelegationEdgeIdSchema.parse("child"), cardinality: "one", await: "terminal", join: "one",
       policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" },
       bind: ({ outputs }) => ({ eid: outputs.before.eid }), deriveChildItemId: (_input, identity) => identity.canonicalItemId })
@@ -599,7 +604,7 @@ function inheritedInputDescriptor(child: boolean) {
       dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
     .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
   return defineWorkflowDescriptor({ ...metadata, flow: start
-    .step("mapped", inheritedRead, { dependsOn: ["before", "check"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid }) })
+    .step("mapped", staleRead, { dependsOn: ["before", "check"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid }) })
     .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: ["mapped"], prepare: { uses: WriteFixturePrepare, bind: ({ outputs }) => ({ eid: outputs.mapped.eid }) },
       commit: { uses: WriteFixtureCommit, bind: ({ outputs }) => ({ eid: outputs.mapped.eid }) }, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
     .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
@@ -610,27 +615,24 @@ for (const child of [true, false]) for (const changed of [false, true]) it(`R-${
   const hooks: { onSource?: () => void; onMapped?: () => void; onCheck?: () => void } = {};
   let checkCalls = 0;
   const h = await sourceBoundHarness(inheritedInputDescriptor(child), world => {
-    const read = defineTask(inheritedRead, { sessions: [], async run({ input, ctx }) {
-      const eid = input.memo === "source" ? sourceValues.shift() : input.eid; assert.ok(eid);
-      ctx.recordData({ direction: "read", field: "eid", value: eid });
-      if (input.memo === "source") hooks.onSource?.();
-      else if (input.memo !== "check") hooks.onMapped?.();
-      return { eid };
-    } });
-    const check = defineTask(sourceBoundReadContract, { sessions: [], async run({ input, ctx }) {
+    const read = defineTask(staleRead, { sessions: [], async run({ input, ctx }) {
       if (input.memo === "check") {
         if (++checkCalls === 1) throw new Error("fixture downstream failure");
         hooks.onCheck?.();
       }
-      ctx.recordData({ direction: "read", field: "eid", value: input.eid });
-      return { eid: input.eid };
+      const eid = input.memo === "source" ? sourceValues.shift() : input.eid; assert.ok(eid);
+      ctx.recordData({ direction: "read", field: "eid", value: eid });
+      if (input.memo === "source") hooks.onSource?.();
+      else if (input.memo !== "check") hooks.onMapped?.();
+      if (input.memo === "skipped") hooks.onMapped?.();
+      return { eid };
     } });
     const writes = buildWriteFixtureRegistry(world);
-    return defineTaskStoreRegistry([defineServiceStore("ocr", { read, check }), ...writes.stores], {
-      scenarioIds: [...inheritedRead.scenarios, ...writes.corpus.scenarioIds],
-      tasks: [{ id: inheritedRead.id, effect: inheritedRead.effect }, { id: sourceBoundReadContract.id, effect: sourceBoundReadContract.effect }, ...writes.corpus.tasks],
+    return defineTaskStoreRegistry([defineServiceStore("ocr", { read }), ...writes.stores], {
+      scenarioIds: [...staleRead.scenarios, ...writes.corpus.scenarioIds],
+      tasks: [{ id: staleRead.id, effect: staleRead.effect }, ...writes.corpus.tasks],
     });
-  }, undefined, undefined, undefined, child ? [sourceBoundReadDescriptor] : [], undefined, true);
+  }, undefined, undefined, undefined, child ? [inheritedChildDescriptor] : [], undefined, true);
   cleanups.push(h.dispose);
   h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
   const source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID));
@@ -679,11 +681,11 @@ for (const child of [true, false]) for (const changed of [false, true]) it(`R-${
 
 it("omits a stored conditional dependency that the completed consumer never saw", async () => {
   const selected = defineWorkflowDescriptor({ ...metadata, flow: flow(Input)
-    .step("before", inheritedRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid, memo: "source" }) })
-    .step("optional", sourceBoundReadContract, { dependsOn: ["before"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid }),
+    .step("before", staleRead, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid, memo: "source" }) })
+    .step("optional", staleRead, { dependsOn: ["before"], replay: "checkpoint", bind: ({ outputs }) => ({ eid: outputs.before.eid }),
       when: { kind: "equals", of: { from: "node", nodeId: "before", path: "eid" }, value: WRITE_FIXTURE_EID } })
-    .step("check", sourceBoundReadContract, { dependsOn: ["before"], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid, memo: "check" }) })
-    .step("mapped", sourceBoundReadContract, { dependsOn: ["before", "optional", "check"], replay: "checkpoint",
+    .step("check", staleRead, { dependsOn: ["before"], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid, memo: "check" }) })
+    .step("mapped", staleRead, { dependsOn: ["before", "optional", "check"], replay: "checkpoint",
       bind: ({ input, outputs }) => ({ eid: input.eid, memo: outputs.optional === undefined ? "skipped" : "present" }) })
     .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: ["mapped"], prepare: { uses: WriteFixturePrepare, bind: ({ outputs }) => ({ eid: outputs.mapped.eid }) },
       commit: { uses: WriteFixtureCommit, bind: ({ outputs }) => ({ eid: outputs.mapped.eid }) }, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
@@ -691,21 +693,17 @@ it("omits a stored conditional dependency that the completed consumer never saw"
   let checkCalls = 0, sourceCalls = 0;
   const hooks: { onMapped?: () => void } = {};
   const h = await sourceBoundHarness(selected, world => {
-    const read = defineTask(inheritedRead, { sessions: [], async run({ input, ctx }) {
+    const read = defineTask(staleRead, { sessions: [], async run({ input, ctx }) {
+      if (input.memo === "check" && ++checkCalls === 1) throw new Error("fixture downstream failure");
       const eid = input.memo === "source" && ++sourceCalls > 1 ? EidSchema.parse("10899999") : input.eid;
       ctx.recordData({ direction: "read", field: "eid", value: eid });
+      if (input.memo === "skipped") hooks.onMapped?.();
       return { eid };
     } });
-    const check = defineTask(sourceBoundReadContract, { sessions: [], async run({ input, ctx }) {
-      if (input.memo === "check" && ++checkCalls === 1) throw new Error("fixture downstream failure");
-      ctx.recordData({ direction: "read", field: "eid", value: input.eid });
-      if (input.memo === "skipped") hooks.onMapped?.();
-      return { eid: input.eid };
-    } });
     const writes = buildWriteFixtureRegistry(world);
-    return defineTaskStoreRegistry([defineServiceStore("ocr", { read, check }), ...writes.stores], {
-      scenarioIds: [...inheritedRead.scenarios, ...writes.corpus.scenarioIds],
-      tasks: [{ id: inheritedRead.id, effect: inheritedRead.effect }, { id: sourceBoundReadContract.id, effect: sourceBoundReadContract.effect }, ...writes.corpus.tasks],
+    return defineTaskStoreRegistry([defineServiceStore("ocr", { read }), ...writes.stores], {
+      scenarioIds: [...staleRead.scenarios, ...writes.corpus.scenarioIds],
+      tasks: [{ id: staleRead.id, effect: staleRead.effect }, ...writes.corpus.tasks],
     });
   });
   cleanups.push(h.dispose);
