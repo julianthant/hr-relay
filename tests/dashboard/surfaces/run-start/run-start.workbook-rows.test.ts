@@ -81,7 +81,7 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("plans default O
   function Harness() {
     const [loaded, setLoaded] = useState(path !== "late catalog");
     const [route, setRoute] = useState<AppRouteState>(path === "restored route"
-      ? { start: true, view: { launchServed: descriptorId, launchCustomize: false } } : {});
+      ? { start: true, view: { launchServed: descriptorId, launchCustomize: false } } : { start: false });
     openOnboarding = () => {
       setLoaded(true);
       setRoute({ start: true, view: { launchServed: descriptorId, launchStage: "Input", launchCustomize: false } });
