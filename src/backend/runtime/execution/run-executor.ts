@@ -1578,8 +1578,9 @@ export async function executeClaimedRun(
       if (accounting?.plan.joinNodeId === node.id) return undefined;
       const sourceEvidence = continuationAuthority?.delegation(String(node.id), String(node.edgeId));
       if (sourceEvidence !== undefined) {
-        const original = node.bind(sourceScopeFor(sourceEvidence.parentRunId, node.dependsOn,
-          row => Date.parse(row.writtenAt) <= Date.parse(sourceEvidence.manifest.createdAt)));
+        const admitted = continuationAuthority?.delegationScope(String(node.id), String(node.edgeId)) ?? [];
+        const original = node.bind(sourceScopeFor(sourceEvidence.parentRunId, node.dependsOn, row => admitted.some(entry => "checkpoint" in entry
+          && entry.nodeId === row.nodeId && entry.checkpoint.runId === row.runId && entry.checkpoint.claimGeneration === row.claimGeneration)));
         const continued = node.bind(scopeFor(node.dependsOn));
         if (boundInputIdentity(original) !== boundInputIdentity(continued)
           || sourceEvidence.manifest.cardinality !== node.cardinality || sourceEvidence.manifest.join !== node.join
