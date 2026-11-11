@@ -740,27 +740,26 @@ export function deriveRunEvidenceReceipt(
 
     /* action */
     const occurredAt = record.writtenAt;
-    if (node.kind === "transaction" && transactionOutcomeOf(record).disposition === "already-present" && !envelope.dryRun) {
+    const settled = node.kind === "transaction" && !envelope.dryRun ? TransactionOutcomeSchema.safeParse(record.output.value).data : undefined;
+    if (node.kind === "transaction" && settled?.disposition === "already-present") {
       // The permanent write may belong to another run or item; the exact key from this checkpoint's retained facts selects it.
       const paired = input.writeForCheckpoint?.(node, record);
-      const outcome = TransactionOutcomeSchema.parse(record.output.value);
-      if (outcome.disposition !== "already-present") throw new Error("transaction-outcome-changed");
       actions.push({ id: entryId("action", `${id}.prepare`), taskId: node.prepare.uses.id, kind: "prepare", writeState: "prepared", occurredAt });
-      const commitAction: Action = { id: entryId("action", `${id}.commit`), taskId: contract.id, kind: "commit", writeState: "committed", occurredAt: outcome.observedAt };
+      const commitAction: Action = { id: entryId("action", `${id}.commit`), taskId: contract.id, kind: "commit", writeState: "committed", occurredAt: settled.observedAt };
       commitAction.proved = deriveActionWriteProof({
         ...(input.schemaReader === undefined ? {} : { schemaReader: input.schemaReader }),
         composition,
         commitContract: node.commit.uses,
         record,
         intent: paired?.intent,
-        ...(paired === undefined ? {} : { pairing: { checkpointKey: paired.checkpointKey, system: paired.system, keyDigest: paired.keyDigest } }),
+        ...(paired === undefined ? {} : { pairing: paired }),
       });
       actions.push(commitAction);
       decisions.push({
         id: entryId("decision", `dedupe.${id}`),
         kind: "dedupe",
         outcome: "not-taken",
-        reason: `the permanent key was ALREADY satisfied (proof source: ${outcome.proofSource}); this run performed no second write`,
+        reason: `the permanent key was ALREADY satisfied (proof source: ${settled.proofSource}); this run performed no second write`,
         evidence: [evidenceEntryRef(commitAction.id)],
       });
       decisions.push({
@@ -768,7 +767,7 @@ export function deriveRunEvidenceReceipt(
         kind: "identity",
         outcome: "approved",
         reason: `the permanent ${commitAction.proved.system} ${idempotencyKeyDigestReference(commitAction.proved.idempotencyKeyDigest)} was already satisfied and `
-          + (outcome.proofSource === "live-probe" ? "observed present by this run's probe" : "reused from its settled permanent record")
+          + (settled.proofSource === "live-probe" ? "observed present by this run's probe" : "reused from its settled permanent record")
           + "; this run bound no fresh subject because it performed no write",
         evidence: [evidenceEntryRef(commitAction.id)],
       });
