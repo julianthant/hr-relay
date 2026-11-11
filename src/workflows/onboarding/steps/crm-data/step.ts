@@ -32,7 +32,7 @@ export function buildCrmData(author: WorkflowAuthor<typeof OnboardingInput>) {
   const call = reuseTask(group, { id: "crm-source", contract: CrmReadHireData, replay: "always-rerun" },
     (input: OnboardingInputValue) => ({ email: input.email }));
   const source = author.task(call.identity, [choice], call.bind);
-  const plan = author.task(entries.task("hire-plan", OnboardingReadHirePlan, { replay: "checkpoint" }), [source, choice], ({ input, outputs }) => {
+  const plan = author.task(entries.task("hire-plan", OnboardingReadHirePlan, { replay: "always-rerun" }), [source, choice], ({ input, outputs }) => {
     const roster = OnboardingCanonicalValueSchema.parse(input).roster;
     return {
       crm: outputs["crm-source"], roster: roster.state === "resolved" ? roster.row : OnboardingRosterChoiceSchema.parse(outputs[ONBOARDING_ROSTER_GATE_ID]).row,
