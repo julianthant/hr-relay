@@ -762,6 +762,25 @@ describe("Onboarding captured roster admission and row choice", () => {
       assert.deepEqual(f.database.authority.writeIntents.listByRun(run.envelope.runId), []);
     });
 
+    it("refuses a failed receipt that lacks the stored roster gate result and cites the taken gate with it", async () => {
+      const f = await executionFixture(false, { match: "duplicate", dryRun: true, crmReadFails: true });
+      const root = f.start();
+      assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "parked-gate");
+      assert.equal(f.kernel.execute(f.choice(root)).state, "applied");
+      assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "failed");
+      const run = f.database.authority.runs.get(root.envelope.runId); assert.ok(run?.lifecycle.state === "terminal");
+      assert.equal(OnboardingCanonicalValueSchema.parse(run.input.parsed.value).roster.state, "resolve-required");
+      const failure = f.database.authority.failures.listByRun(run.envelope.runId).find(value => value.code === "ONBOARDING_CRM_READ_FAILED"); assert.ok(failure);
+      const result = f.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
+      const gateResults = f.database.authority.gateResults.listByRun(run.envelope.runId);
+      assert.deepEqual(gateResults.map(gate => gate.gateId), [ONBOARDING_ROSTER_GATE_ID]);
+      const input = { descriptor, run, result, failure, checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId), writes: [] };
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, gateResults: [] }), /REFUSAL_PLACEHOLDER/u);
+      const receipt = buildRunEvidenceReceipt({ ...input, gateResults });
+      assert.ok(!receipt.decisions.some(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`)));
+      assert.ok(receipt.decisions.some(value => value.kind === "gate" && value.outcome === "taken"));
+    });
+
     it("refuses a corrupt failure digest and a result of another run or attempt", async () => {
       const { failure, result, input } = await failedAtCrmSource();
       assert.throws(() => buildRunEvidenceReceipt({ ...input, failure: { ...failure, summary: `${failure.summary} altered` } }), /terminal-failure-result-mismatch/u);
