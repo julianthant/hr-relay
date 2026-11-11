@@ -129,7 +129,7 @@ describe("dashboard presentation freeze", () => {
     assert.equal(actual.filter((file) => file.endsWith(".tsx")).length, 123);
     assert.equal(
       actual.filter((file) => STYLESHEET_EXTENSIONS.has(extname(file).toLowerCase())).length,
-      27,
+      26,
     );
     assert.ok(actual.includes("src/dashboard/ds/theme/tokens.ts"));
     assert.ok(actual.includes("src/dashboard/ds/theme/tokens.css"));
