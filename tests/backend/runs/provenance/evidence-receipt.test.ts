@@ -378,7 +378,7 @@ describe("deriveActionWriteProof — the already-present arms", () => {
       ["output", pair(intent, withOutcome(value => ({ ...value, output: { ...(value["output"] as object), value: { savedState: { ...proofValue, documentNumber: "9999999" } } } })))],
     ];
     for (const [category, derive] of cases) assert.throws(derive, new RegExp(`receipt-write-pair-${category}`, "u"), category);
-    const proved = pair(intent)() as ReturnType<typeof deriveActionWriteProof>;
+    const proved = pair(intent)();
     assert.equal(proved.recordedAt, intent.confirmedAt);
   });
 
