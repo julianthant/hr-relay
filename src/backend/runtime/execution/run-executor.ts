@@ -792,6 +792,12 @@ export async function executeClaimedRun(
         continue;
       }
       if (node.kind === "task") {
+        if (envelope.dryRun && node.dryRun === "stop-before-publish") {
+          // A dry run previews its publication; it never replays a saved one or anything after it.
+          ancestorRegionOpen = false;
+          plan.set(String(node.id), { mode: "execute" });
+          continue;
+        }
         if (node.replay === "always-rerun" && (envelope.continuation === undefined || retainedAccounting || memberRetry !== undefined)) {
           // NEVER consult loadCheckpoint for an always-rerun node (§5.3).
           plan.set(String(node.id), { mode: "execute" });
@@ -812,12 +818,6 @@ export async function executeClaimedRun(
             plan.set(String(node.id), { mode: "skipped-condition" });
             continue;
           }
-        }
-        if (envelope.dryRun && node.dryRun === "stop-before-publish") {
-          // A dry run previews its publication; it never replays a saved one or anything after it.
-          ancestorRegionOpen = false;
-          plan.set(String(node.id), { mode: "execute" });
-          continue;
         }
         const stored = retainedAccounting
           ? deps.authority.authority.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, node.id, envelope.attempt)

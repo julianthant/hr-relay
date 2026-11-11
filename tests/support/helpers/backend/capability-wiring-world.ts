@@ -146,11 +146,11 @@ export function createCapabilityWiringTestWorld() {
   }
 
   /** `extract` is a dry-run publication boundary; input name "invalid-bound" binds an invalid command. */
-  function publicationDescriptor(id: string, code: string) {
+  function publicationDescriptor(id: string, code: string, replay: "checkpoint" | "always-rerun" = "checkpoint") {
     const fixtureFlow = flow(FixtureInput)
       .step("extract", providersOnlyContract, {
         dependsOn: [],
-        replay: "checkpoint",
+        replay,
         dryRun: "stop-before-publish",
         bind: ({ input }) => ({ name: input.name === "invalid-bound" ? "" : input.name }),
       })

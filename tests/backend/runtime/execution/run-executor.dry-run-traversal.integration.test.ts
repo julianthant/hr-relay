@@ -62,11 +62,12 @@ it("previews both ordered writes and accounts for a skipped gate and unavailable
 
 describe("publication preview boundary", () => {
   const { SIGNAL, SCENARIO, providersOnlyContract, publicationDescriptor, queuedRunFor, wiringHarness, claim } = wiring;
-  const descriptor = publicationDescriptor("publication-preview-fixture", "pp");
+  const publication = publicationDescriptor("publication-preview-fixture", "pp");
   const ORDINARY_RUN_ID = "00000000-0000-4000-8000-0000000000a1";
   const PREVIEW_LOG = "Dry run: this save was prepared and checked. Nothing was saved.";
 
-  async function run(options: Readonly<{ dryRun: boolean; name?: string; ordinaryFirst?: boolean }>) {
+  async function run(options: Readonly<{ dryRun: boolean; name?: string; ordinaryFirst?: boolean; descriptor?: typeof publication }>) {
+    const descriptor = options.descriptor ?? publication;
     const adapter = createDeterministicProviderHarness("geocode.census", [0, 1].map(() => ({
       kind: "return" as const,
       outcome: {
@@ -121,7 +122,7 @@ describe("publication preview boundary", () => {
     const world = await makeWorld();
     try {
       const finished = database.authority.runs.get(RUN_ID); assert.ok(finished);
-      const resolver = { resolve: () => descriptor };
+      const resolver = { resolve: () => publication };
       const section = buildRunLogsSection({ stateRoot: world.stateRoot, authority: world.authority,
         timeline: database.authority.timelineEvents, projection: world.projection,
         canonical: { database, reader: testRunService(database, clock), descriptors: resolver }, descriptors: resolver,
@@ -134,8 +135,9 @@ describe("publication preview boundary", () => {
     } finally { await world.dispose(); }
   });
 
-  it("previews the declared save even when an ordinary run of the same item saved it first", async () => {
-    const { outcome, database, calls, failure } = await run({ dryRun: true, ordinaryFirst: true });
+  it.each(["checkpoint", "always-rerun"] as const)("previews a %s declared save even when an ordinary run of the same item saved it first", async replay => {
+    const { outcome, database, calls, failure } = await run({ dryRun: true, ordinaryFirst: true,
+      descriptor: replay === "checkpoint" ? publication : publicationDescriptor("publication-preview-fixture", "pp", replay) });
     assert.equal(outcome.state, "done", failure?.summary ?? "");
     const stored = database.authority.runResults.get(RUN_ID);
     assert.ok(stored);
