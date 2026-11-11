@@ -13,6 +13,7 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  DELEGATION_CONFIG_UNAVAILABLE: catalogEntry("Relay could not verify this run's saved settings, so the child workflow did not start. Review the run evidence before continuing.", EmptyParametersSchema),
   AMBIGUOUS_ACTION_LIST_MATCH: catalogEntry("More than one Kuali Action List item matched this document. Review the list and confirm the intended item.", EmptyParametersSchema),
   BLANK_TERMINATION_TYPE: catalogEntry("The separation document does not show a termination type. Review the document before continuing.", EmptyParametersSchema),
   COMMENTS_CHANGED_SINCE_READ: catalogEntry("The Kuali comments changed after they were read. Review the current document before continuing.", EmptyParametersSchema),
