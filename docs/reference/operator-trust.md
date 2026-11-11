@@ -247,7 +247,9 @@ A child-run node is verified from its children's own receipts. When every child 
 bound delegation evidence has a receipt that is verified-done or done-with-warnings, the node is
 verified and cites those receipts; a child's warnings surface on the parent as one warning that is
 not load-bearing. Any other child receipt leaves the node unknown, and so does a child with no
-receipt this build can derive. A dry-run preview does not read child receipts.
+receipt this build can derive; that unverified child also adds one `DELEGATED_CHILD_UNVERIFIED`
+warning that is not load-bearing, so the parent reads at best done-with-warnings. A dry-run preview
+does not read child receipts.
 
 ### Facts, decisions, and write proof
 
@@ -271,7 +273,9 @@ kind, proof source, classified proof values, and recorded instant. The completio
 `operator-attestation`, `durable-intent`, and `live-probe`. A non-commit action cannot carry that
 block. A verified write action requires a binding-proof reference. An `already-present` commit action is
 `committed` at the checkpoint's observed instant and carries no binding-proof reference: this run
-observed or reused a permanent write that was already satisfied and bound no fresh subject.
+observed or reused a permanent write that was already satisfied and bound no fresh subject. A
+committed checkpoint replayed from another run is proved by that producer run's own intent, carries no
+binding-proof reference, and its dedupe decision names the producer.
 
 A prepare output stays in memory under its task contract. A transaction checkpoint records the
 transaction outcome and its completion evidence. A graph walk alone does not prove that the executor
