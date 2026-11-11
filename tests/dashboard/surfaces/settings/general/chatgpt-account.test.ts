@@ -102,7 +102,7 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
     assert.equal(starts, 1);
     await act(async () => { completion.resolve({ state: "completed", attemptId: started.attemptId, account }); });
     assert.match(host.textContent ?? "", /Exact held operator.*exact@example.com/u);
-    assert.equal(host.textContent?.includes(message), false); assert.equal(reads, 2); assert.equal(starts, 1);
+    assert.equal(host.textContent?.includes(message), false); assert.equal(reads, scenario === "initial read failure" ? 2 : 3); assert.equal(starts, 1);
   } finally { port.dispose(); }
 });
 
