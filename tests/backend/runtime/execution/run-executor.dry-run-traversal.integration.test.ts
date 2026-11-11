@@ -17,6 +17,7 @@ import { HASH_A, NOW } from "../../../support/fixtures/phase1c-contract-fixtures
 import { RUN_ID, sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { RunRecordService, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
+import { deriveItemId } from "../../../../src/rules/identity/logical-item.js";
 import { createCapabilityWiringTestWorld } from "../../../support/helpers/backend/capability-wiring-world.js";
 import { createDryRunPreviewResultTestWorld } from "../../../support/helpers/backend/dry-run-preview-result-world.js";
 import { RunDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
@@ -182,7 +183,8 @@ describe("publication preview boundary", () => {
       const uuid = () => `00000000-0000-4000-9000-${String(++next).padStart(12, "0")}`;
       const deps = { ...harness.deps, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }),
         providers: Object.freeze({ adapters: { "geocode.census": adapter.adapter }, configSnapshots: database.authority.configSnapshots, idFactory: { next: uuid } }) };
-      const queued = queuedRunFor(descriptor);
+      const base = queuedRunFor(descriptor);
+      const queued = { ...base, envelope: { ...base.envelope, itemId: deriveItemId(descriptor.id, "name:Battistessa, Johnnie") } };
       const now = () => clock.now().toISOString();
       const enqueue = (n: number, envelope: Record<string, unknown>, name = "Battistessa, Johnnie") => database.authority.runs.enqueue({ ...queued,
         envelope: { ...queued.envelope, runId: runIdOf(n), attempt: n, traceId: TraceIdSchema.parse(`${descriptor.code}-170000-${String(2300 + n)}`), ...envelope },
