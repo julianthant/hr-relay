@@ -38,7 +38,8 @@ const retainedSourceBoundFixtureOwners = new Set<object>();
 export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig, protectedSecrets?: ProtectedSecretSource,
   profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture,
   childDescriptors: readonly AnyWorkflowDescriptor[] = [],
-  commandNotices?: CommandKernelDependencies["commandNotices"]) {
+  commandNotices?: CommandKernelDependencies["commandNotices"],
+  durableSpans = false) {
   bindWorkflowDelegationTargets([descriptor, ...childDescriptors]);
   const held: { profile?: BoundProfileStorageFixture; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; primary?: unknown } = {};
   retainedSourceBoundFixtureOwners.add(held);
@@ -91,9 +92,10 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
     childManager.configureExecution(child.id, stores);
     executionOwners.set(child.id, { slot: owner.member, manager: childManager });
   }
-  const emitter = recordingEmitter();
+  // Delegation admission reads a dependency's `data.observed` spans back from the timeline.
+  const emitter = durableSpans ? timeline : recordingEmitter().emitter;
   const worker = workerRunLifecyclePort(lifecycle);
-  const common = { lifecycle: worker, stores, authority: database, sessions: manager, emitter: emitter.emitter,
+  const common = { lifecycle: worker, stores, authority: database, sessions: manager, emitter,
     childRuns: createDurableChildRunExecutor({ authority: database, admission: { admitAndRelease: (context, plan) => lifecycle.admitDelegation(context, plan) },
       resolveTarget: id => { const target = descriptors.resolve(id); if (target === undefined) throw new Error("fixture-child-descriptor-missing"); return target; } }),
     clock, ids, scheduler: new ManualScheduler(clock), taskDeadlineMs: 60_000, log: recordingLogger().log };

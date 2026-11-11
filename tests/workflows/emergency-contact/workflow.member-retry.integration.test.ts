@@ -388,6 +388,44 @@ it("resumes the same saved member Retry after a pause without another Save", asy
   assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), [1, 1]);
 });
 
+it("resumes a member Retry paused before its Save by reading its stale contacts again", async () => {
+  const f = fixture;
+  await f.canonical.execute(f.parentRun, signal());
+  const previous = failed(f);
+  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", previous)).state, "applied");
+  const replacement = f.children().find(child => child.envelope.retryOf === previous.envelope.runId); assert.ok(replacement);
+  const approvedRows = () => f.database.authority.runCheckpoints.listByItem(replacement.envelope.workflow, replacement.envelope.itemId)
+    .filter(row => row.runId === replacement.envelope.runId && row.nodeId === "approved-record");
+  let paused = false;
+  f.hooks.onSpan = event => {
+    if (paused || event.t !== "span.started" || event.kind !== "task" || !event.spanPath.includes("/read-contacts")
+      || event.runId !== replacement.envelope.runId) return;
+    paused = true;
+    assert.equal(f.canonical.kernel.execute(f.runCommand("pause", f.current(replacement.envelope.runId))).state, "applied");
+  };
+  const parked = await f.canonical.step(f.parentRun, signal());
+  assert.equal(parked.run.envelope.runId, replacement.envelope.runId);
+  assert.equal(parked.outcome.state, "abandoned"); assert.equal(paused, true);
+  const held = f.current(replacement.envelope.runId);
+  assert.equal(held.pause?.state, "paused");
+  assert.equal(approvedRows().length, 1);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(held.envelope.runId), []);
+  f.clock.advanceWall(1_000);
+  const resumedAt = f.clock.now().getTime();
+  assert.equal(f.canonical.kernel.execute(f.runCommand("resume", held)).state, "applied");
+  assert.ok(f.current(held.envelope.runId).envelope.continuation);
+  f.hooks.onSpan = () => f.clock.advanceWall(1);
+  const completed = await f.canonical.step(f.parentRun, signal());
+  assert.equal(completed.run.envelope.runId, held.envelope.runId);
+  assert.equal(completed.outcome.state, "done", completed.outcome.state === "failed"
+    ? JSON.stringify(f.database.authority.failures.get(completed.outcome.failureId)) : JSON.stringify(completed.outcome));
+  f.hooks.onSpan = undefined;
+  const rows = approvedRows(); assert.equal(rows.length, 2);
+  assert.ok(Date.parse(rows[1]?.provenance[0]?.observedAt ?? "") >= resumedAt);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(held.envelope.runId).map(intent => intent.status), ["committed"]);
+  assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), [1, 1]);
+});
+
 for (const ownership of ["missing captured claim", "missing current claim", "replaced generation", "replaced worker"] as const)
 it(`refuses accounting with a ${ownership} after manual Resume`, async () => {
   const f = fixture;
