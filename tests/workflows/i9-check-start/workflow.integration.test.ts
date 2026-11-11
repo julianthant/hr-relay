@@ -4,6 +4,7 @@ import readXlsxFile from "read-excel-file/node";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createI9CheckStartWorld } from "../../support/helpers/backend/i9-check-start-world.js";
 import { I9CheckStartResultSchema } from "../../../src/models/workflows/i9-check/batch.js";
+import { I9CheckRowSchema } from "../../../src/models/workflows/i9-check/check.js";
 import { I9CheckCanonicalInput } from "../../../src/models/workflows/i9-check/input.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 
@@ -110,31 +111,61 @@ describe("one I-9 PDF Start through admitted children", () => {
   });
 });
 
-describe("one I-9 PDF dry run previews the workbook and leaves every local output untouched", () => {
+describe("an I-9 dry run previews the workbook and leaves every local output untouched", () => {
   const world = createI9CheckStartWorld();
+  let f: Awaited<ReturnType<typeof world.fixture>>;
+  let trackerBefore: Buffer | null, workbooksBefore: number;
+  const trackerBytes = () => {
+    const config = f.database.authority.configSnapshots.get(f.run.envelope.configSnapshotId); assert.ok(config);
+    const path = config.config.paths.i9CheckTrackerPath;
+    return existsSync(path) ? readFileSync(path) : null;
+  };
+  const walk = (runId: string): ReturnType<typeof f.database.authority.runs.listChildren> =>
+    f.database.authority.runs.listChildren(runId).flatMap(child => [child, ...walk(child.envelope.runId)]);
+  const documents = () => f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "ocr");
+  beforeAll(async () => {
+    f = await world.fixture({ dryRun: true });
+    trackerBefore = trackerBytes();
+    workbooksBefore = f.database.authority.workbooks.list().length;
+  });
   afterAll(world.cleanup);
 
-  it("i9-check-start/dry-run — reads for real, previews the save, never starts the tracker", async () => {
-    const f = await world.fixture({ dryRun: true, documents: 1 });
+  it("i9-check-start/dry-run — plans no output and parks the first of two PDFs for review", async () => {
     expect(f.plan?.planned[0]?.outputs).toBeUndefined();
-    const config = f.database.authority.configSnapshots.get(f.run.envelope.configSnapshotId); assert.ok(config);
-    const trackerPath = config.config.paths.i9CheckTrackerPath;
-    const trackerBytes = () => existsSync(trackerPath) ? readFileSync(trackerPath) : null;
-    const trackerBefore = trackerBytes();
-    const workbooksBefore = f.database.authority.workbooks.list().length;
-    for (let pass = 0; pass < 3; pass += 1) {
-      await f.canonical.execute(f.run, new AbortController().signal);
-      if (f.database.authority.runs.listChildren(f.run.envelope.runId).some(child => child.lifecycle.state === "parked-gate")) f.approveNext();
-    }
+    const result = await f.canonical.execute(f.run, new AbortController().signal);
+    expect(result.run?.lifecycle.state).toBe("queued");
+    expect(documents()).toHaveLength(2);
+    expect(documents().filter(child => child.lifecycle.state === "parked-gate")).toHaveLength(1);
+    expect(walk(f.run.envelope.runId).every(child => child.envelope.dryRun === true)).toBe(true);
+  });
+  it("resumes after the first approval and parks the second PDF", async () => {
+    const first = f.approveNext();
+    const result = await f.canonical.execute(f.run, new AbortController().signal);
+    expect(result.run?.lifecycle.state).toBe("queued");
+    expect(documents().find(child => child.envelope.runId === first)?.lifecycle).toMatchObject({ state: "terminal", outcome: "done" });
+    expect(documents().filter(child => child.lifecycle.state === "parked-gate")).toHaveLength(1);
+    expect(walk(f.run.envelope.runId).every(child => child.envelope.dryRun === true)).toBe(true);
+  });
+  it("checks both people for real, previews the save and never starts the tracker", async () => {
+    f.approveNext();
     const result = await f.canonical.execute(f.run, new AbortController().signal);
     expect(result.run?.lifecycle).toMatchObject({ state: "terminal", outcome: "done" });
-    const walk = (runId: string): ReturnType<typeof f.database.authority.runs.listChildren> =>
-      f.database.authority.runs.listChildren(runId).flatMap(child => [child, ...walk(child.envelope.runId)]);
     const descendants = walk(f.run.envelope.runId);
-    expect(descendants.map(child => child.envelope.workflow)).toContain("i9-check");
     expect(descendants.every(child => child.envelope.dryRun === true)).toBe(true);
     for (const child of descendants) expect(child.lifecycle).toMatchObject({ state: "terminal", outcome: "done" });
     for (const child of descendants) expect(f.database.authority.runResults.get(child.envelope.runId)?.result.value).not.toHaveProperty("kind", "publication-dry-run-preview");
+    const people = f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "i9-check");
+    expect(people.map(child => I9CheckCanonicalInput.parse(child.input.parsed.value).ocrRunId).toSorted())
+      .toEqual(documents().map(child => child.envelope.runId).toSorted());
+    expect(people.map(child => {
+      const row = I9CheckRowSchema.parse(Reflect.get(f.database.authority.runResults.get(child.envelope.runId)?.result.value as object, "row"));
+      return [row.ucpathEmplId, row.action];
+    }).toSorted()).toEqual([["10000001", "Keep"], ["10000002", "Keep"]]);
+    for (const document of documents()) {
+      const lookups = f.database.authority.runs.listChildren(document.envelope.runId).filter(child => child.envelope.workflow === "i9-lookup");
+      expect(lookups.length).toBeGreaterThan(0);
+      for (const lookup of lookups) expect(f.database.authority.runResults.get(lookup.envelope.runId)?.result.value).toMatchObject({ i9Status: "not-found", signerName: "" });
+    }
     const terminal = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(terminal);
     expect(terminal.result.value).toMatchObject({ kind: "publication-dry-run-preview", externalCommit: "none", coverage: { state: "full" } });
     const steps = Reflect.get(terminal.result.value as object, "steps") as { nodeId: string; state: string; reason?: string }[];
@@ -144,7 +175,7 @@ describe("one I-9 PDF dry run previews the workbook and leaves every local outpu
     expect(f.publishCalls).toEqual([]);
     expect(f.database.authority.workbooks.list()).toHaveLength(workbooksBefore);
     expect(f.projections).toEqual([]);
-    expect(f.database.authority.artifactOutbox.listPending()).toHaveLength(0);
+    expect(f.database.authority.generatedArtifacts.list().flatMap(file => file.updates.filter(update => update.record.sourceRunId === f.run.envelope.runId))).toEqual([]);
     expect(trackerBytes()).toEqual(trackerBefore);
   });
 });

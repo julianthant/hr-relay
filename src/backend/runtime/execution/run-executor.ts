@@ -1349,6 +1349,8 @@ export async function executeClaimedRun(
 
     const projectionsFor = (nodeId: string) =>
       (descriptor.artifactProjections ?? []).filter((spec) => String(spec.source.nodeId) === nodeId);
+    const dryRunProjectionRefusal = (node: TaskRuntimeNode) =>
+      new Error(`node "${node.id}" declares a durable artifact projection, which a dry run must never reach`);
 
     // Only the exact source checkpoint may acknowledge its retained output updates.
     const resumePendingProjections = async (
@@ -1357,6 +1359,7 @@ export async function executeClaimedRun(
     ): Promise<RunExecutionOutcome | undefined> => {
       const specs = projectionsFor(String(node.id));
       if (specs.length === 0) return undefined;
+      if (envelope.dryRun) return await failNode(node, node.uses.id, dryRunProjectionRefusal(node));
       try {
         const withTransaction = deps.authority.withAuthorityTransaction?.bind(deps.authority);
         if (withTransaction === undefined) throw new Error("generated-artifact-replay-requires-transaction");
@@ -1421,6 +1424,7 @@ export async function executeClaimedRun(
       });
 
       const declaredProjections = projectionsFor(String(node.id));
+      if (envelope.dryRun && declaredProjections.length > 0) return await failNode(node, contract.id, dryRunProjectionRefusal(node));
       if (declaredProjections.length > 0 && deps.artifactProjector === undefined) {
         return await failNode(node, contract.id, new Error(
           `node "${node.id}" declares a durable artifact projection, and this composition wires no `

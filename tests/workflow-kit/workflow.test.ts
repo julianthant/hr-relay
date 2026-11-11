@@ -66,5 +66,14 @@ describe("workflow flow builder", () => {
       assert.doesNotThrow(() => define(finish(archive(["save"]), ["archive"]), { artifactProjections: [projection] }));
       assert.throws(() => define(finish(archive([]), ["archive"]), { artifactProjections: [projection] }), /boundary/u);
     });
+
+    it("refuses a projection behind a boundary a false condition can skip, and accepts one behind an unconditional transaction", () => {
+      const projection = { id: "batch-archive", source: { nodeId: "archive", fieldPath: "archive" }, keyFields: ["archive.artifact.sha256"], sink: "documents-file", blocking: true } as const;
+      const when = { kind: "equals", of: { from: "input", path: "eid" }, value: WRITE_FIXTURE_EID } as const;
+      const conditional = save(base(), { ...stopBeforePublish, when }).step("archive", namedFileOutputContract, { dependsOn: ["save"], replay: "checkpoint", bind: () => ({ name: "x" }) });
+      assert.throws(() => define(finish(conditional, ["archive"]), { artifactProjections: [projection] }), /unconditional dry-run preview boundary/u);
+      const mixed = save(write(base(), "stop-after-prepare")).step("archive", namedFileOutputContract, { dependsOn: ["write"], replay: "checkpoint", bind: () => ({ name: "x" }) });
+      assert.doesNotThrow(() => define(finish(mixed, ["save", "archive"]), { artifactProjections: [projection] }));
+    });
   });
 });

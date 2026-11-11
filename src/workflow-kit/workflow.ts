@@ -1222,15 +1222,16 @@ export function defineWorkflowDescriptor<
       throw new Error(`${id}: node "${node.id}" declares dryRun "stop-before-publish" but its contract declares no provider to stop before`);
     }
   }
-  if (publications.length > 0) {
-    // A dry run stops at a publication boundary, so every projection source must sit behind one.
+  if (deriveDryRunSupport(nodes).state === "supported") {
+    // A dry run stops at a preview boundary, so every projection source must sit behind one that cannot be skipped.
+    const boundaries = new Set(nodes.filter(node => isPreviewBoundary(node) && !(node.kind === "task" && node.when !== undefined)).map(node => String(node.id)));
     const behind = new Set<string>();
     for (const node of nodes) {
-      if (node.dependsOn.some(dependency => behind.has(String(dependency)) || publications.some(boundary => boundary.id === dependency))) behind.add(String(node.id));
+      if (node.dependsOn.some(dependency => behind.has(String(dependency)) || boundaries.has(String(dependency)))) behind.add(String(node.id));
     }
     for (const projection of spec.artifactProjections ?? []) {
       if (!behind.has(String(projection.source.nodeId))) {
-        throw new Error(`${id}: artifact projection "${projection.id}" reads node "${String(projection.source.nodeId)}", which does not depend on a dry-run publication boundary`);
+        throw new Error(`${id}: artifact projection "${projection.id}" reads node "${String(projection.source.nodeId)}", which does not depend on an unconditional dry-run preview boundary`);
       }
     }
   }
