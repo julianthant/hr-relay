@@ -519,3 +519,62 @@ for (const interrupted of [false, true]) it(`refuses a paused run whose complete
   assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, 0);
   assert.deepEqual(h.database.authority.writeIntents.listByBusinessKey("ucpath", WRITE_FIXTURE_KEY_DIGEST), []);
 });
+
+const childAfterReadDescriptor = defineWorkflowDescriptor({ ...metadata, flow: flow(Input)
+  .step("before", sourceBoundReadContract, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => ({ eid: input.eid, memo: "source" }) })
+  .childRun("child", { id: sourceBoundReadDescriptor.id, input: Input, result: sourceBoundReadContract.output }, {
+    dependsOn: ["before"], edgeId: DelegationEdgeIdSchema.parse("child"), cardinality: "one", await: "terminal", join: "one",
+    policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" },
+    bind: ({ outputs }) => ({ eid: outputs.before.eid }), deriveChildItemId: (_input, identity) => identity.canonicalItemId })
+  .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: ["child"],
+    prepare: { uses: WriteFixturePrepare, bind: ({ outputs }) => { if (outputs.child.state !== "done") throw new Error("child not done"); return { eid: outputs.child.output.eid }; } },
+    commit: { uses: WriteFixtureCommit, bind: ({ outputs }) => { if (outputs.child.state !== "done") throw new Error("child not done"); return { eid: outputs.child.output.eid }; } },
+    dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 })
+  .step("finish", sourceBoundReadContract, { dependsOn: [WRITE_FIXTURE_NODE_ID], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid, memo: "finish" }) })
+  .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }) });
+
+// The clock never moves, so the parent's re-read row carries the delegation manifest's own createdAt.
+for (const changed of [false, true]) it(`${changed ? "refuses" : "reuses"} a retained delegation on Recover when the parent re-read its input at the manifest's wall time${changed ? " with a new value" : ""}`, async () => {
+  const sourceValues = [WRITE_FIXTURE_EID, changed ? EidSchema.parse("10899999") : WRITE_FIXTURE_EID];
+  let finishCalls = 0;
+  const h = await sourceBoundHarness(childAfterReadDescriptor, world => {
+    const read = defineTask(sourceBoundReadContract, { sessions: [], async run({ input, ctx }) {
+      if (input.memo === "finish" && (finishCalls += 1) === 1) throw new Error("fixture downstream failure");
+      const eid = input.memo === "source" ? sourceValues.shift() : input.eid; assert.ok(eid);
+      ctx.recordData({ direction: "read", field: "eid", value: eid });
+      return { eid };
+    } });
+    const writes = buildWriteFixtureRegistry(world);
+    return defineTaskStoreRegistry([defineServiceStore("ocr", { read }), ...writes.stores], {
+      scenarioIds: [...sourceBoundReadContract.scenarios, ...writes.corpus.scenarioIds],
+      tasks: [{ id: sourceBoundReadContract.id, effect: sourceBoundReadContract.effect }, ...writes.corpus.tasks],
+    });
+  }, undefined, undefined, undefined, [sourceBoundReadDescriptor]);
+  cleanups.push(h.dispose);
+  h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+  const source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID));
+  assert.equal((await h.execute(source)).state, "yielded-delegation");
+  const children = h.database.authority.runs.listChildren(source.envelope.runId); assert.equal(children.length, 1);
+  for (const member of children) assert.equal((await h.execute(member)).state, "done");
+  assert.equal((await h.execute(source)).state, "failed");
+  const manifest = h.database.authority.delegationManifests.listByParentRun(source.envelope.runId)[0]; assert.ok(manifest);
+  const rows = h.database.authority.runCheckpoints.listByItem(source.envelope.workflow, source.envelope.itemId).filter(row => row.nodeId === "before");
+  assert.equal(rows.length, 2);
+  for (const row of rows) assert.equal(row.writtenAt, manifest.createdAt);
+  const failed = h.fresh(source), next = operatorRecover({ ...h, failed }, failed);
+  const outcome = await h.execute(next);
+  const commits = h.world.events.filter(event => event.startsWith("commit-click:")).length;
+  assert.deepEqual(sourceValues, []);
+  assert.equal(h.database.authority.runs.listByWorkflow(sourceBoundReadDescriptor.id).length, 1);
+  if (!changed) {
+    assert.equal(outcome.state, "done", JSON.stringify(h.database.authority.failures.listByRun(next.envelope.runId)));
+    assert.equal(commits, 1);
+    return;
+  }
+  assert.equal(outcome.state, "failed");
+  const failure = h.database.authority.failures.listByRun(next.envelope.runId).at(-1);
+  assert.equal(failure?.code, "RUN_CONTINUATION_REFUSED", JSON.stringify(failure));
+  assert.match(JSON.stringify(failure), /run-continuation-child-input-mismatch/u);
+  assert.equal(commits, 0);
+  assert.deepEqual(h.database.authority.writeIntents.listByBusinessKey("ucpath", WRITE_FIXTURE_KEY_DIGEST), []);
+});
