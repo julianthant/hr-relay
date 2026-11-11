@@ -73,7 +73,8 @@ export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns }
     </BodySection>
     <BodySection title="Workflows" description="Open a row to see what went wrong.">
       {shown.length === 0 ? <p className="m-0 text-body text-ui-secondary">No workflow activity in this period</p> :
-      <div className="ds-table-list-frame ds-usage-table"><table aria-label="Workflows">
+      <div className="ds-table-list-frame ds-usage-table"><table aria-label="Workflows" className="table-fixed">
+        <colgroup><col className="w-10" /><col /><col className="w-[114px]" /><col className="w-[114px]" /><col className="w-[122px]" /><col className="w-[186px]" /></colgroup>
         <thead><tr><th scope="col" className="ds-usage-chevron"><span className="sr-only">Details</span></th><th scope="col" className="!pl-0">Workflow</th><th scope="col" className={NUMBER}>Runs</th><th scope="col" className={NUMBER}>Done</th><th scope="col" className={NUMBER}>Failed</th><th scope="col" className={NUMBER}>Typical time</th></tr></thead>
         <tbody>{shown.map(row => {
           const isOpen = open.has(row.id), total = finished(row);
