@@ -13,7 +13,7 @@ it("buckets one bar per day, filling days the report has no row for", () => {
 });
 it("groups a period longer than a month by week and moves whole periods", () => {
   const buckets = analyticsBuckets({ from: "2026-08-01", to: "2026-09-26" }, [workflow]);
-  assert.equal(buckets.length, 8);
+  assert.equal(buckets.length, 9);
   assert.equal(buckets[0]?.date, "Aug 1 – 7, 2026");
   assert.deepEqual(shiftRange({ from: "2026-09-20", to: "2026-09-26" }, -1), { from: "2026-09-13", to: "2026-09-19" });
   assert.equal(analyticsPeriodLabel({ from: "2026-08-28", to: "2026-09-26" }), "Aug 28 – Sep 26, 2026");
