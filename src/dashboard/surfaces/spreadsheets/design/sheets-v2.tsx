@@ -6,7 +6,6 @@ import { decodeEditableWorkbook } from '../../../../models/dashboard/workbooks.j
 import type { WorkbookLibraryAction } from '../../../../models/dashboard/workbook-library.js';
 import type { EditableWorkbook } from '../../../../rules/spreadsheets/workbook-io.js';
 import { saveSpreadsheetDownload, spreadsheetDownload } from '../spreadsheet-chat-registration-model.js';
-import { spreadsheetRowsWithoutEid } from '../spreadsheet-column-import-model.js';
 import { TagFilter } from './sheets-v2-tagfilter.js';
 import { fieldsOf, newestFirst, sheetOf, tableOf, tagsOf, workflowTags } from './sheets-v2-model.js';
 import { SheetDialog, type DialogKind } from './sheets-v2-dialogs.js';
@@ -76,8 +75,8 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const add = async (document: EditableWorkbook) => {
     const outcome = await importWorkbook(adapter, document);
     if (outcome.state === 'added') {
-      const withoutEid = spreadsheetRowsWithoutEid(document);
-      toast({ tone: 'success', title: `Added ${outcome.name}`, description: withoutEid > 0 ? `${withoutEid.toLocaleString()} ${withoutEid === 1 ? 'row has' : 'rows have'} no usable employee ID and will be read as missing.` : undefined });
+      const missing = outcome.rowsWithoutEid;
+      toast({ tone: 'success', title: `Added ${outcome.name}`, description: missing > 0 ? `${missing.toLocaleString()} ${missing === 1 ? 'row has' : 'rows have'} no usable employee ID and will be read as missing.` : undefined });
       return true;
     }
     toast({ tone: 'danger', title: outcome.state === 'pending' ? `Still confirming ${pendingImportName(adapter)}` : "Couldn't add the spreadsheet",
