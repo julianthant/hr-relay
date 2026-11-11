@@ -502,6 +502,8 @@ export async function executeClaimedRun(
         return new RunTerminalAdmissionLostError(outcome, authorization.expectedVersion);
       requireLifecycleApplied(outcome);
       if (prepared !== undefined && capture !== undefined) capture.persist(prepared);
+      deps.debugEvents?.emit({ category: "worker", phase: "failed", area: "run-execution", reason: "run-failed",
+        code: bound.code, correlationId: bound.failureId }, { kind: "run", runId }, envelope.workflow);
       return "settled";
     };
     if (prepared !== undefined && deps.authority.withAuthorityTransaction === undefined) {
