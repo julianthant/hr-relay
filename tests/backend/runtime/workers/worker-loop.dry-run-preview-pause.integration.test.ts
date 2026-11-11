@@ -42,7 +42,6 @@ describe("a dry run paused mid-preview resumes in the same process (ref workers-
         h.world.probeWait = never;
         h.world.prepareSteps = undefined;
       } else {
-        let first = true;
         h.world.prepareSteps = async () => { if (!entered) { entered = true; await never; } };
       }
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW), absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -60,7 +59,8 @@ describe("a dry run paused mid-preview resumes in the same process (ref workers-
         await pump(h, () => current(h).lifecycle.state === "terminal");
         assert.deepEqual(h.emitRefusals, []);
 
-        assert.deepEqual(current(h).lifecycle.state === "terminal" && current(h).lifecycle.outcome, "done",
+        const ended = current(h).lifecycle;
+        assert.equal(ended.state === "terminal" ? ended.outcome : ended.state, "done",
           JSON.stringify({ lifecycle: current(h).lifecycle, result: h.database.authority.runResults.get(WRITE_FIXTURE_RUN_ID)?.result }));
         assert.ok(current(h).claimGeneration > firstGeneration);
         const result = h.database.authority.runResults.get(WRITE_FIXTURE_RUN_ID);
