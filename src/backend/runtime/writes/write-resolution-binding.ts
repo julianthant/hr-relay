@@ -257,11 +257,14 @@ export function rebuildCheckpointCommitInput(
     if (dependencyNode?.kind !== "task" && dependencyNode?.kind !== "transaction") {
       throw new WriteCommitInputRebuildError("missing-evidence", `unsupported-dependency:${dependencyNode?.kind ?? "unknown"}:${dependency}`);
     }
-    // Only the producer's rows written up to this checkpoint's claim, else its authenticated continuation reference.
-    const own = repositories.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, dependency, checkpoint.attempt)
-      .filter(row => row.runId === envelope.runId && row.claimGeneration <= checkpoint.claimGeneration && row.writtenAt <= checkpoint.writtenAt)
-      .sort((a, b) => a.claimGeneration - b.claimGeneration).at(-1);
-    let row = own;
+    // The row readRunCheckpoint replayed, bounded by this checkpoint: own rows for a continuation, source-bound or restart run
+    // (a continuation falls back to its authenticated reference), else the item's latest row from any of its runs.
+    // shortcut: attempt-bounded like pickCheckpoint; exact while every workflow is enqueue reject-active.
+    const ownOnly = envelope.continuation !== undefined || envelope.sourceBound !== undefined || envelope.recovery === "restart-from-start";
+    let row = repositories.runCheckpoints.listByItem(envelope.workflow, envelope.itemId)
+      .filter(candidate => candidate.nodeId === dependency && (!ownOnly || candidate.runId === envelope.runId) && candidate.writtenAt <= checkpoint.writtenAt
+        && (candidate.attempt < checkpoint.attempt || candidate.attempt === checkpoint.attempt && candidate.claimGeneration <= checkpoint.claimGeneration))
+      .at(-1);
     if (row === undefined && envelope.continuation !== undefined) {
       validateRunContinuation(repositories, envelope);
       const reference = envelope.continuation.checkpoints.find(candidate => candidate.nodeId === dependency);
