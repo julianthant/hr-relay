@@ -38,17 +38,7 @@ const libraryReads = { workbookList: async () => [], workbookCatalog: async () =
 const checkboxRows = () => [...document.querySelectorAll<HTMLButtonElement>('table[aria-label="Saved spreadsheet rows"] button[role="checkbox"]')];
 async function mode(value: string) { const radio = document.querySelector<HTMLInputElement>(`input[type="radio"][value="${value}"]`); assert.ok(radio); await act(async () => radio.click()); }
 async function select(index: number) { const checkbox = checkboxRows()[index]; assert.ok(checkbox); await act(async () => checkbox.click()); }
-async function pick(label: string, value: string) {
-  const picker = h.buttons().find(button => h.buttonName(button) === label); assert.ok(picker, label);
-  await act(async () => picker.click());
-  const option = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes(value)); assert.ok(option, value);
-  await act(async () => option.click()); await h.settle();
-}
-async function chooseCurrent() {
-  await pick('Choose a spreadsheet Reference spreadsheet', 'Roster');
-  await pick('Choose a version Reference version', 'Reviewed');
-  await pick('Choose a worksheet Reference worksheet', 'First');
-}
+async function chooseCurrent() { await h.chooseReference('Roster', 'Reviewed', 'First'); }
 function proposal(request: StartPlanRequest, partial = false) {
   return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), workflowId: descriptorId,
     ...(request.rerunSource ? { rerun: { source: request.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: request.warningAcknowledgment } } : {}),
@@ -114,7 +104,7 @@ it("keeps earlier selected rows visible and disabled after a named-version chang
     workbook: versionId === 'alternate' ? { ...versionView.workbook, sheets: [{ ...versionView.workbook.sheets[0], id: 'former-sheet', name: 'Earlier People' }] } : versionView.workbook }) }),
     { workflows: [workflow], panelWorkflowId: descriptor.id });
   await h.settle(); await chooseCurrent(); await select(0); await mode("new-hire");
-  await pick('Reviewed · Current Reference version', 'Alternate'); await pick('Choose a worksheet Reference worksheet', 'Earlier People');
+  await h.chooseVersion('Alternate');
   assert.match(dialog.text(), /Previous row selection/u); assert.match(dialog.text(), /First · Row 2/u);
   assert.equal(checkboxRows().every(checkbox => checkbox.disabled), true); assert.equal(dialog.disabled("Continue"), true);
   await dialog.press("Clear previous row selection");

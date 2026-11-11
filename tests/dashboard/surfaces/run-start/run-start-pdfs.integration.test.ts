@@ -72,14 +72,7 @@ it("uploads both original PDFs through the typed client and plans one parent wit
   expect(dialog.text()).toContain("2 PDFs selected");
   expect(dialog.disabled("Continue")).toBe(false);
   await dialog.press("Continue");
-  const choose = async (label: string, optionText: string) => {
-    await dialog.press(label);
-    const option = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes(optionText)); assert.ok(option);
-    await act(async () => option.click()); await h.settle();
-  };
-  await choose('Choose a spreadsheet Reference spreadsheet', 'Action History.xlsx');
-  await choose('Choose a version Reference version', 'Fall review');
-  await choose('Choose a worksheet Reference worksheet', 'Action History');
+  await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
   await dialog.press("Continue");
   expect(plans).toHaveLength(1);
   const request = StartPlanRequestSchema.parse(plans[0]);

@@ -308,7 +308,7 @@ export function createRunStartDialogHarness() {
     };
 
     const switchNamed = (name: string): HTMLInputElement | undefined => [...document.body.querySelectorAll<HTMLInputElement>('[role="switch"], [role="checkbox"]')]
-      .find(node => node.closest("label")?.querySelector(".ds-switch-copy > span")?.textContent === name || node.getAttribute("aria-label") === name);
+      .find(node => [name, `Include ${name}`].includes(node.closest("label")?.querySelector(".ds-switch-copy > span")?.textContent ?? "") || node.getAttribute("aria-label") === name);
     const press = async (name: string): Promise<void> => {
       const action = name === "Continue" && buttons().some(button => button.textContent?.trim() === "Preview plan") ? "Preview plan" : name;
       const visibleMatches = buttons().filter((button) => (button.textContent ?? "").trim() === action);
@@ -418,6 +418,38 @@ export function createRunStartDialogHarness() {
     };
   }
 
+  async function chooseVersion(version: string): Promise<void> {
+    const select = document.body.querySelector<HTMLSelectElement>('select[aria-label$=" version"]');
+    const option = select && [...select.options].find(candidate => candidate.textContent?.includes(version));
+    if (select === null || option === undefined) throw new Error(`no version ${version}`);
+    await act(async () => { typeInto(select, option.value); });
+    await settle();
+  }
+
+  /** Drives the Reference spreadsheets rows: Add (or Change) spreadsheet and search it, then optionally its version select and worksheet menu. */
+  async function chooseReference(spreadsheet: string, version?: string, worksheet?: string): Promise<void> {
+    const open = buttons().find(button => ["Add spreadsheet", "Change spreadsheet"].includes(button.textContent?.trim() ?? ""));
+    if (open === undefined) throw new Error("the dialog draws no Add spreadsheet button");
+    await act(async () => { open.click(); });
+    const search = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a spreadsheet"]');
+    if (search === null) throw new Error("the Add spreadsheet menu drew no search");
+    await act(async () => { typeInto(search, spreadsheet); });
+    const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(node => node.textContent?.includes(spreadsheet));
+    if (item === undefined) throw new Error(`no spreadsheet matches ${spreadsheet}`);
+    await act(async () => { item.click(); });
+    await settle();
+    if (version !== undefined) await chooseVersion(version);
+    if (worksheet !== undefined) {
+      const trigger = buttons().find(button => /worksheet, /u.test(button.getAttribute("aria-label") ?? ""));
+      if (trigger === undefined) throw new Error("the reference row draws no worksheet menu");
+      await act(async () => { trigger.click(); });
+      const choice = [...document.body.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(node => node.textContent?.includes(worksheet));
+      if (choice === undefined) throw new Error(`no worksheet ${worksheet}`);
+      await act(async () => { choice.click(); });
+      await settle();
+    }
+  }
+
   // Compare presence as a boolean; formatting a jsdom node can exhaust the assertion budget.
   function planIsDrawn(): boolean {
     return document.body.querySelector("#run-start-confirm") !== null;
@@ -438,5 +470,5 @@ export function createRunStartDialogHarness() {
     return dialog;
   }
 
-  return { cleanup, openDialog, stubClient, ACTOR_ID, WORKFLOW_ID, TYPED, HASH, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName };
+  return { cleanup, openDialog, stubClient, ACTOR_ID, WORKFLOW_ID, TYPED, HASH, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName, chooseReference, chooseVersion };
 }
