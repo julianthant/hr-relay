@@ -1,31 +1,15 @@
-import { expect, type Page } from "@playwright/test";
+import { expect } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
-import { installServedSurfaces } from "./helpers/app-driver.js";
-import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
+import { serveSettings } from "./helpers/served-settings.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
-import { chatGptStatusFixture } from "../support/helpers/chatgpt-status-fixture.js";
-
-async function serve(page: Page, theme: "dark" | "light"): Promise<void> {
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); Reflect.set(window, "relayParityPersonPreferences", true); Reflect.set(window, "relayParityMotion", false); }, theme);
-  await page.route("**/api/v1/profile/state", route => route.fulfill({ json: {
-    state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready",
-    account: { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", lastSignedInAt: "2026-11-10T08:30:00-08:00" },
-  } }));
-  await page.route("**/api/v1/settings/editable", route => route.fulfill({ json: fixtureSettingsDocument({ preferences: { theme, animations: false } }, 2) }));
-  await page.route("**/api/v1/settings/chatgpt-account", route => route.fulfill({ json: chatGptStatusFixture({
-    state: "connected", name: "Fixture Operator", email: "operator@example.edu", expiresAt: "2099-10-19T00:00:00Z", planUsage: "enabled",
-  }) }));
-  await installServedSurfaces(page);
-}
 
 for (const theme of ["dark", "light"] as const) {
   test(`Settings General, Account and Subscription render the approved pages on served data ${theme}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
-      await serve(page, theme);
+      await serveSettings(page, theme);
       const shot = async (name: string) => { mkdirSync("tests/parity/.output/settings-served-preview", { recursive: true }); await page.screenshot({ path: `tests/parity/.output/settings-served-preview/${name}-${theme}.png` }); };
 
       await page.goto(`${server.baseUrl}/?settings=general`);

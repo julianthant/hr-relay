@@ -4,6 +4,7 @@ import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
+import { serveSettings } from "./helpers/served-settings.js";
 import { STATUS_MOCK_IDS, type StatusMockId } from "../../src/dashboard/surfaces/settings/status-mock/status-mock-model.js";
 
 // Design mock renders for the status pages that leave Settings; output goes to the gitignored .work folder.
@@ -479,6 +480,7 @@ test("sidebar click-through shows the mock pages", async ({ page }) => {
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
+  await serveSettings(page, "dark");
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=general-a`);
   await page.getByRole("button", { name: "Settings", exact: true }).click();

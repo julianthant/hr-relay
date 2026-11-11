@@ -230,42 +230,7 @@ describe("editable Settings surface", () => {
     assert.equal(applied.length, 0, "incomplete date edits cannot produce a settings command");
     assert.ok(date.querySelector('button[aria-label="Choose job end date"]'));
   });
-});
 
-it("publishes a failed refresh while retaining the verified document and unsaved draft", async () => {
-  let fail = false;
-  let controller: ReturnType<typeof useEditableSettings> | undefined;
-  const client = { editableSettings: () => fail ? Promise.reject(new Error("synthetic read failure")) : Promise.resolve(DOCUMENT),
-  } as unknown as DashboardClient;
-  function Surface() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); return null; }
-  host = document.createElement("div"); document.body.append(host);
-  await act(async () => { root = createRoot(host!); root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(Surface) }) })); });
-  assert.ok(controller);
-  const current = () => { if (controller === undefined) throw new Error("missing editor"); return controller; };
-  const leaf = current().leaves.find(candidate => candidate.input === "text");
-  assert.ok(leaf);
-  await act(async () => current().update(leaf.path, "synthetic retained draft"));
-  const retained = structuredClone(current().draft);
-  fail = true;
-  await act(async () => current().reload());
-  assert.equal(current().editor.state, "loaded");
-  assert.match(current().readProblem ?? "", /could not be read.*drafts are retained/u);
-  assert.deepEqual(current().draft, retained);
-  assert.equal(current().dirtyCount, 1);
-});
-
-for (const section of ["general", "performance"]) for (const mode of ["failed", "hung"]) {
-  it(`renders the catalog body in the ${section} failed part after a ${mode} initial read`, async () => {
-    vi.useFakeTimers();
-    const client = { editableSettings: () => mode === "hung" ? new Promise(() => {}) : Promise.reject(new Error("private fixture error")),
-    } as unknown as DashboardClient;
-    const dom = await mountSettingsPage(client, section);
-    if (mode === "hung") await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-    const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes("Settings unavailable"));
-    assert.ok(failure);
-    assert.ok(failure.textContent?.includes(ERROR_CATALOG.SETTINGS_INITIAL_READ_UNAVAILABLE.text.replace(/ Try again\.$/u, "")));
-    assert.doesNotMatch(failure.textContent ?? "", /private fixture error/);
-  });
   it("holds a UCPath pencil-dialog draft through the timer, blur, Escape and Cancel and writes only on Save", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const applied: unknown[] = [];
@@ -305,6 +270,42 @@ for (const section of ["general", "performance"]) for (const mode of ["failed", 
     await act(async () => overlayButton("Save").click());
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     assert.equal(applied.length, 1, "Save writes exactly once");
+  });
+});
+
+it("publishes a failed refresh while retaining the verified document and unsaved draft", async () => {
+  let fail = false;
+  let controller: ReturnType<typeof useEditableSettings> | undefined;
+  const client = { editableSettings: () => fail ? Promise.reject(new Error("synthetic read failure")) : Promise.resolve(DOCUMENT),
+  } as unknown as DashboardClient;
+  function Surface() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); return null; }
+  host = document.createElement("div"); document.body.append(host);
+  await act(async () => { root = createRoot(host!); root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(Surface) }) })); });
+  assert.ok(controller);
+  const current = () => { if (controller === undefined) throw new Error("missing editor"); return controller; };
+  const leaf = current().leaves.find(candidate => candidate.input === "text");
+  assert.ok(leaf);
+  await act(async () => current().update(leaf.path, "synthetic retained draft"));
+  const retained = structuredClone(current().draft);
+  fail = true;
+  await act(async () => current().reload());
+  assert.equal(current().editor.state, "loaded");
+  assert.match(current().readProblem ?? "", /could not be read.*drafts are retained/u);
+  assert.deepEqual(current().draft, retained);
+  assert.equal(current().dirtyCount, 1);
+});
+
+for (const section of ["general", "performance"]) for (const mode of ["failed", "hung"]) {
+  it(`renders the catalog body in the ${section} failed part after a ${mode} initial read`, async () => {
+    vi.useFakeTimers();
+    const client = { editableSettings: () => mode === "hung" ? new Promise(() => {}) : Promise.reject(new Error("private fixture error")),
+    } as unknown as DashboardClient;
+    const dom = await mountSettingsPage(client, section);
+    if (mode === "hung") await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes("Settings unavailable"));
+    assert.ok(failure);
+    assert.ok(failure.textContent?.includes(ERROR_CATALOG.SETTINGS_INITIAL_READ_UNAVAILABLE.text.replace(/ Try again\.$/u, "")));
+    assert.doesNotMatch(failure.textContent ?? "", /private fixture error/);
   });
 }
 
