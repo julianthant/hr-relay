@@ -15,7 +15,8 @@ import { HASH_A, NOW, UUID_4, HASH_B } from "../../../support/fixtures/phase1c-c
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
-import { separationsDescriptor, personLookupDescriptor, separationsKualiFinalizationDescriptor, separationsUcpathTerminationDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { i9ApprovedSource } from "../../../support/fixtures/i9-check-start.js";
+import { i9CheckStartModule, separationsDescriptor, personLookupDescriptor, separationsKualiFinalizationDescriptor, separationsUcpathTerminationDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 import { createPersonLookupStartFixtures } from "../../../support/helpers/backend/person-lookup-start-fixtures.js";
@@ -387,6 +388,20 @@ afterEach(_afterEachFixture0);
     assert.equal(plan.refused[0].code, "dry-run-unsupported");
     assert.deepEqual(plan.refused[0].rawInput, { emplId: "10873698" });
     assert.match(plan.refused[0].message, /has no transaction node/);
+  });
+
+  it("plans an I-9 Check dry run without a results workbook and an ordinary run with one", async () => {
+    const database = await openDatabase();
+    const source = i9ApprovedSource(1, [{ eid: "10000001", kind: "i9-section1" }]);
+    const submission = { documents: [source.requestDocument], asOf: "2026-11-01", reviewerName: "Example Reviewer" };
+    const request = (dryRun: boolean) => baseRequest([submission], { descriptor: i9CheckStartModule.descriptor, dryRun });
+    const dry = planStart(plannerDeps(database), request(true));
+    assert.deepEqual(dry.refused, []);
+    assert.equal(dry.planned.length, 1);
+    assert.equal(dry.planned[0].outputs, undefined);
+    const real = planStart(plannerDeps(database), request(false));
+    assert.deepEqual(real.refused, []);
+    assert.equal(real.planned[0].outputs?.length, 1);
   });
 
   it("makes all three registered write workflows dry-startable through the graph", () => {

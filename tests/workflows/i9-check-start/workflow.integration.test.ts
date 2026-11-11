@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import readXlsxFile from "read-excel-file/node";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createI9CheckStartWorld } from "../../support/helpers/backend/i9-check-start-world.js";
@@ -91,6 +91,8 @@ describe("one I-9 PDF Start through admitted children", () => {
     const sheets = await readXlsxFile(readFileSync(config.config.paths.i9CheckTrackerPath));
     expect(sheets.find(sheet => sheet.sheet === "I-9 Check")?.data).toHaveLength(3);
     expect(f.database.authority.artifactOutbox.listPending()).toHaveLength(0);
+    expect(f.publishCalls).toHaveLength(1);
+    expect(f.projections).toHaveLength(1);
     expect(f.database.readProfileResourceCustody().writeIntents).toHaveLength(0);
     const people = f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "i9-check");
     expect(people).toHaveLength(2);
@@ -104,5 +106,43 @@ describe("one I-9 PDF Start through admitted children", () => {
     expect(receipt.runId).toBe(f.run.envelope.runId);
     expect(receipt.output.find(fact => fact.field === "personCount")).toMatchObject({ state: "satisfied", value: { value: 2 } });
     expect(service.ensureReceipt(f.run.envelope.runId)).toEqual(receipt);
+  });
+});
+
+describe("one I-9 PDF dry run previews the workbook and leaves every local output untouched", () => {
+  const world = createI9CheckStartWorld();
+  afterAll(world.cleanup);
+
+  it("i9-check-start/dry-run — reads for real, previews the save, never starts the tracker", async () => {
+    const f = await world.fixture({ dryRun: true });
+    const config = f.database.authority.configSnapshots.get(f.run.envelope.configSnapshotId); assert.ok(config);
+    const trackerPath = config.config.paths.i9CheckTrackerPath;
+    const trackerBytes = () => existsSync(trackerPath) ? readFileSync(trackerPath) : null;
+    const trackerBefore = trackerBytes();
+    const workbooksBefore = f.database.authority.workbooks.list().length;
+    for (let pass = 0; pass < 3; pass += 1) {
+      await f.canonical.execute(f.run, new AbortController().signal);
+      if (f.database.authority.runs.listChildren(f.run.envelope.runId).some(child => child.lifecycle.state === "parked-gate")) f.approveNext();
+    }
+    const result = await f.canonical.execute(f.run, new AbortController().signal);
+    expect(result.run?.lifecycle).toMatchObject({ state: "terminal", outcome: "done" });
+    const walk = (runId: string): ReturnType<typeof f.database.authority.runs.listChildren> =>
+      f.database.authority.runs.listChildren(runId).flatMap(child => [child, ...walk(child.envelope.runId)]);
+    const descendants = walk(f.run.envelope.runId);
+    expect(descendants.map(child => child.envelope.workflow)).toContain("i9-check");
+    expect(descendants.every(child => child.envelope.dryRun === true)).toBe(true);
+    for (const child of descendants) expect(child.lifecycle).toMatchObject({ state: "terminal", outcome: "done" });
+    for (const child of descendants) expect(f.database.authority.runResults.get(child.envelope.runId)?.result.value).not.toHaveProperty("kind", "publication-dry-run-preview");
+    const terminal = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(terminal);
+    expect(terminal.result.value).toMatchObject({ kind: "publication-dry-run-preview", externalCommit: "none", coverage: { state: "full" } });
+    const steps = Reflect.get(terminal.result.value as object, "steps") as { nodeId: string; state: string; reason?: string }[];
+    expect(steps.find(step => step.nodeId === "save-workbook")).toEqual({ nodeId: "save-workbook", state: "publication-preview" });
+    expect(steps.find(step => step.nodeId === "publish-results")).toEqual({ nodeId: "publish-results", state: "unavailable", reason: "requires-unsubmitted-output" });
+    expect(steps.filter(step => step.nodeId !== "save-workbook" && step.nodeId !== "publish-results").every(step => step.state === "exercised" || step.state === "not-run")).toBe(true);
+    expect(f.publishCalls).toEqual([]);
+    expect(f.database.authority.workbooks.list()).toHaveLength(workbooksBefore);
+    expect(f.projections).toEqual([]);
+    expect(f.database.authority.artifactOutbox.listPending()).toHaveLength(0);
+    expect(trackerBytes()).toEqual(trackerBefore);
   });
 });

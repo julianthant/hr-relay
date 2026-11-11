@@ -130,16 +130,18 @@ export function createCapabilityWiringTestWorld() {
   function fixtureDescriptor(id: string, code: string, contract:
     | typeof providersOnlyContract
     | typeof artifactsOnlyContract
-    | typeof wiredContract) {
-    const fixtureFlow = flow(FixtureInput)
+    | typeof wiredContract, publication = false) {
+    const first = flow(FixtureInput)
       .step("extract", contract, {
         dependsOn: [],
         replay: "checkpoint",
         bind: ({ input }) => ({ name: input.name }),
-      })
+        ...(publication ? { dryRun: "stop-before-publish" as const } : {}),
+      });
+    const fixtureFlow = (publication ? first.step("after", contract, { dependsOn: ["extract"], replay: "checkpoint", bind: ({ input }) => ({ name: input.name }) }) : first)
       .build({
         schema: z.strictObject({ done: z.boolean() }),
-        dependsOn: ["extract"],
+        dependsOn: [publication ? "after" : "extract"] as never,
         derive: () => ({ done: true }),
       });
     return defineWorkflowDescriptor({ ...descriptorMeta(id, code), flow: fixtureFlow });

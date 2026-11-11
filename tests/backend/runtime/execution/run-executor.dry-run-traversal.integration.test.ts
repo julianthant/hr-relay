@@ -2,13 +2,25 @@ import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-lo
 import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { afterEach, it } from "vitest";
+import { afterEach, describe, it } from "vitest";
+import { z } from "zod";
+import { createDeterministicProviderHarness } from "../../../../src/backend/processing/providers/deterministic-provider.js";
+import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
+import { FingerprintSchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
+import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
+import { defineTask } from "../../../../src/workflow-kit/task.js";
+import { HASH_A, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { createCapabilityWiringTestWorld } from "../../../support/helpers/backend/capability-wiring-world.js";
 import { createDryRunPreviewResultTestWorld } from "../../../support/helpers/backend/dry-run-preview-result-world.js";
 import { RunDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
 import { absentProbeEvidence, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, writeFixtureTraversalDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
 const { harness, cleanup } = createDryRunPreviewResultTestWorld();
+const wiring = createCapabilityWiringTestWorld();
 afterEach(cleanup);
+afterEach(wiring.cleanup);
 
 it("previews both ordered writes and accounts for a skipped gate and unavailable dependent read without committing", async () => {
   const h = await harness(writeFixtureTraversalDescriptor);
@@ -46,4 +58,83 @@ it("previews both ordered writes and accounts for a skipped gate and unavailable
     assert.deepEqual(section.payload.dryRunPreview.stages.map(stage => stage.state), ["exercised", "exercised", "skipped", "unavailable"]);
     assert.deepEqual(section.payload.dryRunPreview.stages.map(stage => stage.submitNotClicked === true), [true, true, false, false]);
   } finally { await world.dispose(); }
+});
+
+describe("publication preview boundary", () => {
+  const { SIGNAL, SCENARIO, providersOnlyContract, fixtureDescriptor, queuedRunFor, wiringHarness, claim } = wiring;
+  const descriptor = fixtureDescriptor("publication-preview-fixture", "pp", providersOnlyContract, true);
+  const PREVIEW_LOG = "Dry run: this save was prepared and checked. Nothing was saved.";
+
+  async function run(options: Readonly<{ dryRun: boolean; name?: string }>) {
+    const adapter = createDeterministicProviderHarness("geocode.census", [0, 1].map(() => ({
+      kind: "return" as const,
+      outcome: {
+        response: { state: "produced" as const, value: { schemaHash: FingerprintSchema.parse(HASH_A), value: { saved: true } } },
+        evidence: { summary: "publication preview fixture", capturedAt: IsoInstantSchema.parse(NOW) },
+      },
+    })));
+    const task = defineTask(providersOnlyContract, { sessions: [], async run({ ctx }) {
+      await ctx.providers["geocode.census"].call({ schemaHash: FingerprintSchema.parse(HASH_A), value: {} });
+      return { value: "saved" };
+    } });
+    const store = defineServiceStore("ocr", { fixture: task });
+    const registry = defineTaskStoreRegistry([store], { scenarioIds: [SCENARIO], tasks: [{ id: task.contract.id, effect: task.contract.effect }] });
+    const harness = await wiringHarness(descriptor, registry);
+    const { database, clock } = harness.authority;
+    const logs: { level: string; message: string }[] = [];
+    const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });
+    let ids = 0;
+    const queued = queuedRunFor(descriptor);
+    database.authority.runs.enqueue({ ...queued, envelope: { ...queued.envelope, dryRun: options.dryRun },
+      input: { ...queued.input, parsed: { ...queued.input.parsed, value: { name: options.name ?? "Battistessa, Johnnie" } } } });
+    const claimed = claim(harness.authority, descriptor);
+    const outcome = await executeClaimedRun({ ...harness.deps,
+      taskNotes: { ...notes, emitRunLog(input, current) { logs.push(input); return notes.emitRunLog(input, current); } },
+      providers: Object.freeze({ adapters: { "geocode.census": adapter.adapter }, configSnapshots: database.authority.configSnapshots,
+        idFactory: { next: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, "0")}` } }) },
+    { ...claimed, signal: SIGNAL });
+    return { outcome, database, clock, calls: adapter.calls().length, logs };
+  }
+
+  it("previews the declared save, leaves dependents unavailable, and never calls the provider in a dry run", async () => {
+    const { outcome, database, clock, calls, logs } = await run({ dryRun: true });
+    assert.equal(outcome.state, "done");
+    const stored = database.authority.runResults.get(RUN_ID);
+    assert.ok(stored);
+    const preview = z.looseObject({ kind: z.string(), steps: z.array(z.looseObject({ nodeId: z.string(), state: z.string() })) }).parse(stored.result.value);
+    assert.equal(preview.kind, "publication-dry-run-preview");
+    assert.deepEqual(preview.steps.map(step => [step.nodeId, step.state]), [["extract", "publication-preview"], ["after", "unavailable"]]);
+    assert.equal(calls, 0);
+    assert.ok(logs.some(log => log.level === "info" && log.message === PREVIEW_LOG));
+    const world = await makeWorld();
+    try {
+      const finished = database.authority.runs.get(RUN_ID); assert.ok(finished);
+      const resolver = { resolve: () => descriptor };
+      const section = buildRunLogsSection({ stateRoot: world.stateRoot, authority: world.authority,
+        timeline: database.authority.timelineEvents, projection: world.projection,
+        canonical: { database, reader: testRunService(database, clock), descriptors: resolver }, descriptors: resolver,
+      }, RUN_ID, undefined, finished);
+      assert.ok(section.section === "logs");
+      assert.ok(section.payload.dryRunPreview?.state === "available");
+      const [saved, after] = section.payload.dryRunPreview.stages;
+      assert.deepEqual([saved?.state, saved?.detail, saved?.submitNotClicked], ["exercised", "Prepared and checked without saving.", undefined]);
+      assert.equal(after?.state, "unavailable");
+    } finally { await world.dispose(); }
+  });
+
+  it("fails the declared node on an invalid bound input in a dry run without calling the provider", async () => {
+    const { outcome, database, calls } = await run({ dryRun: true, name: "" });
+    assert.equal(outcome.state, "failed");
+    const failed = database.authority.runs.get(RUN_ID);
+    assert.ok(failed?.lifecycle.state === "terminal" && failed.lifecycle.failureId !== undefined);
+    assert.equal(database.authority.failures.get(failed.lifecycle.failureId)?.nodeId, "extract");
+    assert.equal(calls, 0);
+  });
+
+  it("calls the provider on the declared node in an ordinary run", async () => {
+    const { outcome, calls, logs } = await run({ dryRun: false });
+    assert.equal(outcome.state, "done");
+    assert.equal(calls, 2);
+    assert.equal(logs.some(log => log.message === PREVIEW_LOG), false);
+  });
 });
