@@ -10,7 +10,7 @@
 - dialog "Start run":
   - banner:
     - heading "Start run" [level=2]
-    - paragraph: New work · Reference fixture
+    - paragraph: Reference fixture · Workflow preview
     - button "Close"
   - complementary:
     - group:
@@ -81,7 +81,7 @@
       - radio "Headless"
       - text: Headless
   - contentinfo:
-    - text: 1 runReference fixture
+    - text: Reference fixture1 of 1 stepsPriority Enter to continue
     - button "Back"
     - button "Cancel"
     - button "Preview plan"
