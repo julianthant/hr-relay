@@ -7,7 +7,7 @@ import { afterEach, it } from "vitest";
 import { ocrHostRun, readOcrRecordBindings, readOcrQueueMembers } from "../../../../src/backend/runs/queries/ocr-record-members.js";
 import type { DelegatedRecordBinding } from "../../../../src/models/workflow/delegated-record.js";
 import { readDelegationScopeEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
-import { OcrReviewSeedSchema } from "../../../../src/models/workflows/ocr/review-seed.js";
+import { OcrReviewCheckpointSchema } from "../../../../src/models/workflows/ocr/review-seed.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { createOperatorProjection, createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/operator.js";
 import { buildRunDetail, readRunSection } from "../../../../src/backend/runs/queries/run-detail.js";
@@ -376,7 +376,7 @@ it("keeps current records and reused retry history during a partially readmitted
         const checkpoint = readDelegationScopeEvidence(f.database.authority,group.parent,group.invocation.scopeEvidence)
           .find(source => source.nodeId === "build-review" && "checkpoint" in source);
         assert.ok(checkpoint !== undefined && "checkpoint" in checkpoint && checkpoint.checkpoint !== undefined);
-        return [group.invocation.nodeId,OcrReviewSeedSchema.parse(checkpoint.checkpoint.output.value).records.length];
+        return [group.invocation.nodeId,OcrReviewCheckpointSchema.parse(checkpoint.checkpoint.output.value).records.length];
       });
     assert.deepEqual(lookupSeeds,[["lookup-identities",2],["lookup-signers",1]]);
     const current = readOcrRecordBindings(f.database.authority,f.run.envelope.runId); assert.ok(current);
