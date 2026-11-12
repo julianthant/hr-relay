@@ -16,7 +16,8 @@ import { createOcrSourceService } from "../../../../src/backend/runs/commands/oc
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createServerVerifiedArtifactReader } from "../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { OcrInputSchema } from "../../../../src/models/workflows/ocr/input.js";
-import { OcrApprovalReferenceSchema, OcrResultSchema } from "../../../../src/models/workflows/ocr/result.js";
+import { OcrApprovalReferenceSchema } from "../../../../src/models/workflows/ocr/result.js";
+import { ReadOcrResult } from "../../../../src/models/workflows/ocr/read-result.js";
 import { OcrApprovedSnapshotSchema, ocrReviewDigest, ocrSnapshotDigest } from "../../../../src/models/ocr/review.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { bindCanonicalManualOcrReading, bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/page-accounting.js";
@@ -216,7 +217,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
           reading, corrected, pageBytes, command, root, resolve, stores, signerReads, pageReads, readResult: () => {
             const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
               "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);
-            return OcrResultSchema.parse(checkpoint.output.value);
+            return ReadOcrResult.output.parse(checkpoint.output.value);
           } };
       }
       const upload = await sources.upload({ actorId: "local-operator", fileName: "source.pdf", mediaType: "application/pdf",
@@ -337,7 +338,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         reading, corrected, pageBytes, command, root, resolve, stores, signerReads, pageReads, readResult: () => {
           const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
             "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);
-          return OcrResultSchema.parse(checkpoint.output.value);
+          return ReadOcrResult.output.parse(checkpoint.output.value);
         } };
     },
   };
