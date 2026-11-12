@@ -13,6 +13,7 @@ export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDep
     protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
     bulkAcceptances: deps.bulkCommandAcceptances,
     resolveIdentityGateAnswer: deps.resolveIdentityGateAnswer,
+    resolveGateArmAnswer: deps.resolveGateArmAnswer,
   });
 
   app.post("/api/v1/commands", async (c) => {

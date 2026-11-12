@@ -1,4 +1,4 @@
-import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
+import { type DashboardClient, createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { lifecycleCommandId } from "../../../../src/rules/commands/lifecycle-command-id.js";
 import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 import { identityReviewWire } from "../../../support/helpers/dashboard/identity-review-wire.js";
@@ -94,6 +94,19 @@ it("verifies child retry through the exact replacement and immutable source, inc
     { ...next.header, attempt: source.header.attempt }, { ...next.header, workflowId: "other-workflow" }]) {
     observed = RunDetailWireSchema.parse({ ...next, header });
     assert.equal((await verifyShellCommandEffect(client, f.DAY.day, command, reply)).state, "mismatch");
+  }
+});
+
+it("verifies a gate-arm answer only against the gate resolved approved by the same requester at a newer revision", async () => {
+  const request = DashboardCommandRequestSchema.parse({ family: "gate", type: "answer-gate-arm", commandId: runId(7), requestedAt: NOW, requestedBy: CONTEXT.actorId,
+    source: CONTEXT.source, target: { runId: runId(1), gateId: "hire-review", expectedVersion: 3 }, payload: { arm: "new-hire" } });
+  const reply = CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [{ family: "run", runId: runId(1) }] });
+  const gate = { state: "resolved", nodeId: "hire-review", resolution: "approved", resolvedBy: CONTEXT.actorId };
+  for (const [detail, expected] of [[{ rowRevision: 4, gate }, "matched"], [{ rowRevision: 3, gate }, "mismatch"],
+    [{ rowRevision: 4, gate: { ...gate, resolvedBy: "someone-else" } }, "mismatch"], [{ rowRevision: 4, gate: { ...gate, resolution: "rejected" } }, "mismatch"],
+    [{ rowRevision: 4, gate: { state: "open", nodeId: "hire-review" } }, "mismatch"]] as const) {
+    const client = { runDetail: async () => detail } as unknown as DashboardClient;
+    assert.equal((await verifyShellCommandEffect(client, "2026-08-14", request, reply)).state, expected);
   }
 });
 

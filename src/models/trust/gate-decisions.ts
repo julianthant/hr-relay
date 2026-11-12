@@ -81,9 +81,9 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
   ...["onboarding", "onboarding-hire-writes"].map(workflowId => ({
     workflowId, gateId: "hire-review", decisionPath: "decision", resolution: { source: "operator" },
     arms: [
-      { value: "new-hire", outcome: "approved", summary: "an operator reviewed the complete transaction findings and approved a new hire",
+      { value: "new-hire", outcome: "approved", summary: "an operator reviewed the complete transaction findings, ruled out every UCPath match and approved a new hire",
         label: "Approve new hire", hint: "The findings show no existing record. Relay files a new hire." },
-      { value: "existing-person", outcome: "approved", summary: "an operator selected an independently confirmed existing EID for a concurrent hire",
+      { value: "existing-person", outcome: "approved", summary: "an operator selected an existing EID that Person Org confirmed or that the operator picked from unconfirmed matches",
         label: "Use existing employee", hint: "Hire under the confirmed existing employee ID." },
     ],
   })),

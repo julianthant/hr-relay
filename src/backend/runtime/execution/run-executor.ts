@@ -1574,15 +1574,29 @@ export async function executeClaimedRun(
       });
     };
 
-    const emitConditionSkipSpan = (node: RuntimeFlowNode): void => {
-      const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
+    const CONDITION_SKIP = { outcome: "skipped", notRunReason: "condition-false" } as const;
+    /** A task span for a node that owns no task execution, so its timeline step reads settled. */
+    const emitSettledSpan = (node: RuntimeFlowNode, end: Readonly<{ outcome: "done" }> | typeof CONDITION_SKIP,
+      spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration)): void => {
       emit({ t: "span.started", kind: "task", ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath, name: runtimeNodeLabel(node) });
-      emit({ t: "span.ended", kind: "task", ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath, outcome: "skipped", notRunReason: "condition-false" });
+      emit({ t: "span.ended", kind: "task", ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath, ...end });
+    };
+    /** Whether this attempt's timeline already closed the task span at `spanPath` (an ordinary reclaim re-reads a settled join). */
+    const spanEnded = (spanPath: string): boolean => {
+      const timeline = deps.authority.authority.timelineEvents;
+      for (let after = 0; ;) {
+        const page = timeline.page({ runId, after, limit: 1000 });
+        if (page.some(({ payload }) => payload.kind === "span" && payload.event.t === "span.ended" && payload.event.kind === "task"
+          && payload.event.attempt === envelope.attempt && payload.event.spanPath === spanPath)) return true;
+        const last = page.at(-1);
+        if (page.length < 1000 || last === undefined) return false;
+        after = last.cursor;
+      }
     };
     const recordConditionSkip = (node: RuntimeFlowNode): void => {
       skippedReasons.set(String(node.id), "condition-false");
       if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "condition-false" });
-      emitConditionSkipSpan(node);
+      emitSettledSpan(node, CONDITION_SKIP);
     };
 
     const childSourceEvidence = (node: ChildRunRuntimeNode) => {
@@ -2160,8 +2174,11 @@ export async function executeClaimedRun(
               continue;
             }
             outputs[String(node.id)] = JsonValueSchema.parse(resolution.output);
-            // A delegation that bound no members ran nothing: only its timeline step reads not needed; its dry-run and dependency accounting stay resolved.
-            if (entry.mode !== "replay-child" && evidence.manifest.join !== "none" && evidence.manifest.children.length === 0) emitConditionSkipSpan(node);
+            // A settled join reads done, or not needed when it bound no members, once per manifest; its dry-run and dependency accounting stay resolved.
+            const joinSpanPath = `${envelope.traceId}/${node.id}#join-${evidence.manifest.manifestId}`;
+            if (entry.mode !== "replay-child" && evidence.manifest.join !== "none" && !spanEnded(joinSpanPath)) {
+              emitSettledSpan(node, evidence.manifest.children.length === 0 ? CONDITION_SKIP : { outcome: "done" }, joinSpanPath);
+            }
           } catch (error) {
             if (error instanceof RunAbandonedError || error instanceof WorkerSessionClosureUnprovedError
               || error instanceof RunLifecycleRefusedError && error.outcome.state === "refused" && error.outcome.refusal.reason === "lost") throw error;

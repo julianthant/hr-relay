@@ -294,6 +294,19 @@ it("shows verified shared identities while another native lookup is still queued
   assert.equal(presentation.members[2]?.title, presentation.members[0]?.title);
 });
 
+it("records each settled delegation join once although a later delegation yields and the parent is claimed again", async () => {
+  const person = { emplId: EXECUTOR_EID, name: "Example, Avery", department: "Housing Dining Hospitality", jobTitle: "Fixture employee",
+    employeeStatus: "active" as const, hdh: true, hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" };
+  const sessions = sessionFactoryHarness({ ucpath: () => createDeterministicUcpathPersonOrgDriver({ results: [person], selection: { status: "resolved", selected: person, candidateEids: [EXECUTOR_EID] } }), crm: () => healthyCrmDriver() });
+  const f = await world.fixture({ record: true, release: true, pageCount: 3, lookupNames: ["Example, Avery", "Example, Avery", "Example, Avery"], pauseAtLookup: true, sessions });
+  await f.canonical.execute(f.run, new AbortController().signal);
+  const settled = (nodeId: string) => f.database.authority.timelineEvents.page({ runId: f.run.envelope.runId, limit: 1000 }).flatMap(({ payload }) =>
+    payload.kind === "span" && payload.event.t === "span.ended" && payload.event.kind === "task" && payload.event.spanPath.startsWith(`${f.run.envelope.traceId}/${nodeId}#`)
+      ? [payload.event.outcome] : []);
+  assert.deepEqual(settled("read-pages"), ["done"], "the page join settled before the lookup yielded and is not recorded again on the next claim");
+  assert.deepEqual(settled("lookup-identities"), ["done"]);
+});
+
 it("binds I-9 signer records to their own native group and keeps its history covered", async () => {
   const f = await world.fixture({ record: true, release: true, pageCount: 2, formType: "i9",
     lookupNames: ["Example, Avery", "Example, Avery"], pauseAtLookup: true });

@@ -676,8 +676,8 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...["firstName", "lastName", "middleName", "preferredFirstName", "preferredLastName", "preferredMiddleName", "ssn", "dob", "address", "addressLine2", "city", "state", "postalCode", "phone", "email", "positionNumber", "departmentNumber", "recruitmentNumber", "employeeClassification", "hourlyRateMinor", "effectiveDate", "expectedJobEndDate"].map(path => `hire.employee.${path}`),
     ...["firstName", "lastName", "middleName", "ssn", "dob", "email", "departmentNumber", "expectedName"].map(path => `i9.${path}`)),
   ...["onboarding", "onboarding-hire-writes"].flatMap(id => [
-    ...open(gateResult(id, "hire-review"), "decision"),
-    ...onboardingPrivateLeaves(gateResult(id, "hire-review"), "emplId"),
+    ...open(gateResult(id, "hire-review"), "decision", "confirmedBy"),
+    ...onboardingPrivateLeaves(gateResult(id, "hire-review"), "emplId", "ruledOut"),
     ...onboardingPlanLeaves(workflowResult(id), "plan."),
     ...onboardingSubjectLeaves(workflowResult(id), "subject."),
     ...open(workflowResult(id), "state", "i9.state", "hireWrite.state", "hireWrite.disposition",
