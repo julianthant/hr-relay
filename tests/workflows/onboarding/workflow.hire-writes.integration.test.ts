@@ -94,7 +94,8 @@ describe("public onboarding write execution", () => {
     assert.deepEqual(master.workbook.sheets[0].rows[1].cells.slice(3).map(cell => cell.value), [person.emplId, "T009000001"]);
   });
 
-  const droppedHits = ["10800002", "10800001"].map(emplId => ({ emplId: EidSchema.parse(emplId), name: "Other, Person" }));
+  // 10800002 carries the hire's own name; 10800001 is under another name.
+  const droppedHits = ["10800002", "10800001"].map(emplId => ({ emplId: EidSchema.parse(emplId), name: emplId === "10800002" ? "Hire, Fixture" : "Other, Person" }));
   const allDropped = { hits: droppedHits, confirmed: [], dropped: droppedHits.map(hit => ({ ...hit, reason: "Last name does not match" })) };
 
   it("looks up I-9 while every UCPath hit is dropped, then previews a new hire the operator ruled them all out for", async () => {
@@ -111,7 +112,7 @@ describe("public onboarding write execution", () => {
     assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
   });
 
-  it("previews a concurrent hire under a dropped hit the operator picked, with no I-9 creation plan", async () => {
+  it("previews a concurrent hire under a same-name dropped hit the operator picked, with no I-9 creation plan", async () => {
     const h = await world.executionFixture(false, { match: "unique", dryRun: true, personMatch: allDropped }), root = h.start();
     await h.rawExecution.execute(root, signal());
     assert.equal(h.approve(root, { decision: "existing-person", emplId: "10800002", confirmedBy: "operator" }).state, "applied");
@@ -123,6 +124,18 @@ describe("public onboarding write execution", () => {
       .find(checkpoint => checkpoint.runId === root.envelope.runId && checkpoint.nodeId === "i9-profile-plan");
     assert.deepEqual(profilePlan?.output.value, { state: "not-required", subjectState: "review-required" });
     assert.equal(h.i9.events.some(event => event.startsWith("commit:")), false); assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
+  });
+
+  it("refuses an operator pick of a dropped hit under another name before any effect", async () => {
+    const h = await world.executionFixture(false, { match: "unique", personMatch: allDropped }), root = h.start();
+    await h.rawExecution.execute(root, signal());
+    assert.equal(h.approve(root, { decision: "existing-person", emplId: "10800001", confirmedBy: "operator" }).state, "applied");
+    const refused = await h.rawExecution.execute(root, signal());
+    assert.ok(refused.run?.lifecycle.state === "terminal" && refused.run.lifecycle.outcome === "failed");
+    const [failure] = h.database.authority.failures.listByRun(root.envelope.runId);
+    assert.equal(failure?.nodeId, "write-plan"); assert.equal(failure?.code, "ONBOARDING_WRITE_REVIEW_REFUSED");
+    assert.deepEqual(h.database.authority.writeIntents.listByRun(root.envelope.runId), []); assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
+    assert.equal(h.i9.events.some(event => event.startsWith("commit:")), false); assert.equal(h.hire.events.includes("commit:hire"), false);
   });
 
   it("fills the full public preview with labelled samples and no intents, receipts or master writes", async () => {

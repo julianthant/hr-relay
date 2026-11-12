@@ -392,7 +392,8 @@ describe("onboarding roster names in a real run", () => {
   });
 
   it("answers the all-dropped hire review through the served arms, composing the gate result from the run's own match", async () => {
-    const dropped = ["10800003", "10800001", "10800002"].map(emplId => ({ emplId, name: "Other, Person" }));
+    // 10800002 carries the hire's own name; the others are under another name and are never offered.
+    const dropped = ["10800003", "10800001", "10800002"].map(emplId => ({ emplId, name: emplId === "10800002" ? "Hire, Fixture" : "Other, Person" }));
     const personMatch = SearchPersonMatchOutputSchema.parse({ hits: dropped, confirmed: [], dropped: dropped.map(hit => ({ ...hit, reason: "Last name does not match" })) });
     const f = await runWorld.executionFixture(false, { match: "unique", dryRun: true, personMatch }), root = f.start();
     const parked = await f.rawExecution.execute(root, new AbortController().signal);
@@ -412,7 +413,7 @@ describe("onboarding roster names in a real run", () => {
     assert.deepEqual(valueOf(resolveGateArmAnswer(deps, answer({ arm: "new-hire" }), undefined)), { decision: "new-hire", ruledOut: ["10800001", "10800002", "10800003"] });
     assert.deepEqual(valueOf(resolveGateArmAnswer(deps, answer({ arm: "existing-person", rowId: "10800002" }), undefined)),
       { decision: "existing-person", emplId: "10800002", confirmedBy: "operator" });
-    for (const refused of [answer({ arm: "existing-person", rowId: "10800004" }), answer({ arm: "new-hire", rowId: "10800002" }), answer({ arm: "new-hire" }, version + 1)]) {
+    for (const refused of [answer({ arm: "existing-person", rowId: "10800004" }), answer({ arm: "existing-person", rowId: "10800001" }), answer({ arm: "new-hire", rowId: "10800002" }), answer({ arm: "new-hire" }, version + 1)]) {
       assert.deepEqual(resolveGateArmAnswer(deps, refused, undefined), { state: "refused", code: "invalid-state", message: "This review changed. Reload it before answering." });
     }
     const chosen = answer({ arm: "new-hire" }), accepted = resolveGateArmAnswer(deps, chosen, undefined);

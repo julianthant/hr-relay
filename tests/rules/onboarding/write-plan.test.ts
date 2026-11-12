@@ -21,7 +21,8 @@ const existing = OnboardingReadWritePlan.input.parse({ ...base, match: confirmed
   subject: matchHireSubject({ mode: "new-hire", firstName: "Fixture", lastName: "Hire", match: confirmed }),
   lookup: { state: "not-required", subjectState: "existing-person" }, approval: { decision: "existing-person", emplId: person.emplId, confirmedBy: "person-org" } });
 
-const hits = ["10800003", "10800001", "10800002"].map(emplId => ({ emplId: EidSchema.parse(emplId), name: "Other, Person" }));
+// 10800002 carries the hire's own name (dropped for another reason); the others are under another name.
+const hits = ["10800003", "10800001", "10800002"].map(emplId => ({ emplId: EidSchema.parse(emplId), name: emplId === "10800002" ? "Hire, Fixture" : "Other, Person" }));
 const allDropped = SearchPersonMatchOutputSchema.parse({ hits, confirmed: [], dropped: hits.map(hit => ({ ...hit, reason: "Last name does not match" })) });
 const checked = { state: "checked" as const, childRunId: "aaaaaaaa-0001-4000-8000-000100000001", result: { i9Status: "not-found" as const, signerName: "" as const } };
 const unconfirmed = OnboardingReadWritePlan.input.parse({ ...base, match: allDropped, lookup: checked,
@@ -42,11 +43,13 @@ describe("reviewed onboarding write plan", () => {
       subject: matchHireSubject({ mode: "rehire", firstName: "Fixture", lastName: "Hire", match: allDropped }),
       lookup: { state: "not-required", subjectState: "review-required" } }), /new-hire-choice-has-existing-or-unresolved-identity/u);
   });
-  it("files a concurrent hire under a dropped hit the operator picked, and nothing else overrides a drop", () => {
+  it("files a concurrent hire under a same-name dropped hit the operator picked, and nothing else overrides a drop", () => {
     const picked = { ...unconfirmed, approval: { decision: "existing-person" as const, emplId: EidSchema.parse("10800002"), confirmedBy: "operator" as const } };
     const result = readOnboardingWritePlan(picked);
     assert.equal(result.hire.mode, "rehire"); assert.equal(result.hire.emplId, "10800002");
-    assert.equal(result.hire.expectedName, "Other, Person"); assert.equal(result.i9, null);
+    assert.equal(result.hire.expectedName, "Hire, Fixture"); assert.equal(result.i9, null);
+    assert.throws(() => readOnboardingWritePlan({ ...picked, approval: { ...picked.approval, emplId: EidSchema.parse("10800001") } }), /existing-hire-choice-not-independently-confirmed/u,
+      "a dropped hit under another name is refused: the UCPath hire scans and checks identity by the hire's name");
     assert.throws(() => readOnboardingWritePlan({ ...picked, approval: { ...picked.approval, confirmedBy: "person-org" } }), /existing-hire-choice-not-independently-confirmed/u);
     assert.throws(() => readOnboardingWritePlan({ ...picked, approval: { ...picked.approval, emplId: EidSchema.parse("10800004") } }), /existing-hire-choice-not-independently-confirmed/u);
   });

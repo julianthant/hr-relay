@@ -40,14 +40,16 @@ describe("onboarding duplicate identity", () => {
     ]) assert.throws(() => matchHireSubject({ ...base, match }));
   });
 
-  it("serves a new hire only when Person Org confirmed nobody, and existing people from the confirmed or else the dropped hits", () => {
-    assert.deepEqual(hireReviewChoices("new-hire", base.match), { newHire: true, existing: [] });
+  it("serves a new hire only when Person Org confirmed nobody, and existing people from the confirmed or else the same-name dropped hits", () => {
+    const hire = { firstName: "Fixture", lastName: "Hire" };
+    assert.deepEqual(hireReviewChoices("new-hire", base.match, hire), { newHire: true, existing: [] });
     const confirmed = { hits: [person, other], confirmed: [person], dropped: [{ ...other, reason: "Last name does not match" }] };
-    assert.deepEqual(hireReviewChoices("new-hire", confirmed), { newHire: false, existing: [{ ...person, confirmedBy: "person-org" }] });
+    assert.deepEqual(hireReviewChoices("new-hire", confirmed, hire), { newHire: false, existing: [{ ...person, confirmedBy: "person-org" }] });
     const dropped = { hits: [person, other], confirmed: [], dropped: [{ ...person, reason: "No Person Org record" }, { ...other, reason: "Last name does not match" }] };
-    assert.deepEqual(hireReviewChoices("new-hire", dropped), { newHire: true, existing: [
-      { ...person, confirmedBy: "operator", reason: "No Person Org record" }, { ...other, confirmedBy: "operator", reason: "Last name does not match" }] });
-    assert.equal(hireReviewChoices("rehire", dropped).newHire, false);
-    assert.throws(() => hireReviewChoices("new-hire", { hits: [person], confirmed: [], dropped: [] }), /did not classify every person/u);
+    assert.deepEqual(hireReviewChoices("new-hire", dropped, hire), { newHire: true, existing: [{ ...person, confirmedBy: "operator", reason: "No Person Org record" }] },
+      "a hit under another name is never offered: the UCPath hire scans and checks identity by the hire's name");
+    assert.deepEqual(hireReviewChoices("new-hire", dropped, { firstName: "FIXTURE", lastName: "hire" }).existing.map(entry => entry.emplId), [person.emplId]);
+    assert.equal(hireReviewChoices("rehire", dropped, hire).newHire, false);
+    assert.throws(() => hireReviewChoices("new-hire", { hits: [person], confirmed: [], dropped: [] }, hire), /did not classify every person/u);
   });
 });

@@ -1581,6 +1581,18 @@ export async function executeClaimedRun(
       emit({ t: "span.started", kind: "task", ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath, name: runtimeNodeLabel(node) });
       emit({ t: "span.ended", kind: "task", ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath, ...end });
     };
+    /** Whether this node's join already recorded its settlement on the run's timeline since `since` (an ordinary reclaim re-reads a settled join). */
+    const joinSettledSince = (nodeId: string, since: string): boolean => {
+      const timeline = deps.authority.authority.timelineEvents;
+      for (let after = 0; ;) {
+        const page = timeline.page({ runId, after, limit: 1000 });
+        if (page.some(({ payload }) => payload.kind === "span" && payload.event.t === "span.ended" && payload.event.kind === "task"
+          && payload.event.attempt === envelope.attempt && payload.event.spanPath.startsWith(`${envelope.traceId}/${nodeId}#`) && payload.event.ts >= since)) return true;
+        const last = page.at(-1);
+        if (page.length < 1000 || last === undefined) return false;
+        after = last.cursor;
+      }
+    };
     const recordConditionSkip = (node: RuntimeFlowNode): void => {
       skippedReasons.set(String(node.id), "condition-false");
       if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "condition-false" });
@@ -2162,8 +2174,10 @@ export async function executeClaimedRun(
               continue;
             }
             outputs[String(node.id)] = JsonValueSchema.parse(resolution.output);
-            // A settled join reads done, or not needed when it bound no members; its dry-run and dependency accounting stay resolved.
-            if (entry.mode !== "replay-child" && evidence.manifest.join !== "none") emitSettledSpan(node, evidence.manifest.children.length === 0 ? CONDITION_SKIP : { outcome: "done" });
+            // A settled join reads done, or not needed when it bound no members, once per manifest; its dry-run and dependency accounting stay resolved.
+            if (entry.mode !== "replay-child" && evidence.manifest.join !== "none" && !joinSettledSince(node.id, evidence.manifest.createdAt)) {
+              emitSettledSpan(node, evidence.manifest.children.length === 0 ? CONDITION_SKIP : { outcome: "done" });
+            }
           } catch (error) {
             if (error instanceof RunAbandonedError || error instanceof WorkerSessionClosureUnprovedError
               || error instanceof RunLifecycleRefusedError && error.outcome.state === "refused" && error.outcome.refusal.reason === "lost") throw error;

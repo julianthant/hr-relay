@@ -307,7 +307,7 @@ describe("served Logs decision authority", () => {
   });
 
   it("answers a served hire-review arm with answer-gate-arm only after the operator confirms, carrying the picked row", async () => {
-    const dropped = ["10000001", "10000002"].map(emplId => ({ emplId, name: "Other, Person" }));
+    const dropped = ["10000001", "10000002"].map(emplId => ({ emplId, name: emplId === "10000002" ? "Person, Fixture" : "Other, Person" }));
     const match = SearchPersonMatchOutputSchema.parse({ hits: dropped, confirmed: [], dropped: dropped.map(hit => ({ ...hit, reason: "Last name does not match" })) });
     const names = { firstName: "Fixture", middleName: "", lastName: "Person", preferredFirstName: "", preferredMiddleName: "", preferredLastName: "", ssn: null };
     const decision = hireReviewDecision("new-hire", match, names, gateDecisionFor("onboarding", "hire-review").arms, "hire-review", 3);
