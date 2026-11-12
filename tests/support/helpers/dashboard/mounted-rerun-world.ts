@@ -34,7 +34,7 @@ function button(name: string): HTMLButtonElement {
 async function press(name: string) { const node = button(name); assert.equal(node.disabled, false, `${name}: ${text()}`); await act(async () => node.click()); }
 function checkbox(label: string): HTMLButtonElement | HTMLInputElement {
   const nodes = [...document.querySelectorAll<HTMLButtonElement | HTMLInputElement>('[role="checkbox"], [role="switch"]')];
-  const node = nodes.find((entry) => entry.closest("label")?.querySelector(".ds-switch-copy > span")?.textContent === label
+  const node = nodes.find((entry) => [label, `Include ${label}`, `${label} (required)`].includes(entry.closest("label")?.querySelector(".ds-switch-copy > span")?.textContent ?? "")
     || entry.getAttribute("aria-label") === label
     || entry.getAttribute("aria-labelledby")?.split(" ").map((id) => document.getElementById(id)?.textContent).join(" ") === label);
   assert.ok(node, `${label}: ${text()}`); return node;
