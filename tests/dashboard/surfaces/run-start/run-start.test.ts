@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
@@ -10,7 +10,7 @@ import { type DashboardClient, createDashboardClient } from "../../../../src/das
 import { START_DOOR_ABSENCE } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import { type RunStartWorkflow, RunStartSurfaces } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../parity/helpers/fixture-day.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-day.js";
 import { createRoot, type Root } from "react-dom/client";
 import { type AppRouteState } from "../../../../src/dashboard/app/navigation/url-state.js";
 import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";

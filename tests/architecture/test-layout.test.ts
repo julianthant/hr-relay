@@ -7,7 +7,7 @@ import ts from "typescript";
 import { gitVisibleFiles, REPO_ROOT } from "./support/helpers/guard-files.js";
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".css", ".html", ".sh"]);
-const MAPPING_EXCEPTIONS = /^tests\/(?:architecture|parity|perf|types|support)\//u;
+const MAPPING_EXCEPTIONS = /^tests\/(?:architecture|mocks|perf|types|support)\//u;
 const TEST_SUFFIX = /(?:^|\/)(?:test|spec)\.[^/]+$|[._-](?:tests?|spec)(?:-d)?\.[^/]+$/u;
 const TEST_PREFIX = /(?:^|\/)(?:test|spec)[_-][^/]+\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/u;
 const HELPER_ROOT = /^tests\/(?:support\/(?:helpers|fixtures)|architecture\/(?:[^/]+\/)*(?:helpers|fixtures))\//u;
@@ -154,8 +154,8 @@ describe("test layout", () => {
     ]);
   });
 
-  it("exempts only the exact guard, parity, perf, type and support subtrees from mapping", () => {
-    for (const subtree of ["architecture", "parity", "perf", "types", "support"]) {
+  it("exempts only the exact guard, mocks, perf, type and support subtrees from mapping", () => {
+    for (const subtree of ["architecture", "mocks", "perf", "types", "support"]) {
       assert.deepEqual(testLayoutViolations([`tests/${subtree}/unmapped.test.ts`], []), []);
       for (const path of [`tests/${subtree}-extra/unmapped.test.ts`, `tests/backend/${subtree}/unmapped.test.ts`]) {
         assert.deepEqual(testLayoutViolations([path], []), [`${path}: expected ${path} for an existing tracked source module`]);

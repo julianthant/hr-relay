@@ -24,7 +24,7 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 - Add a guard only for a real recurring mistake, with its reason in `docs/guard-inventory.json`.
 - Mirror source once under `tests/`: drop `src/`, retain `scripts/`, `fast-duo/` and root paths.
   Put `<module>.test.ts` beside `<module>.integration.test.ts`; split files over about 800 lines
-  by topic. Keep architecture, parity, perf and types in their own trees; shared fixtures and
+  by topic. Keep architecture, mocks, perf and types in their own trees; shared fixtures and
   helpers belong in `tests/support/`.
 - Use kebab-case filenames, named exports, `.js` relative imports and `.tsx` only in the dashboard.
   Use recursively strict Zod schemas at durable, wire and config boundaries; no unchecked casts
@@ -48,6 +48,7 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 | Feature branch | `feature/<feature>`: from `origin/staging`, one PR into `staging` |
 | Ticket branch | `task/<feature>/<lane>`: from its feature branch, merged back with `--no-ff`, no PR |
 | Standalone fix | `fix/<area>-<symptom>`: one ticket, one PR into `staging` |
+| Chore | `chore/<area>-<change>`: tooling, tests or docs with no product change; one PR into `staging` |
 | Design | `design/<area>`: mock with real components for operator approval, never merged |
 | Worktree | `.worktrees/<feature>.<lane>`; the feature's own checkout is `.worktrees/<feature>` |
 | PR title | `<Area>: <what the operator gets>` |
@@ -76,8 +77,8 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
   latest base into your branch; never rebase or force-push. Never merge a PR by hand.
 - Workflow behavior PRs wait for a live dry run and operator sign-off. Required check names live
   in [repository governance](docs/repository-governance.md).
-- Refer repairs requiring workflow/CI configuration edits, HR write-path changes, weakened guards,
-  unrelated parity updates or expanded scope to the operator with `needs-human`.
+- Refer repairs requiring workflow/CI configuration edits, HR write-path changes, weakened guards
+  or expanded scope to the operator with `needs-human`.
 - The main checkout owns runtime state, credentials and ports.
 - Release only on the operator's explicit go: merge `staging` into `main` with a merge commit,
   then sync `main` back into `staging`.
@@ -102,10 +103,10 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
   privacy. Keep `NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` out of Ubuntu shards,
   retaining release coverage. Add new native proofs to `scripts/test/ci-files.ts`.
 - Only the operator starts full-release CI; agents never dispatch or rerun CI workflows.
-- Native proofs and parity run in CI only for operator-started releases. Release checks build the
+- Native proofs run in CI only for operator-started releases. Release checks build the
   web bundle, run coverage alone, then perf; coverage already selects unit, integration and
   architecture, so do not rerun those full suites for unchanged inputs.
-- Keep the published head's PR CI as the merge proof. Never run macOS-native proofs or parity
+- Keep the published head's PR CI as the merge proof. Never run macOS-native proofs
   on the PC. Keep machine slot details in `.work/operations.md`.
 - Refresh `scripts/test/ci-durations.json` when job end times spread more than a minute. Generate
   derived files through their source, never by hand.

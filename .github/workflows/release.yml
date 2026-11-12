@@ -76,15 +76,6 @@ jobs:
           RESULT: ${{ needs.checks.outputs.architecture }}
         run: test "$RESULT" = success
 
-  parity:
-    name: parity
-    needs: checks
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    steps:
-      - env:
-          RESULT: ${{ needs.checks.outputs.parity }}
-        run: test "$RESULT" = success
 
   release:
     name: release

@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
 import { act,createElement } from 'react';
@@ -69,7 +69,7 @@ it('uses injected wall time for countdown and confirmed refresh without advancin
 });
 
 it('retains the original held refresh across its own version move, cancels Remove immediately, and rearms from exact ack time only', async () => {
-  const { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } = await import('../../../parity/helpers/fixture-day.js');
+  const { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } = await import('../../../mocks/helpers/fixture-day.js');
   const { DashboardDayWireSchema } = await import('../../../../src/models/dashboard/projection.js');
   const { sessionsFromDay } = await import('../../../../src/dashboard/surfaces/sessions/sessions-view-model.js');
   const { buildWorkflowCatalog } = await import('../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js');

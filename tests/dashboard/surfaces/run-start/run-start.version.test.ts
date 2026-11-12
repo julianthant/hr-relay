@@ -6,7 +6,7 @@ import { StartPlanWireSchema as StartPlanResponseSchema } from "../../../../src/
 import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 import { StartCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../parity/helpers/fixture-start.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 
 const h = createRunStartDialogHarness();
