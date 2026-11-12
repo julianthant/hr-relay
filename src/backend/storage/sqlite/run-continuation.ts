@@ -114,7 +114,7 @@ export function originalCheckpoint(repositories: Pick<AuthorityRepositories, "ru
   return reference === undefined ? undefined : retainedCheckpoint(repositories, source.envelope, reference);
 }
 
-/** Fresh executions may resume their own checkpoints, never another run's latest row. */
+/** Fresh reads see only the run's own rows, except a Retry's, which read the item's latest row like every transaction read. */
 export function readRunCheckpoint(repositories: Pick<AuthorityRepositories, "runCheckpoints"> & { readonly runs?: Pick<AuthorityRepositories["runs"], "get">; readonly lifecycleJournal?: Pick<AuthorityRepositories["lifecycleJournal"], "findContinuationIssue">; readonly gateResults?: AuthorityRepositories["gateResults"] }, envelope: RunEnvelope, nodeId: string, freshTasks = false) {
   if (envelope.continuation !== undefined) {
     if (repositories.runs === undefined || repositories.gateResults === undefined) throw new RunContinuationRefusedError("run-continuation-authority-unavailable");
@@ -125,7 +125,7 @@ export function readRunCheckpoint(repositories: Pick<AuthorityRepositories, "run
     const reference = envelope.continuation.checkpoints.find(row => row.nodeId === nodeId);
     return reference === undefined ? undefined : retainedCheckpoint(repositories, envelope, reference);
   }
-  if (envelope.sourceBound !== undefined || freshTasks && envelope.recovery === "restart-from-start") {
+  if (envelope.sourceBound !== undefined || freshTasks && (envelope.recovery === "restart-from-start" || envelope.retryOf === undefined)) {
     return repositories.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, nodeId, envelope.attempt)
       .filter((checkpoint) => checkpoint.runId === envelope.runId).at(-1);
   }
