@@ -85,9 +85,8 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 
 ## Checks
 
-- Follow the ticket's test path: focused GitHub feedback by default, or an orchestrator-granted
-  local slot, never both. CI-path lanes run typecheck and lint serially; tests wait for the named
-  runner. Pause local tests during operator live runs. Run full suites only in a granted slot; PR
+- Run tests only in an orchestrator-granted local slot. CI-path lanes run typecheck and lint
+  serially. Pause local tests during operator live runs. Run full suites only in a granted slot; PR
   CI supplies the feature's full run. Run native proofs on platform-matching machines.
 - Before clearing a push, pass the whole architecture suite and the unit and integration tests
   affected by the diff against `origin/staging`. On the main Mac, run `npm run test:pc` without
