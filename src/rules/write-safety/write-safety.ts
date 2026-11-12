@@ -47,6 +47,7 @@ import {
   NegativeSettlementPolicySchema,
   probeVerdictSchema,
   SubjectEvidenceSchema,
+  WriteParkCodeSchema,
 } from "./write-safety-primitives.js";
 export {
   AbsentEvidenceSchema,
@@ -367,7 +368,7 @@ const ParkedWriteIntentRecordSchema = z.strictObject({
   ...WriteIntentAttemptFields,
   status: z.literal("parked"),
   recheck: ParkedWriteRecheckSchema.optional(),
-  parkedCode: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]),
+  parkedCode: WriteParkCodeSchema,
   message: z.string().min(1),
   authorityReason: WriteAuthorityReasonSchema,
 });
