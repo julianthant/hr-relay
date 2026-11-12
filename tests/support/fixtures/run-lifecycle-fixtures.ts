@@ -1,11 +1,9 @@
 import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
-import { isLiveWorker } from "../../../src/models/run/worker.js";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { admitDirectWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
 import { workflowProjections, type AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import { RunRecordService, workerRunLifecyclePort, runContinuationPort } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import type { Clock } from "../../../src/rules/time/clock.js";
+import type { AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-database.js";
 import type { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { CONFIG_SNAPSHOT } from "./phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
@@ -25,13 +23,11 @@ export function testRunContinuation(database: AuthorityDatabase, clock: Clock) {
   return runContinuationPort(testRunService(database, clock));
 }
 
+/** The admitted slot that claims for a pool index; claims are fenced by the run's claim generation, not a worker lifetime. */
 export function testWorkerLifetime(database: AuthorityDatabase, workflow: string, poolIndex: number) {
-  const member = database.authority.workerSlots.list(workflow).find(slot => slot.poolIndex === poolIndex && slot.retiredAt === null);
+  const member = database.authority.workerSlots.active(workflow).find(slot => slot.poolIndex === poolIndex);
   assert.ok(member, "claim fixture requires its actual admitted member");
-  const lease = database.authority.workerLeases.get(member.workerId);
-  assert.ok(lease && lease.workflow === member.workflow && isLiveWorker(lease), "claim fixture requires its actual current lifetime");
-  return { member, lease, workerId: member.workerId,
-    workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration } };
+  return { member, workerId: member.workerId };
 }
 
 export function testAdmittedWorker(database: AuthorityDatabase, clock: Clock, input: Readonly<{
@@ -39,42 +35,26 @@ export function testAdmittedWorker(database: AuthorityDatabase, clock: Clock, in
 }>) {
   const admission = boundProfileAdmission(input.path);
   if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  const existing = database.authority.workerSlots.list(input.workflow).find(slot => slot.poolIndex === input.poolIndex && slot.retiredAt === null);
+  const existing = database.authority.workerSlots.active(input.workflow).find(slot => slot.poolIndex === input.poolIndex);
   if (existing !== undefined) {
     assert.ok(boundFixtureWorker(database, input.path, existing.workerId), "fixture cannot adopt an unowned worker");
-    return { ...testWorkerLifetime(database, input.workflow, input.poolIndex), started: undefined };
+    return testWorkerLifetime(database, input.workflow, input.poolIndex);
   }
+  const now = clock.now().toISOString();
   const member = database.withAuthorityTransaction(repositories => {
-    const current = repositories.workerPools.get(input.workflow);
-    return admitDirectWorker(repositories, { commandId: randomUUID(), workflow: input.workflow,
-      poolIndex: input.poolIndex, expectedPoolVersion: current?.version ?? 0, processId: process.pid,
-      now: clock.now().toISOString() }, randomUUID());
+    const pool = repositories.workerPools.get(input.workflow);
+    if (pool === undefined || pool.desiredWorkers < input.poolIndex) {
+      repositories.workerPools.plan({ workflow: input.workflow, expectedVersion: pool?.version ?? 0,
+        desiredWorkers: Math.max(pool?.desiredWorkers ?? 0, input.poolIndex), requestedBy: "local-operator", now });
+    }
+    return repositories.workerSlots.allocate({ workflow: input.workflow, poolIndex: input.poolIndex, now });
   });
   try {
-  let failure: { error: unknown } | undefined;
-  let started: ReturnType<typeof database.authority.workerLeases.start> | undefined;
-  try {
-    started = database.authority.workerLeases.start({ workerId: member.workerId, workflow: input.workflow,
-      browserSystems: input.browserSystems, processId: process.pid, requestedBy: "local-operator",
-      now: clock.now().toISOString() });
-    assert.equal(started.state, "started");
-  } catch (error) { failure = { error }; }
-  let registrationFailure: { error: unknown } | undefined;
-  try {
-    registerBoundFixtureWorker({ database, path: input.path, workerId: member.workerId,
-      generation: database.authority.workerLeases.get(member.workerId)?.leaseGeneration,
-      processId: process.pid, clock });
-  } catch (error) { registrationFailure = { error }; }
-  if (registrationFailure !== undefined) {
-    if (failure !== undefined) throw new AggregateError([failure.error, registrationFailure.error], "fixture-worker-owner-registration-unproved", { cause: failure.error });
-    throw registrationFailure.error;
-  }
-  if (failure !== undefined) throw failure.error;
-  assert.ok(started);
-  return { ...testWorkerLifetime(database, input.workflow, input.poolIndex), started };
+    registerBoundFixtureWorker({ database, path: input.path, workerId: member.workerId, clock });
   } catch (error) {
     throw retainAuthoritySourceClosure([error], { admission: { admission, database, member } });
   }
+  return testWorkerLifetime(database, input.workflow, input.poolIndex);
 }
 
 export function testWorkerPorts(database: AuthorityDatabase, clock: Clock, input: Readonly<{
@@ -87,13 +67,18 @@ export function testWorkerPorts(database: AuthorityDatabase, clock: Clock, input
   return { lifecycle, browserScreenshotCapture: { capture: async () => undefined }, claimNext: (request: { commandId: string; workflow: string; workerId: string }) => {
     assert.equal(request.workflow, slot.workflow);
     assert.equal(request.workerId, slot.workerId);
-    const currentMember = database.authority.workerSlots.get(slot.workerId), lease = database.authority.workerLeases.get(slot.workerId);
-    assert.ok(currentMember, "claim fixture requires its actual admitted member");
-    assert.ok(lease, "claim fixture requires its actual current lifetime");
-    return lifecycle.claimNext({ commandId: request.commandId, workflow: request.workflow, workerId: slot.workerId,
-      workerLifetime: { membershipRevision: currentMember.membershipRevision, leaseGeneration: lease.leaseGeneration }, runtimeConfig: {
+    assert.equal(database.authority.workerSlots.get(slot.workerId)?.retiredAt, null, "claim fixture requires its actual admitted member");
+    return lifecycle.claimNext({ commandId: request.commandId, workflow: request.workflow, workerId: slot.workerId, runtimeConfig: {
       generation: runtimeConfig.generation, settingsRevision: runtimeConfig.settingsRevision,
       settingsFingerprint: runtimeConfig.settingsFingerprint, configFingerprint: runtimeConfig.configFingerprint,
     } });
   } };
+}
+
+/** Plans the pool up to `poolIndex` and allocates that slot inside the caller's authority transaction. */
+export function admitFixtureSlot(repositories: AuthorityRepositories, workflow: string, poolIndex: number, now: string) {
+  const pool = repositories.workerPools.get(workflow);
+  if ((pool?.desiredWorkers ?? 0) < poolIndex) repositories.workerPools.plan({ workflow, expectedVersion: pool?.version ?? 0,
+    desiredWorkers: poolIndex, requestedBy: "local-operator", now });
+  return repositories.workerSlots.allocate({ workflow, poolIndex, now });
 }

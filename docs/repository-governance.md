@@ -1,6 +1,6 @@
 # Repository governance
 
-The [root Git instructions](../AGENTS.md#git) own branch and release policy.
+The [Conventions](../AGENTS.md#conventions) own branch naming. The [root Git instructions](../AGENTS.md#git) own release policy.
 
 ## Branch protection
 
@@ -12,7 +12,7 @@ release pull request.
 
 | Branch | Required CI check names |
 | --- | --- |
-| `staging` | `static`, `privacy`, `unit`, `integration`, `architecture`, `parity` |
+| `staging` | `static`, `privacy`, `unit`, `integration`, `architecture` |
 | `main` | the `staging` checks, plus `release` |
 
 The expensive `release-batch` job runs only on PRs from `staging` into `main`, after the other checks.
@@ -43,9 +43,9 @@ with the default token do not start CI.
 The merge train uses a blob-filtered full-history checkout, retaining ancestry and fetching
 historical file contents on demand within its five-minute job budget.
 
-Cursor Bugbot reviews every push and only comments. The [review loop](../AGENTS.md#review-before-push)
-owns reviewer/coder responsibility, including the easy-lane exception. The
-[PR flow](../AGENTS.md#pr-and-release-flow) owns repairs and escalation. A `needs-human` label
+Cursor Bugbot reviews every push and only comments. The
+[PR flow](../AGENTS.md#pr-and-release-flow) routes reviewer/coder responsibility and owns repairs
+and escalation. A `needs-human` label
 identifies work requiring the operator. Red required checks prevent a merge.
 
 CI takes Node from `package.json` engines and caches npm. The [check rules](../AGENTS.md#checks)
@@ -57,18 +57,16 @@ and observing the owned browser process exit. This one-time setup has no retries
 deadlines. A full staging run uses two
 Ubuntu unit shards, two architecture shards and fourteen integration shards, plus static and
 privacy, within twenty Ubuntu runners. On operator-started full releases, use all five macOS
-runners for native files when parity is omitted. When parity is selected, use three macOS runners
-for parity and two for native files. The release runner starts after
+runners for native files. The release runner starts after
 the routine suites finish. Windows native files use five `windows-latest` runners, or one for
 unit-only selection, with the
 same serial/storage separation and native membership. Windows uses explicit Bash with native
 Windows Node/npm, the runner temp directory and Windows Chromium installation. Before checkout,
 it disables Git automatic line-ending conversion to preserve fixture bytes and shell scripts.
 
-`ci.yml` runs only for staging pull requests and calls portable-only `ci-checks.yml`. Its required
-top parity job is a plain passing omission, and its existing merge-train call follows the six
-required summaries. `release.yml` runs only for main pull requests or operator manual releases and
-alone calls `release-checks.yml`, which owns portable, macOS/Windows native, Desktop parity and
+`ci.yml` runs only for staging pull requests and calls portable-only `ci-checks.yml`. Its existing
+merge-train call follows the five required summaries. `release.yml` runs only for main pull requests or operator manual releases and
+alone calls `release-checks.yml`, which owns portable, macOS/Windows native and
 release-batch jobs. Staging never references or loads a release/native workflow call.
 
 Both event entries use per-PR/manual-branch supersession with a workflow/PR-or-ref concurrency
@@ -78,7 +76,7 @@ and `cancel-in-progress: false`. That admitted call holds all proofs, selected b
 publication until its callee finishes; the callees never reacquire admission. GitHub orders waiting
 calls by arrival, accepts at most 100 pending calls, and cancels extra arrivals on overflow.
 
-CI-invoked merge train is outside the admitted call, after the six top summaries, while remaining
+CI-invoked merge train is outside the admitted call, after the five top summaries, while remaining
 inside parent per-PR supersession. The standalone staging-push train remains separate. Batch
 repair pushes to avoid redundant CI work.
 
@@ -88,16 +86,15 @@ proof, selected batch and timing publication, excluding downstream train to avoi
 Cancellation stops that inner checkout/install work. The always-running outer
 required `unit` additionally requires the called pipeline and its inner unit output to succeed,
 so cancelled, skipped, failed or missing results cannot merge. Required names stay `static`,
-`privacy`, `unit`, `integration`, `architecture` and `parity` on staging, plus `release` on main.
-Release parity validates its real callee output; staging parity remains a plain successful omission.
+`privacy`, `unit`, `integration` and `architecture` on staging, plus `release` on main.
 Other cancelled summaries and the train may stop.
 
 Run static, privacy and affected portable unit, integration and architecture suites for ready PRs
-into `staging`. For PRs from `staging` into `main`, add selected native proofs, parity and release.
+into `staging`. For PRs from `staging` into `main`, add selected native proofs and release.
 Path filters select affected suites. Draft pushes run static, privacy and
 affected unit files; becoming ready starts full applicable validation. Only the operator may start
-a manual full-release dispatch; it selects all routine suites, including native proofs and parity. Other PR heads targeting `main` omit
-native proofs, parity and expensive release work; their required release summary fails. Drafts cannot merge. Protected-branch pushes do not
+a manual full-release dispatch; it selects all routine suites, including native proofs. Other PR heads targeting `main` omit
+native proofs and expensive release work; their required release summary fails. Drafts cannot merge. Protected-branch pushes do not
 repeat CI; Markdown-only PRs run static and privacy. A deliberately omitted suite has a successful
 summary, while failed change detection or any failed/cancelled selected group fails its summary.
 Markdown-only release PRs omit coverage and perf.
@@ -120,8 +117,7 @@ membership and selection details.
 Playwright browser caches use `~/Library/Caches/ms-playwright` on macOS and
 `~/AppData/Local/ms-playwright` on Windows, keyed by runner OS, architecture, browser set and
 `package-lock.json` digest (plus the image on macOS). An exact macOS hit skips installation;
-Windows checks installation on every native integration job. A miss installs the required browsers. There are no partial-key restores. Desktop parity uses headless
-Chromium and existing references; CI never updates references or uploads HR evidence.
+Windows checks installation on every native integration job. A miss installs the required browsers. There are no partial-key restores. CI never uploads HR evidence.
 
 ## Privacy check
 

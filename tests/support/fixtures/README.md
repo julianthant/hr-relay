@@ -1,12 +1,12 @@
 # Shared test support
 
-This catalogue lists every shared non-test module in `tests/support/`. Fixtures contain synthetic data; resource harnesses allocate only when explicitly called. Tests of support modules sit beside them. `tests/parity/` retains the desktop screenshot contract.
+This catalogue lists every shared non-test module in `tests/support/`. Fixtures contain synthetic data; resource harnesses allocate only when explicitly called. Tests of support modules sit beside them. `tests/mocks/` holds only `/ui-mock` scenes.
 
 `config/test-data.json` owns tracked public subjects, named files and synthetic ranges through `src/backend/app/registries/test-data.ts`. Private `config/test-data.local.json` inputs are accessed through the opaque runtime input source and never shared fixtures. Preserve ranges, clocks and dataset sizes.
 
 `tests/architecture/tooling/test-data-ownership.test.ts` owns import-purity and resource capability exceptions. Shared admission helpers bind database and credential fixtures to exact synthetic installation roots; release admission before removing roots. Credential factories stay inside deferred function bodies. `preflight/corpus` uses Chromium only for launch-refusal spies in its explicit executor. Proxy construction does not open databases. Executable process fixtures cannot be imported; their exact consumers are recorded in the ownership guard.
 
-Parity and served dashboard BFFs retain separate corpus and build authority: `tests/parity/helpers/bundle.ts` validates `dist/parity-dashboard`; `helpers/dashboard/served-fixtures/bundle.ts` validates `dist/dashboard`. Their profile data, route closures, build roots and disposal remain separate. Common setup bodies live in `helpers/dashboard/profiles/`; each profile supplies its authored fixture inputs and allocates its own values. Seeded lifecycle functions share `helpers/dashboard/served-fixtures/seeded-lifecycle.ts`.
+Mock and served dashboard BFFs retain separate corpus and build authority: `tests/mocks/helpers/bundle.ts` validates `dist/mock-dashboard`; `helpers/dashboard/served-fixtures/bundle.ts` validates `dist/dashboard`. Their profile data, route closures, build roots and disposal remain separate. Common setup bodies live in `helpers/dashboard/profiles/`; each profile supplies its authored fixture inputs and allocates its own values. Seeded lifecycle functions share `helpers/dashboard/served-fixtures/seeded-lifecycle.ts`.
 
 `../helpers/dashboard/run-start-dialog-harness.ts` supplies per-caller Run Start DOM setup and cleanup for the dialog and omitted-step unit suites; importing it performs no DOM setup.
 
@@ -28,7 +28,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/child-execution-write-workflow.ts` | child write workflow with durable attempting and UNKNOWN controls |
 | `helpers/assistant-function-fixtures.ts` | synthetic assistant function descriptors and recording call owners |
 | `fixtures/person-lookup-presentation.ts` | fictional served Person Lookup presentation evidence |
-| `fixtures/person-lookup-log-snapshots.ts` | fictional served Person Lookup run-log snapshots (success, multiple matches, no match, CRM off, failed) for log projection tests and the parity log fixture page |
+| `fixtures/person-lookup-log-snapshots.ts` | fictional served Person Lookup run-log snapshots (success, multiple matches, no match, CRM off, failed) for log projection tests |
 | `fixtures/crm-doc-download.ts` | synthetic verified CRM identities and retained worksheet roster rows |
 | `fixtures/i9-check.ts` | synthetic OCR-derived I-9 inputs and UCPath identity/retention evidence |
 | `fixtures/i9-check-start.ts` | admitted synthetic I-9 PDF pages, review snapshots and source coordinates |
@@ -107,11 +107,13 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `processes/chatgpt-credential-worker.ts` | inherited-lifetime ChatGPT transaction exclusion; requires the fake keychain |
 | `processes/failure-resolution-peer.ts` | failure resolution peer |
 | `helpers/backend/http-route-harness.ts` | http route harness |
+| `fixtures/storage/retained-workbook-merge.ts` | Authenticated completed merge record retained for historical replay and retired-action route proofs. |
 | `helpers/backend/served-database-surfaces-fixtures.ts` | served database surfaces fixtures |
 | `helpers/backend/settings-activation-fixture.ts` | settings activation fixture |
 | `helpers/backend/trust-authority-fixture.ts` | trust authority fixture |
 | `helpers/browser/fake-login-page.ts` | fake login page |
 | `helpers/canonical-run-reader.ts` | canonical run reader |
+| `helpers/names-check-cases.ts` | Shared branch, worktree, and pull request title cases for the shipped names:check command. |
 | `helpers/ucpath-findings-page.ts` | synthetic Smart HR list/detail navigation, identity, pagination and refusal evidence shared by findings and lifecycle checks |
 | `helpers/chatgpt-account-fixtures.ts` | synthetic ChatGPT account fixtures |
 | `helpers/chatgpt-response-stream.ts` | pure synthetic Responses added, delta, done and completion event builders for OCR and assistant transport tests |
@@ -201,8 +203,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/write-fence-fixture.ts` | claimed write-fence setup and caller-supplied corrupt SQLite seeding |
 | `helpers/trust/trust-wire-fixtures.ts` | trust wire fixtures |
 | `processes/run-record-race-worker.ts` | run record race worker |
-| `processes/runtime-lock-contender.ts` | runtime lock contender |
-| `processes/worker-browser-control-cli.ts` | worker browser control cli |
 | `processes/worker-composition-child.ts` | real worker composition concurrency fixture |
 | `processes/verification-reservation-owner.ts` | standalone verification reservation crash fixture |
 | `processes/worker-stub-cli.ts` | worker stub cli |
@@ -227,7 +227,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/dashboard/identity-ceremony-fixtures.ts` | identity ceremony fixtures |
 | `helpers/dashboard/static-assets.ts` | static asset fixture serving for both BFF profiles |
 | `helpers/backend/run-claim-fixtures.ts` | run claim fixtures |
-| `helpers/backend/worker-lease-fixtures.ts` | worker lease fixtures |
 | `helpers/backend/separation-start-fixtures.ts` | separation start fixtures |
 
 | `helpers/dashboard/client-day-fixtures.ts` | client day fixtures |
@@ -237,12 +236,13 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/ucpath-pending-row-fixtures.ts` | Keiichiro pending rows and deterministic driver transaction rows |
 | `helpers/storage/admission-child-fixtures.ts` | admission child fixtures |
 | `helpers/backend/preflight-port-fixtures.ts` | preflight port fixtures |
-| `helpers/backend/worker-supervision-world.ts` | worker supervision world |
 | `helpers/backend/command-kernel-harness.ts` | command kernel harness |
 
 | `processes/profile-onboarding-abort-worker.ts` | Owned-controller canonical abort crash-prefix cases in `backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts` |
 
 | `processes/command-custody-worker.ts` | Isolated command browser launch/close and stale Duo-release custody proofs, launched only by `backend/runtime/browser/command-browser.integration.test.ts` |
+| `processes/owner-image-close-retention.ts` | Owner-image reader close failures (pinned reader and full owner doctor pass) keep the image and refuse admission release, launched only by `architecture/storage/readonly-authority-snapshot.test.ts` |
+| `processes/owner-image-heartbeat-peer.ts` | Separate-process worker heartbeat peer that commits during a claim's doctor pass, launched only by `backend/storage/sqlite/storage-doctor.heartbeat-claim.integration.test.ts` |
 
 ## File fixtures
 
@@ -262,5 +262,5 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/backend/person-lookup-start-fixtures.ts` | createPersonLookupStartFixtures shared fixtures |
 | `helpers/backend/person-lookup-provenance-checkpoint.ts` | createPersonLookupProvenanceCheckpoint shared fixtures |
 | `helpers/storage/confirmed-retention-fixtures.ts` | openConfirmedRetentionDatabase shared fixtures |
-| `helpers/storage/first-install-custody-fixtures.ts` | createFirstInstallCustodyFixture shared fixtures |
+| `helpers/storage/old-build-artifact.ts` | plantOldBuildArtifact old-build lock-root record |
 | `helpers/backend/person-lookup-receipt-database.ts` | openPersonLookupReceiptDatabase shared fixtures |

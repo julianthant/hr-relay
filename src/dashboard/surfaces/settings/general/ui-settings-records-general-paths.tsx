@@ -1,22 +1,17 @@
 import { Form } from "@heroui/react";
 import { useRef,useState,type ReactNode } from "react";
-import { z } from "zod";
 import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
 import {BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Switch,dsText, Notice } from "../../../ds/ui.js";
-import { useDelayedLoading } from "../../shared/loading/loading-model.js";
-import { LoadingRegion,SettingsRowsSkeleton } from "../../shared/loading/loading.js";
 import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
 import { formatSetting,settingInput,type SettingsDraftOperation } from "../editor/settings-draft-model.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { SettingsSaveFeedback } from "../editor/settings-feedback.js";
+import { settingNote,settingTitle } from "../settings-presentation.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
-import { settingNote,settingPlaceholderCopy,settingTitle } from "../settings-presentation.js";
-import { ChatGptAccountSettings } from "./chatgpt-account.js";
 import type { DeleteAccountPresentation } from "./delete-account-model.js";
-import { HubBrowserWindowSettings } from "./hub-preferences.js";
+import { BrowserWindowRow } from "./browser-window-row.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
-import { AppDataPaths } from "./settings-storage.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
@@ -76,48 +71,26 @@ function PathRow({ editor, field }: { editor: Editor; field: NativePathField }) 
   </div>;
 }
 
-function GeneralContent({ editor, year }: { editor: Editor; year: number }) {
+function GeneralContent({ editor, year, appearance }: { editor: Editor; year: number; appearance?: ReactNode }) {
   const date = servedLeaf(editor, `annualDates.FY${String(year)}.jobEndDate`);
-  return <>
-    <BodySection title="Employment"><FormGroup label="Employment"><ScalarRow editor={editor} leaf={date} /></FormGroup></BodySection>
-    <BodySection title="Browser"><FormGroup label="Browser">
-      <ScalarRow editor={editor} leaf={servedLeaf(editor, "browser.headless")} />
-      <HubBrowserWindowSettings binding={{ width: rawValue(servedLeaf(editor, "display.screenWidth"), editor.draft["display.screenWidth"]), height: rawValue(servedLeaf(editor, "display.screenHeight"), editor.draft["display.screenHeight"]), disabled: editor.locked, error: [editor.errors["display.screenWidth"], editor.errors["display.screenHeight"]].filter(Boolean).join(" · ") || undefined, onChange: (path, value) => editor.update(path, value) }} />
-    </FormGroup></BodySection>
-
-  </>;
+  return <BodySection title="General"><FormGroup label="General">
+    <PathRow editor={editor} field="paths.downloadsDir" />
+    <ScalarRow editor={editor} leaf={date} />
+    {appearance}
+    <BrowserWindowRow binding={{ headless: rawValue(servedLeaf(editor, "browser.headless"), editor.draft["browser.headless"]), width: rawValue(servedLeaf(editor, "display.screenWidth"), editor.draft["display.screenWidth"]), height: rawValue(servedLeaf(editor, "display.screenHeight"), editor.draft["display.screenHeight"]), disabled: editor.locked, error: [editor.errors["browser.headless"], editor.errors["display.screenWidth"], editor.errors["display.screenHeight"]].filter(Boolean).join(" · ") || undefined, update: (path, value) => editor.update(path, value) }} />
+  </FormGroup></BodySection>;
 }
 
-function PathsContent({ editor }: { editor: Editor }) {
-  const loaded = editor.editor.state === "loaded";
-  const show = useDelayedLoading(editor.editor.state === "loading");
-  const locations = editor.editor.state === "loaded" ? z.strictObject({ stateRoot: z.string().min(1), artifactRoot: z.string().min(1) }).parse({
-    stateRoot: editor.editor.document.deployment["paths.stateRoot"], artifactRoot: editor.editor.document.deployment["paths.artifactRoot"],
-  }) : undefined;
-  const paths = (fields: readonly NativePathField[]) => loaded
-    ? fields.map(field => <PathRow key={field} editor={editor} field={field} />)
-    : show ? <LoadingRegion label="Loading workflow paths" className="[&>*+*]:border-t [&>*+*]:border-ui-stroke"><SettingsRowsSkeleton rows={fields.length} wide copy={fields.map(settingPlaceholderCopy)} /></LoadingRegion> : null;
-  return <>
-    <BodySection title="Folders"><FormGroup label="Folders">{editor.editor.state === "failed" ? <div className="hub-settings-row"><div><div className="hub-row-label">Couldn’t load your folders</div><span className="hub-row-note">Your saved folders are unchanged.</span></div><Button variant="secondary" onClick={editor.reload}>Try again</Button></div> : paths(["paths.onboardingDocsDir", "paths.downloadsDir", "paths.reportsDir"])}</FormGroup></BodySection>
-    <AppDataPaths locations={locations} loading={editor.editor.state === "loading"} readProblem={editor.readProblem !== undefined} onRetry={editor.reload} />
-    {(loaded || editor.editor.state === "loading") && <BodySection title="Workflow locations"><FormGroup label="Workflow locations">{paths(["paths.duoExtensionDir", "paths.i9CheckTrackerPath"])}</FormGroup></BodySection>}
-  </>;
-}
-
-export function CompactSettingsSection({ editor, sectionId, appearance, deleteAccount }: { editor: Editor; sectionId: "general" | "paths"; appearance?: ReactNode; deleteAccount?: ReactNode }) {
+export function CompactSettingsSection({ editor, appearance }: { editor: Editor; appearance?: ReactNode }) {
   return <section className="settings-compact-page">
-    <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "ChatGPT account, appearance, and account controls." : "Where Relay saves files on this Mac."} />
-    {sectionId === "general" && <ChatGptAccountSettings />}
-    {sectionId === "general" && appearance}
-    {editor.editor.state === "failed" && sectionId !== "paths" && <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />}
-    {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} sectionId={sectionId} />
-      : sectionId === "paths" ? <div className="settings-compact-form"><div className="ds-body-stack"><PathsContent editor={editor} /></div></div>
-      : editor.editor.state === "loading" && <SettingsSectionSkeleton section={sectionId} contentOnly />}
-    {sectionId === "general" && (deleteAccount ?? <DeleteAccountControl presentation={{ state: "unavailable" }} />)}
+    <PageHeading title="General" />
+    {editor.editor.state === "failed" && <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />}
+    {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} appearance={appearance} />
+      : editor.editor.state === "loading" && <SettingsSectionSkeleton section="general" contentOnly />}
   </section>;
 }
 
-function CompactSettingsForm({ editor, sectionId }: { editor: Editor; sectionId: "general" | "paths" }) {
+function CompactSettingsForm({ editor, appearance }: { editor: Editor; appearance?: ReactNode }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state !== "loaded") throw new Error("settings-form-document-unavailable");
   const document = editor.editor.document;
@@ -125,7 +98,7 @@ function CompactSettingsForm({ editor, sectionId }: { editor: Editor; sectionId:
       {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved settings apply after Relay restarts." />}
       {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
       <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
-      <div className="ds-body-stack">{sectionId === "general" ? <GeneralContent editor={editor} year={document.currentFiscalYear} /> : <PathsContent editor={editor} />}</div>
+      <div className="ds-body-stack"><GeneralContent editor={editor} year={document.currentFiscalYear} appearance={appearance} /></div>
     </Form>;
 }
 

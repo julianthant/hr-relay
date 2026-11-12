@@ -287,3 +287,15 @@ it("owns Sessions availability and actual worker failure labels with strict empt
     assert.equal(resolved.text, entries[code]); assert.equal(resolved.text.includes("private"), false);
   }
 });
+
+it("registers delegation config failure with fixed operator text and no private cause", () => {
+  const code = ErrorCatalogCodeSchema.parse("DELEGATION_CONFIG_UNAVAILABLE");
+  const expected = "Relay could not verify this run's saved settings, so the child workflow did not start. Review the run evidence before continuing.";
+  assert.equal(formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text, expected);
+  const resolved = resolveErrorCatalogFailure({ code, parameters: {}, summary: "private retained snapshot mismatch" }, "http-response");
+  assert.equal(resolved.state, "resolved");
+  assert.equal(resolved.code, code);
+  assert.equal(resolved.text, expected);
+  assert.equal(resolved.text.includes("private retained snapshot mismatch"), false);
+  assert.equal(ERROR_CATALOG[code].parameters.safeParse({ snapshotId: "private" }).success, false);
+});

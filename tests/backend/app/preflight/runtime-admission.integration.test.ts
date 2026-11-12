@@ -1,14 +1,16 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { randomUUID } from "node:crypto";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { createProfileFixtureSet, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
-import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { admitFixtureSlot, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import fs, { renameSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { afterAll, it, vi } from "vitest";
-import { composeWorkerProcessControl } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { composeWorkerPool } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { scriptedWorkerSpawner, type ScriptedWorkerChild } from "../../../support/helpers/backend/fake-worker-port.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { doctorAuthorityStorage, StorageDoctorObservationChangedError } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
@@ -17,22 +19,24 @@ import { createRuntimePreflightRunners } from "../../../../src/backend/app/prefl
 import { claimWithPreflight, preflightSessionFactory } from "../../../../src/backend/app/preflight/worker-admission.js";
 import { createCommandKernel, type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
+import { createDashboardCommandService } from "../../../../src/backend/runs/commands/command-service.js";
+import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
+import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { workflowPreflightScope } from "../../../../src/backend/runs/start/preflight-scope.js";
 import { createPreflightReportService } from "../../../../src/backend/runtime/preflight/report-service.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { admitWorkerPoolRoster } from "../../../../src/backend/storage/sqlite/worker-slots.js";
-import { admitWorkerLifecycle } from "../../../../src/backend/storage/sqlite/worker-control.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialProtectedStoreRecord, PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedStoreRecordSchema } from "../../../../src/models/config/protected-settings.js";
 import { requiredPreflightChecks, type PreflightRunner, type PreflightRunnerContext } from "../../../../src/models/preflight/preflight.js";
 import { type RuntimeCapability } from "../../../../src/models/preflight/preflight-contract.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { ActorIdSchema, FingerprintSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { PreflightAdmissionRefusal, PreflightAdmissionScopeSchema, PreflightObservationChangedError } from "../../../../src/rules/preflight/preflight-admission.js";
+import { PreflightRunnerTimeoutError } from "../../../../src/models/preflight/preflight.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -43,7 +47,23 @@ import { populatedProtectedRecord, runtimeFixture } from "../../../support/fixtu
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
+import { sessionsFromDay } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
+import { sessionCommandEffect } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
+import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { AuthorityBackupService, AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase as StoreDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+
+/** A blocked claim refusal names each failing check with its value-free detector summary. */
+function assertBlockedRefusal(result: unknown, runId: string): void {
+  assert.ok(typeof result === "object" && result !== null && "summary" in result && typeof result.summary === "string", JSON.stringify(result));
+  const { summary, ...refusal } = result;
+  assert.deepEqual(refusal, { state: "preflight-refused", code: "PREFLIGHT_BLOCKED", runId });
+  assert.match(summary, /^[a-z0-9-]+(?:\.[a-z0-9-]+)+: \S/u);
+}
+
 
 {
 
@@ -70,7 +90,7 @@ async function harness(configureRunners?: (runners: readonly PreflightRunner[]) 
   const descriptors = { resolve: (id: string) => id === personLookupDescriptor.id ? personLookupDescriptor : undefined };
   let protectedRecord = initialProtectedStoreRecord();
   const faults = new Set<string>(); const probes: string[] = []; let supportMissing = false;
-  const preflight = composeRuntimePreflight({ admission: profile.admission, credentials: boundProfileCredentials(profile.admission),
+  const freshPreflight = () => composeRuntimePreflight({ admission: profile.admission, credentials: boundProfileCredentials(profile.admission),
     database, clock, repoRoot, isolation: rebuildRuntimeIsolation, descriptors,
     descriptorSetHash: personLookupDescriptor.contractFingerprint, protectedSecrets: { read: () => protectedRecord }, environment: {},
     runnerFactory: input => {
@@ -82,25 +102,225 @@ async function harness(configureRunners?: (runners: readonly PreflightRunner[]) 
       } }));
       return configureRunners?.(controlled) ?? controlled;
     } });
+  const preflight = freshPreflight();
   let publications = 0;
   const lifecycle = new RunRecordService({ database, clock, ids: sequentialIdFactory("b"), publishQueued: () => { publications += 1; },
     admitQueuedRun: run => preflight.admission.assertReady(preflight.runScope(run.envelope)) });
   const plans = createStartPlanService({ authority: database, authorityRead: database, descriptors, clock, ids: sequentialIdFactory("a"),
     planTtlMs: 600_000, ...identity, plannedBy: "local-operator", preflight: preflight.admission });
   const unexpected = (): never => { throw new Error("Unexpected unrelated effect"); };
-  const kernelDependencies: CommandKernelDependencies = { lifecycle, authority: database, clock, ids: sequentialIdFactory("c"), appVersion: "0.1.0", descriptors,
+  let authorityDepth = 0;
+  const kernelDependencies: CommandKernelDependencies = { lifecycle, authority: { withAuthorityTransaction: work => database.withAuthorityTransaction(repositories => {
+    authorityDepth++;
+    try { return work(repositories); } finally { authorityDepth--; }
+  }) }, clock, ids: sequentialIdFactory("c"), appVersion: "0.1.0", descriptors,
     preflight: preflight.admission, configIdentity: identity, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
+    settings: createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, hostConfigFacts({}), clock,
+      { stateRoot, artifactRoot: profile.admission.artifactRoot }), createCredentialStore({ stateRoot })),
     writeResolution: { recheck: unexpected, resolveAbsent: unexpected },
-    workerRuntime: { pool: {planPoolWorkerCount:unexpected,spawnPoolWorker:unexpected,refreshPoolBrowser:unexpected,reopenPoolBrowser:unexpected,stopPoolWorker:unexpected,pausePoolWorker:unexpected,resumePoolWorker:unexpected} } };
+    workerRuntime: { pool: unusedWorkerPool(unexpected) } };
   const kernel = createCommandKernel(kernelDependencies);
+  let capacityCalls = 0, projections = 0;
+  const serviceWithKernel = (kernel: ReturnType<typeof createCommandKernel>) => createDashboardCommandService({ kernel, projection: { ingestFromTimeline: () => { projections++; }, refreshRun: unexpected },
+    startWorkerCapacity: { workflowOf: () => personLookupDescriptor.id, ensure: async () => { capacityCalls++; } } });
+  const service = serviceWithKernel(kernel);
   const ingress = { workflowId: personLookupDescriptor.id, submissions: [{ emplId: "10873698" }], dryRun: false };
   const command = (plan: ReturnType<typeof plans.plan>) => ({ commandId: "99999999-9999-4999-8999-999999999999", requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "start", type: "start-run",
     target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });
-  return { admission: profile.admission, clock, database, stateRoot, repoRoot, identity, preflight, faults, probes, plans, kernel, lifecycle, kernelWith: (workerRuntime: CommandKernelDependencies["workerRuntime"]) => createCommandKernel({ ...kernelDependencies, workerRuntime }), ingress, command, get publications() { return publications; }, changeProtected() {
+  return { service, serviceWithKernel, freshPreflight, get authorityDepth() { return authorityDepth; }, get capacityCalls() { return capacityCalls; }, get projections() { return projections; }, admission: profile.admission, clock, database, stateRoot, repoRoot, identity, preflight, faults, probes, plans, kernel, lifecycle, kernelWithDependencies: (overrides: Partial<CommandKernelDependencies>) => createCommandKernel({ ...kernelDependencies, ...overrides }), kernelWith: (workerRuntime: CommandKernelDependencies["workerRuntime"]) => createCommandKernel({ ...kernelDependencies, workerRuntime }), ingress, command, get publications() { return publications; }, changeProtected() {
     protectedRecord = ProtectedStoreRecordSchema.parse({ ...protectedRecord, revision: 2,
       lastApplied: { commandId: "77777777-7777-4777-8777-777777777777", commandFingerprint: "7".repeat(64), expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "88888888-8888-4888-8888-888888888888" } });
   }, missing() { supportMissing = true; } };
 }
+
+for (const delayMs of [60_000, 300_000]) it(`Start refreshes readiness through the command service after ${delayMs}ms`, async () => {
+  try {
+    const h = await harness(); await h.plans.prepare?.(h.ingress, signal());
+    const plan = h.plans.plan(h.ingress), command = h.command(plan), probes = h.probes.length;
+    h.clock.advanceWall(delayMs); h.clock.advanceMonotonic(delayMs);
+    assert.equal((await h.service.submit(command)).state, "applied");
+    assert.deepEqual(new Set(h.probes.slice(probes)), new Set(h.probes.slice(0, probes)), "Start repeats every required Preview detector");
+    assert.ok(h.probes.length > probes);
+    assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.version, plan.expectedVersion + 1);
+    assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy?.commandId, command.commandId);
+    assert.equal(h.database.authority.runs.listByWorkflow(plan.workflowId).length, 1);
+    assert.equal(h.database.authority.runSessions.listByWorkflow(plan.workflowId).length, 1);
+    assert.equal(h.publications, 1); assert.equal(h.projections, 1); assert.equal(h.capacityCalls, 1);
+    h.faults.add("endpoint.ucpath.prod"); const settledProbes = h.probes.length;
+    assert.equal((await h.service.submit(command)).state, "already-applied");
+    assert.equal(h.probes.length, settledProbes); assert.equal(h.publications, 1); assert.equal(h.projections, 1);
+    assert.equal(h.database.authority.runs.listByWorkflow(plan.workflowId).length, 1);
+    await assert.rejects(h.service.submit({ ...command, requestedAt: h.clock.now().toISOString() }),
+      /command id 99999999-9999-4999-8999-999999999999 was reused with different content/u);
+    assert.equal(h.probes.length, settledProbes);
+  } finally { await _afterEachFixture0(); }
+});
+
+for (const fault of ["unhealthy", "throw", "missing", "timeout"] as const) it(`Start freshly refuses a ${fault} detector immediately after Preview and replays without probes`, async () => {
+  let armed = false, prepareError: unknown;
+  let timeout: PreflightRunnerTimeoutError | undefined;
+  try {
+    const h = await harness(runners => {
+      if (armed && fault === "missing") return runners.filter(runner => runner.check !== "browser.assets");
+      return runners.map(runner => runner.check !== "endpoint.ucpath.prod" ? runner : { ...runner, async run(context) {
+        if (armed && fault === "throw") throw new Error("controlled Start detector failure");
+        if (armed && fault === "timeout") { timeout = new PreflightRunnerTimeoutError(runner.check, context.timeoutMs); throw timeout; }
+        return runner.run(context);
+      } });
+    });
+    await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress), command = h.command(plan);
+    armed = true; if (fault === "unhealthy") h.faults.add("endpoint.ucpath.prod");
+    // Keep Preview evidence intact while Start preparation sees the missing detector.
+    const admission = fault === "missing" ? h.freshPreflight().admission : h.preflight.admission;
+    const service = h.serviceWithKernel(h.kernelWithDependencies({ preflight: { ...h.preflight.admission, async prepare(scope, operationSignal) {
+      try { return await admission.prepare(scope, operationSignal); } catch (error) { prepareError = error; throw error; }
+    } } }));
+    const result = await service.submit(command);
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") {
+      assert.equal(result.code, fault === "unhealthy" ? "RUN_START_READINESS_BLOCKED" : fault === "timeout" ? "PREFLIGHT_TIMEOUT" : "RUN_START_READINESS_UNAVAILABLE");
+      if (fault === "missing") {
+        assert.ok(prepareError instanceof Error);
+        assert.match(prepareError.message, /no runner for selected checks: browser\.assets/u);
+      }
+      if (fault === "timeout") {
+        assert.ok(prepareError instanceof PreflightAdmissionRefusal);
+        assert.equal(prepareError.cause, timeout, "the refused detector preserves its original timeout cause");
+      }
+    }
+    assert.deepEqual(h.database.authority.commandAudits.findByCommand(command.commandId)?.result, result);
+    assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+    assert.equal(h.database.authority.runs.listByWorkflow(plan.workflowId).length, 0);
+    assert.equal(h.database.authority.runSessions.listByWorkflow(plan.workflowId).length, 0);
+    assert.equal(h.publications, 0); assert.equal(h.projections, 0); assert.equal(h.capacityCalls, 0);
+    const probes = h.probes.length;
+    armed = false; h.faults.clear();
+    assert.deepEqual(await service.submit(command), result);
+    await assert.rejects(service.submit({ ...command, source: "other-source" }),
+      /command id 99999999-9999-4999-8999-999999999999 was reused with different content/u);
+    assert.equal(h.probes.length, probes); assert.equal(h.publications, 0); assert.equal(h.capacityCalls, 0);
+  } finally { await _afterEachFixture0(); }
+});
+
+for (const reason of ["stale", "observation-changed", "unavailable", "scope-mismatch"] as const) it(`Start maps typed ${reason} admission refusal without enqueue effects`, async () => {
+  try {
+    const h = await harness(); await h.plans.prepare?.(h.ingress, signal());
+    const plan = h.plans.plan(h.ingress), command = h.command(plan);
+    const service = h.serviceWithKernel(h.kernelWithDependencies({ preflight: { ...h.preflight.admission,
+      async prepare() { throw new PreflightAdmissionRefusal(reason, "PRIVATE_TYPED_REFUSAL"); } } }));
+    const reply = await service.submit(command);
+    assert.equal(reply.state, "rejected");
+    if (reply.state === "rejected") {
+      assert.equal(reply.code, reason === "stale" || reason === "observation-changed" ? "RUN_START_READINESS_CHANGED" : "RUN_START_READINESS_UNAVAILABLE");
+      assert.equal(reply.message, "PRIVATE_TYPED_REFUSAL");
+    }
+    assert.deepEqual(h.database.authority.commandAudits.findByCommand(command.commandId)?.result, reply);
+    assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+    assert.equal(h.database.authority.runs.listByWorkflow(plan.workflowId).length, 0);
+    assert.equal(h.publications, 0); assert.equal(h.capacityCalls, 0);
+  } finally { await _afterEachFixture0(); }
+});
+
+it("overlapping service Starts consume a retained plan once", async () => {
+  try {
+    const h = await harness(); await h.plans.prepare?.(h.ingress, signal());
+    const plan = h.plans.plan(h.ingress), command = h.command(plan);
+    let projections = 0;
+    const service = createDashboardCommandService({ kernel: h.kernel, projection: { ingestFromTimeline: () => { projections++; },
+      refreshRun: () => { throw new Error("unexpected projection"); } } });
+    const probes = h.probes.length;
+    const results = await Promise.all([service.submit(command), service.submit(command),
+      service.submit({ ...command, commandId: randomUUID() })]);
+    assert.deepEqual(results.slice(0, 2).map(result => result.state), ["applied", "already-applied"]);
+    assert.ok(results[2].state === "rejected" || results[2].state === "conflict");
+    assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.version, plan.expectedVersion + 1);
+    assert.equal(h.database.authority.runs.listByWorkflow(plan.workflowId).length, 1);
+    assert.equal(h.database.authority.runSessions.listByWorkflow(plan.workflowId).length, 1);
+    assert.equal(h.publications, 1); assert.equal(projections, 1);
+    assert.equal(h.probes.length, probes * 2, "only the first command prepares; exact replay and spent-plan refusal do not probe");
+  } finally { await _afterEachFixture0(); }
+});
+
+for (const change of ["settings", "protected-revision"] as const) it(`Start refuses ${change} changed while readiness preparation awaits`, async () => {
+  let armed = false, release: () => void = () => undefined, completed: Promise<unknown> | undefined;
+  let entered: () => void = () => undefined, detectorSignal: AbortSignal | undefined;
+  const preview = new AbortController();
+  const reached = new Promise<void>(resolve => { entered = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
+  try {
+    const h = await harness(runners => runners.map(runner => runner.check !== "endpoint.ucpath.prod" ? runner : { ...runner, async run(context) {
+      if (armed) { detectorSignal = context.signal; entered(); await held; }
+      return runner.run(context);
+    } }));
+    await h.plans.prepare?.(h.ingress, preview.signal); const plan = h.plans.plan(h.ingress), command = h.command(plan);
+    armed = true; const operation = h.service.submit(command); completed = operation;
+    await reached;
+    assert.equal(h.authorityDepth, 0, "no kernel authority transaction spans the detector await");
+    assert.ok(detectorSignal);
+    assert.notEqual(detectorSignal, preview.signal);
+    preview.abort(new Error("Preview request disconnected after dispatch"));
+    assert.equal(detectorSignal.aborted, false, "the admitted operation owns its detector signal");
+    assert.ok(h.database.authority.commands.get(command.commandId), "admission commits before detector awaits");
+    assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+    if (change === "protected-revision") h.changeProtected();
+    else {
+      const patch = { "browser.headless": { set: false } };
+      assert.equal(h.kernel.execute({ commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+        source: "settings-surface", family: "settings", type: "apply-settings", target: { expectedRevision: 1 },
+        payload: { patch, patchFingerprint: deriveSettingsPatchFingerprint(patch), settingsSchemaHash: SETTINGS_SCHEMA_HASH } }).state, "applied");
+    }
+    release(); const result = await operation;
+    assert.equal(result.state, "rejected");
+    assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+    assert.equal(h.database.authority.runs.listByWorkflow(plan.workflowId).length, 0);
+    assert.equal(h.database.authority.runSessions.listByWorkflow(plan.workflowId).length, 0);
+    assert.equal(h.publications, 0); assert.equal(h.capacityCalls, 0);
+  } finally { release(); await completed; await _afterEachFixture0(); }
+});
+
+for (const change of ["profile", "assistant-grant-expiry"] as const) it(`Start revalidates ${change} after awaited readiness before effects`, async () => {
+  let armed = false, current = true, release: () => void = () => undefined, completed: Promise<unknown> | undefined;
+  let entered: () => void = () => undefined;
+  const reached = new Promise<void>(resolve => { entered = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
+  const expired = new Error(`controlled ${change} authority expired`);
+  try {
+    const h = await harness(runners => runners.map(runner => runner.check !== "endpoint.ucpath.prod" ? runner : { ...runner, async run(context) {
+      if (armed) { entered(); await held; }
+      return runner.run(context);
+    } }));
+    const expiresAt = h.clock.now().getTime() + 1_000;
+    const kernel = h.kernelWithDependencies({
+      authority: { withAuthorityTransaction: work => h.database.withAuthorityTransaction(repositories => {
+        if (change === "profile" && !current) throw expired;
+        const result = work(repositories);
+        if (change === "profile" && !current) throw expired;
+        return result;
+      }) },
+      assistantRevalidate: () => { if (change === "assistant-grant-expiry" && h.clock.now().getTime() >= expiresAt) throw expired; },
+    });
+    let capacity = 0;
+    const service = createDashboardCommandService({ kernel,
+      projection: { ingestFromTimeline: () => { throw new Error("refused Start must not project"); }, refreshRun: () => { throw new Error("unexpected projection"); } },
+      startWorkerCapacity: { workflowOf: () => h.ingress.workflowId, ensure: async () => { capacity++; } } });
+    await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress), command = h.command(plan);
+    armed = true;
+    const operation = service.submit(command).catch((error: unknown) => error); completed = operation;
+    await reached;
+    assert.ok(h.database.authority.commands.get(command.commandId));
+    current = false; h.clock.advanceWall(1_000); h.clock.advanceMonotonic(1_000);
+    release(); const error = await operation;
+    if (change === "profile") {
+      assert.ok(error instanceof AggregateError);
+      assert.deepEqual(error.errors, [expired, expired], "original authority failure and failed settlement are both preserved");
+      assert.equal(error.cause, expired);
+    } else assert.equal(error, expired);
+    assert.equal(h.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(h.database.authority.commandAudits.findByCommand(command.commandId), undefined, "unknown authority failure stays admitted and unsettled");
+    assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+    assert.equal(h.database.authority.runs.listByWorkflow(plan.workflowId).length, 0);
+    assert.equal(h.database.authority.runSessions.listByWorkflow(plan.workflowId).length, 0);
+    assert.equal(h.publications, 0); assert.equal(capacity, 0);
+  } finally { release(); await completed; await _afterEachFixture0(); }
+});
 
 it("real plan/kernel/lifecycle admits healthy work and exact replay stays read-only after a fault", async () => {
 try {
@@ -197,9 +417,9 @@ try {
   const h = await harness(); await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
   assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
   const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
-  const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+  const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
     workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
-  const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
+  const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
   const refused = new Error("synthetic browser profile still closing");
   await assert.rejects(claimWithPreflight({ preflight: h.preflight, signal: signal(),
     claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async run => {
@@ -221,6 +441,7 @@ try {
 
 it("returns a changed observation before browser preparation or claim once every bounded re-preparation changed", async () => {
   let changed = false, observations = 0, preparations = 0;
+  const seen: number[] = [];
   try {
     const h = await harness(runners => runners.map(runner => runner.check !== "authority.health" ? runner : {
       ...runner, async run(context) {
@@ -231,36 +452,109 @@ it("returns a changed observation before browser preparation or claim once every
     await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
     assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
     const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
-    const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+    const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
       workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
-    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
+    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
     changed = true;
     const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
+      onObservationChanged: attempt => { seen.push(attempt); },
       claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => { preparations++; } });
     assert.deepEqual(result, { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: original.envelope.runId });
-    assert.equal(observations, 4); assert.equal(preparations, 0);
+    assert.equal(observations, 4); assert.equal(preparations, 0); assert.deepEqual(seen, [1, 2, 3]);
     assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original);
     assert.equal(h.database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
   } finally { await _afterEachFixture0(); }
 });
 
-it("names the failing component when authority.health blocks a worker claim", async () => {
-  const summary = "authority database inspection passed; backup state is stale; span authority is unavailable (span-stream-invalid); ucpathUserId=present; authority upgrade phase settled";
-  let blocked = false;
+it("returns a timeout refusal before browser preparation or claim, and does not throw", async () => {
+  let armed = false, observations = 0, preparations = 0;
   try {
     const h = await harness(runners => runners.map(runner => runner.check !== "authority.health" ? runner : {
-      ...runner, async run(context) { return blocked ? { check: "authority.health", state: "unhealthy", summary, impact: "authority mutations remain blocked" } : runner.run(context); },
+      ...runner, async run(context) {
+        if (armed) { observations++; throw new PreflightRunnerTimeoutError(runner.check, 1_000); }
+        return runner.run(context);
+      },
     }));
     await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
     assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
     const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
-    const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+    const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
       workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
-    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
-    blocked = true;
-    await assert.rejects(claimWithPreflight({ preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => {} }),
-      error => error instanceof PreflightAdmissionRefusal && error.reason === "blocked" && error.message.includes(`authority.health (${summary})`));
+    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
+    armed = true;
+    const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
+      claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => { preparations++; } });
+    assert.deepEqual(result, { state: "preflight-refused", code: "PREFLIGHT_TIMEOUT", runId: original.envelope.runId });
+    assert.equal(observations, 1); assert.equal(preparations, 0);
     assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original);
+    assert.equal(h.database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
+  } finally { await _afterEachFixture0(); }
+});
+
+it("claims after three changed observations when the fourth preparation succeeds", async () => {
+  let armed = false, observations = 0, preparations = 0;
+  const seen: number[] = [];
+  try {
+    const h = await harness(runners => runners.map(runner => runner.check !== "authority.health" ? runner : {
+      ...runner, async run(context) {
+        if (armed) { observations++; if (observations <= 3) throw new PreflightObservationChangedError(); }
+        return runner.run(context);
+      },
+    }));
+    await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
+    assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+    const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
+    const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+      workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
+    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
+    armed = true;
+    const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
+      onObservationChanged: attempt => { seen.push(attempt); },
+      claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => { preparations++; } });
+    assert.equal(result.state, "applied"); assert.deepEqual(seen, [1, 2, 3]);
+    assert.equal(observations, 4); assert.equal(preparations, 1);
+    assert.equal(h.database.authority.runs.get(original.envelope.runId)?.claimGeneration, 1);
+  } finally { await _afterEachFixture0(); }
+});
+
+it("returns a refusal for a paused selected run and claims nothing", async () => {
+  try {
+    const h = await harness(); await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
+    assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+    const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
+    const paused = h.lifecycle.pause({ commandId: randomUUID(), runId: original.envelope.runId, expectedVersion: original.version });
+    assert.ok(paused.state === "applied");
+    const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
+      prepareRun: async () => { throw new Error("paused selection must not prepare"); },
+      claim: admit => { admit(paused.run); throw new Error("paused selection must not claim"); } });
+    assert.deepEqual(result, { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: original.envelope.runId });
+    const stored = h.database.authority.runs.get(original.envelope.runId); assert.ok(stored);
+    assert.equal(stored.claimGeneration, 0); assert.equal(stored.lifecycle.state, "queued");
+  } finally { await _afterEachFixture0(); }
+});
+
+it("returns a blocked refusal when preparation cannot verify readiness", async () => {
+  let armed = false, preparations = 0;
+  try {
+    const h = await harness(runners => runners.map(runner => runner.check !== "authority.health" ? runner : {
+      ...runner, async run(context) {
+        if (armed) throw new Error("detector could not verify");
+        return runner.run(context);
+      },
+    }));
+    await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
+    assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+    const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
+    const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+      workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
+    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
+    armed = true;
+    const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
+      claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => { preparations++; } });
+    assert.deepEqual(result, { state: "preflight-refused", code: "PREFLIGHT_BLOCKED", runId: original.envelope.runId });
+    assert.equal(preparations, 0);
+    assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original);
+    assert.equal(h.database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
   } finally { await _afterEachFixture0(); }
 });
 
@@ -271,9 +565,9 @@ for (const change of ["selection", "version", "cancel", "abort"] as const) it(`r
     await h.plans.prepare?.(ingress, signal()); const plan = h.plans.plan(ingress);
     assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
     const queued = h.database.authority.runs.listByWorkflow(plan.workflowId); assert.equal(queued.length, 2);
-    const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+    const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
       workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
-    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
+    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
     let entered: () => void = () => undefined;
     const started = new Promise<void>(resolve => { entered = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
     const prepared: { runId: string; version: number }[] = [], controller = new AbortController();
@@ -320,11 +614,11 @@ try {
   assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
   const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
   h.clock.advanceWall(60_000); h.clock.advanceMonotonic(60_000); h.faults.add("endpoint.ucpath.prod");
-  const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+  const { workerId } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
     workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
-  const request = { commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
+  const request = { commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId, runtimeConfig: selectRunRuntime(h.database.authority) };
   const generation = h.database.getMeta().authorityGeneration;
-  await assert.rejects(claimWithPreflight({ prepareRun: async () => undefined, preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext(request, admit) }), PreflightAdmissionRefusal);
+  assertBlockedRefusal(await claimWithPreflight({ prepareRun: async () => undefined, preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext(request, admit) }), original.envelope.runId);
   assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original); assert.equal(h.database.getMeta().authorityGeneration, generation);
   h.faults.clear(); await h.preflight.admission.prepare(h.preflight.runScope(original.envelope), signal());
   const claimed = await claimWithPreflight({ prepareRun: async () => undefined, preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext(request, admit) }); assert.equal(claimed.state, "applied");
@@ -427,39 +721,25 @@ await _afterEachFixture0();
 it("production worker process composition refuses preflight before spawn and admits a healthy positive control", async () => {
 try {
 
-  const h = await harness(); let spawns = 0; let exit: ((code: number | null, signal: string | null) => void) | undefined;
-  const plan = CommandRequestSchema.parse({ commandId: "33333333-3333-4333-8333-333333333333", requestedAt: h.clock.now().toISOString(),
-    requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count",
-    target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } });
-  assert.equal(plan.type, "plan-worker-count");
-  if (plan.type !== "plan-worker-count") assert.fail("fixture plan required");
-  const roster = h.database.withAuthorityTransaction(repositories => {
-    repositories.commands.insert(plan);
-    return admitWorkerPoolRoster(repositories, plan, h.clock.now().toISOString());
-  });
-  const slot = roster.selected[0]; assert.ok(slot);
-  const workerId = slot.workerId;
-  const control = composeWorkerProcessControl({
-    admission: h.admission,
-    onExit: () => undefined, profileRoot:join(h.repoRoot,rebuildRuntimeIsolation.browserProfileRoot), database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
-    preflight: h.preflight, launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
-    spawn: () => {
-      spawns += 1;
-      assert.equal(h.database.authority.workerLeases.start({ workerId, workflow: personLookupDescriptor.id,
-        browserSystems: ["ucpath", "crm"], processId: 4242, requestedBy: "local-operator", now: h.clock.now().toISOString() }).state, "started");
-      return { pid: 4242, onExit: listener => { exit = listener; }, onError() {}, kill: () => true };
-    }, birth: { pollMs: 250, timeoutMs: 10_000 }, onFault: error => { throw error; } });
-  const kernel = h.kernelWith(control.workerRuntime);
+  const h = await harness(); const children: ScriptedWorkerChild[] = [];
+  const workerId = h.database.withAuthorityTransaction(repositories =>
+    admitFixtureSlot(repositories, personLookupDescriptor.id, 1, h.clock.now().toISOString())).workerId;
+  const workers = composeWorkerPool({
+    admission: h.admission, sessionGeneration: 1, profileRoot: join(h.repoRoot, rebuildRuntimeIsolation.browserProfileRoot), database: h.database,
+    clock: h.clock, scheduler: new ManualScheduler(h.clock, 0), ids: sequentialIdFactory("e"), preflight: h.preflight,
+    launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
+    spawn: scriptedWorkerSpawner(children), settleExit: () => undefined, onFault: error => { throw error; } });
+  const kernel = h.kernelWith({ pool: workers.seam });
   const command = (id: string) => ({ commandId: id, requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
     family: "worker-browser", type: "spawn-worker", target: { workflowId: personLookupDescriptor.id, expectedVersion: 1 }, payload: { workerId } });
   h.faults.add("browser.assets");
   assert.equal((await kernel.executeWorkerPool(command("11111111-1111-4111-8111-111111111111"))).state, "rejected");
-  assert.equal(spawns, 0); assert.equal(h.database.authority.workerLeases.get(workerId), undefined);
+  assert.equal(children.length, 0);
   h.faults.clear(); const healthy = command("22222222-2222-4222-8222-222222222222");
-  assert.equal((await kernel.executeWorkerPool(healthy)).state, "applied"); assert.equal(spawns, 1);
+  assert.equal((await kernel.executeWorkerPool(healthy)).state, "applied"); assert.equal(children.length, 1);
   h.faults.add("browser.assets"); const probes = h.probes.length;
-  assert.equal((await kernel.executeWorkerPool(healthy)).state, "already-applied"); assert.equal(spawns, 1); assert.equal(h.probes.length, probes);
-  assert.ok(exit); exit(0, null); control.supervisor.close();
+  assert.equal((await kernel.executeWorkerPool(healthy)).state, "already-applied"); assert.equal(children.length, 1); assert.equal(h.probes.length, probes);
+  await workers.pool.stopAll("shutdown");
 
 } finally {
 await _afterEachFixture0();
@@ -468,35 +748,23 @@ await _afterEachFixture0();
 
 it("retries a worker an earlier dashboard lifetime started, without a child of this process", async () => {
 try {
+
   const h = await harness(); let spawns = 0;
-  const plan = CommandRequestSchema.parse({ commandId: "44444444-4444-4444-8444-444444444444", requestedAt: h.clock.now().toISOString(),
-    requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count",
-    target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } });
-  if (plan.type !== "plan-worker-count") assert.fail("fixture plan required");
-  const slot = h.database.withAuthorityTransaction(repositories => { repositories.commands.insert(plan); return admitWorkerPoolRoster(repositories, plan, h.clock.now().toISOString()); }).selected[0];
-  assert.ok(slot);
-  const workerId = slot.workerId, now = () => h.clock.now().toISOString();
-  assert.equal(h.database.authority.workerLeases.start({ workerId, workflow: personLookupDescriptor.id, browserSystems: ["ucpath", "crm"], processId: 4242,
-    requestedBy: "local-operator", now: now() }).state, "started");
-  const prior = h.database.authority.workerLeases.get(workerId); assert.ok(prior);
-  h.database.authority.workerLeases.reportLifecycle({ workerId, leaseGeneration: prior.leaseGeneration,
-    lifecycle: { state: "stopped", startedAt: prior.lifecycle.startedAt, stoppedAt: now(), reason: "crashed" }, now: now() });
-  const lease = h.database.authority.workerLeases.get(workerId); assert.ok(lease);
-  const control = composeWorkerProcessControl({
-    admission: h.admission, onExit: () => undefined, profileRoot: join(h.repoRoot, rebuildRuntimeIsolation.browserProfileRoot), database: h.database,
-    clock: h.clock, scheduler: new ManualScheduler(h.clock, 0), preflight: h.preflight, launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
-    spawn: () => { spawns += 1; throw new Error("fixture-spawn-reached"); }, birth: { pollMs: 250, timeoutMs: 10_000 }, onFault: () => undefined });
-  const retry = { commandId: randomUUID(), family: "worker-browser", type: "retry-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: now(),
-    target: { workerId, workflowId: slot.workflow, membershipRevision: slot.membershipRevision, expectedVersion: h.database.authority.workerPools.get(slot.workflow)?.version,
-      controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } } };
-  const record = h.database.withAuthorityTransaction(repositories => admitWorkerLifecycle(repositories, retry, randomUUID(), retry.requestedAt,
-    { descriptor: personLookupDescriptor, mode: "initialize" }));
-  h.database.authority.workerControls.transition(record.commandId, "admitted", { state: "executing", startedAt: record.admittedAt });
-  assert.ok(record.lifecycle);
-  const lifecycle = record.lifecycle;
-  await assert.rejects(async () => { await control.supervisor.retryWorker?.(lifecycle); }, /fixture-spawn-reached/u);
+  const slot = h.database.withAuthorityTransaction(repositories =>
+    admitFixtureSlot(repositories, personLookupDescriptor.id, 1, h.clock.now().toISOString()));
+  const workers = composeWorkerPool({
+    admission: h.admission, sessionGeneration: 1, profileRoot: join(h.repoRoot, rebuildRuntimeIsolation.browserProfileRoot), database: h.database,
+    clock: h.clock, scheduler: new ManualScheduler(h.clock, 0), ids: sequentialIdFactory("e"), preflight: h.preflight,
+    launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
+    spawn: () => { spawns += 1; throw new Error("fixture-spawn-reached"); }, settleExit: () => undefined, onFault: error => { throw error; } });
+  const kernel = h.kernelWith({ pool: workers.seam });
+  assert.equal(workers.seam.assertMember({ workerId: slot.workerId, lifetimeId: null, expectedVersion: 0 }), "absent");
+  const retry = CommandRequestSchema.parse({ commandId: "66666666-6666-4666-8666-666666666666", requestedAt: h.clock.now().toISOString(),
+    requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "retry-worker",
+    target: { workerId: slot.workerId, workflowId: personLookupDescriptor.id, lifetimeId: null, expectedVersion: 0 } });
+  await assert.rejects(async () => { await kernel.executeWorkerPool(retry); }, /fixture-spawn-reached/u);
   assert.equal(spawns, 1);
-  control.supervisor.close();
+
 } finally {
 await _afterEachFixture0();
 }
@@ -508,7 +776,7 @@ try {
   h.changeProtected(); const count = h.probes.length;
   assert.equal(h.kernel.execute(h.command(plan)).state, "rejected"); assert.equal(h.publications, 0); assert.equal(h.probes.length, count);
   assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
-  await h.plans.prepare?.(h.ingress, signal()); assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+  await h.plans.prepare?.(h.ingress, signal()); const resumed = { ...h.command(plan), commandId: "99999999-9999-4999-8999-999999999998" }; assert.equal(h.kernel.execute(resumed).state, "applied");
 
 } finally {
 await _afterEachFixture0();
@@ -548,7 +816,7 @@ async function harness(beforeCrmEndpoint?: () => Promise<void>) {
   const kernelDependencies: CommandKernelDependencies = { lifecycle, authority: database, clock, ids: sequentialIdFactory("c"), appVersion: "0.1.0", descriptors,
     preflight: preflight.admission, configIdentity: identity, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { recheck: unexpected, resolveAbsent: unexpected },
-    workerRuntime: { pool: { planPoolWorkerCount: unexpected, spawnPoolWorker: unexpected, refreshPoolBrowser: unexpected, reopenPoolBrowser: unexpected, stopPoolWorker: unexpected, pausePoolWorker: unexpected, resumePoolWorker: unexpected } } };
+    workerRuntime: { pool: unusedWorkerPool(unexpected) } };
   const kernel = createCommandKernel(kernelDependencies);
   const ingress = { workflowId: personLookupDescriptor.id, submissions: [{ emplId: "10873698" }], dryRun: false };
   const command = (plan: ReturnType<typeof plans.plan>) => ({ commandId: "99999999-9999-4999-8999-999999999999", requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "start", type: "start-run",
@@ -558,8 +826,8 @@ async function harness(beforeCrmEndpoint?: () => Promise<void>) {
 
 it("opens CRM during authority writes while the full doctor still rejects mixed snapshots", async () => {
   const endpointReached = Promise.withResolvers<void>();
-  let release = Promise.withResolvers<void>();
-  let backupReadReached = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const backupReadReached = Promise.withResolvers<void>();
   let gateSession = false;
   const h = await harness(async () => {
     if (!gateSession) return;
@@ -578,8 +846,7 @@ it("opens CRM during authority writes while the full doctor still rejects mixed 
     const scope = h.preflight.runScope(run.envelope);
     testWorkerPorts(h.database, h.clock, { path: h.f.databasePath, descriptor: personLookupDescriptor, poolIndex: 1 });
     const workerId = h.database.authority.workerSlots.list(personLookupDescriptor.id)[0].workerId;
-    assert.equal((await claimWithPreflight({ prepareRun: async () => undefined, preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext({ workerLifetime: testWorkerLifetime(h.database, plan.workflowId, 1).workerLifetime,
-      commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId,
+    assert.equal((await claimWithPreflight({ prepareRun: async () => undefined, preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext({ commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId,
       runtimeConfig: selectRunRuntime(h.database.authority),
     }, admit) })).state, "applied");
     let opens = 0;
@@ -630,17 +897,19 @@ it("opens CRM during authority writes while the full doctor still rejects mixed 
     assert.equal(await openOutcome, reachedBrowser);
     assert.equal(opens, 2);
     gateSession = false;
-    release = Promise.withResolvers<void>();
-    backupReadReached = Promise.withResolvers<void>();
-    doctorOutcome = h.preflight.admission.prepare(scope, signal()).catch((error: unknown) => error);
-    await backupReadReached.promise;
-    createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit({
-      t: "span.started", kind: "task", ts: h.clock.now().toISOString(), workflow: run.envelope.workflow,
-      runId: run.envelope.runId, attempt: run.envelope.attempt, traceId: run.envelope.traceId,
-      spanPath: `${run.envelope.traceId}/crm-cross-verify#1`, parentSpanPath: run.envelope.traceId, name: "crm-cross-verify",
+    // The readiness pass reads no backup and has no await, so the write lands between its span snapshot and final identity reads.
+    const readSpans = StoreDatabase.inspectSpanRunAuthorityReadOnly.bind(StoreDatabase);
+    const spans = vi.spyOn(StoreDatabase, "inspectSpanRunAuthorityReadOnly").mockImplementationOnce((...args) => {
+      const snapshot = readSpans(...args);
+      createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit({
+        t: "span.started", kind: "task", ts: h.clock.now().toISOString(), workflow: run.envelope.workflow,
+        runId: run.envelope.runId, attempt: run.envelope.attempt, traceId: run.envelope.traceId,
+        spanPath: `${run.envelope.traceId}/crm-cross-verify#1`, parentSpanPath: run.envelope.traceId, name: "crm-cross-verify",
+      });
+      return snapshot;
     });
-    release.resolve();
-    const fullError = await doctorOutcome;
+    const fullError = await h.preflight.admission.prepare(scope, signal()).catch((error: unknown) => error);
+    spans.mockRestore();
     assert.ok(fullError instanceof PreflightObservationChangedError && fullError.reason === "observation-changed");
     assert.ok(fullError.cause instanceof StorageDoctorObservationChangedError);
     assert.match(fullError.cause.message, /authority changed while the storage doctor awaited external evidence/u);
@@ -676,10 +945,10 @@ try {
   const original=h.database.authority.runs.listByWorkflow(plan.workflowId)[0];assert.ok(original);
   testWorkerPorts(h.database, h.clock, { path: h.f.databasePath, descriptor: personLookupDescriptor, poolIndex: 1 });
   const workerId = h.database.authority.workerSlots.list(personLookupDescriptor.id)[0].workerId;
-  const request={commandId:"ffffffff-ffff-4fff-8fff-ffffffffffff",workflow:plan.workflowId,workerId,workerLifetime:testWorkerLifetime(h.database,plan.workflowId,1).workerLifetime,runtimeConfig:selectRunRuntime(h.database.authority)};
+  const request={commandId:"ffffffff-ffff-4fff-8fff-ffffffffffff",workflow:plan.workflowId,workerId,runtimeConfig:selectRunRuntime(h.database.authority)};
   renameSync(h.f.executable,`${h.f.executable}.parked`);h.clock.advanceWall(60_000);h.clock.advanceMonotonic(60_000);
   const generation=h.database.getMeta().authorityGeneration;
-  await assert.rejects(claimWithPreflight({prepareRun:async()=>undefined,preflight:h.preflight,signal:signal(),claim:admit=>h.lifecycle.claimNext(request,admit)}),PreflightAdmissionRefusal);
+  assertBlockedRefusal(await claimWithPreflight({prepareRun:async()=>undefined,preflight:h.preflight,signal:signal(),claim:admit=>h.lifecycle.claimNext(request,admit)}), original.envelope.runId);
   assert.equal(h.database.getMeta().authorityGeneration,generation);assert.deepEqual(h.database.authority.runs.get(original.envelope.runId),original);
   renameSync(`${h.f.executable}.parked`,h.f.executable);await h.preflight.admission.prepare(h.preflight.runScope(original.envelope),signal());
   assert.equal((await claimWithPreflight({prepareRun:async()=>undefined,preflight:h.preflight,signal:signal(),claim:admit=>h.lifecycle.claimNext(request,admit)})).state,"applied");
@@ -699,31 +968,87 @@ await _afterEachFixture0();
 it("production worker process composition refuses preflight before spawn and admits a healthy positive control", async () => {
 try {
 
-  const h = await harness(); let spawns = 0; let exit: ((code: number | null, signal: string | null) => void) | undefined;
-  let workerId = "";
-  const control = composeWorkerProcessControl({
-    admission: h.f.admission,
-    onExit: () => undefined, profileRoot: h.f.input.config.paths.browserProfileRoot,  database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
-    preflight: h.preflight, launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
-    spawn: () => {
-      spawns += 1;
-      assert.equal(h.database.authority.workerLeases.start({ workerId, workflow: personLookupDescriptor.id,
-        browserSystems: ["ucpath", "crm"], processId: 4242, requestedBy: "local-operator", now: h.clock.now().toISOString() }).state, "started");
-      return { pid: 4242, onExit: listener => { exit = listener; }, onError() {}, kill: () => true };
-    }, birth: { pollMs: 250, timeoutMs: 10_000 }, onFault: error => { throw error; } });
-  const kernel = h.kernelWith(control.workerRuntime);
-  assert.equal((await kernel.executeWorkerPool({ commandId: "33333333-3333-4333-8333-333333333333", requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count", target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } })).state, "applied");
-  const slot = h.database.authority.workerSlots.list(personLookupDescriptor.id)[0]; assert.ok(slot); workerId = slot.workerId;
-  const command = (id: string) => ({ commandId: id, requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
-    family: "worker-browser", type: "spawn-worker", target: { workflowId: personLookupDescriptor.id, expectedVersion: h.database.authority.workerPools.get(personLookupDescriptor.id)?.version }, payload: { workerId } });
+  const h = await harness(); const children: ScriptedWorkerChild[] = [];
+  const workers = composeWorkerPool({
+    admission: h.f.admission, sessionGeneration: 1, profileRoot: h.f.input.config.paths.browserProfileRoot, database: h.database,
+    clock: h.clock, scheduler: new ManualScheduler(h.clock, 0), ids: sequentialIdFactory("e"), preflight: h.preflight,
+    launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
+    spawn: scriptedWorkerSpawner(children), settleExit: () => undefined, onFault: error => { throw error; } });
+  const kernel = h.kernelWith({ pool: workers.seam });
   renameSync(h.f.executable,`${h.f.executable}.parked`);
+  assert.equal((await kernel.executeWorkerPool({ commandId: "33333333-3333-4333-8333-333333333333", requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count", target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } })).state, "applied");
+  assert.equal(children.length, 0, "the plan's start is refused before spawn");
+  const slot = h.database.authority.workerSlots.list(personLookupDescriptor.id)[0]; assert.ok(slot);
+  const command = (id: string) => ({ commandId: id, requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
+    family: "worker-browser", type: "spawn-worker", target: { workflowId: personLookupDescriptor.id, expectedVersion: h.database.authority.workerPools.get(personLookupDescriptor.id)?.version }, payload: { workerId: slot.workerId } });
   assert.equal((await kernel.executeWorkerPool(command("11111111-1111-4111-8111-111111111111"))).state, "rejected");
-  assert.equal(spawns, 0); assert.equal(h.database.authority.workerLeases.get(workerId), undefined);
+  assert.equal(children.length, 0);
   renameSync(`${h.f.executable}.parked`,h.f.executable); const healthy = command("22222222-2222-4222-8222-222222222222");
-  assert.equal((await kernel.executeWorkerPool(healthy)).state, "applied"); assert.equal(spawns, 1);
+  assert.equal((await kernel.executeWorkerPool(healthy)).state, "applied"); assert.equal(children.length, 1);
   renameSync(h.f.executable,`${h.f.executable}.parked`); const probes = h.probes;
-  assert.equal((await kernel.executeWorkerPool(healthy)).state, "already-applied"); assert.equal(spawns, 1); assert.equal(h.probes, probes);
-  assert.ok(exit); exit(0, null); control.supervisor.close();
+  assert.equal((await kernel.executeWorkerPool(healthy)).state, "already-applied"); assert.equal(children.length, 1); assert.equal(h.probes, probes);
+  renameSync(`${h.f.executable}.parked`,h.f.executable);
+  await workers.pool.stopAll("shutdown");
+
+} finally {
+await _afterEachFixture0();
+}
+});
+
+it("a planned member whose start preflight refuses serves a not-started card beside its live peer, and the card's Retry starts it", async () => {
+try {
+
+  const h = await harness(); const children: ScriptedWorkerChild[] = [];
+  const workers = composeWorkerPool({
+    admission: h.f.admission, sessionGeneration: 1, profileRoot: h.f.input.config.paths.browserProfileRoot, database: h.database,
+    clock: h.clock, scheduler: new ManualScheduler(h.clock, 0), ids: sequentialIdFactory("e"), preflight: h.preflight,
+    launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
+    spawn: scriptedWorkerSpawner(children), settleExit: () => undefined, onFault: error => { throw error; } });
+  const kernel = h.kernelWith({ pool: workers.seam });
+  const projection = createOperatorProjection({ database: h.database, reader: h.lifecycle, workerMembers: () => workers.pool.snapshot(),
+    descriptors: { resolve: id => id === personLookupDescriptor.id ? personLookupDescriptor : undefined },
+    stateRoot: h.f.input.config.paths.stateRoot, clock: h.clock, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
+    ledger: { foldActivityRange: () => { throw new Error("unrequested activity"); } } });
+  const catalog = buildWorkflowCatalog([], true, servedFixtureSources([]));
+  const served = () => { projection.rebuildFromTimeline(); return projection.buildDashboardDayWire(h.clock.now().toISOString().slice(0, 10)); };
+  const envelope = (commandId: string) => ({ commandId, requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "worker-browser" });
+  const plan = (commandId: string, desiredWorkers: number) => kernel.executeWorkerPool({ ...envelope(commandId), type: "plan-worker-count",
+    target: { workflowId: personLookupDescriptor.id, expectedVersion: h.database.authority.workerPools.get(personLookupDescriptor.id)?.version ?? 0 }, payload: { desiredWorkers } });
+
+  assert.equal((await plan("44444444-4444-4444-8444-444444444441", 1)).state, "applied"); assert.equal(children.length, 1);
+  renameSync(h.f.executable, `${h.f.executable}.parked`);
+  assert.equal((await plan("44444444-4444-4444-8444-444444444442", 2)).state, "applied", "the plan stays applied when its start is refused");
+  assert.equal(children.length, 1, "the refused member never spawns");
+
+  const day = served();
+  assert.equal(day.workerAuthority.state, "present");
+  const [peer, added] = [1, 2].map(ordinal => day.workerCards.find(card => card.member.ordinal === ordinal));
+  assert.ok(peer && added);
+  assert.equal(peer.state, "idle"); assert.equal(peer.controls?.basis.state, "present");
+  const peerBasis = peer.controls?.basis.state === "present" ? peer.controls.basis.value : undefined; assert.notEqual(peerBasis?.lifetimeId, null);
+  assert.equal(added.state, "failed"); assert.equal(added.stopReason, "not-started"); assert.equal(added.endedAt, undefined);
+  assert.deepEqual(added.controls, { basis: { state: "present", value: { lifetimeId: null, version: 0 } } });
+  const view = sessionsFromDay(day, catalog, h.clock.now().toISOString());
+  assert.equal(view.state, "ready");
+  assert.deepEqual(view.state === "ready" ? view.workers.map(worker => [worker.id, worker.state]) : [], [[peer.workerId, "idle"], [added.workerId, "failed"]]);
+
+  // The card's own fence, exactly as the Sessions Retry sends it.
+  const retry = (commandId: string) => CommandRequestSchema.parse({ ...envelope(commandId), type: "retry-worker",
+    target: { workerId: added.workerId, workflowId: added.workflowId, lifetimeId: null, expectedVersion: 0 } });
+  assert.equal((await kernel.executeWorkerPool(retry("55555555-5555-4555-8555-555555555551"))).state, "rejected", "Retry preflights again");
+  assert.equal(children.length, 1);
+  renameSync(`${h.f.executable}.parked`, h.f.executable);
+  const corrected = retry("55555555-5555-4555-8555-555555555552");
+  assert.equal((await kernel.executeWorkerPool(corrected)).state, "applied"); assert.equal(children.length, 2);
+
+  const after = served();
+  assert.equal(after.workerAuthority.state, "present");
+  assert.ok(sessionCommandEffect(after, corrected), "the served card shows the Retry's effect");
+  const restarted = after.workerCards.find(card => card.workerId === added.workerId);
+  assert.ok(restarted && restarted.state !== "failed" && restarted.stopReason === undefined);
+  const peerAfter = after.workerCards.find(card => card.workerId === peer.workerId);
+  assert.deepEqual(peerAfter?.controls, peer.controls, "the live peer keeps its member and fence");
+  await workers.pool.stopAll("shutdown");
 
 } finally {
 await _afterEachFixture0();

@@ -1,5 +1,6 @@
-import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { boundFixtureWorker, stopSyntheticDatabaseWorkers, syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
+import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
@@ -49,21 +50,19 @@ function lifecycleCommand(
 
 describe("canonical run-record service", () => {
 
-  it("preserves unrelated worker cleanup failure and custody until a successful stop", async () => {
+  it("preserves a worker cleanup failure and custody until a successful stop", async () => {
     const f = await fixture(), path = syntheticDatabasePath(f.database);
-    const failure = new Error("injected-worker-cleanup-failure");
-    const release = f.database.assertWorkerLifecycleRelease.bind(f.database);
+    const run = runningRun(f.service, f.request, f.runtimeConfig);
     assert.equal(boundFixtureWorker(f.database, path, WORKER_ID), true);
-    f.database.assertWorkerLifecycleRelease = () => { throw failure; };
-    try {
-      assert.throws(() => f.database.close(), error => {
-        assert.ok(error instanceof AggregateError);
-        assert.equal(error.message, "fixture-worker-closure-unproved");
-        assert.deepEqual(error.errors, [failure]);
-        return true;
-      });
-      assert.equal(boundFixtureWorker(f.database, path, WORKER_ID), true);
-    } finally { f.database.assertWorkerLifecycleRelease = release; }
+    assert.throws(() => f.database.close(), error => {
+      assert.ok(error instanceof AggregateError);
+      assert.equal(error.message, "fixture-worker-closure-unproved");
+      assert.deepEqual(error.errors.map((failure: unknown) => failure instanceof Error ? failure.message : failure), ["fixture-worker-claim-retained"]);
+      return true;
+    });
+    assert.equal(boundFixtureWorker(f.database, path, WORKER_ID), true);
+    assert.equal(f.service.requeue({ commandId: "99000000-0000-4000-8000-000000000098", runId: run.envelope.runId, expectedVersion: run.version,
+      claim: { workerId: WORKER_ID, claimGeneration: run.claimGeneration }, cause: "recovery" }).state, "applied");
     stopSyntheticDatabaseWorkers({ database: f.database, path });
   });
 
@@ -108,20 +107,9 @@ describe("canonical run-record service", () => {
       auditOnlySqlite.close();
     }
     const auditOnlyGeneration = auditOnly.database.getMeta().authorityGeneration;
-    assert.throws(() => auditOnly.service.create(auditOnly.request), /command-audit-settlement-mismatch/u);
+    assert.throws(() => auditOnly.service.create(auditOnly.request), /has an audit without its command/u);
     assert.equal(auditOnly.database.getMeta().authorityGeneration, auditOnlyGeneration);
-    assert.throws(() => auditOnly.database.close(), error => {
-      assert.ok(error instanceof AggregateError);
-      assert.equal(error.message, "fixture-worker-closure-unproved");
-      assert.equal(error.errors.length, 1);
-      const failure: unknown = error.errors[0];
-      assert.ok(failure instanceof Error);
-      assert.equal(failure.message, "authority table command_audits failed native record validation: command-audit-settlement-mismatch");
-      assert.ok(failure.cause instanceof Error);
-      assert.equal(failure.cause.message, "command-audit-settlement-mismatch");
-      assert.equal(failure.cause.cause, undefined);
-      return true;
-    });
+    assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(join(auditOnly.root, "state.db")), /^Error: authority database foreign-key validation failed for 1 row\(s\)$/u);
     const repair = new DatabaseSync(join(auditOnly.root, "state.db"));
     try {
       const trigger = repair.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='command_audits_retained'").get();
@@ -162,7 +150,7 @@ describe("canonical run-record service", () => {
     const run = created(service, request);
     const claimMember1 = database.authority.workerSlots.get(WORKER_ID);
     if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-    service.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember1.poolIndex).workerLifetime, commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
+    service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
     const before = database.getMeta().authorityGeneration;
     const bytes = service.read(run.envelope.runId);
     assert.deepEqual(service.transition({ commandId: "60000000-0000-4000-8000-000000000001",
@@ -202,7 +190,7 @@ describe("canonical run-record service", () => {
         const commandId = operation === "enqueue" ? f.request.commandId : UUID_5;
         assert.throws(() => {
           if (operation === "enqueue") f.service.create(f.request);
-          else if (operation === "claim") f.service.claimNext({ commandId, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig: f.runtimeConfig, workerLifetime: testWorkerLifetime(f.database, WORKFLOW_ID, 1).workerLifetime });
+          else if (operation === "claim") f.service.claimNext({ commandId, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig: f.runtimeConfig });
           else {
             assert.ok(run);
             f.service.transition({ commandId, runId: run.envelope.runId, expectedVersion: run.version,
@@ -537,7 +525,6 @@ describe("canonical run-record service", () => {
               commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
             } } : { kind, request: { runtimeConfig, workflow: WORKFLOW_ID,
               workerId: `person-lookup-worker-${String(index + 1)}`,
-              workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, index + 1).workerLifetime,
               commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
             } },
           }, lifetime));

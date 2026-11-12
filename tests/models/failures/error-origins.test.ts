@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { bindErrorOrigin, clientCauseRowAccepted, serializeErrorCauses } from "../../../src/models/failures/error-origins.js";
+import { bindErrorOrigin, clientCauseRowAccepted, serializeErrorCauses, serializeTokenedErrorCauses } from "../../../src/models/failures/error-origins.js";
 import { PreflightObservationChangedError } from "../../../src/rules/preflight/preflight-admission.js";
 import { WorkerControlRefusal } from "../../../src/models/run/worker-control.js";
 import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
@@ -37,7 +37,7 @@ describe("closed error origins", () => {
   it("grants no row from runtime names, codes or subclasses, and names an unbound error by its constructor", () => {
     const spoofed = Object.assign(new Error("PRIVATE_CANARY"), { name: "RuntimeCustodyUncertainError", code: "RUNTIME_CUSTODY_UNCERTAIN", reason: "custody-unproved" });
     class Derived extends PreflightObservationChangedError {}
-    const rows = [spoofed, new Derived(), new WorkerControlRefusal("worker-retirement-child-close-unproved-PRIVATE_CANARY")]
+    const rows = [spoofed, new Derived(), new WorkerControlRefusal("worker-execution-lost-PRIVATE_CANARY")]
       .map(error => { const [cause] = serializeErrorCauses(error); return { name: cause?.name, code: cause?.code, reason: cause?.reason }; });
     assert.deepEqual(rows, [
       { name: "Error", code: "RUNTIME_CUSTODY_UNCERTAIN", reason: "cause-unavailable" },
@@ -47,9 +47,19 @@ describe("closed error origins", () => {
     assert.equal(serializeErrorCauses(Object.assign(new Error("x"), { code: "private value" }))[0]?.code, "INTERNAL_FAILURE");
   });
 
+  it("names a raw SQLite error by its integer result code and drops its message", async () => {
+    const { DatabaseSync } = await import("node:sqlite");
+    const database = new DatabaseSync(":memory:");
+    let failure: unknown;
+    try { database.exec("SELECT * FROM private_canary"); } catch (error) { failure = error; } finally { database.close(); }
+    const [cause] = serializeErrorCauses(failure);
+    assert.deepEqual({ name: cause?.name, code: cause?.code, reason: cause?.reason }, { name: "Error", code: "ERR_SQLITE_ERROR", reason: "sqlite-errcode-1" });
+    assert.equal(PRIVATE.test(JSON.stringify(cause)), false);
+  });
+
   it("names a worker lifecycle refusal only from its closed reason list", () => {
-    assert.deepEqual(serializeErrorCauses(new WorkerControlRefusal("worker-retirement-child-close-unproved")).map(({ name, code, reason }) => ({ name, code, reason })),
-      [{ name: "WorkerControlRefusal", code: "INTERNAL_FAILURE", reason: "worker-retirement-child-close-unproved" }]);
+    assert.deepEqual(serializeErrorCauses(new WorkerControlRefusal("worker-execution-lost")).map(({ name, code, reason }) => ({ name, code, reason })),
+      [{ name: "WorkerControlRefusal", code: "INTERNAL_FAILURE", reason: "worker-execution-lost" }]);
   });
 
   it("uses fixed rows for non-errors and bounds long chains", () => {
@@ -86,6 +96,14 @@ describe("closed error origins", () => {
       { ...row, message: row.name, stack: `${row.name}\n    at assets/../secret.js:1:2` },
       { ...row, message: row.name, stack: `${row.name}: PRIVATE_CANARY` },
     ]) assert.equal(clientCauseRowAccepted({ message: claim.message, code: claim.code, reason: claim.reason, stack: claim.stack }), false);
+  });
+
+  it("keeps each cause's own leading kebab token and none of its message", () => {
+    const primary = new Error("primary-token: private detail a");
+    const startup = new AggregateError([primary, new Error("cleanup-token: private detail b"), new Error("Plain private sentence")], "startup failed", { cause: primary });
+    const rows = serializeTokenedErrorCauses(new Error("Operator sentence", { cause: startup }));
+    assert.deepEqual(rows.map(row => row.token), [undefined, undefined, "primary-token", "cleanup-token", undefined]);
+    assert.doesNotMatch(JSON.stringify(rows), PRIVATE);
   });
 
   it("refuses a second binding for one constructor", () => {

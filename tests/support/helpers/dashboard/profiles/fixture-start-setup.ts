@@ -1,6 +1,7 @@
 import { WorkflowBootstrapPrimitiveSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { separationsDescriptor } from "../../registered-workflows.js";
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire } from "../../../../../src/models/dashboard/bootstrap.js";
+import { projectWorkbookCompatibility } from "../../../../../src/models/dashboard/workbook-library.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../../../src/models/dashboard/start-plan.js";
 import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
@@ -30,6 +31,7 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
 
   const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSchema.parse({
     ...FIXTURE_BOOTSTRAP,
+    workbookCompatibility: projectWorkbookCompatibility(START_PICKER_MODULES.map(module => module.descriptor), []),
     descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
     workflows: START_PICKER_MODULES.map((module) => ({
       id: module.descriptor.id,
@@ -40,11 +42,11 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
       availability: { state: "available" },
       role: module.role,
       start: {
-        readiness: module.descriptor.requiredWorkbookTypeIds.length === 0
-          ? { scope: "default-workbook-references", state: "ready" }
-          : { scope: "default-workbook-references", state: "blocked", reason: "Import a reference workbook.",
-            fixAction: { kind: "import-workbook", workflowId: module.descriptor.id,
-              typeId: module.descriptor.requiredWorkbookTypeIds[0] } },
+        readiness: module.descriptor.requiredWorkbookFields.length === 0
+          ? { scope: "workbook-sources", state: "ready" }
+          : { scope: "workbook-sources", state: "unavailable", reasonCode: "WORKBOOK_LIBRARY_EMPTY",
+            reason: "Import a Library spreadsheet before selecting a workflow source.",
+            fixAction: { kind: "import-workbook", workflowId: module.descriptor.id } },
         ...(module.descriptor.summary === undefined ? {} : { summary: module.descriptor.summary }),
         enqueue: module.descriptor.enqueue,
         version: module.descriptor.id === "person-lookup" ? 1 : module.descriptor.version,
@@ -53,7 +55,9 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
           ? { inputRun: mockLookupStart.inputRun, summary: mockLookupStart.summary }
           : module.descriptor.surfaces.inputRun === undefined ? {} : { inputRun: module.descriptor.surfaces.inputRun }),
 
-        spreadsheetIntake: "intake" in module && module.intake !== undefined, requiredWorkbookTypeIds: [...module.descriptor.requiredWorkbookTypeIds],
+        ...(module.descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: module.descriptor.surfaces.uploadRun }),
+        spreadsheetIntake: "intake" in module && module.intake !== undefined, requiredWorkbookFields: [...module.descriptor.requiredWorkbookFields],
+        ...(module.descriptor.workbookReference === undefined ? {} : { workbookReference: module.descriptor.workbookReference }),
       },
     })),
   });

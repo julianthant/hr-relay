@@ -7,12 +7,12 @@ import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 import { LogoutOperationSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
 import { runClaim } from "../../../models/run/record.js";
-import { WORKER_LOGOUT_STOP_REASON, WORKER_SHUTDOWN_STOP_REASON } from "../../../models/run/worker.js";
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
 import { createAssistantAuthorization } from "../../assistant/authorization.js";
 import type { ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
 import { ProfileSessionRefusedError } from "../../profiles/profile-errors.js";
 import { createProfileSession } from "../../profiles/profile-session.js";
+import { createProfileRegistry } from "../../profiles/registry.js";
 import type { CommandKernel } from "../../runs/commands/command-kernel.js";
 import { requireLifecycleApplied,RunRecordService } from "../../runs/lifecycle/run-record-service.js";
 import { reconcileExitedWorker,reconcileStoppedLogout,reconcileStoppedStartupCrash,StartupCrashRecoveryRefusedError } from "../../runs/lifecycle/startup-crash-recovery.js";
@@ -37,14 +37,14 @@ import { z } from "zod";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 
-import { workerPoolMember,type WorkerPoolMember } from "../../../models/run/worker-slot.js";
-import { IsoInstantSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
+import {type WorkerPoolMember } from "../../../models/run/worker-slot.js";
+import {LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import { systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { createRunQueueProjection } from "../../runs/projections/run-queue-projection.js";
 import { OfflineSpanRootRepairService,type SpanRootRepairReport } from "../../runs/recovery/span-root-repair.js";
 import { createNativeBrowserProbe } from "../../runtime/browser/native-browser.js";
-import type { DashboardWorkerProcessSupervisor } from "../../runtime/workers/worker-supervisor.js";
+import { requireStoppedPool, type WorkerPool } from "../../runtime/workers/worker-pool.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import { acquireRecoveryRuntimeRestore,RuntimeAdmission as StorageAdmission,type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { AuthorityDatabase,AuthorityFormatUnsupportedError,doctorAuthorityStorage,OfflineAuthorityRestoreService,summarizeSpanAuthorityReconciliation } from "../../storage/sqlite/index.js";
@@ -59,8 +59,8 @@ import { lstatSync } from "node:fs";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { recoverFixedLayoutPublication,withDefaultLayoutSource,type FixedLayoutPublication } from "../../storage/admission/installation.js";
 import { file as layoutFile,hash as layoutHash } from "../../storage/maintenance/existing-data-backup-files.js";
-import { activateFixedLayoutProfiles,assertFixedLayoutSourceFence,createFixedLayoutDirectory,fixedLayoutEntries,FixedLayoutIntentSchema,FixedLayoutRefusedError,fixedLayoutOutputPaths,fixedLayoutSnapshot,readFixedLayoutIntent,type FixedLayoutActivation } from "../../storage/maintenance/fixed-layout.js";
-import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
+import { activateFixedLayoutProfiles,assertFixedLayoutSourceFence,createFixedLayoutDirectory,fixedLayoutEntries,FixedLayoutIntentSchema,FixedLayoutRefusedError,fixedLayoutOutputPaths,readFixedLayoutIntent,type FixedLayoutActivation } from "../../storage/maintenance/fixed-layout.js";
+import { bindErrorOrigin,causeChainToken,serializeErrorCauses } from "../../../models/failures/error-origins.js";
 
 
 
@@ -113,17 +113,34 @@ function causedByUnresolvedWrites(error: unknown): boolean {
 
 const buildVersion = () => z.object({ version: z.string() }).parse(JSON.parse(readFileSync(new URL("../../../../package.json", import.meta.url), "utf8"))).version;
 
-/** Error text can carry input, so only a leading kebab-case token from the cause chain reaches the boot log. */
+/** Error text can carry input, so the boot log gets a leading kebab-case token plus closed cause rows (class, code, SQLite result code, frames). */
 function logRefusalReason(stateRoot: string, refusal: Error & { code: string }, area: string, clock: Clock): void {
-  let reason = "unnamed-cause";
-  for (let cause: unknown = refusal.cause; cause instanceof Error; cause = cause.cause) {
-    const token = /^([a-z0-9]+(?:-[a-z0-9]+)+)(?:[: {]|$)/u.exec(cause.message)?.[1];
-    if (token !== undefined && token.length <= 128) { reason = token; break; }
-  }
+  const reason = causeChainToken(refusal.cause) ?? "unnamed-cause";
   // The refusal is already held for the person; a boot log that cannot be written must not turn it into a boot failure.
   try {
-    appendEmergencyFault({ stateRoot, build: buildVersion(), code: refusal.code, error: new Error(reason), now: clock.now(), area, reason });
+    const build = buildVersion(), now = clock.now();
+    appendEmergencyFault({ stateRoot, build, code: refusal.code, error: new Error(reason), now, area, reason });
+    for (const cause of serializeErrorCauses(refusal.cause)) {
+      const diagnostic = new Error(cause.name);
+      diagnostic.stack = cause.stack;
+      appendEmergencyFault({ stateRoot, build, code: cause.code, error: diagnostic, now, area, reason: cause.reason });
+    }
   } catch { /* best effort */ }
+}
+
+function hasStringCode(refusal: Error): refusal is Error & { code: string } {
+  return "code" in refusal && typeof refusal.code === "string";
+}
+
+function codedHeldRefusal(refusal: unknown): (Error & { code: string }) | undefined {
+  if (!(refusal instanceof Error)) return undefined;
+  return hasStringCode(refusal) ? refusal : new RegisteredPersonUpgradeRefusedError(refusal);
+}
+
+function logHeldPerson(workspace: string, refusal: unknown, area: string, clock: Clock): void {
+  const coded = codedHeldRefusal(refusal);
+  if (coded === undefined) return;
+  logRefusalReason(join(workspace, rebuildRuntimeIsolation.stateRoot), coded, area, clock);
 }
 
 function logDrainRefusal(stateRoot: string, reason: () => string, clock: Clock): void {
@@ -282,12 +299,12 @@ export async function upgradeRegisteredPersonStores(workspace: string, lifetime:
   lifetime.assertHeld();
   if (!existsSync(join(workspace, ".tracker", "control", "installation.json"))) return;
   const held = heldPeopleFor(lifetime);
-  const hold = (profileId: string, error: unknown): void => {
+  const hold = (profileId: string, error: unknown, area: "profile-startup-inspection" | "profile-startup-upgrade" | "profile-startup-readback"): void => {
     if (machineWideStartupFailure(error)) throw error;
     if (held.has(profileId)) return;
     const refusal = new RegisteredPersonUpgradeRefusedError(error);
     held.set(profileId, refusal);
-    logRefusalReason(join(workspace, rebuildRuntimeIsolation.stateRoot), refusal, "profile-startup-upgrade", clock);
+    logRefusalReason(join(workspace, rebuildRuntimeIsolation.stateRoot), refusal, area, clock);
   };
   try {
     const profiles = await withStoppedMachineStorage(workspace, lifetime, async machine => {
@@ -295,7 +312,7 @@ export async function upgradeRegisteredPersonStores(workspace: string, lifetime:
       return machine.readStartupProfileIds().flatMap(profileId => {
         let inspection: ReturnType<typeof AuthorityDatabase.inspectRegisteredPersonAtStartup> | undefined;
         try { inspection = AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId); }
-        catch (error) { hold(profileId, error); }
+        catch (error) { hold(profileId, error, "profile-startup-inspection"); }
         if (inspection === undefined) return [];
         return inspection.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION && !inspection.requiresContinuation ? [] : [profileId];
       });
@@ -307,12 +324,14 @@ export async function upgradeRegisteredPersonStores(workspace: string, lifetime:
           const report = await upgradeProfileAtStartup(profileBrowserClosure, machine, profileId, hostFacts, clock);
           if ((report.state !== "upgraded" && report.state !== "already-upgraded") || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup-upgrade-unproved");
         });
+      } catch (error) { hold(profileId, error, "profile-startup-upgrade"); continue; }
+      try {
         await withStoppedMachineStorage(workspace, lifetime, async machine => {
           const inspection = AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
           if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || inspection.requiresContinuation) throw new Error("profile-startup-readback-unproved");
         });
         held.delete(profileId);
-      } catch (error) { hold(profileId, error); }
+      } catch (error) { hold(profileId, error, "profile-startup-readback"); }
     }
   } catch (error) { throw new RegisteredPersonUpgradeRefusedError(error); }
 }
@@ -335,8 +354,10 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
         try { await repairRegisteredPerson(workspace, lifetime, profileId, clock, error); held.delete(profileId); }
         catch (repair) {
           if (machineWideStartupFailure(repair)) throw new AggregateError([error, repair], "startup-inspection-and-repair-failed", { cause: repair });
-          held.set(profileId, repair instanceof AuthorityFormatUnsupportedError || repair instanceof StartupProjectionRepairError ? repair
-            : new AutomaticPersonRepairRefusedError(new AggregateError([error, repair], "startup-inspection-and-repair-failed", { cause: repair })));
+          const refusal = repair instanceof AuthorityFormatUnsupportedError || repair instanceof StartupProjectionRepairError ? repair
+            : new AutomaticPersonRepairRefusedError(new AggregateError([error, repair], "startup-inspection-and-repair-failed", { cause: repair }));
+          held.set(profileId, refusal);
+          logHeldPerson(workspace, refusal, "profile-startup-repair", clock);
         }
       }
     }
@@ -403,6 +424,7 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
           } catch (error) {
             if (hasUnprovedSourceClosure(error)) throw error;
             held.set(profileId, error);
+            logHeldPerson(workspace, error, "profile-startup-settings-upgrade", clock);
           }
         }
       });
@@ -422,8 +444,17 @@ export async function initializeRegisteredPersonStores(workspace: string, lifeti
     catch (error) {
       if (machineWideStartupFailure(error)) throw error;
       heldPeopleFor(lifetime).set(profileId, error);
+      logHeldPerson(workspace, error, "profile-startup-crash-recovery", clock);
     }
   }
+  const held = heldPeopleFor(lifetime);
+  if (held.size === 0) return;
+  // No session exists at boot; a held person left selected would block every other sign-in and could not log out.
+  const machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
+  try {
+    const registry = createProfileRegistry(machine), selected = registry.read().activeProfileId;
+    if (selected !== null && held.has(selected)) registry.advanceSession(null, "profile-startup-held");
+  } finally { machine.release(); }
 }
 
 export class AutomaticPersonRepairRefusedError extends Error {
@@ -506,15 +537,6 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
             const resolved = resolveConfigWithProvenance(settings, hostFacts, clock, { stateRoot: targetRoot, artifactRoot: join(targetRoot, "artifacts") });
             const snapshot = ConfigSnapshotRecordSchema.parse({ configSnapshotId: randomUUID(), revision: saved.revision + (settingsUpdate === undefined ? 0 : 1),
               config: resolved.config, preferences: resolved.preferences, preferencesFingerprint: resolved.preferencesFingerprint, provenance: resolved.provenance, fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(), capturedBy: LOCAL_OPERATOR_ACTOR_ID });
-            const custody = database.readProfileResourceCustody();
-            const browserSnapshots = [...new Set(custody.browsers.map(browser => browser.configFingerprint))].map(fingerprint => {
-              const source = custody.configSnapshots.find(row => row.fingerprint === fingerprint);
-              if (source === undefined) throw new Error("fixed-layout-browser-snapshot-missing");
-              const moved = fixedLayoutSnapshot(source, admission.stateRoot, targetRoot,
-                { configSnapshotId: randomUUID(), capturedAt: snapshot.capturedAt, capturedBy: snapshot.capturedBy });
-              return { sourceConfigSnapshotId: source.configSnapshotId, sourceFingerprint: fingerprint,
-                snapshot: moved.fingerprint === snapshot.fingerprint && moved.revision === snapshot.revision ? snapshot : moved };
-            });
             profiles.push({ profileId, sourceRoot: admission.stateRoot, authorityPath: join(targetRoot, "state.db"), backupFileName: manifest.backupFileName,
               backupSha256: manifest.sha256, backupManifestSha256: layoutHash(layoutFile(join(admission.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), "managed data").bytes),
               preAuthorityGeneration: manifest.authorityGeneration, preAuthorityContentFingerprint: manifest.authorityContentFingerprint,
@@ -522,7 +544,7 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
               ...(priorActive === undefined ? { settingsInitialization: { commandId: randomUUID(), auditId: randomUUID() } } : {}),
               ...(admission.stoppedUpgradeLogout() === undefined ? {} : { logout: admission.stoppedUpgradeLogout() }),
               ...(settingsUpdate === undefined ? {} : { settingsUpdate }),
-              snapshot, browserSnapshots });
+              snapshot });
           } catch (error) { primary = { error }; }
           try { database.close(); } catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { database, admission }); }
           if (primary !== undefined) throw primary.error;
@@ -548,38 +570,16 @@ export class RuntimeCustodyUncertainError extends AggregateError {
 }
 bindErrorOrigin(RuntimeCustodyUncertainError, "runtime-custody-uncertain");
 
-type CustodyHolds = Record<"reservations" | "leases" | "browsers" | "controls" | "runs" | "writes" | "duo" | "artifacts" | "children" | "commands", number>;
+type CustodyHolds = Record<"runs" | "writes" | "duo" | "artifacts" | "children" | "commands", number>;
 /** Counts, never values, of each custody kind that holds a person's closure open; any count above zero is busy. */
-function profileResourceCustodyHolds(before: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>,
-  nonBirth?: (slot: typeof before.slots[number]) => boolean): CustodyHolds {
-  for (const browser of before.browsers) if (!before.slots.some(slot => slot.workerId === browser.workerId)) throw new Error("profile-browser-membership-unavailable");
-  let reservations = 0, leases = 0;
-  for (const slot of before.slots) {
-    const reservation = before.reservations.find(value => value.workerId === slot.workerId);
-    if (reservation === undefined || reservation.reservationCommandId !== slot.reservationCommandId) throw new Error("profile-worker-reservation-authority-unavailable");
-    if (reservation.state === "pending") reservations++;
-    const lease = before.leases.find(value => value.workerId === slot.workerId);
-    if (lease === undefined && slot.retiredAt === null && !nonBirth?.(slot)) {
-      const plan = before.controls.find(control => control.commandId === slot.reservationCommandId);
-      if (reservation.state !== "settled" || plan?.request.type !== "plan-worker-count" || plan.phase.state !== "succeeded" || plan.auditedAt === undefined
-        || !plan.roster?.selected.some(member => member.workerId === slot.workerId)
-        || before.controls.some(control => control.request.type === "spawn-worker" && control.request.payload.workerId === slot.workerId)
-        || before.browsers.some(browser => browser.workerId === slot.workerId) || before.runs.some(run => runClaim(run)?.workerId === slot.workerId)
-        || before.duoLeases.some(lease => lease.holder.workerId === slot.workerId)) throw new Error("profile-worker-lifetime-unavailable");
-    }
-    if (lease !== undefined && lease.lifecycle.state !== "stopped") leases++;
-  }
-  if (before.leases.some(lease => !before.slots.some(slot => slot.workerId === lease.workerId))) throw new Error("profile-worker-membership-unavailable");
-  return { reservations, leases, browsers: before.browsers.filter(browser => browser.health !== "closed").length,
-    controls: before.controls.filter(control => control.auditedAt === undefined).length,
-    runs: before.runs.filter(run => run.lifecycle.state !== "terminal" && run.pause?.state !== "paused").length,
+function profileResourceCustodyHolds(before: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>): CustodyHolds {
+  return { runs: before.runs.filter(run => run.lifecycle.state !== "terminal" && run.pause?.state !== "paused").length,
     writes: before.writeIntents.filter(intent => intent.status !== "committed" && intent.status !== "observed-present").length,
     duo: before.duoLeases.filter(lease => lease.state === "held").length, artifacts: before.pendingArtifacts.length, children: 0, commands: 0 };
 }
 
-function profileResourceCustodyBusy(before: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>,
-  nonBirth?: (slot: typeof before.slots[number]) => boolean): boolean {
-  return Object.values(profileResourceCustodyHolds(before, nonBirth)).some(count => count > 0);
+function profileResourceCustodyBusy(before: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>): boolean {
+  return Object.values(profileResourceCustodyHolds(before)).some(count => count > 0);
 }
 
 /** A boot-log reason token naming only the kinds that hold the closure open, e.g. busy-runs-1-artifacts-2. */
@@ -587,6 +587,9 @@ export function custodyHoldsReason(holds: CustodyHolds): string {
   const named = Object.entries(holds).filter(([, count]) => count > 0).map(([kind, count]) => `${kind}-${String(count)}`);
   return (named.length === 0 ? "busy-none" : `busy-${named.join("-")}`).slice(0, 128).replace(/-+$/u, "");
 }
+
+/** The profile runtime's worker pool, or none before the dashboard composition builds it (then no worker process exists). */
+type ProfileWorkerPool = Pick<WorkerPool, "snapshot" | "stopAll">;
 
 export interface ProfileCommandActivity {
   hasUnquiescedWork(profileId: string): boolean;
@@ -597,7 +600,7 @@ export interface ProfileCommandActivity {
 export function composeProfileActivity(input: Readonly<{
   commandActivities?: ReadonlySet<ProfileCommandActivity>;
   admission: RuntimeAdmission; database: AuthorityDatabase; clock: Clock;
-  supervisor: Pick<DashboardWorkerProcessSupervisor, "memberEvidence" | "drainOwnedChildren"> | { readonly state: "not-constructed" };
+  supervisor: ProfileWorkerPool | { readonly state: "not-constructed" };
   lifecycle: Pick<RunRecordService, "read" | "transition" | "pause">;
 }>) {
   const profileId = input.admission.profileBinding.profileId;
@@ -607,20 +610,8 @@ export function composeProfileActivity(input: Readonly<{
     input.admission.assertLive();
     const before = input.database.readProfileResourceCustody();
     const holds = profileResourceCustodyHolds(shutdown ? { ...before, runs: before.runs.filter(run => run.pause?.state !== "paused" && run.lifecycle.state !== "parked-write"),
-      writeIntents: before.writeIntents.filter(intent => intent.status === "attempting" && !("runId" in intent && before.runs.some(run => run.envelope.runId === intent.runId && run.lifecycle.state === "parked-write"))) } : before, slot => input.database.hasWorkerNonBirth(slot));
-    for (const slot of before.slots) {
-      const lease = before.leases.find(value => value.workerId === slot.workerId);
-      if (slot.retiredAt !== null) continue;
-      if ("state" in input.supervisor) throw new Error("profile-worker-supervisor-custody-unavailable");
-      const evidence = input.supervisor.memberEvidence(workerPoolMember(slot));
-      if (lease !== undefined && evidence === undefined) {
-        if (lease.lifecycle.state !== "stopped") {
-          throw new Error("profile-worker-supervisor-custody-unavailable");
-        }
-        input.database.assertWorkerLifecycleRelease(lease.workerId);
-      }
-      if (evidence !== undefined && (evidence.state !== "exited" || evidence.reportedBy !== "os")) holds.children++;
-    }
+      writeIntents: before.writeIntents.filter(intent => intent.status === "attempting" && !("runId" in intent && before.runs.some(run => run.envelope.runId === intent.runId && run.lifecycle.state === "parked-write"))) } : before);
+    if (!("state" in input.supervisor)) holds.children = input.supervisor.snapshot().filter(member => member.state !== "exited").length;
     const after = input.database.readProfileResourceCustody();
     if (canonicalJsonStringify(before) !== canonicalJsonStringify(after)) throw new Error("profile-resource-custody-changed");
     if (includeCommands) for (const activity of input.commandActivities ?? []) if (activity.hasUnquiescedWork(profileId)) holds.commands++;
@@ -659,22 +650,10 @@ export function composeProfileActivity(input: Readonly<{
             requireLifecycleApplied(input.lifecycle.pause({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version }));
           }
         });
-        for (;;) {
-          const facts = input.database.readProfileResourceCustody();
-          if (facts.writeIntents.some(intent => intent.status === "attempting" && !("runId" in intent && facts.runs.some(run => run.envelope.runId === intent.runId && run.lifecycle.state === "parked-write")))) {
-            await new Promise<void>(resolve => setTimeout(resolve, 50));
-            continue;
-          }
-          if (!facts.runs.some(run => runClaim(run) !== undefined)) break;
-          await new Promise<void>(resolve => setTimeout(resolve, 50));
-        }
+        // Each child finishes or parks its run and its exit settles it; stopAll owns every wait.
         if ("state" in input.supervisor) {
           if (busy(false)) throw new Error("profile-resource-closure-unproved");
-        } else {
-          await input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
-            requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: WORKER_SHUTDOWN_STOP_REASON });
-          input.database.reconcileWorkerControlMilestones(input.clock.now().toISOString());
-        }
+        } else requireStoppedPool(await input.supervisor.stopAll("shutdown"));
       })());
       const completion = Promise.allSettled(pending).then(results => {
         const errors: unknown[] = [...failures];
@@ -709,18 +688,12 @@ export function composeProfileActivity(input: Readonly<{
           } catch (error) { failures.push(error); }
         }
       } catch (error) { failures.push(error); }
-      pending.push((async () => {
-        // A paused claim settles at its worker's next step boundary, as on shutdown.
-        while (input.database.readProfileResourceCustody().runs.some(run => runClaim(run) !== undefined && run.pause !== undefined)) {
-          await new Promise<void>(resolve => setTimeout(resolve, 50));
-        }
-        if ('state' in input.supervisor) { if (busy(false)) throw new Error('profile-resource-closure-unproved'); }
-        else {
-          await input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
-            requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: WORKER_LOGOUT_STOP_REASON });
-          input.database.reconcileWorkerControlMilestones(input.clock.now().toISOString());
-        }
-      })());
+      // Paused claims settle at their worker's next step boundary before it exits; stopAll owns every wait, as on shutdown.
+      try {
+        pending.push('state' in input.supervisor
+          ? (busy(false) ? Promise.reject(new Error('profile-resource-closure-unproved')) : Promise.resolve())
+          : input.supervisor.stopAll('logout').then(requireStoppedPool));
+      } catch (error) { failures.push(error); }
       const completion = Promise.allSettled(pending).then(results => {
         const errors: unknown[] = [...failures];
         for (const result of results) if (result.status === 'rejected') { const reason: unknown = result.reason; errors.push(reason); }
@@ -842,11 +815,10 @@ export function composeProfileRuntime(input: Readonly<{
   type LogoutDrain = { epoch: number } & ({ state: "pending"; completion: Promise<void> }
     | { state: "ready"; commandId: string; custody: ReturnType<AuthorityDatabase["readProfileResourceCustody"]> }
     | { state: "failed"; error: unknown });
-  type Supervisor = Pick<DashboardWorkerProcessSupervisor, "memberEvidence" | "drainOwnedChildren">;
+  type Supervisor = ProfileWorkerPool;
   type Supervision = { state: "not-constructed" } | { state: "constructing" } | { state: "bound"; owner: Supervisor };
   type LogoutClosure = { epoch: number; source: ReturnType<AuthorityDatabase["capturePendingLogoutSource"]>;
     custody: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>;
-    exits: Map<string, Readonly<{ member: WorkerPoolMember; processId: number; leaseGeneration: number; valid(): boolean }>>;
     operationId?: string; busy?: boolean; stopped?: Awaited<ReturnType<AuthorityDatabase["settlePendingLogout"]>> };
   type Owned = { commandActivities?: Set<ProfileCommandActivity>; logoutDrain?: LogoutDrain; logout?: LogoutClosure; supervision: Supervision; admission: RuntimeAdmission; credentials: CredentialStore; context?: Context; activity?: ReturnType<typeof composeProfileActivity>;
     inventory?: ReturnType<typeof composeProfileClosureInventory>; preparation?: Preparation; state: "open" | "closing" | "closed" };
@@ -909,7 +881,7 @@ export function composeProfileRuntime(input: Readonly<{
         await lifetime.awaitOwnedChildrenClosed();
         if (entry.logoutDrain?.state !== "ready") throw new Error("profile-logout-drain-unproved");
         const operation = pendingLogout(profileId, entry);
-        const stopped = await entry.context!.database.settlePendingLogout(machine, operation, [...entry.logout.exits.values()], pendingLogoutServices);
+        const stopped = await entry.context!.database.settlePendingLogout(machine, operation, pendingLogoutServices);
         entry.logout.stopped = stopped;
         entry.logout.busy = profileResourceCustodyBusy(stopped.facts);
         if (!entry.logout.busy) {
@@ -1005,7 +977,7 @@ export function composeProfileRuntime(input: Readonly<{
       const heldAdmission = entry.context.database.authority.runs.admission();
       if (heldAdmission.state !== "draining" || heldAdmission.commandId !== drain.commandId) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
       const source = entry.context.database.capturePendingLogoutSource();
-      entry.logout = { epoch: drain.epoch, source, custody: drain.custody, exits: new Map() };
+      entry.logout = { epoch: drain.epoch, source, custody: drain.custody };
       return { source, intentFailed(error: unknown): never {
         const failure = new RuntimeCustodyUncertainError([error]);
         entry.preparation = { state: "failed", error: failure };
@@ -1152,31 +1124,22 @@ export function composeProfileRuntime(input: Readonly<{
       if (entry === undefined || entry.supervision.state !== "constructing" || entry.activity !== undefined) throw new Error("profile-supervisor-owner-mismatch");
       entry.supervision = { state: "bound", owner: supervisor };
     },
-    workerExited(owner: RuntimeAdmission, member: WorkerPoolMember, processId: number | undefined, valid: () => boolean): void {
+    /** §6 settlement for one observed exit; during a logout the logout's own settlement covers the runs and leases. */
+    workerExited(owner: RuntimeAdmission, member: WorkerPoolMember): void {
       const profileId = owner.profileBinding.profileId, entry = resources.get(profileId)?.ordinary;
       if (entry === undefined || entry.admission !== owner || entry.context === undefined || entry.supervision.state !== "bound") throw new Error("profile-exit-owner-mismatch");
-      const evidence = entry.supervision.owner.memberEvidence(member);
-      if (!valid() || evidence?.state !== "exited" || evidence.reportedBy !== "os" || evidence.pid !== processId) throw new Error("profile-exit-native-source-unproved");
       try { owner.assertProfileRuntime(); }
       catch (error) {
         if (hasUnprovedSourceClosure(error)) { owner.retainSourceClosure(error); machine.retainSourceClosure(error); throw error; }
-        const logout = entry.logout;
-        if (logout === undefined) throw error;
+        if (entry.logout === undefined) throw error;
         pendingLogout(profileId, entry);
-        const slot = logout.custody.slots.find(slot => slot.workerId === member.workerId), lease = logout.custody.leases.find(lease => lease.workerId === member.workerId);
-        if (processId === undefined || slot === undefined || lease === undefined || lease.processId !== processId || slot.workflow !== member.workflowId || slot.ordinal !== member.ordinal
-          || slot.poolIndex !== member.poolIndex || slot.membershipRevision !== member.membershipRevision) throw new Error("profile-exit-captured-source-changed", { cause: error });
-        if (!logout.exits.has(member.workerId)) logout.exits.set(member.workerId, { member, processId, leaseGeneration: lease.leaseGeneration, valid });
         return;
       }
-      const lease = entry.context.database.authority.workerLeases.get(member.workerId), slot = entry.context.database.authority.workerSlots.get(member.workerId);
-      if (lease === undefined) return;
-      if (lease.processId !== processId || slot?.membershipRevision !== member.membershipRevision) throw new Error("worker-exit-lifetime-changed");
       const lifetime = machine.lifetime;
       if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("profile-exit-controller-required");
       reconcileExitedWorker({ machine, admission: owner, database: entry.context.database,
         lifecycle: new RunRecordService({ database: entry.context.database, clock: input.clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("profile custody cannot enqueue runs"); } }),
-        clock: input.clock, workerId: member.workerId, leaseGeneration: lease.leaseGeneration, lock: lifetime });
+        clock: input.clock, workerId: member.workerId, lock: lifetime });
     },
     async awaitClosurePreparation(profileId: string): Promise<void> {
       const cold = coldLogouts.get(profileId);
@@ -1276,7 +1239,6 @@ function formatReport(report: StorageDoctorReport): string {
     const values = report.counts.values;
     lines.push(
       `pending: commands ${String(values.pendingCommands)} · write intents ${String(values.unresolvedWriteIntents)} `
-      + `· leases ${String(values.leases)} `
       + `· provider reservations ${String(values.providerReservations)} `
       + `· artifact outbox ${String(values.artifactOutbox)}`,
     );
@@ -1413,12 +1375,11 @@ function rebuildStagedProjections(
         authority: {
           queueParents: envelopes => staged.authority.dependencies.parents(envelopes),
           listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),
+          command: (commandId) => staged.authority.commands.get(commandId),
           latestNotificationSource: (notificationId) => staged.authority.notificationPublications.latest(notificationId),
           listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => staged.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
           listCheckpoints: (workflowId, itemId) => staged.authority.runCheckpoints.listByItem(workflowId, itemId),
           listGateResults: runId => staged.authority.gateResults.listByRun(runId),
-          listLiveWorkerLeases: () => staged.authority.workerLeases.listLive(),
-          getWorkerLease: (workerId) => staged.authority.workerLeases.get(workerId),
           listWorkerPools: () => staged.authority.workerPools.list(),
           listRunBatches: () => staged.authority.runSessions.list(),
           getRunBatch: (id) => staged.authority.runSessions.get(id),

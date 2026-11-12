@@ -1,29 +1,25 @@
-import { WorkbookImportRequestSchema, WorkbookImportResultSchema, decodeEditableWorkbook, EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookSnapshotSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
+import { WorkbookImportRequestSchema, WorkbookImportResultSchema, decodeEditableWorkbook, encodeEditableWorkbook, EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperation, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookSnapshotSchema, RunWorkbookSnapshotReferenceSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { IsoInstantSchema, RunIdSchema } from "../../rules/identity/ids.js";
+import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Clock } from "../../rules/time/clock.js";
-import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
+import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
 import type { WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
-import { FingerprintSchema } from "../../rules/identity/ids.js";
 import { RunWorkbookNamedReferenceSchema } from "../../models/dashboard/workbooks.js";
 import { deriveSchemaHash, schemaBoundValueSchema, type SchemaBoundCanonicalValue } from "../../models/validation/schema-bound-value.js";
 import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadSchema, encodeWorkbookReference } from "../../models/processing/workbooks/read-reference.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
-import { workbookMatches } from "./master-changes.js";
-import { WorkbookReferenceSlotsSchema, WorkbookResultsSchema, WorkbookLibraryActionSchema, type WorkbookLibraryActionRecord, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema } from "../../models/dashboard/workbook-library.js";
+import { WorkbookLibraryError } from "./workbook-library-error.js";
+import { workbookKey, workbookMatches } from "./master-changes.js";
+import { projectWorkbookCompatibility, workbookFieldCoverage, WorkbookActiveSnapshotRequestSchema, WorkbookResultsSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema, type WorkflowWorkbookSelectionRecord, type WorkbookLibraryActionRecord, type WorkbookLibraryActionResult, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema, type WorkflowWorkbookRequirementInput } from "../../models/dashboard/workbook-library.js";
+import { MAX_SELECTED_WORKBOOK_SOURCES, MAX_WORKBOOK_GRID_CELLS, MAX_WORKBOOK_POPULATED_CELLS, populatedSpreadsheetValue } from "../../rules/spreadsheets/workbook-size.js";
 import type { EditableWorkbookWire } from "../../models/dashboard/workbooks.js";
 
-export class WorkbookLibraryError extends Error {
-  constructor(readonly code: Extract<ErrorCatalogCode, `WORKBOOK_${string}`>, options?: ErrorOptions) {
-    super(ERROR_CATALOG[code].text, options);
-    this.name = "WorkbookLibraryError";
-  }
-}
-
 export interface WorkbookLibraryRepository {
+  lastUsed(workflowId: string): WorkflowWorkbookSelectionRecord | undefined;
+  rememberLastUsed(value: unknown): WorkflowWorkbookSelectionRecord;
   create(record: SavedWorkbook, origin?: z.infer<typeof WorkbookLibraryOriginSchema>): SavedWorkbook;
   read(libraryId: string): SavedWorkbook | undefined;
   revision(libraryId: string, version: number): SavedWorkbook;
@@ -45,7 +41,7 @@ export interface WorkbookLibraryRepository {
   libraryState(libraryId: string): WorkbookLibraryState;
   libraryVersion(libraryId: string, versionId?: string): z.infer<typeof WorkbookLibraryVersionViewSchema>;
   libraryActionRecord(libraryId: string, operationId: string): WorkbookLibraryActionRecord | undefined;
-  libraryAction(libraryId: string, value: unknown, at: string, sharePointWorkbook?: EditableWorkbookWire): WorkbookLibraryActionRecord;
+  libraryAction(libraryId: string, value: unknown, at: string, sharePointWorkbook?: EditableWorkbookWire): WorkbookLibraryActionResult;
 }
 function input<T>(schema: z.ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value);
@@ -53,7 +49,109 @@ function input<T>(schema: z.ZodType<T>, value: unknown): T {
   return parsed.data;
 }
 
+export function createWorkbookReferenceCapture(repository: WorkbookLibraryRepository) {
+  type SelectedSheet = z.infer<typeof WorkbookLibraryVersionViewSchema>["workbook"]["sheets"][number];
+  const sources = new Map<string, {
+    name: string;
+    currentVersion: number;
+    selectedVersionId: string;
+    versionId: string;
+    versionName: string;
+    sheet: SelectedSheet;
+    indexes: Map<string, Map<string, SelectedSheet["rows"][number][]>>;
+    currentSheetMatches: boolean;
+  }>();
+  let populatedCells = 0, gridCells = 0;
+  return (value: unknown) => {
+    const request = input(WorkbookActiveSnapshotRequestSchema, value);
+    const identity = JSON.stringify([request.libraryId, request.versionId, request.sheetId]);
+    let source = sources.get(identity);
+    let selectedPopulatedCells = 0, selectedGridCells = 0;
+    if (source === undefined) {
+      const entry = repository.catalog().find(candidate => candidate.libraryId === request.libraryId);
+      if (entry === undefined || entry.state.origin.kind !== "local" || entry.state.removed) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
+      const current = repository.read(request.libraryId);
+      if (current === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
+      if (current.version !== request.expectedVersion
+        || request.writableFields.length > 0 && entry.state.selectedVersionId !== request.versionId)
+        throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+      const selected = repository.libraryVersion(request.libraryId, request.versionId);
+      const sheet = selected.workbook.sheets.find(candidate => candidate.id === request.sheetId);
+      if (sheet === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+      for (const row of sheet.rows) for (const cell of row.cells) if (populatedSpreadsheetValue(cell.value)) selectedPopulatedCells++;
+      selectedGridCells = sheet.rows.length * sheet.width;
+      if (sources.size >= MAX_SELECTED_WORKBOOK_SOURCES || populatedCells + selectedPopulatedCells > MAX_WORKBOOK_POPULATED_CELLS
+        || gridCells + selectedGridCells > MAX_WORKBOOK_GRID_CELLS) throw new WorkbookLibraryError("WORKBOOK_CAPTURE_LIMIT_EXCEEDED");
+      const currentSheet = current.workbook.sheets.find(candidate => candidate.id === sheet.id);
+      source = { name: entry.name, currentVersion: current.version, selectedVersionId: entry.state.selectedVersionId,
+        versionId: selected.version.id, versionName: selected.version.name, sheet, indexes: new Map(),
+        currentSheetMatches: canonicalJsonStringify(currentSheet === undefined ? null
+          : encodeEditableWorkbook({ ...current.workbook, sheets: [currentSheet] }).sheets[0]) === canonicalJsonStringify(sheet) };
+    }
+    const { sheet } = source;
+    if (source.currentVersion !== request.expectedVersion
+      || request.writableFields.length > 0 && source.selectedVersionId !== request.versionId)
+      throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+    if (request.writableFields.length > 0 && !source.currentSheetMatches) throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+    if (workbookFieldCoverage(request.fields, (sheet.columnBindings ?? []).flatMap(binding =>
+      binding.fieldId !== null && binding.basis !== "unmapped" ? [binding.fieldId] : [])).status !== "compatible")
+      throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    const columns = request.fields.map(field => ({ field,
+      column: sheet.columnBindings?.findIndex(binding => binding.fieldId === field && binding.basis !== "unmapped") ?? -1 }));
+    const values = (row: typeof sheet.rows[number]) => Object.fromEntries(columns.map(({ field, column }) => {
+      const cell = row.cells[column];
+      if (cell === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+      return [field, cell.value];
+    }));
+    let rows: z.infer<typeof WorkbookSnapshotSchema>["rows"];
+    if (request.mode === "all") {
+      rows = sheet.rows.slice(sheet.headerRow ?? 1).map(row => ({ key: `${sheet.id}#${row.id}`, state: "matched",
+        matches: [{ sheetId: sheet.id, rowId: row.id, values: values(row) }] }));
+    } else {
+      let keyIndex = source.indexes.get(request.keyFieldId);
+      if (keyIndex === undefined) {
+        keyIndex = new Map();
+        const keyColumns = sheet.columnBindings?.flatMap((binding, index) =>
+          binding.fieldId === request.keyFieldId && binding.basis !== "unmapped" ? [index] : []) ?? [];
+        for (let index = sheet.headerRow ?? 1; index < sheet.rows.length; index++) {
+          const row = sheet.rows[index];
+          for (const key of new Set(keyColumns.map(column => workbookKey(row.cells[column]?.value)).filter((key): key is string => key !== undefined))) {
+            const matches = keyIndex.get(key);
+            if (matches === undefined) keyIndex.set(key, [row]);
+            else matches.push(row);
+          }
+        }
+        source.indexes.set(request.keyFieldId, keyIndex);
+      }
+      const indexedRows = keyIndex;
+      rows = request.keys.map(key => {
+        const found = (indexedRows.get(key) ?? []).map(row => ({ sheetId: sheet.id, rowId: row.id, values: values(row) }));
+        return { key, state: found.length === 0 ? "missing" : found.length === 1 ? "matched" : "ambiguous", matches: found };
+      });
+    }
+    if (request.selectedRow !== undefined && rows.flatMap(row => row.matches).filter(match =>
+      match.sheetId === request.selectedRow?.sheetId && match.rowId === request.selectedRow?.rowId).length !== 1)
+      throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    const snapshot = deepFreeze(WorkbookSnapshotSchema.parse({ libraryId: request.libraryId, version: source.currentVersion,
+      versionId: source.versionId, versionName: source.versionName,
+      worksheets: [{ sheetId: sheet.id, name: sheet.name }],
+      type: { id: request.typeId, name: source.name, keyFieldId: request.keyFieldId,
+        fields: request.fields, defaultWorkbookId: null }, rows }));
+    if (!sources.has(identity)) {
+      sources.set(identity, source);
+      populatedCells += selectedPopulatedCells;
+      gridCells += selectedGridCells;
+    }
+    return snapshot;
+  };
+}
+
 export function snapshotWorkbookReference(repository: WorkbookLibraryRepository, value: unknown) {
+  return createWorkbookReferenceCapture(repository)(value);
+}
+
+/** Retained resolver proof for historical captures that were admitted before explicit worksheet selection. */
+export function snapshotRetainedWorkbookReference(repository: WorkbookLibraryRepository, value: unknown) {
   const request = input(WorkbookSnapshotRequestSchema, value);
   const snapshot = repository.snapshot(request);
   if ("selectedRow" in request && request.selectedRow !== undefined && snapshot.rows.flatMap(row => row.matches).filter(match =>
@@ -69,18 +167,33 @@ export function readRetainedWorkbookReference(repository: WorkbookLibraryReposit
   const { request, snapshot } = schemaBoundValueSchema(RunWorkbookNamedReferenceSchema, deriveSchemaHash(RunWorkbookNamedReferenceSchema, "output")).parse(bound).value;
   if (command.typeId !== request.typeId || snapshot.versionId === undefined || snapshot.versionName === undefined
     || snapshot.type.keyFieldId === null || request.fields.some(field => !snapshot.type.fields.includes(field))) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+  const { readRows } = verifyRetainedNamedWorkbookReference(repository, { request, snapshot });
+  const referenceDigest = sha256Hex(canonicalJsonStringify(bound));
+  const reference = encodeWorkbookReference({ request: { ...request, libraryId: snapshot.libraryId, versionId: snapshot.versionId, keys: command.keys },
+    snapshot: { ...snapshot, rows: readRows(command.keys) } });
+  return WorkbookReferenceReadSchema.parse({ state: "read", referenceDigest, reference, sources: [{ referenceDigest, reference }] });
+}
+
+export function verifyRetainedNamedWorkbookReference(repository: WorkbookLibraryRepository,
+  reference: z.infer<typeof RunWorkbookSnapshotReferenceSchema>) {
+  const { request, snapshot } = reference;
+  if ("mode" in request || !("versionId" in snapshot) || snapshot.versionId === undefined
+    || snapshot.type.keyFieldId === null) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   const selected = repository.libraryVersion(snapshot.libraryId, snapshot.versionId);
+  const selectedSheets = snapshot.worksheets.map(worksheet => selected.workbook.sheets.find(sheet => sheet.id === worksheet.sheetId));
   if (selected.libraryId !== snapshot.libraryId || selected.version.id !== snapshot.versionId
-    || canonicalJsonStringify(selected.workbook.sheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name }))) !== canonicalJsonStringify(snapshot.worksheets)) {
+    || selectedSheets.some(sheet => sheet === undefined)
+    || canonicalJsonStringify(selectedSheets.map(sheet => ({ sheetId: sheet?.id, name: sheet?.name }))) !== canonicalJsonStringify(snapshot.worksheets)) {
     throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   }
   const keyField = snapshot.type.keyFieldId;
   const readRows = (keys: readonly string[]): z.infer<typeof RunWorkbookNamedReferenceSchema>["snapshot"]["rows"] => keys.map(key => {
-    const matches = workbookMatches(selected.workbook, keyField, key);
+    const matches = workbookMatches({ ...selected.workbook, sheets: selected.workbook.sheets.filter(sheet =>
+      snapshot.worksheets.some(worksheet => worksheet.sheetId === sheet.id)) }, keyField, key);
     return { key, state: matches.length === 0 ? "missing" : matches.length === 1 ? "matched" : "ambiguous",
       matches: matches.map(({ sheetId, rowId, sheet, row }) => ({ sheetId, rowId, values: Object.fromEntries(request.fields.map(field => {
         const indexes = sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === field ? [index] : []) ?? [];
-        if (indexes.length !== 1) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        if (indexes.length !== 1) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
         const column = indexes[0], cell = column === undefined ? undefined : row.cells[column];
         if (cell === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
         return [field, cell.value];
@@ -88,23 +201,19 @@ export function readRetainedWorkbookReference(repository: WorkbookLibraryReposit
     };
   });
   if (canonicalJsonStringify(readRows(request.keys)) !== canonicalJsonStringify(snapshot.rows)) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
-  return WorkbookReferenceReadSchema.parse({ state: "read", referenceDigest: sha256Hex(canonicalJsonStringify(bound)),
-    reference: encodeWorkbookReference({ request: { ...request, libraryId: snapshot.libraryId, versionId: snapshot.versionId, keys: command.keys },
-      snapshot: { ...snapshot, rows: readRows(command.keys) } }),
-  });
+  return { selected, readRows };
 }
 
-export function writeRunWorkbook(repository: WorkbookLibraryRepository, clock: Clock,
-  runIdValue: unknown, libraryId: string, operationId: string, value: unknown, referenceDigest?: string) {
-  const runId = input(RunIdSchema, runIdValue), change = input(WorkbookOperatorOperationRequestSchema, value);
-  if (change.kind !== 'patch' && change.kind !== 'add') throw new WorkbookLibraryError('WORKBOOK_INVALID');
+export function writeRecordedRunWorkbook(repository: WorkbookLibraryRepository, clock: Clock,
+  source: Extract<WorkbookOperation['source'], { kind: 'run' | 'run-reference' }>, libraryId: string, operationId: string, value: unknown) {
+  const change = input(WorkbookOperatorOperationRequestSchema, value);
+  if (change.kind !== 'patch' && (source.kind === 'run-reference' || change.kind !== 'add')) throw new WorkbookLibraryError('WORKBOOK_INVALID');
   repository.drain(libraryId);
   const current = repository.read(libraryId);
   if (current === undefined) throw new WorkbookLibraryError('WORKBOOK_NOT_FOUND');
   if (current.workbook.hasFormulas || current.workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
   const replay = repository.journal(libraryId).find(receipt => receipt.operationId === operationId);
-  return repository.operation(libraryId, { operationId, source: { kind: 'run', runId,
-    ...(referenceDigest === undefined ? {} : { referenceDigest: input(FingerprintSchema, referenceDigest) }) },
+  return repository.operation(libraryId, { operationId, source,
     at: replay?.at ?? clock.now().toISOString(), change });
 }
 export interface WorkbookSyncCommand {
@@ -120,11 +229,7 @@ export interface WorkbookSyncDownload {
     scope: Readonly<{ signal: AbortSignal; assertCurrent(): void }>,
   ) => Promise<Result>): Promise<Result>;
 }
-export interface WorkbookReferenceWorkflow {
-  readonly id: string;
-  readonly label: string;
-  readonly requiredWorkbookTypeIds: readonly string[];
-}
+export type WorkbookReferenceWorkflow = WorkflowWorkbookRequirementInput;
 export function createWorkbookLibraryService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock; sync: WorkbookSyncDownload;
   resultRun?: (runId: string) => Readonly<{ workflowId: string; enqueuedAt: string }> | undefined;
 }>) {
@@ -153,8 +258,8 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     });
   };
   return Object.freeze({
-    references(workflows: readonly WorkbookReferenceWorkflow[]) {
-      return projectWorkbookReferences(deps.repository, workflows);
+    compatibility(workflows: readonly WorkbookReferenceWorkflow[]) {
+      return projectWorkbookCompatibilityFromRepository(deps.repository, workflows);
     },
     results() {
       return projectWorkbookResults(deps.repository.catalog(), deps.resultRun);
@@ -170,6 +275,12 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     catalog: () => deps.repository.catalog(),
     libraryVersion: (libraryId: string, versionId?: string) => deps.repository.libraryVersion(input(WorkbookIdSchema, libraryId), versionId === undefined ? undefined : input(WorkbookIdSchema, versionId)),
     libraryActionRecord: (libraryId: string, operationId: string) => deps.repository.libraryActionRecord(input(WorkbookIdSchema, libraryId), input(WorkbookIdSchema, operationId)),
+    libraryActionStatus(libraryId: string, operationId: string) {
+      const record = deps.repository.libraryActionRecord(input(WorkbookIdSchema, libraryId), input(WorkbookIdSchema, operationId));
+      return WorkbookLibraryActionStatusSchema.parse(record === undefined ? { state: 'absent' }
+        : record.action.change.kind === 'merge' ? { state: 'retired', code: 'WORKBOOK_ACTION_RETIRED', message: ERROR_CATALOG.WORKBOOK_ACTION_RETIRED.text }
+          : { state: 'recorded', record });
+    },
     /** `assertCurrent` runs after any SharePoint download and import and immediately before the repository write. */
     async libraryAction(libraryId: string, value: unknown, signal: AbortSignal, assertCurrent: () => void = () => {}) {
       const action = input(WorkbookLibraryActionSchema, value);
@@ -216,7 +327,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       const replay = deps.repository.journal(libraryId).find(receipt => receipt.operationId === operationId);
       return deps.repository.operation(libraryId, { operationId, source: { kind: 'operator' }, at: replay?.at ?? deps.clock.now().toISOString(), change });
     },
-    writeRun: (runIdValue: unknown, libraryId: string, operationId: string, value: unknown) => writeRunWorkbook(deps.repository, deps.clock, runIdValue, libraryId, operationId, value),
+    createReferenceCapture: () => createWorkbookReferenceCapture(deps.repository),
     snapshot: (value: unknown) => snapshotWorkbookReference(deps.repository, value),
     async sync(libraryId: string, operationId: string, signal: AbortSignal) {
       input(WorkbookIdSchema, operationId);
@@ -236,25 +347,21 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
 }
 export type WorkbookLibraryService = ReturnType<typeof createWorkbookLibraryService>;
 
-export function projectWorkbookReferences(repository: WorkbookLibraryRepository, workflows: readonly WorkbookReferenceWorkflow[]) {
-  const types = repository.types(), catalog = repository.catalog();
-  return WorkbookReferenceSlotsSchema.parse(workflows.flatMap(workflow => workflow.requiredWorkbookTypeIds.map(typeId => {
-    const type = types.find(type => type.id === typeId) ?? null;
-    const slot = { workflowId: workflow.id, workflowLabel: workflow.label, typeId, type };
-    if (type === null) return { ...slot, status: 'unavailable', reasonCode: 'WORKBOOK_TYPE_UNAVAILABLE', current: { state: 'unavailable', code: 'WORKBOOK_TYPE_UNAVAILABLE' } };
-    if (type.defaultWorkbookId === null) return { ...slot, status: 'missing', reasonCode: 'WORKBOOK_REFERENCE_MISSING', current: { state: 'missing' } };
-    const entry = catalog.find(entry => entry.libraryId === type.defaultWorkbookId);
-    if (entry === undefined || entry.metadata.typeId !== typeId) return { ...slot, status: 'unavailable', reasonCode: 'WORKBOOK_BINDING_UNAVAILABLE', current: { state: 'unavailable', code: 'WORKBOOK_BINDING_UNAVAILABLE' } };
+export function projectWorkbookCompatibilityFromRepository(repository: Pick<WorkbookLibraryRepository, "catalog" | "libraryVersion" | "lastUsed">,
+  workflows: readonly WorkbookReferenceWorkflow[]) {
+  const catalog = repository.catalog();
+  const sources = catalog.filter(entry => entry.state.origin.kind === "local" && !entry.state.removed).map(entry => {
     const selected = repository.libraryVersion(entry.libraryId, entry.state.selectedVersionId);
-    return { ...slot, status: 'bound', reasonCode: null, current: { state: 'bound', entry, columns: selected.workbook.sheets.map(sheet => ({
-      sheetId: sheet.id, sheetName: sheet.name,
-      eid: (sheet.columnBindings ?? []).flatMap((binding, column) => binding.fieldId === 'eid' && binding.basis !== 'unmapped'
-        ? [{ column, fieldId: binding.fieldId, basis: binding.basis }] : []),
-      name: (sheet.columnBindings ?? []).flatMap((binding, column) => binding.fieldId !== null
-        && ['fullName', 'firstName', 'lastName', 'middleName', 'livedName'].includes(binding.fieldId) && binding.basis !== 'unmapped'
-        ? [{ column, fieldId: binding.fieldId, basis: binding.basis }] : []),
-    })) } };
-  })));
+    return { libraryId: entry.libraryId, versionId: selected.version.id, origin: entry.state.origin,
+      removed: entry.state.removed, sheets: selected.workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name,
+        mappings: (sheet.columnBindings ?? []).flatMap((binding, column) => binding.fieldId !== null && binding.basis !== "unmapped"
+          ? [{ fieldId: binding.fieldId, column, basis: binding.basis }] : []),
+      })) };
+  });
+  return projectWorkbookCompatibility(workflows.map(({ id, label, requiredWorkbookFields, workbookReference }) => ({
+    id, label, requiredWorkbookFields, ...(workbookReference === undefined ? {} : { workbookReference }),
+  })), sources,
+    workflows.flatMap(workflow => { const saved = repository.lastUsed(workflow.id); return saved === undefined ? [] : [saved]; }));
 }
 
 function projectWorkbookResults(entries: readonly WorkbookLibraryEntry[],

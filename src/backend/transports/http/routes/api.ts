@@ -13,6 +13,7 @@ import { registerQueueRoutes } from "./queue.js";
 import { registerIntakeRoutes } from "./intake.js";
 import { registerOcrRoutes } from "./ocr.js";
 import { registerCommandsRoutes } from "./commands.js";
+import { resolveIdentityGateAnswer } from "../../../runs/queries/run-detail.js";
 import { registerRunDetailRoutes } from "./run-detail.js";
 import type { DashboardApp, DashboardAppDeps } from "./api-types.js";
 export type { DashboardApp, DashboardAppDeps } from "./api-types.js";
@@ -32,6 +33,7 @@ import { staticBundleHandler } from "../static-bundle.js";
 import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "./operator-mutation-ingress.js";
 import { type RequestIdentityCheckpoint } from "../request-identity.js";
 import { failureStatus, wireError } from "./failure-status.js";
+import { preflightRunnerTimeout } from "../../../../models/preflight/preflight.js";
 
 export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   const app = new Hono<{ Variables: { requestActorId: ReturnType<RequestIdentityCheckpoint["identify"]> } }>();
@@ -54,6 +56,14 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
         return c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
       }
     }
+    const timeout = preflightRunnerTimeout(error);
+    if (timeout !== undefined) {
+      const correlationId = randomUUID();
+      afterRequestOutcome(c.req.raw, () => {
+        debugEvents.emit({ category: "http", phase: "failed", correlationId, area: "request", reason: "preflight-timeout",
+          code: "PREFLIGHT_TIMEOUT", status, message: timeout.message });
+      });
+    }
     return c.json(body, status);
   });
 
@@ -70,6 +80,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/settings/chatgpt-account/sign-in", operatorMutationIngressGuard);
   app.use("/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel", operatorMutationIngressGuard);
   app.use("/api/v1/settings/chatgpt-account/sign-out", operatorMutationIngressGuard);
+  app.use("/api/v1/settings/chatgpt-account/forget-account", operatorMutationIngressGuard);
   app.use("/api/v1/exports/xlsx", operatorMutationIngressGuard);
   app.use("/api/v1/exports/search", operatorMutationIngressGuard);
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
@@ -111,9 +122,14 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     const parsed = DashboardErrorReportSchema.safeParse(input);
     if (!parsed.success || !dashboardReportAccepted(parsed.data)) return c.json(wireError("DEBUG_REPORT_INVALID", "Dashboard error report fields are invalid.", false), 400);
     const report = parsed.data;
+    const runReader = deps.runDetail.runReader;
+    if (report.runId !== undefined && runReader === undefined) throw new Error("TRUST_RUN_READER_NOT_CONFIGURED");
+    const existence = report.runId === undefined ? undefined : runReader?.read(report.runId);
+    const run = existence?.state === "present" ? existence.run : undefined;
     debugEvents.emit({ category: "client", phase: "failed", correlationId: report.reportId,
       area: "dashboard", reason: report.reason,
-      route: report.route, surface: report.surface, release: report.release, code: report.code, message: report.message, stack: report.stack }, { kind: "client", clientId: report.clientId });
+      route: report.route, surface: report.surface, release: report.release, code: report.code, message: report.message, stack: report.stack },
+      run === undefined ? { kind: "client", clientId: report.clientId } : { kind: "run", runId: run.envelope.runId }, run?.envelope.workflow);
     return c.json({ state: "recorded", reportId: report.reportId }, 201);
   });
   registerDataRoutes(app, () => deps.data ?? composeDataQueries(deps.runDetail));
@@ -132,9 +148,10 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerIntakeRoutes(app, deps);
   registerOcrRoutes(app, deps);
   registerWorkbookRoutes(app, deps);
-  registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, commandJournal: deps.commandJournal,
+  registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, resolveWriteCommand: deps.resolveWriteCommand, commandJournal: deps.commandJournal,
     bulkCommandAcceptances: deps.bulkCommandAcceptances, protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
-    intake: deps.intake });
+    intake: deps.intake, resolveIdentityGateAnswer: (answer, journaled) => resolveIdentityGateAnswer(deps.runDetail, answer, journaled),
+    ...(deps.workerCommandResult === undefined ? {} : { workerCommandResult: deps.workerCommandResult }) });
   if (deps.staticBundle !== undefined) app.use("*", staticBundleHandler(deps.staticBundle));
 
   app.notFound((c) => c.json(wireError("ROUTE_NOT_FOUND", `no route serves ${c.req.method} ${c.req.path}`, false), 404));

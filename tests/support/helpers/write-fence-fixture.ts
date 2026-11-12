@@ -35,7 +35,7 @@ export function writeFenceFixtureInput(database: AuthorityDatabase, input: unkno
     const lifetime = testWorkerLifetime(database, run.envelope.workflow, worker.poolIndex);
     assert.equal(lifetime.workerId, worker.workerId);
     const claimed = database.authority.runs.claimNext({ workflow: run.envelope.workflow,
-      workerId: worker.workerId, now: intent.fencedAt, workerLifetime: lifetime.workerLifetime });
+      workerId: worker.workerId, now: intent.fencedAt });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") throw new Error("fixture claim failed");
     assert.equal(claimed.run.envelope.runId, intent.runId);

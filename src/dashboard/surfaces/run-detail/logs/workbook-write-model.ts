@@ -3,17 +3,17 @@ import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { LogDecision } from "./log-decision-model.js";
 import type { LogStep } from "./log-feed-model.js";
 import { fmtActionClock } from "../../shared/status/format.js";
-import type { CommandRequest } from "../../../../rules/commands/commands.js";
+import type { DashboardCommandRequest } from "../../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
-import { SPREADSHEET_FIELDS } from "../../spreadsheets/spreadsheet-fields-model.js";
+import { SPREADSHEET_FIELDS } from '../../../../models/fields/workbook-fields.js';
 import { deriveStableUuid } from "../../../../rules/identity/stable-uuid.js";
 
 export type WorkbookWrite = RunWorkbookWritesWire["operations"][number];
-export function workbookWriteMatchesReplay(operation: WorkbookWrite, command: CommandRequest): boolean {
+export function workbookWriteMatchesReplay(operation: WorkbookWrite, command: DashboardCommandRequest): boolean {
   return command.family === "run" && command.type === "resolve-workbook-row"
     && operation.receipt.libraryId === command.target.libraryId && operation.receipt.operationId === command.target.operationId
-    && operation.receipt.source.kind === "run" && operation.receipt.source.runId === command.target.runId
+    && (operation.receipt.source.kind === "run" || operation.receipt.source.kind === "run-reference") && operation.receipt.source.runId === command.target.runId
     && sha256Hex(canonicalJsonStringify(operation.receipt)) === command.target.receiptDigest;
 }
 export function workbookWriteLogStep(operation: WorkbookWrite): LogStep {
@@ -43,7 +43,7 @@ export function workbookReferenceTimelineEvent(choice: WorkbookReferenceChoice, 
       && native.spanPath === anchor.spanPath && (anchor.nodeId === undefined || native.nodeId === anchor.nodeId);
   });
 }
-export function workbookReferenceMatchesReplay(choice: WorkbookReferenceChoice, command: CommandRequest, detail: RunDetailWire): boolean {
+export function workbookReferenceMatchesReplay(choice: WorkbookReferenceChoice, command: DashboardCommandRequest, detail: RunDetailWire): boolean {
   const event = workbookReferenceTimelineEvent(choice, detail);
   return command.family === 'run' && command.type === 'resolve-workbook-reference-row'
     && detail.runId === command.target.runId && detail.rowRevision >= command.target.expectedVersion

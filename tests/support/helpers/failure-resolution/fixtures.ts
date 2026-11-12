@@ -1,3 +1,5 @@
+import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
+import { unusedWorkerPool } from "../backend/unused-worker-pool.js";
 import { PREFERENCES_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { testProcessImport } from "../../compiled-process.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
@@ -10,7 +12,7 @@ import { RunIdSchema, FailureIdSchema } from "../../../../src/rules/identity/ids
 import { randomUUID } from "node:crypto";
 import { createCommandKernel, type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { FailureResolutionCommandSchema } from "../../../../src/rules/commands/commands.js";
+import { FailureResolutionCommandSchema, type CommandRequest } from "../../../../src/rules/commands/commands.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER, UNSTORED_CONFIG_IDENTITY } from "../../fixtures/intake-kernel-seams.js";
@@ -25,7 +27,7 @@ export function resolutionKernel(db: AuthorityDatabase, clock: Awaited<ReturnTyp
     appVersion: "0.1.0",
     descriptors: { resolve: name => name === personLookupDescriptor.id ? personLookupDescriptor : undefined },
     configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-    workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } },
+    workerRuntime: { pool: unusedWorkerPool(unused) },
     writeResolution: { recheck: unused, resolveAbsent: unused }, ...overrides,
   });
 }
@@ -56,7 +58,8 @@ export function resolutionApp(f: Awaited<ReturnType<typeof resolutionFixture>>) 
   return createDashboardApp({
     ...composeActivity({ database: f.db, clock: f.clock, descriptors: { resolve: id => id === personLookupDescriptor.id ? personLookupDescriptor : undefined }, ledger: createTransactionHistory(f.db.authority) }),
     requestIdentity: createSoloRequestIdentityCheckpoint({ id: "local-operator", label: "Local operator" }),
-    bootstrap: { clock: f.clock, appVersion: "0.1.0" }, commandJournal: f.db.authority.commands,
+    bootstrap: { clock: f.clock, appVersion: "0.1.0" }, resolveWriteCommand: (request: CommandRequest) => resolveWriteCommandTarget(request, f.db.authority),
+    commandJournal: f.db.authority.commands,
     protectedCommandAcceptedAt: () => undefined,
     bulkCommandAcceptances: { withTransaction: () => { throw new Error("unrelated bulk route reached"); } },
     intake: UNWIRED_INTAKE_SERVICE,
@@ -110,14 +113,13 @@ const poolIndex=free?.poolIndex??[1,2,3].find(index=>!slots.some(slot=>slot.pool
 assert.ok(poolIndex!==undefined,"fixture exceeds genuine worker pool capacity");
   const admitted = testAdmittedWorker(db, clock, { path, workflow: personLookupDescriptor.id, poolIndex,
     browserSystems: workflowProjections(personLookupDescriptor).systems });
-  if (admitted.started !== undefined) assert.equal(admitted.started.state, "started");
-  const workerId = admitted.workerId, workerLifetime = admitted.workerLifetime;
+  const workerId = admitted.workerId;
  db.authority.runs.enqueue({...QUEUED_RUN,input: { ...QUEUED_RUN.input, parsed: {
  schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"), value: { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
  protectedBindings: [{kind:"test-data-local",inputPath:"emplId",name:"personLookupCanaryEid",sourceId:id(89)}] } },envelope:{...QUEUED_RUN.envelope,runId, itemId:runId, descriptorVersion:personLookupDescriptor.version, contractFingerprint:personLookupDescriptor.contractFingerprint,configFingerprint:snapshot.fingerprint,configSnapshotId:snapshot.configSnapshotId}});
- const claim=db.authority.runs.claimNext({workflow:"person-lookup",workerId,now:NOW,workerLifetime});assert.equal(claim.state,"claimed");if(claim.state!=="claimed")throw new Error("fixture claim failed");
- const validating=db.authority.runs.transition({runId,expectedVersion:claim.run.version,claim:{workerId,claimGeneration:1},lifecycle:{workerLifetime,state:"validating",workerId,claimedAt:NOW,heartbeatAt:NOW},now:NOW});assert.equal(validating.state,"applied");if(validating.state!=="applied")throw new Error("fixture validation failed");
- const running=db.authority.runs.transition({runId,expectedVersion:validating.run.version,claim:{workerId,claimGeneration:1},lifecycle:{workerLifetime,state:"running",workerId,claimedAt:NOW,heartbeatAt:NOW,currentNodeId:"searching"},now:NOW});assert.equal(running.state,"applied");if(running.state!=="applied")throw new Error("fixture run failed");
+ const claim=db.authority.runs.claimNext({workflow:"person-lookup",workerId,now:NOW});assert.equal(claim.state,"claimed");if(claim.state!=="claimed")throw new Error("fixture claim failed");
+ const validating=db.authority.runs.transition({runId,expectedVersion:claim.run.version,claim:{workerId,claimGeneration:1},lifecycle:{state:"validating",workerId,claimedAt:NOW,heartbeatAt:NOW},now:NOW});assert.equal(validating.state,"applied");if(validating.state!=="applied")throw new Error("fixture validation failed");
+ const running=db.authority.runs.transition({runId,expectedVersion:validating.run.version,claim:{workerId,claimGeneration:1},lifecycle:{state:"running",workerId,claimedAt:NOW,heartbeatAt:NOW,currentNodeId:"searching"},now:NOW});assert.equal(running.state,"applied");if(running.state!=="applied")throw new Error("fixture run failed");
  return running.run;
  };
  const run=createRun(RUN_ID);

@@ -13,7 +13,7 @@ export function withEmergencyTimelineWriter(repository: TimelineRepository, inpu
   return Object.freeze({ ...repository, append(value: unknown) {
     try { return repository.append(value); }
     catch (error) {
-      if (error instanceof Error && "code" in error && typeof error.code === "string" && (error.code.startsWith("ERR_SQLITE") || error.code === "ERR_INVALID_STATE")) {
+      if (error instanceof Error && "code" in error && typeof error.code === "string" && (error.code.startsWith("ERR_SQLITE") || error.code === "ERR_INVALID_STATE" || error.code === "DATABASE_WRITER_UNAVAILABLE")) {
         appendEmergencyFault({ ...input, now: input.clock.now(), code: "DATABASE_WRITER_UNAVAILABLE", error,
           area: "timeline-writer", reason: "database-unavailable" });
       }

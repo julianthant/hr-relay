@@ -1,13 +1,13 @@
 import type { DryRunPreviewStage } from "./dry-run-preview-model.js";
 import { useCallback, useMemo, useState } from "react";
-import { ListChecks, RotateCcw } from "lucide-react";
+import { ListChecks, RotateCcw, RotateCw } from "lucide-react";
+import { LogFooterButton } from "./log-action-button.js";
+import { MemberRunControls } from "./log-member-controls.js";
 import type { DelegatedRecordRef } from "../../../../models/workflow/delegated-record.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import type { WorkflowSource } from "../../../app/workflow-sources.js";
 import { Badge, Button, IconButton, Notice } from "../../../ds/ui.js";
 import type { DashboardActionHandler } from "../../shared/actions/actions.js";
-import { StatusBadge } from "../../shared/status/status.js";
-import { dsStatusOf } from "../../shared/status/status-model.js";
 import { LogPanel } from "../log-panel.js";
 import type { LogDecisionHandler } from "./log-feed.js";
 import { IsoInstantSchema } from "../../../../rules/identity/ids.js";
@@ -20,20 +20,28 @@ import { pauseTimeline, type LogTimelineStage } from "./log-timeline-model.js";
 import { useDashboardClient, useDashboardCommandBinding } from "../../../state/client-context.js";
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
 import { LogSkeleton } from "../../shared/loading/loading.js";
-import { queueRunHeader } from "../run-header-model.js";
 import { queueRowTitle } from "../../queue/queue-model.js";
 import { RunReview } from "../review/review.js";
+import { ReviewDialog } from "../review/review-dialog.js";
 import { UcpathFoundTransactions } from "./log-decision.js";
 import { batchMemberRetryAction } from "../../../app/commands/command-dispatch.js";
 
 type ServedNavigation = Readonly<{ reviewOpen?: boolean; reviewFocus?: DelegatedRecordRef; onReview?: () => void; onLogs?: () => void; onAction?: DashboardActionHandler }>;
 
-export function LogSample({ selection, nowIso, source = "served", initialStepId, confirm, ...navigation }: { selection?: LogSelection; nowIso?: string; source?: WorkflowSource; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
-  if (source === "served" && selection !== undefined) return <ServedLogSample selection={selection} nowIso={nowIso} initialStepId={initialStepId} confirm={confirm} {...navigation} />;
-  return <PreviewLogSample selection={selection} nowIso={nowIso} />;
+/** Rerun sits in the Logs footer when the row serves a rerun action. */
+function rerunFooterButton(selection: LogSelection | undefined, onAction?: DashboardActionHandler) {
+  const action = selection?.row.actions.find(candidate => candidate.kind === "navigation" && candidate.navigate.kind === "rerun");
+  if (selection === undefined || action === undefined || onAction === undefined) return undefined;
+  const target = { runId: selection.row.runId, expectedVersion: selection.row.rowRevision };
+  return <LogFooterButton label={action.label} icon={<RotateCw aria-hidden className="size-4" />} onClick={() => onAction(action, target)} />;
 }
 
-function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen, reviewFocus, onReview, onLogs, onAction }: { selection: LogSelection; nowIso?: string; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
+export function LogSample({ selection, source = "served", initialStepId, confirm, ...navigation }: { selection?: LogSelection; source?: WorkflowSource; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
+  if (source === "served" && selection !== undefined) return <ServedLogSample selection={selection} initialStepId={initialStepId} confirm={confirm} {...navigation} />;
+  return <PreviewLogSample selection={selection} onAction={navigation.onAction} />;
+}
+
+function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, reviewFocus, onReview, onLogs, onAction }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
   const client = useDashboardClient();
   const binding = useDashboardCommandBinding();
   const resource = useRunWiring(client, selection, binding, confirm);
@@ -80,20 +88,27 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
   const retryRun = useCallback(() => {
     if (retry !== undefined) onAction?.(retry, { runId: selection.row.runId, expectedVersion: selection.row.rowRevision });
   }, [retry,onAction,selection.row.runId,selection.row.rowRevision]);
-  const toolbar = useMemo(() => <>{resource.snapshot?.detail.ocrReviewChanges !== undefined && <Notice sticky tone="warning" title="Earlier review changes no longer apply" description="Review the new values." />}{resource.snapshot?.detail.childRetry !== undefined && <IconButton label={resource.snapshot.detail.childRetry.label}
-    icon={<RotateCcw aria-hidden className="size-3.5" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}{reviewAvailable && resource.snapshot?.detail.ocrRecordCount !== undefined && onReview !== undefined && <Button size="sm" variant={reviewOpen ? "secondary" : "outline"} aria-pressed={Boolean(reviewOpen)} icon={<ListChecks aria-hidden className="size-4" />} onClick={reviewOpen ? onLogs : onReview}>Records {resource.snapshot.detail.ocrRecordCount}</Button>}
-      {batchRetry !== undefined && <IconButton size="sm" label={batchRetry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onBatchMemberRetry === undefined} onClick={resource.onBatchMemberRetry} />}
-      {retry !== undefined && onAction !== undefined && <IconButton size="sm" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,resource.onBatchMemberRetry,batchRetry,reviewOpen,onLogs,reviewAvailable,onReview,retry,onAction,retryEnabled,retryRun,feedback]);
-  return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
+  const recordCount = resource.snapshot?.detail.ocrRecordCount;
+  const rerun = rerunFooterButton(selection, onAction);
+  const footerActions = useMemo(() => {
+    const records = reviewAvailable && recordCount !== undefined && onReview !== undefined;
+    const members = selection.row.parent !== null && selection.row.status === "running";
+    if (!records && rerun === undefined && !members) return undefined;
+    return <><MemberRunControls selection={selection} onAction={onAction} />{records && <LogFooterButton label={`Records ${recordCount}`} count={recordCount} pressed={Boolean(reviewOpen)} icon={<ListChecks aria-hidden className="size-4" />} onClick={onReview} />}{rerun}</>;
+  }, [reviewAvailable, recordCount, onReview, reviewOpen, rerun, selection, onAction]);
+  const toolbar = useMemo(() => <>{resource.snapshot?.detail.ocrReviewChanges !== undefined && <Notice sticky tone="warning" title="Earlier review changes no longer apply" description="Review the new values." />}{resource.snapshot?.detail.childRetry !== undefined && <IconButton size="md" label={resource.snapshot.detail.childRetry.label}
+    icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}
+      {batchRetry !== undefined && <IconButton size="md" label={batchRetry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onBatchMemberRetry === undefined} onClick={resource.onBatchMemberRetry} />}
+      {retry !== undefined && onAction !== undefined && <IconButton size="md" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,resource.onBatchMemberRetry,batchRetry,retry,onAction,retryEnabled,retryRun,feedback]);
+  return <><LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
     onReview={reviewAvailable ? onReview : undefined}
-    context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}
-    status={<StatusBadge status={dsStatusOf(selection.row.status)} pauseControl={selection.row.pauseControl} interrupt={selection.row.interrupt} presentation="queue" />}
-    toolbar={toolbar}
-    content={reviewOpen ? <RunReview selection={selection} focus={reviewFocus} /> : content}
-    afterStep={afterStep} />;
+    toolbar={toolbar} footerActions={footerActions}
+    content={content}
+    afterStep={afterStep} />
+    {reviewAvailable && <ReviewDialog open={Boolean(reviewOpen)} onOpenChange={open => { if (!open) onLogs?.(); }} subject={selection.row.title}><RunReview selection={selection} focus={reviewFocus} /></ReviewDialog>}</>;
 }
 
-function PreviewLogSample({ selection, nowIso }: { selection?: LogSelection; nowIso?: string }) {
+function PreviewLogSample({ selection, onAction }: { selection?: LogSelection; onAction?: DashboardActionHandler }) {
   const scenarioId = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("logPreview") ?? (selection ? "preview" : "separation");
   const [edited, setEdited] = useState<{ basis: string; steps: readonly LogStep[]; timeline: readonly LogTimelineStage[] }>();
   const scenarios = [...previewScenarios, ...decisionScenarios];
@@ -107,25 +122,24 @@ function PreviewLogSample({ selection, nowIso }: { selection?: LogSelection; now
   const steps = edited?.basis === basis ? edited.steps : scenario.steps;
   const timeline = edited?.basis === basis ? edited.timeline : scenario.timeline;
   // A fixture has no server: answering records a preview answer on the decision, and the lookup preview continues past its approval.
+  const answerSteps = (current: typeof edited, id: string, optionId: string, label: string, answeredInput?: string) => (current?.basis === basis ? current.steps : scenario.steps).map(step => ({ ...step, entries: step.entries.map(entry => entry.id !== id || entry.kind !== "decision" ? entry
+    : { ...entry, decision: { ...withoutServed(entry.decision), ...(answeredInput ? { answeredInput } : {}), answered: { optionId, label, at: PREVIEW_ANSWERED_AT, actor: { kind: "person" as const, name: "Alex Rivera" } } } }) }));
   const decide: LogDecisionHandler = (id, option, answer) => {
     const label = answeredRow(option, answer)?.name ?? option.label;
     setEdited(current => {
-      const nextSteps = (current?.basis === basis ? current.steps : scenario.steps).map(step => ({ ...step, entries: step.entries.map(entry => entry.id !== id || entry.kind !== "decision" ? entry
-        : { ...entry, decision: { ...withoutServed(entry.decision), answered: { optionId: option.id, label, at: PREVIEW_ANSWERED_AT, actor: { kind: "person" as const, name: "Alex Rivera" } } } }) }));
+      const nextSteps = answerSteps(current, id, option.id, label, option.input?.kind === "text" ? answer.text?.trim() : undefined);
       if (scenarioId === "preview" && option.id === "approve-lookup-match" && !nextSteps.some(step => step.id === "lookup-job")) {
         nextSteps.push({ id: "lookup-job", time: "09:40:20", title: "Read employment record", system: "UCPath", entries: [{ kind: "note", id: "lookup-job-started", time: "09:40:20", message: `Reading the employment record for ${preview?.subject}.`, tone: "info" }] });
       }
       return { basis, timeline: scenarioId === "preview" ? continuedLookupTimeline(current?.basis === basis ? current.timeline : scenario.timeline, option.id) : scenario.timeline, steps: nextSteps };
     });
   };
-  return <LogPanel key={basis} context={selection && (scenarioId === 'preview' || scenarioId === 'selected') ? queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt) : undefined} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} status={selection && (scenarioId === "preview" || scenarioId === "selected") ? <StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" /> : <Badge tone="neutral">{scenario.status}</Badge>} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : previewCancel} />;
+  const cancelPreview = (id: string) => setEdited(current => ({ basis, timeline: current?.basis === basis ? current.timeline : scenario.timeline, steps: answerSteps(current, id, "cancel-run", "Cancel run") }));
+  return <LogPanel key={basis} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : cancelPreview} footerActions={scenarioId === "preview" || scenarioId === "selected" ? <>{selection && <MemberRunControls selection={selection} onAction={onAction} preview />}{rerunFooterButton(selection, onAction)}</> : undefined} />;
 }
 
 /** A fixture has no clock; the preview answer carries a fixed instant. */
 const PREVIEW_ANSWERED_AT = IsoInstantSchema.parse("2026-08-03T16:41:05.000Z");
-
-/** A fixture has no run to cancel; the button shows and does nothing. */
-const previewCancel = () => undefined;
 
 const withoutServed = ({ served: _served, ...rest }: LogDecision): LogDecision => rest;
 

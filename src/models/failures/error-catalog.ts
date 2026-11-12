@@ -13,6 +13,7 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  DELEGATION_CONFIG_UNAVAILABLE: catalogEntry("Relay could not verify this run's saved settings, so the child workflow did not start. Review the run evidence before continuing.", EmptyParametersSchema),
   AMBIGUOUS_ACTION_LIST_MATCH: catalogEntry("More than one Kuali Action List item matched this document. Review the list and confirm the intended item.", EmptyParametersSchema),
   BLANK_TERMINATION_TYPE: catalogEntry("The separation document does not show a termination type. Review the document before continuing.", EmptyParametersSchema),
   COMMENTS_CHANGED_SINCE_READ: catalogEntry("The Kuali comments changed after they were read. Review the current document before continuing.", EmptyParametersSchema),
@@ -94,6 +95,7 @@ export const ERROR_CATALOG = Object.freeze({
   CRM_DOCUMENT_REFERENCE_UNAVAILABLE: catalogEntry("CRM identities could not be bound to the selected spreadsheet version and its legal/lived names. Review the retained reference and row choices.", EmptyParametersSchema),
   CRM_DOCUMENT_DOWNLOAD_FAILED: catalogEntry("CRM documents could not be downloaded and verified. No document collection was published.", EmptyParametersSchema),
   CRM_DOCUMENT_PACKAGE_FAILED: catalogEntry("CRM documents could not be verified and packaged. No document collection was published.", EmptyParametersSchema),
+  TOO_MANY_PAGES: catalogEntry("This PDF has more than 120 pages. Split the scan into files of at most 120 pages.", EmptyParametersSchema),
   OCR_SOURCE_REFUSED: catalogEntry("This PDF or source page could not be admitted for the current person and review. Reload the saved review or choose a valid PDF up to 25 MB.", EmptyParametersSchema),
   OCR_REVIEW_REFUSED: catalogEntry("The saved OCR review or selection changed or could not be authenticated. Reload the review before continuing.", EmptyParametersSchema),
   OCR_APPROVAL_UNAVAILABLE: catalogEntry("The approved OCR record authority is unavailable. Reload the run before continuing.", EmptyParametersSchema),
@@ -135,6 +137,7 @@ export const ERROR_CATALOG = Object.freeze({
   RUNTIME_LIFETIME_LOCK_RELEASED: catalogEntry("Relay runtime authority has closed. Restart Relay before continuing.", EmptyParametersSchema),
   RUNTIME_ALREADY_RUNNING: catalogEntry("Relay is already running. Close it before starting another runtime or storage command.", EmptyParametersSchema),
   PRIVATE_FILE_LOCK_UNAVAILABLE: catalogEntry("Local storage is busy with another operation. Wait for that operation to finish before trying again.", EmptyParametersSchema),
+  DATABASE_WRITER_UNAVAILABLE: catalogEntry("Relay’s saved data was busy for too long. Nothing was written. Try again.", EmptyParametersSchema),
   RUN_CRASH_RESOURCES_RELEASED: catalogEntry("Resources held by an interrupted worker were released.", EmptyParametersSchema),
   BROWSER_CLOSURE_UNPROVED: catalogEntry("Browser closure could not be verified. No file replacement or credential erasure has started.", EmptyParametersSchema),
   DUO_SETUP_OPEN_FAILED: catalogEntry("Relay could not start the setup browser. Select Reopen to try again.", EmptyParametersSchema),
@@ -142,7 +145,6 @@ export const ERROR_CATALOG = Object.freeze({
   DUO_SETUP_FILES_BUSY: catalogEntry("The setup browser’s files are still in use. Select Reopen to check again.", EmptyParametersSchema),
   BROWSER_ROOT_UNAVAILABLE: catalogEntry("Browser ownership could not be verified. The browser and its files remain unavailable until stopped recovery succeeds.", EmptyParametersSchema),
   BROWSER_PROFILE_STILL_CLOSING: catalogEntry("The browser profile is still in use or closing. Wait for it to close before continuing.", EmptyParametersSchema),
-  LIVE_SMOKE_VERIFICATION_REFUSED: catalogEntry("Browser verification could not finish safely. Preserve its saved state and resolve the refusal before trying again.", EmptyParametersSchema),
   STARTUP_CRASH_RECOVERY_REFUSED: catalogEntry("Saved runs and writes could not be reconciled after interruption. Preserve their state and resolve the refusal before starting work.", EmptyParametersSchema),
   RUN_INTERRUPTED_BY_CRASH: catalogEntry("The run was interrupted by a crash and ended as failed. Review the result before starting another run.", EmptyParametersSchema),
   RUN_CRASH_WRITE_UNRESOLVED: catalogEntry("The run was interrupted by a crash with an unresolved write. The write remains held for operator resolution and will not be retried.", EmptyParametersSchema),
@@ -250,6 +252,22 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   PREFLIGHT_REPORT_INVALID: catalogEntry(
     "Preflight report is stale or empty. Re-check readiness.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_PLAN_EXPIRED: catalogEntry(
+    "This plan expired. Review a fresh plan before starting again.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_READINESS_BLOCKED: catalogEntry(
+    "Readiness checks failed. Review Settings before starting again.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_READINESS_UNAVAILABLE: catalogEntry(
+    "Readiness could not be checked. Try Start again.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_READINESS_CHANGED: catalogEntry(
+    "Readiness changed during the check. Review the plan and try Start again.",
     EmptyParametersSchema,
   ),
   PREFLIGHT_EVIDENCE_EXPIRED: catalogEntry(
@@ -476,6 +494,7 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   SEARCH_LOADING: catalogEntry("Loading runs…", EmptyParametersSchema),
   SEARCH_UNAVAILABLE: catalogEntry("Search is unavailable. Reopen search and try again.", EmptyParametersSchema),
+  SEARCH_LIBRARY_UNAVAILABLE: catalogEntry("Spreadsheets are unavailable. Reopen search and try again.", EmptyParametersSchema),
   SEARCH_SUBJECT_UNAVAILABLE: catalogEntry("Subject unavailable", EmptyParametersSchema),
   NOTIFICATION_SOURCE_UNAVAILABLE: catalogEntry("Notification source evidence is unavailable. Review the inbox before relying on this update.", EmptyParametersSchema),
   NOTIFICATION_HISTORY_INCOMPLETE: catalogEntry("Notification history is incomplete. Reconcile the affected work before relying on it.", EmptyParametersSchema),
@@ -539,6 +558,62 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   WORKER_CRASHED: catalogEntry(
     "crashed",
+    EmptyParametersSchema,
+  ),
+  WORKER_START_FAILED: catalogEntry(
+    "The worker process could not be started.",
+    EmptyParametersSchema,
+  ),
+  WORKER_START_TIMED_OUT: catalogEntry(
+    "The worker did not report ready in time and was stopped. Retry the worker.",
+    EmptyParametersSchema,
+  ),
+  WORKER_REQUEST_TIMED_OUT: catalogEntry(
+    "The worker did not answer in time. Nothing was retried; try again.",
+    EmptyParametersSchema,
+  ),
+  WORKER_EXITED: catalogEntry(
+    "The worker stopped before it answered. Nothing was retried.",
+    EmptyParametersSchema,
+  ),
+  WORKER_EXIT_SETTLEMENT_FAILED: catalogEntry(
+    "Relay could not settle the runs of a worker that stopped. That worker cannot start until its runs are settled.",
+    EmptyParametersSchema,
+  ),
+  WORKER_EXIT_UNOBSERVED: catalogEntry(
+    "A worker process did not exit after it was stopped. Relay will not start beside it; quit Relay and wait for the process to end.",
+    EmptyParametersSchema,
+  ),
+  WORKER_ALREADY_RUNNING: catalogEntry(
+    "This worker is already running.",
+    EmptyParametersSchema,
+  ),
+  WORKER_TARGET_STALE: catalogEntry(
+    "The worker changed since this view was loaded. Refresh and try again.",
+    EmptyParametersSchema,
+  ),
+  WORKER_PAUSE_SETTLING: catalogEntry(
+    "This worker is still pausing its run. Resolve any unknown write in Logs before resuming the worker.",
+    EmptyParametersSchema,
+  ),
+  WORKER_BUSY: catalogEntry(
+    "The worker is busy with a run or another control. Try again when it is idle.",
+    EmptyParametersSchema,
+  ),
+  WORKER_REMOVAL_CHILD_CLOSE_UNPROVED: catalogEntry(
+    "Relay could not verify that the worker process closed. The worker and its browser profiles were kept.",
+    EmptyParametersSchema,
+  ),
+  WORKER_REQUEST_EXPIRED: catalogEntry(
+    "The worker request expired before it started. Nothing was done.",
+    EmptyParametersSchema,
+  ),
+  WORKER_IPC_PROTOCOL_INVALID: catalogEntry(
+    "A worker sent an invalid message and was stopped.",
+    EmptyParametersSchema,
+  ),
+  WORKER_IDENTITY_MISMATCH: catalogEntry(
+    "A worker reported a different person or sign-in and was stopped.",
     EmptyParametersSchema,
   ),
   COMMAND_OUTCOME_UNCERTAIN: catalogEntry(
@@ -649,6 +724,14 @@ export const ERROR_CATALOG = Object.freeze({
   PROFILE_AUTHORITY_UNAVAILABLE: catalogEntry("Current profile authority is unavailable.", EmptyParametersSchema),
   PROFILE_SESSION_LOG_UNAVAILABLE: catalogEntry("Relay could not record session transition evidence. The transition could not finish.", EmptyParametersSchema),
   PROFILE_AUTHORITY_CHANGED: catalogEntry("Profile authority changed. Capture it again before continuing.", EmptyParametersSchema),
+  DASHBOARD_FRONTEND_NOT_OWNED: catalogEntry(
+    "This Relay page was not started by the running Relay. Close it and start Relay again with npm run dashboard.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_RUNTIME_START_FAILED: catalogEntry(
+    "You are signed in, but Relay could not open the dashboard. Nothing was changed. Close Relay and start it again.",
+    EmptyParametersSchema,
+  ),
   PROFILE_SESSION_STALE: catalogEntry(
     "This sign-in is no longer active. Sign in again.",
     EmptyParametersSchema,
@@ -830,12 +913,16 @@ export const ERROR_CATALOG = Object.freeze({
   WORKBOOK_VERSION_IN_USE: catalogEntry("This version is in use. Choose another version and finish runs using it before deleting it.", EmptyParametersSchema),
   WORKBOOK_LIBRARY_IN_USE: catalogEntry("This spreadsheet is in use by a run or pending change. Finish that work before removing it.", EmptyParametersSchema),
   WORKBOOK_MERGE_INVALID: catalogEntry("These spreadsheets cannot be merged with that duplicate policy. Check their types, worksheet layouts, and matching keys, or keep both rows.", EmptyParametersSchema),
+  WORKBOOK_ACTION_RETIRED: catalogEntry("This library action has been retired. Its retained evidence is unavailable here.", EmptyParametersSchema),
   WORKBOOK_ROW_CHOICE_UNAVAILABLE: catalogEntry("No matching row is available in this run's captured worksheets. Review the workbook before choosing again.", EmptyParametersSchema),
   WORKBOOK_REVISION_UNAVAILABLE: catalogEntry("This saved workbook revision cannot be reconstructed from its retained evidence.", EmptyParametersSchema),
   WORKBOOK_SYNC_LINK_REQUIRED: catalogEntry("Link a SharePoint workbook before syncing.", EmptyParametersSchema),
   WORKBOOK_SYNC_CONTEXT_CHANGED: catalogEntry("The profile, settings or credentials changed during Sync. Start a new Sync command.", EmptyParametersSchema),
   WORKBOOK_SYNC_IMPORT_FAILED: catalogEntry("The downloaded file cannot be imported as a supported workbook.", EmptyParametersSchema),
   WORKBOOK_TYPE_UNAVAILABLE: catalogEntry("This workflow's spreadsheet type is unavailable. Restore its reference definition before importing a file for it.", EmptyParametersSchema),
+  WORKBOOK_LIBRARY_EMPTY: catalogEntry("Import a Library spreadsheet before selecting a workflow source.", EmptyParametersSchema),
+  WORKBOOK_FIELDS_MISSING: catalogEntry("A Library worksheet is missing fields required by this workflow. Review its column mappings.", EmptyParametersSchema),
+  WORKBOOK_FIELDS_DUPLICATE: catalogEntry("A Library worksheet maps a required field more than once. Review its column mappings.", EmptyParametersSchema),
   WORKBOOK_REFERENCE_MISSING: catalogEntry("No spreadsheet is bound to this workflow reference.", EmptyParametersSchema),
   WORKBOOK_BINDING_UNAVAILABLE: catalogEntry("This workflow's selected spreadsheet is unavailable or has a different type. Import a replacement for this reference.", EmptyParametersSchema),
   WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE: catalogEntry("The workbook's workflow source was not retained. Its saved data remains available, but its run cannot be confirmed.", EmptyParametersSchema),
@@ -848,6 +935,7 @@ export const ERROR_CATALOG = Object.freeze({
   COMMAND_BROWSER_UNAVAILABLE: catalogEntry("The browser command could not acquire its current profile and session.", EmptyParametersSchema),
   COMMAND_BROWSER_CLOSURE_UNPROVED: catalogEntry("The command's browser or authentication resources could not be proven closed. Profile custody is retained.", EmptyParametersSchema),
   WORKBOOK_METADATA_UNSUPPORTED: catalogEntry("This workbook has formulas, Excel error cells or metadata Relay cannot preserve during master edits.", EmptyParametersSchema),
+  WORKBOOK_CAPTURE_LIMIT_EXCEEDED: catalogEntry("The selected worksheets exceed the capture limit of 32 sources, 250,000 populated cells or 500,000 cell positions. Select fewer or smaller worksheets.", EmptyParametersSchema),
   WORKBOOK_INVALID: catalogEntry(
     "The workbook is malformed and cannot be saved.",
     EmptyParametersSchema,
@@ -948,8 +1036,20 @@ export const ERROR_CATALOG = Object.freeze({
     "This command does more than its assistant classification says. No action was taken.",
     EmptyParametersSchema,
   ),
+  PREFLIGHT_BLOCKED: catalogEntry(
+    "Readiness checks blocked this worker. Check Settings readiness; the queued run will wait until its prerequisites are available.",
+    EmptyParametersSchema,
+  ),
   PREFLIGHT_OBSERVATION_CHANGED: catalogEntry(
     "Storage changed before the next run could be claimed. Re-check readiness; use Sessions for any queued run instead of starting it again.",
+    EmptyParametersSchema,
+  ),
+  PREFLIGHT_TIMEOUT: catalogEntry(
+    "A readiness check took too long. Check again.",
+    EmptyParametersSchema,
+  ),
+  BULK_CHILD_ERRORED: catalogEntry(
+    "Relay hit an error on this item and stopped the batch here. Nothing changed for this item.",
     EmptyParametersSchema,
   ),
   RUN_QUEUED_WORKER_UNAVAILABLE: catalogEntry(

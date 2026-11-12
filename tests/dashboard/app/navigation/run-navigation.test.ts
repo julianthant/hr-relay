@@ -2,15 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveRunNavigation } from "../../../../src/dashboard/app/navigation/run-navigation.js";
 import { parseRoute, routeToSearch } from "../../../../src/dashboard/app/navigation/url-state.js";
 import { PRODUCT_WORKFLOW_COMPOSITION } from "../../../../src/dashboard/app/workflow-sources.js";
-import { PARITY_WORKFLOW_COMPOSITION } from "../../../parity/helpers/workflow-composition.js";
-import { FIXTURE_DAY_WIRE } from "../../../parity/helpers/fixture-queue.js";
-import { FIXTURE_RUN_DETAILS } from "../../../parity/helpers/fixture-detail.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE } from "../../../mocks/helpers/fixture-queue.js";
+import { FIXTURE_RUN_DETAILS } from "../../../mocks/helpers/fixture-detail.js";
 import { FIXTURE_FAILURE_SECTIONS } from "../../../support/fixtures/dashboard/run-detail/receipts-failures.js";
 import { FIXTURE_IDS } from "../../../support/fixtures/dashboard/fixture-queue.js";
-import { FingerprintSchema, RunIdSchema, FailureIdSchema } from "../../../../src/rules/identity/ids.js";
+import { CommandIdSchema, FingerprintSchema, RunIdSchema, FailureIdSchema } from "../../../../src/rules/identity/ids.js";
 import { LocalDateSchema } from "../../../../src/rules/identity/ids.js";
 import { RowRevisionSchema } from "../../../../src/models/dashboard/primitives.js";
-import type { NotificationTarget } from "../../../../src/models/notifications/notifications.js";
+import type { NotificationTarget } from "../../../../src/models/notifications/notification-target.js";
+import { NotificationTargetSchema } from "../../../../src/models/notifications/notification-target.js";
+import { CommandResultSchema, NotificationCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 
 const runId = RunIdSchema.parse(FIXTURE_IDS.failedRun);
 const row = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.runId === runId)!;
@@ -24,13 +26,13 @@ const clients = () => ({ dashboardDay: vi.fn(async () => FIXTURE_DAY_WIRE), runD
 const target: Extract<NotificationTarget, { kind: "run" }> = { kind: "run", runId, day };
 
 describe("notification composition and canonical navigation", () => {
-  it("selects served product and explicit mock parity inbox/search independently of workflows", () => {
+  it("selects served product and explicit mock inbox/search independently of workflows", () => {
     expect(PRODUCT_WORKFLOW_COMPOSITION.inbox).toBe("served");
     expect(PRODUCT_WORKFLOW_COMPOSITION.search).toBe("served");
     expect(PRODUCT_WORKFLOW_COMPOSITION.sources["emergency-contact"]).toBe("mock");
-    const parity = PARITY_WORKFLOW_COMPOSITION([]);
-    expect(parity.inbox).toBe("mock");
-    expect(parity.search).toBe("mock");
+    const mockComposition = MOCK_WORKFLOW_COMPOSITION([]);
+    expect(mockComposition.inbox).toBe("mock");
+    expect(mockComposition.search).toBe("mock");
   });
   it("freshly revalidates a historical run against its exact day and run detail", async () => {
     const client = clients();
@@ -40,7 +42,7 @@ describe("notification composition and canonical navigation", () => {
     expect(result.state).toBe("ready");
     if (result.state !== "ready") throw new Error(result.message);
     expect(result.workflowId).toBe(row.workflowId);
-    expect(result.route).toMatchObject({ day, run: runId, section: "logs", start: false, view: { preview: null, notifications: false } });
+    expect(result.route).toMatchObject({ day, run: runId, section: "logs", start: false, view: { preview: null } });
     expect(result.route.settings).toBeUndefined();
     expect(result.route.archive).toBeUndefined();
     expect(result.route.view?.records).toBeUndefined();
@@ -51,10 +53,10 @@ describe("notification composition and canonical navigation", () => {
     if (result.state !== "ready") throw new Error(result.message);
     expect(parseRoute(routeToSearch(result.route)).view?.logFailure).toEqual({ runId, failureId });
   });
-  it("opens Settings Storage without run reads", async () => {
+  it("refuses a storage notice without run reads", async () => {
     const client = clients();
     const result = await resolveRunNavigation(client, { kind: "storage" }, origin, () => true);
-    expect(result).toMatchObject({ state: "ready", route: { settings: "storage", start: false } });
+    expect(result.state).toBe("refused");
     expect(client.dashboardDay).not.toHaveBeenCalled();
   });
   it("refuses retired archives and every canonical refusal without guessing a run", async () => {
@@ -82,5 +84,19 @@ describe("notification composition and canonical navigation", () => {
     expect((await resolveRunNavigation(clients(), { ...target, kind: "failure", failureId: FailureIdSchema.parse(FIXTURE_IDS.doneRun) }, origin, () => true)).state).toBe("refused");
     const absent = clients(); absent.runDetail.mockResolvedValue({ ...detail, availableSections: ["logs"] });
     expect((await resolveRunNavigation(absent, { ...target, kind: "failure", failureId }, origin, () => true)).state).toBe("refused");
+  });
+  it("refuses command targets without reading a run", async () => {
+    const client = clients();
+    const commandId = CommandIdSchema.parse("00000000-0000-4000-8000-000000000444");
+    const request = NotificationCommandRequestSchema.parse({ commandId, requestedAt: "2026-08-03T17:00:00.000Z", requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read", target: { notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", expectedVersion: 1 } });
+    const result = CommandResultSchema.parse({ state: "rejected", commandId, code: "policy-refused", message: "Relay did not do this, so nothing changed." });
+    const targets = [
+      NotificationTargetSchema.parse({ kind: "recovery", commandId, request }),
+      NotificationTargetSchema.parse({ kind: "command-result", commandId, request, result }),
+      NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId: commandId, type: "pause", requestedCount: 1, results: [], notAttempted: [], days: {} }),
+    ];
+    for (const commandTarget of targets) expect((await resolveRunNavigation(client, commandTarget, origin, () => true)).state).toBe("refused");
+    expect(client.dashboardDay).not.toHaveBeenCalled();
+    expect(client.runDetail).not.toHaveBeenCalled();
   });
 });

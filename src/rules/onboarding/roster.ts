@@ -53,3 +53,32 @@ export function bindOnboardingRoster(bound: SchemaBoundCanonicalValue, email: st
   return OnboardingRosterReadOutputSchema.parse({ state: "resolve-required", binding,
     reason: row.state === "missing" ? "row-missing" : "row-ambiguous" });
 }
+
+/** Union complete captured sources. One match resolves; two or more stay unresolved even when their values agree. */
+export function bindOnboardingRosterSources(bounds: readonly SchemaBoundCanonicalValue[], email: string, capturedAt: string) {
+  if (bounds.length === 0) throw new Error("onboarding-roster-reference-invalid");
+  const located = bounds.flatMap(bound => {
+    const reference = parseRunWorkbookReference(bound);
+    if ("mode" in reference.request) throw new Error("onboarding-roster-reference-invalid");
+    const { request, snapshot } = reference;
+    if (request.typeId !== ONBOARDING_ROSTER_TYPE_ID || snapshot.type.keyFieldId !== "email"
+      || request.keys.length !== 1 || request.keys[0] !== email
+      || request.fields.length !== ONBOARDING_ROSTER_FIELDS.length
+      || ONBOARDING_ROSTER_FIELDS.some(field => !request.fields.includes(field) || !snapshot.type.fields.includes(field))) {
+      throw new Error("onboarding-roster-reference-invalid");
+    }
+    const row = snapshot.rows[0];
+    if (row === undefined || row.key !== email) throw new Error("onboarding-roster-row-unavailable");
+    if (new Set(row.matches.map(match => JSON.stringify([match.sheetId, match.rowId]))).size !== row.matches.length) {
+      throw new Error("onboarding-roster-membership-invalid");
+    }
+    return row.matches.map(match => ({ bound, match }));
+  });
+  if (bounds.length === 1 || located.length <= 1) return bindOnboardingRoster(located[0]?.bound ?? bounds[0], email, capturedAt);
+  const anchor = parseRunWorkbookReference(bounds[0]);
+  return OnboardingRosterReadOutputSchema.parse({ state: "resolve-required", reason: "row-ambiguous",
+    binding: OnboardingRosterReferenceBindingSchema.parse({
+      workbookType: anchor.snapshot.type.id, workbookId: anchor.snapshot.libraryId, workbookVersion: anchor.snapshot.version,
+      referenceDigest: sha256Hex(canonicalJsonStringify(bounds[0])), capturedAt, rowKey: { email },
+    }) });
+}

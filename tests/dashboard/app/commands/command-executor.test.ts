@@ -379,7 +379,7 @@ for (const code of ["OPERATOR_MUTATION_ORIGIN_REFUSED", "OPERATOR_MUTATION_MEDIA
 it("retains admitted worker pending without readback or a terminal result", async () => {
   const h = harness();
   const request = CommandRequestSchema.parse({ ...command(), family: "worker-browser", type: "stop-worker",
-    target: { workerId: "person-lookup-worker-1", membershipRevision: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 } } });
+    target: { workerId: "person-lookup-worker-1", workflowId: "person-lookup", lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000", expectedVersion: 1 } });
   h.setReply(() => ({ state: "pending", commandId: request.commandId }));
   const options = h.options();
   const outcome = await h.executor.execute(request, { ...options, readback: async () => { assert.fail("pending cannot confirm from readback"); } });
@@ -411,6 +411,24 @@ it("checks an uncertain original without POST and releases only exact confirmed 
   assert.equal(h.sent.length, 1);
   assert.equal((await h.executor.execute(command(12), h.options())).kind, "uncertain");
   assert.equal(h.sent.length, 2);
+});
+
+it("settles an exact recorded rejection as refused without POST and releases its lock; an authority-uncertain rejection stays checkable", async () => {
+  const h = harness(); const request = command();
+  h.setReply(() => ({ state: "pending", commandId: request.commandId }));
+  assert.equal((await h.executor.execute(request, h.options())).kind, "uncertain");
+  const rejected = (code: string) => ({ ...h.options(), observe: async () => CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code, message: "diagnostic" }) });
+  assert.equal((await h.executor.check(request.commandId, rejected("authority-uncertain"))).kind, "uncertain");
+  assert.equal((await h.executor.execute(command(11), h.options())).kind, "refused");
+  const outcome = await h.executor.check(request.commandId, rejected("invalid-state"));
+  assert.equal(outcome.kind, "refused");
+  assert.equal(outcome.kind === "refused" ? outcome.reason : "unexpected", undefined);
+  assert.equal(h.executor.retainedAttempts().find(attempt => attempt.request.commandId === request.commandId)?.outcome?.kind, "refused");
+  const again = await h.executor.check(request.commandId, rejected("invalid-state"));
+  assert.equal(again.kind === "refused" ? again.reason : again.kind, "locked", "a settled refusal is not checked again");
+  assert.equal(h.sent.length, 1, "checking reads the recorded outcome and never resends");
+  assert.equal((await h.executor.execute(command(12), h.options())).kind, "uncertain");
+  assert.equal(h.sent.length, 2, "the released lock admits the next command");
 });
 
 it("keeps mismatch checkable and rejects concurrent checks and A to B to A late publication", async () => {
@@ -460,3 +478,19 @@ it('retains the unknown preference lock for the same profile while allowing a di
   assert.equal(separate.kind, "uncertain"); assert.equal(h.sent.length, 2);
   assert.equal(h.executor.retainedAttempts().filter(attempt => attempt.outcome?.kind === "uncertain").length, 2);
 });
+
+for (const code of ["RUN_START_READINESS_BLOCKED", "RUN_START_READINESS_UNAVAILABLE", "RUN_START_READINESS_CHANGED", "PREFLIGHT_EVIDENCE_EXPIRED", "PREFLIGHT_TIMEOUT"]) {
+  it(`uses catalog feedback for Start ${code} and retains private prose only as evidence`, async () => {
+    const h = harness();
+    const request = CommandRequestSchema.parse({ ...command(), family: "start", type: "start-run",
+      target: { workflowId: "person-lookup", startPlanId: id(80), expectedVersion: 1 },
+      payload: Object.fromEntries(["descriptorFingerprint", "configFingerprint", "ingressSchemaHash", "canonicalInputSchemaHash", "inputFingerprint"].map(key => [key, "a".repeat(64)])) });
+    const reply = { state: "rejected", commandId: request.commandId, code, message: "PRIVATE_KERNEL_MARKER" };
+    h.setReply(() => reply);
+    const outcome = await h.executor.execute(request, h.options());
+    assert.equal(outcome.kind, "refused");
+    assert.equal(outcome.feedback?.code, code);
+    assert.equal(outcome.feedback?.text.includes("PRIVATE_KERNEL_MARKER"), false);
+    assert.deepEqual(outcome.reply, reply);
+  });
+}

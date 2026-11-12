@@ -8,7 +8,7 @@ const FailureSchema = z.strictObject({ code: ChatGptAccountCodeSchema, message: 
 const fixedFailure = (value: { readonly code?: keyof typeof ERROR_CATALOG; readonly message?: string }) =>
   value.code === undefined || value.message === ERROR_CATALOG[value.code].text;
 export const ChatGptAccountStateSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("signed-out") }),
+  z.strictObject({ state: z.literal("signed-out"), account: z.strictObject({ email: z.email() }).optional() }),
   z.strictObject({ state: z.literal("expired") }),
   z.strictObject({ state: z.literal("unavailable"), ...FailureSchema.shape }).refine(fixedFailure),
   z.strictObject({ state: z.literal("connected"), name: z.string().min(1).max(256), email: z.email(), expiresAt: IsoInstantSchema,

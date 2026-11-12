@@ -1,18 +1,12 @@
-
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { z } from "zod";
-import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../models/run/worker-control.js";
-import {
-  WorkerBrowserWireSchema,
-  WorkerCardWireSchema,
-  WorkerLastRunWireSchema,
-  type StepInterruptWire,
-} from "../../../models/dashboard/projection.js";
+import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
+import { WorkerBrowserWireSchema, WorkerCardWireSchema, WorkerLastRunWireSchema, type StepInterruptWire } from "../../../models/dashboard/projection.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import type { RunFoldRecord } from "./run-queue-projection.js";
-import { nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
 import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
-import { isDrainStopReason, isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
+import type { WorkerChildBrowserObservation } from "../../runtime/workers/worker-messages.js";
+import type { WorkerExitFact, WorkerMemberView } from "../../runtime/workers/worker-pool.js";
+import { nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
+import type { RunFoldRecord } from "./run-queue-projection.js";
 
 export type WorkerCardWire = z.infer<typeof WorkerCardWireSchema>;
 
@@ -23,42 +17,21 @@ export interface WorkerBrowserFold {
   readonly openedAt: string;
 }
 
-/** What this worker's span fold knows; absent when the stream has never named it. */
-interface WorkerSpanFold {
-  /** Span events folded for this worker — a patch cursor, never a CAS token. */
-  readonly revision: number;
-  /** The run its `run.claimed` span named and no terminal span has cleared. */
-  readonly currentRunId?: string;
-  /** Sessions started and not yet ended, oldest first. */
-  readonly browsers: readonly WorkerBrowserFold[];
-}
-
-
-function workerCardState(lease: WorkerLeaseRecord): WorkerCardWire["state"] {
-  switch (lease.lifecycle.state) {
-    case "stopped": return "failed";
+function workerCardState(view: WorkerMemberView): WorkerCardWire["state"] {
+  if (view.state === "exited") return "failed";
+  if (view.state === "starting") return "starting";
+  switch (view.activity?.state) {
     case "busy": return "running";
     case "waiting": return "waiting";
-    case "starting": return "starting";
     case "paused": return "paused";
-    case "idle": return "idle";
-    case "stopping": throw new Error("worker-current-phase-unavailable");
+    case "idle":
+    case undefined: return "idle";
   }
 }
 
-function currentRunOf(lease: WorkerLeaseRecord, member: WorkerSlotRecord,
-  resolveRun: (runId: string) => RunRecord | undefined): WorkerCardWire["currentRun"] {
-  const runId = "runId" in lease.lifecycle ? lease.lifecycle.runId : undefined;
-  if (runId === undefined) return { state: "absent", reason: "no current claimed run" };
-  const run = resolveRun(runId);
-  if (run === undefined || run.envelope.runId !== runId || !("workerId" in run.lifecycle) || run.lifecycle.workerId !== lease.workerId
-    || run.envelope.workflow !== lease.workflow || run.lifecycle.workerLifetime?.leaseGeneration !== lease.leaseGeneration
-    || run.lifecycle.workerLifetime.membershipRevision !== member.membershipRevision) throw new Error("worker-current-run-authority-unavailable");
-  return { state: "present", runId, traceId: run.envelope.traceId };
-}
-
-export function stepInterruptOf(run: RunRecord, stopPending: boolean, writeInFlight: boolean): StepInterruptWire | undefined {
-  const action = stopPending || run.cancelRequested === true ? "stop" : run.pause?.state === "requested" ? "pause" : undefined;
+/** Stop is the run's durable cancellation (row Cancel, or the Reset's own Cancel), so the run alone says which interrupt is pending. */
+export function stepInterruptOf(run: RunRecord, writeInFlight: boolean): StepInterruptWire | undefined {
+  const action = run.cancelRequested === true ? "stop" : run.pause?.state === "requested" ? "pause" : undefined;
   return action === undefined ? undefined : { action, step: writeInFlight ? "finish-write" : "cancel" };
 }
 
@@ -86,112 +59,81 @@ export function lastRunOf(input: Readonly<{
   });
 }
 
-function signInOf(lease: WorkerLeaseRecord, observed: WorkerBrowserObservation, duoSystems: readonly string[]): NonNullable<WorkerCardWire["browsers"][number]["signIn"]> {
+function signInOf(view: WorkerMemberView, observed: WorkerChildBrowserObservation, duoSystems: readonly string[]): NonNullable<WorkerCardWire["browsers"][number]["signIn"]> {
   if (observed.health === "authenticated") return "signed-in";
   // Closed and failed rows keep no authentication history, so signed-out is not provable.
   if (observed.health === "closed" || observed.health === "failed") return "unknown";
   if (duoSystems.includes(observed.system)) return "needs-duo";
-  if (observed.health === "starting" || lease.lifecycle.state === "waiting" && lease.lifecycle.activity !== "closing") return "signing-in";
+  if (observed.health === "starting" || view.activity?.state === "waiting" && view.activity.waiting !== "closing") return "signing-in";
   return "unknown";
 }
 
+function stopReasonOf(exit: WorkerExitFact | undefined): NonNullable<WorkerCardWire["stopReason"]> {
+  if (exit?.outcome !== "stopped" || exit.reason === "fault") return "crashed";
+  return exit.reason === "shutdown" || exit.reason === "logout" ? "shutdown" : "operator";
+}
+
+/** A card is the pool's in-memory member joined with its durable slot; the fence it serves is the member's lifetime and version. */
 export function workerCardOf(input: Readonly<{
-  lease: WorkerLeaseRecord;
-  member: WorkerSlotRecord;
-  ownerAlive: boolean;
-  fold: WorkerSpanFold | undefined;
+  slot: WorkerSlotRecord;
+  /** Absent when the slot has no process this boot (its start was refused or never attempted); the card then offers Retry. */
+  view: WorkerMemberView | undefined;
+  /** Span events folded for this worker; a patch cursor, never a CAS token. */
+  foldRevision: number;
   resolveRun: (runId: string) => RunRecord | undefined;
-  observations?: readonly WorkerBrowserObservation[];
-  operations?: readonly WorkerControlRecord[];
-  owned?: boolean;
   /** Systems whose live Duo lease this worker holds. */
   duoSystems?: readonly string[];
   lastRun?: WorkerLastRun;
   timeline?: WorkerCardWire["timeline"];
   writeInFlight?: (runId: string) => boolean;
 }>): WorkerCardWire {
-  const { lease, fold, member } = input;
-  if (member.retiredAt !== null || member.workerId !== lease.workerId || member.workflow !== lease.workflow) throw new Error("worker-member-authority-unavailable");
-  if (isLiveWorker(lease) && !input.ownerAlive) throw new Error("worker-current-owner-unavailable");
-  const state = workerCardState(lease);
-  const terminal = state === "failed";
-  const observations = input.observations?.filter(value => value.leaseGeneration === lease.leaseGeneration);
-  if (!terminal && observations?.some(value => value.health === "failed")) throw new Error("worker-browser-closure-or-health-unavailable");
-  const operation = input.operations?.filter(value => {
-    const binding = value.reset ?? value.lifecycle;
-    if (binding !== undefined) {
-      if (binding.member.workerId !== lease.workerId || binding.member.membershipRevision !== member.membershipRevision) return false;
-      if (binding.lifetime.leaseGeneration === lease.leaseGeneration) return true;
-      return value.phase.state === "succeeded" && (value.phase.acknowledgement.kind === "retry" || value.phase.acknowledgement.kind === "reset-replacement")
-        && value.phase.acknowledgement.leaseGeneration === lease.leaseGeneration
-        && (value.phase.acknowledgement.kind === "reset-replacement" || value.phase.acknowledgement.processId === lease.processId
-          && value.phase.acknowledgement.startedAt === lease.lifecycle.startedAt);
-    }
-    return value.control !== undefined && canonicalJsonStringify(value.control.member) === canonicalJsonStringify(workerPoolMember(member))
-      && value.control.lifetime.leaseGeneration === lease.leaseGeneration && value.control.lifetime.processId === lease.processId
-      && value.control.lifetime.startedAt === lease.lifecycle.startedAt;
-  }).at(-1);
-  const browsers = new Map<string, WorkerBrowserFold>();
-  for (const value of observations ?? []) {
-    if (value.health === "closed") browsers.delete(value.sessionId);
-    else if (value.openedAt !== undefined) browsers.set(value.sessionId, { sessionId: value.sessionId, system: value.system, openedAt: value.openedAt });
+  const { slot, view } = input;
+  if (slot.retiredAt !== null || (view !== undefined && (view.member.workerId !== slot.workerId || view.member.workflowId !== slot.workflow))) {
+    throw new Error("worker-member-authority-unavailable");
   }
-  const closedBrowserSystems = [...new Set(observations?.filter(value => value.health === "closed"
-    && ![...browsers.values()].some(browser => browser.system === value.system)).map(value => value.system))];
-  const browserWire = (browser: WorkerBrowserFold) => {
-    const observed = observations?.find(value => value.sessionId === browser.sessionId);
-    return WorkerBrowserWireSchema.parse({ ...browser, observation: observed === undefined || observed.health === "closed"
-      ? { state: "unavailable", reason: "No current owner observation." }
-      : { state: "present", health: observed.health, observedAt: observed.observedAt, instance: observed.instance,
-        browserMode: observed.browserMode, configFingerprint: observed.configFingerprint },
-    ...(observed === undefined ? {} : { signIn: signInOf(lease, observed, input.duoSystems ?? []) }) });
-  };
-  // A settled lease owns no live browser; open span evidence does not prove a surviving process.
-  const served = terminal ? [] : [...browsers.values()].map(browserWire);
-  const currentRun = currentRunOf(lease, member, input.resolveRun);
-  const run = currentRun.state === "present" ? input.resolveRun(currentRun.runId) : undefined;
-  const stopPending = operation?.request.type === "stop-worker" && operation.phase.state !== "succeeded" && operation.phase.state !== "refused";
-  const interrupt = run === undefined ? undefined : stepInterruptOf(run, stopPending, input.writeInFlight?.(run.envelope.runId) === true);
+  const base = { member: workerPoolMember(slot), workerId: slot.workerId, workflowId: slot.workflow,
+    directive: view?.state === "stopping" ? "stop" : slot.paused ? "pause" : "run",
+    ...(input.lastRun === undefined ? {} : { lastRun: input.lastRun }), ...(input.timeline === undefined ? {} : { timeline: input.timeline }),
+    availability: { state: "available" } } as const;
+  if (view === undefined) {
+    return WorkerCardWireSchema.parse({ ...base, state: "failed", stopReason: "not-started", startedAt: slot.createdAt,
+      controls: { basis: { state: "present", value: { lifetimeId: null, version: 0 } } },
+      currentRun: { state: "absent", reason: "no current claimed run" }, browsers: [], revision: input.foldRevision + 1 });
+  }
+  const runId = view.activity?.runId, run = runId === undefined ? undefined : input.resolveRun(runId);
+  const exit = view.state === "exited" ? view.exit : undefined;
+  const browserWire = (browser: WorkerChildBrowserObservation) => WorkerBrowserWireSchema.parse({
+    sessionId: browser.sessionId, system: browser.system, openedAt: browser.openedAt,
+    observation: { state: "present", health: browser.health, observedAt: browser.observedAt, instance: browser.instance,
+      browserMode: browser.browserMode, configFingerprint: browser.configFingerprint },
+    signIn: signInOf(view, browser, input.duoSystems ?? []) });
+  const state = workerCardState(view);
+  const browsers = view.state === "exited" ? [] : view.browsers.filter(browser => browser.health !== "closed").map(browserWire);
+  const current = run !== undefined && "workerId" in run.lifecycle && run.lifecycle.workerId === slot.workerId ? run : undefined;
+  const interrupt = current === undefined ? undefined : stepInterruptOf(current, input.writeInFlight?.(current.envelope.runId) === true);
   return WorkerCardWireSchema.parse({
-    member: workerPoolMember(member),
-    workerId: lease.workerId,
-    workflowId: lease.workflow,
+    ...base,
     state,
-    directive: lease.control.directive,
-    controls: {
-      basis: lease.controlRevision === undefined ? { state: "unavailable", reason: "Worker predates control identity; start a new lifetime." } : { state: "present", value: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
-      ownership: input.owned === true && !terminal ? { state: "owned" } : { state: "unavailable", reason: terminal ? "Worker has stopped." : "This dashboard does not own the worker process." },
-      ...(operation === undefined ? {} : { operation: { commandId: operation.commandId, type: operation.request.type, state: operation.phase.state,
-        at: "completedAt" in operation.phase ? operation.phase.completedAt : "observedAt" in operation.phase ? operation.phase.observedAt : "startedAt" in operation.phase ? operation.phase.startedAt : operation.admittedAt,
-        unresolved: operation.auditedAt === undefined,
-        ...("browserSessionId" in operation.request.target ? { browserSessionId: operation.request.target.browserSessionId } : {}),
-        ...("message" in operation.phase ? { message: operation.phase.message } : {}),
-      } }),
-    },
-    startedAt: lease.lifecycle.startedAt,
-    ...(lease.lifecycle.state === "stopped"
-      ? { endedAt: lease.lifecycle.stoppedAt,
-        stopReason: lease.lifecycle.reason === "operator" && isDrainStopReason(lease.control.reason) ? "shutdown" : lease.lifecycle.reason,
-        ...(lease.lifecycle.failureCode === undefined ? {} : { failureCode: lease.lifecycle.failureCode }) }
+    controls: { basis: { state: "present", value: { lifetimeId: view.lifetimeId, version: view.version } } },
+    startedAt: view.startedAt,
+    ...(view.state === "exited"
+      ? { endedAt: exit?.at ?? view.startedAt, stopReason: stopReasonOf(exit),
+        ...(exit?.outcome === "crashed" && exit.failureCode !== undefined ? { failureCode: exit.failureCode } : {}),
+        // An exited member holds no live browser; its last reported sessions stay readable.
+        lastBrowsers: view.browsers.map(browserWire) }
       : {}),
-    currentRun,
-    browserRequirements: lease.browserSystems === undefined
-      ? {
-        state: "unavailable",
-        reason: `worker ${lease.workerId} lease predates launch-time browser requirements`,
-      }
-      : { state: "present", systems: lease.browserSystems, missing: lease.browserSystems.filter(system =>
-        !served.some(browser => browser.system === system && browser.signIn === "signed-in")) },
-    ...(closedBrowserSystems.length === 0 ? {} : { closedBrowserSystems }),
-    browsers: served,
-    ...(terminal ? { lastBrowsers: (observations ?? []).map(value => browserWire({ sessionId: value.sessionId, system: value.system, openedAt: value.openedAt })) } : {}),
-    ...(lease.lifecycle.state === "waiting" ? { waitingActivity: lease.lifecycle.activity } : {}),
+    currentRun: current === undefined ? { state: "absent", reason: "no current claimed run" }
+      : { state: "present", runId: current.envelope.runId, traceId: current.envelope.traceId },
+    ...(view.browserSystems === undefined ? {} : { browserRequirements: { state: "present", systems: view.browserSystems,
+      missing: view.browserSystems.filter(system => !browsers.some(browser => browser.system === system && browser.signIn === "signed-in")) } }),
+    browsers,
+    ...(state === "waiting" && view.activity?.waiting !== undefined ? { waitingActivity: view.activity.waiting } : {}),
+    ...(state === "idle" && view.activity?.refusal !== undefined ? { refusal: {
+      code: view.activity.refusal.code,
+      summary: view.activity.refusal.summary ?? operatorFailureSentence(view.activity.refusal.code),
+      retryAt: view.activity.refusal.retryAt,
+    } } : {}),
     ...(interrupt === undefined ? {} : { interrupt }),
-    ...(input.lastRun === undefined ? {} : { lastRun: input.lastRun }),
-    ...(input.timeline === undefined ? {} : { timeline: input.timeline }),
-    availability: { state: "available" },
-    leaseVersion: lease.version,
-    // Revision 1 is the wire minimum when a lease has emitted no stream event.
-    revision: fold?.revision ?? 1,
+    revision: input.foldRevision + view.version + 1,
   });
 }

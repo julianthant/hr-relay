@@ -8,7 +8,8 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import type { Clock } from "../../rules/time/clock.js";
 import type { CommandKernel } from "../runs/commands/command-kernel.js";
 import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
-import { WorkbookLibraryError, type WorkbookLibraryService } from "../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../workbooks/workbook-library-error.js";
+import type { WorkbookLibraryService } from "../workbooks/workbook-library-service.js";
 import type { createAssistantAuthorization } from "./authorization.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantProposalTool, type AssistantToolContext } from "./plugins/plugin.js";
 import type { AssistantPluginDeps } from "./plugins/registry.js";

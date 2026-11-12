@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../helpers/backend/unused-worker-pool.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
@@ -10,7 +11,7 @@ import assert from "node:assert/strict";
 
 import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../../helpers/admission-fixture.js";
 import { duoCeremonyGatesOver } from "../../helpers/duo-ceremony-fixtures.js";
-import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel, type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService, workerRunLifecyclePort, runContinuationPort, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { createDurableChildRunExecutor } from "../../../../src/backend/runtime/execution/durable-child-executor.js";
@@ -36,7 +37,10 @@ const retainedSourceBoundFixtureOwners = new Set<object>();
 
 export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig, protectedSecrets?: ProtectedSecretSource,
   profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture,
-  childDescriptors: readonly AnyWorkflowDescriptor[] = []) {
+  childDescriptors: readonly AnyWorkflowDescriptor[] = [],
+  commandNotices?: CommandKernelDependencies["commandNotices"],
+  durableSpans = false,
+  createPreflight?: (clock: Clock) => NonNullable<CommandKernelDependencies["preflight"]>) {
   bindWorkflowDelegationTargets([descriptor, ...childDescriptors]);
   const held: { profile?: BoundProfileStorageFixture; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; primary?: unknown } = {};
   retainedSourceBoundFixtureOwners.add(held);
@@ -58,13 +62,7 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
   const admitted = testAdmittedWorker(database, clock, { path: profile.path, workflow: descriptor.id,
     poolIndex: 1, browserSystems: workflowProjections(descriptor).systems });
   held.worker = admitted;
-  const slot = admitted.member, started = admitted.started;
-  assert.ok(started);
-  assert.equal(started.state,"started");
-  const lifetimeSlot = database.authority.workerSlots.get(slot.workerId), lifetimeLease = database.authority.workerLeases.get(slot.workerId);
-  assert.ok(lifetimeSlot); assert.ok(lifetimeLease);
-  assert.equal(lifetimeSlot.workerId, slot.workerId); assert.equal(lifetimeLease.workerId, slot.workerId);
-  const workerLifetime = { membershipRevision: lifetimeSlot.membershipRevision, leaseGeneration: lifetimeLease.leaseGeneration };
+  const slot = admitted.member;
   const timeline = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
   const lifecycle = new RunRecordService({ database, clock, ids: lifecycleIds, resolveDescriptor: descriptors.resolve, publishQueued: (run, publication) => {
     assert.ok(database.authority.runs.get(run.envelope.runId), "publication sees the run inside its owning transaction");
@@ -74,30 +72,33 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
   const resolution = createWriteResolutionExecutor({ continuation: runContinuationPort(lifecycle), descriptors,
     authority: database, ids  });
   const unused = () => { throw new Error("unrequested runtime operation"); };
+  const preflight = createPreflight?.(clock);
   const kernel = createCommandKernel({ lifecycle, appVersion: "0.1.0", authority: database, clock, ids, descriptors,
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: resolution,
-    workerRuntime: {pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,
-      stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}},
+    workerRuntime: {pool:unusedWorkerPool(unused)},
+    ...(preflight === undefined ? {} : { preflight }),
+    ...(commandNotices === undefined ? {} : { commandNotices }),
   });
-  const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors, clock,
+  const planner = createStartPlanService({ ...(preflight === undefined ? {} : { preflight }), authority: database, authorityRead: database, descriptors, clock,
     ...(protectedSecrets === undefined ? {} : { protectedSecrets }),
     ids: planIds, planTtlMs: 600_000, configFingerprint: activeConfig.configFingerprint, configSnapshotId: activeConfig.configSnapshotId, plannedBy: "local-operator" });
   const world = createWriteFixtureWorld();
   const stores = customStores === undefined ? buildWriteFixtureRegistry(world) : customStores(world);
   const sessions = writeFixtureSessions(world);
   const manager = await writeFixtureSessionManager(sessions, stores, clock, duoCeremonyGatesOver(database, clock, new ManualScheduler(clock)));
-  const executionOwners = new Map([[descriptor.id, { slot, workerLifetime, manager }]]);
+  const executionOwners = new Map([[descriptor.id, { slot, manager }]]);
   for (const child of childDescriptors) {
     const owner = testAdmittedWorker(database, clock, { path: profile.path, workflow: child.id, poolIndex: 1,
       browserSystems: workflowProjections(child).systems });
     const childManager = await writeFixtureSessionManager(sessions, stores, clock, duoCeremonyGatesOver(database, clock, new ManualScheduler(clock)));
     childManager.configureExecution(child.id, stores);
-    executionOwners.set(child.id, { slot: owner.member, workerLifetime: owner.workerLifetime, manager: childManager });
+    executionOwners.set(child.id, { slot: owner.member, manager: childManager });
   }
-  const emitter = recordingEmitter();
+  // Delegation admission reads a dependency's `data.observed` spans back from the timeline.
+  const emitter = durableSpans ? timeline : recordingEmitter().emitter;
   const worker = workerRunLifecyclePort(lifecycle);
-  const common = { lifecycle: worker, stores, authority: database, sessions: manager, emitter: emitter.emitter,
+  const common = { lifecycle: worker, stores, authority: database, sessions: manager, emitter,
     childRuns: createDurableChildRunExecutor({ authority: database, admission: { admitAndRelease: (context, plan) => lifecycle.admitDelegation(context, plan) },
       resolveTarget: id => { const target = descriptors.resolve(id); if (target === undefined) throw new Error("fixture-child-descriptor-missing"); return target; } }),
     clock, ids, scheduler: new ManualScheduler(clock), taskDeadlineMs: 60_000, log: recordingLogger().log };
@@ -131,12 +132,12 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
     }
     const home = executionOwners.get(root.envelope.workflow); assert.ok(home);
     const execution = executionOwners.get(run.envelope.workflow); assert.ok(execution);
-    const { slot, workerLifetime } = home, { manager } = execution;
+    const { slot } = home, { manager } = execution;
     const target = descriptors.resolve(run.envelope.workflow); assert.ok(target);
     manager.configureExecution(target.id, stores);
     const active = database.authority.runtimeConfig.get(); assert.ok(active);
     const claimed = requireLifecycleApplied(lifecycle.claimNext({ commandId: ids.uuid(), workflow: root.envelope.workflow,
-      workerId: slot.workerId, workerLifetime, runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
+      workerId: slot.workerId, runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
         settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } }));
     assert.equal(claimed.envelope.runId, run.envelope.runId);
     const executing = descriptors.resolve(claimed.envelope.workflow); assert.ok(executing);

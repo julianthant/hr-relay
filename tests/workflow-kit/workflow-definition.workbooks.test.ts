@@ -17,6 +17,7 @@ import { onbaseWorkflow } from "../../src/workflows/onbase/workflow.js";
 import { separationsWorkflow } from "../../src/workflows/separations/workflow.js";
 import { onboardingWorkflow } from "../../src/workflows/onboarding/workflow.js";
 import { ONBOARDING_ROSTER_FIELDS } from "../../src/models/workflows/onboarding/roster.js";
+import { OCR_ROSTER_FIELDS } from "../../src/models/workflows/ocr/roster.js";
 
 const Input = z.strictObject({ value: z.string() });
 const canonicalInput = defineCanonicalInput(Input, Input, [{ value: "fixture" }]);
@@ -49,20 +50,22 @@ const currentDefinitions: readonly AnyWorkflowDefinition[] = [
   personLookupWorkflow, separationsWorkflow, i9CheckWorkflow, i9LookupWorkflow, ocrWorkflow, ocrPageWorkflow, onbaseWorkflow,
 ];
 
-describe("direct workbook type requirements", () => {
-  it("derives lookups from admitted ingress before canonical reference binding", () => {
+describe("workbook field requirements", () => {
+  const requirement = { id: "onboarding-roster", keyFieldId: "email", mode: "keys" as const, writableFields: ["eid"] };
+
+  it("derives lookups from admitted ingress and frozen static fields", () => {
     let parses = 0;
     const ingress = z.strictObject({ value: z.string().transform(value => { parses++; return `${value}!`; }), captured: z.string().optional() });
     const captured = defineCanonicalInput(ingress, Input.extend({ captured: z.string() }), [{ value: "fixture", captured: "retained" }]);
     const ingressFlow = flow(ingress).step("reading", contract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ value: input.value }) })
       .build({ schema: Input, dependsOn: ["reading"], derive: ({ outputs }) => outputs.reading });
     const descriptor = defineWorkflowDescriptor({ ...descriptorSpec, flow: ingressFlow, canonicalInput: captured,
-      requiredWorkbookTypeIds: ["roster"], referenceLookups: input => [{ typeId: "roster", keys: [input.value], fields: ["email"] }],
+      requiredWorkbookFields: ["email", "eid"], workbookReference: requirement, referenceKeys: input => [input.value],
       plannedOutputs: input => [{ kind: "workbook", name: `${input.value}.xlsx`, rowSubject: "person", rows: { state: "known", count: 1 } }] });
     const planning = workflowPlanning(descriptor);
     parses = 0;
     const admitted = planning.parseInput({ value: "fixture" });
-    expect(admitted.lookups).toEqual([{ typeId: "roster", keys: ["fixture!"], fields: ["email"] }]);
+    expect(admitted.lookups).toEqual([{ typeId: "onboarding-roster", keys: ["fixture!"], fields: ["email", "eid"] }]);
     expect(parses).toBe(1);
     expect(() => planning.plannedOutputs({ value: "fixture" }, [])).toThrow();
     expect(planning.plannedOutputs({ value: "fixture", captured: "retained" }, [])).toEqual([
@@ -70,86 +73,88 @@ describe("direct workbook type requirements", () => {
     ]);
   });
 
-  it("authors the Onboarding roster lookup without caller-supplied roster values", () => {
+  it("authors Onboarding lookup without caller supplied roster values", () => {
     const planning = workflowPlanning(compileWorkflow(onboardingWorkflow).descriptor);
     const ingress = planning.parseInput({ email: "hire@example.test", mode: "new-hire" });
     expect(() => planning.parseCanonicalInput(ingress.input)).toThrow();
-    expect(ingress.lookups).toEqual([
-      { typeId: "onboarding-roster", keys: ["hire@example.test"], fields: [...ONBOARDING_ROSTER_FIELDS] },
-    ]);
+    expect(ingress.lookups).toEqual([{ typeId: "onboarding-roster", keys: ["hire@example.test"], fields: [...ONBOARDING_ROSTER_FIELDS] }]);
   });
 
-  it("preserves exact nonempty IDs and order through compilation and sealed readers", () => {
-    const ids = ["roster/custom:2026", "Mixed Case type"];
-    const definition = defineWorkflow({ ...base, requiredWorkbookTypeIds: ids });
+  it("copies and recursively freezes fields, reference and writable outputs", () => {
+    const fields = ["email", "eid"], writableFields = ["eid"];
+    const definition = defineWorkflow({ ...base, requiredWorkbookFields: fields,
+      workbookReference: { ...requirement, writableFields }, referenceKeys: input => [input.value] });
+    fields.push("fullName"); writableFields.push("email");
     const { descriptor } = compileWorkflow(definition);
-    expect(definition.requiredWorkbookTypeIds).toEqual(ids);
-    expect(descriptor.requiredWorkbookTypeIds).toEqual(ids);
-    expect(descriptor.requiredWorkbookTypeIds).not.toBe(definition.requiredWorkbookTypeIds);
-    expect(workflowPlanning(descriptor).requiredWorkbookTypeIds).toBe(descriptor.requiredWorkbookTypeIds);
-    expect(workflowProjections(descriptor).requiredWorkbookTypeIds).toBe(descriptor.requiredWorkbookTypeIds);
-    expect(descriptor.contractFingerprint).not.toBe(fingerprint);
-    expect(descriptor.contractFingerprint).toBe(compileWorkflow(defineWorkflow({ ...base, requiredWorkbookTypeIds: ids })).descriptor.contractFingerprint);
-    expect(definition.role).toEqual({ kind: "standalone" });
+    expect(definition.requiredWorkbookFields).toEqual(["email", "eid"]);
+    expect(descriptor.requiredWorkbookFields).toEqual(["email", "eid"]);
+    expect(descriptor.workbookReference?.writableFields).toEqual(["eid"]);
+    const lowLevelFields = ["email", "eid"], lowLevelWritable = ["eid"];
+    const lowLevel = defineWorkflowDescriptor({ ...descriptorSpec, requiredWorkbookFields: lowLevelFields,
+      workbookReference: { ...requirement, writableFields: lowLevelWritable }, referenceKeys: input => [input.value] });
+    lowLevelFields.push("fullName"); lowLevelWritable.push("email");
+    expect(lowLevel.requiredWorkbookFields).toEqual(["email", "eid"]);
+    expect(lowLevel.workbookReference?.writableFields).toEqual(["eid"]);
+    for (const retained of [definition.requiredWorkbookFields, descriptor.requiredWorkbookFields,
+      workflowPlanning(descriptor).requiredWorkbookFields, workflowProjections(descriptor).requiredWorkbookFields,
+      descriptor.workbookReference?.writableFields, lowLevel.requiredWorkbookFields,
+      lowLevel.workbookReference?.writableFields]) expect(Object.isFrozen(retained)).toBe(true);
+    expect(descriptor.contractFingerprint).not.toBe(compileWorkflow(defineWorkflow(base)).descriptor.contractFingerprint);
+    expect(descriptor.contractFingerprint).toBe(compileWorkflow(defineWorkflow({ ...base, requiredWorkbookFields: ["email", "eid"],
+      workbookReference: { ...requirement, writableFields: ["eid"] }, referenceKeys: input => [input.value] })).descriptor.contractFingerprint);
     expect(() => workflowPlanning({ ...descriptor })).toThrow(/only available for a descriptor/u);
     expect(() => workflowProjections({ ...descriptor })).toThrow(/exact object/u);
+    const changed = compileWorkflow(defineWorkflow({ ...base, requiredWorkbookFields: ["email", "eid", "fullName"],
+      workbookReference: { ...requirement, writableFields: [] }, referenceKeys: input => [input.value] })).descriptor;
+    expect(changed.contractFingerprint).not.toBe(descriptor.contractFingerprint);
+    const changedWrite = compileWorkflow(defineWorkflow({ ...base, requiredWorkbookFields: ["email", "eid"],
+      workbookReference: { ...requirement, writableFields: [] }, referenceKeys: input => [input.value] })).descriptor;
+    const changedKey = compileWorkflow(defineWorkflow({ ...base, requiredWorkbookFields: ["email", "eid"],
+      workbookReference: { ...requirement, keyFieldId: "eid" }, referenceKeys: input => [input.value] })).descriptor;
+    const changedMode = compileWorkflow(defineWorkflow({ ...base, requiredWorkbookFields: ["email", "eid"],
+      workbookReference: { ...requirement, mode: "all" } })).descriptor;
+    for (const candidate of [changedWrite, changedKey, changedMode])
+      expect(candidate.contractFingerprint).not.toBe(descriptor.contractFingerprint);
   });
 
-  it("copies both factory inputs and freezes every retained requirement array", () => {
-    const ids = ["first", "second"];
-    const definition = defineWorkflow({ ...base, requiredWorkbookTypeIds: ids });
-    ids.reverse(); ids.push("third");
-    expect(definition.requiredWorkbookTypeIds).toEqual(["first", "second"]);
-    const lowLevelIds = ["master"];
-    const descriptor = defineWorkflowDescriptor({ ...descriptorSpec, requiredWorkbookTypeIds: lowLevelIds });
-    lowLevelIds[0] = "changed";
-    for (const retained of [definition.requiredWorkbookTypeIds, descriptor.requiredWorkbookTypeIds,
-      workflowPlanning(descriptor).requiredWorkbookTypeIds, workflowProjections(descriptor).requiredWorkbookTypeIds]) {
-      expect(Object.isFrozen(retained)).toBe(true);
-      expect(Reflect.set(retained, "0", "tampered")).toBe(false);
-    }
-    expect(descriptor.requiredWorkbookTypeIds).toEqual(["master"]);
+  it.each([null, "roster", ["unknown"], ["eid", "eid"]].map(value => ({ value })))("rejects invalid field declaration $value", ({ value }) => {
+      expect(() => defineWorkflow({ ...base, requiredWorkbookFields: value as readonly string[] })).toThrow();
+      expect(() => defineWorkflowDescriptor({ ...descriptorSpec, requiredWorkbookFields: value as readonly string[] })).toThrow();
+    });
+
+  it("requires key and writable fields within the required set", () => {
+    expect(() => defineWorkflow({ ...base, requiredWorkbookFields: ["email"], workbookReference: requirement,
+      referenceKeys: input => [input.value] })).toThrow();
+    expect(() => defineWorkflow({ ...base, requiredWorkbookFields: ["email", "eid"],
+      workbookReference: { ...requirement, keyFieldId: "fullName" }, referenceKeys: input => [input.value] })).toThrow();
   });
 
-  it.each([null, "roster", [""], [42], ["roster", "roster"]].map(value => ({ value })))("rejects invalid declaration $value in both factories", ({ value }) => {
-    const requiredWorkbookTypeIds = value as readonly string[];
-    expect(() => defineWorkflow({ ...base, requiredWorkbookTypeIds })).toThrow();
-    expect(() => defineWorkflowDescriptor({ ...descriptorSpec, requiredWorkbookTypeIds })).toThrow();
-  });
-
-  it("normalizes omitted requirements to an immutable empty declaration", () => {
+  it("normalizes omitted fields to a frozen empty declaration in both factories", () => {
     const definition = defineWorkflow(base);
     const descriptor = defineWorkflowDescriptor(descriptorSpec);
-    expect(definition.requiredWorkbookTypeIds).toEqual([]);
-    expect(descriptor.requiredWorkbookTypeIds).toEqual([]);
-    expect(Object.isFrozen(definition.requiredWorkbookTypeIds)).toBe(true);
-    expect(Object.isFrozen(descriptor.requiredWorkbookTypeIds)).toBe(true);
+    expect(definition.requiredWorkbookFields).toEqual([]);
+    expect(descriptor.requiredWorkbookFields).toEqual([]);
+    expect(Object.isFrozen(definition.requiredWorkbookFields)).toBe(true);
+    expect(Object.isFrozen(descriptor.requiredWorkbookFields)).toBe(true);
   });
 
-  it("inherits a parent's nonempty declaration into its retained step proof", () => {
-    const parent = defineWorkflow({ ...base, role: { kind: "composition" }, requiredWorkbookTypeIds: ["existing-master"] });
-    const { definition } = defineStepProof(parent, {
-      group,
-      proof: { id: "workbook-requirements-proof", order: 1,
-        build: actual => ({ ...inheritStepProof(actual), code: "wbp", label: "Workbook proof", steps: authored }) },
-    });
-    expect(definition.requiredWorkbookTypeIds).toEqual(parent.requiredWorkbookTypeIds);
-    expect(definition.requiredWorkbookTypeIds).not.toBe(parent.requiredWorkbookTypeIds);
-    expect(definition.role).toEqual({ kind: "chunk-harness", of: parent.id, step: "reading" });
+  it("inherits an exact independent declaration into a step proof", () => {
+    const parent = defineWorkflow({ ...base, role: { kind: "composition" }, requiredWorkbookFields: ["email", "eid"],
+      workbookReference: requirement, referenceKeys: input => [input.value] });
+    const { definition } = defineStepProof(parent, { group, proof: { id: "workbook-requirements-proof", order: 1,
+      build: actual => ({ ...inheritStepProof(actual), code: "wbp", label: "Workbook proof", steps: authored }) } });
+    expect(definition.requiredWorkbookFields).toEqual(parent.requiredWorkbookFields);
+    expect(definition.requiredWorkbookFields).not.toBe(parent.requiredWorkbookFields);
+    expect(definition.workbookReference).toEqual(parent.workbookReference);
+    expect(workflowPlanning(compileWorkflow(definition).descriptor).requiredWorkbookFields).toEqual(["email", "eid"]);
+  });
+
+  it.each(currentDefinitions)("preserves $id declared fields", definition => {
+    const expected = definition.id === "ocr" ? [...OCR_ROSTER_FIELDS] : [];
+    expect(Object.hasOwn(definition, "requiredWorkbookFields")).toBe(true);
+    expect(definition.requiredWorkbookFields).toEqual(expected);
     const { descriptor } = compileWorkflow(definition);
-    expect(workflowPlanning(descriptor).requiredWorkbookTypeIds).toEqual(["existing-master"]);
-    expect(descriptor.contractFingerprint).not.toBe(compileWorkflow(parent).descriptor.contractFingerprint);
+    expect(workflowPlanning(descriptor).requiredWorkbookFields).toEqual(expected);
+    expect(workflowProjections(descriptor).requiredWorkbookFields).toEqual(expected);
   });
-
-  it.each(currentDefinitions)(
-    "preserves $id declared workbook requirements without phantom types", definition => {
-      const expected = definition.id === "ocr" ? ["ocr-roster"] : [];
-      expect(Object.hasOwn(definition, "requiredWorkbookTypeIds")).toBe(true);
-      expect(definition.requiredWorkbookTypeIds).toEqual(expected);
-      const { descriptor } = compileWorkflow(definition);
-      expect(workflowPlanning(descriptor).requiredWorkbookTypeIds).toEqual(expected);
-      expect(workflowProjections(descriptor).requiredWorkbookTypeIds).toEqual(expected);
-      expect(definition.role).toEqual({ kind: "composition" });
-    },
-  );
 });

@@ -25,7 +25,7 @@ import { readyProfileOnboarding, syntheticOnboardingDuo } from "../../support/he
 import { credentialKeyCustody } from "../../../src/backend/storage/configuration/credential-key-custody.js";
 import { FakeKeyringEntry, credentialKeychainTestEnvironment } from "../../support/helpers/credential-keychain-fake.js";
 import { ProfileVerifierDocumentSchema, SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
-import { observeProcessIdentity, ProcessStartIdentitySchema } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { observeProcessIdentity, ProcessStartIdentitySchema } from "../../../src/backend/storage/admission/process-identity.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { composeProfileRuntime, initializeRegisteredPersonStores, RuntimeCustodyUncertainError } from "../../../src/backend/app/composition/storage-compose.js";
@@ -137,6 +137,7 @@ it("viewing an actual draft creates no attempt; after Unknown only an explicit s
   const f = await privateDraftFixture({
     async showBrowser(owner) { owner.assertCurrent(); browser = owner; },
     async openPortal(owner) { owner.assertCurrent(); },
+    async stop() {},
     async closeBrowser() { return { state: "closed" }; },
     async start(_attempt, _bind, reportFailure) { starts++; await reportFailure(new ProfileOnboardingDuoProviderError("unknown", "provider")); },
     async cancel() { return { state: "closed" }; },
@@ -264,6 +265,7 @@ async function readyFixture() {
   const provider: ProfileOnboardingDuoProvider = {
     async showBrowser(owner) { owner.assertCurrent(); },
     async openPortal(owner) { owner.assertCurrent(); },
+    async stop() {},
     async closeBrowser() { browserCloses++; return { state: "closed" }; },
     async start(attempt, bind, _reportFailure) {
       assert.equal(active, false); active = true; starts++;
@@ -705,7 +707,8 @@ it("completes a recorded Finish at startup without reopening its draft", async (
   const refuseReopen = async () => { reopened++; throw new Error("recorded Finish must not reopen onboarding"); };
   const profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock,
     onboardingDuo: { showBrowser: refuseReopen, openPortal: refuseReopen, start: refuseReopen,
-      async cancel() { throw new Error("recorded Finish must not cancel enrollment"); }, async closeBrowser() { return { state: "closed" }; } } });
+      async cancel() { throw new Error("recorded Finish must not cancel enrollment"); }, async stop() {},
+    async closeBrowser() { return { state: "closed" }; } } });
   try {
     await profile.session.recoverOnboarding();
     assert.equal(reopened, 0);
@@ -723,6 +726,7 @@ it("keeps a pending signup key unsigned until exact scoped proof confirms it, th
   const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const provider: ProfileOnboardingDuoProvider = {
     async showBrowser(owner) { owner.assertCurrent(); }, async openPortal(owner) { owner.assertCurrent(); },
+    async stop() {},
     async closeBrowser() { return { state: "closed" }; }, async cancel() { return { state: "closed" }; },
     async start(attempt, bind) {
       capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: 1, origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });

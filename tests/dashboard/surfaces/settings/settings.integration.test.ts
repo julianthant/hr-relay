@@ -15,41 +15,6 @@ function savedText(host: HTMLElement): string {
   return copy.outerHTML;
 }
 describe("independent protected Settings surface", () => {
-  it("edits the protected onboarding roster under SharePoint routes and preserves its authority", async () => {
-    const h = await setup();
-    await h.render("routes");
-    const sharepoint = h.host.querySelector('[data-settings-path="urls.sharepoint.prod"]');
-    assert.ok(sharepoint);
-    const label = [...h.host.querySelectorAll<HTMLLabelElement>("label")].find(node => node.textContent === "SharePoint onboarding roster URL");
-    assert.ok(label);
-    const input = h.host.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`);
-    assert.ok(input);
-    assert.equal(input.type, "password");
-    assert.equal(sharepoint.closest(".routes-page-system")?.querySelector("h2")?.textContent, "SharePoint2 URLs");
-    const search = h.host.querySelector<HTMLInputElement>('input[type="search"]');
-    assert.ok(search);
-    await settingsAction(() => {
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-      if (setter !== undefined) Reflect.apply(setter, search, ["roster"]);
-      search.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    assert.match(h.host.textContent ?? "", /SharePoint/u);
-    assert.equal(h.host.querySelector('[data-settings-path="urls.crm.prod"]'), null);
-    const url = "https://example.test/onboarding-roster.xlsx";
-    await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", url));
-    assert.equal(input.value, url);
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1300)); });
-    const request = ProtectedSettingsCommandRequestSchema.parse(h.commands[0]);
-    assert.deepEqual(request.payload.entries, { sharepointOnboardingRosterUrl: { set: url } });
-    assert.equal(h.authority.read().revision, 1, "ordinary route authority is unchanged");
-    const show = h.host.querySelector<HTMLButtonElement>('button[aria-label="Show SharePoint onboarding roster URL"]');
-    assert.ok(show);
-    await settingsAction(() => show.click());
-    assert.equal(input.type, "text");
-    await h.render("credentials");
-    assert.doesNotMatch(h.host.textContent ?? "", /SharePoint onboarding roster URL/u);
-  });
   it("starts empty, validates every editable credential, and shows saved values after save", async () => {
     const h = await setup(); const ordinary = h.authority.read();
     const before = h.authority.credentials.read();

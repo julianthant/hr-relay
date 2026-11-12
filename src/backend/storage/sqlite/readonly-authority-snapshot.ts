@@ -1,6 +1,6 @@
 import { windowsObserverPolicyPrelude } from "../windows-observer-policy.js";
 import { createPrivateDirectory, privatePathRejects } from "../private-path.js";
-import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
+import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, isRetainedSnapshot, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -9,11 +9,23 @@ import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
-import { existsSync, statSync, lstatSync, mkdtempSync, realpathSync, rmSync, type BigIntStats } from "node:fs";
+import { existsSync, statSync, lstatSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync, type BigIntStats } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { fileStatus, sameDirectory, type DirectoryIdentity } from "../file-identity.js";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+
+/** The live authority files changed while a read-only snapshot was copied or read: an observation race, not damage. */
+export class AuthoritySourceChangedError extends Error {
+  constructor() { super("authority-readonly-source-changed"); this.name = "AuthoritySourceChangedError"; }
+}
+
+/** True when the error, or an error in its cause chain, is an observation race. */
+export function isAuthoritySourceChanged(error: unknown): boolean {
+  return error instanceof AuthoritySourceChangedError || error instanceof Error && error.cause !== undefined && isAuthoritySourceChanged(error.cause);
+}
 
 function identity(stats: BigIntStats): string {
   return [stats.dev, stats.ino, stats.mode, stats.size, stats.mtimeNs, stats.ctimeNs].join(":");
@@ -97,6 +109,37 @@ try {
 }
 `;
 
+/** The process that holds the active authority open; its doctor pass reads one image of that connection instead of copying the live files. */
+export interface AuthorityImageOwner {
+  serializeCommittedImage(): { readonly identity: DirectoryIdentity; readonly image: Uint8Array } | undefined;
+}
+
+/** pointInTime: an owner image; later changes to the live files do not make it stale. */
+type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: () => void; pointInTime?: true }>;
+type ActiveObservation = { readonly statePath: string; owner: AuthorityImageOwner | undefined; snapshot?: ReadonlySnapshot; view?: ReadonlySnapshot };
+const activeObservation = new AsyncLocalStorage<ActiveObservation>();
+
+/** With an owner, every read of this active authority file in body uses one owner image disposed when body ends; every other path keeps guarded, freshness-checked copies. */
+export async function withActiveAuthorityObservation<T>(statePath: string, owner: AuthorityImageOwner | undefined, body: () => Promise<T>): Promise<T> {
+  // A scope without an owner still hides an enclosing pass's image.
+  const scope: ActiveObservation = { statePath: existsSync(statePath) ? realpathSync(statePath) : resolve(statePath), owner };
+  let result: T;
+  try { result = await activeObservation.run(scope, body); }
+  catch (error) {
+    try { releaseObservation(scope); }
+    catch (cleanup) { throw new AggregateError([error, cleanup], "authority-observation-failed", { cause: cleanup }); }
+    throw error;
+  }
+  releaseObservation(scope);
+  return result;
+}
+
+function releaseObservation(scope: ActiveObservation): void {
+  // A reader whose close is unproved still has the image open; it stays with that retained owner.
+  if (scope.view !== undefined && isRetainedSnapshot(scope.view)) return;
+  scope.snapshot?.dispose();
+}
+
 function snapshotMarker(sourcePath: string): string {
   return ["", "-wal", "-shm", "-journal"].map(suffix => {
     const stats = inspect(`${sourcePath}${suffix}`);
@@ -104,11 +147,22 @@ function snapshotMarker(sourcePath: string): string {
   }).join("|");
 }
 
-export function createReadonlyAuthoritySnapshot(sourcePath: string) {
+export function createReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySnapshot {
+  const scope = activeObservation.getStore();
+  if (scope?.owner !== undefined && existsSync(sourcePath) && realpathSync(sourcePath) === scope.statePath) {
+    scope.snapshot ??= copyReadonlyAuthoritySnapshot(sourcePath, scope.owner);
+    // The scope owns the image and disposes it when its pass ends.
+    if (scope.snapshot !== undefined) {
+      scope.snapshot.assertUnchanged();
+      return scope.view ??= Object.freeze({ path: scope.snapshot.path, assertUnchanged: scope.snapshot.assertUnchanged, dispose() {}, pointInTime: true });
+    }
+    // The file at the path is not the one the owner opened: judge it by today's guarded copy.
+    scope.owner = undefined;
+  }
   const proof = outermostOperationProof();
   const marker = snapshotMarker(sourcePath);
   const key = `readonly-snapshot:${sourcePath}`;
-  const cached = proof?.slots.get(key) as { marker: string; snapshot: ReturnType<typeof copyReadonlyAuthoritySnapshot> } | undefined;
+  const cached = proof?.slots.get(key) as { marker: string; snapshot: ReadonlySnapshot } | undefined;
   if (cached?.marker === marker) {
     cached.snapshot.assertUnchanged();
     return Object.freeze({ path: cached.snapshot.path, assertUnchanged: cached.snapshot.assertUnchanged, dispose() { if (!proof?.active) cached.snapshot.dispose(); } });
@@ -120,15 +174,40 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string) {
   return Object.freeze({ path: snapshot.path, assertUnchanged: () => snapshot.assertUnchanged(), dispose() { if (!proof.active) snapshot.dispose(); } });
 }
 
-function copyReadonlyAuthoritySnapshot(sourcePath: string) {
+// The "pid" marker keeps a legacy UUID name (leading digits, then a hyphen) from reading as an owner.
+const leakedReadonlyAuthorityCopy = /^relay-readonly-authority-pid(\d+)-/u;
+
+export function sweepLeakedReadonlyAuthorityCopies(root = realpathSync(tmpdir())): void {
+  for (const name of readdirSync(root)) {
+    const pid = Number(leakedReadonlyAuthorityCopy.exec(name)?.[1]);
+    if (!Number.isInteger(pid) || pid === process.pid || pidAlive(pid)) continue;
+    try { rmSync(join(root, name), { recursive: true }); }
+    catch { /* A stuck copy must not stop BFF start. */ }
+  }
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !(error instanceof Error && "code" in error && error.code === "ESRCH");
+  }
+}
+
+function copyReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySnapshot;
+function copyReadonlyAuthoritySnapshot(sourcePath: string, owner: AuthorityImageOwner): ReadonlySnapshot | undefined;
+function copyReadonlyAuthoritySnapshot(sourcePath: string, owner?: AuthorityImageOwner): ReadonlySnapshot | undefined {
   const directory = process.platform === "win32"
-    ? join(realpathSync(tmpdir()), `relay-readonly-authority-${randomUUID()}`)
-    : mkdtempSync(join(realpathSync(tmpdir()), "relay-readonly-authority-"));
+    ? join(realpathSync(tmpdir()), `relay-readonly-authority-pid${process.pid}-${randomUUID()}`)
+    : mkdtempSync(join(realpathSync(tmpdir()), `relay-readonly-authority-pid${process.pid}-`));
   if (process.platform === "win32") createPrivateDirectory(directory, { mode: 0o700 });
   const path = join(directory, "authority.sqlite");
   const sources: Array<{ path: string; suffix: string; stats: BigIntStats | undefined }> = [];
   let disposed = false;
   let disposalFailure: AuthoritySourceClosureUnprovedError | undefined;
+  let ownerImage: DirectoryIdentity | undefined;
+  const fileIdentity = () => { const file = fileStatus(sourcePath); return { device: file.dev, inode: file.ino }; };
   const dispose = () => {
     if (disposalFailure !== undefined) throw disposalFailure;
     if (disposed) return;
@@ -139,11 +218,16 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string) {
   const assertUnchanged = () => {
     if (disposalFailure !== undefined) throw disposalFailure;
     if (disposed) throw new Error("authority-readonly-snapshot-closed");
+    // An owner image is one point in time: only a different file at the path makes it stale.
+    if (ownerImage !== undefined) {
+      if (!existsSync(sourcePath) || !sameDirectory(fileIdentity(), ownerImage)) throw new AuthoritySourceChangedError();
+      return;
+    }
     for (const source of sources) {
       const current = inspect(source.path);
       if ((current === undefined) !== (source.stats === undefined)
         || current !== undefined && source.stats !== undefined && identity(current) !== identity(source.stats)) {
-        throw new Error("authority-readonly-source-changed");
+        throw new AuthoritySourceChangedError();
       }
     }
   };
@@ -159,6 +243,18 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string) {
       }
       if (suffix === "-journal" && source.stats.size > 0n) throw new Error("authority-readonly-source-journal-unsettled");
     }
+    if (owner !== undefined) {
+      let image: ReturnType<AuthorityImageOwner["serializeCommittedImage"]>;
+      try {
+        const before = fileIdentity();
+        image = owner.serializeCommittedImage();
+        if (image !== undefined && !(sameDirectory(before, image.identity) && sameDirectory(fileIdentity(), image.identity))) image = undefined;
+        if (image !== undefined) writeFileSync(path, image.image, { flag: "wx", mode: 0o600 });
+      } catch (error) { throw new Error("authority-readonly-snapshot-copy-failed", { cause: error }); }
+      if (image === undefined) { dispose(); return undefined; }
+      ownerImage = image.identity;
+      return snapshot;
+    }
     const copy = spawnSync(process.execPath, ["--input-type=commonjs", "-e", process.platform === "win32" ? windowsObserverPolicyPrelude("snapshot") + copySnapshotScript : copySnapshotScript, path,
       JSON.stringify(sources.map(source => ({ path: source.path, suffix: source.suffix,
         expected: source.stats === undefined ? null : identity(source.stats) })))], { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
@@ -171,6 +267,7 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string) {
       try {
         failure = z.object({ message: z.string(), code: z.string().optional() }).strict().parse(JSON.parse(copy.stdout));
       } catch { throw copyFailed(); }
+      if (failure.message === "authority-readonly-source-changed") throw new AuthoritySourceChangedError();
       throw Object.assign(new Error(failure.message), failure.code === undefined ? {} : { code: failure.code });
     }
     if (copy.stdout !== "copied") throw copyFailed();

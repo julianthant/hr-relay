@@ -42,7 +42,7 @@ import { TimelineEventRecordSchema } from "../../../src/models/events/timeline.j
 import { RUN_RECORD_JSON_SQL } from "../../../src/backend/storage/sqlite/run-record-row.js";
 import { AuthorityDatabase as RealAuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService, AuthorityBootStore, AuthorityDatabase, AuthorityHealthPreflightRunner, AuthorityMutationUnavailableError, OfflineAuthorityRestoreService, OfflineRestoreFailure, SpanAuthorityRunRootSchema, doctorAuthorityStorage, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/index.js";
-import { acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { plantOldBuildArtifact } from "../../support/helpers/storage/old-build-artifact.js";
 import {
   QUEUED_RUN,
 } from "../../support/fixtures/phase1f-run-fixtures.js";
@@ -97,8 +97,6 @@ function runningTerminalFixture(
   const member = database.authority.workerSlots.list().find((slot) => slot.poolIndex === poolIndex);
   assert.ok(member);
   const workerId = member.workerId;
-  const lease = database.authority.workerLeases.get(workerId);
-  assert.ok(lease);
   const activeConfig = database.authority.runtimeConfig.get();
   assert.ok(activeConfig);
   database.authority.runs.enqueue({
@@ -126,20 +124,17 @@ function runningTerminalFixture(
   const claimed = database.authority.runs.claimNext({
     workflow: personLookupDescriptor.id,
     workerId,
-    workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration },
     now: NOW,
   });
   if (claimed.state !== "claimed" || claimed.run.envelope.runId !== runId) {
     throw new Error(`terminal recovery fixture did not claim ${runId}`);
   }
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-  assert.ok("workerLifetime" in claimed.run.lifecycle && claimed.run.lifecycle.workerLifetime !== undefined);
-  const workerLifetime = claimed.run.lifecycle.workerLifetime;
   const validating = database.authority.runs.transition({
     runId,
     expectedVersion: claimed.run.version,
     claim,
-    lifecycle: { state: "validating", workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW },
+    lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW },
     now: NOW,
   });
   if (validating.state !== "applied") throw new Error(`terminal recovery fixture did not validate ${runId}`);
@@ -150,7 +145,6 @@ function runningTerminalFixture(
     lifecycle: {
       state: "running",
       workerId,
-      workerLifetime,
       claimedAt: NOW,
       heartbeatAt: NOW,
       currentNodeId: nodeId,
@@ -1822,7 +1816,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.deepEqual(report.counts.values, {
       pendingCommands: 1,
       unresolvedWriteIntents: 0,
-      leases: 1,
       providerReservations: 0,
       artifactOutbox: 1,
     });
@@ -1973,23 +1966,14 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     const proof = maintenanceOperation(root);
-    const worker = acquireRuntimeProcessLock({
-      processLockRoot: processLockRoot(root),
-      name: "workers",
-      workerId: "person-lookup-worker-2",
-      pid: process.pid,
-    }, CLOCK);
-    try {
-      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
-      await assert.rejects(
-        restore.restore({ manifestPath }, proof),
-        OldBuildRuntimeArtifactsError,
-      );
-      assert.equal(existsSync(suspects), false);
-      assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, baselineGeneration(root) + 0);
-    } finally {
-      worker.release();
-    }
+    plantOldBuildArtifact(processLockRoot(root), "workers");
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
+    await assert.rejects(
+      restore.restore({ manifestPath }, proof),
+      OldBuildRuntimeArtifactsError,
+    );
+    assert.equal(existsSync(suspects), false);
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, baselineGeneration(root) + 0);
   });
 
   it("refuses released old-build singleton evidence without interpreting its generations", async () => {
@@ -2002,13 +1986,7 @@ describe("offline exact-backup restore", () => {
     database.close();
     const authorityBytes = readFileSync(authorityPath);
     const proof = maintenanceOperation(root);
-    const server = acquireRuntimeProcessLock({
-      processLockRoot: processLockRoot(root),
-      name: "server",
-      pid: process.pid,
-    }, CLOCK);
-    assert.equal(server.generation, 2);
-    server.release();
+    plantOldBuildArtifact(processLockRoot(root));
 
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
@@ -2557,7 +2535,7 @@ describe("authority.health preflight and static recovery boundary", () => {
     const withoutBackup = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
 
     assert.equal(withoutBackup.state, "healthy");
-    assert.match(withoutBackup.summary, /backup missing/);
+    assert.doesNotMatch(withoutBackup.summary, /backup/i);
   });
 
   it("keeps native browser preparation outside stopped backup IO", () => {
@@ -2613,6 +2591,7 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/backend/storage/sqlite/native-run-deletion.ts",
       "src/backend/storage/sqlite/notification-publications.ts",
       "src/backend/storage/sqlite/pre-build-run-deletion.ts",
+      "src/backend/storage/sqlite/worker-custody-migration.ts",
       "src/backend/storage/sqlite/ocr-review.ts",
       "src/backend/storage/sqlite/profile-local-databases.ts",
       "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
@@ -2625,7 +2604,6 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/backend/storage/sqlite/timeline-repository.ts",
       "src/backend/storage/sqlite/transaction-selection.ts",
       "src/backend/storage/sqlite/workbook-library-repository.ts",
-      "src/backend/storage/sqlite/worker-control.ts",
       "src/backend/storage/sqlite/worker-slots.ts",
     ].sort();
     const sourceFiles = gitVisibleFiles(["src"]).filter(

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, it, vi } from "vitest";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { readRunCheckpoint, RunContinuationRefusedError } from "../../../src/backend/storage/sqlite/run-continuation.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
@@ -18,6 +18,7 @@ beforeEach(async context => {
   fixture = await world.fixture({ secondMemberAlreadyPresent: context.task.name.startsWith("refuses direct Recover of already-present") });
 });
 afterEach(world.cleanup);
+afterAll(world.releaseTemplates);
 const signal = () => new AbortController().signal;
 const saves = (f: Fixture) => ["10800000", "10800001"].map(eid => {
   const backend = f.persistence.get(eid); assert.ok(backend); return backend.submissions.length;
@@ -62,18 +63,30 @@ function unchangedState(f: Fixture) {
 function refuseDirectRecover(f: Fixture, target: RunRecord) {
   const command = { ...f.runCommand("retry", target), type: "recover-run" as const }, before = unchangedState(f);
   const recover = vi.spyOn(f.canonical.lifecycle, "recover");
+  const admitted = new Set<string>();
+  let generation = before.generation;
   try {
     for (const request of [command, command, { ...command, commandId: randomUUID() }]) {
       const calls = recover.mock.calls.length;
       const result = f.canonical.kernel.execute(request);
       assert.ok(result.state === "rejected" && result.code === "RUN_CONTINUATION_REFUSED", JSON.stringify(result));
-      if (target.lifecycle.state === "terminal") {
+      const replay = admitted.has(request.commandId);
+      if (!replay && target.lifecycle.state === "terminal") {
         assert.equal(recover.mock.calls.length, calls + 1, "ordinary recovery planning reached the genuine native owner");
         const refused = recover.mock.results.at(-1); assert.ok(refused?.type === "throw");
         assert.ok(refused.value instanceof RunContinuationRefusedError);
         assert.match(refused.value.message, /delegation-accounting-recovery-requires-member-retry/);
-      } else assert.equal(recover.mock.calls.length, calls, "UNKNOWN refuses before native recovery");
-      assert.deepEqual(unchangedState(f), before);
+      } else if (!replay) assert.equal(recover.mock.calls.length, calls, "UNKNOWN refuses before native recovery");
+      else assert.equal(recover.mock.calls.length, calls, "exact retry replays the stored refusal");
+      const after = unchangedState(f);
+      assert.deepEqual({ ...after, generation: before.generation }, before);
+      assert.equal(after.generation, generation + (replay ? 0 : 2));
+      if (!replay) {
+        assert.equal(f.database.authority.commands.get(request.commandId)?.commandId, request.commandId);
+        assert.equal(f.database.authority.commandAudits.findByCommand(request.commandId)?.result.state, "rejected");
+        admitted.add(request.commandId);
+        generation = after.generation;
+      }
     }
   } finally { recover.mockRestore(); }
 }
@@ -159,9 +172,14 @@ it(`refuses direct Recover of ${effect} member evidence without a replacement, p
   assert.deepEqual(saves(f), expectedSaves);
   refuseDirectRecover(f, target);
   const before = unchangedState(f);
-  const retry = f.canonical.kernel.execute(f.runCommand("retry", target));
+  const request = f.runCommand("retry", target);
+  const retry = f.canonical.kernel.execute(request);
   assert.equal(retry.state, "rejected");
-  assert.deepEqual(unchangedState(f), before);
+  const after = unchangedState(f);
+  assert.deepEqual({ ...after, generation: before.generation }, before);
+  assert.equal(after.generation, before.generation + 2);
+  assert.equal(f.database.authority.commands.get(request.commandId)?.commandId, request.commandId);
+  assert.equal(f.database.authority.commandAudits.findByCommand(request.commandId)?.result.state, "rejected");
   assert.deepEqual(saves(f), expectedSaves);
   if (effect !== "UNKNOWN") {
     const receipt = receipts(f).ensureReceipt(f.parentRun.envelope.runId);

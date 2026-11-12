@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { z } from 'zod';
 import { Workbook, writeXlsx } from '@shbernal/ts-xlsx';
+import { configureWritableConnection } from '../../../src/backend/storage/sqlite/authority-database.js';
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, validateWorkbookLibrary } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { createWorkbookLibraryService } from '../../../src/backend/workbooks/workbook-library-service.js';
 import { encodeSavedWorkbook, type WorkbookOperation } from '../../../src/models/dashboard/workbooks.js';
@@ -16,7 +17,7 @@ const at = IsoInstantSchema.parse('2026-11-02T00:00:00.000Z');
 const roots: string[] = [], databases: DatabaseSync[] = [];
 afterEach(() => { databases.splice(0).forEach(db => db.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
 function open(path = ':memory:', initialize = true) {
-  const database = new DatabaseSync(path); databases.push(database);
+  const database = new DatabaseSync(path); databases.push(database); configureWritableConnection(database, 5000);
   if (initialize) for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(statement);
   const tx = <T>(work: () => T): T => {
     database.exec('BEGIN IMMEDIATE');
@@ -38,10 +39,125 @@ function fixture(path?: string) {
   const rosterType = f.repository.types().find(type => type.id === 'roster');
   if (!rosterType) throw new Error('roster type missing from fixture');
   f.repository.putType({ ...rosterType, defaultWorkbookId: saved.libraryId });
-  const operation = (operationId: string, change: WorkbookOperation['change']): WorkbookOperation => ({ operationId, at, source: { kind: 'run', runId: 'run-1' }, change });
+  const operation = (operationId: string, change: WorkbookOperation['change']): WorkbookOperation => ({ operationId, at, source: { kind: 'run', runId: '10000000-0000-4000-8000-000000000001' }, change });
   const patch = (operationId: string, key: string, note: string) => operation(operationId, { kind: 'patch', key, values: { 'roster.notes': note } });
   return { ...f, id: saved.libraryId, patch, operation };
 }
+function generalFixture() {
+  const f = open();
+  const saved = f.service.create({ name: 'General.xlsx', themes: [], hasFormulas: false,
+    sheets: [{ id: 'people', name: 'People', width: 3, hidden: [], headerRow: 1,
+      columnBindings: ['email', 'roster.result', 'roster.notes'].map((fieldId, index) => ({ id: `field-${index}`,
+        sourceColumn: index, sourceHeader: fieldId, fieldId, basis: 'manual' })),
+      rows: [{ id: 'header', cells: ['email', 'roster.result', 'roster.notes'].map(value => ({ value })) },
+        { id: 'alice', cells: [{ value: 'alice@example.test' }, { value: null }, { value: null }] },
+        { id: 'bob', cells: [{ value: 'bob@example.test' }, { value: null }, { value: null }] }] }] });
+  const captured = (operationId: string) => ({ operationId, at,
+    source: { kind: 'run-reference' as const, runId: '10000000-0000-4000-8000-000000000001', referenceDigest: 'a'.repeat(64),
+      authority: { versionId: 'original', sheetId: 'people', keyFieldId: 'email',
+        requiredFields: ['email', 'roster.result', 'roster.notes'], writableFields: ['roster.result'] } },
+    change: { kind: 'patch' as const, key: 'alice@example.test', values: { 'roster.result': 'complete' },
+      expectedVersion: 1, selection: { sheetId: 'people', rowId: 'alice', expectedVersion: 1 } } });
+  return { ...f, id: saved.libraryId, captured };
+}
+it('syncs General mapped rows only with captured key proof and retains operator cells across reordered IDs and headers', () => {
+  const f = generalFixture();
+  expect(f.repository.operation(f.id, f.captured('captured-fill'))).toMatchObject({ state: 'applied' });
+  const filled = f.service.read(f.id), edited = structuredClone(filled.workbook);
+  edited.sheets[0].rows[1].cells[2].value = 'operator';
+  const saved = f.service.save(f.id, filled.version, edited), incoming = encodeSavedWorkbook(saved).workbook;
+  const sheet = incoming.sheets[0];
+  sheet.rows = [sheet.rows[0], sheet.rows[2], sheet.rows[1]].map((row, index) => ({ ...row, id: `remote-${index}` }));
+  sheet.rows.forEach(row => { row.cells = [row.cells[2], row.cells[0], row.cells[1]]; });
+  delete sheet.columnBindings;
+  sheet.rows[2].cells[0].value = 'remote-note'; sheet.rows[2].cells[2].value = 'remote-result';
+  const operation = { operationId: 'general-sync', source: { kind: 'sync' as const, syncId: 'general-sync' }, at,
+    change: { kind: 'sync' as const, expectedVersion: saved.version, workbook: incoming } };
+  expect(f.repository.operation(f.id, operation)).toMatchObject({ state: 'applied' });
+  const synced = f.service.read(f.id);
+  expect(synced.workbook.sheets[0].rows[2].cells.map(cell => cell.value)).toEqual(['operator', 'alice@example.test', 'complete']);
+  expect(f.service.revision(f.id, saved.version)).toEqual(saved);
+  expect(f.repository.operation(f.id, operation)).toMatchObject({ state: 'applied' });
+  expect(f.service.read(f.id)).toEqual(synced);
+});
+it('refuses General owned sync when a captured key is removed or duplicated without changing the workbook', () => {
+  const f = generalFixture(); f.repository.operation(f.id, f.captured('captured-fill'));
+  const before = f.service.read(f.id);
+  for (const [id, mutate] of [
+    ['removed', (workbook: ReturnType<typeof encodeSavedWorkbook>['workbook']) => { workbook.sheets[0].rows[1].cells[0].value = 'other@example.test'; }],
+    ['duplicate', (workbook: ReturnType<typeof encodeSavedWorkbook>['workbook']) => { workbook.sheets[0].rows[2].cells[0].value = 'alice@example.test'; }],
+  ] as const) {
+    const incoming = encodeSavedWorkbook(before).workbook; delete incoming.sheets[0].columnBindings; mutate(incoming);
+    expect(f.repository.operation(f.id, { operationId: `general-${id}`, source: { kind: 'sync', syncId: id }, at,
+      change: { kind: 'sync', expectedVersion: before.version, workbook: incoming } })).toMatchObject({ state: 'resolve-required', reason: 'sync-ambiguous' });
+    expect(f.service.read(f.id)).toEqual(before);
+  }
+});
+it('restores a verified missing output header and keeps unrelated new sheets unmapped in General Sync', () => {
+  const f = generalFixture(); f.repository.operation(f.id, f.captured('captured-fill'));
+  const before = f.service.read(f.id), incoming = encodeSavedWorkbook(before).workbook;
+  const sheet = incoming.sheets[0]; delete sheet.columnBindings;
+  sheet.rows.forEach(row => { row.cells.splice(1, 1); }); sheet.width = 2;
+  incoming.sheets.push({ id: 'remote-extra', name: 'Remote extra', width: 1, hidden: [],
+    rows: [{ id: 'extra-header', cells: [{ value: 'Unmapped' }] }, { id: 'extra-row', cells: [{ value: 'remote' }] }] });
+  const result = f.repository.operation(f.id, { operationId: 'missing-output-sync', source: { kind: 'sync', syncId: 'missing-output-sync' }, at,
+    change: { kind: 'sync', expectedVersion: before.version, workbook: incoming } });
+  expect(result.state).toBe('applied');
+  const after = f.service.read(f.id).workbook;
+  expect(after.sheets[0].columnBindings?.find(binding => binding.fieldId === 'roster.result')?.sourceHeader).toBe('roster.result');
+  expect(after.sheets[0].rows[1].cells.at(-1)?.value).toBe('complete');
+  expect(after.sheets[1].columnBindings).toBeUndefined();
+});
+it('carries a historical keyed owner through legacy Sync before a captured patch enables scoped Sync', () => {
+  const f = fixture();
+  expect(f.repository.operation(f.id, f.patch('legacy-bob', '002', 'legacy'))).toMatchObject({ state: 'applied' });
+  const first = f.service.read(f.id), legacyIncoming = encodeSavedWorkbook(first).workbook;
+  legacyIncoming.sheets[0].rows[2].id = 'remote-bob';
+  expect(f.repository.operation(f.id, { operationId: 'legacy-sync', source: { kind: 'sync', syncId: 'legacy-sync' }, at,
+    change: { kind: 'sync', expectedVersion: first.version, workbook: legacyIncoming } })).toMatchObject({ state: 'applied' });
+  const afterLegacy = f.service.read(f.id);
+  const captured = { operationId: 'captured-alice', at, source: { kind: 'run-reference' as const, runId: '10000000-0000-4000-8000-000000000001',
+    referenceDigest: 'a'.repeat(64), authority: { versionId: 'original', sheetId: 'people', keyFieldId: 'eid',
+      requiredFields: ['eid', 'roster.notes'], writableFields: ['roster.notes'] } },
+    change: { kind: 'patch' as const, key: '001', values: { 'roster.notes': 'captured' },
+      expectedVersion: afterLegacy.version, selection: { sheetId: 'people', rowId: 'alice', expectedVersion: afterLegacy.version } } };
+  expect(f.repository.operation(f.id, captured)).toMatchObject({ state: 'applied' });
+  const before = f.service.read(f.id), incoming = encodeSavedWorkbook(before).workbook;
+  incoming.sheets[0].rows[1].id = 'new-alice'; incoming.sheets[0].rows[2].id = 'new-bob';
+  incoming.sheets[0].rows[0].cells = ['eid', 'roster.legalName', 'roster.notes'].map(value => ({ value }));
+  delete incoming.sheets[0].columnBindings;
+  expect(f.repository.operation(f.id, { operationId: 'scoped-sync', source: { kind: 'sync', syncId: 'scoped-sync' }, at,
+    change: { kind: 'sync', expectedVersion: before.version, workbook: incoming } })).toMatchObject({ state: 'applied' });
+  const after = f.service.read(f.id);
+  expect(after.workbook.sheets[0].rows[1].cells[2].value).toBe('captured');
+  expect(after.workbook.sheets[0].rows[2].cells[2].value).toBe('legacy');
+  expect(f.service.revision(f.id, before.version)).toEqual(before);
+});
+it('refuses scoped Sync when two differently keyed old rows would merge into one incoming row', () => {
+  const f = open();
+  const saved = f.service.create({ name: 'Dual keys.xlsx', themes: [], hasFormulas: false,
+    sheets: [{ id: 'people', name: 'People', width: 4, hidden: [], headerRow: 1,
+      columnBindings: ['email', 'eid', 'roster.result', 'roster.notes'].map((fieldId, index) => ({ id: `field-${index}`,
+        sourceColumn: index, sourceHeader: fieldId, fieldId, basis: 'manual' })),
+      rows: [{ id: 'header', cells: ['email', 'eid', 'roster.result', 'roster.notes'].map(value => ({ value })) },
+        { id: 'alice', cells: [{ value: 'alice@example.test' }, { value: '001' }, { value: null }, { value: null }] },
+        { id: 'bob', cells: [{ value: 'bob@example.test' }, { value: '002' }, { value: null }, { value: null }] }] }] });
+  const fill = (operationId: string, rowId: string, keyFieldId: string, key: string, field: string, expectedVersion: number) => ({
+    operationId, at, source: { kind: 'run-reference' as const, runId: '10000000-0000-4000-8000-000000000001', referenceDigest: 'a'.repeat(64),
+      authority: { versionId: 'original', sheetId: 'people', keyFieldId,
+        requiredFields: ['email', 'eid', 'roster.result', 'roster.notes'], writableFields: [field] } },
+    change: { kind: 'patch' as const, key, values: { [field]: operationId }, expectedVersion,
+      selection: { sheetId: 'people', rowId, expectedVersion } } });
+  expect(f.repository.operation(saved.libraryId, fill('alice-result', 'alice', 'email', 'alice@example.test', 'roster.result', 1))).toMatchObject({ state: 'applied' });
+  expect(f.repository.operation(saved.libraryId, fill('bob-notes', 'bob', 'eid', '002', 'roster.notes', 2))).toMatchObject({ state: 'applied' });
+  const before = f.service.read(saved.libraryId), incoming = encodeSavedWorkbook(before).workbook;
+  delete incoming.sheets[0].columnBindings;
+  incoming.sheets[0].rows[1].cells[1].value = '002';
+  incoming.sheets[0].rows[2].cells[1].value = '001';
+  expect(f.repository.operation(saved.libraryId, { operationId: 'collision-sync', source: { kind: 'sync', syncId: 'collision-sync' }, at,
+    change: { kind: 'sync', expectedVersion: before.version, workbook: incoming } })).toMatchObject({ state: 'resolve-required', reason: 'sync-ambiguous' });
+  expect(f.service.read(saved.libraryId)).toEqual(before);
+});
 it('keeps one master, manual named snapshots and independent immutable creation after reopen', () => {
   const root = mkdtempSync(join(tmpdir(), 'relay-master-')); roots.push(root); const path = join(root, 'db.sqlite');
   const f = fixture(path), initial = f.repository.creation(f.id);
@@ -159,8 +275,8 @@ it('rolls back content, ownership and receipt together while retaining pending a
   f.database.exec('DROP TRIGGER injected'); f.repository.drain(f.id);
   expect(f.repository.journal(f.id).at(-1)?.state).toBe('applied');
 });
-it('snapshots requested keys only, with immutable wire dates and exact worksheet membership', () => {
-  const f = fixture(); const snapshot = f.service.snapshot({ typeId: 'roster', keys: ['001', 'absent'], fields: ['roster.legalName'] });
+it('retains typed-reader snapshots of requested keys with immutable wire dates and exact worksheet membership', () => {
+  const f = fixture(); const snapshot = f.repository.snapshot({ typeId: 'roster', libraryId: f.id, keys: ['001', 'absent'], fields: ['roster.legalName'] });
   expect(snapshot.rows[0]).toMatchObject({ key: '001', state: 'matched', matches: [{ sheetId: 'people', rowId: 'alice', values: { 'roster.legalName': { type: 'date', value: '2000-01-01T00:00:00.000Z' } } }] });
   expect(snapshot.rows[1]).toEqual({ key: 'absent', state: 'missing', matches: [] });
   f.repository.operation(f.id, f.patch('fill', '001', 'new'));
@@ -329,7 +445,7 @@ it('patches imported numeric keys, prevents adding an existing numeric key and j
   expect(f.repository.operation(f.id, f.operation('numeric-add', { kind: 'add', sheetId: sheet.id, rowId: 'duplicate', key: '10800000', values: { 'roster.notes': 'new' } })))
     .toMatchObject({ state: 'resolve-required', reason: 'duplicate-key' });
   expect(f.service.read(f.id)).toEqual(current);
-  const snapshot = f.service.snapshot({ libraryId: f.id, typeId: 'roster', keys: ['10800000', '00108', '108'], fields: ['eid', 'roster.legalName'] });
+  const snapshot = f.repository.snapshot({ libraryId: f.id, typeId: 'roster', keys: ['10800000', '00108', '108'], fields: ['eid', 'roster.legalName'] });
   expect(snapshot.rows).toEqual([
     { key: '10800000', state: 'matched', matches: [{ sheetId: sheet.id, rowId: sheet.rows[1].id, values: { eid: 10800000, 'roster.legalName': 'Alice' } }] },
     { key: '00108', state: 'matched', matches: [{ sheetId: sheet.id, rowId: sheet.rows[3].id, values: { eid: '00108', 'roster.legalName': 'Padded' } }] },
@@ -372,7 +488,7 @@ it('refuses numeric/string key collisions across patch, add, snapshot and owned 
   expect(f.repository.operation(f.id, f.patch('collision-patch', '10800000', 'unsafe'))).toMatchObject({ state: 'resolve-required', reason: 'duplicate-key' });
   expect(f.repository.operation(f.id, f.operation('collision-add', { kind: 'add', sheetId: sheet.id, rowId: 'another', key: '10800000', values: { 'roster.notes': 'unsafe' } })))
     .toMatchObject({ state: 'resolve-required', reason: 'duplicate-key' });
-  const snapshot = f.service.snapshot({ libraryId: f.id, typeId: 'roster', keys: ['10800000'], fields: ['eid'] });
+  const snapshot = f.repository.snapshot({ libraryId: f.id, typeId: 'roster', keys: ['10800000'], fields: ['eid'] });
   expect(snapshot.rows[0]).toMatchObject({ state: 'ambiguous', matches: [{ values: { eid: 10800000 } }, { values: { eid: '10800000' } }] });
   expect(f.service.read(f.id)).toEqual(saved);
 });
@@ -392,6 +508,6 @@ it('does not treat booleans, dates, blanks or null as canonical string keys', as
   edited.sheets[0].rows[3].cells[0].value = null;
   edited.sheets[0].rows.push({ id: 'blank-key', cells: [{ value: '' }, { value: 'Blank' }, { value: null }] });
   f.service.save(f.id, current.version, edited);
-  const snapshot = f.service.snapshot({ libraryId: f.id, typeId: 'roster', keys: ['true', '2026-01-01T00:00:00.000Z', 'null'], fields: ['eid'] });
+  const snapshot = f.repository.snapshot({ libraryId: f.id, typeId: 'roster', keys: ['true', '2026-01-01T00:00:00.000Z', 'null'], fields: ['eid'] });
   expect(snapshot.rows).toEqual(['true', '2026-01-01T00:00:00.000Z', 'null'].map(key => ({ key, state: 'missing', matches: [] })));
 });

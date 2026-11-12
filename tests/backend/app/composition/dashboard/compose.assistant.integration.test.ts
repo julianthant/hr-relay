@@ -1,4 +1,4 @@
-import { ASSISTANT_HISTORY_TABLES, faultAuthoritySnapshot, assertHttpFaultOnly } from "../../../../support/helpers/backend/http-route-harness.js";
+import { ASSISTANT_HISTORY_TABLES, faultAuthoritySnapshot, assertHttpFaultOnly, assertOnlyLoopStallWrites } from "../../../../support/helpers/backend/http-route-harness.js";
 import { AssistantHistoryResultSchema, AssistantModelPreferenceViewSchema, AssistantRespondEnvelopeSchema, type AssistantHistoryOperation, type AssistantRequest } from '../../../../../src/models/dashboard/assistant.js';
 import { withAuthorityDatabaseReadOnly } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import configuredSources from "../../../../../config/dashboard-workflow-sources.json";
@@ -9,15 +9,10 @@ import { randomUUID } from "node:crypto";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
-import { spawn } from "node:child_process";
-import { once } from "node:events";
 import { NotificationRecordSchema } from "../../../../../src/models/notifications/notifications.js";
-import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
-import { workerPoolMember, type WorkerPoolMember } from "../../../../../src/models/run/worker-slot.js";
-import { bindWorkerProcessAdmission } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import * as workerCapacity from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
-import { RunWorkerStartupError, type RunWorkerCapacity, runCapacityCommandId } from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
+import { RunWorkerStartupError, type RunWorkerCapacity } from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
 import { assistantProposalDigest } from "../../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js";
 
 import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
@@ -31,6 +26,7 @@ import { chatGptFixture } from "../../../../support/helpers/chatgpt-account-fixt
 import { completedResponseStream } from "../../../../support/helpers/chatgpt-response-stream.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
+import { ScriptedWorkerChild } from "../../../../support/helpers/backend/fake-worker-port.js";
 import { EXECUTOR_EID, personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
@@ -203,7 +199,7 @@ it('serves the read tools through authenticated composition without private prov
       chats: database.prepare('SELECT * FROM assistant_chats ORDER BY id').all(), actions: database.prepare('SELECT * FROM assistant_actions ORDER BY id').all(),
       commands: database.prepare('SELECT * FROM commands ORDER BY id').all(), audits: database.prepare('SELECT * FROM command_audits ORDER BY id').all(),
     }));
-    const before = durable(), controls = context.database.authority.workerControls.list();
+    const before = durable();
     assert.deepEqual(await ask('Explain this run', subjectRef), { state: 'answered', text: `Person Lookup · EID ${EXECUTOR_EID} · ${run.envelope.enqueuedAt} · attempt ${String(run.envelope.attempt)} is ${detail.header.status}.` });
     assert.equal(turns, 3);
     const [read, logs] = outputs;
@@ -214,7 +210,7 @@ it('serves the read tools through authenticated composition without private prov
     const foreign = await originalFetch(`${origin}/api/v1/assistant/respond`, { method: 'POST', headers: { Origin: 'https://foreign.invalid', 'Content-Type': 'application/json' },
       body: JSON.stringify({ conversationId: randomUUID(), expectedRevision: 1, messageId: randomUUID(), message: 'run status', subjectRef }) });
     assert.equal(foreign.status, 403); assert.equal(turns, 3);
-    assert.deepEqual(durable(), before); assert.deepEqual(context.database.authority.workerControls.list(), controls);
+    assert.deepEqual(durable(), before);
     assert.deepEqual(context.database.authority.runs.get(run.envelope.runId), run);
   });
 });
@@ -300,9 +296,9 @@ it('serves preference CAS and replay', async () => {
       const changed = AssistantModelPreferenceViewSchema.parse(await (await originalFetch(`${origin}/api/v1/assistant/model-preference`)).json());
       assert.equal(changed.revision, view.revision + 1);
       assert.deepEqual(changed.preference, command.payload);
-      const beforeReplay = context.database.getMeta().authorityGeneration;
+      const beforeReplay = { generation: context.database.getMeta().authorityGeneration, timeline: context.database.authority.timelineEvents.page({ limit: 500 }) };
       assert.equal(CommandResultSchema.parse(await post('commands', command)).state, 'already-applied');
-      assert.equal(context.database.getMeta().authorityGeneration, beforeReplay);
+      assertOnlyLoopStallWrites(context.database, beforeReplay);
       const beforeForeign = transport.calls.length, beforeForeignFault = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
       const foreign = { ...command, commandId: randomUUID(), target: { ...command.target, profileId: randomUUID(), expectedRevision: changed.revision } };
       assert.notEqual(CommandResultSchema.parse(await post('commands', foreign)).state, 'applied');
@@ -422,13 +418,10 @@ it.each([
 
 
 it.each(["current", "deleted"] as const)("rechecks the %s selected source after the real same-workflow capacity wait", async change => {
-  type Birth = { child: ReturnType<typeof spawn>; member: WorkerPoolMember; ready: Promise<unknown>;
-    closed: Promise<{ code: number | null; signal: string | null }> };
-  const birth = Promise.withResolvers<Birth>(), children: Birth[] = [];
-  await withServedAssistant(async ({ profile, context, transport, clock, origin }) => {
+  const birth = Promise.withResolvers<ScriptedWorkerChild>(), children: ScriptedWorkerChild[] = [];
+  await withServedAssistant(async ({ context, transport, clock, origin }) => {
     const database = context.database, client = createDashboardClient({ baseUrl: origin });
     const pending: Promise<{ result: unknown } | { error: unknown }>[] = [], failures: unknown[] = [];
-    let processLock: ReturnType<typeof bindWorkerProcessAdmission>["processLock"] | undefined;
     try {
       const plan = await client.submitStartPlan({ workflowId: "person-lookup", dryRun: false,
         submissions: [{ emplId: "10873690" }, { emplId: "10873698" }], browserMode: "headless", captureBrowserScreenshots: true });
@@ -444,12 +437,10 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
         if ("error" in outcome) throw outcome.error;
         throw new Error(`first start settled before worker birth: ${outcome.result.state}`);
       })]);
-      assert.equal(await owned.ready, "ready");
       assert.equal(firstSettled, false);
       assert.equal(children.length, 1);
       const firstAudit = database.authority.commandAudits.findByCommand(firstCommandId);
       assert.equal(firstAudit?.result.state, "applied");
-      assert.equal(database.authority.workerLeases.get(owned.member.workerId), undefined);
       const runs = database.authority.runs.listByWorkflow("person-lookup"); assert.equal(runs.length, 2);
       const selected = runs.find(run => z.object({ emplId: z.string() }).parse(run.input.raw).emplId === "10873698"); assert.ok(selected);
       const cancelCommandId = randomUUID();
@@ -485,7 +476,7 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       assert.notEqual(assistantPlan.startPlanId, plan.startPlanId);
       assert.deepEqual(assistantPlan.refused, []); assert.equal(assistantPlan.planned.length, 1);
       assert.deepEqual(assistantPlan.planned[0]?.input.value, source.input.parsed.value);
-      const beforeRuns = database.authority.runs.listByWorkflow("person-lookup"), beforeControls = database.authority.workerControls.list();
+      const beforeRuns = database.authority.runs.listByWorkflow("person-lookup");
       assert.equal(record.state, "prepared");
       assert.equal(database.authority.commandAudits.findByCommand(record.command.commandId), undefined);
       assert.equal(proposed.proposal.effect, "workflow-start"); if (proposed.proposal.effect !== "workflow-start") throw new Error("start card required");
@@ -501,7 +492,6 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       await vi.waitFor(() => assert.equal(database.authority.assistantAuthorization.action(record.id)?.state, "claimed"), { timeout: 5_000, interval: 25 });
       assert.equal(firstSettled, false); assert.equal(assistantSettled, false);
       assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), beforeRuns);
-      assert.deepEqual(database.authority.workerControls.list(), beforeControls);
       assert.equal(database.authority.commands.get(record.command.commandId), undefined);
       assert.equal(database.authority.commandAudits.findByCommand(record.command.commandId), undefined);
       assert.equal(children.length, 1);
@@ -524,25 +514,8 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       assert.equal(firstSettled, false); assert.equal(assistantSettled, false);
       assert.equal(database.authority.assistantAuthorization.action(record.id)?.state, "claimed");
       assert.equal(database.authority.commandAudits.findByCommand(record.command.commandId), undefined);
-      assert.deepEqual(database.authority.workerControls.list(), beforeControls);
-      const pid = owned.child.pid; assert.ok(pid !== undefined);
-      const workerDatabase = AuthorityDatabase.open(context.admission,
-        { path: profile.path, busyTimeoutMs: 250, migrationOwner: "assistant-capacity-birth" }, clock,
-        undefined, undefined, undefined, context.credentials);
-      let binderCloseAttempted = false;
-      try {
-        const bound = bindWorkerProcessAdmission({ authorityPath: profile.path, processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot),
-          clock, pid, workerId: owned.member.workerId, open: () => workerDatabase, close: value => { binderCloseAttempted = true; value.close(); },
-          admit: value => value.withAuthorityReadSnapshot(() => {
-            const slot = value.authority.workerSlots.get(owned.member.workerId); assert.ok(slot);
-            assert.deepEqual(workerPoolMember(slot), owned.member); return owned.member.workerId;
-          }) });
-        processLock = bound.processLock;
-        const spawnCommandId = runCapacityCommandId(firstCommandId, "spawn-worker", owned.member.poolIndex);
-        assert.equal(workerDatabase.authority.workerControls.get(spawnCommandId)?.request.type, "spawn-worker");
-        assert.equal(workerDatabase.authority.workerLeases.start({ commandId: spawnCommandId, workerId: bound.workerId, workflow: "person-lookup",
-          browserSystems: ["crm", "ucpath"], processId: pid, requestedBy: "local-operator", now: clock.now().toISOString() }).state, "started");
-      } finally { if (!binderCloseAttempted) workerDatabase.close(); }
+      assert.equal(database.authority.workerSlots.get(owned.workerId)?.workflow, "person-lookup");
+      owned.ready();
       const firstOutcome = await first;
       if ("error" in firstOutcome) throw firstOutcome.error;
       assert.equal(firstOutcome.result.state, "applied");
@@ -569,53 +542,22 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       assert.deepEqual(database.authority.commandAudits.findByCommand(firstCommandId), firstAudit);
       assert.equal(database.authority.commandAudits.findByCommand(cancelCommandId)?.result.state, "applied");
       assert.equal(children.length, 1);
-      assert.deepEqual(database.authority.workerControls.list().map(control => control.commandId), beforeControls.map(control => control.commandId));
-      const finishedRuns = database.authority.runs.listByWorkflow("person-lookup"), finishedControls = database.authority.workerControls.list();
+      const finishedRuns = database.authority.runs.listByWorkflow("person-lookup");
       const beforeRefusal = faultAuthoritySnapshot({ database, stateRoot: context.admission.stateRoot });
       assert.equal((await client.assistantDecide(decision)).state, "refused");
       assertAssistantProposalFaults({ database, stateRoot: context.admission.stateRoot }, beforeRefusal, "action-decision");
       assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), finishedRuns);
-      assert.deepEqual(database.authority.workerControls.list(), finishedControls);
       assert.equal(children.length, 1);
     } catch (error) { failures.push(error); }
-    for (const owned of children) {
-      try {
-        if (owned.child.connected) await new Promise<void>((resolve, reject) => {
-          owned.child.send("stop", error => { if (error === null) resolve(); else reject(error); });
-        });
-        assert.deepEqual(await owned.closed, { code: 0, signal: null });
-        const pid = owned.child.pid; assert.ok(pid !== undefined);
-        assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
-        assert.throws(() => process.kill(-pid, 0), { code: "ESRCH" });
-      } catch (error) { failures.push(error); }
-    }
     for (const execution of pending) {
       const outcome = await execution;
       if ("error" in outcome) failures.push(outcome.error);
     }
-    if (failures.length === 0) {
-      try {
-        assert.equal(children.length, 1); assert.ok(processLock);
-        const owned = children[0]; assert.ok(owned);
-        const member = owned.member, lease = database.authority.workerLeases.get(member.workerId); assert.ok(lease);
-        assert.equal(lease.processId, owned.child.pid);
-        const lifetime = { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt };
-        database.settleInterruptedWorker(profile.lifetime, member.workerId, lease.leaseGeneration, clock.now().toISOString());
-        assert.equal(database.authority.workerLeases.get(member.workerId)?.lifecycle.state, "stopped");
-        database.assertWorkerLifecycleRelease(member.workerId);
-        assert.ok(database.authority.workerControls.browsers(member.workerId).every(browser => browser.health === "closed"));
-        processLock.release();
-        database.assertStoppedWorkerLifetime(member, lifetime);
-      } catch (error) { failures.push(error); }
-    }
     if (failures.length > 0) throw new AggregateError(failures, "Assistant capacity wait fixture failed", { cause: failures[0] });
-  }, { spawn: ({ member }) => {
-    const child = spawn(process.execPath, ["-e", 'process.on("message", () => { process.disconnect(); }); process.send("ready");'],
-      { detached: true, env: {}, stdio: ["ignore", "ignore", "ignore", "ipc"] });
-    const ready = once(child, "message").then(([message]: unknown[]) => message);
-    const closed = new Promise<{ code: number | null; signal: string | null }>(resolve => { child.once("close", (code, signal) => resolve({ code, signal })); });
-    const owned = { child, member, ready, closed }; children.push(owned); birth.resolve(owned);
-    return { pid: child.pid, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
+  }, { spawn: request => {
+    const child = new ScriptedWorkerChild(7001, request, { ready: false, exitOnStop: true, reply: () => ({ state: "done", result: null }) });
+    children.push(child); birth.resolve(child);
+    return child;
   } });
 });
 

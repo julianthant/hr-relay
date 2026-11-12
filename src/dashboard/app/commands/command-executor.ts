@@ -1,6 +1,6 @@
-import { createErrorCatalogFailure,formatErrorCatalogFailure,type ErrorCatalogMessage } from "../../../models/failures/error-catalog.js";
+import { createErrorCatalogFailure,ERROR_CATALOG,ErrorCatalogCodeSchema,formatErrorCatalogFailure,type ErrorCatalogMessage } from "../../../models/failures/error-catalog.js";
 import { deriveBulkChildCommand } from "../../../rules/commands/command-groups.js";
-import { BulkRunCommandRequestSchema,CommandRequestSchema,type BulkRunCommandOutcome,type BulkRunCommandRequest,type BulkRunCommandResponse,type CommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
+import { BulkRunCommandRequestSchema,DashboardCommandRequestSchema,type BulkRunCommandOutcome,type BulkRunCommandRequest,type BulkRunCommandResponse,type DashboardCommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { checkedBulkCommandResult,checkedCommandResult,type SharedCommands } from "../../client/commands/shared-commands.js";
 import { DashboardClientError } from "../../client/errors.js";
@@ -13,7 +13,7 @@ export interface CommandExecutionScope {
   readonly dayRequest: object;
 }
 
-export type RetainedCommandRequest = CommandRequest | BulkRunCommandRequest;
+export type RetainedCommandRequest = DashboardCommandRequest | BulkRunCommandRequest;
 export type CommandExecutionReply = CommandResult | BulkRunCommandResponse | BulkRunCommandOutcome;
 export type CommandReadbackVerification =
   | { readonly state: "matched"; readonly evidence: unknown }
@@ -38,7 +38,7 @@ export type CommandOutcome = OutcomeData & (
 export interface CommandExecutionOptions {
   readonly scope: CommandExecutionScope;
   /** Proves effect, revision and every returned target's admitted relationship. */
-  readonly readback: (request: CommandRequest, reply: CommandResult | BulkRunCommandOutcome, scope: CommandExecutionScope) => Promise<CommandReadbackVerification>;
+  readonly readback: (request: DashboardCommandRequest, reply: CommandResult | BulkRunCommandOutcome, scope: CommandExecutionScope) => Promise<CommandReadbackVerification>;
   readonly publish?: (outcome: CommandOutcome) => void;
 }
 
@@ -56,6 +56,9 @@ interface Attempt {
   readonly scope: CommandExecutionScope;
   state: "pending" | "settled";
   outcome?: CommandOutcome;
+  /** Resolves when the current pending dispatch or check settles. */
+  settling?: Promise<void>;
+  release?: () => void;
 }
 interface Reservation { readonly attempt: Attempt; readonly token: object }
 
@@ -67,7 +70,7 @@ function sameScope(left: CommandExecutionScope | undefined, right: CommandExecut
   return left?.actorId === right.actorId && left.client === right.client && left.authority === right.authority && left.dayRequest === right.dayRequest;
 }
 
-function lockKey(request: CommandRequest): string {
+function lockKey(request: DashboardCommandRequest): string {
   let identity: readonly unknown[];
   switch (request.family) {
     case "ocr-review": identity = [request.target.runId]; break;
@@ -77,7 +80,8 @@ function lockKey(request: CommandRequest): string {
     case "gate": identity = [request.target.runId, request.target.gateId]; break;
     case "start": identity = [request.target.workflowId, request.target.startPlanId]; break;
     case "intake": identity = [request.target.intakeSessionId]; break;
-    case "worker-browser": identity = "workflowId" in request.target ? [request.target.workflowId] : [request.target.workerId]; break;
+    case "worker-browser": identity = request.type === "remove-worker" ? [request.target.workerId]
+      : "workflowId" in request.target ? [request.target.workflowId] : [request.target.workerId]; break;
     case "settings": identity = []; break;
     case "notification": identity = "members" in request.target ? ["collection", request.target.actorId] : [request.target.notificationId, request.target.actorId]; break;
     case "workflow-batch": identity = [request.target.batchId]; break;
@@ -86,7 +90,7 @@ function lockKey(request: CommandRequest): string {
   return JSON.stringify([request.family, request.type, ...identity]);
 }
 
-function children(request: RetainedCommandRequest): readonly CommandRequest[] {
+function children(request: RetainedCommandRequest): readonly DashboardCommandRequest[] {
   return "targets" in request ? request.targets.map(target => deriveBulkChildCommand(request, target)) : [request];
 }
 
@@ -103,14 +107,20 @@ export class CommandExecutor {
   constructor(private readonly currentScope: () => CommandExecutionScope | undefined) {}
 
   retainedAttempts(): readonly RetainedCommandAttempt[] {
-    return Object.freeze([...new Set(this.attempts.values())].map(attempt => Object.freeze({ ...attempt })));
+    return Object.freeze([...new Set(this.attempts.values())].map(({ request, body, scope, state, outcome }) => Object.freeze({ request, body, scope, state, ...(outcome === undefined ? {} : { outcome }) })));
+  }
+
+  /** Resolves once the attempt's in-flight dispatch or check has settled; at once when none is in flight. */
+  async whenSettled(commandId: string): Promise<void> {
+    const attempt = this.attempts.get(commandId);
+    if (attempt?.state === "pending") await attempt.settling;
   }
 
   async execute(input: unknown, options: CommandExecutionOptions): Promise<CommandOutcome> {
     let request: RetainedCommandRequest;
     try {
       request = deepFreeze(typeof input === "object" && input !== null && "targets" in input
-        ? BulkRunCommandRequestSchema.parse(input) : CommandRequestSchema.parse(input));
+        ? BulkRunCommandRequestSchema.parse(input) : DashboardCommandRequestSchema.parse(input));
     } catch (cause) {
       return this.publish({ kind: "failed", commandId: "", feedback: feedback("COMMAND_DISPATCH_FAILED"), cause }, options);
     }
@@ -124,7 +134,7 @@ export class CommandExecutor {
   }
 
   async check(commandId: string, options: CommandExecutionOptions & {
-    readonly observe: (request: CommandRequest) => Promise<CommandResult | undefined>;
+    readonly observe: (request: DashboardCommandRequest) => Promise<CommandResult | undefined>;
   }): Promise<CommandOutcome> {
     const attempt = this.attempts.get(commandId);
     if (attempt === undefined || "targets" in attempt.request) return this.publish(this.refuse(commandId, "attempt-unavailable"), options);
@@ -135,7 +145,7 @@ export class CommandExecutor {
     const key = lockKey(request);
     const held = this.reservations.get(key);
     if (held?.attempt !== attempt) return this.publish(this.refuse(commandId, "attempt-unavailable"), options);
-    attempt.state = "pending";
+    attempt.state = "pending"; attempt.settling = new Promise(resolve => { attempt.release = resolve; });
     let outcome: CommandOutcome;
     try {
       const observed = await options.observe(request);
@@ -144,10 +154,14 @@ export class CommandExecutor {
         : await this.settle(request, checkedCommandResult(request, observed), options);
     } catch (cause) { outcome = uncertain(commandId, cause); }
     if (!sameScope(this.currentScope(), options.scope)) outcome = uncertain(commandId, "scope-replaced");
-    if (outcome.kind !== "confirmed") outcome = uncertain(commandId, outcome, outcome.reply);
-    attempt.state = "settled";
+    if (request.type === "remove-worker" && outcome.kind === "conflict" && outcome.feedback.code === "WORKER_TARGET_STALE") {
+      outcome = { ...outcome, kind: "refused" };
+    }
+    // A recorded refusal proves no effect; anything else short of confirmation stays checkable.
+    if (outcome.kind !== "confirmed" && outcome.kind !== "refused") outcome = uncertain(commandId, outcome, outcome.reply);
+    attempt.state = "settled"; attempt.release?.();
     attempt.outcome = Object.freeze(outcome);
-    if (outcome.kind === "confirmed" && this.reservations.get(key) === held) this.reservations.delete(key);
+    if ((outcome.kind === "confirmed" || outcome.kind === "refused") && this.reservations.get(key) === held) this.reservations.delete(key);
     return this.publish(outcome, options);
   }
 
@@ -164,7 +178,7 @@ export class CommandExecutor {
     return { kind: "refused", commandId, reason, feedback: feedback(reason === "scope-replaced" ? "DASHBOARD_AUTHORITY_REPLACED" : "COMMAND_REFUSED") };
   }
 
-  private async settle(request: CommandRequest, reply: CommandResult | BulkRunCommandOutcome, options: CommandExecutionOptions): Promise<CommandOutcome> {
+  private async settle(request: DashboardCommandRequest, reply: CommandResult | BulkRunCommandOutcome, options: CommandExecutionOptions): Promise<CommandOutcome> {
     const commandId = request.commandId;
     if ("outcome" in reply) {
       switch (reply.outcome) {
@@ -175,12 +189,20 @@ export class CommandExecutor {
         case "applied": break;
       }
     } else {
+      const startCode = request.family === "start" && reply.state === "rejected"
+        && (reply.code === "RUN_START_PLAN_EXPIRED" || reply.code === "RUN_START_READINESS_BLOCKED"
+          || reply.code === "RUN_START_READINESS_UNAVAILABLE" || reply.code === "RUN_START_READINESS_CHANGED"
+          || reply.code === "PREFLIGHT_EVIDENCE_EXPIRED" || reply.code === "PREFLIGHT_TIMEOUT") ? reply.code : undefined;
+      const code = startCode ?? (request.family === "worker-browser" && (reply.state === "rejected" || reply.state === "conflict")
+        ? ErrorCatalogCodeSchema.safeParse(reply.message).data : undefined);
+      const refusal = code !== undefined && ERROR_CATALOG[code].parameters.safeParse({}).success
+        ? formatErrorCatalogFailure(createErrorCatalogFailure(code, {})) : undefined;
       switch (reply.state) {
         case "pending": return uncertain(commandId, reply, reply);
-        case "conflict": return { kind: "conflict", commandId, reply, feedback: feedback("COMMAND_CONFLICT") };
+        case "conflict": return { kind: "conflict", commandId, reply, feedback: refusal ?? feedback("COMMAND_CONFLICT") };
         case "confirmation-required": return { kind: "confirmation-required", commandId, reply, warningDigest: reply.warningDigest, feedback: feedback("COMMAND_CONFIRMATION_REQUIRED") };
         case "rejected": return reply.code === "authority-unjournaled" || reply.code === "authority-uncertain"
-          ? uncertain(commandId, reply, reply) : { kind: "refused", commandId, reply, feedback: feedback("COMMAND_REFUSED") };
+          ? uncertain(commandId, reply, reply) : { kind: "refused", commandId, reply, feedback: refusal ?? feedback("COMMAND_REFUSED") };
         case "applied": case "already-applied": break;
       }
     }
@@ -209,7 +231,7 @@ export class CommandExecutor {
       this.attempts.set(request.bulkCommandId, attempt);
       for (const command of commands) this.attempts.set(command.commandId, attempt);
     }
-    attempt.state = "pending";
+    attempt.state = "pending"; attempt.settling = new Promise(resolve => { attempt.release = resolve; });
     let outcome: CommandOutcome;
     try {
       if ("targets" in request) {
@@ -235,7 +257,7 @@ export class CommandExecutor {
         ? { kind: "refused", commandId: request.commandId, feedback: feedback("COMMAND_REFUSED"), cause }
         : uncertain(request.commandId, cause);
     }
-    attempt.state = "settled";
+    attempt.state = "settled"; attempt.release?.();
     attempt.outcome = Object.freeze(outcome);
     for (const [index, key] of keys.entries()) {
       const held = this.reservations.get(key);

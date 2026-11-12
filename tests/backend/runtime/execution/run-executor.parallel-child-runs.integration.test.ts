@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { afterEach, it } from "vitest";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, it, vi } from "vitest";
 import { runClaim } from "../../../../src/models/run/record.js";
+import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { queryQueueSummaries } from "../../../../src/backend/runs/queries/queue-summaries.js";
 import { childExecutionParallelRoot as root, childExecutionParallelModules as modules, childExecutionStores, childWaitModules, childPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { createDelegationExecutionWorld } from "../../../support/helpers/backend/delegation-execution-world.js";
@@ -88,6 +90,33 @@ it(`authenticates ${choice.visibility} parent membership through admission and $
   assert.equal(isQueueMember({ parent, status: settled.lifecycle.outcome }), mode === "ok" ? choice.doneMember : choice.failedMember);
 });
 }
+
+it("reuses delegation reads in one write transaction until a row changes or a savepoint rolls back", async () => {
+  const f = await fixture(childExecutionStores, "ok", childPolicyModules("cascade", "inline"));
+  assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "yielded-delegation");
+  const manifest = f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId)[0]; assert.ok(manifest);
+  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  const invocationReads = () => prepare.mock.calls.filter(([sql]) => sql.includes("'$.request.manifestId'")).length;
+  const write = (repositories: Parameters<Parameters<typeof f.database.withAuthorityTransaction>[0]>[0]) => repositories.commands.insert(CommandRequestSchema.parse({
+    commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
+    family: "run", type: "cancel", target: { runId: f.run.envelope.runId, expectedVersion: f.run.version } }));
+  try {
+    f.database.withAuthorityTransaction(repositories => {
+      const read = () => {
+        const before = invocationReads();
+        assert.equal(repositories.dependencies.authenticateGroup(manifest).children.length, manifest.children.length);
+        return invocationReads() - before;
+      };
+      assert.ok(read() > 0);
+      assert.equal(read(), 0);
+      write(repositories);
+      assert.ok(read() > 0);
+      assert.throws(() => f.database.withAuthorityTransaction(nested => { write(nested); assert.ok(read() > 0); throw new Error("controlled-rollback"); }), /controlled-rollback/u);
+      assert.ok(read() > 0);
+      assert.equal(read(), 0);
+    });
+  } finally { prepare.mockRestore(); }
+});
 
 it("keeps later-day inline children under their original parent day with exact attempt metadata", async () => {
   const f = await fixture(childExecutionStores, "ok", childPolicyModules("cascade", "inline"));

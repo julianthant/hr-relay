@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
@@ -10,7 +10,7 @@ import { type DashboardClient, createDashboardClient } from "../../../../src/das
 import { START_DOOR_ABSENCE } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import { type RunStartWorkflow, RunStartSurfaces } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../parity/helpers/fixture-day.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-day.js";
 import { createRoot, type Root } from "react-dom/client";
 import { type AppRouteState } from "../../../../src/dashboard/app/navigation/url-state.js";
 import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";
@@ -54,6 +54,32 @@ it("keeps the current view after a refused start", async () => {
   await dialog.press("Continue");
   await dialog.press("Start 1 run");
   assert.deepEqual(revealed, []);
+});
+
+it("Enter advances and starts, Shift+Enter keeps its newline, buttons keep their own Enter", async () => {
+  onTestFinished(cleanup);
+  const revealed: string[] = [];
+  const dialog = await openDialog(stubClient({
+    submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
+    executeCommand: async () => APPLIED,
+  }), undefined, (workflowId) => revealed.push(workflowId));
+  assert.ok(!dialog.text().includes("Enter to continue"), "nothing typed: no hint");
+  assert.equal(await dialog.enter(), false, "Enter does nothing while Continue is unavailable");
+  await dialog.type(TYPED);
+  assert.ok(dialog.text().includes("Enter to continue"));
+  assert.equal(await dialog.enter({ shift: true }), false, "Shift+Enter keeps its newline");
+  assert.equal(dialog.stage(), "Input");
+  const back = buttons().find(button => button.textContent?.trim() === "Cancel");
+  assert.ok(back);
+  assert.equal(await dialog.enter({ on: back }), false, "a focused button keeps its Enter");
+  assert.equal(await dialog.enter(), true);
+  assert.notEqual(dialog.stage(), "Input");
+  await dialog.enter({ on: document.body });
+  assert.equal(dialog.stage(), "Confirm");
+  assert.ok(dialog.text().includes("Enter to start"));
+  assert.deepEqual(revealed, []);
+  await dialog.enter({ on: document.body });
+  assert.deepEqual(revealed, [WORKFLOW_ID]);
 });
 
 describe("a settlement that arrives after the request moved is DROPPED", () => {
@@ -143,17 +169,7 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
     assert.equal(dialog.stage(), "Options");
   });
 
-  it("drops a settled result banner when the typed text moves under it", async () => {
-    const dialog = await reachResult();
-    assert.ok(dialog.text().includes("The start plan moved under this form"));
 
-    await dialog.press("Back");
-    await dialog.press("Back");
-    await dialog.type("10873698; Battistessa, Johnnie");
-
-    assert.ok(!dialog.text().includes("The start plan moved under this form"), "a settled banner stood over an edited request");
-    assert.equal(dialog.stage(), "Input");
-  });
 });
 
 describe("keeps optional steps and removes only the per-start destination", () => {
@@ -174,7 +190,7 @@ describe("keeps optional steps and removes only the per-start destination", () =
     assert.ok(dialog.text().includes("Customize steps"));
     assert.ok(!dialog.text().includes("Destination"));
     assert.ok(!dialog.text().includes("Test instance"));
-    assert.equal(document.querySelectorAll('input[type="radio"][name^="Priority-"]').length, 2);
+    assert.ok(dialog.text().includes("Runs before bulk batches."));
     assert.equal(document.querySelectorAll('input[type="radio"][name^="Browser mode-"]').length, 2);
     assert.doesNotMatch(dialog.text(), /Active policy|Workflow version|Fixed by the selected workflow/u);
     const selectedWorkflow = document.body.querySelector('nav[aria-label="Workflow"] button[aria-current="page"]');
@@ -246,7 +262,8 @@ describe("the compact confirmation keeps the exact input basis", () => {
 
   it("summarizes what was typed after the result settles", async () => {
     const dialog = await reachResult();
-    assert.ok(dialog.text().includes(TYPED));
+    assert.equal(closed.at(-1), false);
+    assert.equal(dialog.typedInput().value, TYPED);
   });
 
   it("summarizes what was typed at Confirm", async () => {
@@ -261,40 +278,16 @@ describe("the compact confirmation keeps the exact input basis", () => {
   });
 });
 
-describe("every exit from a settled banner returns the form to Input", () => {
+describe("a terminal refusal closes and invalidates the plan", () => {
   afterEach(cleanup);
-
-  it("Close resets the stage with the result, and puts focus back in the box", async () => {
-
+  it("closes with the typed draft intact and no terminal panel", async () => {
     const dialog = await reachResult();
-
-    await dialog.press("Close");
-
-    assert.ok(!dialog.text().includes("Start applied"));
+    assert.equal(closed.at(-1), false);
     assert.equal(dialog.stage(), "Input");
-    assert.ok(!planIsDrawn(), "the spent plan token survived the close");
-    assert.ok(document.activeElement === dialog.typedInput(), "focus was left on the control that just unmounted");
-  });
-
-  it("Reload the form drops the spent token, returns to Input and focuses the box", async () => {
-
-    const dialog = await openDialog(stubClient({
-      submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
-      executeCommand: async () => CONFLICT,
-    }));
-    await dialog.type(TYPED);
-    await dialog.press("Continue");
-    await dialog.press("Continue");
-    await dialog.press("Start 1 run");
-    assert.ok(dialog.text().includes("The start plan moved under this form"));
-
-    await dialog.press("Reload the form");
-
-    assert.ok(!dialog.text().includes("The start plan moved under this form"));
-    assert.equal(dialog.stage(), "Input");
-    assert.ok(!planIsDrawn(), "the spent plan token survived the reload");
-    assert.equal(dialog.typedInput().value, TYPED, "the operator's own text was thrown away");
-    assert.ok(document.activeElement === dialog.typedInput(), "focus was left on the control that just unmounted");
+    assert.equal(planIsDrawn(), false);
+    assert.equal(dialog.typedInput().value, TYPED);
+    assert.equal(window.sessionStorage.length, 0);
+    assert.equal(dialog.text().includes("The start plan moved under this form"), false);
   });
 });
 
@@ -370,7 +363,9 @@ const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
       start.inputRun === undefined
         ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
         : { state: "present", surface: start.inputRun },
-    spreadsheetIntake: start.spreadsheetIntake, requiredWorkbookTypeIds: start.requiredWorkbookTypeIds,
+    spreadsheetIntake: start.spreadsheetIntake, requiredWorkbookFields: start.requiredWorkbookFields,
+    workbookReference: start.workbookReference,
+    referenceSources: FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility.workflows.find(workflow => workflow.workflowId === entry.id)?.sources ?? [],
   };
 });
 
@@ -675,13 +670,13 @@ describe('mounted frontend reliability contracts', () => {
       }) }) }) });
     }
     await mount(createElement(Harness));
-    assert.match(document.body.textContent ?? '', /Choose what to run again/u);
+    assert.match(document.body.textContent ?? '', /Select steps for the new run/u);
     assert.equal(current!.view?.launchStage, 'Steps');
-    await press('Continue'); assert.match(document.body.textContent ?? '', /Values for the new run/u);
+    await press('Continue'); assert.match(document.body.textContent ?? '', /Reference spreadsheets/u);
     assert.equal(current!.view?.launchStage, 'Values');
     await press('Back'); assert.equal(current!.view?.launchStage, 'Steps');
-    await press('Continue'); await press('Continue'); await press('Preview plan');
-    assert.match(document.body.textContent ?? '', /Review the plan/u); assert.equal(current!.view?.launchStage, 'Confirm');
+    await press('Continue'); await press('Continue');
+    assert.match(document.body.textContent ?? '', /Screenshots/u); assert.equal(current!.view?.launchStage, 'Options');
     assert.deepEqual(requests, [], 'a local mock rerun must not ask a served planner to reconcile its stage');
   });
 });

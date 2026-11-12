@@ -1,6 +1,7 @@
+import { unusedWorkerPool } from "./unused-worker-pool.js";
 import type { z } from "zod";
-import type { WorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
-import type { WorkbookRunReferenceSelectionSchema } from "../../../../src/models/dashboard/workbooks.js";
+import type { StartPlannerDeps } from "../../../../src/backend/runs/start/plan.js";
+import type { WorkbookActiveSelectionSchema } from "../../../../src/models/dashboard/workbook-library.js";
 import { boundProfileAdmission } from "../synthetic-database-admission.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import assert from "node:assert/strict";
@@ -26,7 +27,7 @@ import { testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifec
 export function canonicalChildExecution(deps: RunExecutorDependencies, database: AuthorityDatabase, path: string,
   resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined,
   checkpointPublication?: (reader: Pick<RunRecordService, "read">, run: RunRecord, resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined) => NonNullable<RunExecutorDependencies["publishCheckpoint"]>,
-  options?: Readonly<{ poolIndex?: number; workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion" | "types">;
+  options?: Readonly<{ poolIndex?: number; workbooks?: StartPlannerDeps["workbooks"];
     resources?(reader: Pick<RunRecordService, "read">, run: RunRecord): Pick<RunExecutorDependencies, "providers" | "artifactProjector" | "taskNotes"> }>) {
   const { clock } = deps;
   const poolIndex = options?.poolIndex ?? 1;
@@ -45,13 +46,12 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     },
     descriptors: { resolve }, configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { recheck: unused, resolveAbsent: unused },
-    workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused,
-      reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
+    workerRuntime: { pool: unusedWorkerPool(unused) } });
   const childRuns = createDurableChildRunExecutor({ authority: database,
     admission: { admitAndRelease: (context, plan) => lifecycle.admitDelegation(context, plan) },
     resolveTarget: id => { const target = resolve(id); assert.ok(target); return target; } });
   let initialBinding = true;
-  let home: Readonly<{ workerId: string; workflow: string; ordinal: number; createdAt: string; reservationCommandId: string | null; path: string; processId: number }> | undefined;
+  let home: Readonly<{ workerId: string; workflow: string; ordinal: number; createdAt: string; path: string }> | undefined;
   async function step(root: RunRecord, signal: AbortSignal) {
     let stage: "prepare" | "claim" | "execute" = "prepare";
     try {
@@ -66,7 +66,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     if (home === undefined) {
       const admitted = testAdmittedWorker(database, clock, { path, workflow: descriptor.id, poolIndex, browserSystems: deps.stores.stores.flatMap(store => store.kind === "browser" ? [store.namespace] : []) });
       home = { workerId: admitted.workerId, workflow: admitted.member.workflow, ordinal: admitted.member.ordinal,
-        createdAt: admitted.member.createdAt, reservationCommandId: admitted.member.reservationCommandId, path: realpathSync(path), processId: process.pid };
+        createdAt: admitted.member.createdAt, path: realpathSync(path) };
     }
     const runtime = database.authority.runtimeConfig.get();
     assert.ok(runtime);
@@ -75,19 +75,16 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     assert.equal(owner.member.workflow, home.workflow);
     assert.equal(owner.member.ordinal, home.ordinal);
     assert.equal(owner.member.createdAt, home.createdAt);
-    assert.equal(owner.member.reservationCommandId, home.reservationCommandId);
     assert.equal(owner.member.poolIndex, poolIndex);
     assert.equal(owner.member.retiredAt, null);
-    assert.equal(owner.lease.processId, home.processId);
-    assert.equal(owner.lease.processId, process.pid);
     assert.equal(realpathSync(path), home.path);
     assert.equal(database.getSourceDatabaseIdentity(), AuthorityDatabase.sourceDatabaseIdentity(boundProfileAdmission(home.path).authorityBackupExpectedSource()));
     stage = "claim";
     const next = lifecycle.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: owner.workerId,
-      workerLifetime: owner.workerLifetime, runtimeConfig: { generation: runtime.generation,
+      runtimeConfig: { generation: runtime.generation,
         settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint,
         configFingerprint: runtime.configFingerprint } });
-    assert.ok(next.state === "applied" || next.state === "applied-already");
+    assert.ok(next.state === "applied" || next.state === "applied-already", JSON.stringify(next));
     assert.ok("run" in next);
     const run = next.run, execution = resolve(run.envelope.workflow);
     assert.ok(execution);
@@ -110,7 +107,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
   return {
     kernel, lifecycle, childRuns, step,
     start(descriptor: AnyWorkflowDescriptor, input: unknown, startOptions: Readonly<{ dryRun: boolean; protectedSubmissionBindings?: readonly ProtectedInputBinding[];
-      workbookReferences?: readonly z.infer<typeof WorkbookRunReferenceSelectionSchema>[] }>) {
+      workbookReferences?: readonly z.infer<typeof WorkbookActiveSelectionSchema>[] }>) {
       const active = database.authority.runtimeConfig.get();
       assert.ok(active);
       const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors: { resolve },

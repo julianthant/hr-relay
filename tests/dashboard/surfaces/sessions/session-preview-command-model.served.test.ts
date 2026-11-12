@@ -1,11 +1,11 @@
 import { IdleSessionSchedule, IDLE_REFRESH_MS } from "../../../../src/dashboard/surfaces/sessions/session-idle-model.js";
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
-import { WORKER_STOP_REASON_LABEL } from "../../../../src/dashboard/surfaces/sessions/session-panel-model.js";
+import { WORKER_STOP_REASON_LABEL } from "../../../../src/dashboard/surfaces/sessions/worker-stop-reason-label.js";
 // @vitest-environment jsdom
 import { act, createElement, type ComponentProps } from "react";
-import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
+import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { createRoot } from "react-dom/client";
 import { vi } from "vitest";
 import { SessionPanel } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
@@ -13,67 +13,75 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { CommandExecutor, type CommandExecutionScope } from "../../../../src/dashboard/app/commands/command-executor.js";
-import { createSessionPreviewPort, sessionCommandApplication, useSessionPreviewCommands, type SessionCommandBinding, type SessionPreviewRequest, type SessionPreviewResult } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
+import { createSessionPreviewPort, sessionCommandEffect, type SessionCommandBinding, type SessionPreviewRequest } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
 import { sessionsFromDay, sessionWorkerAuthorityKey } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { CommandRequestSchema, CommandResultSchema, type CommandRequest } from "../../../../src/rules/commands/commands.js";
 import { DashboardDayWireSchema, WorkerCardWireSchema, UnavailableWorkerCardWireSchema, type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
-import { WorkerControlRecordSchema } from "../../../../src/models/run/worker-control.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../parity/helpers/fixture-day.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../mocks/helpers/fixture-day.js";
 
 function SessionPanelWithToasts(props: ComponentProps<typeof SessionPanel>) {
-  return createElement(ToastProvider, null, createElement(SessionPanel, props));
+  return createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SessionPanel, props)));
 }
 
 const catalog = buildWorkflowCatalog([], true, previewFixtureSources([]));
 const now = FIXTURE_NOW;
+const LIFETIME = uuidOf(7001), NEXT_LIFETIME = uuidOf(7002);
+function basis(lifetimeId: string | null, version = 0) {
+  return { basis: { state: "present", value: { lifetimeId, version } } } as const;
+}
 function dayWith(count = 1): DashboardDayWire {
   const base = FIXTURE_DAY_WIRE;
   assert.equal(base.workerAuthority.state, "present");
   if (base.workerAuthority.state !== "present") throw new Error("fixture authority");
   return DashboardDayWireSchema.parse({ ...base, workerPools: count === 0 ? [] : [{ workflowId: "person-lookup", desiredWorkers: count, version: 1, plannedBy: "local-operator", plannedAt: now }],
-    workerAuthority: { state: "present", members: base.workerAuthority.members.slice(0, count).map(slot => ({ ...slot, phase: "idle" })) },
-    workerCards: base.workerCards.slice(0, count).map(card => ({ ...card, state: "idle", browsers: [], currentRun: { state: "absent", reason: "no current run" },
-      controls: { basis: { state: "present", value: { leaseGeneration: 1, controlRevision: 1 } }, ownership: { state: "owned" } } })), workerOperations: [] });
+    workerAuthority: { state: "present", members: base.workerAuthority.members.slice(0, count).map(slot => ({ ...slot, paused: false })) },
+    workerCards: base.workerCards.slice(0, count).map(card => ({ ...card, state: "idle", directive: "run", browsers: [], currentRun: { state: "absent", reason: "no current run" },
+      controls: basis(LIFETIME) })) });
 }
-function application(command: CommandRequest) {
+function applied(command: CommandRequest) {
   const affectedTargets = command.family === "worker-browser" && command.type === "plan-worker-count" ? [{ family: "worker-pool", workflowId: command.target.workflowId }]
-    : command.family === "worker-browser" && command.type === "spawn-worker" ? [{ family: "worker-browser", workerId: command.payload.workerId }]
     : "workerId" in command.target ? [{ family: "worker-browser", workerId: command.target.workerId }] : [];
-  return { result: CommandResultSchema.parse({ state: "applied", commandId: command.commandId, affectedTargets }), versionChanges: [], affectedDependencyIds: [] };
+  return CommandResultSchema.parse({ state: "applied", commandId: command.commandId, affectedTargets });
 }
-function succeeded(day: DashboardDayWire, command: CommandRequest, additions: Record<string, unknown> = {}) {
-  assert.equal(command.family, "worker-browser");
-  return WorkerControlRecordSchema.parse({ commandId: command.commandId, request: command, scope: "worker-pool:person-lookup", executorId: uuidOf(8001), admittedAt: now, expiresAt: "2027-01-01T00:00:00Z", basisVersion: 1, auditedAt: now,
-    phase: { state: "succeeded", startedAt: now, completedAt: now, acknowledgement: { kind: "control", ...(command.family === "worker-browser" && command.type === "refresh-browser" ? { browserSessionId: command.target.browserSessionId } : {}) }, application: application(command) }, ...additions });
-}
-function planned(day: DashboardDayWire, command: Extract<CommandRequest, { type: "plan-worker-count" }>): DashboardDayWire {
-  const base = FIXTURE_DAY_WIRE; assert(base.workerAuthority.state === "present");
-  const selected = base.workerAuthority.members.slice(0, command.payload.desiredWorkers);
-  const beforeVersion = command.target.expectedVersion;
-  const record = succeeded(day, command, { basisVersion: beforeVersion,
-    roster: { selected, excess: [], beforeVersion, admittedVersion: beforeVersion + 1, afterVersion: beforeVersion + 1 },
-    phase: { state: "succeeded", startedAt: now, completedAt: now, acknowledgement: { kind: "plan", workerIds: selected.map(slot => slot.workerId), retirements: [] },
-      application: { ...application(command), result: { ...application(command).result, affectedTargets: [{ family: "worker-pool", workflowId: command.target.workflowId }, ...selected.map(slot => ({ family: "worker-browser", workerId: slot.workerId }))] } } } });
-  return DashboardDayWireSchema.parse({ ...day, workerAuthority: { state: "present", members: selected }, workerCards: base.workerCards.slice(0, command.payload.desiredWorkers),
-    workerPools: [{ workflowId: command.target.workflowId, desiredWorkers: command.payload.desiredWorkers, version: beforeVersion + 1, plannedBy: "local-operator", plannedAt: now }], workerOperations: [record] });
+/** The served day after the pool carried out `command`, as the member fence shows it. */
+function effectOf(day: DashboardDayWire, command: CommandRequest): DashboardDayWire {
+  assert(command.family === "worker-browser");
+  if (command.type === "plan-worker-count") {
+    const base = FIXTURE_DAY_WIRE; assert(base.workerAuthority.state === "present");
+    const desired = command.payload.desiredWorkers;
+    return DashboardDayWireSchema.parse({ ...day, workerAuthority: { state: "present", members: base.workerAuthority.members.slice(0, desired) },
+      workerCards: base.workerCards.slice(0, desired).map(card => ({ ...card, directive: "run", controls: basis(LIFETIME) })),
+      workerPools: [{ workflowId: command.target.workflowId, desiredWorkers: desired, version: command.target.expectedVersion + 1, plannedBy: "local-operator", plannedAt: now }] });
+  }
+  if (command.type === "remove-worker") return DashboardDayWireSchema.parse({ ...day, workerPools: day.workerPools.map(pool => pool.workflowId === command.target.workflowId
+    ? { ...pool, desiredWorkers: pool.desiredWorkers - 1, version: pool.version + 1 } : pool),
+    workerAuthority: { state: "present", members: day.workerAuthority.members.filter(member => member.workerId !== command.target.workerId) },
+    workerCards: day.workerCards.filter(card => card.workerId !== command.target.workerId) });
+  const workerId = command.type === "spawn-worker" ? command.payload.workerId : command.target.workerId;
+  return DashboardDayWireSchema.parse({ ...day, workerCards: day.workerCards.map(card => card.workerId !== workerId ? card
+    : command.type === "pause-worker" ? { ...card, directive: "pause" } : command.type === "resume-worker" ? { ...card, directive: "run" }
+    : command.type === "stop-worker" || command.type === "retry-worker" ? { ...card, controls: basis(NEXT_LIFETIME) } : card) });
 }
 function harness(initial = dayWith()) {
-  let day = initial; const sent: CommandRequest[] = []; const gets: string[] = [];
-  let effect: (command: CommandRequest) => unknown = command => { day = DashboardDayWireSchema.parse({ ...day, workerOperations: [...day.workerOperations, succeeded(day, command)] }); return application(command).result; };
+  let day = initial; const sent: CommandRequest[] = []; const gets: string[] = []; let audit: unknown = { state: "unavailable" }; let auditFor: ((commandId: string) => unknown) | undefined;
+  let read: (snapshot: DashboardDayWire) => DashboardDayWire | Promise<DashboardDayWire> = snapshot => snapshot;
+  let effect: (command: CommandRequest) => unknown = command => { day = effectOf(day, command); return applied(command); };
   const client = createDashboardClient({ baseUrl: "http://sessions.test", fetchImpl: async (url, init) => {
     if (init?.method === "POST") { assert.equal(typeof init.body, "string");
       if (typeof init.body !== "string") throw new Error("JSON body missing");
-      const command = CommandRequestSchema.parse(JSON.parse(init.body)); sent.push(command); return Response.json(await effect(command)); }
-    gets.push(String(url)); return Response.json(day);
+      const command = CommandRequestSchema.parse(JSON.parse(init.body)); sent.push(command);
+      const reply = await effect(command); return reply instanceof Response ? reply : Response.json(reply); }
+    if (String(url).includes("/api/v1/worker-commands/")) return Response.json(auditFor ? auditFor(String(url).split("/").pop() ?? "") : audit);
+    gets.push(String(url)); return Response.json(await read(day));
   } });
   let scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
   const executor = new CommandExecutor(() => scope);
   const binding = (): SessionCommandBinding => ({ client, executor, scope, day: day.day, nowIso: now,
     dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request: scope.dayRequest, day: { state: "loaded", value: day }, connection: { state: "connecting" }, refresh() {} } });
   const port = createSessionPreviewPort(() => ({ binding: binding(), catalog }));
-  return { port, client, executor, sent, gets, binding, day: () => day, setDay: (next: DashboardDayWire) => { day = next; },
-    effect: (next: typeof effect) => { effect = next; }, scope: () => scope, setScope: (next: CommandExecutionScope) => { scope = next; } };
+  return { port, client, executor, sent, gets, binding, day: () => day, setDay: (next: DashboardDayWire) => { day = next; }, setRead: (next: typeof read) => { read = next; },
+    effect: (next: typeof effect) => { effect = next; }, audit: (next: unknown) => { audit = next; auditFor = undefined; }, auditBy: (next: (commandId: string) => unknown) => { auditFor = next; }, scope: () => scope, setScope: (next: CommandExecutionScope) => { scope = next; } };
 }
 
 it("serves all six phases from exact current rows, omits unsupported timelines and never invents subject", () => {
@@ -92,19 +100,135 @@ it("serves all six phases from exact current rows, omits unsupported timelines a
   assert.equal(sessionsFromDay({ ...day, workerAuthority: { state: "unavailable", reason: "authority missing", members: [] } }, catalog, now).state, "unavailable");
 });
 
-it("uses canonical client transport and exact native Check after response loss without POST replay", async () => {
+it("uses canonical client transport and confirms the command's own applied reply once its served effect appears, without POST replay", async () => {
   const h = harness(); const request: SessionPreviewRequest = { id: uuidOf(8100), target: h.day().workerCards[0].workerId, action: "pause", authorityKey: sessionWorkerAuthorityKey(h.day().workerCards[0]) };
-  h.effect(command => ({ state: "pending", commandId: command.commandId }));
+  h.effect(command => applied(command));
   assert.equal((await h.port.send(request)).state, "uncertain");
-  assert.equal(h.sent.length, 1); assert.equal(h.gets.length, 0);
+  assert.equal(h.sent.length, 1); assert.equal(h.gets.length, 1, "one readback of the applied reply");
   const command = h.sent[0]; const original = structuredClone(command);
-  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], state: "running" }], workerOperations: [succeeded(h.day(), command)] }));
+  assert.equal((await h.port.check(request)).state, "uncertain", "no served effect yet");
+  h.setDay(DashboardDayWireSchema.parse({ ...effectOf(h.day(), command), workerCards: effectOf(h.day(), command).workerCards.map(card => ({ ...card, state: "running" })) }));
   const result = await h.port.check(request); assert.equal(result.state, "confirmed"); assert.equal(result.data?.state, "ready");
   if (result.data?.state !== "ready") throw new Error("expected current data");
-  assert.equal(result.data.workers[0].state, "running", "historical ack never overwrites latest phase");
+  assert.equal(result.data.workers[0].state, "running", "the latest served phase wins");
   assert.deepEqual(h.sent, [original]); assert(h.gets.length > 0); assert(h.gets.every(url => url.includes("/api/v1/dashboard?day=")));
-  assert.equal((await h.port.send({ ...request, id: uuidOf(8101), authorityKey: sessionWorkerAuthorityKey(h.day().workerCards[0]) })).state, "uncertain", "next request reaches transport after exact Check releases lock");
+  assert.equal((await h.port.send({ ...request, id: uuidOf(8101), authorityKey: sessionWorkerAuthorityKey(h.day().workerCards[0]) })).state, "confirmed", "next request reaches transport after exact Check releases lock");
   assert.equal(h.sent.length, 2);
+});
+
+it("never confirms a pending reply from a served effect that another command could have caused", async () => {
+  const h = harness(); const request: SessionPreviewRequest = { id: uuidOf(8110), target: h.day().workerCards[0].workerId, action: "pause" };
+  h.effect(command => ({ state: "pending", commandId: command.commandId }));
+  assert.equal((await h.port.send(request)).state, "uncertain");
+  const command = h.sent[0];
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: h.day().workerCards.map(card => ({ ...card, directive: "pause" })) }));
+  assert.equal(sessionCommandEffect(h.day(), command), true, "an unrelated pause shows the same directive");
+  assert.equal((await h.port.check(request)).state, "uncertain"); assert.equal(h.sent.length, 1);
+});
+
+it("removes two idle workers from the same workflow while the first removal is in flight", async () => {
+  const h = harness(dayWith(2));
+  const [first, second] = h.day().workerCards;
+  assert.equal(first.workflowId, second.workflowId);
+  let release!: () => void;
+  const firstRemoval = new Promise<void>(resolve => { release = resolve; });
+  h.effect(async command => {
+    if ("workerId" in command.target && command.target.workerId === first.workerId) await firstRemoval;
+    h.setDay(effectOf(h.day(), command));
+    return applied(command);
+  });
+  const pending = h.port.send({ id: uuidOf(8120), target: first.workerId, action: "remove" });
+  const duplicate = await h.port.send({ id: uuidOf(8121), target: first.workerId, action: "remove" });
+  const removedSecond = await h.port.send({ id: uuidOf(8122), target: second.workerId, action: "remove" });
+  release();
+  const removedFirst = await pending;
+  assert.equal(duplicate.state, "refused");
+  assert.equal(removedSecond.state, "confirmed");
+  assert.equal(removedSecond.data?.state, "ready");
+  if (removedSecond.data?.state === "ready") assert.deepEqual(removedSecond.data.workers.map(worker => worker.id), [first.workerId]);
+  assert.equal(removedFirst.state, "confirmed");
+  assert.equal(removedFirst.data?.state, "ready");
+  if (removedFirst.data?.state === "ready") assert.deepEqual(removedFirst.data.workers, []);
+  assert.equal(h.sent.length, 2);
+});
+
+it.each([
+  { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_BUSY" }, code: "WORKER_BUSY", via: "direct" },
+  { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE", via: "direct" },
+  { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_REMOVAL_CHILD_CLOSE_UNPROVED" }, code: "WORKER_REMOVAL_CHILD_CLOSE_UNPROVED", via: "direct" },
+  { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_BUSY" }, code: "WORKER_BUSY", via: "audit" },
+  { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE", via: "check" },
+  { status: 422, result: { state: "rejected", code: "invalid-state", message: "PRIVATE_SERVER_DETAIL" }, code: "COMMAND_REFUSED", via: "direct" },
+] as const)("shows the $code and summary on the retained Remove card via $via", async ({ status, result, code, via }) => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness();
+  const recorded = (command: CommandRequest) => ({ state: "recorded", request: command, result: { ...result, commandId: command.commandId } });
+  h.effect(command => {
+    if (via === "direct") return Response.json({ ...result, commandId: command.commandId }, { status });
+    if (via === "audit") h.audit(recorded(command));
+    throw new Error("connection reset");
+  });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Remove worker"]'); assert(button);
+    await act(async () => button.click());
+    if (via === "check") {
+      h.audit(recorded(h.sent[0]));
+      const check = [...document.querySelectorAll("button")].find(button => button.textContent?.trim() === "Check outcome");
+      assert(check);
+      await act(async () => check.click());
+    }
+    const card = document.querySelector("article"); assert(card);
+    assert.ok(card.textContent?.includes(code), card.textContent ?? "");
+    assert.ok(card.textContent?.includes(ERROR_CATALOG[code].text), card.textContent ?? "");
+    assert.doesNotMatch(card.textContent ?? "", /PRIVATE_SERVER_DETAIL|Check outcome/u);
+    assert.equal(h.sent.length, 1);
+    assert.equal(h.gets.length, 0);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("removes the card when a lost Remove reply is confirmed by its audit and served readback", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness();
+  const binding = h.binding();
+  h.effect(command => {
+    h.setDay(effectOf(h.day(), command));
+    h.audit({ state: "recorded", request: command, result: applied(command) });
+    throw new Error("connection reset");
+  });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding, open: true, onOpenChange() {} })));
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Remove worker"]'); assert(button);
+    await act(async () => button.click());
+    assert.equal(document.querySelectorAll("article").length, 0);
+    assert.equal(h.sent.length, 1);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("keeps both removed cards gone when their readbacks arrive out of order", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(dayWith(2));
+  const binding = h.binding();
+  let release!: () => void;
+  const firstRead = new Promise<void>(resolve => { release = resolve; });
+  h.setRead(async day => { if (day.workerCards.length === 1) await firstRead; return day; });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding, open: true, onOpenChange() {} })));
+    const [first, second] = document.querySelectorAll<HTMLButtonElement>('button[aria-label="Remove worker"]');
+    assert(first && second);
+    await act(async () => first.click());
+    await act(async () => second.click());
+    assert.equal(document.querySelectorAll("article").length, 0);
+    await act(async () => release());
+    assert.equal(document.querySelectorAll("article").length, 0);
+    assert.equal(h.sent.length, 2);
+  } finally { release(); await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
 
 it.each(["actor", "client", "request"])("retains original uncertain attempt across %s replacement and A to B to A", async kind => {
@@ -115,29 +239,19 @@ it.each(["actor", "client", "request"])("retains original uncertain attempt acro
   const original = h.scope();
   h.setScope({ ...original, ...(kind === "actor" ? { actorId: "other" } : kind === "client" ? { client: harness().client } : { dayRequest: {} }) });
   h.setScope({ ...original, dayRequest: {} });
-  release(application(h.sent[0]).result); assert.equal((await pending).state, "uncertain");
+  release(applied(h.sent[0])); assert.equal((await pending).state, "uncertain");
   assert.equal(h.sent.length, 1);
 });
 
-it.each([0, 1])("adds to verified roster of %s, spawns only new exact selected members", async count => {
+it.each([0, 1])("adds to a verified roster of %s with one plan that starts the new members", async count => {
   const h = harness(dayWith(count));
-  h.effect(command => {
-    assert.equal(command.family, "worker-browser");
-    if (command.family !== "worker-browser") throw new Error("worker command");
-    if (command.type === "plan-worker-count") {
-      h.setDay(planned(h.day(), command));
-    } else h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [...h.day().workerOperations, succeeded(h.day(), command)] }));
-    const native = h.day().workerOperations.find(record => record.commandId === command.commandId);
-    assert(native?.phase.state === "succeeded" && native.phase.application !== undefined);
-    return native.phase.application.result;
-  });
   const result = await h.port.send({ id: uuidOf(8300), target: "add", action: "add", workflow: "person-lookup", count: 2, ordinal: 99 });
-  assert.equal(result.state, "confirmed"); assert.equal(h.sent.length, 3);
-  assert.deepEqual(h.sent.slice(1).map(command => command.family === "worker-browser" && command.type === "spawn-worker" ? command.payload.workerId : "wrong"), [`person-lookup-worker-${count + 1}`, `person-lookup-worker-${count + 2}`]);
-  assert.equal((h.sent[0] as Extract<CommandRequest, { type: "plan-worker-count" }>).target.expectedVersion, count === 0 ? 0 : 1);
+  assert.equal(result.state, "confirmed"); assert.equal(h.sent.length, 1);
+  const plan = h.sent[0]; assert(plan.family === "worker-browser" && plan.type === "plan-worker-count");
+  assert.equal(plan.target.expectedVersion, count === 0 ? 0 : 1); assert.equal(plan.payload.desiredWorkers, count + 2);
 });
 
-it("refuses missing pool with nonempty roster and keeps lost compound response locked; Check never starts unsent spawns", async () => {
+it("refuses missing pool with nonempty roster and keeps a lost Add response locked", async () => {
   const broken = harness({ ...dayWith(), workerPools: [] });
   const request: SessionPreviewRequest = { id: uuidOf(8400), target: "add", action: "add", workflow: "person-lookup", count: 2, ordinal: 5 };
   assert.equal((await broken.port.send(request)).state, "refused"); assert.equal(broken.sent.length, 0);
@@ -147,40 +261,35 @@ it("refuses missing pool with nonempty roster and keeps lost compound response l
   await assert.rejects(h.port.send(request), /ALREADY_SUBMITTED/);
 });
 
-it("does not confirm wrong affected target through direct or hydrated native Check", async () => {
+it("does not confirm an applied reply whose served effect is absent", async () => {
   const h = harness(); const card = h.day().workerCards[0];
-  const command = CommandRequestSchema.parse({ commandId: uuidOf(8500), family: "worker-browser", type: "pause-worker", requestedAt: now, requestedBy: "local-operator", source: "dashboard-sessions", target: { workerId: card.workerId, expectedVersion: card.leaseVersion, controlBasis: { leaseGeneration: 1, controlRevision: 1 } } });
-  const record = succeeded(h.day(), command, { phase: { state: "succeeded", startedAt: now, completedAt: now, acknowledgement: { kind: "control" }, application: { ...application(command), result: { state: "applied", commandId: command.commandId, affectedTargets: [{ family: "worker-browser", workerId: "person-lookup-worker-999" }] } } } });
-  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [record] }));
-  assert.throws(() => sessionCommandApplication(h.day(), command), error => error instanceof Error && "code" in error && error.code === "COMMAND_RESULT_IDENTITY_MISMATCH");
-  assert.equal((await h.port.check({ id: command.commandId, target: card.workerId, action: "pause" })).state, "uncertain");
-  assert.equal(h.sent.length, 0);
+  h.effect(command => applied(command));
+  const request: SessionPreviewRequest = { id: uuidOf(8500), target: card.workerId, action: "pause" };
+  assert.equal((await h.port.send(request)).state, "uncertain");
+  const command = h.sent[0];
+  assert.equal(sessionCommandEffect(h.day(), command), false);
+  assert.equal((await h.port.check(request)).state, "uncertain"); assert.equal(h.sent.length, 1);
 });
 
-function lifecycleRecord(day: DashboardDayWire, command: CommandRequest) {
-  assert(command.family === "worker-browser" && (command.type === "remove-worker" || command.type === "retry-worker" || command.type === "stop-worker"));
-  const card = day.workerCards[0]; const member = card.member;
-  const binding = { commandId: command.commandId, member, lifetime: { leaseGeneration: 1, processId: 1234, startedAt: now }, basis: { leaseGeneration: 1, controlRevision: 1 }, reservedControlRevision: 2 };
-  const lifecycle = { ...binding, poolVersion: 1, desiredWorkers: 1, operation: command.type === "remove-worker" ? { kind: "remove" } : { kind: "retry", mode: "initialize", systems: [], configSnapshotId: uuidOf(700), configFingerprint: "a".repeat(64), descriptorVersion: 1, contractFingerprint: "b".repeat(64) } };
-  const retirement = { workerId: card.workerId, membershipRevision: member.membershipRevision, checkedAt: now, processStopped: true, browsersClosed: true, exclusive: true };
-  const acknowledgement = command.type === "stop-worker" ? { kind: "reset", commandId: command.commandId, leaseGeneration: 1, controlRevision: 2, membershipRevision: member.membershipRevision, idleAt: now, closedSessionIds: [], browsersClosed: true, duoReleased: true }
-    : command.type === "remove-worker" ? { kind: "remove", retirement, beforePoolVersion: 1, afterPoolVersion: 2, beforeCount: 1, afterCount: 0 }
-    : { kind: "retry", oldLeaseGeneration: 1, leaseGeneration: 2, processId: 2345, startedAt: now };
-  return succeeded(day, command, { ...(command.type === "stop-worker" ? { reset: { ...binding, work: { kind: "absent" } } } : { lifecycle, ...(command.type === "remove-worker" ? { closure: { observedAt: now, closedSessionIds: [] } } : { readiness: { state: "initializing", leaseGeneration: 2 } }) }),
-    phase: { state: "succeeded", startedAt: now, completedAt: now, acknowledgement, application: application(command) } });
-}
-
-it.each(["stop", "retry", "remove"] as const)("confirms exact %s immutable milestone while preserving newest actual resource", async action => {
-  const h = harness();
-  if (action === "retry") h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], state: "failed", endedAt: now, stopReason: "crashed", controls: { ...h.day().workerCards[0].controls, ownership: { state: "unavailable", reason: "old owner died" } } }] }));
+it.each(["stop", "retry", "remove"] as const)("confirms %s once the served member fence moves, preserving the newest phase", async action => {
+  const h = harness(); let effected: DashboardDayWire | undefined;
+  if (action === "retry") h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" }] }));
   h.effect(command => {
-    const record = lifecycleRecord(h.day(), command);
-    const next = action === "remove" ? { ...h.day(), workerPools: [{ ...h.day().workerPools[0], desiredWorkers: 0, version: 2 }], workerAuthority: { state: "present", members: [] }, workerCards: [], workerOperations: [record] }
-      : { ...h.day(), workerCards: [{ ...h.day().workerCards[0], ...(action === "stop" ? { state: "running" } : { state: "failed", endedAt: now, stopReason: "crashed" }) }], workerOperations: [record] };
-    h.setDay(DashboardDayWireSchema.parse(next)); return { state: "pending", commandId: command.commandId };
+    const next = effectOf(h.day(), command);
+    effected = action === "stop" ? DashboardDayWireSchema.parse({ ...next, workerCards: next.workerCards.map(card => ({ ...card, state: "running" })) }) : next;
+    return applied(command);
   });
   const request: SessionPreviewRequest = { id: uuidOf(8600), target: h.day().workerCards[0].workerId, action };
-  assert.equal((await h.port.send(request)).state, "uncertain");
+  assert.equal((await h.port.send(request)).state, "uncertain", "the applied reply is not yet served");
+  if (action === "remove") {
+    const day = h.day();
+    const card = day.workerCards[0];
+    h.setDay(DashboardDayWireSchema.parse({ ...day, workerCards: [], unavailableWorkerCards: [{
+      member: card.member, workerId: card.workerId, availability: { state: "unavailable", reason: "worker-card-unavailable" },
+    }] }));
+    assert.equal((await h.port.check(request)).state, "uncertain", "an unavailable card still has a standing member");
+  }
+  assert(effected); h.setDay(effected);
   const result = await h.port.check(request); assert.equal(result.state, "confirmed"); assert.equal(h.sent.length, 1);
   assert.equal(result.data?.state, "ready");
   if (result.data?.state !== "ready") throw new Error("ready");
@@ -188,31 +297,63 @@ it.each(["stop", "retry", "remove"] as const)("confirms exact %s immutable miles
   if (action !== "remove") assert.equal(result.data.workers[0].state, action === "stop" ? "running" : "failed");
 });
 
-it("refresh Check requires exact physical acknowledgment and retains unknown/missing native evidence", async () => {
+it("refresh confirms only while the member keeps the lifetime it was sent to", async () => {
   const h = harness(); const card = h.day().workerCards[0];
   h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, browsers: [{ sessionId: uuidOf(9000), system: "ucpath", openedAt: now, observation: { state: "present", health: "authenticated", observedAt: now, browserMode: "headed", configFingerprint: "a".repeat(64) } }] }] }));
   h.effect(command => ({ state: "pending", commandId: command.commandId }));
   const request: SessionPreviewRequest = { id: uuidOf(8700), target: card.workerId, action: "refresh", browserIds: [uuidOf(9000)], nativeCommandIds: [uuidOf(8700)], authorityKey: sessionWorkerAuthorityKey(h.day().workerCards[0]) };
   assert.equal((await h.port.send(request)).state, "uncertain");
-  assert.equal((await h.port.check(request)).state, "uncertain");
-  const command = h.sent[0];
-  const incorrect = succeeded(h.day(), command, { phase: { state: "succeeded", startedAt: now, completedAt: now, acknowledgement: { kind: "control", browserSessionId: uuidOf(9001) }, application: application(command) } });
-  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [incorrect] }));
-  assert.equal((await h.port.check(request)).state, "uncertain");
-  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [succeeded(h.day(), command)] }));
-  assert.equal((await h.port.check(request)).state, "confirmed"); assert.equal(h.sent.length, 1);
+  const command = h.sent[0]; assert(command.family === "worker-browser" && command.type === "refresh-browser");
+  assert.equal(command.target.lifetimeId, LIFETIME);
+  const restarted = DashboardDayWireSchema.parse({ ...h.day(), workerCards: h.day().workerCards.map(next => ({ ...next, controls: basis(NEXT_LIFETIME) })) });
+  assert.equal(sessionCommandEffect(restarted, command), false);
+  assert.equal(sessionCommandEffect(h.day(), command), true);
+  assert.equal((await h.port.check(request)).state, "uncertain", "an unchanged card is no proof that a pending refresh ran");
+  assert.equal(h.sent.length, 1);
 });
 
-it("hydrates mounted Remove after remount, retains original through outage/new failed phase, and removes only on exact tombstone readback", async () => {
+it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flight across a remount to its %s outcome without resending", async outcome => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(); let release!: (value: unknown) => void; let original: CommandRequest | undefined;
+  h.effect(command => { original = command; return new Promise((resolve, reject) => { release = value => { if (value instanceof Error) reject(value); else resolve(value); }; }); });
+  const host = document.createElement("div"); document.body.append(host); let root = createRoot(host);
+  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
+  const text = () => document.body.textContent ?? "";
+  try {
+    await act(async () => render());
+    const remove = [...document.querySelectorAll("button")].find(button => button.getAttribute("aria-label") === "Remove worker"); assert(remove);
+    await act(async () => remove.click()); assert.equal(h.sent.length, 1); assert(original);
+    await act(async () => root.unmount()); root = createRoot(host);
+    await act(async () => render());
+    assert.match(text(), /Remove requested/u, "the remounted panel holds the in-flight Remove");
+    assert.doesNotMatch(text(), /Check outcome/u);
+    await act(async () => { release(outcome === "pending" ? { state: "pending", commandId: original!.commandId } : outcome === "lost" ? new Error("connection reset") : applied(original!)); await Promise.resolve(); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.match(text(), /Check outcome/u, "the settled unknown outcome is checkable on the new mount");
+    assert.equal(document.querySelectorAll("article").length, 1);
+    h.setDay(effectOf(h.day(), original));
+    const check = [...document.querySelectorAll("button")].find(button => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === "Check outcome"); assert(check);
+    await act(async () => check.click());
+    assert.equal(document.querySelectorAll("article").length, outcome === "applied" ? 0 : 1, outcome === "applied" ? "its own applied reply confirms once served" : "a served removal is no proof for a command with no applied reply");
+    assert.equal(h.sent.length, 1);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("hydrates no retained control for another scope", async () => {
+  const h = harness(); let release!: (value: unknown) => void;
+  h.effect(() => new Promise(resolve => { release = resolve; }));
+  const request: SessionPreviewRequest = { id: uuidOf(8900), target: h.day().workerCards[0].workerId, action: "remove" };
+  const sent = h.port.send(request); await Promise.resolve();
+  assert.deepEqual(h.port.retained?.().map(operation => [operation.request.id, operation.state]), [[uuidOf(8900), "pending"]]);
+  const other = createSessionPreviewPort(() => ({ binding: { ...h.binding(), scope: { ...h.scope(), actorId: "other" } }, catalog }));
+  assert.deepEqual(other.retained?.(), []);
+  release({ state: "pending", commandId: request.id }); await sent;
+});
+
+it("hydrates mounted Remove after remount, retains it through outage and a failed phase, and removes only on readback", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness(); let original: CommandRequest | undefined;
-  h.effect(command => {
-    original = command;
-    const settled = lifecycleRecord(h.day(), command);
-    const pending = WorkerControlRecordSchema.parse({ ...settled, auditedAt: undefined, phase: { state: "executing", startedAt: now } });
-    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [pending] }));
-    return { state: "pending", commandId: command.commandId };
-  });
+  h.effect(command => { original = command; return applied(command); });
   const host = document.createElement("div"); document.body.append(host); let root = createRoot(host);
   const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
   const click = async (label: string) => {
@@ -226,13 +367,12 @@ it("hydrates mounted Remove after remount, retains original through outage/new f
     await act(async () => root.unmount()); root = createRoot(host);
     await act(async () => render());
     assert.match(document.body.textContent ?? "", /Check outcome/); assert.equal(h.sent.length, 1);
-    h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerAuthority: { state: "unavailable", reason: "missing lease", members: pendingDay.workerAuthority.members }, workerCards: [] }));
-    await act(async () => render()); assert.equal(document.querySelectorAll("article").length, 0); assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /missing lease/);
+    h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerAuthority: { state: "unavailable", reason: "missing member", members: pendingDay.workerAuthority.members }, workerCards: [] }));
+    await act(async () => render()); assert.equal(document.querySelectorAll("article").length, 0); assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /missing member/);
     h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerCards: [{ ...pendingDay.workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" }] }));
     await act(async () => render()); assert.match(document.body.textContent ?? "", /Check outcome/);
     const retry = document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert(retry?.disabled, "same Remove still locks newest failed card");
-    const settled = lifecycleRecord(pendingDay, original);
-    h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerPools: [{ ...pendingDay.workerPools[0], desiredWorkers: 0, version: 2 }], workerAuthority: { state: "present", members: [] }, workerCards: [], workerOperations: [settled] }));
+    h.setDay(effectOf(pendingDay, original));
     await click("Check outcome"); assert.equal(document.querySelectorAll("article").length, 0); assert.equal(h.sent.length, 1);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -241,73 +381,30 @@ it("new private port cannot confirm native success when shared executor retains 
   const h = harness(); const card = h.day().workerCards[0]; const request: SessionPreviewRequest = { id: uuidOf(8800), target: card.workerId, action: "pause" };
   h.effect(command => ({ state: "pending", commandId: command.commandId }));
   await h.port.send(request);
-  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [succeeded(h.day(), h.sent[0])] }));
+  h.setDay(effectOf(h.day(), h.sent[0]));
   h.setScope({ ...h.scope(), authority: {}, dayRequest: {} });
   const reopened = createSessionPreviewPort(() => ({ binding: h.binding(), catalog }));
   assert.equal((await reopened.check(request)).state, "uncertain");
   assert.equal(h.executor.retainedAttempts()[0].outcome?.kind, "uncertain"); assert.equal(h.sent.length, 1);
 });
 
-it("does not accept generic plan target validation as proof of the admitted member relationship", () => {
+it("does not accept a plan whose served roster does not match the desired count", () => {
   const day = dayWith(); assert(day.workerAuthority.state === "present");
-  const request = CommandRequestSchema.parse({ commandId: uuidOf(8900), family: "worker-browser", type: "plan-worker-count", requestedAt: now, requestedBy: "local-operator", source: "dashboard-sessions", target: { workflowId: "person-lookup", expectedVersion: 0 }, payload: { desiredWorkers: 1 } });
-  const selected = day.workerAuthority.members;
-  const record = succeeded(day, request, { basisVersion: 0, roster: { selected, excess: [], beforeVersion: 0, admittedVersion: 1, afterVersion: 1 },
-    phase: { state: "succeeded", startedAt: now, completedAt: now, acknowledgement: { kind: "plan", workerIds: selected.map(slot => slot.workerId), retirements: [] }, application: { ...application(request), result: { state: "applied", commandId: request.commandId, affectedTargets: [{ family: "worker-pool", workflowId: "person-lookup" }, { family: "worker-browser", workerId: "person-lookup-worker-999" }] } } } });
-  assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...day, workerOperations: [record] }), request), undefined);
-});
-
-it("hydrates a newer native pending Stop over settled local Pause without unlocking or resubmission", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const h = harness(); h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], state: "running" }] }));
-  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
-  try {
-    await act(async () => render());
-    await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Pause"]')!.click());
-    assert.match(document.body.textContent ?? "", /Pause confirmed/);
-    const card = h.day().workerCards[0];
-    const command = CommandRequestSchema.parse({ commandId: uuidOf(8950), family: "worker-browser", type: "stop-worker", requestedAt: now, requestedBy: "local-operator", source: "dashboard-another-tab", target: { workerId: card.workerId, membershipRevision: card.member.membershipRevision, expectedVersion: card.leaseVersion, controlBasis: { leaseGeneration: 1, controlRevision: 1 } } });
-    const settled = lifecycleRecord(h.day(), command);
-    const pending = WorkerControlRecordSchema.parse({ ...settled, auditedAt: undefined, phase: { state: "executing", startedAt: now } });
-    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [...h.day().workerOperations, pending] }));
-    await act(async () => render()); assert.match(document.body.textContent ?? "", /Check outcome/); assert.doesNotMatch(document.body.textContent ?? "", /Pause confirmed/);
-    assert(document.querySelector<HTMLButtonElement>('button[aria-label="Stop"]')?.disabled); assert.equal(h.sent.length, 1);
-  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
-});
-
-it("keeps a partially sent Add uncertain after exact sent outcomes and never creates its unsent spawn on Check", async () => {
-  const h = harness(dayWith(0));
-  h.effect(command => {
-    if (command.type === "plan-worker-count") {
-      h.setDay(planned(h.day(), command));
-      const record = h.day().workerOperations[0]; assert(record.phase.state === "succeeded"); return record.phase.application!.result;
-    }
-    return { state: "pending", commandId: command.commandId };
-  });
-  const request: SessionPreviewRequest = { id: uuidOf(8960), target: "add", action: "add", workflow: "person-lookup", count: 2, ordinal: 50 };
-  assert.equal((await h.port.send(request)).state, "uncertain"); assert.equal(h.sent.length, 2);
-  const spawned = h.sent[1]; h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [...h.day().workerOperations, succeeded(h.day(), spawned)] }));
-  assert.equal((await h.port.check(request)).state, "uncertain"); assert.equal(h.sent.length, 2, "Check never sends the unattempted third command");
+  const request = CommandRequestSchema.parse({ commandId: uuidOf(8900), family: "worker-browser", type: "plan-worker-count", requestedAt: now, requestedBy: "local-operator", source: "dashboard-sessions", target: { workflowId: "person-lookup", expectedVersion: 0 }, payload: { desiredWorkers: 2 } });
+  const short = DashboardDayWireSchema.parse({ ...day, workerPools: [{ ...day.workerPools[0], desiredWorkers: 2, version: 2 }] });
+  assert.equal(sessionCommandEffect(short, request), false);
+  assert.equal(sessionCommandEffect(effectOf(day, request), request), true);
 });
 
 it("does not spawn after a proved plan when current pool authority is missing", async () => {
   const h = harness(dayWith(0));
   h.effect(command => {
-    assert(command.type === "plan-worker-count");
-    const next = planned(h.day(), command); const record = next.workerOperations[0]; assert(record.phase.state === "succeeded");
+    const next = effectOf(h.day(), command);
     h.setDay(DashboardDayWireSchema.parse({ ...next, workerPools: [], workerAuthority: { state: "unavailable", members: next.workerAuthority.members, reason: "pool missing" }, workerCards: [] }));
-    return record.phase.application!.result;
+    return applied(command);
   });
   assert.equal((await h.port.send({ id: uuidOf(8970), target: "add", action: "add", workflow: "person-lookup", count: 2, ordinal: 50 })).state, "uncertain");
   assert.equal(h.sent.length, 1);
-});
-
-it("keeps historical directive Stop success unavailable as reset proof", () => {
-  const day = dayWith(); const card = day.workerCards[0];
-  const command = CommandRequestSchema.parse({ commandId: uuidOf(8980), family: "worker-browser", type: "stop-worker", requestedAt: now, requestedBy: "local-operator", source: "dashboard", target: { workerId: card.workerId, expectedVersion: 1 } });
-  const historical = succeeded(day, command, { phase: { state: "succeeded", startedAt: now, completedAt: now, acknowledgement: { kind: "stop", directiveLeaseVersions: { before: 1, after: 2 } }, application: application(command) } });
-  assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...day, workerOperations: [historical] }), command), undefined);
 });
 
 it("maps unavailable served authority/catalog to fixed text while retaining diagnostics without rendering them", async () => {
@@ -321,7 +418,7 @@ it("maps unavailable served authority/catalog to fixed text while retaining diag
   assert.equal(missing.reason, ERROR_CATALOG.SESSIONS_UNAVAILABLE.text);
   assert.deepEqual(missing.diagnostic, { code: "SESSION_WORKFLOW_UNREGISTERED", workflowId: "person-lookup" });
   assert.equal(WORKER_STOP_REASON_LABEL.crashed, ERROR_CATALOG.WORKER_CRASHED.text);
-  assert.equal(WORKER_STOP_REASON_LABEL.operator, "stopped by you"); assert.equal(WORKER_STOP_REASON_LABEL.shutdown, "shut down");
+  assert.equal(WORKER_STOP_REASON_LABEL.operator, "stopped by you");
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   const error = new DashboardClientError({ kind: "network", message: "private transport diagnostic" });
@@ -347,35 +444,6 @@ it("maps a cached ready card to fixed unavailable when the mounted catalog remov
     assert.equal(h.sent.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
-
-it("compares complete immutable intent and authenticates both actors separately from ingress provenance", () => {
-  const day = dayWith();
-  const card = day.workerCards[0];
-  const request = CommandRequestSchema.parse({ commandId: uuidOf(8990), family: "worker-browser", type: "pause-worker", requestedAt: "2020-01-01T00:00:00.000Z", requestedBy: "local-operator", source: "dashboard-sessions",
-    target: { workerId: card.workerId, expectedVersion: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 } }, reason: "pause for review" });
-  const accepted = CommandRequestSchema.parse({ ...request, source: "dashboard", requestedAt: now });
-  const record = succeeded(day, accepted);
-  const snapshot = DashboardDayWireSchema.parse({ ...day, workerOperations: [record] });
-  assert.deepEqual(sessionCommandApplication(snapshot, request), application(request).result);
-  for (const change of [
-    { commandId: uuidOf(8991) },
-    { type: "resume-worker" },
-    { target: { ...request.target, workerId: "person-lookup-worker-999" } },
-    { target: { ...request.target, expectedVersion: 2 } },
-    { target: { ...request.target, controlBasis: { leaseGeneration: 2, controlRevision: 1 } } },
-    { target: { ...request.target, controlBasis: { leaseGeneration: 1, controlRevision: 2 } } },
-    { reason: "a different reason" },
-    { requestedBy: "foreign-actor" },
-  ]) assert.equal(sessionCommandApplication(snapshot, CommandRequestSchema.parse({ ...request, ...change })), undefined);
-  const foreignRecord = WorkerControlRecordSchema.parse({ ...record, request: { ...accepted, requestedBy: "foreign-actor" } });
-  assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...snapshot, workerOperations: [foreignRecord] }), request), undefined);
-  for (const phase of [{ state: "executing", startedAt: now }, { state: "uncertain", startedAt: now, observedAt: now, message: "outcome unknown" }]) {
-    const unsettled = WorkerControlRecordSchema.parse({ ...record, auditedAt: undefined, phase });
-    assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...snapshot, workerOperations: [unsettled] }), request), undefined);
-  }
-  assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...snapshot, workerOperations: [{ ...record, auditedAt: undefined }] }), request), undefined);
-});
-
 
 it.each(["present", "unavailable"] as const)("renders starting browser requirements as Not opened from served %s authority with no observations", async requirementState => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -419,8 +487,7 @@ it("refreshes only observed physical sessions through required presentation slot
   assert.deepEqual(emptySchedule.due(IDLE_REFRESH_MS, () => false), [], "required-only slots cannot create a refresh");
   const refusal = await h.port.send({ id: uuidOf(9101), target: card.workerId, action: "refresh", browserIds: [requiredId], authorityKey: sessionWorkerAuthorityKey(h.day().workerCards[0]) });
   assert.equal(refusal.state, "refused"); assert.equal(h.sent.length, 0);
-  const acknowledged = DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], controls: { ...card.controls,
-    basis: { state: "present", value: { leaseGeneration: 1, controlRevision: 2 } }, operation: { commandId: partial.nativeCommandIds?.[0], type: "refresh-browser", state: "succeeded", at: now, unresolved: false, browserSessionId: physicalId } } }] });
+  const acknowledged = h.day();
   const acknowledgedView = sessionsFromDay(acknowledged, catalog, now);
   schedule.sync(acknowledgedView, IDLE_REFRESH_MS, { [card.workerId]: { request: partial, state: "uncertain", message: "awaiting readback" } });
   schedule.confirm(partial, IDLE_REFRESH_MS, acknowledgedView);
@@ -467,7 +534,9 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
   try {
     h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state: "running", currentRun: { state: "present", runId: row.runId, traceId: row.traceId } }],
       queueSurfaces: [{ ...row, pipeline: [{ id: "served-active", label: "Served active step", state: "active" }] }] }));
-    await act(async () => render()); assert(host.querySelector('[role="progressbar"]'));
+    await act(async () => render()); assert.equal(host.querySelector('[role="progressbar"]'), null);
+    const served = sessionsFromDay(h.day(), catalog, now); assert(served.state === "ready");
+    assert.deepEqual(served.workers[0].timeline, [{ id: "served-active", label: "Served active step", state: "active" }]);
     assert.doesNotMatch(host.textContent ?? "", /Run timeline is not served|No steps are served|states unavailable/);
     for (const state of ["idle", "starting", "failed", "running", "waiting", "paused"] as const) {
       h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state, currentRun: { state: "absent", reason: "No current claimed run" },
@@ -475,9 +544,9 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
       await act(async () => render());
       assert.doesNotMatch(host.textContent ?? "", /No current claimed run|Run timeline is not served|No steps are served|states unavailable/);
       assert.equal(host.querySelector('[role="progressbar"]'), null);
-      if (state === "idle") assert.match(host.textContent ?? "", /Ready for the next run/);
-      if (state === "starting") assert.match(host.textContent ?? "", /Preparing worker/);
-      if (state === "failed") assert(host.textContent?.includes("Worker stopped unexpectedly."));
+      if (state === "idle") assert.match(host.textContent ?? "", /Idle.*No run assigned/s);
+      if (state === "starting") assert.match(host.textContent ?? "", /Starting.*No run assigned/s);
+      if (state === "failed") assert(host.textContent?.includes("Its run is no longer on record."));
     }
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -504,7 +573,7 @@ it("distinguishes unopened browser requirements from observed unavailable health
       assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", observation?.state === "present" && observation.health === "failed" ? "failed" : "unavailable"], ["UCPath", "unopened"]]);
       await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
       assert.deepEqual([...host.querySelectorAll("article li")].map(item => item.textContent), [observation?.state === "present" && observation.health === "failed" ? "CRMFailed" : observation?.state === "unavailable" ? "CRMUnavailable. Browser health was not served" : "CRMUnavailable", "UCPathNot opened"]);
-      assert.match(host.querySelector("article")?.textContent ?? "", /No run assigned.*Ready for the next run/s);
+      assert.match(host.querySelector("article")?.textContent ?? "", /Idle.*No run assigned/s);
       assert.equal(h.sent.length, 0);
     }
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
@@ -530,7 +599,7 @@ it("shows a crashed worker's catalog failure text and falls back to the generic 
   const day = dayWith(); const card = { ...day.workerCards[0], state: "failed", endedAt: now, stopReason: "crashed", browsers: [] };
   const bottomLine = (extra: object) => {
     const view = sessionsFromDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card, ...extra }] }), catalog, now);
-    assert.ok(view.state === "ready"); return view.workers[0].problem;
+    assert.ok(view.state === "ready"); assert.equal(view.workers[0].state, "failed"); return view.workers[0].problem;
   };
   assert.equal(bottomLine({ failureCode: "BROWSER_ROOT_UNAVAILABLE" }), ERROR_CATALOG.BROWSER_ROOT_UNAVAILABLE.text);
   assert.equal(bottomLine({}), "Its run is no longer on record.");
@@ -548,85 +617,93 @@ it("distinguishes an intentionally stopped worker after restart from a crashed w
   }
 });
 
-it("clears an uncertain Retry once the served day shows its command audited, so Retry and Stop apply again", async () => {
+/** A failed card whose Retry reply is lost in transit: the command reached the server, the answer never came back. */
+async function lostRetry(options: { audit?: (command: CommandRequest) => unknown; serverEffect?: (h: ReturnType<typeof harness>) => void } = {}) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const h = harness(); const failed = { ...h.day().workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" };
-  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [failed] }));
-  let original: CommandRequest | undefined;
-  h.effect(command => {
-    original = command;
-    const pending = WorkerControlRecordSchema.parse({ ...lifecycleRecord(h.day(), command), auditedAt: undefined, phase: { state: "executing", startedAt: now } });
-    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [pending] }));
-    return { state: "pending", commandId: command.commandId };
-  });
+  const h = harness(); const card = h.day().workerCards[0];
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state: "failed", endedAt: now, stopReason: "crashed" }] }));
+  h.effect(() => { options.serverEffect?.(h); throw new Error("connection reset"); });
+  const { audit } = options;
+  if (audit) h.auditBy((commandId: string) => { const sent = h.sent.find(command => command.commandId === commandId); return sent ? audit(sent) : { state: "unavailable" }; });
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
-  const button = (label: string) => document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+  const render = () => act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+  const text = () => document.body.textContent ?? "";
+  const retry = () => document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]');
+  const toasts = () => [...document.querySelectorAll('[data-slot="toast"]')].filter(toast => (toast.textContent ?? "").includes("Couldn't restart this worker."));
+  const checkOutcome = () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => (button.textContent ?? "").includes("Check outcome"));
+  await render();
+  const button = retry(); assert(button && !button.disabled);
+  const dayBeforeClick = h.day(); const getsBeforeClick = h.gets.length;
+  await act(async () => button.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  if (!audit) { assert.match(text(), /Check outcome/); assert(retry()?.disabled, "the uncertain Retry locks the control"); }
+  assert.equal(h.sent.length, 1);
+  const command = h.sent[0]; assert(command.family === "worker-browser" && command.type === "retry-worker");
+  const finish = async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); };
+  return { h, card, command, render, text, retry, toasts, checkOutcome, dayBeforeClick, getsBeforeClick, finish };
+}
+async function publishChange(h: ReturnType<typeof harness>, render: () => Promise<void>) {
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day() })); await render();
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+}
+const rejected = (command: CommandRequest) => ({ state: "recorded", request: command, result: { state: "rejected", commandId: command.commandId, code: "invalid-state", message: "WORKER_START_FAILED" } });
+const anyToasts = () => document.querySelectorAll('[data-slot="toast"]').length;
+
+it("recovers a Retry whose reply was lost from its audited rejection: one toast, controls released, no resend", async () => {
+  const { h, render, text, retry, toasts, dayBeforeClick, getsBeforeClick, finish } = await lostRetry({ audit: rejected });
   try {
-    await act(async () => render());
-    await act(async () => button("Retry")!.click());
-    assert.equal(h.sent.length, 1); assert(original);
-    assert.match(document.body.textContent ?? "", /Check outcome/); assert(button("Retry")!.disabled);
-    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [lifecycleRecord(h.day(), original)] }));
-    await act(async () => render());
-    assert.doesNotMatch(document.body.textContent ?? "", /Check outcome/); assert.equal(button("Retry")!.disabled, false);
-    assert.equal(h.sent.length, 1, "clearing is a read of the served day, never a resend");
-  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+    assert.equal(h.day(), dayBeforeClick, "the served day was never changed"); assert.equal(h.gets.length, getsBeforeClick, "a rejection needs no day read");
+    assert.doesNotMatch(text(), /Check outcome/); assert.equal(retry()?.disabled, false);
+    assert.equal(toasts().length, 1); assert.equal(anyToasts(), 1); assert.equal(h.sent.length, 1);
+    await render(); await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(h.day(), dayBeforeClick); assert.equal(toasts().length, 1); assert.equal(h.sent.length, 1);
+  } finally { await finish(); }
 });
 
-it("toasts a Retry the served day shows refused before its worker started", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const h = harness(); const failed = { ...h.day().workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" };
-  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [failed] }));
-  let original: CommandRequest | undefined;
-  h.effect(command => {
-    original = command;
-    const pending = WorkerControlRecordSchema.parse({ ...lifecycleRecord(h.day(), command), readiness: undefined, auditedAt: undefined, phase: { state: "executing", startedAt: now } });
-    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [pending] }));
-    return { state: "pending", commandId: command.commandId };
-  });
-  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
+it("settles a lost Retry on Check outcome once its audit is recorded, with one toast", async () => {
+  const { h, command, text, retry, toasts, checkOutcome, finish } = await lostRetry();
   try {
-    await act(async () => render());
-    await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]')!.click());
-    assert(original); assert.doesNotMatch(document.body.textContent ?? "", /Couldn't restart this worker/);
-    const refused = WorkerControlRecordSchema.parse({ ...lifecycleRecord(h.day(), original), readiness: undefined, phase: { state: "refused", completedAt: now, message: "worker-retry-never-started" } });
-    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [refused] }));
-    await act(async () => render());
-    assert.doesNotMatch(document.body.textContent ?? "", /Check outcome/);
-    assert.equal([...document.querySelectorAll('[data-slot="toast"]')].filter(item => /Couldn't restart this worker\./.test(item.textContent ?? "")).length, 1);
-    await act(async () => render());
-    assert.equal([...document.querySelectorAll('[data-slot="toast"]')].filter(item => /Couldn't restart this worker\./.test(item.textContent ?? "")).length, 1, "one toast per settlement");
-  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+    h.audit(rejected(command));
+    const button = checkOutcome(); assert(button);
+    await act(async () => button.click());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.doesNotMatch(text(), /Check outcome/); assert.equal(retry()?.disabled, false);
+    assert.equal(toasts().length, 1); assert.equal(anyToasts(), 1); assert.equal(h.sent.length, 1);
+  } finally { await finish(); }
 });
 
-it("drops a Check outcome that finishes after the served day settled the command, instead of re-locking the card", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const h = harness();
-  h.effect(command => {
-    const pending = WorkerControlRecordSchema.parse({ ...lifecycleRecord(h.day(), command), auditedAt: undefined, phase: { state: "executing", startedAt: now } });
-    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerOperations: [pending] }));
-    return { state: "pending", commandId: command.commandId };
-  });
-  const view = sessionsFromDay(h.day(), catalog, now); const target = h.day().workerCards[0].workerId;
-  await h.port.send({ id: uuidOf(8700), target, action: "stop" });
-  const pending = h.day().workerOperations; const settled = [lifecycleRecord(h.day(), h.sent[0])];
-  let release!: (result: SessionPreviewResult) => void; let commands: ReturnType<typeof useSessionPreviewCommands> | undefined;
-  const port = { send: async (request: SessionPreviewRequest) => ({ id: request.id, state: "uncertain" as const, message: "unused" }),
-    check: (request: SessionPreviewRequest) => new Promise<SessionPreviewResult>(done => { release = result => done({ ...result, id: request.id }); }) };
-  const snapshot = {}; const scope = {};
-  function Host({ records }: { records: typeof pending }) { commands = useSessionPreviewCommands(view, catalog, port, { snapshot, scope, actorId: "local-operator", records }); return null; }
-  const host = document.createElement("div"); const root = createRoot(host);
+it("recovers a lost Retry reply from its audited success without resending", async () => {
+  const restart = (h: ReturnType<typeof harness>) => {
+    const { endedAt: _endedAt, stopReason: _stopReason, ...running } = h.day().workerCards[0];
+    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...running, state: "idle", controls: basis(NEXT_LIFETIME) }] }));
+  };
+  const { h, text, retry, finish } = await lostRetry({ serverEffect: restart, audit: command => ({ state: "recorded", request: command, result: applied(command) }) });
   try {
-    await act(async () => root.render(createElement(Host, { records: pending })));
-    assert.equal(commands?.operations[target]?.state, "uncertain");
-    await act(async () => commands?.check(target));
-    assert.equal(commands?.operations[target]?.state, "checking");
-    await act(async () => root.render(createElement(Host, { records: settled })));
-    await act(async () => release({ id: h.sent[0].commandId, state: "uncertain", message: "Still unknown" }));
-    assert.equal(commands?.operations[target], undefined);
-  } finally { await act(async () => root.unmount()); vi.unstubAllGlobals(); }
+    assert.doesNotMatch(text(), /Check outcome/); assert.equal(retry()?.disabled ?? false, false);
+    assert.equal(anyToasts(), 0); assert.equal(h.sent.length, 1);
+  } finally { await finish(); }
+});
+
+it("keeps a lost Retry unproved while no audit is recorded", async () => {
+  const { h, render, text, retry, finish } = await lostRetry();
+  try {
+    await publishChange(h, render);
+    assert.match(text(), /Check outcome/); assert(retry()?.disabled);
+    assert.equal(document.querySelectorAll('[data-slot="toast"]').length, 0); assert.equal(h.sent.length, 1);
+  } finally { await finish(); }
+});
+
+it("does not adopt another command's recorded outcome for a lost Retry", async () => {
+  const other = (command: CommandRequest) => {
+    const copy = structuredClone(command); assert(copy.family === "worker-browser" && copy.type === "retry-worker");
+    copy.target.lifetimeId = uuidOf(7999); return rejected(copy);
+  };
+  const { h, render, text, retry, finish } = await lostRetry({ audit: other });
+  try {
+    await publishChange(h, render);
+    assert.match(text(), /Check outcome/); assert(retry()?.disabled);
+    assert.equal(anyToasts(), 0); assert.equal(h.sent.length, 1);
+  } finally { await finish(); }
 });
 
 it("shows the served last values of a settled worker, sign-in, wait activity, unavailable reasons and an unbuildable sibling", () => {

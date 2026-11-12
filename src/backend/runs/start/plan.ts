@@ -1,3 +1,4 @@
+import { WorkbookActiveSelectionSchema } from "../../../models/dashboard/workbook-library.js";
 import { type ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
 import { admitProtectedInput, hasProtectedSubject, protectedSubjectDisplay, protectedSubjectMatchKey } from "./protected-input.js";
 import { errorText } from "../lifecycle/support.js";
@@ -29,16 +30,17 @@ import {
 } from "../../../models/run/start-plan.js";
 import type { PlannedRun, StartPlanRecord, StartRefusal } from "../../../models/run/start-plan.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { bindRunWorkbookReference, parseRunWorkbookReference, WorkbookRunReferenceSelectionSchema, type WorkbookReferenceLookup } from "../../../models/dashboard/workbooks.js";
+import { bindRunWorkbookReference, parseRunWorkbookReference, type WorkbookReferenceLookup } from "../../../models/dashboard/workbooks.js";
 import type { WorkbookLibraryService } from "../../workbooks/workbook-library-service.js";
-import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
+import { MAX_SELECTED_WORKBOOK_SOURCES } from "../../../rules/spreadsheets/workbook-size.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import type { z } from "zod";
+import { z } from "zod";
 import { workbookInputBinding } from "../workbooks.js";
 
 
 export interface StartPlannerDeps {
-  readonly workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion" | "types">;
+  readonly workbooks?: Pick<WorkbookLibraryService, "createReferenceCapture">;
   readonly protectedSecrets?: ProtectedSecretSource;
 
   readonly authority: Readonly<{
@@ -51,7 +53,7 @@ export interface StartPlannerDeps {
 }
 
 export interface StartPlanRequest {
-  readonly workbookReferences?: readonly z.infer<typeof WorkbookRunReferenceSelectionSchema>[];
+  readonly workbookReferences?: readonly z.infer<typeof WorkbookActiveSelectionSchema>[];
   readonly descriptor: AnyWorkflowDescriptor;
   readonly protectedSubmissionBindings?: readonly ProtectedInputBinding[];
   readonly retainedInputs?: readonly SchemaBoundCanonicalValue[];
@@ -116,7 +118,7 @@ export function dryRunRefusalMessage(descriptor: AnyWorkflowDescriptor): string 
 
 export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): StartPlanRecord {
   const { descriptor } = request;
-  const selections = WorkbookRunReferenceSelectionSchema.array().parse(request.workbookReferences ?? []);
+  const selections = WorkbookActiveSelectionSchema.array().parse(request.workbookReferences ?? []);
   if (selections.some(selection => selection.entry > request.submissions.length)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
 
   const admittedSubmissions = admitProtectedInput(descriptor, request.submissions, deps.protectedSecrets, request.retainedInputs, request.protectedSubmissionBindings);
@@ -147,6 +149,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
   const planned: PlannedRun[] = [];
   const refused: StartRefusal[] = [];
   const seenItemIds = new Set<string>();
+  const captureReference = deps.workbooks?.createReferenceCapture();
 
   for (const [index, rawInput] of rawSubmissions.entries()) {
     const entry = PositiveIntSchema.parse(index + 1);
@@ -174,38 +177,42 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     }
 
     const references = selections.filter(selection => selection.entry === entry);
-    const requiredTypes = planning.requiredWorkbookTypeIds;
-    if (lookups.length !== requiredTypes.length || new Set(lookups.map(lookup => lookup.typeId)).size !== lookups.length
-      || lookups.some(lookup => !requiredTypes.includes(lookup.typeId))) {
+    const requirement = planning.workbookReference;
+    if (lookups.length !== (requirement === undefined ? 0 : 1)
+      || lookups.some(lookup => lookup.typeId !== requirement?.id)) {
       refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
     }
-    if (references.length !== requiredTypes.length || new Set(references.map(reference => reference.typeId)).size !== references.length
-      || references.some(reference => !requiredTypes.includes(reference.typeId))) {
+    const sourceIdentity = (selection: typeof references[number]) => JSON.stringify([selection.libraryId, selection.versionId, selection.sheetId]);
+    if ((requirement === undefined ? references.length !== 0 : references.length < 1 || references.length > MAX_SELECTED_WORKBOOK_SOURCES)
+      || new Set(references.map(sourceIdentity)).size !== references.length) {
       refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
     }
     let workbookReferences: SchemaBoundCanonicalValue[] | undefined;
     if (references.length > 0) {
-      const workbooks = deps.workbooks;
-      if (workbooks === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); continue; }
+      if (captureReference === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); continue; }
       try {
         workbookReferences = references.map(({ entry: _entry, ...selection }) => {
-          const lookup = lookups.find(lookup => lookup.typeId === selection.typeId);
+          const lookup = lookups[0];
           if (lookup === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
           if (selection.selectedRow !== undefined) {
             const capability = descriptor.surfaces.inputRun?.workbookRows;
-            if (capability?.typeId !== selection.typeId || "mode" in lookup || lookup.keys.length !== 1
-              || parsed === null || typeof parsed !== "object"
-              || Reflect.get(parsed, capability.inputField) !== lookup.keys[0]) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+            const fields = z.record(z.string(), z.unknown()).safeParse(parsed).data;
+            const inputKey = z.string().safeParse(capability === undefined || fields === undefined ? undefined : fields[capability.inputField]).data;
+            if (capability === undefined || requirement === undefined || capability.typeId !== requirement.id
+              || "mode" in lookup || inputKey === undefined || !lookup.keys.includes(inputKey)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
           }
-          const libraryId = selection.libraryId ?? workbooks.types().find(type => type.id === selection.typeId)?.defaultWorkbookId;
-          if (!libraryId) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
-          const selected = workbooks.libraryVersion(libraryId, selection.versionId);
-          const current = workbooks.catalog().find(entry => entry.libraryId === libraryId);
-          if (current === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
-          const reference = { ...lookup, libraryId, ...(selection.versionId === undefined ? {} : { versionId: selection.versionId }),
+          if (requirement === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          const reference = { ...lookup, libraryId: selection.libraryId, versionId: selection.versionId,
             ...(selection.selectedRow === undefined ? {} : { selectedRow: selection.selectedRow }),
-            ...("mode" in lookup ? { expectedVersion: current.version } : {}) };
-          return bindRunWorkbookReference(reference, workbooks.snapshot({ ...reference, versionId: selected.version.id }));
+            ...("mode" in lookup ? { expectedVersion: selection.expectedVersion } : {}) };
+          const snapshot = captureReference({ kind: "selected-source", typeId: requirement.id,
+            keyFieldId: requirement.keyFieldId, fields: planning.requiredWorkbookFields,
+            writableFields: requirement.writableFields,
+            mode: requirement.mode, keys: "mode" in lookup ? [] : lookup.keys,
+            libraryId: selection.libraryId, versionId: selection.versionId, sheetId: selection.sheetId,
+            expectedVersion: selection.expectedVersion,
+            ...(selection.selectedRow === undefined ? {} : { selectedRow: selection.selectedRow }) });
+          return bindRunWorkbookReference(reference, snapshot);
         });
       } catch (error) {
         if (!(error instanceof WorkbookLibraryError)) throw error;

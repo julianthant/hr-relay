@@ -14,8 +14,8 @@ import { CommandRequestSchema, BulkRunCommandRequestSchema } from "../../../src/
 import { deriveBulkChildCommandId } from "../../../src/rules/commands/command-groups.js";
 import { URL as FileURL } from "node:url";
 // @vitest-environment jsdom
-import { FIXTURE_EDITABLE_SETTINGS as FIXTURE_EDITABLE_SETTINGS_m1 } from "../../parity/helpers/fixture-settings.js";
-import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m1 } from "../../parity/helpers/workflow-composition.js";
+import { FIXTURE_EDITABLE_SETTINGS as FIXTURE_EDITABLE_SETTINGS_m1 } from "../../mocks/helpers/fixture-settings.js";
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m1 } from "../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 
 import assert_m1 from "node:assert/strict";
@@ -44,8 +44,8 @@ import { DashboardApp as DashboardApp_m2 } from '../../../src/dashboard/app/dash
 import { createDashboardClient as createDashboardClient_m2 } from '../../../src/dashboard/client/index.js';
 import { DashboardClientProvider as DashboardClientProvider_m2 } from '../../../src/dashboard/state/client-context.js';
 import { DashboardDayWireSchema as DashboardDayWireSchema_m2,type DashboardDayWire as DashboardDayWire_m2 } from '../../../src/models/dashboard/projection.js';
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m2 } from '../../parity/helpers/fixture-queue.js';
-import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m2 } from "../../parity/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m2 } from '../../mocks/helpers/fixture-queue.js';
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m2 } from "../../mocks/helpers/workflow-composition.js";
 import { WORKFLOW_SOURCES } from "../../../src/dashboard/app/workflow-sources.js";
 import { createFixtureBff as createFixtureBff_m2 } from '../../support/helpers/dashboard/fixture-bff.js';
 
@@ -72,7 +72,7 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
   protectedSchemaHash: FIXTURE_FINGERPRINT,
   projectionGeneration: 1,
   actor: { id: "local-operator", label: "Local operator" },
-  workbookReferences: [],
+  workbookCompatibility: { workflows: [], libraries: [] },
   serverClock: { now: "2026-08-27T18:00:00.000Z", zone: "America/Los_Angeles" },
   storage: { authority: "healthy" },
   workflows: [{
@@ -87,7 +87,7 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
       enqueue: "reject-active",
       version: 1,
 
-      readiness: { scope: "default-workbook-references", state: "ready" }, spreadsheetIntake: false, requiredWorkbookTypeIds: [],
+      readiness: { scope: "workbook-sources", state: "ready" }, spreadsheetIntake: false, requiredWorkbookFields: [],
       steps: [{
         key: "fixture-step",
         label: "Fixture step",
@@ -109,7 +109,7 @@ const APP_DAY = DashboardDayWireSchema_m1.parse({
   workflowCounts: [{ workflowId: "fixture-workflow", count: 0, statusCounts: [] }],
   statusCounts: [],
   queueSurfaces: [],
-  workerCards: [], workerAuthority: { state: "present", members: [] }, workerOperations: [],
+  workerCards: [], workerAuthority: { state: "present", members: [] },
   workerPools: [],
   notifications: [],
 });
@@ -199,7 +199,7 @@ function appClient(): DashboardClient_m1 {
 
 async function mountDashboard(search: string): Promise<void> {
   window.history.replaceState(null, "", `/${search}`);
-  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
   await act_m1(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -207,7 +207,7 @@ async function mountDashboard(search: string): Promise<void> {
 }
 
 async function mountDashboardAtCurrentHistoryEntry(): Promise<void> {
-  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
   await act_m1(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -254,15 +254,16 @@ async function press(button: HTMLButtonElement): Promise<void> {
   });
 }
 
-async function dirtyBrowserSettings(): Promise<{ input: HTMLInputElement; value: boolean }> {
-  const row = document.querySelector('[data-settings-path="browser.headless"]');
-  const input = row?.querySelector('[role="switch"]');
-  const control = row?.querySelector(".ds-switch-control");
-  assert_m1.ok(input instanceof HTMLInputElement && control instanceof HTMLElement, "Settings browser switch did not mount");
-  const value = !input.checked;
-  await act_m1(async () => control.click());
-  assert_m1.equal(input.checked, value);
-  return { input, value };
+async function dirtyBrowserSettings(): Promise<{ input: HTMLButtonElement; value: string }> {
+  const input = document.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
+  assert_m1.ok(input instanceof HTMLButtonElement, "Settings browser window control did not mount");
+  assert_m1.notEqual(input.dataset.value, "Small");
+  await act_m1(async () => input.click());
+  const option = document.querySelector('[role="option"][data-value="Small"]');
+  assert_m1.ok(option instanceof HTMLElement);
+  await act_m1(async () => option.click());
+  assert_m1.equal(input.dataset.value, "Small");
+  return { input, value: "Small" };
 }
 
 // jsdom does not implement Tab navigation; assert the first enabled descendant order directly.
@@ -285,7 +286,7 @@ describe_m1("served signed-out appearance", () => {
       localStorage.setItem("rebuild-demo.theme", "light");
       try {
         await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served",
-          workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1,
+          workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1,
           ...(preview ? { previewPreferences: createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: "light" }) } : {}),
         }));
         assert_m1.equal(reads, 1);
@@ -320,14 +321,14 @@ describe_m1("served sign-up Finish", () => {
     } });
     const client: DashboardClient_m1 = { ...appClient(), bootstrap: () => live.bootstrap(), readProfileSession: () => live.readProfileSession(),
       resumeProfile: () => live.resumeProfile(), subscribeProfileSessionStale: listener => live.subscribeProfileSessionStale(listener) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => assert_m1.ok(document.querySelector(".dashboard-shell")));
     defer = true; const pending = assert_m1.rejects(client.bootstrap()); await dispatched.promise;
     try {
       restarted = true;
       await act_m1(async () => { await assert_m1.rejects(client.bootstrap()); });
       await vi_m1.waitFor(() => { assert_m1.equal(resumes, 1); assert_m1.ok(document.querySelector(".dashboard-shell")); });
-      await act_m1(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Start a run"]')?.click(); });
+      await act_m1(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Start run"]')?.click(); });
       const dialog = document.querySelector('[role="dialog"]'); assert_m1.ok(dialog);
       const workflow = [...dialog.querySelectorAll("button")].find(button => button.textContent?.includes("Person Lookup"));
       assert_m1.ok(workflow); await act_m1(async () => workflow.click());
@@ -362,7 +363,7 @@ describe_m1("served sign-up Finish", () => {
     } });
     const client: DashboardClient_m1 = { ...appClient(), bootstrap: () => live.bootstrap(), readProfileSession: () => live.readProfileSession(),
       resumeProfile: () => live.resumeProfile(), subscribeProfileSessionStale: listener => live.subscribeProfileSessionStale(listener) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => assert_m1.ok(document.querySelector(".dashboard-shell")));
     restarted = true;
     await act_m1(async () => { await assert_m1.rejects(client.bootstrap()); });
@@ -379,7 +380,7 @@ describe_m1("served sign-up Finish", () => {
     let resumed = 0;
     const client = { ...appClient(), readProfileSession: async () => ({ state: "signed-out" as const, signUpRequired: false, resumable: true as const }),
       resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_TRANSITION_BLOCKED" as const }; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
     await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Sign up")?.click(); });
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
@@ -397,7 +398,7 @@ describe_m1("served sign-up Finish", () => {
     const client = { ...appClient(),
       readProfileSession: async () => resumed > 0 ? active : { state: "signed-out" as const, signUpRequired: false, resumable: true as const },
       resumeProfile: async () => { resumed++; return active; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => {
       assert_m1.equal(resumed, 1);
       assert_m1.equal(new URLSearchParams(window.location.search).has("onboarding"), false);
@@ -414,7 +415,7 @@ describe_m1("served sign-up Finish", () => {
     const client = { ...appClient(),
       readProfileSession: async () => { if (cookie) return active; readsBeforeWinner++; return { state: "signed-out" as const, signUpRequired: false, resumable: true as const }; },
       resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_TRANSITION_BLOCKED" as const }; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(readsBeforeWinner >= 2, true); }, { timeout: 3000 });
     assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay");
     release(); await winner;
@@ -428,7 +429,7 @@ describe_m1("served sign-up Finish", () => {
     const client = { ...appClient(),
       readProfileSession: async () => { reads++; return { state: "signed-out" as const, signUpRequired: false, resumable: true as const }; },
       resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const }; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(reads >= 3, true); }, { timeout: 3500 });
     assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay");
     assert_m1.equal(resumed, 1);
@@ -441,7 +442,7 @@ describe_m1("served sign-up Finish", () => {
     window.history.replaceState(null, "", "/");
     let finished = false, reads = 0;
     const client = { ...appClient(), readProfileSession: async () => { reads++; return finished ? { state: "signed-out" as const, signUpRequired: false } : waiting; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(reads >= 2, true); }, { timeout: 3000 });
     assert_m1.equal(document.querySelector(".form-error")?.textContent, operatorFailureSentence("PROFILE_LOGOUT_BLOCKED"));
     finished = true;
@@ -458,7 +459,7 @@ describe_m1("served sign-up Finish", () => {
     let finished = false, reads = 0, signIns = 0;
     const client = { ...appClient(), readProfileSession: async () => { reads++; return finished || !clears ? { state: "signed-out" as const, signUpRequired: false } : answer; },
       signInProfile: async () => { signIns++; return answer; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
     for (const [name, value] of [["email", "fixture@ucsd.edu"], ["password", "disposable-fixture-password"]] as const) {
       await act_m1(async () => { const field = document.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
@@ -482,7 +483,7 @@ describe_m1("served sign-up Finish", () => {
   it_m1("opens the sign-up form from the Sign up link after a refused login", async () => {
     window.history.replaceState(null, "", "/");
     const client = { ...appClient(), readProfileSession: async () => ({ state: "refused" as const, code: "PROFILE_SIGN_IN_REFUSED" as const }) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
     await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Sign up")?.click(); });
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
@@ -494,7 +495,7 @@ describe_m1("served sign-up Finish", () => {
     window.history.replaceState(null, "", "/?onboarding=signup");
     const client = { ...appClient(), readProfileSession: async () => ({ state: "signed-out" as const, signUpRequired: false,
       ...(logoutIncomplete ? { logoutIncomplete: true as const } : {}) }) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
     assert_m1.equal(document.body.textContent?.includes(operatorFailureSentence("PROFILE_LOGOUT_INCOMPLETE")), logoutIncomplete);
     await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Sign up")?.click(); });
@@ -504,7 +505,7 @@ describe_m1("served sign-up Finish", () => {
   it_m1("opens sign-up on a computer with no profiles", async () => {
     window.history.replaceState(null, "", "/");
     const client = { ...appClient(), readProfileSession: async () => ({ state: "signed-out" as const, signUpRequired: true }) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
   });
 
@@ -514,7 +515,7 @@ describe_m1("served sign-up Finish", () => {
     let finished = false;
     const client = { ...appClient(), readProfileSession: async () => finished ? { state: "signed-out" as const, signUpRequired: false } : ready,
       completeProfileOnboarding: async () => { finished = true; return PublicProfileStateSchema.parse({ state: "error", code: "INTERNAL_FAILURE" }); } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await act_m1(async () => { [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Finish setup")?.click(); });
     assert_m1.equal(finished, true);
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
@@ -604,7 +605,7 @@ afterEach_m1(_afterEachFixture0);
     await mountDashboard("?intake=e1f2a3b4-0000-4000-8000-000000000001");
     await press(buttonNamed("Close"));
 
-    const door = buttonNamed("Start a run");
+    const door = buttonNamed("Start run");
     assert_m1.equal(door.id, RUN_START_DOOR_ID_m1);
     assert_m1.equal(document.activeElement === door, true);
     assert_m1.equal(
@@ -624,17 +625,18 @@ afterEach_m1(_afterEachFixture0);
     await mountDashboard("?settings=general");
     const { input, value } = await dirtyBrowserSettings();
     const frame = frameOf("Settings");
-    const themeControl = document.querySelector('[data-settings-path="appearance.theme"] button');
-    assert_m1.ok(themeControl instanceof HTMLButtonElement);
-    const initialTheme = themeControl.textContent;
-    await act_m1(async () => themeControl.click());
-    assert_m1.equal(themeControl.textContent, initialTheme === "Light" ? "Dark" : "Light");
+    const themeRadios = [...document.querySelectorAll<HTMLInputElement>('[data-settings-path="appearance.theme"] input[type="radio"]')];
+    const initialTheme = themeRadios.find(radio => radio.checked)?.value;
+    const otherTheme = themeRadios.find(radio => !radio.checked);
+    assert_m1.ok(otherTheme);
+    await act_m1(async () => otherTheme.click());
+    assert_m1.equal(themeRadios.find(radio => radio.checked)?.value, initialTheme === "light" ? "dark" : "light");
     const notifications = document.querySelector(".rail-notification-toggle");
     assert_m1.ok(notifications instanceof HTMLButtonElement);
     assert_m1.match(notifications.getAttribute("aria-label") ?? "", /^Notifications, \d+ unread$/u);
     await press(notifications);
     assert_m1.equal(frameOf("Settings"), frame, "opening notifications preserves the runtime draft owner");
-    assert_m1.equal(input.checked, value, "browser appearance and notification controls preserve runtime edits");
+    assert_m1.equal(input.dataset.value, value, "browser appearance and notification controls preserve runtime edits");
     await press(notifications);
     const sectionLink = (label: string): HTMLAnchorElement => {
       const link = [...document.querySelectorAll("nav[aria-label='Settings sections'] a")]
@@ -660,9 +662,9 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(document.querySelector('[role="dialog"]') === null, true, "Escape closes the pending dirty-exit dialog");
     assert_m1.equal(document.activeElement === dashboard, true, "Escape restores focus to the persistent navigation control");
     await act_m1(async () => sectionLink("General").click());
-    const restored = document.querySelector('[data-settings-path="browser.headless"] [role="switch"]');
-    assert_m1.ok(restored instanceof HTMLInputElement);
-    assert_m1.equal(restored.checked, value);
+    const restored = document.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
+    assert_m1.ok(restored instanceof HTMLButtonElement);
+    assert_m1.equal(restored.dataset.value, value);
     await press(buttonNamed("Back to dashboard"));
     await press(buttonNamed("Discard changes"));
     assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
@@ -761,13 +763,13 @@ const _afterEachFixture0 = async () => {
 afterEach_m2(_afterEachFixture0);
 async function settle() { await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); }
 
-function servedSessionMocks(workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION_m2>[0]) {
-  const composition = PARITY_WORKFLOW_COMPOSITION_m2(workflows);
+function servedSessionMocks(workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION_m2>[0]) {
+  const composition = MOCK_WORKFLOW_COMPOSITION_m2(workflows);
   const registered = new Set(workflows.map(flow => flow.workflowId));
   for (const id of Object.keys(WORKFLOW_SOURCES)) assert_m2.equal(composition.sources[id], WORKFLOW_SOURCES[id] === "hidden" ? "hidden" : registered.has(id) ? "served" : "mock", id);
   return Object.freeze({ ...composition, sessions: "served" as const });
 }
-async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof PARITY_WORKFLOW_COMPOSITION_m2 } = {}) {
+async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof MOCK_WORKFLOW_COMPOSITION_m2 } = {}) {
   const { app } = createFixtureBff_m2();
   const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
   const requests: { url: string; resume?: string | null }[] = [];
@@ -805,7 +807,7 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE_m2.day}${options.search ? `&${options.search}` : ""}`);
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
   const host = document.createElement('div'); document.body.append(host); root = createRoot_m2(host);
-  const workflowComposition = options.workflowComposition ?? PARITY_WORKFLOW_COMPOSITION_m2;
+  const workflowComposition = options.workflowComposition ?? MOCK_WORKFLOW_COMPOSITION_m2;
   await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, { workflowComposition, previewPreferences: preview }) })));
   await settle(); disposers.push(() => { open = false; });
   return { host, requests, streams,
@@ -874,6 +876,7 @@ describe_m2("dispatchBulk's rejection arm (the selection band's bulk post)", () 
           if (composed.state !== "ready") throw new Error("bulk fixture composition refused");
           void binding.executor.execute(composed.request, options);
         } }),
+        entries.map(entry => createElement_m2("button", { key: entry.inFlightKey, onClick: () => setRecoveryKey(entry.inFlightKey) }, `Review ${entry.label}`)), // stands in for the Priority notification's Review action
         createElement_m2(CommandRecovery, { entries, pendingKey: recoveryKey, onReview: setRecoveryKey, onReplay: entry => { setRecoveryKey(null); void binding.executor.replay(entry.inFlightKey, options); } }),
       );
     }
@@ -890,12 +893,12 @@ describe_m2("dispatchBulk's rejection arm (the selection band's bulk post)", () 
     if (!(confirm instanceof HTMLButtonElement)) throw new Error("missing bulk confirmation action");
     await act_m2(async () => confirm.click()); await settle();
     assert_m2.equal(bytes.length, 1);
-    assert_m2.ok(document.querySelector('[aria-label="Commands awaiting recovery"]'));
+    assert_m2.match(document.body.textContent ?? "", /cancel: outcome unknown/u);
     assert_m2.doesNotMatch(document.body.textContent ?? "", /private transport sentinel|Command confirmed/u);
     await settle(); assert_m2.equal(bytes.length, 1, "uncertainty never automatically retries");
     await click("Review cancel"); await click("Resend original request");
     assert_m2.deepEqual(bytes, [bytes[0], bytes[0]], "recovery preserves the full parent envelope bytes");
-    assert_m2.equal(document.querySelector('[aria-label="Commands awaiting recovery"]') === null, true, "confirmed replay clears recovery");
+    assert_m2.doesNotMatch(document.body.textContent ?? "", /cancel: outcome unknown/u, "confirmed replay clears recovery");
     assert_m2.doesNotMatch(document.body.textContent ?? "", /private server sentinel/u);
     assert_m2.equal(published[0]?.kind, "uncertain");
     assert_m2.equal(published.at(-1)?.kind, "confirmed", "success requires matching authoritative readback");
@@ -984,7 +987,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     };
     await edit("Task", "240");
     assert_m2.match(document.querySelector('[data-slot="toast"]')?.textContent ?? "", /Settings save unconfirmed/u);
-    const credentials = [...h.host.querySelectorAll<HTMLAnchorElement>("a")].find(button => button.textContent?.trim() === "Credentials");
+    const credentials = [...h.host.querySelectorAll<HTMLAnchorElement>("a")].find(button => button.textContent?.trim() === "Account");
     assert_m2.ok(credentials); await act_m2(async () => credentials.click()); await settle();
     await edit("UCPath username", "Synthetic credential");
     assert_m2.equal(commands.length, 2);
@@ -1016,10 +1019,11 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     assert_m2.equal(commands.length, 1);
     await h.deliver(DashboardDayWireSchema_m2.parse({ ...FIXTURE_DAY_WIRE_m2, snapshotCursor: "pc:200", queueSurfaces: FIXTURE_DAY_WIRE_m2.queueSurfaces.filter(entry => entry.runId !== candidate.runId) }));
     assert_m2.equal(h.host.querySelector(`[data-demo-row-id="${candidate.runId}"]`) === null, true);
-    const recovery = h.host.querySelector('[aria-label="Commands awaiting recovery"]');
-    assert_m2.ok(recovery);
-    const review = [...recovery.querySelectorAll("button")].find(entry => entry.textContent?.trim() === "Review Delete run (1 run)");
-    assert_m2.ok(review);
+    assert_m2.ok([...document.querySelectorAll('[data-slot="toast"]')].some(toast => toast.textContent?.includes("Delete run: outcome unknown")), "the lost response stays visible as a sticky toast");
+    const bell = h.host.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert_m2.ok(bell);
+    await act_m2(async () => bell.click()); await settle();
+    const review = [...h.host.querySelectorAll<HTMLButtonElement>("button.notification-item")].find(entry => entry.textContent?.includes("Delete run: outcome unknown"));
+    assert_m2.ok(review, "the Priority notification offers the original request for review");
     await act_m2(async () => review.click());
     assert_m2.ok([...document.querySelectorAll('[role="dialog"]')].some(dialog => dialog.textContent?.includes("Recover previous Delete run")));
     assert_m2.equal(commands.length, 1, "reviewing recovery must not dispatch a second command");
@@ -1029,7 +1033,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     assert_m2.equal(h.streams.length, 1);
     assert_m2.equal(h.requests.some(request => request.url.includes(`/events/v1?topics=dashboard-day:${FIXTURE_DAY_WIRE_m2.day}`)), true);
     assert_m2.match(h.host.textContent ?? '', /Person Lookup/u);
-    assert_m2(h.host.querySelector('[data-parity-ready="true"]'));
+    assert_m2(h.host.querySelector('[data-mock-ready="true"]'));
   });
   it_m2('keeps an unknown launch workflow in the explicit unavailable destination', async () => {
     const view = encodeURIComponent(JSON.stringify({ launchWorkflow: 'unregistered-workflow' }));
@@ -1054,7 +1058,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
   });
   it_m2('shows an unavailable bootstrap without fixture success or a misleading empty queue', async () => {
     const h = await mount({ bootFailure: true });
-    assert_m2(h.host.querySelector('[data-parity-ready="failed"]'));
+    assert_m2(h.host.querySelector('[data-mock-ready="failed"]'));
     assert_m2.equal(h.host.querySelector('[aria-label="Queue"]') === null, true);
     assert_m2.equal(h.streams.length, 0);
   });
@@ -1090,6 +1094,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
 {
 
 const APP = readFileSync_m3(new FileURL("../../../src/dashboard/app/dashboard-app.tsx", import.meta.url), "utf8");
+const LAUNCHER_MODEL = readFileSync_m3(new FileURL("../../../src/dashboard/surfaces/assistant/assistant-controller-model.ts", import.meta.url), "utf8");
 const OVERLAY = readFileSync_m3(new FileURL("../../../src/dashboard/ds/primitives/base-toast.tsx", import.meta.url), "utf8");
 
 function sourceSlice(source: string, start: string, end: string, label: string): string {
@@ -1114,13 +1119,18 @@ describe_m3("shell and queue structural fidelity", () => {
     assert_m3.ok(toastEnd < tooltipEnd && tooltipEnd < rootEnd, "the root must close after both providers");
     assert_m3.match(
       APP.slice(rootStart, tooltipStart),
-      /"--ds-toast-inset-bottom": "calc\(var\(--ds-h-bar\) \+ var\(--ds-space-loose\)\)"/u,
-      "the outer root is the one place that sets the Session-bar toast floor",
+      /"--ds-toast-inset-bottom": "calc\(2 \* \(var\(--ds-h-bar\) \+ var\(--ds-space-loose\)\)\)"/u,
+      "the outer root is the one place that sets the floor above the Sessions bar and the Logs footer",
     );
     assert_m3.match(
       OVERLAY,
-      /bottom-\[var\(--ds-toast-inset-bottom,16px\)\]/u,
-      "the fixed toast viewport must consume the shell-owned floor",
+      /fixed top-3 left-1\/2/u,
+      "the fixed toast viewport is top-centred, so it sits clear of the Sessions bar floor",
+    );
+    assert_m3.match(
+      LAUNCHER_MODEL,
+      /var\(--ds-toast-inset-bottom\)/u,
+      "the docked assistant launcher consumes the shell-owned floor",
     );
   });
 

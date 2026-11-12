@@ -64,7 +64,7 @@ it("starts the actual dashboard from the same token-owned context and proves res
     const readPreference = client.assistantModelPreference?.bind(client); assert.ok(readPreference);
     const preference = await readPreference();
     assert.deepEqual({ profileId: preference.profileId, epoch: preference.epoch }, { profileId: f.active.profileId, epoch: context.profileEpoch });
-    assert.throws(() => f.runtime.bindSupervisor(f.active.token, { memberEvidence: () => undefined, drainOwnedChildren: async () => undefined }), /owner-mismatch/u);
+    assert.throws(() => f.runtime.bindSupervisor(f.active.token, { snapshot: () => [], stopAll: async () => [] }), /owner-mismatch/u);
     await dashboard.stop(); dashboard = undefined;
     assert.throws(() => context.database.getMeta(), /closed/u);
     assert.throws(() => context.admission.assertLive());

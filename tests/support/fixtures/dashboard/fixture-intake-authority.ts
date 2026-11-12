@@ -1,3 +1,5 @@
+import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
+import { unusedWorkerPool } from "../../helpers/backend/unused-worker-pool.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
@@ -31,7 +33,7 @@ import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { intakeFixtureDescriptor, intakeFixtureProjection } from "../intake-workflow-fixture.js";
 import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
-import type { ParityBundleProof } from "../../../parity/helpers/bundle.js";
+import type { MockBundleProof } from "../../../mocks/helpers/bundle.js";
 
 export const INTAKE_CSV = "Employee ID#,Effective Date,Dept\n10456712,07/01/2026,Housing\n10-4567,07/01/2026,Housing\n10998801,07/01/2026,Student Affairs\n";
 export async function createIntakeAuthority(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
@@ -70,7 +72,7 @@ export async function createIntakeAuthority(profileFixture: () => Promise<BoundP
       appVersion: "0.1.0", authority: database, clock, ids: kernelIds,
       configIdentity: { configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: UUID_1 }, descriptors,
       writeResolution: { recheck: forbidden, resolveAbsent: forbidden },
-      workerRuntime: { pool: { planPoolWorkerCount: forbidden, spawnPoolWorker: forbidden, refreshPoolBrowser: forbidden, reopenPoolBrowser: forbidden, stopPoolWorker: forbidden, pausePoolWorker: forbidden, resumePoolWorker: forbidden } },
+      workerRuntime: { pool: unusedWorkerPool(forbidden) },
       intakeParser: parser, intakeProjections: projections });
     const projection = createRunQueueProjection({
       timeline: database.authority.timelineEvents, reader: sqliteRunReader(database, clock), stateRoot: root,
@@ -81,8 +83,6 @@ export async function createIntakeAuthority(profileFixture: () => Promise<BoundP
         listNotifications: () => [], listNotificationCheckpoints: () => [],
         listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
         listGateResults: runId => database.authority.gateResults.listByRun(runId),
-        listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
-        getWorkerLease: workerId => database.authority.workerLeases.get(workerId),
         listWorkerPools: () => database.authority.workerPools.list(),
         listRunBatches: () => database.authority.runSessions.list(), getRunBatch: id => database.authority.runSessions.get(id),
         getFailure: failureId => database.authority.failures.get(failureId),
@@ -114,9 +114,9 @@ export async function createIntakeAuthority(profileFixture: () => Promise<BoundP
     completeConsumed: forbidden,
     publish: forbidden,
   };
-  registerCommandsRoutes(app, { clock, commands, commandJournal: { get: id => database.authority.commands.get(id) },
+  registerCommandsRoutes(app, { clock, commands, resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority), commandJournal: { get: id => database.authority.commands.get(id) },
     protectedCommandAcceptedAt: forbidden, bulkCommandAcceptances: { withTransaction: work => database.withAuthorityTransaction(repositories => work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })) },
-    intake: { prepare: request => runtime.intake.prepare(request) },
+    intake: { prepare: request => runtime.intake.prepare(request) }, resolveIdentityGateAnswer: forbidden,
   });
   app.onError((error, c) => c.json({ state: "error", code: "INTAKE_PROOF_ERROR", message: error.message, retryable: false }, 500));
   return {
@@ -137,7 +137,7 @@ export async function createIntakeAuthority(profileFixture: () => Promise<BoundP
   };
 }
 
-export async function startIntakeAuthorityServer(input: { distDir: string; bundle: ParityBundleProof }) {
+export async function startIntakeAuthorityServer(input: { distDir: string; bundle: MockBundleProof }) {
   const [{DEFAULT_DASHBOARD_PROFILE},{startFixtureServer}]=await Promise.all([import("./fixture-profile.js"),
     import("../../helpers/dashboard/fixture-bff.js")]);
   const template = DEFAULT_DASHBOARD_PROFILE.bootstrap.workflows.map(workflow => WorkflowBootstrapPrimitiveSchema.parse(workflow)).find(workflow => workflow.start?.spreadsheetIntake === true);

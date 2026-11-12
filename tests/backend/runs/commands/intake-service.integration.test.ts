@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { readXlsx } from "@shbernal/ts-xlsx";
@@ -15,10 +16,12 @@ import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.j
 
 import assert from "node:assert/strict";
 import { readFileSync,rmSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { afterAll,afterEach,describe,it } from "vitest";
+import { z } from "zod";
 import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
-import { createIntakeParser } from "../../../../src/backend/processing/spreadsheet/intake-parser.js";
+import { createIntakeParser, type PreparedIntakeParser } from "../../../../src/backend/processing/spreadsheet/intake-parser.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createDashboardCommandService } from "../../../../src/backend/runs/commands/command-service.js";
 import {
@@ -71,6 +74,7 @@ interface Surface {
   readonly root: string;
   readonly freshIntake: (missingManifest?: boolean) => IntakeService;
   readonly intake: IntakeService;
+  readonly commands: ReturnType<typeof createDashboardCommandService>;
   readonly database: AuthorityDatabase;
   readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
   readonly projection: ReturnType<typeof createRunQueueProjection>;
@@ -83,7 +87,7 @@ interface Surface {
   ) => Promise<{ readonly state: string }>;
 }
 
-async function surface(): Promise<Surface> {
+async function surface(parserFor?: (artifacts: Surface["artifacts"]) => PreparedIntakeParser): Promise<Surface> {
   const profile = await profileFixtures.create(); profiles.push(profile);
   const root = profile.stateRoot;
   const clock = manualClock(new Date(NOW));
@@ -98,7 +102,7 @@ async function surface(): Promise<Surface> {
   const artifacts = createContentAddressedArtifactWriter({
     admission: profile.admission,
   });
-  const parser = createIntakeParser({ artifacts });
+  const parser = parserFor?.(artifacts) ?? createIntakeParser({ artifacts });
   const projections = {
     resolve: (workflowId: string) =>
       (workflowId === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureProjection : undefined),
@@ -141,15 +145,7 @@ async function surface(): Promise<Surface> {
       recheck: () => { throw new Error("unused"); },
       resolveAbsent: () => { throw new Error("unused"); },
     },
-    workerRuntime: { pool: {
-      planPoolWorkerCount: async () => { throw new Error("unused worker plan"); },
-      spawnPoolWorker: async () => { throw new Error("unused worker spawn"); },
-      refreshPoolBrowser: async () => { throw new Error("unused browser refresh"); },
-      reopenPoolBrowser: async () => { throw new Error("unused browser reopen"); },
-      stopPoolWorker: async () => { throw new Error("unused worker stop"); },
-      pausePoolWorker: async () => { throw new Error("unused worker pause"); },
-      resumePoolWorker: async () => { throw new Error("unused worker resume"); },
-    } },
+    workerRuntime: { pool: unusedWorkerPool() },
     intakeParser: parser,
     intakeProjections: projections,
   });
@@ -170,8 +166,6 @@ async function surface(): Promise<Surface> {
       listNotificationCheckpoints: () => [],
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),
-      listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
-      getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
@@ -198,6 +192,7 @@ async function surface(): Promise<Surface> {
         getIntakeManifest: (id) => missingManifest ? undefined : intakeDependencies.authorityRead.getIntakeManifest(id),
       } }),
     intake,
+    commands,
     artifacts,
     database,
     projection,
@@ -229,6 +224,25 @@ async function uploadRoster(intake: IntakeService) {
   });
   if (outcome.state === "refused") throw new Error(`the fixture roster was refused: ${outcome.message}`);
   return outcome;
+}
+
+
+const CommandRowSchema = z.strictObject({
+  state: z.enum(["admitted", "executing", "succeeded", "refused", "uncertain"]),
+});
+const AuditCountSchema = z.strictObject({
+  count: z.union([z.number().int().nonnegative(), z.bigint()]),
+});
+
+function commandRow(path: string, id: string): { state: z.infer<typeof CommandRowSchema>["state"]; audits: number } {
+  const raw = new DatabaseSync(path, { readOnly: true });
+  try {
+    const row = CommandRowSchema.parse(raw.prepare("SELECT state FROM commands WHERE id = ?").get(id));
+    const count = AuditCountSchema.parse(raw.prepare("SELECT count(*) AS count FROM command_audits WHERE command_id = ?").get(id));
+    return { state: row.state, audits: Number(count.count) };
+  } finally {
+    raw.close();
+  }
 }
 
 describe("intake upload route", () => {
@@ -809,5 +823,64 @@ describe("saved workbook intake bridge", () => {
     assert.deepEqual(query(id, commandId()), { state: "unavailable" });
     assert.deepEqual(query(id, UUID_1), { state: "unavailable" });
     assert.equal(h.database.getMeta().authorityGeneration, generation);
+  });
+});
+
+describe("admitted intake preparation", () => {
+  it("prepares an admitted inspect again on a fresh parser, and skips settled or divergent commands", async () => {
+    const seen = { prepares: 0, failParse: false };
+    let backing: PreparedIntakeParser | undefined;
+    const harness = await surface((artifacts) => {
+      backing = createIntakeParser({ artifacts });
+      return {
+        async prepare(key) {
+          seen.prepares += 1;
+          const parser = backing;
+          assert.ok(parser);
+          return parser.prepare(key);
+        },
+        parse(key) {
+          if (seen.failParse) throw new Error("injected intake parse failure");
+          const parser = backing;
+          assert.ok(parser);
+          return parser.parse(key);
+        },
+      };
+    });
+    const created = await uploadRoster(harness.intake);
+    assert.equal(created.state, "created");
+    if (created.state !== "created") return;
+    const command = {
+      commandId: commandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "intake",
+      type: "inspect-intake",
+      target: { intakeSessionId: created.session.intakeSessionId, expectedVersion: created.session.expectedVersion },
+      payload: { sheet: "default", headerRowIndex: 1 },
+    };
+    seen.failParse = true;
+    const prepared = seen.prepares;
+    await harness.intake.prepare(command);
+    assert.equal(seen.prepares, prepared + 1);
+    assert.throws(() => harness.commands.execute(command), /injected intake parse failure/);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.deepEqual(commandRow(join(harness.root, "state.db"), command.commandId), { state: "admitted", audits: 0 });
+    backing = createIntakeParser({ artifacts: harness.artifacts });
+    seen.failParse = false;
+    const resumed = seen.prepares;
+    await harness.intake.prepare(command);
+    assert.equal(seen.prepares, resumed + 1, "an admitted command prepares its grid again");
+    assert.equal(harness.commands.execute(command).state, "applied");
+    assert.equal(harness.commands.execute(command).state, "already-applied");
+    const settled = seen.prepares;
+    await harness.intake.prepare(command);
+    assert.equal(seen.prepares, settled, "a settled replay is not prepared");
+    const divergent = { ...command, payload: { sheet: "default", headerRowIndex: 0 } };
+    const skipped = seen.prepares;
+    await harness.intake.prepare(divergent);
+    assert.equal(seen.prepares, skipped, "a divergent command is not prepared");
+    assert.throws(() => harness.commands.execute(divergent), /reused with different content/);
   });
 });

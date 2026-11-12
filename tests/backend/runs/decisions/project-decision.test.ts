@@ -9,7 +9,7 @@ import { identityGateDecision } from "../../../../src/backend/runs/queries/run-d
 
 const approve = ActionDescriptorWireSchema.parse({ key: "resolve-gate-approved", label: "Approve", intent: "primary", placement: ["review"], kind: "command", command: "resolve-gate", expectedVersion: 3, resolution: "approved" });
 const rowAction = approve;
-const option = (eid: string) => ({ eid, chosenFrom: "name-search" as const, displayName: `Person ${eid}`, origin: "found by name" });
+const option = (eid: string) => ({ ref: `00000000-0000-4000-8000-${eid.padStart(12, "0")}`, displayName: `Person ${eid}`, maskedEid: `••••${eid.slice(-4)}`, origin: "found by name" });
 
 describe("decision instance text", () => {
   it("declares the dropdown label for every decision that offers more than one choice", () => {

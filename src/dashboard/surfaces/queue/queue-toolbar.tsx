@@ -1,7 +1,6 @@
 import { useMemo, useRef, type ReactNode } from "react";
-import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, Pause, Play, RotateCcw, Square, X } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { cn } from "../../lib/utils.js";
-import type { BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
 import {
   ActionBar,
   BareButton,
@@ -9,8 +8,8 @@ import {
   Dialog,
   DialogContent,
   DialogFooter,
-  Disclosure,
-  IconButton,
+  StatusPill,
+  Notice,
   Select,
   dsBorder,
   dsFocus,
@@ -22,14 +21,13 @@ import {
 } from "../../ds/ui.js";
 import { toolbarControl } from "../shell/shell-model.js";
 import { OperationsToolbarRow } from '../shell/operations-toolbar.js';
+import { OUTCOME_CHIP, bulkSummary } from "./queue-toolbar-model.js";
 import { QUEUE_SORTS, type QueueSortKey } from "./queue-model.js";
 import { PAUSE_ALL_EFFECT, PAUSE_ALL_PENDING_STATUS, stepInterruptLabel } from "../shared/status/status-model.js";
 import type { StepInterruptWire } from "../../../models/dashboard/projection.js";
 import {
-  BULK_RESULT_OUTCOMES,
   bulkClosingAssurance,
   bulkConfirmBody,
-  bulkResultCounts,
   bulkUnavailableSentence,
   type BulkBatchOutcome,
   type BulkVerb,
@@ -39,24 +37,10 @@ import {
 /** the icon per bulk verb — the same two the row's own footer draws */
 const BULK_VERB_ICON: Record<BulkVerb, typeof RotateCcw> = { cancel: Ban, retry: RotateCcw, resume: Play };
 
-/** what one run's child command settled as, in the operator's words: a `conflict` carries the refresh instruction */
-const OUTCOME_TONE: Record<
-  BulkRunCommandOutcome["outcome"],
-  { readonly word: string; readonly text: string; readonly dot: string }
-> = {
-  applied: {
-    word: "applied",
-    text: "text-[color:var(--ds-success-fg)]",
-    dot: "bg-[var(--ds-success-fg)]",
-  },
-  conflict: {
-    word: "conflict",
-    text: "text-[color:var(--ds-status-waiting-fg)]",
-    dot: "bg-[var(--ds-status-waiting-fg)]",
-  },
-  refused: { word: "refused", text: "text-[color:var(--ds-danger)]", dot: "bg-[var(--ds-danger)]" },
-  errored: { word: "errored", text: "text-[color:var(--ds-danger)]", dot: "bg-[var(--ds-danger)]" },
-};
+function OutcomeChip({ outcome }: { outcome: keyof typeof OUTCOME_CHIP }) {
+  const chip = OUTCOME_CHIP[outcome];
+  return <span className="flex w-[104px] shrink-0"><StatusPill status={chip.status} label={chip.label} size="sm" hideIcon presentation="queue" className={chip.className} /></span>;
+}
 
 /** The pending batch a confirm dialog is asking about, held by the shell. */
 export interface PendingBulkCommand {
@@ -305,136 +289,62 @@ export function QueueToolbar({
       )}
 
       {/* Keep every per-run batch outcome until dismissal; summaries cannot replace the vector. */}
-      <BulkCommandFeedback bulkOutcome={bulkOutcome} onDismissBulkOutcome={onDismissBulkOutcome} onSelectRun={onSelectRun} />
+      <BulkCommandFeedback bulkOutcome={bulkOutcome} reviewing={false} onReviewed={onDismissBulkOutcome} onSelectRun={onSelectRun} />
     </ActionBar>
   );
 }
 
-export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelectRun }: {
-  bulkOutcome: BulkBatchOutcome | null; onDismissBulkOutcome: () => void; onSelectRun: (runId: string) => void;
+function BulkResultRow({ outcome, subject, reason, onOpen }: { outcome: keyof typeof OUTCOME_CHIP; subject: string; reason?: string | undefined; onOpen: () => void }) {
+  return <BareButton type="button" onClick={onOpen}
+    className={cn("flex min-w-0 cursor-pointer items-center text-left h-[var(--ds-h-md)] gap-[var(--ds-space-snug)] px-[var(--ds-space-tight)]", dsRadius.sm, dsText.meta, dsFocus, dsMotion.fast, "hover:bg-[var(--ds-surface-3)]")}>
+    <OutcomeChip outcome={outcome} />
+    {/* Unknown subjects display their real ID rather than an invented name. */}
+    <span className="w-40 shrink-0 truncate text-[color:var(--ds-fg-secondary)]">{subject}</span>
+    <span className="min-w-0 flex-1 truncate text-[color:var(--ds-fg-muted)]">{reason}</span>
+  </BareButton>;
+}
+
+/** The toast only notifies; its Priority notification item opens the per-run review (`reviewing`), and closing the review clears the result. */
+export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, onSelectRun }: {
+  bulkOutcome: BulkBatchOutcome | null; reviewing: boolean; onReviewed: () => void; onSelectRun: (runId: string) => void;
 }) {
+  const reviewing = open ? bulkOutcome : null;
   const vector = bulkOutcome?.response.state === "vector" ? bulkOutcome.response : undefined;
-  const buckets = useMemo(() => vector === undefined ? undefined : bulkResultCounts(vector), [vector]);
   const assurance = useMemo(
     () => vector === undefined ? undefined : bulkClosingAssurance(vector),
     [vector],
   );
+  const summary = bulkOutcome === null ? undefined : bulkSummary(bulkOutcome);
+  const counts = summary?.counts;
   return <>
-      {bulkOutcome !== null && (
-        <div
-          className={cn(
-            "border-t bg-[var(--ds-recess-bg)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]",
-            dsBorder.subtle,
-          )}
-          aria-live="polite"
-          data-queue-bulk-result={bulkOutcome.response.state}
-        >
-          <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
-            <span className={cn(dsText.ui, "font-semibold text-[color:var(--ds-fg)]")}>
-              {vector === undefined ? "Nothing was sent" : `${bulkOutcome.plan.label} — partial result`}
-            </span>
-            {vector !== undefined && buckets !== undefined && (
-              <span className={cn(dsText.meta, dsText.nums, "flex flex-wrap items-center gap-[var(--ds-space-base)]")}>
-                {BULK_RESULT_OUTCOMES.map((outcome, index) => (
-                    <span key={outcome} className="flex items-center gap-[var(--ds-space-base)]">
-                      {index > 0 && <span aria-hidden className="text-[color:var(--ds-fg-faint)]">·</span>}
-                      <span className={OUTCOME_TONE[outcome].text}>
-                        {buckets[outcome]} {OUTCOME_TONE[outcome].word}
-                      </span>
-                    </span>
-                  ))}
-                {vector.results.length < vector.requestedCount && (
-                  <>
-                    <span aria-hidden className="text-[color:var(--ds-fg-faint)]">·</span>
-                    <span className="text-[color:var(--ds-fg-muted)]">
-                      {vector.requestedCount - vector.results.length} not attempted
-                    </span>
-                  </>
-                )}
-              </span>
-            )}
-            <IconButton
-              size="sm"
-              label="Dismiss the bulk result"
-              onClick={onDismissBulkOutcome}
-              icon={<X aria-hidden className={dsIcon.sm} />}
-              className="ml-auto"
-            />
-          </div>
-
+    {summary !== undefined && <Notice sticky tone={summary.tone} title={summary.title} description={summary.detail} />}
+    <Dialog open={reviewing !== null} onOpenChange={next => { if (!next) onReviewed(); }}>
+      {reviewing !== null && <DialogContent size="md" title={`${reviewing.plan.label} result`} description={counts}>
+        <div className="px-[var(--ds-space-loose)] pt-[var(--ds-space-tight)]" aria-live="polite" data-queue-bulk-result={reviewing.response.state}>
           {vector === undefined ? (
             /* Whole-request refusal reached no run; the served sentence is the complete answer. */
-            <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] text-[color:var(--ds-danger)]")}>
-              {bulkOutcome.response.state === "refused" ? bulkOutcome.response.message : ""}
+            <p className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
+              {reviewing.response.state === "refused" ? reviewing.response.message : ""}
             </p>
           ) : (
-            <div className="mt-[var(--ds-space-snug)] flex max-h-40 flex-col overflow-y-auto">
-              {vector.results.map((entry) => {
-                const tone = OUTCOME_TONE[entry.outcome];
-                return (
-                  <BareButton
-                    key={entry.runId}
-                    type="button"
-                    onClick={() => onSelectRun(entry.runId)}
-                    className={cn(
-                      "flex min-w-0 cursor-pointer items-center text-left",
-                      "h-[var(--ds-h-sm)] gap-[var(--ds-space-base)] px-[var(--ds-space-tight)]",
-                      dsRadius.sm,
-                      dsText.meta,
-                      dsFocus,
-                      dsMotion.fast,
-                      "hover:bg-[var(--ds-surface-3)]",
-                    )}
-                  >
-                    <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", tone.dot)} />
-                    <span className={cn(dsText.caps, "w-16 shrink-0", tone.text)}>{tone.word}</span>
-                    {/* Keep sent subjects with results; unknown subjects display their real ID rather than an invented name. */}
-                    <span className="w-40 shrink-0 truncate text-[color:var(--ds-fg-secondary)]">
-                      {bulkOutcome.subjects.get(entry.runId) ?? entry.runId}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-[color:var(--ds-fg-muted)]">{entry.detail}</span>
-                    {entry.outcome === "conflict" && (
-                      <span
-                        className={cn(dsText.micro, dsText.nums, "shrink-0 text-[color:var(--ds-status-waiting-fg)]")}
-                      >
-                        now rev {entry.currentVersion} — refresh
-                      </span>
-                    )}
-                    {entry.outcome === "refused" && (
-                      <span className={cn(dsText.micro, dsText.nums, "shrink-0 text-[color:var(--ds-danger)]")}>
-                        {entry.code}
-                      </span>
-                    )}
-                  </BareButton>
-                );
-              })}
+            <div className="flex max-h-40 flex-col overflow-y-auto">
+              {vector.results.map((entry) => (
+                <BulkResultRow key={entry.runId} outcome={entry.outcome} subject={reviewing.subjects.get(entry.runId) ?? entry.runId}
+                  reason={entry.outcome === "conflict" ? `Changed before the ${reviewing.plan.label.toLowerCase()}` : entry.detail.replace(/\.$/u, "")}
+                  onOpen={() => { onReviewed(); onSelectRun(entry.runId); }} />
+              ))}
+              {/* Skipped rows keep a place so missing outcomes reconcile with the original selection. */}
+              {reviewing.plan.skipped.map(row => <BulkResultRow key={row.runId} outcome="not-attempted" subject={row.title} reason={reviewing.plan.skippedReason ?? `Not offered ${reviewing.plan.label.toLowerCase()}`}
+                onOpen={() => { onReviewed(); onSelectRun(row.runId); }} />)}
             </div>
           )}
 
-          {/* Name skipped rows after dispatch so missing outcomes can be reconciled with the original selection. */}
-          {bulkOutcome.plan.skipped.length > 0 && (
-            <Disclosure className="mt-[var(--ds-space-snug)]" summaryClassName={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")} summary={<>
-                <span className={dsText.nums}>{bulkOutcome.plan.skipped.length}</span> selected{" "}
-                {bulkOutcome.plan.skipped.length === 1 ? "row" : "rows"} never offered {bulkOutcome.plan.label.toLowerCase()} —
-                nothing was attempted for {bulkOutcome.plan.skipped.length === 1 ? "it" : "them"}
-              </>}>
-              <div className="mt-[var(--ds-space-tight)] flex max-h-28 flex-col gap-[var(--ds-space-hair)] overflow-y-auto pl-[var(--ds-space-cozy)]">
-                {bulkOutcome.plan.skipped.map((row) => (
-                  <span key={row.runId} className={cn(dsText.meta, "flex min-w-0 items-center gap-[var(--ds-space-base)]")}>
-                    <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[var(--ds-fg-muted)]" />
-                    <span className="min-w-0 truncate text-[color:var(--ds-fg-muted)]">{row.title}</span>
-                  </span>
-                ))}
-              </div>
-            </Disclosure>
-          )}
-
           {/* Unavailable rows retain their IDs; no served titles exist to display. */}
-          {bulkOutcome.plan.unavailable.length > 0 && (
+          {reviewing.plan.unavailable.length > 0 && (
             <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
               {/* Outcome copy describes row availability when the batch was sent, never the present day. */}
-              {bulkUnavailableSentence(bulkOutcome.plan.unavailable.length, "past")}:{" "}
-              <span className={dsText.nums}>{bulkOutcome.plan.unavailable.join(", ")}</span>
+              {bulkUnavailableSentence(reviewing.plan.unavailable.length, "past")}:{" "}
+              <span className={dsText.nums}>{reviewing.plan.unavailable.join(", ")}</span>
             </p>
           )}
 
@@ -443,18 +353,20 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
               {assurance === "needs-review" ? (
                 <>
                   <AlertTriangle aria-hidden className={cn(dsIcon.sm, "mt-px shrink-0 text-[color:var(--ds-status-waiting-fg)]")} />
-                  Nothing was applied for conflicted, refused, errored, or unattempted rows. Open each one and look before you decide again — a conflict means the row changed under you.
+                  Open each run to check it before trying again.
                 </>
               ) : (
                 <>
                   <CheckCircle2 aria-hidden className={cn(dsIcon.sm, "mt-px shrink-0 text-[color:var(--ds-success-fg)]")} />
-                  Every selected row that offered {bulkOutcome.plan.label.toLowerCase()} accepted it.
+                  Every selected row that offered {reviewing.plan.label.toLowerCase()} accepted it.
                 </>
               )}
             </p>
           )}
         </div>
-      )}
+        <DialogFooter><Button variant="secondary" onClick={onReviewed}>Close</Button></DialogFooter>
+      </DialogContent>}
+    </Dialog>
   </>;
 }
 
@@ -487,7 +399,7 @@ export function PauseAllQuitControls({ state, activeCount, onPauseAll, onResumeA
   const enabled = state === "ready" || state === "paused";
   const resume = state === "paused";
   return <>
-    <Button ref={pauseAll} size="sm" variant="secondary" className="size-8 p-0" aria-label={resume ? "Resume all runs" : "Pause all runs"} title={resume ? "Resume all paused runs" : PAUSE_ALL_EFFECT} icon={resume ? <Play aria-hidden className={dsIcon.sm} /> : <Pause aria-hidden className={dsIcon.sm} />} disabled={!enabled || activeCount === 0 || (resume ? !onResumeAll : !onPauseAll)} onClick={resume ? onResumeAll : onPauseAll} />
+    <Button ref={pauseAll} size="sm" variant="secondary" className="size-7 p-0" aria-label={resume ? "Resume all runs" : "Pause all runs"} title={resume ? "Resume all paused runs" : PAUSE_ALL_EFFECT} icon={resume ? <Play aria-hidden className="size-4" /> : <Pause aria-hidden className="size-4" />} disabled={!enabled || activeCount === 0 || (resume ? !onResumeAll : !onPauseAll)} onClick={resume ? onResumeAll : onPauseAll} />
     {state !== "ready" && <p role="status" className="sr-only">{state === "pausing" ? PAUSE_ALL_PENDING_STATUS : state === "paused" ? "All runs paused. Resume them next time." : state === "blocked" ? "Closure is unknown. Keep Relay open and check active runs." : "Pause all is unavailable. Check the connection."}</p>}
     <Dialog open={quitRequested} onOpenChange={open => { if (!open) onQuitDismiss?.(); }}><DialogContent size="sm" title="Pause all and quit?" description={PAUSE_ALL_EFFECT} onCloseAutoFocus={event => { event.preventDefault(); if (pauseAll.current?.disabled === false) pauseAll.current.focus(); else document.getElementById("dashboard-main-region")?.focus(); }}>
       <DialogFooter><Button variant="secondary" autoFocus onClick={onQuitDismiss}>Keep working</Button><Button disabled={!enabled || !onPauseAndQuit} onClick={() => { onQuitDismiss?.(); onPauseAndQuit?.(); }}>Pause all and quit</Button></DialogFooter>

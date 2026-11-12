@@ -1,3 +1,5 @@
+import { resolveWriteCommandTarget } from "../../../../../src/backend/runs/commands/write-command-target.js";
+import { unusedWorkerPool } from "../../backend/unused-worker-pool.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../../fixtures/dashboard-stream-seams.js";
 import { explorerQueryDeps } from "../../../fixtures/explorer-seams.js";
 import { NO_INTAKE_PROJECTIONS } from "../../../fixtures/intake-kernel-seams.js";
@@ -17,7 +19,7 @@ import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
 import { uuidOf } from "../served-fixtures/seeded-lifecycle.js";
 import { join } from "node:path";
 import { composeActivity } from "../../../../../src/backend/app/composition/dashboard/activity.js";
-import { projectWorkbookReferences } from "../../../../../src/backend/workbooks/workbook-library-service.js";
+import { projectWorkbookCompatibilityFromRepository } from "../../../../../src/backend/workbooks/workbook-library-service.js";
 import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
 import { createCommandKernel } from "../../../../../src/backend/runs/commands/command-kernel.js";
@@ -110,13 +112,13 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       descriptors,
       writeResolution: {
         recheck: () => {
-          throw new Error("write resolution is not wired in the parity seed");
+          throw new Error("write resolution is not wired in the mock seed");
         },
         resolveAbsent: () => {
-          throw new Error("write resolution is not wired in the parity seed");
+          throw new Error("write resolution is not wired in the mock seed");
         },
       },
-      workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("worker runtime is not wired in this fixture"); }, spawnPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, refreshPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, reopenPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, stopPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, pausePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, resumePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); } } },
+      workerRuntime: { pool: unusedWorkerPool() },
     });
     const commands = createDashboardCommandService({ kernel, projection });
     const startPlans = createStartPlanService({
@@ -137,6 +139,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         label: "Local operator",
       }),
       intake: UNWIRED_INTAKE_SERVICE,
+      resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority),
       commandJournal: database.authority.commands,
       protectedCommandAcceptedAt: () => { throw new Error("seeded BFF has no credential command authority"); },
       bulkCommandAcceptances: {
@@ -159,7 +162,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         actorLabel: () => "Fixture Operator",
         authorityMeta: () => database.getMeta(),
         // The seeded adapter runs no backup lane; "missing" is its true state.
-        workbookReferences: workflows => projectWorkbookReferences(database.authority.workbooks, workflows),
+        workbookCompatibility: workflows => projectWorkbookCompatibilityFromRepository(database.authority.workbooks, workflows),
         preflightReport: () => healthyDashboardPreflightReport(clock),
       },
       projection,

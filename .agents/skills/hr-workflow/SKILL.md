@@ -3,20 +3,22 @@ name: hr-workflow
 description: >-
   Internal-resource creator for Relay. `/hr-workflow WORKFLOW_ID` learns one workflow from its
   definition, registries, stores, the active brief's assigned evidence folder, roadmap, references,
-  and public canary subjects, then creates or refreshes a `.agents/skill-library/` reference for
+  and public canary subjects, then creates or refreshes a `.agents/skills/hr-manage/references/` reference for
   `hr-manage`. Use for workflow-specific run, monitor, dry-run, verification, debug, and recording
   guidance; it does not author workflow code or execute a workflow.
+metadata:
+  exposed: "true"
 ---
 
 # /hr-workflow <workflow-id> — generate or refresh an internal workflow resource
 
 This skill creates or refreshes an internal resource; it does not author workflow code or run the
 workflow. Produce the resource that lets `hr-manage` run it without re-learning the repo. Output one
-`.agents/skill-library/hr-<short-id>/REFERENCE.md`, plus optional `references/` for substantial
+`.agents/skills/hr-manage/references/hr-<short-id>/REFERENCE.md`, plus optional `references/` for substantial
 subject or selector detail. Refresh from the current tree while preserving hand-maintained Known
 failure modes and Live record sections.
 
-Read the [workflow-authoring checklist](../../skill-library/workflow-authoring/REFERENCE.md) for the
+Read the [workflow-authoring checklist](references/workflow-authoring-checklist.md) for the
 current definition, registration, and W6 Explorer projection. Use it to understand the authored
 source and compiled projections; this skill still produces a `hr-manage` runbook resource.
 
@@ -45,11 +47,11 @@ source and compiled projections; this skill still produces a `hr-manage` runbook
    findings into "Known failure modes".
 7. `config/test-data.json` (`subjects`; D341) for public canary labels. Private values resolve
    only through the typed reader and ignored `config/test-data.local.json`; never read or print
-   them. Desktop parity lives under `tests/parity/`. Declared `scenarios` are contract data, not test evidence. Find current checks
+   them. Declared `scenarios` are contract data, not test evidence. Find current checks
    in active suite roots and use `ref guards-and-tests` §10.5 for
    canary availability and acceptance status.
 8. The platform-wide rails live in `.agents/skills/hr-manage/SKILL.md` and
-   `.agents/skill-library/hr-debug/REFERENCE.md` — read both once so the generated resource points to
+   [hr-debug reference](../hr-debug/references/debugging.md) — read both once so the generated resource points to
    them instead of restating them.
 
 Stop when you can fill every template section from evidence. A section you cannot fill gets `UNKNOWN — <what to read/run to fill it>`, never a guess.
@@ -101,13 +103,13 @@ Stop when you can fill every template section from evidence. A section you canno
 ## Current verification and gate status
 - Focused tests, lint, and affected static/generated checks: <existing paths and verified outcomes from the owning task>
 - Phase-exit gates: <only the gates required by the active phase plan, with actual outcomes or not run>
-- Do not infer test execution from declared scenario ids. Keep desktop parity obligations. Follow root `AGENTS.md` and
+- Do not infer test execution from declared scenario ids. Follow root `AGENTS.md` and
   `ref guards-and-tests` for cadence.
 
 ## Known failure modes (from the owning reference and nearest module AGENTS.md)
 - <one line per verified issue: the symptom, cause, owning reference, and nearest module
   `AGENTS.md`>
-- Debug anything new through `.agents/skill-library/hr-debug/REFERENCE.md`; selectors use its
+- Debug anything new through [hr-debug reference](../hr-debug/references/debugging.md); selectors use its
   selector-repair loop; never "add a longer wait" first.
 
 ## Live record
@@ -127,7 +129,7 @@ Stop when you can fill every template section from evidence. A section you canno
 - No secret values, no EIDs, no document numbers of real people in the resource.
 - Recap: the file path, the short-id mapping, the sections left `UNKNOWN` and what fills them.
 
-## Refresh mode (`/hr-workflow <id>` when `.agents/skill-library/hr-<short-id>` exists)
+## Refresh mode (`/hr-workflow <id>` when `.agents/skills/hr-manage/references/hr-<short-id>` exists)
 
 Regenerate Graph / Explorer preview / Inputs / Dry run / Current verification from the current
 tree; preserve and append to Known failure modes and Live record; diff the old and new file in the

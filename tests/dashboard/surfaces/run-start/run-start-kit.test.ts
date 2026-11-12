@@ -4,14 +4,12 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,it } from "vitest";
 import {
-EnqueueResultBanner,
 LockedFact,
 PlanPreview,
 StartChoiceControl,
 } from "../../../../src/dashboard/surfaces/run-start/run-start-kit.js";
 import { fmtClock } from "../../../../src/dashboard/surfaces/shared/status/format.js";
 import { StartPlanWireSchema as StartPlanResponseSchema,type StartPlanWire as StartPlanResponse } from "../../../../src/models/dashboard/start-plan.js";
-import { CommandResultSchema,type CommandResult } from "../../../../src/rules/commands/commands.js";
 
 /** what a sighted operator can read with no pointer: the markup minus its tooltips */
 function withoutTooltips(markup: string): string {
@@ -165,70 +163,3 @@ describe("the plan draws one card per proposed row", () => {
     assert.ok(!text.includes(EXPIRES_AT), "the raw ISO instant is on an operator's screen");
   });
 });
-
-describe("result banner uses its own words", () => {
-  const applied: Exclude<CommandResult, { state: "pending" }> = nonPendingResult({
-    state: "applied",
-    commandId: "3a000000-0000-4000-8000-000000000001",
-    affectedTargets: [{
-      family: "start",
-      workflowId: "person-lookup",
-      startPlanId: "5a000000-0000-4000-8000-000000000001",
-      expectedVersion: 4,
-    }],
-  });
-
-  const rejected: Exclude<CommandResult, { state: "pending" }> = nonPendingResult({
-    state: "rejected",
-    commandId: "3a000000-0000-4000-8000-000000000002",
-    code: "policy-refused",
-    message: "A run for this subject is already unfinished.",
-  });
-
-  const conflict: Exclude<CommandResult, { state: "pending" }> = nonPendingResult({
-    state: "conflict",
-    commandId: "3a000000-0000-4000-8000-000000000003",
-    currentVersion: 7,
-    message: "The start plan was built against version 4.",
-  });
-
-  const noop = (): void => undefined;
-
-  it("says Close on a settled start and Dismiss on a refusal", () => {
-    // Closing a receipt and dismissing a refusal are different acts; one word
-    // for both makes them read as the same one.
-    assert.ok(
-      textOf(renderToStaticMarkup(
-        createElement(EnqueueResultBanner, { result: applied, onDismiss: noop }),
-      )).includes("Close"),
-    );
-    const refusalText = textOf(renderToStaticMarkup(
-      createElement(EnqueueResultBanner, { result: rejected, onDismiss: noop }),
-    ));
-    assert.ok(refusalText.includes("Dismiss"));
-    assert.ok(!refusalText.includes("Close"), "a refusal is dismissed, not closed");
-  });
-
-  it("gives the conflict arm the one exit it has", () => {
-
-    const text = textOf(renderToStaticMarkup(
-      createElement(EnqueueResultBanner, { result: conflict, onReload: noop, onDismiss: noop }),
-    ));
-    assert.ok(text.includes("Reload the form"), "the conflict banner has no exit");
-    assert.ok(text.includes("7"), "the version the server actually holds is not shown");
-  });
-
-  it("still draws a conflict when no reload handler is wired, rather than a bare banner claim", () => {
-    const text = textOf(renderToStaticMarkup(
-      createElement(EnqueueResultBanner, { result: conflict }),
-    ));
-    assert.ok(text.includes("The start plan moved under this form"));
-    assert.ok(!text.includes("Reload the form"), "an unwired control was offered anyway");
-  });
-});
-
-function nonPendingResult(input: unknown): Exclude<CommandResult, { state: "pending" }> {
-  const result = CommandResultSchema.parse(input);
-  if (result.state === "pending") throw new Error("Start fixture cannot be pending");
-  return result;
-}
