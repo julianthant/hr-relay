@@ -41,6 +41,13 @@ Read [DESIGN.md](DESIGN.md) and open the specimen page (`npm run web`, then
 `http://localhost:5174/kit.html`) before choosing primitives. Read [PARITY.md](PARITY.md) before
 judging a visual difference.
 
+## Design authority
+
+DESIGN.md and this file decide every design choice. A design skill supplies only its method: where
+its defaults (tokens, fonts, colors, radii, spacing, motion values, layout, copy tone) differ from
+DESIGN.md, follow DESIGN.md. Record design decisions in DESIGN.md, never in a skill's own memory file
+such as `.interface-design/`. Build every mock in the parity harness with `ui-mock`.
+
 ## Data and command rules
 
 - Extend `src/dashboard/client/index.ts` and shared `src/models/**`; add no second API or type layer.
