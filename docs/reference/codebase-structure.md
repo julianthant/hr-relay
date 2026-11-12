@@ -12,6 +12,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `config/` | Runtime isolation and test-data configuration. |
 | `docs/reference/` | Current contracts and this map. |
 | `docs/guides/` | Workflow authoring guide. |
+| `docs/guides/windows.md` | Windows launcher steps. |
 | `docs/guard-inventory.json` | Guard owners and reasons. |
 | `docs/roadmap/roadmap.md` | Roadmap content. |
 | `docs/roadmap/index.html` | Generated roadmap site. |
@@ -30,7 +31,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 owns the contract fingerprint and build id.
 `npm run roadmap` generates the roadmap site; `npm run roadmap:check` checks it.
 `npm run web:build` produces the dashboard bundle in `dist/`.
-Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. The [Git instructions](../../AGENTS.md#git) own worktree naming and lifecycle.
+Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. The [Conventions](../../AGENTS.md#conventions) own worktree naming and lifecycle.
 
 `src/backend/runtime/writes/recovery-activity.ts` owns retained-run recovery read activity, action notes and required captures. `src/models/run/recovery-activity.ts` owns its exact operation identity and task-compatible note path.
 
