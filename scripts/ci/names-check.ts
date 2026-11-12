@@ -179,6 +179,9 @@ export function closedWorktreeLine(path: string, checkoutBranch: string | undefi
   if (pathOwners.some((row) => !CLOSED_TICKET.has(row.status))) return undefined;
   const branchOwners = checkoutBranch === undefined ? [] : rows.filter((row) => row.branch === checkoutBranch);
   if (branchOwners.some((row) => !CLOSED_TICKET.has(row.status))) return undefined;
+  const associated = pathOwners.flatMap((row) => row.branch === undefined ? [] : [row.branch]);
+  const associatedOpen = associated.some((branch) => rows.some((row) => row.branch === branch && !CLOSED_TICKET.has(row.status)));
+  if (associatedOpen) return undefined;
   const owners = checkoutBranch === undefined ? pathOwners : [...pathOwners, ...branchOwners];
   if (!owners.some((row) => CLOSED_TICKET.has(row.status))) return undefined;
   return report(path, "ticket is closed");

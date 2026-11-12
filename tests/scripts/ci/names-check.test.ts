@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -34,10 +34,10 @@ function writeLedger(path: string, rows: readonly { id: string; status: string; 
   database.close();
 }
 
-function varAlias(porcelain: string): string {
+function filesystemAlias(porcelain: string): string {
   const real = realpathSync(porcelain);
-  if (!real.startsWith("/private/")) throw new Error(`expected a /private worktree path, got ${real}`);
-  const alias = `/${real.slice("/private/".length)}`;
+  const alias = `${porcelain}.alias`;
+  symlinkSync(real, alias);
   if (realpathSync(alias) !== real) throw new Error(`alias ${alias} does not resolve to ${real}`);
   return alias;
 }
@@ -74,6 +74,13 @@ const worktreeLineCases: readonly { label: string; checkout?: string; rows: read
   {
     label: "detached path with an active owner",
     rows: [{ status: "active", worktree: path }],
+  },
+  {
+    label: "detached path whose named branch still has an open ticket",
+    rows: [
+      { status: "complete", branch: "feature/shared", worktree: path },
+      { status: "active", branch: "feature/shared" },
+    ],
   },
   {
     label: "one complete and one active on the same path",
@@ -238,7 +245,6 @@ describe("names:check", () => {
       const expected = [
         "task/names/closed: ticket is closed",
         `${detached}: ticket is closed`,
-        `${shared}: ticket is closed`,
       ].sort((left, right) => left.localeCompare(right));
       expect(first.status).toBe(0);
       expect(second.status).toBe(0);
@@ -246,6 +252,7 @@ describe("names:check", () => {
       expect(first.stdout).toBe(second.stdout);
       expect(first.stdout).toBe(`${expected.join("\n")}\n`);
       expect(first.stdout).not.toContain("open-detached");
+      expect(first.stdout).not.toContain("shared-lane");
       expect(first.stdout).not.toContain("feature/shared");
       expect(snapshot(root)).toEqual(before);
     } finally {
@@ -293,7 +300,7 @@ describe("names:check", () => {
     }
   });
 
-  it("lists a detached worktree when the ledger path is the /var alias", () => {
+  it("lists a detached worktree when the ledger path is a symlink alias", () => {
     const root = mkdtempSync(join(tmpdir(), "names-check-alias-detached-"));
     const ledger = join(root, "ledger.db");
     try {
@@ -302,7 +309,7 @@ describe("names:check", () => {
       git(root, ["worktree", "add", "-q", "--detach", ".worktrees/names.closed", "task/names/closed"]);
       const porcelain = worktreePath(root, ".worktrees/names.closed");
       writeLedger(ledger, [
-        { id: "closed", status: "complete", branch: "task/names/closed", worktree: varAlias(porcelain) },
+        { id: "closed", status: "complete", branch: "task/names/closed", worktree: filesystemAlias(porcelain) },
       ]);
       const before = snapshot(root);
       const first = runNamesCheck(["--all", "--ledger", ledger], root);
@@ -327,7 +334,7 @@ describe("names:check", () => {
     }
   });
 
-  it("an active ticket at the /var alias keeps the attached worktree unlisted", () => {
+  it("an active ticket at a symlink alias keeps the attached worktree unlisted", () => {
     const root = mkdtempSync(join(tmpdir(), "names-check-alias-attached-"));
     const ledger = join(root, "ledger.db");
     try {
@@ -337,7 +344,7 @@ describe("names:check", () => {
       const porcelain = worktreePath(root, ".worktrees/names.closed");
       writeLedger(ledger, [
         { id: "closed", status: "complete", branch: "task/names/closed", worktree: porcelain },
-        { id: "open", status: "active", branch: "feature/still-open", worktree: varAlias(porcelain) },
+        { id: "open", status: "active", branch: "feature/still-open", worktree: filesystemAlias(porcelain) },
       ]);
       const before = snapshot(root);
       const first = runNamesCheck(["--all", "--ledger", ledger], root);
