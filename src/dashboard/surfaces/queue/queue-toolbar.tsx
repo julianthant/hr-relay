@@ -334,7 +334,7 @@ export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, 
                   onOpen={() => { onReviewed(); onSelectRun(entry.runId); }} />
               ))}
               {/* Skipped rows keep a place so missing outcomes reconcile with the original selection. */}
-              {reviewing.plan.skipped.map(row => <BulkResultRow key={row.runId} outcome="not-attempted" subject={row.title} reason={`Not offered ${reviewing.plan.label.toLowerCase()}`}
+              {reviewing.plan.skipped.map(row => <BulkResultRow key={row.runId} outcome="not-attempted" subject={row.title} reason={reviewing.plan.skippedReason ?? `Not offered ${reviewing.plan.label.toLowerCase()}`}
                 onOpen={() => { onReviewed(); onSelectRun(row.runId); }} />)}
             </div>
           )}
