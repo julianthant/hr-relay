@@ -15,13 +15,13 @@ release pull request.
 | `staging` | `static`, `privacy`, `unit`, `integration`, `architecture` |
 | `main` | the `staging` checks, plus `release` |
 
-The expensive `release-batch` job runs only on PRs from `staging` into `main`, after the other checks.
-The required top-level `release` summary also runs for other heads targeting `main` and fails their
-head validation, so omitted expensive work cannot satisfy main protection for an invalid source.
-Valid Markdown-only omissions pass after proof validation; manual releases validate routine proofs
-without a PR source-head restriction.
-The expensive job’s isolated macOS runner builds the web bundle, runs coverage alone, then
-performance. The [release instructions](../AGENTS.md#pr-and-release-flow) own promotion and branch synchronization.
+Ready pull requests into `staging` or `main` run `perf` and `smoke` as separate Ubuntu jobs,
+including Markdown-only pull requests. The `unit` proof fence requires both results before the
+outer gate can pass. Each job installs Chromium, builds the dashboard and uses tmpfs for test temp,
+like an Ubuntu integration shard. `perf` runs `npm run test:perf`; `smoke` runs
+`npm run test:smoke` against the built dashboard. Drafts and manual releases run neither job.
+No workflow runs coverage. `npm run test:coverage` remains a local command with unchanged floors.
+The [release instructions](../AGENTS.md#pr-and-release-flow) own promotion and branch synchronization.
 
 ## Merge train and automatic fixes
 
@@ -60,16 +60,14 @@ full-Chromium installation through `scripts/test/chromium-preflight.ts` by openi
 and observing the owned browser process exit. This one-time setup has no retries; timed proofs still use fresh profiles and their existing
 deadlines. A full staging run uses two
 Ubuntu unit shards, two architecture shards and fourteen integration shards, plus static and
-privacy, within twenty Ubuntu runners. On operator-started full releases, use all five macOS
-runners for native files. The release runner starts after
-the routine suites finish.
+privacy and the separate perf and smoke jobs. On operator-started full releases, use all five macOS
+runners for native files.
 
 `.github/workflows` holds `staging.yml`, `production.yml`, `checks.yml` and `merge-train.yml`.
 `Staging` (`staging.yml`) runs for pull requests into `staging` and pushes to `staging`; it runs `names`, then
 `checks.yml` with kind `portable`. `Production` (`production.yml`) runs for pull requests into `main` and for a
-manual start; it calls the same `checks.yml` with kind `release`; the plan adds macOS native and
-release-batch jobs. A run's title is its pull request title; a manual Production run takes its title from its
-required `title` input. `checks.yml` is the only file that defines test jobs.
+manual start; it calls the same `checks.yml` with kind `release`; the plan adds selected macOS native jobs.
+A run's title is its pull request title; a manual Production run takes its title from its required `title` input. `checks.yml` is the only file that defines test jobs.
 
 Security jobs run only in `Production`; Staging runs none. `codeql` (CodeQL analysis of JavaScript and TypeScript)
 runs for pull requests into `main` and for pushes to `main`, so the default branch always has an analysis; a push to
@@ -87,7 +85,7 @@ group and `cancel-in-progress: true`. New pushes cancel older runs for that same
 queues one complete reusable check call with `queue: max` and `cancel-in-progress: false`.
 Staging uses the `ci-runners` job-level FIFO; Production uses its own `release-runners` FIFO,
 so Production neither waits behind nor blocks staging PR runs. Each admitted call holds all proofs,
-selected batch and timing publication until its callee finishes; the callees never reacquire admission. GitHub orders waiting
+perf, smoke and timing publication until its callee finishes; the callees never reacquire admission. GitHub orders waiting
 calls by arrival, accepts at most 100 pending calls, and cancels extra arrivals on overflow.
 
 The merge train is outside the admitted call, after the `staging` gate, while remaining
@@ -96,8 +94,8 @@ in progress for the same head), and its own gate decides the `staging` check; a 
 
 `scripts/test/ci-plan.ts` owns typed selection, proof, publication and timing-history policy. Both timed callees
 retain explicit test budgets. `checks.yml` jobs are `changes`, `static`, `privacy`, `ubuntu`, `macos`,
-`unit-proofs`, `integration`, `architecture`, `release-batch` and `unit`; the plan leaves
-`macos` empty outside a full release, and `unit-proofs` and `release-batch` run only for the release kind.
+`unit-proofs`, `integration`, `architecture`, `perf`, `smoke` and `unit`; the plan leaves
+`macos` empty outside a full release, and `unit-proofs` runs only for the release kind.
 It has no `timings` job. The `unit` job is one checkout
 and one install: it checks proofs, merges durations, uploads `ci-timings` only when every proof passed,
 then runs final verification. It runs unless cancelled, excludes downstream train to avoid a cycle,
@@ -107,14 +105,13 @@ cancelled needed job, so those results cannot merge. The required names are `sta
 `production` on main. The train may stop when cancelled.
 
 Run static, privacy and affected portable unit, integration and architecture suites for ready PRs
-into `staging`. For PRs from `staging` into `main`, add selected native proofs and release.
+into `staging`. For PRs from `staging` into `main`, add selected native proofs.
 Path filters select affected suites. Draft pushes run static, privacy and
 affected unit files; becoming ready starts full applicable validation. Only the operator may start
 a manual full-release dispatch; it selects all routine suites, including native proofs. Other PR heads targeting `main`, except `staging` and `hotfix/*`, omit
-native proofs and expensive release work; their `production` gate fails. Drafts cannot merge. Protected-branch pushes do not
-repeat CI; Markdown-only PRs run static and privacy. A deliberately omitted suite has a successful
+native proofs; their `production` gate fails. Drafts cannot merge. Protected-branch pushes do not
+repeat CI; Markdown-only ready PRs run static, privacy, perf and smoke. A deliberately omitted suite has a successful
 summary, while failed change detection or any failed/cancelled selected group fails its summary.
-Markdown-only release PRs omit coverage and perf.
 
 Timing discovery enumerates registered workflow IDs for the exact `staging.yml` and `production.yml` paths,
 then orders their successful histories together, newest first, excluding the current run. An

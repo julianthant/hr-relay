@@ -11,7 +11,8 @@ const matrixSchema = z.object({ include: z.array(z.object({
   shard: z.number().int().positive(), shards: z.number().int().positive(),
 })) });
 export const ciPlanSchema = z.object({
-  workflow: z.enum(["portable", "release"]), fullRelease: z.boolean(), releaseBatch: z.boolean(),
+  workflow: z.enum(["portable", "release"]), fullRelease: z.boolean(),
+  perf: z.boolean(), smoke: z.boolean(),
   unit: z.boolean(), integration: z.boolean(), architecture: z.boolean(),
   ubuntu: matrixSchema, macos: matrixSchema,
   testJobs: z.number().int().nonnegative(),
@@ -49,7 +50,7 @@ export function createCiPlan(input: unknown): CiPlan {
   const nativeShards = selected.integration ? 5 : selected.unit ? 1 : 0;
   const macos = fullRelease ? jobs("native", nativeShards) : [];
   return ciPlanSchema.parse({ ...selected, workflow: context.workflow, fullRelease,
-    releaseBatch: !manual && fullRelease && selected.architecture,
+    perf: !manual && !context.draft, smoke: !manual && !context.draft,
     ubuntu: { include: ubuntu }, macos: { include: macos },
     testJobs: ubuntu.length + macos.length,
   });
@@ -81,8 +82,8 @@ export function verifyProofs(input: unknown, outcomes: unknown): void {
   if (plan.workflow === "release") {
     requireResult(results, "unit-proofs", "success");
     requireResult(results, "macos", plan.fullRelease && (plan.unit || plan.integration) ? "success" : "skipped");
-    requireResult(results, "release-batch", plan.releaseBatch ? "success" : "skipped");
   }
+  for (const job of ["perf", "smoke"] as const) requireResult(results, job, plan[job] ? "success" : "skipped");
   verifyUnitProof(plan, results);
 }
 

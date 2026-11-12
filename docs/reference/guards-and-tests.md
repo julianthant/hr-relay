@@ -112,7 +112,7 @@ results. Role-derived scenario paths do not prove that a file exists.
 | `npm run test:integration -- <paths>` | `vitest run --project integration --passWithNoTests=false`. |
 | `npm run test:architecture -- <paths>` | `vitest run --project architecture --passWithNoTests=false`. |
 | `npm run test:local -- <paths>` | `vitest run --project local --passWithNoTests=true`. |
-| `npm run test:coverage` | `vitest run --coverage --project unit --project integration --project architecture`. |
+| `npm run test:coverage` | Local only: `vitest run --coverage --project unit --project integration --project architecture`. No workflow runs coverage; floors are unchanged. |
 | `npm run test:perf` | `vitest run --project perf --passWithNoTests=false`. |
 | `npm run test:watch` | Interactive `vitest` on unit, integration, architecture and perf. |
 | `npm run perf:dashboard` | `TZ=UTC tsx tests/perf/dashboard-benchmark.ts`. |
@@ -156,9 +156,11 @@ Other native files count half because two workers share them.
 | unit | Ubuntu | 2 (3 without integration) | unit files except `NATIVE_FILES` |
 | architecture | Ubuntu | 2 | architecture files |
 | integration | Ubuntu | 14 | integration files except `NATIVE_FILES` and `SERIAL_FILES` |
+| perf | Ubuntu | 1 | `npm run test:perf` on ready pull requests |
+| smoke | Ubuntu | 1 | `npm run test:smoke` on the built dashboard on ready pull requests |
 | native | macOS, operator-started full releases only | 5 | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |
 
-With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The job-level whole-pipeline FIFO
+Full staging runs also include `static`, `privacy`, `perf` and `smoke`. The job-level whole-pipeline FIFO
 admission and draft policy are described in [repository governance](../repository-governance.md).
 Each shard downloads the same `ci-balancing` input and uploads Vitest JSON reports as `durations-*`.
 Report basenames include the runner OS and selection group, so merged artifacts preserve both platforms.
@@ -260,44 +262,44 @@ Vitest test and hook limits, test wait helpers and the browser deadlines tests p
 Local runs use 1. Product defaults are unchanged. Remaining steps run after a failed serial proof
 unless the workflow is cancelled, preserving failure visibility, and any shard failure fails its suite.
 
-PR filtering uses these rules. Static and privacy always run. Draft PRs select only affected unit files;
+PR filtering uses these rules. Static and privacy always run. Every ready pull request also runs
+perf and smoke in separate Ubuntu jobs, including Markdown-only changes. Both jobs install Chromium,
+build the dashboard and use tmpfs for test temp, like an Ubuntu integration shard. Drafts and
+manual releases select neither job. Draft PRs select only affected unit files;
 `ready_for_review` triggers all applicable suites. Only operator-started manual full-release
 dispatches bypass the draft limit.
 
 | Changed paths | Routine suites selected |
 | --- | --- |
 | Markdown only | None. |
-| Source, scripts, configuration, dependencies, shared test helpers or fixtures, unknown non-Markdown paths | All four. |
+| Source, scripts, configuration, dependencies, shared test helpers or fixtures, unknown non-Markdown paths | Unit, integration and architecture. |
 | Unit test files only | Unit and architecture. |
 | Integration test files only | Integration and architecture. |
 | Architecture test files only | Architecture. |
 | Mock scene files only | Architecture. |
 | Mock scene helpers, fixtures or entrypoints | Unit, integration and architecture; unit and integration also import these. |
-| Local or perf test files only | Architecture; local remains machine-only and perf remains release-only. |
+| Local or perf test files only | Architecture; local remains machine-only. Ready PRs also run perf and smoke. |
 
-Select the union for mixed changes. Staging PRs execute only the portable entry workflow. Valid
-`staging` → `main` releases select native work and the isolated coverage/performance batch.
-Other heads into main omit native/batch work and fail the required release source-head check.
-Markdown-only releases omit those expensive jobs but explicitly pass the required release summary
-after proof validation. Operator manual releases select all routine native suites; the
-coverage/performance batch remains PR-only. Machine-readable docs count as configuration. Release
-authorization belongs to the root check rules. Protected branch pushes do not repeat CI.
+Select the union for mixed changes. Staging PRs execute the portable plan plus perf and smoke.
+Valid `staging` or `hotfix/*` → `main` releases also select native work. Other heads into main omit
+native work and fail the required source-head check. Operator manual releases select all routine
+native suites. Machine-readable docs count as configuration. Release authorization belongs to the
+root check rules. Protected branch pushes do not repeat CI.
 
 Both event entries use per-PR/manual-branch workflow concurrency with cancellation enabled. New
 pushes supersede older runs for the same workflow/PR-or-ref key. Each entry admits one complete
 reusable check call with `queue: max` and `cancel-in-progress: false`. Staging uses the `ci-runners`
 FIFO. Release runs in its own lane and neither waits behind nor blocks staging pull-request runs.
-Every mandatory proof, selected batch and timing publication remains
+Every mandatory proof, including perf and smoke, and timing publication remains
 inside that callee; no callee reacquires admission. Merge train follows the five top summaries
 outside the admitted call; the standalone staging-push train is unchanged.
 
 `checks.yml` is the only file that defines test jobs and has no `timings` job. Its jobs are `changes`, `static`,
-`privacy`, `ubuntu`, `macos`, `unit-proofs`, `integration`, `architecture`, `release-batch` and `unit`; the plan
-empties `macos` outside a full release, and `unit-proofs` and `release-batch` run only for the release kind. Its `unit` runs unless cancelled, with one checkout and one install.
+`privacy`, `ubuntu`, `macos`, `unit-proofs`, `integration`, `architecture`, `perf`, `smoke` and `unit`; the plan
+empties `macos` outside a full release, and `unit-proofs` runs only for the release kind. Its `unit` runs unless cancelled, with one checkout and one install.
 It checks proofs, merges durations, uploads `ci-timings` only when every proof passed, then runs
 final verification, rejecting failed, cancelled or missing outcomes. Cancellation stops its checkout/install work.
-In releases it also checks the selected batch, after
-`unit-proofs` allows batch execution without a cycle. The required outer `unit` always validates
+It requires successful perf and smoke results on ready PRs, and exactly skipped results when omitted. The required outer `unit` always validates
 both the complete call result and inner unit output as success. Train is excluded from the inner
 fence because it runs downstream. Portable selected suites require Ubuntu success. Selected
 eligible full-release unit/integration require both native platforms to succeed, regardless of
@@ -318,7 +320,7 @@ proves the selections give each file to exactly one job, so selected paths need 
 selection/history adapters and actual summary-shell failures for staging, source/head, Markdown
 and manual cases. Source/API-list checks are not the Actions graph proof: the operator reviews
 the actual published staging graph to confirm no release workflow is loaded.
-Coverage, perf and local selection are unchanged.
+Coverage is local only through `npm run test:coverage`, with unchanged floors. Local project selection is unchanged.
 
 ## 3. Private test temporary directory
 

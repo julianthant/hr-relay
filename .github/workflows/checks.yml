@@ -343,11 +343,12 @@ jobs:
           fi
 
 
-  release-batch:
-    name: release batch
-    if: ${{ fromJSON(needs.changes.outputs.plan).releaseBatch }}
-    needs: [changes, static, privacy, unit-proofs, integration, architecture]
-    runs-on: macos-15
+  perf:
+    name: perf
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).perf }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -357,27 +358,48 @@ jobs:
       - run: npm ci
       - run: npm run build:observer-policy
       - uses: actions/cache@v6
-        id: browsers
         with:
-          path: ~/Library/Caches/ms-playwright
-          key: ${{ runner.os }}-${{ runner.arch }}-macos-15-playwright-chromium-${{ hashFiles('package-lock.json') }}
-      - run: npx playwright install chromium
-        if: steps.browsers.outputs.cache-hit != 'true'
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}
+      - name: Install Chromium
+        run: npx playwright install chromium
       - run: npm run web:build
-      - name: Mount test temp on a RAM disk
+      - name: Put test temp on tmpfs
         run: |
-          dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
-          vol=$(dirname "$dir")
-          case "$(mount | grep -F " on ${vol} " || true)" in
-            *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
-          esac
+          dir=$(mktemp -d /dev/shm/relay-tmp.XXXXXX)
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - run: npm run test:coverage
       - run: npm run test:perf
+
+  smoke:
+    name: smoke
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).smoke }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - run: npm run build:observer-policy
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - run: npm run web:build
+      - name: Put test temp on tmpfs
+        run: |
+          dir=$(mktemp -d /dev/shm/relay-tmp.XXXXXX)
+          printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
+      - run: npm run test:smoke
 
   unit:
     name: unit
-    needs: [changes, static, privacy, ubuntu, integration, architecture, macos, unit-proofs, release-batch]
+    needs: [changes, static, privacy, ubuntu, integration, architecture, macos, unit-proofs, perf, smoke]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
