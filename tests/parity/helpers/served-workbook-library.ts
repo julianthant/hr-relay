@@ -3,7 +3,7 @@ import { emergencyContactWorkflow } from "../../../src/workflows/emergency-conta
 import { harness } from "../../support/helpers/backend/http-route-harness.js";
 
 /** The fixture BFF serves no workbook library: answer /api/v1/workbooks from the real route harness, seeded with a Roster type and the named workbooks. Pair with disposeHttpRouteHarness. */
-export async function serveWorkbookLibrary(page: Page, names: readonly string[], options: { readonly requiredFields?: boolean } = {}): Promise<void> {
+export async function serveWorkbookLibrary(page: Page, names: readonly string[], options: { readonly requiredFields?: boolean; readonly unmapped?: readonly string[] } = {}): Promise<void> {
   const h = await harness(options.requiredFields ? { workbookWorkflows: [emergencyContactWorkflow] } : {});
   const headers = { host: "localhost", origin: "http://localhost", "content-type": "application/json" };
   const post = async (path: string, body: unknown) => {
@@ -16,7 +16,7 @@ export async function serveWorkbookLibrary(page: Page, names: readonly string[],
   await post("/api/v1/workbooks/types", { id: rich ? "ocr-roster" : "roster", name: "Roster", keyFieldId: fields[0], fields, defaultWorkbookId: null });
   for (const name of names) {
     await post("/api/v1/workbooks", { workbook: { name, hasFormulas: false, themes: [], sheets: [{ id: "people", name: rich ? "Roster" : "July 6", width: columns.length, hidden: [], headerRow: 1,
-      columnBindings: columns.map((header, index) => ({ id: `column-${index}`, sourceColumn: index, sourceHeader: header, fieldId: fields[index] ?? null, basis: fields[index] ? "manual" : "unmapped" })),
+      columnBindings: columns.map((header, index) => ({ id: `column-${index}`, sourceColumn: index, sourceHeader: header, fieldId: options.unmapped?.includes(name) ? null : fields[index] ?? null, basis: fields[index] && !options.unmapped?.includes(name) ? "manual" : "unmapped" })),
       rows: [columns, ...people].map((cells, index) => ({ id: `row-${index}`, cells: cells.map(value => ({ value })) })) }] } });
     h.clock.advanceWall(1000); // distinct creation times keep the library order stable
   }
