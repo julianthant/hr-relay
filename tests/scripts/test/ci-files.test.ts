@@ -4,11 +4,40 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { balance, durationsFromReports, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
+import { balance, durationsFromReports, LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
+
+const linuxNativeReport = [
+  "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
+  "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
+  "tests/backend/storage/maintenance/protected-settings-upgrade.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.integration.test.ts",
+  "tests/backend/profiles/profile-session.incomplete-publication.integration.test.ts",
+  "tests/backend/profiles/profile-session.credential-migration.integration.test.ts",
+  "tests/backend/runs/lifecycle/run-record-service.storage-restore-drill.integration.test.ts",
+  "tests/backend/storage/admission/admission.assistant-populated-schema7.integration.test.ts",
+  "tests/backend/storage/admission/admission.profile-upgrade.integration.test.ts",
+  "tests/backend/storage/admission/installation.logical-publication.integration.test.ts",
+  "tests/backend/storage/admission/lifetime-lock.handle-proof.integration.test.ts",
+  "tests/backend/storage/configuration/chatgpt-credential-repository.maintenance.integration.test.ts",
+  "tests/backend/storage/configuration/credential-key-custody.integration.test.ts",
+  "tests/backend/storage/configuration/credential-store.storage-restore-drill.integration.test.ts",
+  "tests/backend/storage/admission/process-identity.integration.test.ts",
+  "tests/backend/storage/maintenance/upgrade.ready-bound.integration.test.ts",
+  "tests/backend/storage/sqlite/authority-database.incomplete-inventory.integration.test.ts",
+  "tests/backend/storage/sqlite/authority-database.storage-restore-drill.integration.test.ts",
+  "tests/backend/storage/sqlite/backup-inspection.integration.test.ts",
+  "tests/backend/storage/sqlite/migrations.native-baseline.integration.test.ts",
+  "tests/backend/storage/sqlite/profile-local-databases.readonly-binding.integration.test.ts",
+  "tests/backend/storage/sqlite/readonly-authority-snapshot.integration.test.ts",
+  "tests/backend/storage/maintenance/fixed-layout.test.ts",
+];
 
 const portable = ["a", "b", "c", "d", "e"].map(name => `tests/backend/${name}.integration.test.ts`);
 const integration = [...portable, ...NATIVE_FILES, ...SERIAL_FILES].filter(file => file.endsWith(".integration.test.ts"));
 const unit = ["tests/models/portable.test.ts", ...NATIVE_FILES.filter(file => file.endsWith(".test.ts") && !file.endsWith(".integration.test.ts"))];
+const ubuntuIntegration = [...portable, ...LINUX_NATIVE_FILES.filter(file => file.endsWith(".integration.test.ts"))].sort();
 const durations = { [portable[0] ?? ""]: 50, [SERIAL_FILES[0] ?? ""]: 200 };
 
 const run = (listed: readonly string[], project: "unit" | "integration", runner: "ubuntu" | "native" | "serial" | "storage", jobs: number) =>
@@ -16,10 +45,19 @@ const run = (listed: readonly string[], project: "unit" | "integration", runner:
 
 describe("CI file selection", () => {
   it("gives each file to exactly one job", () => {
-    const integrationRuns = [...run(integration, "integration", "ubuntu", 3), ...run(integration, "integration", "native", 5), ...run(integration, "integration", "serial", 5), ...run(integration, "integration", "storage", 5)];
-    expect(integrationRuns.sort()).toEqual([...integration].sort());
-    expect(run(integration, "integration", "ubuntu", 3).sort()).toEqual(portable);
-    expect([...run(unit, "unit", "ubuntu", 2), ...run(unit, "unit", "native", 5)].sort()).toEqual([...unit].sort());
+    expect(run(integration, "integration", "ubuntu", 3).sort()).toEqual(ubuntuIntegration);
+    const macos = [...run(integration, "integration", "native", 5), ...run(integration, "integration", "serial", 5), ...run(integration, "integration", "storage", 5)];
+    expect(macos.sort()).toEqual(integration.filter(file => !portable.includes(file)).sort());
+    const ubuntuUnit = run(unit, "unit", "ubuntu", 2);
+    expect(ubuntuUnit.sort()).toEqual(["tests/models/portable.test.ts", ...LINUX_NATIVE_FILES.filter(file => !file.endsWith(".integration.test.ts"))].sort());
+    expect(run(unit, "unit", "native", 5).sort()).toEqual(unit.filter(file => NATIVE_FILES.includes(file)).sort());
+  });
+
+  it("runs the Linux-passing native files on Ubuntu and keeps serial files off it", () => {
+    expect(LINUX_NATIVE_FILES.every(file => NATIVE_FILES.includes(file))).toBe(true);
+    expect(LINUX_NATIVE_FILES.some(file => SERIAL_FILES.includes(file) || SERIAL_STORAGE_FILES.includes(file))).toBe(false);
+    expect([...LINUX_NATIVE_FILES].sort()).toEqual([...linuxNativeReport].sort());
+    expect(run(integration, "integration", "native", 5)).toContain("tests/backend/storage/maintenance/protected-settings-upgrade.integration.test.ts");
   });
 
   it("routes the Windows picker dialog proof only through native serial jobs", () => {
@@ -68,7 +106,7 @@ describe("CI file selection", () => {
 
   it("matches Windows relative listing paths to pinned native membership", () => {
     const listed = integration.map(file => file.replaceAll("/", "\\"));
-    expect(run(listed, "integration", "ubuntu", 3).sort()).toEqual(portable);
+    expect(run(listed, "integration", "ubuntu", 3).sort()).toEqual(ubuntuIntegration);
     expect([...run(listed, "integration", "native", 5), ...run(listed, "integration", "serial", 5),
       ...run(listed, "integration", "storage", 5)].sort()).toEqual(integration.filter(file => !portable.includes(file)).sort());
   });
@@ -82,7 +120,7 @@ describe("CI file selection", () => {
   it("gives untimed files work even when the committed timings round to zero", () => {
     const shards = [1, 2, 3].map(job => selectCiFiles(integration, "integration", "ubuntu", job, 3, { [portable[0]]: 0 }));
     expect(shards.every(files => files.length > 0)).toBe(true);
-    expect(shards.flat().sort()).toEqual(portable);
+    expect(shards.flat().sort()).toEqual(ubuntuIntegration);
   });
 
   it("refuses corrupt downloaded weights before changing the timing map", () => {

@@ -153,9 +153,9 @@ Other native files count half because two workers share them.
 
 | Job | Runner | Jobs | Contents |
 | --- | --- | --- | --- |
-| unit | Ubuntu | 2 (3 without integration) | unit files except `NATIVE_FILES` |
+| unit | Ubuntu | 2 (3 without integration) | unit files except `NATIVE_FILES`, plus `LINUX_NATIVE_FILES` |
 | architecture | Ubuntu | 2 | architecture files |
-| integration | Ubuntu | 14 | integration files except `NATIVE_FILES` and `SERIAL_FILES` |
+| integration | Ubuntu | 14 | integration files except `NATIVE_FILES` and `SERIAL_FILES`, plus `LINUX_NATIVE_FILES` |
 | perf | Ubuntu | 1 | `npm run test:perf` on ready pull requests |
 | smoke | Ubuntu | 1 | `npm run test:smoke` on the built dashboard on ready pull requests |
 | native | macOS, operator-started full releases only | 5 | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |
@@ -171,6 +171,7 @@ also refresh the committed seed from a successful run:
 `gh run download <run-id> -n ci-timings -D <dir>` then copy its generated `ci-durations.json` to
 `scripts/test/ci-durations.json`. Corrupt reports and download failures fail CI.
 A new test file requiring native platform proofs belongs in `NATIVE_FILES`, outside Ubuntu shards.
+`LINUX_NATIVE_FILES` names the `NATIVE_FILES` members that pass on Linux (25 files, never a serial or storage file): Ubuntu shards and `npm run test:pc` run them, and the macOS native shards still run them. `tests/scripts/test/ci-files.test.ts` pins the list.
 Both platforms select from this one list; platform refusals remain failures until their proof is implemented.
 
 ### Pre-push tests on the PC
@@ -198,7 +199,7 @@ Normal SSH host verification applies.
 With no file arguments, Vitest lists the architecture project in full and lists unit and integration
 with `--changed=origin/staging`. With file arguments, it lists all three projects without a changed
 filter and selects only the requested paths or globs. The runner subtracts `NATIVE_FILES`,
-`SERIAL_FILES` and `SERIAL_STORAGE_FILES` with one skip note. Those files run in GitHub CI. Each leased slot fetches
+`SERIAL_FILES` and `SERIAL_STORAGE_FILES`, except `LINUX_NATIVE_FILES`, with one skip note. Those files run in GitHub CI. Each leased slot fetches
 `origin/staging`'s pinned commit directly from the public GitHub repository. The Mac verifies that
 base is advertised by origin before sending a binary Git patch of the allowed candidate tree.
 The patch includes committed-but-unpushed, staged, unstaged and untracked non-ignored files,

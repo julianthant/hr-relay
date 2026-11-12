@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildPcSource, pcSyncFiles, preparePcSource } from "../../../scripts/test/pc-source.js";
 import { runInNewContext } from "node:vm";
-import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "../../../scripts/test/ci-files.js";
+import { LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "../../../scripts/test/ci-files.js";
 import { measurePcPhase, pcDurationScript, pcListingArgs, readPcTiming, selectPcFiles } from "../../../scripts/test/pc.js";
 
 describe("PC test selection", () => {
@@ -25,8 +25,9 @@ describe("PC test selection", () => {
   });
 
   it("keeps affected portable files and removes every native list", () => {
-    const native = [...new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES])];
-    expect(selectPcFiles([...portable, ...native], [])).toEqual({ files: [...portable].sort(), skipped: native.sort() });
+    const all = [...new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES])];
+    const native = all.filter(file => !LINUX_NATIVE_FILES.includes(file));
+    expect(selectPcFiles([...portable, ...all], [])).toEqual({ files: [...portable, ...LINUX_NATIVE_FILES].sort(), skipped: native.sort() });
     expect(selectPcFiles([], [])).toEqual({ files: [], skipped: [] });
   });
 
