@@ -4,7 +4,7 @@ import { PARITY_DIST_DIR } from "../support/helpers/dashboard/served-fixtures/bu
 
 let seeded: SeededServer;
 test.beforeAll(async () => {
-  seeded = await startSeededServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+  seeded = await startSeededServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, productApp: true });
 });
 test.afterAll(async () => { await seeded.close(); });
 
@@ -23,8 +23,6 @@ async function expectHeading(page: Page): Promise<void> {
 
 test("every page the sidebar links to renders its heading without errors", async ({ page }) => {
   const failures = collectFailures(page);
-  // The seeded backend serves no profile session; answer the sign-in probe as an active, Duo-ready profile.
-  await page.route("**/api/v1/profile/state", route => route.fulfill({ json: { state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready", account: { name: "Smoke Test", initials: "ST", timekeeper: "Smoke Test", lastSignedInAt: "2026-11-10T08:30:00-08:00" } } }));
   await page.goto(`${seeded.baseUrl}/?day=${SEEDED_DAY}`);
   await expectHeading(page);
 
@@ -35,9 +33,10 @@ test("every page the sidebar links to renders its heading without errors", async
   expect(routes.length).toBeGreaterThan(0);
 
   for (const route of routes) {
-    await page.goto(`${seeded.baseUrl}/${route}`);
+    await page.locator(`a[href="${route}"]`).click();
+    await expect(page).toHaveURL(new RegExp(`[?&]${route.slice(1)}(&|$)`));
     await expectHeading(page);
-    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(500);
   }
   expect(failures).toEqual([]);
 });
