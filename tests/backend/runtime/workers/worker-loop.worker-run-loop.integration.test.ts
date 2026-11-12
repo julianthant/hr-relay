@@ -12,6 +12,9 @@ import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { EXECUTOR_WORKER_ID, healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
+import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
+import { emergencyContactModule, personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const {loopHarness, cleanup } = createWorkerDirectiveTestWorld();
 
@@ -192,6 +195,43 @@ describe("worker run loop", () => {
     const browserStarts = events.filter((event) => "kind" in event && event.kind === "browser"
       && event.t === "span.started");
     assert.equal(browserStarts.length, 2);
+  });
+
+  it("keeps sessions across consecutive child runs of one workflow under a parent-workflow home", async () => {
+    const harness = await loopHarness();
+    const home = emergencyContactModule.descriptor;
+    assert.ok(descriptorRuntimeNodes(home).some(node => node.kind === "child-run"));
+    harness.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+    harness.authority.database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_5, itemId: UUID_7 }));
+    const report = await runWorkerLoop({ ...harness.deps, descriptor: home,
+      resolveExecution: run => run.envelope.workflow === personLookupDescriptor.id ? { descriptor: personLookupDescriptor, stores: taskStoreRegistry } : undefined });
+    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done", "done"]);
+    assert.equal(report.closure, "proved");
+    assert.equal(harness.sessions.opens("ucpath"), 1);
+    assert.equal(harness.sessions.opens("crm"), 1);
+    assert.deepEqual(harness.sessions.closeReasons(), ["worker-stop", "worker-stop"]);
+  });
+
+  it("parks sessions once when a parent-workflow worker finds nothing eligible", async () => {
+    const harness = await loopHarness();
+    harness.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+    let claims = 0;
+    const looping = runWorkerLoop({ ...harness.deps, exitWhenIdle: false, descriptor: emergencyContactModule.descriptor,
+      resolveExecution: run => run.envelope.workflow === personLookupDescriptor.id ? { descriptor: personLookupDescriptor, stores: taskStoreRegistry } : undefined,
+      claimNext: (request, sessions) => {
+        claims += 1;
+        if (claims === 3) harness.stop.abort();
+        return harness.deps.claimNext(request, sessions);
+      } });
+    const idleTimer = () => harness.scheduler.pending().find(entry => entry.deadlineMonotonicMs - harness.authority.clock.monotonicMs() === 1_000);
+    while (idleTimer() === undefined) await new Promise<void>(resolve => setImmediate(resolve));
+    assert.deepEqual(harness.sessions.closeReasons(), ["parked", "parked"]);
+    idleTimer()?.fire();
+    const report = await looping;
+    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
+    assert.equal(report.closure, "proved");
+    assert.equal(harness.sessions.opens("ucpath"), 1);
+    assert.deepEqual(harness.sessions.closeReasons(), ["parked", "parked"]);
   });
 
   it("returns accumulated outcomes and a failed worker span when session closure is unproved", async () => {

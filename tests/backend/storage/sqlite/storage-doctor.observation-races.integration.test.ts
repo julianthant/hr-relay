@@ -95,7 +95,7 @@ async function racingClaim(world: ReturnType<typeof createWorkerDirectiveTestWor
         return doctor.run(check);
       },
     })) });
-  const claimNext = () => claimWithPreflight({ signal: h.stop.signal, onObservationChanged: attempt => { counts.reprepared.push(attempt); },
+  const claimNext = () => claimWithPreflight({ candidateCurrent: () => true, signal: h.stop.signal, onObservationChanged: attempt => { counts.reprepared.push(attempt); },
     preflight: { admission, currentScope: () => scope, runScope: () => scope, descriptor: () => personLookupDescriptor,
       prepareSession: async () => { throw new Error("no session should prepare"); } },
     prepareRun: async () => { counts.preparations++; }, claim: admit => { admit(RunRecordSchema.parse(QUEUED_RUN)); counts.claims++; throw new Error("no claim should commit"); } });

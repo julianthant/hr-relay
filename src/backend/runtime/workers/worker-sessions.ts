@@ -355,6 +355,11 @@ export class WorkerSessionManager {
     this.#onEvent = options.onEvent ?? (() => undefined);
   }
 
+  /** Sessions stay open across runs of one execution workflow; a workflow change parks them first. */
+  async parkForExecution(workflowId: WorkflowId, stores: TaskStoreRegistry): Promise<void> {
+    if (workflowId !== this.#executionWorkflowId || stores !== this.#stores) await this.closeAll("parked");
+  }
+
   configureExecution(workflowId: WorkflowId, stores: TaskStoreRegistry): void {
     if (workflowId === this.#executionWorkflowId && stores === this.#stores) return;
     if (this.#controlInFlight || this.#runConfigFingerprint !== undefined || this.#closingReason !== undefined

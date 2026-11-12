@@ -79,11 +79,16 @@ export const WORKER_HEARTBEAT_INTERVAL_MS = 5_000;
 
 export { createTimeoutDeadlineScheduler };
 
+// Worker stdout carries ids, states, codes and counts only; every other task field stays in the run log.
+const STDOUT_LOG_FIELDS: ReadonlySet<string> = new Set(["runId", "workerId", "nodeId", "taskId", "requestId", "writeIntentId", "attempt",
+  "state", "status", "code", "capability", "method", "boundary", "errorName", "HDH department",
+  "candidates", "rosterRows", "subjects", "eidCellsUnusable", "nameCellsUnusable"]);
+
 /** Structured stdout logging for the worker CLI process (never `console.*`). */
 export function lineTaskLogger(write: (line: string) => void, clock: Clock): TaskLogger {
   const emit = (level: "debug" | "info" | "warn") =>
     (message: string, fields?: Readonly<Record<string, string | number | boolean>>): void => {
-      const safeFields = Object.fromEntries(Object.entries(fields ?? {}).filter(([key]) => !/password|token|cookie|authorization|privatekey|challenge|signature/iu.test(key))
+      const safeFields = Object.fromEntries(Object.entries(fields ?? {}).filter(([key]) => STDOUT_LOG_FIELDS.has(key))
         .map(([key, value]) => [key, typeof value === "string" ? sanitizeDebugText(value) : value]));
       write(JSON.stringify({ ts: clock.now().toISOString(), level, message: sanitizeDebugText(message), ...safeFields }));
     };
@@ -633,9 +638,11 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
           assertCurrent();
           return claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
           onObservationChanged: attempt => { log.warn("preflight observation changed during claim; re-preparing", { workerId, attempt }); },
+          candidateCurrent: run => database.authority.runs.get(run.envelope.runId)?.version === run.version,
           prepareRun: async (run, signal) => {
             const target = executionDescriptor(run.envelope.workflow);
             if (target === undefined) throw new Error("worker-execution-descriptor-unavailable");
+            await sessions.parkForExecution(run.envelope.workflow, stores);
             sessions.configureExecution(run.envelope.workflow, stores);
             sessions.configureRunResources(ownedResources.forRun(run));
             const contracts = new Set(workflowProjections(target).contracts.map(contract => contract.id));

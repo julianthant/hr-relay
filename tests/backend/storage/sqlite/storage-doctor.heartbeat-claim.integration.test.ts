@@ -144,7 +144,7 @@ async function claimWhilePeerHeartbeats(mode: HeartbeatMode) {
     });
     const request = { commandId: randomUUID(), workflow: personLookupDescriptor.id, workerId: h.deps.workerId, runtimeConfig };
     timer = mode === "interval" ? setInterval(renew, WORKER_HEARTBEAT_INTERVAL_MS) : undefined;
-    const result = await claimWithPreflight({
+    const result = await claimWithPreflight({ candidateCurrent: () => true,
       signal: h.stop.signal, onObservationChanged: attempt => { counts.reprepared.push(attempt); },
       preflight: {
         admission, currentScope: () => scope, runScope: () => scope, descriptor: () => personLookupDescriptor,
