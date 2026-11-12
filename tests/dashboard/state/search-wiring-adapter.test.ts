@@ -60,6 +60,23 @@ it("tells a rejected library read apart from an empty library", async () => {
   await act(async () => root?.render(createElement(Retry)));
   assert.equal(seen?.unavailable, undefined); assert.deepEqual(seen?.sheets, []);
 });
+it("reports a pending library read as loading and keeps loaded rows through a failed re-read", async () => {
+  const reads: { finish: (records: never[]) => void; fail: () => void }[] = [];
+  const client = { workbookList: () => new Promise<never[]>((resolve, reject) => { reads.push({ finish: resolve, fail: () => reject(new Error("storage")) }); }) };
+  let seen: ReturnType<typeof useLibrarySheets> | undefined;
+  function Probe({ open }: { open: boolean }) { seen = useLibrarySheets(client, open); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(createElement(Probe, { open: true })));
+  assert.equal(seen?.sheets.length, 0); assert.equal(seen?.unavailable, searchMessage("SEARCH_LOADING"));
+  const sheet = { libraryId: "x", version: 1, savedAt: "2026-11-01T12:00:00Z", workbook: { name: "Roster" } } as never;
+  await act(async () => reads[0].finish([sheet]));
+  assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, undefined);
+  await act(async () => root?.render(createElement(Probe, { open: false })));
+  await act(async () => root?.render(createElement(Probe, { open: true })));
+  assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, searchMessage("SEARCH_LOADING"));
+  await act(async () => reads[1].fail());
+  assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, searchMessage("SEARCH_LIBRARY_UNAVAILABLE"));
+});
 it("does no reads in mock/closed mode and suppresses a stale query result", async () => {
   const requests: { q: string; finish: (page: unknown) => void }[] = [];
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => new Promise<Response>(resolve => {

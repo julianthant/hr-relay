@@ -107,6 +107,7 @@ import { StorageNotice } from "../surfaces/settings/storage/storage-settings.js"
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { BulkRunCommandResponseSchema } from "../../rules/commands/commands.js";
+import { RunIdSchema } from "../../rules/identity/ids.js";
 import { notificationTargetUnavailable, resolveRunNavigation } from "./navigation/run-navigation.js";
 import type { NotificationReads } from "../surfaces/notifications/notification-rail-model.js";
 import { notificationDestinationRefusal, useWorkspaceNotifications } from "../surfaces/notifications/notifications-preview-model.js";
@@ -372,6 +373,14 @@ interface LoadedAppProps {
   startupPreflight?: boolean;
 }
 
+
+/** A stored command result opens its run through the same validated served navigation as a run notice. */
+function commandResultRun(destination: NotificationDestination): NotificationDestination | undefined {
+  if (destination.kind !== "command-result") return destination;
+  const request = destination.request;
+  if (!("target" in request) || !("runId" in request.target) || destination.day === undefined) return undefined;
+  return { kind: "run", runId: request.target.runId, day: destination.day };
+}
 
 function LoadedApp({
   profileTarget,
@@ -1077,8 +1086,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId });
   notificationContext.current = { day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId };
   const notificationNavigation = useRef(0);
-  const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
+  const openNotification = useCallback((requested: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
     const request = ++notificationNavigation.current;
+    const destination = commandResultRun(requested);
+    if (destination === undefined) { refused(notificationTargetUnavailable()); return; }
     if (destination.kind === "local-recovery") { setPendingRecovery(destination.key); opened(); return; }
     if (destination.kind === "local-bulk-result") { setBulkReview(true); opened(); return; }
     if (destination.kind === "local-command-result") {
@@ -1098,12 +1109,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         days: new Map(Object.entries(destination.days)),
         subjects: new Map(ids.map(runId => [runId, title(runId)])), response: response.data });
       setBulkReview(true); opened();
-      return;
-    }
-    if (destination.kind === "command-result") {
-      const request = destination.request;
-      if (!("target" in request) || !("runId" in request.target) || typeof request.target.runId !== "string") { refused(notificationTargetUnavailable()); return; }
-      selectRun(request.target.runId, destination.day); opened();
       return;
     }
     if (destination.kind === "settings") {
@@ -1288,7 +1293,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               void executeShell(request, retained.label, plan, true);
             }}
           />
-          <BulkCommandFeedback bulkOutcome={openedBulk ?? bulkOutcome} reviewing={bulkReview} onReviewed={() => { setBulkReview(false); if (openedBulk === null) setBulkOutcome(null); setOpenedBulk(null); }} onSelectRun={runId => selectRun(runId, openedBulk?.days?.get(runId))} />
+          <BulkCommandFeedback bulkOutcome={openedBulk ?? bulkOutcome} reviewing={bulkReview} onReviewed={() => { setBulkReview(false); if (openedBulk === null) setBulkOutcome(null); setOpenedBulk(null); }} onSelectRun={runId => {
+            if (openedBulk === null) { selectRun(runId); return; }
+            const runDay = openedBulk.days?.get(runId);
+            const refuse = (message: string) => toast({ tone: "danger", title: "Run unavailable", description: message });
+            if (runDay === undefined) { refuse(notificationTargetUnavailable()); return; }
+            openNotification({ kind: "run", runId: RunIdSchema.parse(runId), day: runDay }, () => undefined, refuse, workflowComposition.inbox);
+          }} />
 
 
           <CommandResultFeed results={commandResults} />

@@ -73,14 +73,17 @@ export function workspaceSearchQuery(query: string, workflows: readonly Pick<Wor
 
 /** The saved library as palette rows, read while the palette is open. */
 export function useLibrarySheets(client: Pick<DashboardClient, "workbookList">, enabled: boolean): Readonly<{ sheets: readonly PaletteSheet[]; unavailable?: string }> {
-  const [state, setState] = useState<{ sheets: readonly PaletteSheet[]; failed: boolean }>({ sheets: [], failed: false });
+  const [state, setState] = useState<{ sheets: readonly PaletteSheet[]; read: "pending" | "ready" | "failed" }>({ sheets: [], read: "pending" });
   useEffect(() => {
     if (!enabled) return;
     let live = true;
-    client.workbookList().then(records => { if (live) setState({ sheets: paletteSheets(records), failed: false }); }, () => { if (live) setState(previous => ({ ...previous, failed: true })); });
+    setState(previous => ({ ...previous, read: "pending" }));
+    client.workbookList().then(records => { if (live) setState({ sheets: paletteSheets(records), read: "ready" }); }, () => { if (live) setState(previous => ({ ...previous, read: "failed" })); });
     return () => { live = false; };
   }, [client, enabled]);
-  return state.failed ? { sheets: state.sheets, unavailable: searchMessage("SEARCH_LIBRARY_UNAVAILABLE") } : { sheets: state.sheets };
+  // Loaded rows stay while a re-read is pending or failed; only a settled read is a verified list.
+  if (state.read === "ready") return { sheets: state.sheets };
+  return { sheets: state.sheets, unavailable: searchMessage(state.read === "failed" ? "SEARCH_LIBRARY_UNAVAILABLE" : "SEARCH_LOADING") };
 }
 
 const NO_TITLES: ReadonlyMap<string, string> = new Map();
