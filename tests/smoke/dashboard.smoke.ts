@@ -17,25 +17,26 @@ function collectFailures(page: Page): string[] {
   return failures;
 }
 
-async function expectHeading(page: Page): Promise<void> {
-  await expect(page.getByRole("heading").first()).toBeVisible();
+// The destination's own h1; the shell's h2s stay mounted on every page and must not satisfy this.
+async function expectPageHeading(page: Page, label: string): Promise<void> {
+  await expect(page.getByRole("heading", { level: 1, name: new RegExp(`^${label}`, "i") })).toBeVisible();
 }
 
 test("every page the sidebar links to renders its heading without errors", async ({ page }) => {
   const failures = collectFailures(page);
   await page.goto(`${seeded.baseUrl}/?day=${SEEDED_DAY}`);
-  await expectHeading(page);
+  await expect(page.getByRole("complementary", { name: "Workspace" })).toBeVisible();
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const links = page.locator('a[href^="?settings="]');
   await expect(links.first()).toBeVisible();
-  const routes = await links.evaluateAll(anchors => anchors.map(anchor => anchor.getAttribute("href") ?? ""));
+  const routes = await links.evaluateAll(anchors => anchors.map(anchor => ({ href: anchor.getAttribute("href") ?? "", label: anchor.textContent?.trim() ?? "" })));
   expect(routes.length).toBeGreaterThan(0);
 
-  for (const route of routes) {
+  for (const { href: route, label } of routes) {
     await page.locator(`a[href="${route}"]`).click();
     await expect(page).toHaveURL(new RegExp(`[?&]${route.slice(1)}(&|$)`));
-    await expectHeading(page);
+    await expectPageHeading(page, label);
     await page.waitForTimeout(500);
   }
   expect(failures).toEqual([]);
