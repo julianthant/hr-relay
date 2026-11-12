@@ -3,7 +3,7 @@ import { createCredentialStore } from "../../storage/configuration/credential-st
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
 
 import type { z } from "zod";
-import { TimelinePageRequestSchema, TimelineEventRecordSchema, debugEventLevel, type TimelineAppend } from "../../../models/events/timeline.js";
+import { TimelinePageRequestSchema, TimelineEventRecordSchema, debugEventLevel, type TimelineAppend, type TimelineCheckpointReferenceSchema } from "../../../models/events/timeline.js";
 import { readLocalDebugLog } from "../../storage/events/local-debug-log.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { CHILD_ONLY_WORKFLOW_MODULES, DESCRIPTORS } from "../registries/workflow-registry.js";
@@ -184,9 +184,26 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
     ? createReceiptService({ database, descriptors: [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...STEP_PROOF_DESCRIPTORS], runReader }).ensureReceipt(run.envelope.runId)
     : undefined;
 
+  const replayedCheckpoints = authority.timelineEvents.withReadSnapshot(() => {
+    const references: z.infer<typeof TimelineCheckpointReferenceSchema>[] = [];
+    const through = authority.timelineEvents.highWaterMark();
+    let after = 0;
+    while (after < through) {
+      const page = authority.timelineEvents.page({ runId, workflow: run.envelope.workflow, after, through, limit: 1000 });
+      for (const record of page) {
+        if (record.payload.kind === "checkpoint-replayed") references.push(record.payload.checkpoint);
+      }
+      const last = page.at(-1);
+      if (last === undefined) break;
+      after = last.cursor;
+    }
+    return references;
+  });
+
   const evidence: ExplainRunEvidence = {
     run,
     checkpoints: authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId),
+    replayedCheckpoints,
     writes: authority.writeIntents.listByRun(run.envelope.runId),
     ...(failure === undefined
       ? {}
