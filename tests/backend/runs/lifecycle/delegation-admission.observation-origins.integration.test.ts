@@ -6,7 +6,7 @@ import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { observationLeafPaths, readObservationPath, resolveObservationOrigin } from "../../../../src/models/events/data-observation-origin.js";
 import { SpanEventWireSchema } from "../../../../src/models/events/types.js";
-import { PreparedOcrPagesSchema, ReadOcrSourcePages } from "../../../../src/models/workflows/ocr/read-source-pages.js";
+import { ExtractPdfPages } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 import type { TimelineEventRecord } from "../../../../src/models/events/timeline.js";
 
@@ -37,18 +37,18 @@ it("authenticates every observation against its native event and producer before
       let changed = 0;
       refuse(repositories => ({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
         page: query => repositories.timelineEvents.page(query).map(record => {
-          if (record.payload.kind !== "span" || record.payload.event.t !== "data.observed" || record.payload.event.taskId !== ReadOcrSourcePages.id) return record;
+          if (record.payload.kind !== "span" || record.payload.event.t !== "data.observed" || record.payload.event.taskId !== ExtractPdfPages.id) return record;
           const event = record.payload.event;
           return { ...record, payload: { ...record.payload, event: { ...event, points: event.points.map(point => {
             if (point.field !== "pages") return point;
             assert.equal(point.values.length, 1);
             const value = point.values[0];
-            assert.ok(value.state === "allowed");
-            const [first, ...rest] = PreparedOcrPagesSchema.shape.pages.parse(value.value);
+            assert.ok(value.state === "allowed" && value.classification === "sensitive-hr");
+            const [first, ...rest] = ExtractPdfPages.output.shape.pages.parse(value.value);
             assert.ok(first);
-            const { sourcePage: _omitted, ...pageWithoutLeaf } = first.page;
+            const { sourcePage: _omitted, ...pageWithoutLeaf } = first;
             const pages = JsonValueSchema.parse(invalid === "empty-array" ? [] : [
-              { ...first, page: invalid === "missing-leaf" ? pageWithoutLeaf : { ...first.page, extraLeaf: true } }, ...rest,
+              invalid === "missing-leaf" ? pageWithoutLeaf : { ...first, extraLeaf: true }, ...rest,
             ]);
             changed++;
             return { ...point, values: [{ ...value, value: pages, rawValue: undefined }], origins: full
@@ -118,6 +118,7 @@ for (const opaque of [false, true]) it(`accepts retained full-origin events with
               expanded++;
               const paths = point.values.flatMap(value => {
                 assert.ok(value.state === "allowed");
+                if (event.taskId === ExtractPdfPages.id && point.field === "pages") assert.equal(value.classification, "sensitive-hr");
                 return observationLeafPaths(JsonValueSchema.parse(value.value), value.key === point.field ? [] : value.key.slice(point.field.length + 1).split("."));
               });
               return { ...point, origins: paths.map(path => ({ path: [...path], origin: resolveObservationOrigin(event, point, path) })),
