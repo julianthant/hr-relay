@@ -6,7 +6,8 @@ import type { BrowserSessionCloseReason } from "../../../workflow-kit/session.js
  * One worker's browser session for one system, from acquisition to proven closure.
  *
  * `starting` is one acquisition: `launching` matches the browser root launch's `launching`, and
- * `signing-in` begins when that launch is `open`; the Duo ceremony lease is held only inside it.
+ * `signing-in` begins when that launch is `open`; the Duo ceremony lease is taken there. The
+ * acquisition releases that lease last, so its release can fail after the browser's close proved.
  * A `closing` owned by the acquisition is a sign-in that failed or was stopped; the acquisition
  * can still lose custody of its browser root or its ceremony lease while that close runs.
  * `closure-unproved` holds a session whose close did not prove (or a failed control left it
@@ -50,7 +51,7 @@ export type WorkerSessionEvent =
   | Readonly<{ type: "launch-uncertain" }>
   | Readonly<{ type: "signed-in" }>
   | Readonly<{ type: "login-failed" }>
-  /** The acquisition's Duo ceremony lease release failed while unwinding; the lease row stays held. */
+  /** The acquisition's Duo ceremony lease release failed while unwinding, possibly after its browser closed; the lease row stays held. */
   | Readonly<{ type: "ceremony-release-failed" }>
   /** A close waited its acquisition bound for a pending acquisition. */
   | Readonly<{ type: "acquisition-close-timeout" }>
@@ -121,7 +122,8 @@ const LOST_ROW = {
  */
 export const WORKER_SESSION_TRANSITIONS = deepFreeze({
   closed: {
-    launch: { to: "starting/launching" }, ...PHASE, "launch-uncertain": { to: "failed/none" }, ...UNACQUIRED,
+    launch: { to: "starting/launching" }, ...PHASE, "launch-uncertain": { to: "failed/none" },
+    "ceremony-release-failed": { to: "failed/none" }, "acquisition-close-timeout": NOT_ACQUIRING,
     lease: refuse("no-session"), reset: NOT_LEASED, poison: refuse("no-session"), close: refuse("no-session"), ...UNCLOSING,
   },
   "starting/launching": {

@@ -87,7 +87,7 @@ const closingRow = (custody: unknown) => ({
 const expected: Record<WorkerSessionStateKey, Record<WorkerSessionEventType, unknown>> = {
   closed: {
     launch: to({ state: "starting", phase: "launching" }), ...PHASE, "launch-uncertain": FAILED_NONE,
-    "ceremony-release-failed": NOT_ACQUIRING, "acquisition-close-timeout": NOT_ACQUIRING,
+    "ceremony-release-failed": FAILED_NONE, "acquisition-close-timeout": NOT_ACQUIRING,
     lease: NONE, reset: NOT_LEASED, poison: NONE, close: NONE, "close-proved": NOT_CLOSING, "close-failed": NOT_CLOSING,
   },
   "starting/launching": {
@@ -227,6 +227,17 @@ describe("worker browser session transition table", () => {
       FAILED_RETAINED,
       to({ state: "failed", browser: "closing", reason: "worker-stop" }),
       FAILED_NONE,
+    ]);
+    // A Reopen's replacement is refused by Duo and closes proved; the retained lease's first release then fails.
+    expect(walk(states["starting/signing-in"], [
+      events["login-failed"], events["close-proved"], events["ceremony-release-failed"], events.launch, events.lease, stop,
+    ])).toEqual([
+      to({ state: "closing", owner: "acquisition", reason: "login-failed" }),
+      to({ state: "closed" }),
+      FAILED_NONE,
+      LOST,
+      LOST,
+      LOST,
     ]);
     // A stopped sign-in's close keeps its reason when the release fails during it.
     expect(walk(states["starting/signing-in"], [stop, events["ceremony-release-failed"], events["close-proved"]])).toEqual([
