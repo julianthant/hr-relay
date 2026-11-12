@@ -29,7 +29,9 @@ const states: Record<WorkerSessionStateKey, WorkerSessionState> = {
   "closing/acquisition": { state: "closing", owner: "acquisition", reason: "worker-stop" },
   "closing/session": { state: "closing", owner: "session", reason: "fresh-boundary" },
   "closure-unproved": { state: "closure-unproved" },
-  failed: { state: "failed" },
+  "failed/none": { state: "failed", browser: "none" },
+  "failed/retained": { state: "failed", browser: "retained" },
+  "failed/closing": { state: "failed", browser: "closing", reason: "worker-stop" },
 };
 
 const events: Record<WorkerSessionEventType, WorkerSessionEvent> = {
@@ -70,6 +72,13 @@ const PHASE = {
   launched: NOT_LAUNCHING, "launch-failed": NOT_LAUNCHING, "launch-uncertain": NOT_LAUNCHING,
   "signed-in": NOT_SIGNING_IN, "login-failed": NOT_SIGNING_IN,
 } as const;
+const FAILED_NONE = to({ state: "failed", browser: "none" });
+const FAILED_RETAINED = to({ state: "failed", browser: "retained" });
+const LOST_ROW = {
+  launch: LOST, launched: LOST, "launch-failed": LOST, "launch-uncertain": LOST, "signed-in": LOST, "login-failed": LOST,
+  "ceremony-release-failed": LOST, "acquisition-close-timeout": LOST, lease: LOST, reset: LOST, poison: LOST, close: LOST,
+  "close-proved": LOST, "close-failed": LOST,
+} as const;
 const closingRow = (custody: unknown) => ({
   launch: CLOSING, ...PHASE, "ceremony-release-failed": custody, "acquisition-close-timeout": custody,
   lease: CLOSING, reset: NOT_LEASED, poison: CLOSING, close: CLOSING,
@@ -77,20 +86,20 @@ const closingRow = (custody: unknown) => ({
 });
 const expected: Record<WorkerSessionStateKey, Record<WorkerSessionEventType, unknown>> = {
   closed: {
-    launch: to({ state: "starting", phase: "launching" }), ...PHASE, "launch-uncertain": to({ state: "failed" }),
+    launch: to({ state: "starting", phase: "launching" }), ...PHASE, "launch-uncertain": FAILED_NONE,
     "ceremony-release-failed": NOT_ACQUIRING, "acquisition-close-timeout": NOT_ACQUIRING,
     lease: NONE, reset: NOT_LEASED, poison: NONE, close: NONE, "close-proved": NOT_CLOSING, "close-failed": NOT_CLOSING,
   },
   "starting/launching": {
     launch: PENDING, ...PHASE, launched: to({ state: "starting", phase: "signing-in" }),
-    "launch-failed": to({ state: "closed" }), "launch-uncertain": to({ state: "failed" }),
-    "ceremony-release-failed": to({ state: "failed" }), "acquisition-close-timeout": to({ state: "failed" }),
+    "launch-failed": to({ state: "closed" }), "launch-uncertain": FAILED_NONE,
+    "ceremony-release-failed": FAILED_NONE, "acquisition-close-timeout": FAILED_NONE,
     lease: PENDING, reset: NOT_LEASED, poison: PENDING, close: PENDING, "close-proved": NOT_CLOSING, "close-failed": NOT_CLOSING,
   },
   "starting/signing-in": {
     launch: PENDING, ...PHASE, "signed-in": to({ state: "authenticated", lease: "idle" }),
     "login-failed": to({ state: "closing", owner: "acquisition", reason: "login-failed" }),
-    "ceremony-release-failed": to({ state: "failed" }), "acquisition-close-timeout": to({ state: "failed" }),
+    "ceremony-release-failed": FAILED_RETAINED, "acquisition-close-timeout": FAILED_RETAINED,
     lease: PENDING, reset: NOT_LEASED, poison: PENDING, close: to({ state: "closing", owner: "acquisition", reason: "parked" }),
     "close-proved": NOT_CLOSING, "close-failed": NOT_CLOSING,
   },
@@ -104,19 +113,29 @@ const expected: Record<WorkerSessionStateKey, Record<WorkerSessionEventType, unk
     lease: BUSY, reset: to({ state: "authenticated", lease: "idle" }), poison: to({ state: "closure-unproved" }),
     close: to({ state: "closing", owner: "session", reason: "parked" }), "close-proved": NOT_CLOSING, "close-failed": NOT_CLOSING,
   },
-  "closing/acquisition": closingRow(to({ state: "failed" })),
+  "closing/acquisition": closingRow(to({ state: "failed", browser: "closing", reason: "worker-stop" })),
   "closing/session": closingRow(NOT_ACQUIRING),
   "closure-unproved": {
-    launch: UNPROVED, ...PHASE, "ceremony-release-failed": NOT_ACQUIRING, "acquisition-close-timeout": NOT_ACQUIRING,
+    launch: UNPROVED, ...PHASE, "ceremony-release-failed": FAILED_RETAINED, "acquisition-close-timeout": NOT_ACQUIRING,
     lease: UNPROVED, reset: NOT_LEASED, poison: to({ state: "closure-unproved" }),
     close: to({ state: "closing", owner: "session", reason: "parked" }), "close-proved": NOT_CLOSING, "close-failed": NOT_CLOSING,
   },
-  failed: {
-    launch: LOST, launched: LOST, "launch-failed": LOST, "launch-uncertain": LOST, "signed-in": LOST, "login-failed": LOST,
-    "ceremony-release-failed": LOST, "acquisition-close-timeout": LOST, lease: LOST, reset: LOST, poison: LOST, close: LOST,
-    "close-proved": LOST, "close-failed": LOST,
+  "failed/none": LOST_ROW,
+  "failed/retained": {
+    ...LOST_ROW, close: to({ state: "failed", browser: "closing", reason: "parked" }), "close-proved": NOT_CLOSING, "close-failed": NOT_CLOSING,
   },
+  "failed/closing": { ...LOST_ROW, close: CLOSING, "close-proved": FAILED_NONE, "close-failed": FAILED_RETAINED },
 };
+
+/** Applies events in order and returns each verdict; a refusal leaves the state where it was. */
+function walk(start: WorkerSessionState, sequence: readonly WorkerSessionEvent[]) {
+  let state = start;
+  return sequence.map((event) => {
+    const verdict = transitionWorkerSession(state, event);
+    if ("state" in verdict) state = verdict.state;
+    return verdict;
+  });
+}
 
 describe("worker browser session transition table", () => {
   it("has one row per state and one column per event", () => {
@@ -143,6 +162,7 @@ describe("worker browser session transition table", () => {
       for (const key of ["authenticated/idle", "authenticated/leased", "closure-unproved"] as const) {
         expect(transitionWorkerSession(states[key], { type: "close", reason })).toEqual(to({ state: "closing", owner: "session", reason }));
       }
+      expect(transitionWorkerSession(states["failed/retained"], { type: "close", reason })).toEqual(to({ state: "failed", browser: "closing", reason }));
     }
   });
 
@@ -171,9 +191,49 @@ describe("worker browser session transition table", () => {
         }
       }
     }
-    expect([...reached].sort()).toEqual(["closing/session", "closure-unproved"]);
-    const closing = transitionWorkerSession(states["closure-unproved"], { type: "close", reason: "worker-stop" });
-    expect("state" in closing && transitionWorkerSession(closing.state, { type: "close-proved" })).toEqual(to({ state: "closed" }));
+    expect([...reached].sort()).toEqual(["closing/session", "closure-unproved", "failed/closing", "failed/retained"]);
+    for (const key of reached) {
+      expect(transitionWorkerSession(states[key], events.launch)).toHaveProperty("refused");
+      expect(transitionWorkerSession(states[key], events.lease)).toHaveProperty("refused");
+    }
+    expect(walk(states["closure-unproved"], [{ type: "close", reason: "worker-stop" }, { type: "close-proved" }]).at(-1)).toEqual(to({ state: "closed" }));
+  });
+
+  it("keeps a retained browser closable after its acquisition also loses the Duo ceremony lease", () => {
+    const stop = { type: "close", reason: "worker-stop" } as const;
+    // Login fails, its close fails (the browser is retained), then the ceremony release fails while the gate unwinds.
+    const closeFirst = walk(states.closed, [
+      events.launch, events.launched, events["login-failed"], events["close-failed"], events["ceremony-release-failed"],
+      stop, events["close-proved"], events.launch, stop,
+    ]);
+    expect(closeFirst).toEqual([
+      to({ state: "starting", phase: "launching" }),
+      to({ state: "starting", phase: "signing-in" }),
+      to({ state: "closing", owner: "acquisition", reason: "login-failed" }),
+      to({ state: "closure-unproved" }),
+      FAILED_RETAINED,
+      to({ state: "failed", browser: "closing", reason: "worker-stop" }),
+      FAILED_NONE,
+      LOST,
+      LOST,
+    ]);
+    // The release failure arrives first: the login's own close still runs, and a failed one stays retained for shutdown.
+    const releaseFirst = walk(states["starting/signing-in"], [
+      events["ceremony-release-failed"], { type: "close", reason: "login-failed" }, events["close-failed"], stop, events["close-proved"],
+    ]);
+    expect(releaseFirst).toEqual([
+      FAILED_RETAINED,
+      to({ state: "failed", browser: "closing", reason: "login-failed" }),
+      FAILED_RETAINED,
+      to({ state: "failed", browser: "closing", reason: "worker-stop" }),
+      FAILED_NONE,
+    ]);
+    // A stopped sign-in's close keeps its reason when the release fails during it.
+    expect(walk(states["starting/signing-in"], [stop, events["ceremony-release-failed"], events["close-proved"]])).toEqual([
+      to({ state: "closing", owner: "acquisition", reason: "worker-stop" }),
+      to({ state: "failed", browser: "closing", reason: "worker-stop" }),
+      FAILED_NONE,
+    ]);
   });
 
   it("derives the reported health from the state alone and produces every declared health", () => {
@@ -186,7 +246,9 @@ describe("worker browser session transition table", () => {
       "closing/acquisition": "unknown",
       "closing/session": "unknown",
       "closure-unproved": "failed",
-      failed: "failed",
+      "failed/none": "closed",
+      "failed/retained": "failed",
+      "failed/closing": "unknown",
     };
     for (const key of WORKER_SESSION_STATE_KEYS) expect(workerSessionHealth(states[key])).toBe(health[key]);
     expect([...new Set(Object.values(health))].sort()).toEqual([...WorkerBrowserObservationSchema.shape.health.options].sort());
