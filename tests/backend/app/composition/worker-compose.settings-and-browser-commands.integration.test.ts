@@ -17,17 +17,16 @@ import { composeWorkerRuntime, createTimeoutDeadlineScheduler, lineTaskLogger } 
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createCommandKernel, type CommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
-import { createWorkerPoolRuntimeExecutor, type WorkerPoolProcessSupervisor, type WorkerSupervisorRequest } from "../../../../src/backend/runtime/workers/worker-loop.js";
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
-import { UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { RUN_ID, WORKFLOW_ID, sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { RUN_ID, sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/admission-fixture.js";
 import { happySessionHarness, personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, workerLifetime, ensureBaselineRuntimeConfig, composeInput, cleanup } = createWorkerCompositionTestWorld();
+const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, ensureBaselineRuntimeConfig, composeInput, cleanup } = createWorkerCompositionTestWorld();
 
 
 afterEach(cleanup);
@@ -153,25 +152,6 @@ describe("worker composition helpers", () => {
 
 
 
-function refusingWorkerSupervisor(): WorkerPoolProcessSupervisor {
-  return Object.freeze({
-    execute: (request: WorkerSupervisorRequest) => {
-      if (request.command === "plan-worker-count") return { command: request.command,
-        state: "acknowledged", desiredWorkers: request.desiredWorkers,
-        members: request.members.map(member => ({ member, stage: "unmet", reason: "not-started" })) };
-      if (request.command === "pause-worker") return { command: request.command,
-        state: "acknowledged", member: request.member, ownership: "external", stage: "pause-requested" };
-      if (request.command === "stop-worker") return { command: request.command,
-        state: "acknowledged", member: request.member, ownership: "external",
-        escalation: request.escalation,
-        observed: [{ stage: "graceful-stop-requested", at: request.directive.requestedAt }] };
-      throw new Error(request.command === "spawn-worker"
-        ? "this composition does not launch browser workers; cli worker person-lookup"
-        : "browser supervisor unavailable");
-    },
-  });
-}
-
 async function kernelHarness(existing?: { database: AuthorityDatabase; clock: TestClock;
   settings: ReturnType<typeof createSettingsApplicationExecutor> }): Promise<{ database: AuthorityDatabase; kernel: CommandKernel; clock: TestClock; stateRoot?: string }> {
   const clock = existing?.clock ?? manualClock(new Date(NOW));
@@ -203,7 +183,7 @@ async function kernelHarness(existing?: { database: AuthorityDatabase; clock: Te
         throw new Error("unused in this suite");
       },
     },
-    workerRuntime: { pool: createWorkerPoolRuntimeExecutor(refusingWorkerSupervisor(), database.authority.workerSlots) },
+    workerRuntime: { pool: unusedWorkerPool() },
     ...(existing === undefined ? {} : { settings: existing.settings }),
   });
   return { database, kernel, clock, ...(ownedStateRoot === undefined ? {} : { stateRoot: ownedStateRoot }) };
@@ -215,94 +195,6 @@ function nextCommandId(): string {
   const tail = String(commandSequence).padStart(4, "0");
   return `cccccccc-${tail}-4000-8000-${tail}00000000`;
 }
-
-function envelope(commandId = nextCommandId()) {
-  return {
-    commandId,
-    requestedAt: NOW,
-    requestedBy: "local-operator",
-    source: "dashboard",
-    family: "worker-browser",
-  } as const;
-}
-
-describe("dashboard-composed worker-browser command arms", () => {
-  async function plan(harness: Awaited<ReturnType<typeof kernelHarness>>, desiredWorkers = 1) {
-    return harness.kernel.executeWorkerPool({ ...envelope(), type: "plan-worker-count",
-      target: { workflowId: WORKFLOW_ID, expectedVersion: 0 }, payload: { desiredWorkers } });
-  }
-  it.each(["pause-worker", "stop-worker"] as const)("refuses %s for an external member without changing its directive", async type => {
-    const harness = await kernelHarness();
-    const planned = await plan(harness);
-    assert.equal(planned.state, "applied");
-    const slot = harness.database.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
-    assert.deepEqual(planned.affectedTargets, [{ family: "worker-pool", workflowId: WORKFLOW_ID },
-      { family: "worker-browser", workerId: slot.workerId }]);
-    assert.ok(harness.stateRoot);
-    const lifetime = await workerLifetime(harness.stateRoot, harness.clock, slot.workerId);
-    try {
-      const lease = harness.database.authority.workerLeases.get(slot.workerId); assert.ok(lease);
-      const commandId = nextCommandId();
-      const command = { ...envelope(commandId), type,
-        target: { workerId: slot.workerId, expectedVersion: lease.version,
-          ...(type === "stop-worker" ? { membershipRevision: slot.membershipRevision } : {}),
-          controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } } };
-      if (type === "stop-worker") {
-        const result = await harness.kernel.executeWorkerPool(command);
-        assert.equal(result.state, "rejected");
-        assert.ok(result.state === "rejected");
-        assert.match(result.message, /worker-reset-owner-unavailable/u);
-        assert.equal(harness.database.authority.commands.get(commandId), undefined);
-        assert.equal(harness.database.authority.workerControls.get(commandId), undefined);
-      } else {
-        await assert.rejects(harness.kernel.executeWorkerPool(command), /mutating control requires durable supervisor ownership/u);
-        assert.equal(harness.database.authority.workerControls.get(commandId)?.phase.state, "uncertain");
-      }
-      assert.deepEqual(harness.database.authority.workerLeases.get(slot.workerId)?.control, lease.control);
-      assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
-    } finally { await lifetime.close(); }
-  });
-  it("admits three native members without asserting they have started", async () => {
-    const harness = await kernelHarness();
-    const result = await plan(harness, 3);
-    assert.equal(result.state, "applied");
-    assert.equal(harness.database.authority.workerPools.get(WORKFLOW_ID)?.desiredWorkers, 3);
-    assert.equal(harness.database.authority.workerSlots.list(WORKFLOW_ID).length, 3);
-    assert.ok(harness.database.authority.workerSlots.list(WORKFLOW_ID)
-      .every(slot => harness.database.authority.workerLeases.get(slot.workerId) === undefined));
-  });
-  it("retains uncertain spawn evidence when the composed supervisor throws", async () => {
-    const harness = await kernelHarness(); await plan(harness);
-    const slot = harness.database.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
-    const commandId = nextCommandId();
-    await assert.rejects(harness.kernel.executeWorkerPool({ ...envelope(commandId), type: "spawn-worker",
-      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 }, payload: { workerId: slot.workerId } }),
-      /does not launch browser workers.*cli worker person-lookup/s);
-    assert.ok(harness.database.authority.commands.get(commandId));
-    assert.equal(harness.database.authority.workerControls.get(commandId)?.phase.state, "uncertain");
-    assert.equal(harness.database.authority.workerLeases.get(slot.workerId), undefined);
-  });
-  it("keeps refresh and reopen unavailable without acknowledging a browser effect", async () => {
-    const harness = await kernelHarness(); await plan(harness);
-    const slot = harness.database.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
-    assert.ok(harness.stateRoot);
-    const lifetime = await workerLifetime(harness.stateRoot, harness.clock, slot.workerId);
-    try {
-      for (const type of ["refresh-browser", "reopen-browser"] as const) {
-        const commandId = nextCommandId();
-        const lease = harness.database.authority.workerLeases.get(slot.workerId); assert.ok(lease);
-        const result = await harness.kernel.executeWorkerPool({ ...envelope(commandId), type,
-          target: { workerId: slot.workerId,
-            controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision },
-            browserSessionId: UUID_7, expectedVersion: lease.version } });
-        assert.equal(result.state, "rejected");
-        assert.ok(result.state === "rejected");
-        assert.match(result.message, /worker-browser-session-unavailable/u);
-        assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
-      }
-    } finally { await lifetime.close(); }
-  });
-});
 
 it("F live worker selects the claim token after a later activation", async () => {
  const { repoRoot, stateRoot } = await repoRootWithState();

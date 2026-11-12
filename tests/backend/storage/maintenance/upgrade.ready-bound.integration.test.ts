@@ -1,4 +1,10 @@
-import { assertUpgradedRunSettlementRows, removeEmptySchema24AssistantHistory, restoreSchema20CompletionFixture, restoreSchema26AssistantGrants } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { z } from "zod";
+import { WorkerPoolRecordSchema } from "../../../../src/models/run/worker-pool.js";
+import { insertNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
+import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { PredecessorRunRecordSchema } from "../../../../src/models/run/record.js";
+import { assertUpgradedRunSettlementRows, removeEmptySchema26AssistantHistory, restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture, restoreSchema28AssistantGrants } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { replantOlderBuildAuthority } from "../../../support/fixtures/storage/older-build-authority.js";
 import { removeSchema16PersonPreferences, prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { restoreSchema19RunSettlementFixture, restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
@@ -31,8 +37,8 @@ import { backupStoppedAuthority,upgradeProfileAtStartup,upgradeReadyProfileStora
 import { AuthorityDatabase,inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,isWorkerCustodyDroppedTable,migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { InstanceSelectionSchema } from "../../../../src/models/run/envelope.js";
 import { SettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
@@ -47,7 +53,9 @@ import { boundProfileCredentials,createBoundProfileFixture } from "../../../supp
 import { update as artifactUpdate } from "../../../support/helpers/database-foundation/fixtures.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { AuthorityUpgradeRecordSchema } from "../../../../src/models/config/authority.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
+import { writePredecessorUncertainRetry } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
 
 const hostFacts = { primaryDisplay: null };
 // Tables the schema-22 hook changes while it settles and tombstones pre-build runs.
@@ -60,7 +68,7 @@ const workbookReferenceValue = RunWorkbookReferenceSchema.parse({
 });
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 22 | 26 = 8, extractionEvidence = false,
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 28 = 8, extractionEvidence = false,
   workbookEvidence?: { owner: "run" | "terminal-run" | "plan" | "consumed-plan"; schemaHash: string; value?: JsonValue }) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
@@ -132,8 +140,16 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
-    if (sourceVersion === 26) restoreSchema26AssistantGrants(raw);
-    else if (sourceVersion === 22) removeEmptySchema24AssistantHistory(raw);
+    if (sourceVersion === 28) restoreSchema28AssistantGrants(raw);
+    else if (sourceVersion >= 24) removeEmptySchema26AssistantHistory(raw);
+    if (sourceVersion <= 24) raw.exec("DROP TABLE IF EXISTS workflow_workbook_selections");
+    if (sourceVersion < 24) restoreSchema22WorkerCustodyFixture(raw);
+    if (sourceVersion === 23) {
+      const claimIndex = SQLITE_MIGRATIONS.find(migration => migration.version === 23);
+      if (claimIndex === undefined) throw new Error("schema 23 migration missing");
+      for (const statement of claimIndex.statements) raw.exec(statement);
+    }
+    if (sourceVersion >= 21) raw.exec(`UPDATE database_states SET schema_version=${String(sourceVersion)}; PRAGMA user_version=${String(sourceVersion)}`);
     else if (sourceVersion === 20) restoreSchema20CompletionFixture(raw);
     else if (sourceVersion === 19) restoreSchema19RunSettlementFixture(raw);
     else restoreSchema18WorkbookReferenceFixture(raw);
@@ -182,8 +198,9 @@ function assertGrantTableRetired(path: string) {
 function rawEight(path: string, version = 8) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
-    // The empty grant table is dropped by schema 27; `assertGrantTableRetired` checks that separately.
-    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && table !== "assistant_grants").map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+    // The empty grant table is dropped by schema 29; `assertGrantTableRetired` checks that separately.
+    const present = new Set(raw.prepare("SELECT name FROM sqlite_schema WHERE type='table'").all().map(row => String(row.name)));
+    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && table !== "assistant_grants" && !isWorkerCustodyDroppedTable(table) && present.has(table)).map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
   } finally { raw.close(); }
 }
 
@@ -285,13 +302,13 @@ it("refuses malformed or foreign profile selectors and copied, foreign or releas
 
 it("refuses a genuine live server role and leaves every profile byte unchanged", async () => {
   const f = await readyBoundEight();
-  const server = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "server", pid: process.pid }, systemClock);
+  plantOldBuildArtifact(f.processLockRoot);
   try {
     const before = storageTree(f.stateRoot);
     await assert.rejects(upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock),
       { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
     assert.deepEqual(storageTree(f.stateRoot), before);
-  } finally { server.release(); await f.close(); }
+  } finally { await f.close(); }
 });
 
 it("refuses a genuine canonical queued run despite stopped global process roles", async () => {
@@ -306,14 +323,14 @@ it("refuses a genuine canonical queued run despite stopped global process roles"
   } finally { await f.close(); }
 });
 
-it("automatically upgrades schema 22 with queued work intact", async () => {
-  const f = await readyBoundEight("queued", 22);
+it("automatically upgrades schema 25 with queued work intact", async () => {
+  const f = await readyBoundEight("queued", 25);
   const tables = () => { const raw = new DatabaseSync(f.path, { readOnly: true });
     try { return raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => String(row.name)); } finally { raw.close(); } };
   try {
-    assert.deepEqual(tables(), [...migrationTableNames(22)].sort());
+    assert.deepEqual(tables(), [...migrationTableNames(25)].sort());
     assert.equal(tables().includes("assistant_conversations"), false);
-    const before = rawEight(f.path, 22);
+    const before = rawEight(f.path, 25);
     assert.ok(before.runs.length > 0); assert.ok(before.artifacts.length > 0);
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
     assert.deepEqual(tables(), [...migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION)].sort());
@@ -328,10 +345,10 @@ it("automatically upgrades schema 22 with queued work intact", async () => {
   } finally { await f.close(); }
 });
 
-it("automatically upgrades schema 26 at startup, dropping only the empty grant table", async () => {
-  const f = await readyBoundEight("queued", 26);
+it("automatically upgrades schema 28 at startup, dropping only the empty grant table", async () => {
+  const f = await readyBoundEight("queued", 28);
   try {
-    const before = rawEight(f.path, 26);
+    const before = rawEight(f.path, 28);
     assert.ok(before.runs.length > 0);
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
     assertGrantTableRetired(f.path);
@@ -743,4 +760,162 @@ it.each(([17, 18] as const).flatMap(version => (["run", "terminal-run", "plan", 
         assert.equal(raw.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE name='workbook_reference_upgrade_guard'").get()?.count, 0);
       } finally { raw.close(); }
     } finally { await f.close(); }
+});
+
+it.each(workbookFormats.flatMap(format => (['run', 'terminal-run', 'plan', 'consumed-plan'] as const).map(owner => ({ ...format, owner }))))(
+  'upgrades schema 24 $format $owner references through a verified historical backup and strict current readback', async ({ owner, schema, value }) => {
+  const f = await readyBoundEight(owner.includes('run') ? 'queued' : 'idle', 24, false,
+    { owner, schemaHash: deriveSchemaHash(schema, 'output'), value: JsonValueSchema.parse(schema.parse(value)) });
+  try {
+    const originalFingerprint = replantOlderBuildAuthority(f.path, 24);
+    const before = rawEight(f.path, 24);
+    const result = await (owner === 'run'
+      ? upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)
+      : upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock));
+    assert.deepEqual(result, { state: 'upgraded', fromSchemaVersion: 24, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: 'unchanged' });
+    const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    for (const [table, rows] of Object.entries(before)) {
+      if (table === 'database_states') assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === 'database_upgrades') assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else assert.deepEqual(after[table], rows);
+    }
+    assert.deepEqual(after.workflow_workbook_selections, []);
+    const settled = after.database_upgrades?.find(row => row.phase === 'settled');
+    assert.ok(settled && typeof settled.payload_json === 'string');
+    const record = AuthorityUpgradeRecordSchema.parse(JSON.parse(settled.payload_json));
+    assert.ok(record.phase === 'settled');
+    const manifests = readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json"));
+    assert.equal(manifests.length, 1);
+    const manifestName = manifests[0];
+    assert.ok(manifestName);
+    const manifest = AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(f.stateRoot, "backups", "authority", manifestName), "utf8")));
+    assert.equal(manifest.schemaVersion, 24);
+    assert.equal(manifest.authorityContentFingerprint, originalFingerprint);
+    assert.equal(manifest.sha256, digest(join(f.stateRoot, "backups", "authority", manifest.backupFileName)));
+    assert.deepEqual(rawEight(join(f.stateRoot, "backups", "authority", manifest.backupFileName), 24), before);
+    const fresh = f.machine.admitProfile(f.binding.profileId);
+    try {
+      const verified = verifyStoppedBackupManifestAtPath(fresh, join(f.stateRoot, "backups", "authority", manifestName));
+      assert.equal(verified.manifest.schemaVersion, 24);
+      assert.equal(verified.manifest.authorityContentFingerprint, originalFingerprint);
+      const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: 'selection-upgrade-readback' }, systemClock,
+        undefined, undefined, undefined, createCredentialStore({ admission: fresh, stateRoot: f.stateRoot }));
+      try { assert.equal(database.authority.workbooks.lastUsed('person-lookup'), undefined); }
+      finally { database.close(); }
+    } finally { fresh.release(); }
+  } finally { await f.close(); }
+});
+
+it("upgrades a frozen schema 23 older-build store through its original fingerprint, a verified backup and strict readback", async () => {
+  const f = await readyBoundEight("idle", 23);
+  try {
+    const originalFingerprint = replantOlderBuildAuthority(f.path, 23);
+    const before = rawEight(f.path, 23);
+    const result = await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock);
+    assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 23, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
+    const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    for (const [table, rows] of Object.entries(before)) {
+      if (table === "worker_slots") continue;
+      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else assert.deepEqual(after[table], rows, table);
+    }
+    assert.deepEqual(after.workflow_workbook_selections, []);
+    const present = new DatabaseSync(f.path, { readOnly: true });
+    try {
+      assert.equal(present.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE name IN ('worker_leases','worker_controls','browser_sessions')").get()?.count, 0);
+    } finally { present.close(); }
+    const manifests = readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json"));
+    assert.equal(manifests.length, 1);
+    const manifestName = manifests[0];
+    assert.ok(manifestName);
+    const manifest = AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(f.stateRoot, "backups", "authority", manifestName), "utf8")));
+    assert.equal(manifest.schemaVersion, 23);
+    assert.equal(manifest.authorityContentFingerprint, originalFingerprint);
+    assert.equal(manifest.sha256, digest(join(f.stateRoot, "backups", "authority", manifest.backupFileName)));
+    assert.deepEqual(rawEight(join(f.stateRoot, "backups", "authority", manifest.backupFileName), 23), before);
+    const fresh = f.machine.admitProfile(f.binding.profileId);
+    try {
+      const verified = verifyStoppedBackupManifestAtPath(fresh, join(f.stateRoot, "backups", "authority", manifestName));
+      assert.equal(verified.manifest.schemaVersion, 23);
+      assert.equal(verified.manifest.authorityContentFingerprint, originalFingerprint);
+      const credentials = createCredentialStore({ admission: fresh, stateRoot: f.stateRoot });
+      const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "older-build-readback" }, systemClock,
+        undefined, undefined, undefined, credentials);
+      try {
+        assert.equal(database.authority.workbooks.lastUsed("person-lookup"), undefined);
+        const replay = executeSettingsCommand({ authority: database, clock: systemClock, ids: { uuid: randomUUID },
+          settings: createSettingsApplicationExecutor(() => { throw new Error("older-build-readback-reapplied"); }, credentials) }, f.command);
+        assert.deepEqual(replay, { ...f.saved, state: "already-applied" });
+      } finally { database.close(); }
+    } finally { fresh.release(); }
+  } finally { await f.close(); }
+});
+
+/** Writes worker custody rows as schemas 20-22 stored them: old slots, leases with a pause, worker history and a claimed run with its worker lifetime; journals carrying the lifetime are covered by worker-custody-predecessor.integration. */
+function plantPredecessorWorkerCustody(path: string) {
+  const raw = new DatabaseSync(path, { enableForeignKeyConstraints: true }), now = systemClock.now().toISOString();
+  try {
+    const pool = WorkerPoolRecordSchema.parse({ workflow: "person-lookup", desiredWorkers: 1, version: 2, plannedBy: LOCAL_OPERATOR_ACTOR_ID, plannedAt: now, createdAt: now, updatedAt: now });
+    raw.prepare("INSERT INTO worker_pools VALUES(?,?,?,?,?,?)").run(pool.workflow, pool.desiredWorkers, pool.version, canonicalJsonStringify(pool), now, now);
+    const planId = randomUUID();
+    insertNativeCommand(raw, { commandId: planId, requestedAt: now, requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: "dashboard", family: "worker-browser",
+      type: "plan-worker-count", target: { workflowId: "person-lookup", expectedVersion: 1 }, payload: { desiredWorkers: 1 } });
+    const slot = (workerId: string, ordinal: number, retiredAt: string | null) => ({ workerId, workflow: "person-lookup", ordinal, poolIndex: 1,
+      membershipRevision: 1, phase: "idle", retiredAt, retirementCommandId: retiredAt === null ? null : planId, reservationCommandId: planId, createdAt: now, updatedAt: now });
+    for (const row of [slot("person-lookup-worker-1", 1, now), slot("person-lookup-worker-2", 2, null)]) {
+      raw.prepare("INSERT INTO worker_slots(id,workflow,ordinal,membership_revision,phase,retired_at,retirement_command_id,reservation_command_id,payload_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+        .run(row.workerId, row.workflow, row.ordinal, row.membershipRevision, row.phase, row.retiredAt, row.retirementCommandId, row.reservationCommandId, canonicalJsonStringify(row), now, now);
+    }
+    for (const [generation, directive] of [[1, "run"], [2, "pause"]] as const) {
+      raw.prepare("INSERT INTO worker_leases VALUES(?,?,'person-lookup',?,1,'idle',?,NULL,1,'{}',?,?)").run(`lease-${String(generation)}`, "person-lookup-worker-2", generation, directive, now, now);
+    }
+    // The operator's store: a retry against the crashed worker settled uncertain with no effect and no audit, bound to its newest lease.
+    const retryId = writePredecessorUncertainRetry(raw, { workflowId: "person-lookup", workerId: "person-lookup-worker-2", leaseGeneration: 2, now });
+    const lifetime = { membershipRevision: 1, leaseGeneration: 2 };
+    const queued = predecessorRunRecordFromRow(raw.prepare("SELECT * FROM runs ORDER BY id LIMIT 1").get());
+    const claimed = PredecessorRunRecordSchema.parse({ ...queued, version: queued.version + 1, claimGeneration: 1,
+      lifecycle: { state: "claimed", workerId: "person-lookup-worker-2", claimedAt: now, heartbeatAt: now } });
+    const columns = runRecordColumns(claimed, PredecessorRunRecordSchema);
+    const lifecycle = z.record(z.string(), z.unknown()).parse(JSON.parse(String(columns.lifecycle_json)));
+    const stored = { ...columns, lifecycle_json: canonicalJsonStringify({ ...lifecycle, lifecycle: { ...z.record(z.string(), z.unknown()).parse(lifecycle.lifecycle), workerLifetime: lifetime } }) };
+    const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name IN ('runs','run_search')").all();
+    for (const trigger of triggers) raw.exec(`DROP TRIGGER "${String(trigger.name)}"`);
+    try {
+      raw.prepare(`UPDATE runs SET ${Object.keys(stored).map(key => `${key}=?`).join(",")} WHERE id=?`).run(...Object.values(stored), queued.envelope.runId);
+      raw.prepare("UPDATE run_search SET source_version=?, state='claimed', metadata_json=json_set(metadata_json,'$.sourceVersion',?) WHERE run_id=?").run(claimed.version, claimed.version, queued.envelope.runId);
+    } finally { for (const trigger of triggers) raw.exec(String(trigger.sql)); }
+    return { runId: queued.envelope.runId, retryId };
+  } finally { raw.close(); }
+}
+
+it.each([20, 21, 22] as const)("converts populated schema %s worker custody through backup and upgrade and reads it back strictly", async sourceVersion => {
+  const f = await readyBoundEight("queued", sourceVersion);
+  try {
+    const { runId, retryId } = plantPredecessorWorkerCustody(f.path);
+    const stopped = new DatabaseSync(f.path, { readOnly: true });
+    try { assert.equal(inspectNativeAuthority(stopped, sourceVersion).schemaVersion, sourceVersion); } finally { stopped.close(); }
+    assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
+    const backupDirectory = join(f.stateRoot, "backups", "authority");
+    assert.ok(readdirSync(backupDirectory).filter(name => name.endsWith(".manifest.json"))
+      .some(name => AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(backupDirectory, name), "utf8"))).schemaVersion === sourceVersion));
+    const fresh = f.machine.admitProfile(f.binding.profileId);
+    try {
+      const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
+        undefined, undefined, undefined, createCredentialStore({ admission: fresh, stateRoot: f.stateRoot }));
+      try {
+        assert.deepEqual(database.authority.workerSlots.list("person-lookup").map(slot => [slot.workerId, slot.poolIndex, slot.paused, slot.retiredAt === null]),
+          [["person-lookup-worker-1", 1, false, false], ["person-lookup-worker-2", 1, true, true]]);
+      } finally { database.close(); }
+    } finally { fresh.release(); }
+    const raw = new DatabaseSync(f.path, { readOnly: true });
+    try {
+      assert.equal(inspectNativeAuthority(raw).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+      assert.equal(raw.prepare("SELECT count(*) AS count FROM runs WHERE id=?").get(runId)?.count, 0);
+      assert.equal(raw.prepare("SELECT count(*) AS count FROM deleted_runs WHERE run_id=?").get(runId)?.count, 1);
+      assert.equal(raw.prepare("SELECT count(*) AS count FROM commands WHERE family='worker-browser' OR request_json LIKE '%workerLifetime%'").get()?.count, 0);
+      assert.equal(raw.prepare("SELECT count(*) AS count FROM command_audits WHERE command_id=?").get(retryId)?.count, 0);
+      for (const table of ["worker_leases", "worker_controls", "browser_sessions"]) assert.equal(raw.prepare("SELECT name FROM sqlite_schema WHERE name=?").get(table), undefined);
+    } finally { raw.close(); }
+  } finally { await f.close(); }
 });

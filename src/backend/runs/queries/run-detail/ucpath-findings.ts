@@ -1,6 +1,6 @@
 import type { RunDetailQueryDeps } from "../run-detail-types.js";
 import type { RunRecord } from "../../../../models/run/record.js";
-import type { WorkerControlRecord } from "../../../../models/run/worker-control.js";
+import type { CommandAuditRecord } from "../../../../rules/commands/commands.js";
 import type { WriteIntentRecord } from "../../../../rules/write-safety/write-safety.js";
 import { UcpathFindingsDetailSchema, type UcpathFindingsDetail } from "../../../../models/dashboard/ucpath-findings.js";
 import { UcpathReadTransactionFindings } from "../../../../models/systems/ucpath/read-transaction-findings.js";
@@ -28,19 +28,17 @@ export function projectUcpathFindings(scan: UcpathTransactionFindingsRead, targe
 }
 
 export function retainedUcpathFindings(deps: RunDetailQueryDeps, run: RunRecord, intent: WriteIntentRecord,
-  retained: WorkerControlRecord | undefined): UcpathFindingsDetail {
+  retained: CommandAuditRecord | undefined): UcpathFindingsDetail {
   const canonical = deps.canonical;
   const descriptor = canonical?.descriptors.resolve(run.envelope.workflow);
+  const ack = retained?.parkedWriteCheck;
   if (intent.taskId !== "ucpath/create-termination" || canonical?.database === undefined || descriptor === undefined
     || descriptor.version !== run.envelope.descriptorVersion || descriptor.contractFingerprint !== run.envelope.contractFingerprint
-    || retained?.phase.state !== "succeeded" || retained.phase.acknowledgement.kind !== "parked-write-check"
-    || retained.phase.acknowledgement.findingsIdentity === undefined) return { state: "unavailable" };
-  const ack = retained.phase.acknowledgement;
+    || retained === undefined || ack?.findingsIdentity === undefined) return { state: "unavailable" };
   const identity = ack.findingsIdentity;
-  if (identity === undefined) return { state: "unavailable" };
   const { result, evidence } = ack;
   const target = result.target;
-  if (retained.request.type !== "check-parked-write" || retained.commandId !== result.commandId
+  if (retained.request.type !== "check-parked-write" || retained.request.commandId !== result.commandId
     || retained.request.requestedBy !== "local-operator" || retained.request.source !== "run-detail"
     || result.requestedBy !== retained.request.requestedBy || canonicalJsonStringify(retained.request.target) !== canonicalJsonStringify(target)
     || target.installationId !== deps.authorityIdentity?.installationId || target.profileId !== deps.authorityIdentity?.profileId

@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { createWorkerChildChannel } from "../../../../src/backend/runtime/workers/worker-child-channel.js";
+import type { WorkerChildMessage } from "../../../../src/backend/runtime/workers/worker-messages.js";
 import { WorkerSessionClosureUnprovedError, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { createWorkerDirectiveTestWorld } from "../../../support/helpers/backend/worker-directive-world.js";
 import assert from "node:assert/strict";
@@ -8,6 +11,7 @@ import { UUID_5, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtu
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { EXECUTOR_WORKER_ID, healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 
 const {loopHarness, cleanup } = createWorkerDirectiveTestWorld();
 
@@ -23,6 +27,141 @@ describe("worker run loop", () => {
       closure: "proved", preflightRefusal: { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: RUN_ID } });
     assert.equal(claims, 1); assert.equal(h.sessions.opens("ucpath"), 0); assert.equal(h.sessions.opens("crm"), 0);
     assert.ok(h.emitter.events().some(event => event.t === "span.ended" && event.kind === "worker" && event.outcome === "failed"));
+  });
+  for (const code of ["PREFLIGHT_BLOCKED", "PREFLIGHT_OBSERVATION_CHANGED", "PREFLIGHT_TIMEOUT"] as const) it(`keeps a standing worker alive after ${code} and claims when readiness returns`, async () => {
+    const h = await loopHarness();
+    h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+    let claims = 0;
+    const refusalEvents: { code?: string; message?: string }[] = [];
+    const debugWriter = createDebugEventWriter({ repository: h.authority.database.authority.timelineEvents, clock: h.authority.clock, build: "test" });
+    const summary = code === "PREFLIGHT_BLOCKED" ? "authority.health: authority database is degraded (authority-invariant)" : undefined;
+    const looping = runWorkerLoop({ ...h.deps, exitWhenIdle: false,
+      debugEvents: { emit: (input, scope, workflow) => {
+        const event = input as { area?: string; code?: string; message?: string };
+        if (event.area === "worker-admission") refusalEvents.push({ code: event.code, message: event.message });
+        return debugWriter.emit(input, scope, workflow);
+      } },
+      claimNext: (request, sessions) => {
+        claims++;
+        if (claims === 1) return { state: "preflight-refused", code, runId: RunIdSchema.parse(RUN_ID), ...(summary === undefined ? {} : { summary }) };
+        if (claims === 3) h.stop.abort();
+        return h.deps.claimNext(request, sessions);
+      },
+    });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const idle = h.scheduler.pending()[0];
+    assert.ok(idle);
+    idle.fire();
+    const report = await looping;
+    assert.equal(claims, 3);
+    assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["done"]);
+    assert.equal(report.stopped, "stop-signal");
+    assert.equal(report.preflightRefusal, undefined);
+    assert.equal(report.closure, "proved");
+    assert.deepEqual(refusalEvents, [{ code, message: summary }]);
+  });
+
+  it("doubles the re-poll delay across consecutive preflight refusals up to a minute, then a claim resets it", async () => {
+    const h = await loopHarness();
+    h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+    const base = 20_000;
+    const summary = "Readiness checks blocked this worker.";
+    const delays: number[] = [];
+    let claims = 0;
+    const looping = runWorkerLoop({ ...h.deps, exitWhenIdle: false, idleRepollMs: base,
+      onStanding: refusal => {
+        if (refusal !== undefined) delays.push(Date.parse(refusal.retryAt) - h.authority.clock.nowMs());
+      },
+      claimNext: (request, sessions) => {
+        claims += 1;
+        if (claims <= 3 || claims === 5) return { state: "preflight-refused", code: "PREFLIGHT_BLOCKED", summary };
+        if (claims >= 6) { h.stop.abort(); return { state: "refused", refusal: { reason: "none-eligible" } }; }
+        return h.deps.claimNext(request, sessions);
+      },
+    });
+    const fire = async (expected: number) => {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const now = h.authority.clock.monotonicMs();
+      const timer = h.scheduler.pending().find(entry => entry.deadlineMonotonicMs - now === expected);
+      assert.ok(timer, `delay ${expected}; pending ${h.scheduler.pending().map(entry => entry.deadlineMonotonicMs - now).join(",")}`);
+      timer.fire();
+    };
+    await fire(base);
+    await fire(base * 2);
+    await fire(base * 3);
+    const started = Date.now();
+    while (delays.length < 4 && Date.now() - started < 10_000) await new Promise<void>(resolve => setImmediate(resolve));
+    assert.deepEqual(delays, [base, base * 2, 60_000, base]);
+    await fire(base);
+    const report = await looping;
+    assert.equal(claims, 6);
+    assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["done"]);
+    assert.equal(report.stopped, "stop-signal");
+  });
+
+  it("resets the refusal delay after an idle poll with nothing eligible", async () => {
+    const h = await loopHarness();
+    const base = 20_000;
+    const delays: number[] = [];
+    let claims = 0;
+    const looping = runWorkerLoop({ ...h.deps, exitWhenIdle: false, idleRepollMs: base,
+      onStanding: refusal => {
+        if (refusal !== undefined) delays.push(Date.parse(refusal.retryAt) - h.authority.clock.nowMs());
+      },
+      claimNext: () => {
+        claims += 1;
+        if (claims === 1 || claims === 3) return { state: "preflight-refused", code: "PREFLIGHT_TIMEOUT", summary: "A readiness check took too long. Check again." };
+        if (claims === 4) h.stop.abort();
+        return { state: "refused", refusal: { reason: "none-eligible" } };
+      },
+    });
+    const fire = async (expected: number) => {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const now = h.authority.clock.monotonicMs();
+      const timer = h.scheduler.pending().find(entry => entry.deadlineMonotonicMs - now === expected);
+      assert.ok(timer, `delay ${expected}; pending ${h.scheduler.pending().map(entry => entry.deadlineMonotonicMs - now).join(",")}`);
+      timer.fire();
+    };
+    await fire(base);
+    await fire(base);
+    await fire(base);
+    assert.deepEqual(delays, [base, base]);
+    await looping;
+    assert.equal(claims, 4);
+  });
+
+  for (const fails of [false, true]) it(`admits idle refresh between claims and releases its turn after ${fails ? "failure" : "success"}`, async () => {
+    const h = await loopHarness({ exitWhenIdle: false });
+    let release: () => void = () => undefined;
+    const refreshing = new Promise<void>(resolve => { release = resolve; });
+    let refreshStarted = false, claims = 0;
+    const sent: WorkerChildMessage[] = [];
+    const forbidden = (): never => { throw new Error("unrequested control"); };
+    const child = createWorkerChildChannel({ clock: h.authority.clock, send: message => { sent.push(message); }, onStop: () => h.stop.abort(),
+      handlers: { refreshBrowser: async () => { refreshStarted = true; await refreshing; if (fails) throw new Error("fixture reset failed"); return null; },
+        reopenBrowser: forbidden, checkParkedWrite: forbidden, closeForRemoval: forbidden, pause: forbidden, resume: forbidden } });
+    const looping = runWorkerLoop({ ...h.deps, claimTurn: { begin: () => child.beginRun(), end: () => child.endRun() },
+      claimNext: (request, sessions) => { claims++; if (claims === 2) h.stop.abort(); return h.deps.claimNext(request, sessions); } });
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const requestId = randomUUID();
+      child.receive({ kind: "worker-request", requestId, sentAt: h.authority.clock.now().toISOString(), deadlineMs: 10_000,
+        request: { type: "refresh-browser", browserSessionId: randomUUID() } });
+      assert.equal(refreshStarted, true);
+      assert.equal(child.beginRun(), false);
+      const idle = h.scheduler.pending()[0]; assert.ok(idle); idle.fire();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(claims, 1);
+      release();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const reply = sent.find(message => message.kind === "worker-reply" && message.requestId === requestId);
+      assert.ok(reply?.kind === "worker-reply");
+      assert.equal(reply.outcome.state, fails ? "refused" : "done");
+      const waiting = h.scheduler.pending()[0]; assert.ok(waiting); waiting.fire();
+      const report = await looping;
+      assert.equal(claims, 2);
+      assert.equal(report.closure, "proved");
+    } finally { release(); h.stop.abort(); await looping; }
   });
   it("drains two queued items sequentially — one active item — and closes sessions at stop", async () => {
     const harness = await loopHarness();

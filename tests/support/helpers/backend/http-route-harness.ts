@@ -1,3 +1,5 @@
+import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
+import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { createWorkbookIntakeBridge } from "../../../../src/backend/runs/commands/workbook-intake-service.js";
@@ -152,6 +154,7 @@ export const disposeHttpRouteHarness = async () => {
 };
 
 export async function harness(options: {
+  readonly workbookWorkflows?: readonly import("../../../../src/backend/workbooks/workbook-library-service.js").WorkbookReferenceWorkflow[];
   readonly profileFixture?: () => Promise<BoundProfileStorageFixture>;
   readonly protectedCommandAcceptedAt?: DashboardAppDeps["protectedCommandAcceptedAt"];
   readonly requestIdentity?: RequestIdentityCheckpoint;
@@ -234,8 +237,6 @@ export async function harness(options: {
       listNotificationCheckpoints: () => [],
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       listGateResults: runId => database.authority.gateResults.listByRun(runId),
-      listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
-      getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
@@ -317,15 +318,7 @@ export async function harness(options: {
         throw new Error("write resolution is not wired in this harness");
       },
     },
-    workerRuntime: { pool: {
-      planPoolWorkerCount: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      spawnPoolWorker: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      refreshPoolBrowser: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      reopenPoolBrowser: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      stopPoolWorker: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      pausePoolWorker: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      resumePoolWorker: async () => { throw new Error("worker runtime is not wired in this harness"); },
-    } },
+    workerRuntime: { pool: unusedWorkerPool() },
     settings: createSettingsApplicationExecutor((settings) => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock), credentials),
   });
   const commands = createDashboardCommandService({ kernel, projection });
@@ -372,7 +365,7 @@ export async function harness(options: {
     intake: options.intake ?? UNWIRED_INTAKE_SERVICE,
     ...(options.ocr === undefined ? {} : { ocr: options.ocr }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
-    workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, options.intake ?? UNWIRED_INTAKE_SERVICE) },
+    workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, options.intake ?? UNWIRED_INTAKE_SERVICE), workflows: options.workbookWorkflows ?? [fixtureDescriptor] },
     bootstrap: {
       appVersion: "0.1.0",
       clock,
@@ -382,7 +375,7 @@ export async function harness(options: {
       projection,
       actorLabel: () => "Fixture Operator",
       authorityMeta: () => database.getMeta(),
-      workbookReferences: workflows => workbookLibrary.references(workflows),
+      workbookCompatibility: workflows => workbookLibrary.compatibility(workflows),
       preflightReport: () => preflight.report,
     },
     preflight: preflight.authority,
@@ -399,6 +392,7 @@ export async function harness(options: {
       search,
       activityReport: (from, to, token) => activity.readSelected(from, to, token),
     }),
+    resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority),
     commandJournal: options.commandJournal?.(database.authority.commands)
       ?? database.authority.commands,
     bulkCommandAcceptances: {
@@ -502,20 +496,35 @@ export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot"
   } finally { raw.close(); }
 }
 
+type TimelinePage = ReturnType<Harness["database"]["authority"]["timelineEvents"]["page"]>;
+/** The dashboard's loop-delay monitor writes a stall diagnostic on its own clock; a slow host can land one inside any checked span. */
+const isLoopStall = (record: TimelinePage[number]) => record.payload.kind === "debug" && record.payload.event.category === "boot"
+  && record.payload.event.area === "event-loop" && record.payload.event.reason === "event-loop-stall";
+
+/** Asserts a span wrote nothing to authority except loop-stall diagnostics; returns how many it wrote. */
+export function assertOnlyLoopStallWrites(database: Harness["database"], before: Readonly<{ generation: number; timeline: TimelinePage }>): number {
+  const timeline = database.authority.timelineEvents.page({ limit: 500 });
+  assert.deepEqual(timeline.slice(0, before.timeline.length), before.timeline);
+  const added = timeline.slice(before.timeline.length);
+  assert.ok(added.every(isLoopStall), "the span wrote only loop-stall diagnostics");
+  assert.equal(database.getMeta().authorityGeneration, before.generation + added.length);
+  return added.length;
+}
+
 export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number,
   history: HistoryWrites = NO_HISTORY_WRITES) {
   const after = faultAuthoritySnapshot(h, history);
   assert.deepEqual(after.schema, before.schema, "HTTP refusal changes no table, index or trigger");
   assert.deepEqual(after.rows, before.rows, "HTTP refusal changes no HR, settings, command, audit or proof owner");
   assert.deepEqual(after.timeline.slice(0, before.timeline.length), before.timeline);
-  const added = after.timeline.slice(before.timeline.length);
-  assert.equal(added.length, expected);
-  for (const record of added) {
+  const added = after.timeline.slice(before.timeline.length), stalls = added.filter(isLoopStall).length;
+  assert.equal(added.length - stalls, expected);
+  for (const record of added.filter(record => !isLoopStall(record))) {
     assert.equal(record.payload.kind, "debug");
     if (record.payload.kind !== "debug") throw new Error("HTTP refusal wrote non-debug authority");
     assert.equal(record.payload.event.category, "http");
   }
-  assert.equal(after.generation, Number(before.generation) + expected + history.writes);
+  assert.equal(after.generation, Number(before.generation) + expected + history.writes + stalls);
 }
 
 export function rawSettingsPatchFingerprint(patch: unknown): string {

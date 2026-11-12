@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { join } from "node:path";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { createPreflightAdmission, PreflightAdmissionScopeSchema, PreflightObservationChangedError } from "../../../../src/rules/preflight/preflight-admission.js";
@@ -20,8 +21,14 @@ import { NOW, UUID_1 } from "../../../support/fixtures/phase1c-contract-fixtures
 
 const cleanups: (() => void | Promise<void>)[] = [];
 const { fixture } = createCredentialDoctorFixtures(cleanups);
-afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+afterEach(async () => { vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 const context = { signal: new AbortController().signal, timeoutMs: 10_000, deadlineMonotonicMs: 10_000, redaction: "presence-only" as const };
+
+/** The readiness pass has no await, so a concurrent write lands after its span snapshot read and before its final identity read. */
+function writeDuringPass(write: () => void) {
+  const read = AuthorityDatabase.inspectSpanRunAuthorityReadOnly.bind(AuthorityDatabase);
+  vi.spyOn(AuthorityDatabase, "inspectSpanRunAuthorityReadOnly").mockImplementationOnce((...args) => { const snapshot = read(...args); write(); return snapshot; });
+}
 
 function notify(f: Awaited<ReturnType<typeof fixture>>) {
   const notificationId = randomUUID();
@@ -49,10 +56,25 @@ it("keeps a concurrent durable write as a distinct doctor failure without accept
 
 it("maps only the real doctor observation race into the preflight refusal type", async () => {
   const f = await fixture();
-  const runner = new AuthorityHealthPreflightRunner(f.admission, f.options, undefined, f.credentialStore);
-  const checking = runner.run(context);
-  notify(f);
-  await assert.rejects(checking, PreflightObservationChangedError);
+  writeDuringPass(() => { notify(f); });
+  await assert.rejects(new AuthorityHealthPreflightRunner(f.admission, f.options, undefined, f.credentialStore).run(context), PreflightObservationChangedError);
+});
+
+for (const method of ["inspectExistingReadOnly", "inspectSpanRunAuthorityReadOnly"] as const) it(`treats a transient SQLite lock in ${method} as changed observation`, async () => {
+  const f = await fixture();
+  vi.spyOn(AuthorityDatabase, method).mockImplementationOnce(() => { throw new Error("database is locked"); });
+  await assert.rejects(new AuthorityHealthPreflightRunner(f.admission, f.options, undefined, f.credentialStore).run(context), PreflightObservationChangedError);
+  assert.equal((await doctorAuthorityStorage(f.admission, f.options, undefined, f.credentialStore)).authority.state, "healthy");
+});
+
+it("rejects split corpus/run read snapshots as changed observation", async () => {
+  const f = await fixture();
+  const inspect = AuthorityDatabase.inspectSpanRunAuthorityReadOnly.bind(AuthorityDatabase);
+  vi.spyOn(AuthorityDatabase, "inspectSpanRunAuthorityReadOnly").mockImplementationOnce((...args) => {
+    const snapshot = inspect(...args);
+    return { ...snapshot, authorityGeneration: snapshot.authorityGeneration + 1 };
+  });
+  await assert.rejects(new AuthorityHealthPreflightRunner(f.admission, f.options, undefined, f.credentialStore).run(context), PreflightObservationChangedError);
 });
 
 async function racingClaim(world: ReturnType<typeof createWorkerDirectiveTestWorld>, racedObservations: number) {
@@ -67,11 +89,10 @@ async function racingClaim(world: ReturnType<typeof createWorkerDirectiveTestWor
       async run(check) {
         if (spec.id !== "authority.health") return { check: spec.id, state: "healthy", summary: "Fixture healthy" };
         counts.observations++;
-        const checking = doctor.run(check);
-        if (counts.observations <= racedObservations) a.database.authority.notifications.create({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: randomUUID().replaceAll("-", "").padEnd(64, "e"), trigger: "failed", channel: "ping",
+        if (counts.observations <= racedObservations) writeDuringPass(() => a.database.authority.notifications.create({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: randomUUID().replaceAll("-", "").padEnd(64, "e"), trigger: "failed", channel: "ping",
           status: "unread", snooze: { state: "not-snoozed" }, title: "Fixture notice", summary: "Concurrent fixture write", links: [{ kind: "run", runId: UUID_1 }],
-          count: 1, lastSeenAt: NOW, version: 1, createdAt: NOW, updatedAt: NOW });
-        return checking;
+          count: 1, lastSeenAt: NOW, version: 1, createdAt: NOW, updatedAt: NOW }));
+        return doctor.run(check);
       },
     })) });
   const claimNext = () => claimWithPreflight({ signal: h.stop.signal, onObservationChanged: attempt => { counts.reprepared.push(attempt); },
@@ -94,7 +115,7 @@ it("stops the real worker loop before claim and browser preparation when every b
   } finally { await world.cleanup(); }
 });
 
-it("re-prepares after one concurrent write during the doctor's backup check and admits the claim", async () => {
+it("re-prepares after one concurrent write during the doctor's pass and admits the claim", async () => {
   const world = createWorkerDirectiveTestWorld();
   try {
     const { counts, claimNext } = await racingClaim(world, 1);
@@ -108,15 +129,17 @@ for (const change of ["same-generation-content", "backwards-generation", "unavai
   const f = await fixture();
   const notificationId = notify(f);
   const generation = f.database.getMeta().authorityGeneration;
-  const runner = new AuthorityHealthPreflightRunner(f.admission, f.options, undefined, f.credentialStore);
-  const checking = runner.run(context);
   using raw = new DatabaseSync(f.options.authorityPath);
   const meta = raw.prepare("SELECT schema_version FROM database_states WHERE id=1").get();
   assert.ok(meta && typeof meta.schema_version === "number");
+  const schemaVersion = meta.schema_version;
   try {
-    if (change === "same-generation-content") raw.prepare("UPDATE notifications SET payload_json=json_set(payload_json,'$.summary',?) WHERE id=?").run("Unjournaled content drift", notificationId);
-    else if (change === "backwards-generation") raw.prepare("UPDATE database_states SET authority_generation=?,search_state='invalid' WHERE id=1").run(generation - 1);
-    else raw.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(meta.schema_version + 1);
+    writeDuringPass(() => {
+      if (change === "same-generation-content") raw.prepare("UPDATE notifications SET payload_json=json_set(payload_json,'$.summary',?) WHERE id=?").run("Unjournaled content drift", notificationId);
+      else if (change === "backwards-generation") raw.prepare("UPDATE database_states SET authority_generation=?,search_state='invalid' WHERE id=1").run(generation - 1);
+      else raw.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(schemaVersion + 1);
+    });
+    const checking = new AuthorityHealthPreflightRunner(f.admission, f.options, undefined, f.credentialStore).run(context);
     if (change === "same-generation-content") assert.equal(f.database.getMeta().authorityGeneration, generation);
     await assert.rejects(checking, (error: unknown) => {
       assert.ok(error instanceof Error);

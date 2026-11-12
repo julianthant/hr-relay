@@ -202,17 +202,13 @@ function runningContext(
   const poolIndex = workerId === WRITE_FIXTURE_WORKER_ID ? 1 : 2;
   testWorkerPorts(h.database, h.clock, { path: h.path, descriptor: writeFixtureDescriptor, poolIndex });
   const member = h.database.authority.workerSlots.get(workerId);
-  const lease = h.database.authority.workerLeases.get(workerId);
   assert.ok(member);
-  assert.ok(lease);
   const claimed = h.database.authority.runs.claimNext({
     workflow: WRITE_FIXTURE_WORKFLOW_ID, workerId, now,
-    workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration },
   });
   if (claimed.state !== "claimed") throw new Error("guard claim failed");
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-  assert.ok("workerLifetime" in claimed.run.lifecycle && claimed.run.lifecycle.workerLifetime !== undefined);
-  const base = { workerId, workerLifetime: claimed.run.lifecycle.workerLifetime, claimedAt: now, heartbeatAt: now };
+  const base = { workerId, claimedAt: now, heartbeatAt: now };
   const runId = claimed.run.envelope.runId;
   assert.equal(h.database.authority.runs.transition({
     runId, expectedVersion: claimed.run.version, claim,

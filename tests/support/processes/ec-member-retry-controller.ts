@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../helpers/backend/unused-worker-pool.js";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -29,6 +30,7 @@ if (serialized === undefined) {
   const f = await world.fixture({ failures: boundary === "settlement" || boundary === "parent-requested" ? 2 : 1, onFencedSave: () => {
     if (armed && boundary === "fence") process.kill(process.pid, "SIGKILL");
   } });
+  await world.releaseSources();
   f.control.failAccounting = mode?.endsWith("-failed") === true;
   await f.canonical.execute(f.parentRun, new AbortController().signal);
   const parent = f.current(); assert.ok(parent.completion);
@@ -133,7 +135,8 @@ if (serialized === undefined) {
     const replacements = database.authority.runs.listChildren(info.parentId).filter(run => run.envelope.retryOf === info.failedId);
     if (boundary === "before-commit") {
       assert.equal(replacements.length, 0);
-      assert.equal(database.authority.commands.get(info.request.commandId), undefined);
+      assert.equal(database.authority.commands.get(info.request.commandId)?.commandId, info.request.commandId);
+      assert.equal(database.authority.commandAudits.findByCommand(info.request.commandId), undefined);
       assert.equal(parent.lifecycle.state, "terminal");
     } else {
       assert.equal(replacements.length, 1);
@@ -153,7 +156,8 @@ if (serialized === undefined) {
       }
       if (boundary === "resume-rollback") {
         assert.ok(info.resume);
-        assert.equal(database.authority.commands.get(info.resume.commandId), undefined);
+        assert.equal(database.authority.commands.get(info.resume.commandId)?.commandId, info.resume.commandId);
+        assert.equal(database.authority.commandAudits.findByCommand(info.resume.commandId), undefined);
         assert.equal(parent.pause?.state, "paused");
         assert.equal(parent.envelope.continuation, undefined);
         assert.notEqual(database.authority.dependencies.readiness(info.parentId, "join").state, "ready");
@@ -170,8 +174,7 @@ if (serialized === undefined) {
       const before = canonicalJsonStringify({ runs: database.authority.runs.listChildren(info.parentId), intents: database.authority.writeIntents.listByRun(replacement.envelope.runId) });
       const kernel = createCommandKernel({ authority: database, lifecycle, clock, ids: { uuid: randomUUID }, appVersion: "0.1.0", descriptors: { resolve },
         configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-        writeResolution: { recheck: unused, resolveAbsent: unused }, workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused,
-          refreshPoolBrowser: unused, reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
+        writeResolution: { recheck: unused, resolveAbsent: unused }, workerRuntime: { pool: unusedWorkerPool(unused) } });
       assert.equal(kernel.execute(info.request).state, "already-applied");
       if (boundary === "commit") {
         const recovered = database.authority.runs.get(replacement.envelope.runId); assert.ok(recovered);

@@ -29,7 +29,7 @@ const documentsStep = { key: "documents", label: "Documents" } as const;
 const parent = composeWorkflowModule(compileFixtureWorkflow(defineWorkflow({
   id: "ocr-selection-parent", version: 1, code: "osp", label: "Selection parent", icon: "FileScan", category: "documents",
   input: OcrInputSchema, canonicalInput: defineCanonicalInput(OcrInputSchema, OcrCanonicalInputSchema, [OCR_INPUT_EXAMPLE]),
-  requiredWorkbookTypeIds: [OCR_ROSTER_TYPE_ID], referenceLookups: () => [{ mode: "all", typeId: OCR_ROSTER_TYPE_ID, fields: [...OCR_ROSTER_FIELDS] }],
+  requiredWorkbookFields: [...OCR_ROSTER_FIELDS], workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] },
   inputSubject: "document", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {}, details: [], role: defineWorkflowRole({ kind: "composition" }), scenarios: ["ocr/approved-records"],
   identity: { matchKey: input => input.document.sha256 }, presentation: { title: () => "Selection parent" },
@@ -58,8 +58,7 @@ async function buildBulkFixture() {
   assert.equal(completed.run.envelope.runId, f.run.envelope.runId);
   assert.equal(completed.outcome.state, "done");
   const owner = testWorkerLifetime(f.database, f.parentRun.envelope.workflow, 1), runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
-  const claimed = f.canonical.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.parentRun.envelope.workflow, workerId: owner.workerId, workerLifetime: owner.workerLifetime,
-    runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
+  const claimed = f.canonical.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.parentRun.envelope.workflow, workerId: owner.workerId, runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
   assert.ok(claimed.state === "applied" && "run" in claimed);
   assert.equal(claimed.run.envelope.runId, f.parentRun.envelope.runId);
   const claim = { workerId: owner.workerId, claimGeneration: claimed.run.claimGeneration };
@@ -119,7 +118,8 @@ it("ocr/approved-records — reads only the corrected, explicitly selected recor
   if (result.state !== "ready") assert.fail("Selection read refused");
   assert.deepEqual(result.sources[0].snapshot.records.map(record => record.recordId), [revision.records[1].recordId]);
   assert.deepEqual(result.sources[0].snapshot.records[0].fields, f.corrected);
-  assert.notDeepEqual(result.sources[0].snapshot.records[0].fields, result.sources[0].review.records[1].fields);
+  assert.equal("fields" in result.sources[0].review.records[1], false);
+  assert.equal(result.sources[0].review.accounting.outcomes.some(outcome => "output" in outcome), false);
 });
 
 it("refuses substituted bulk consumer custody, task and dependency authority", async () => {
@@ -170,9 +170,10 @@ it("refuses incomplete, foreign, altered and stale native bulk selections", asyn
   const discard = f.command("discard-ocr-record", 2, selectedIndex);
   const result = f.canonical.kernel.execute(discard);
   assert.ok(result.state === "rejected" && result.code === "OCR_REVIEW_REFUSED");
-  assert.equal(f.database.authority.commands.get(discard.commandId), undefined);
-  assert.equal(f.database.authority.commandAudits.findByCommand(discard.commandId), undefined);
-  assert.deepEqual(custody(), baseline);
+  assert.deepEqual(f.database.authority.commands.get(discard.commandId), discard);
+  assert.deepEqual(f.database.authority.commandAudits.findByCommand(discard.commandId)?.result, result);
+  const settled = { ...baseline, meta: { ...baseline.meta, authorityGeneration: generation + 2 } };
+  assert.deepEqual(custody(), settled);
   const repositories = f.database.authority, sourceRunId = f.run.envelope.runId;
   const earlier = repositories.ocrReviews.revision(sourceRunId, 1); assert.ok(earlier);
   assert.notEqual(earlier.revision, snapshot.revision);
@@ -193,7 +194,8 @@ it("refuses incomplete, foreign, altered and stale native bulk selections", asyn
     if (response.response.state !== "produced") assert.fail("Invalid selection protocol unavailable");
     assert.deepEqual(ReadApprovedOcrRecords.output.parse(response.response.value.value), { state: "refused", code: "OCR_REVIEW_REFUSED" }, change);
   }
-  assert.deepEqual(custody(), baseline);
+  assert.deepEqual(custody(), settled);
   assert.deepEqual(await read(), accepted);
-  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  assert.equal(f.database.getMeta().authorityGeneration, generation + 2);
+  baseline = structuredClone(custody());
 });

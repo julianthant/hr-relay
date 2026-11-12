@@ -1,6 +1,8 @@
 import type { SurfaceSource, WorkflowSourcePolicy } from "./workflow-sources.js";
+import "../surfaces/shared/codex-text.css";
 import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
 import type { ComponentProps,ReactNode } from "react";
+import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import {
 type FrontendBootstrapWire
 } from "../../models/dashboard/bootstrap.js";
@@ -22,15 +24,15 @@ activeTakeover,
 routeWithoutTakeovers,
 type AppRouteState
 } from "./navigation/url-state.js";
-export function DashboardTakeovers({client,activitySource,today,workflowSources,takeover,route,setRoute,boot,settingsSections,workflowLabels,workflowCatalog,activeWorkflowId,
- workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,spreadsheetSource,onOpenRun,deleteAccount,children}: {
+export function DashboardTakeovers({client,activitySource,today,workflowSources,takeover,route,setRoute,boot,workflowCatalog,activeWorkflowId,
+ workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,onOpenRun,deleteAccount,accountPage,children}: {
  activitySource?: SurfaceSource; today: string; workflowSources: WorkflowSourcePolicy;
  client: ComponentProps<typeof WorkflowExplorer>["client"];
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: RouteSetter;
- boot: FrontendBootstrapWire; settingsSections: ComponentProps<typeof SettingsPage>["sections"];
- workflowCatalog: readonly WorkflowCatalogEntry[]; workflowLabels: ReadonlyMap<string,string>; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
- spreadsheetSource?: "mock" | "served";
+ boot: FrontendBootstrapWire;
+ workflowCatalog: readonly WorkflowCatalogEntry[]; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
  deleteAccount?: ReactNode;
+ accountPage?: AccountPage;
  onOpenRun: (runId: string, partitionDay: string) => void;
  supportsDryRun: boolean;
  closeTakeoverTo: (target: DashboardTakeoverCloseFocusTargetId,next: AppRouteState) => void;
@@ -41,29 +43,25 @@ export function DashboardTakeovers({client,activitySource,today,workflowSources,
  const dataSection = takeover === "settings" ? route.settings
    : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
  const dataContent = dataSection === "activity" ? <ActivityReport client={client} today={today} source={activitySource ?? "served"} workflowSources={workflowSources} range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, settings: "activity", activity: next }))} />
- : dataSection === "explorer" ? <WorkflowExplorer catalog={workflowCatalog} client={client} /> : undefined;
+ : dataSection === "explorer" ? <div className="codex-text"><WorkflowExplorer catalog={workflowCatalog} client={client} /></div> : undefined;
  return (takeover === "settings" || takeover === "archive" || dataContent !== undefined ? (
             <SettingsPage
-              spreadsheetSource={spreadsheetSource} onOpenRun={onOpenRun}
-              storage={boot.storage} appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
+              onOpenRun={onOpenRun}
+              appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
               deleteAccount={deleteAccount}
-              sections={settingsSections}
-              workflowLabels={workflowLabels}
+              accountPage={accountPage}
               section={route.settings ?? dataSection ?? ""}
               searchTarget={route.settingsTarget}
               dataContent={dataContent}
               actorId={boot.actor.id}
               profileName={boot.actor.label}
               descriptorFingerprint={boot.descriptorHash}
-              preflight={boot.preflight ?? []}
               onSection={(next, settingsTarget) => setRoute({ ...routeWithoutTakeovers(route), settings: next, settingsTarget,
                 ...(next === "activity" ? { activity: "" } : next === "explorer" ? { explore: activeWorkflowId } : {}) })}
               onClose={() => closeTakeoverTo(SETTINGS_GEAR_ID, routeWithoutTakeovers(route))}
               onExitGuardChange={onSettingsExitGuardChange}
               onSaved={onSettingsSaved}
               onSaveProblem={onSettingsSaveProblem}
-              onHistoryCleared={() => setRoute(current => ({ ...current, run: undefined,
-                view: { ...current.view, queueMember: undefined, logFailure: undefined, records: undefined } }), "replace")}
             />
           ) : takeover === "intake" && route.intake !== undefined ? (
              /** The surface owns the same full-bleed `TakeoverFrame` as every other

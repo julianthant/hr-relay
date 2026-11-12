@@ -71,6 +71,7 @@ export interface DraftDuoCapability {
 }
 
 export interface ProfileOnboardingDuoProvider {
+  stop(): Promise<void>;
   browserState?(operationId: string): ProfileOnboardingBrowser;
   // Resolves after exact generation closure and profile release, before replacement opening.
   recoverBrowser?(owner: DraftDuoBrowserOwner, generation: number): Promise<void>;

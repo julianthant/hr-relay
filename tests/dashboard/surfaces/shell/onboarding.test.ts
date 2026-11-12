@@ -8,7 +8,7 @@ import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { it, vi } from "vitest";
 import { Onboarding } from "../../../../src/dashboard/surfaces/shell/onboarding.js";
-import { createServedOnboardingPort, mockOnboardingPort, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
+import { createServedOnboardingPort, mockOnboardingPort, usePublicProfileSession, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 it("explains an existing profile on duplicate sign-up and offers Log in", async () => {
@@ -430,5 +430,21 @@ for (const kind of ["network", "schema", "protocol"] as const) it(`describes a s
     assert.equal(host.querySelector('[role="alert"]')?.textContent,
       operatorFailureSentence(kind === "network" ? "PROFILE_CONNECTION_FAILED" : "PROFILE_AUTHORITY_UNAVAILABLE"));
     assert.doesNotMatch(host.textContent ?? "", /private transport detail/);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("shows the catalog sentence and no password when the initial profile state is refused", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => Response.json({ state: "refused", code: "DASHBOARD_FRONTEND_NOT_OWNED" }, { status: 403 }) });
+  function Probe() {
+    const session = usePublicProfileSession(client, true);
+    const problem = session.state?.state === "refused" || session.state?.state === "error" ? operatorFailureSentence(session.state.code) : undefined;
+    return createElement(Onboarding, { step: "login", port: session.port, problem, onStep() {}, onDashboard() {} });
+  }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    assert.equal(host.querySelector('[role="alert"]')?.textContent, operatorFailureSentence("DASHBOARD_FRONTEND_NOT_OWNED"));
+    assert.equal(host.querySelector('input[name="password"]'), null);
+    assert.equal(host.querySelector("form"), null);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

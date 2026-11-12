@@ -8,10 +8,11 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | Path | Contents |
 | --- | --- |
 | `AGENTS.md` | Repository instructions. Nearer instructions own backend, registry, system, and dashboard constraints. |
-| `.agents/` | Project agent data: skill entrypoints in `skills/`, with canonical operating references in `skill-library/`. |
+| `.agents/` | Project agent data: skill entrypoints in `skills/`, with each skill's references in its own `references/`. |
 | `config/` | Runtime isolation and test-data configuration. |
 | `docs/reference/` | Current contracts and this map. |
 | `docs/guides/` | Workflow authoring guide. |
+| `docs/guides/windows.md` | Windows launcher steps. |
 | `docs/guard-inventory.json` | Guard owners and reasons. |
 | `docs/roadmap/roadmap.md` | Roadmap content. |
 | `docs/roadmap/index.html` | Generated roadmap site. |
@@ -21,7 +22,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
 | `scripts/test/` | Shared typed CI selection/proof/timing-history policy (`ci-plan.ts`), duration-balanced CI file selection, shared full-Chromium installation preflight (`chromium-preflight.ts`), direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |
 | `.github/workflows/ci.yml`, `release.yml`, `ci-checks.yml`, `release-checks.yml` | Disjoint event entries and per-PR supersession; separately admitted portable-only and full-release check pipelines, stable required summaries and timing publication. |
-| `scripts/verify/` | Repository privacy, browser-login and test-target verification. Standalone verification holds the runtime listener; abandoned reservations settle through startup recovery. |
+| `scripts/verify/` | Repository privacy and test-target verification. |
 | `src/` | Application source. |
 | `tests/` | Tests, fixtures, helpers, and process entrypoints. |
 
@@ -30,7 +31,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 owns the contract fingerprint and build id.
 `npm run roadmap` generates the roadmap site; `npm run roadmap:check` checks it.
 `npm run web:build` produces the dashboard bundle in `dist/`.
-Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. The [Git instructions](../../AGENTS.md#git) own worktree naming and lifecycle.
+Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. The [Conventions](../../AGENTS.md#conventions) own worktree naming and lifecycle.
 
 `src/backend/runtime/writes/recovery-activity.ts` owns retained-run recovery read activity, action notes and required captures. `src/models/run/recovery-activity.ts` owns its exact operation identity and task-compatible note path.
 
@@ -48,7 +49,7 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 
 `src/models/dashboard/workbook-library.ts` owns catalogue/version/action wire shapes.
 `src/models/dashboard/run-outputs.ts` owns intended workbook and worksheet ZIP output facts shared by retained plans and Confirm.
-`src/backend/storage/sqlite/workbook-library-repository.ts` owns catalogue CAS, immutable named snapshots and action receipts alongside editable revisions.
+`src/backend/storage/sqlite/workbook-library-repository.ts` owns catalogue CAS, immutable named snapshots, action receipts and per-workflow last-used source selections alongside editable revisions. `src/models/config/authority.ts` owns the current authority schema and build-envelope version constants; SQLite migrations re-export those bindings.
 
 `src/models/profiles/profile-identity.ts` owns the derived name/initials runtime shape.
 `src/backend/storage/configuration/protected-settings-upgrade.ts` owns stopped source authentication and
@@ -93,6 +94,7 @@ Paths in this table are relative to `src/backend/`.
 | `profiles/` | Control-authenticated registry, credential inventory and session authority. `profile-session.ts` owns private draft/session publication, `profile-onboarding.ts` owns issued draft attempts and verified method receipts, and `onboarding-duo.ts` defines the provider capability contract. Browser enrollment lives in `runtime/browser/onboarding-duo-provider.ts`. `profile-errors.ts` owns shared profile refusals. Native verifier publication and its cryptography live in `storage/configuration/verifier-store.ts` and `storage/configuration/synthetic-verifier.ts`. Browser-safe schemas live in `models/profiles/`. |
 | `runs/lifecycle/startup-crash-recovery.ts` | Startup process-closure receipts, dead-worker run reconciliation and previous-day pristine queue cancellation before work admission. |
 | `runs/` | Commands, start plans, lifecycle, recovery, queries, projections, exports, provenance, notifications, settings, explanation, and trust readers. |
+| `runs/commands/write-command-target.ts` | Projects opaque write occurrence tokens and resolves them through private intent authority at HTTP ingress. |
 | `runs/queries/explorer.ts` and `explorer-review-spec.ts` | Definition-derived Explorer catalog and operator review: run options, scoped session requirements, ordered page/source cards and declared outcomes. |
 | `runs/commands/command-refusal.ts` | Shared command rejection construction; runtime recovery imports it directly. |
 | `runs/trust/` | Canonical run readers and receipt services. |
@@ -102,7 +104,7 @@ Paths in this table are relative to `src/backend/`.
 | `storage/` | Admission, artifacts, configuration, events, maintenance, and SQLite persistence. `artifacts/artifact-sink.ts` owns shared sink contracts and conflicts; `artifact-sink-projector.ts` owns destination locking and atomic head/ack settlement. `named-file-output-sink.ts` publishes retained artifacts to absent named destinations. `app/composition/worker/artifact-output.ts` binds publication to the source run's retained documents or I-9 tracker setting; the retention sink preserves its journal and derives the nine-column I-9 worksheet. `maintenance/browser-root-upgrade.ts` owns the stopped forward conversion to compact registry handles, verified metadata backup, exclusive directory moves and exact journal recovery. `browser-root-contract.ts` owns its strict persisted schemas; `maintenance/profile-custody.ts` owns retained browser membership and resource-closure rules shared by registry and inventory. `browser-roots.ts` owns the bounded external browser-root registry, durable launch/native intents, canonical worker/onboarding/command paths, native acquisition authority, and scoped profile cleanup under actual admission custody. Its probe port has no runtime implementation dependency; callers supply the native driver, and stopped control upgrade forwards that same explicit probe factory.  `maintenance/fixed-layout.ts` owns fixed-root forward journal schemas, exact move-prefix/tree checks, and operation-bound person activation claims. `storage-compose.ts` assembles startup; installation owns directory moves/source fences, and SQLite owns backup-checked configuration publication. `app/config/runtime-isolation.ts` resolves the platform host workspace (`LOCALAPPDATA/Relay` on Windows, the OS home application-data folder on POSIX); assets retain their repository root. `maintenance/flat-start-clean.ts` owns the finite flat credential layout, archive-bound deletion plan and exact replay membership; installation owns journaled effects and empty publication. `file-identity.ts` owns platform-specific exact metadata reads and shared in-memory and JSON file-identity comparisons; credential-safe-file exposes those identity operations with its file API. `private-path.ts` owns shared observed-path privacy policies, private directory/stage creation, file replacement and retained-resource flushes. `windows-private-path.ts` owns the lazy Windows native bridge, SID/DACL rules, exact NTFS identity/reparse validation and checked native resources; both Windows SQLite observers execute a checked CommonJS build of the shared policy. `windows-observer-policy.ts` binds that source build to its canonical inputs and digest; `scripts/build/windows-observer-policy.ts` prepares and checks it. POSIX observers run plain CommonJS with their original local checks. Callers retain path membership, content and operation identity checks. |
 | `storage/configuration/` | Settings and canonical private credential persistence. `canonical-credential-store.ts` owns the three encrypted protected-settings, Duo and ChatGPT records, the external key/generation/counter/retirement head, and durable create/erase operations. `credential-store.ts`, `duo-credential-store.ts` and `chatgpt-credential-repository.ts` expose the purpose-specific records; `duo-signing.ts` owns public assertion validation and Node cryptography. `protected-settings-upgrade.ts` owns the stopped protected-document grammar, retirement transform and credential command-identity inspection. `credential-conversion.ts` verifies supported stopped predecessor credentials and their independent credential-free SQLite backup before conversion. `credential-key-custody.ts` owns OS keychain entries and non-secret key metadata. `credential-safe-file.ts` supplies private file reads, exact mutex custody and operation proofs. |
 | `storage/events/` | Native timeline writers, readers, and emitters. `local-debug-log.ts` owns the capped local timeline spool, verified import, development stderr mirror and closed profile-selection diagnostics. Recovery-scoped notes bind their exact durable activity and keep original action timestamps. |
-| `storage/sqlite/` | Database authority, repositories, migrations, process locks, backup inspection, recovery status, and deletion custody. `artifact-references.ts` owns recursive artifact identity and consumer traversal for deletion and managed inventory. `database-identity.ts` owns the application-ID and immutable installation/person binding digest. `timeline-repository.ts` owns ordered event persistence. `worker-slots.ts` authenticates reservation and retirement lineage for both live custody and isolated maintenance snapshots; `worker-control.ts` owns their authenticated control reads. `readonly-authority-snapshot.ts` owns isolated source snapshots. `sqlite/evidence-schema-upgrade.ts` validates stopped profile-name-domain evidence and plans frozen-owner certificates; `maintenance/evidence-schema-upgrade.ts` owns its closure, verified backup and replay sequencing. `AuthorityDatabase` publishes and reads the sealed current certificate in the upgrade journal. `models/storage/evidence-schema-admission.ts` owns that value-free certificate and source digest contract. `offline-restore.ts` owns automatic same-person backup selection and interrupted replacement replay. `restore-write-fences.ts` refuses evidence loss; `same-person-restore-candidate.ts` binds immutable identity and runtime roots. `maintenance/automatic-restore-files.ts` binds retained files and exact recovery membership. `maintenance/clean-shutdown-backups.ts` retains three verified shutdown backups without deleting upgrade archives. The pure `storage/source-closure.ts` owns `AuthoritySourceClosureUnprovedError` and private failed-resource retention without authority or resource accessors. |
+| `storage/sqlite/` | Database authority, repositories, migrations, process locks, backup inspection, recovery status, and deletion custody. `artifact-references.ts` owns recursive artifact identity and consumer traversal for deletion and managed inventory. `database-identity.ts` owns the application-ID and immutable installation/person binding digest. `timeline-repository.ts` owns ordered event persistence. `worker-slots.ts` authenticates reservation and retirement lineage for both live custody and isolated maintenance snapshots; `worker-control.ts` owns their authenticated control reads. `readonly-authority-snapshot.ts` owns isolated source snapshots. `authority-database.ts` `configureWritableConnection` owns the writable SQLite connection policy (foreign keys, secure deletion, WAL, full synchronous, busy timeout) that `AuthorityDatabase` and the workbook-library test connections share. `sqlite/evidence-schema-upgrade.ts` validates stopped profile-name-domain evidence and plans frozen-owner certificates; `maintenance/evidence-schema-upgrade.ts` owns its closure, verified backup and replay sequencing. `AuthorityDatabase` publishes and reads the sealed current certificate in the upgrade journal. `models/storage/evidence-schema-admission.ts` owns that value-free certificate and source digest contract. `offline-restore.ts` owns automatic same-person backup selection and interrupted replacement replay. `restore-write-fences.ts` refuses evidence loss; `same-person-restore-candidate.ts` binds immutable identity and runtime roots. `maintenance/automatic-restore-files.ts` binds retained files and exact recovery membership. `maintenance/clean-shutdown-backups.ts` retains three verified shutdown backups without deleting upgrade archives. The pure `storage/source-closure.ts` owns `AuthoritySourceClosureUnprovedError` and private failed-resource retention without authority or resource accessors. |
 | `systems/` | Browser-system sessions, drivers, UI registries, and tasks. CRM, I-9, Kuali, New Kronos, OnBase, and UCPath have driver implementations. Old Kronos, ServiceNow, and SharePoint have session declarations and empty task stores with `unwired` drivers. I-9 owns name-based employee search and Section 2 summary reads; its UCOP login uses the shared UCSD SSO and backend Fast Duo path. |
 | `systems/browser-shared/` | Shared sign-in, authenticated application, action-note, and semantic UI effect behavior. |
 | `systems/kronos-shared/` | Shared timecard models. |
@@ -113,6 +115,7 @@ Paths in this table are relative to `src/backend/`.
 | `systems/sharepoint/driver/interpreter.ts` | Canonical workbook URLs, account authentication and GUID-pinned workbook reads through an owned command browser. The workbook composition injects its bounded browser transport. |
 | `systems/browser-shared/command-session.ts` | Command input, browser scope and callback contracts shared by runtime acquisition and workbook composition. The runtime retains native custody and private Duo cleanup handles. |
 | `processing/providers/sharepoint-browser-transport.ts` | Serializable same-origin Fetch streaming for SharePoint JSON proofs and workbook bytes, with exact response checks, byte bounds and reader cleanup. |
+| `workbooks/workbook-library-error.ts` | Shared workbook failure class, used by library services, stored-data validation and transport adapters. Error codes and display text remain in `models/failures/error-catalog.ts`. |
 | `workbooks/workflow-workbook-service.ts` | Creates a table workbook or patches a captured reference through the admitted library provider, composed in `app/composition/worker/run-resources.ts`. Original records and operation receipts supply replay proof. |
 | `runs/workbooks.ts` | Authenticates captured workbook references, run-bound patches, native receipt events, Logs row choices and live-revalidated resolution commands. |
 
@@ -127,7 +130,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/dashboard/state/` and `src/dashboard/lib/` | Resource hooks, bootstrap, day and served clock state; framework-free utilities live in `lib/`. `state/queue-wiring-adapter.ts` owns the Queue producer and its typed handlers. `state/activity-wiring-adapter.ts` owns Analytics population projection, snapshot-bound browse/export and exact run-detail admission. `state/spreadsheet-wiring-adapter.ts` owns saved workbook reads, drafts and versioned Save. |
 | `src/dashboard/surfaces/` | Feature components, sibling `*-model.ts` view models, styles and mock producers. `surfaces/shared/` holds cross-feature components. Workflow mocks live under `workflows/mocks/`. Run-detail Logs presentation lives under `run-detail/logs/`. Notification producers live in `notifications/notifications-preview-model.ts` and `notification-rail-model.ts`; workspace search projection lives in `shell/search/search-wiring-model.ts`. Intake session resources live in `state/intake-wiring-adapter.ts`; command verification lives in `intake/intake-command-model.ts`. |
 | `src/dashboard/assets/` and `src/dashboard/public/` | Bundled assets and static public files. The Logs preview lives under `public/logs-preview/`. |
-| `src/models/` | Browser-safe schemas, contracts, and API shapes. System and workflow task contracts live under `systems/` and `workflows/`; canonical fields live under `fields/`. `failures/error-origins.ts` owns the closed constructor-bound cause vocabulary and its value-free serializer shared by backend events and browser reports. `failures/error-catalog.ts` owns task-code normalization for durable failures and their served recovery declarations. |
+| `src/models/` | Browser-safe schemas, contracts, and API shapes. System and workflow task contracts live under `systems/` and `workflows/`; canonical fields and the shared spreadsheet field catalog live under `fields/`. `failures/error-origins.ts` owns the closed constructor-bound cause vocabulary and its value-free serializer shared by backend events and browser reports. `failures/error-catalog.ts` owns task-code normalization for durable failures and their served recovery declarations. |
 | `src/models/storage/file-identity.ts` | Exact JSON file-identity values shared by credential, installation and logout witnesses: safe numbers or canonical decimal strings. |
 | `src/models/people/hire-employee.ts` | Validated hire employee facts shared by Onboarding planning and system write targets. |
 | `src/models/ui/ucpath-hire.ts` | Hire targets, complete findings, staged wizard states, permanent keys and independently verified filing proofs. Each hire task contract lives in its canonical `models/systems/ucpath/<task>.ts` file; `hire-contract.ts` shares read/subject metadata. `backend/systems/ucpath/driver/hire-operation.ts` and `hire-ui-registry.ts` own the hire browser family; `rules/ucpath/hire-verdict.ts` refuses incomplete or uncertain discovery. |
@@ -240,7 +243,7 @@ tests/
 ├── dashboard/{app,client,ds,lib,state,surfaces}/
 ├── fast-duo/src/
 ├── {models,rules,scripts,workflow-kit,workflows}/
-├── parity/
+├── mocks/
 ├── perf/
 ├── support/{fixtures,helpers,processes}/
 ├── types/
@@ -250,11 +253,11 @@ tests/
 ```
 
 `tests/architecture/test-layout.test.ts` checks canonical filenames and mirrors against existing tracked source.
-Architecture, parity, performance, type, and support trees are exempt from source mirroring.
+Architecture, mocks, performance, type, and support trees are exempt from source mirroring.
 Architecture fixtures and helpers stay beside their owning guard families.
 Shared fixtures, fresh-authority builders, and child-process entrypoints live under `tests/support/`.
 `tests/support/helpers/dashboard/controls/` owns the UI control preview fixtures, loaded by
-fixture name from `tests/parity/app-entry.tsx`.
+fixture name from `tests/mocks/app-entry.tsx`.
 - `tests/support/duo-ceremony-setup.ts` registers the shared Duo fixture cleanup for every Vitest project; the fixture owner stays process-safe.
 Shared composition setup lives in `tests/support/helpers/backend/{capability-wiring-world,write-recovery-world,dashboard-child-world,worker-loop-world}.ts`
 and `tests/support/helpers/dashboard/mounted-rerun-world.ts`; each test owns its allocation, hooks, and cleanup.
@@ -290,7 +293,7 @@ and persisted-read path.
 `tests/support/processes/failure-resolution-peer.ts` runs the independent annotation writers;
 `tests/support/helpers/failure-resolution/fixtures.ts` owns their launch and closure.
 
-`tests/parity/` holds the desktop presentation contract and its references.
+`tests/mocks/` holds `/ui-mock` scenes and the mock dashboard build entry.
 `tests/perf/` holds dashboard performance checks. `tests/types/` holds compile-time inputs and their checks.
 `tests/scripts/docs/roadmap.test.ts` tests roadmap parsing.
 The private `config/test-data.local.json` input is ignored. Runtime state and artifact roots are declared

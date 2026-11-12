@@ -7,15 +7,15 @@ type Size = "sm" | "md";
 type Tone = "destructive" | "warning" | "primary" | "muted";
 
 const SIZE_CLASS: Record<Size, string> = {
-  sm: "h-6 w-6",
-  md: "h-8 w-8",
+  sm: "h-6 w-6 rounded-[6px]",
+  md: "h-7 w-7 rounded-[8px]",
 };
 
 const TONE_CLASS: Record<Tone, string> = {
   destructive: "text-muted-foreground hover:text-destructive hover:bg-destructive/10 focus-visible:ring-destructive/40",
   warning: "text-warning bg-warning/15 border border-warning/45 hover:bg-warning/25 hover:border-warning/65 focus-visible:ring-warning",
-  primary: "text-muted-foreground hover:text-primary hover:bg-muted focus-visible:ring-primary/40",
-  muted: "text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-primary/40",
+  primary: "text-muted-foreground hover:text-primary hover:bg-[var(--ds-surface-3)] focus-visible:ring-primary/40",
+  muted: "text-muted-foreground hover:text-foreground hover:bg-[var(--ds-surface-3)] focus-visible:ring-primary/40",
 };
 
 export function IconActionButton({
@@ -51,7 +51,7 @@ export function IconActionButton({
       variant="ghost"
       className={cn(
         SIZE_CLASS[size],
-        "inline-flex shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 cursor-pointer transition-colors outline-none",
+        "inline-flex shrink-0 items-center justify-center border-0 bg-transparent p-0 cursor-pointer transition-colors outline-none",
         "focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-card",
         "disabled:opacity-60 disabled:cursor-wait",
         TONE_CLASS[tone],

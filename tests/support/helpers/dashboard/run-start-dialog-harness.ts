@@ -1,3 +1,4 @@
+import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { ItemAttemptHistoryResponseSchema } from "../../../../src/models/dashboard/item-attempt-history.js";
 import { FixtureCommandBinding } from "./command-binding.js";
 import { FIXTURE_DAY_WIRE } from "../../fixtures/dashboard/fixture-queue.js";
@@ -6,7 +7,7 @@ import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/
 import { StartCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import type { RerunLaunchSource } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 
 import assert from "node:assert/strict";
 import { act, createElement, type ReactElement } from "react";
@@ -18,7 +19,7 @@ import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../../src/models/dashboard/start-plan.js";
 import { CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
-import { FIXTURE_BOOTSTRAP } from "../../../parity/helpers/fixture-day.js";
+import { FIXTURE_BOOTSTRAP } from "../../../mocks/helpers/fixture-day.js";
 
 export function createRunStartDialogHarness() {
   // jsdom lacks overlay measurement APIs; these stubs supply capabilities without asserting geometry.
@@ -72,7 +73,9 @@ export function createRunStartDialogHarness() {
           start.inputRun === undefined
             ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
             : { state: "present", surface: start.inputRun },
-        spreadsheetIntake: start.spreadsheetIntake, requiredWorkbookTypeIds: start.requiredWorkbookTypeIds,
+        spreadsheetIntake: start.spreadsheetIntake, requiredWorkbookFields: start.requiredWorkbookFields,
+        workbookReference: start.workbookReference,
+        referenceSources: FIXTURE_BOOTSTRAP.workbookCompatibility.workflows.find(workflow => workflow.workflowId === entry.id)?.sources ?? [],
       };
     },
   );
@@ -225,6 +228,7 @@ export function createRunStartDialogHarness() {
     readonly text: () => string;
     readonly press: (name: string) => Promise<void>;
     readonly type: (next: string) => Promise<void>;
+    readonly enter: (options?: { shift?: boolean; on?: Element }) => Promise<boolean>;
     readonly choosePriority: (next: string) => Promise<void>;
     readonly chooseBrowserMode: (next: string) => Promise<void>;
     readonly drop: (file: File) => Promise<void>;
@@ -276,7 +280,7 @@ export function createRunStartDialogHarness() {
     onApplied: (workflowId: string) => void = () => undefined,
   ): Promise<OpenDialog> {
     intakeHandoffs.length = 0; closed.length = 0;
-    await render(createElement(DashboardClientProvider, {
+    await render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, {
       client,
       children: createElement(FixtureCommandBinding, { actorId: ACTOR_ID, children: createElement(RunStartDialog, {
         open: true,
@@ -290,7 +294,7 @@ export function createRunStartDialogHarness() {
           intakeHandoffs.push({ workflowId, intakeSessionId });
         },
       }) }),
-    }));
+    }) }));
 
     const typedInput = (): HTMLTextAreaElement => {
       const box = document.body.querySelector("textarea");
@@ -304,14 +308,16 @@ export function createRunStartDialogHarness() {
       return (current.textContent ?? "").replace(/^\d+/u, "").trim();
     };
 
+    const switchNamed = (name: string): HTMLInputElement | undefined => [...document.body.querySelectorAll<HTMLInputElement>('[role="switch"], [role="checkbox"]')]
+      .find(node => [name, `Include ${name}`, `${name} (required)`].includes(node.closest("label")?.querySelector(".ds-switch-copy > span")?.textContent ?? "") || node.getAttribute("aria-label") === name);
     const press = async (name: string): Promise<void> => {
       const action = name === "Continue" && buttons().some(button => button.textContent?.trim() === "Preview plan") ? "Preview plan" : name;
       const visibleMatches = buttons().filter((button) => (button.textContent ?? "").trim() === action);
       const matches = visibleMatches.length > 0
         ? visibleMatches
         : buttons().filter((button) => buttonName(button) === (name === "Continue" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
-      const only = matches[0];
-      if (matches.length !== 1 || only === undefined) {
+      const only = matches[0] ?? switchNamed(name);
+      if (matches.length > 1 || only === undefined) {
         throw new Error(
           `expected exactly one control named "${name}", found ${String(matches.length)} among `
           + `[${buttons().map((button) => JSON.stringify(buttonName(button))).join(", ")}]`,
@@ -332,12 +338,24 @@ export function createRunStartDialogHarness() {
       });
     };
 
+    const enter = async (options: { shift?: boolean; on?: Element } = {}): Promise<boolean> => {
+      const event = new KeyboardEvent("keydown", { key: "Enter", shiftKey: options.shift === true, bubbles: true, cancelable: true });
+      await act(async () => { (options.on ?? typedInput()).dispatchEvent(event); });
+      await settle();
+      return event.defaultPrevented;
+    };
+
+    const chooseSwitch = async (name: string, on: boolean) => {
+      const node = switchNamed(name);
+      assert.ok(node, `missing switch ${name}`);
+      if (node.checked !== on) await act(async () => node.click());
+    };
     const chooseRadio = async (name: string, value: string) => {
       const radio = document.querySelector<HTMLInputElement>(`input[type="radio"][name^="${name}-"][value="${value}"]`);
       assert.ok(radio, `missing ${name}: ${value}`);
       await act(async () => radio.click());
     };
-    const choosePriority = (value: string) => chooseRadio("Priority", value);
+    const choosePriority = (value: string) => chooseSwitch("Priority", value === "interactive");
     const chooseBrowserMode = (value: string) => chooseRadio("Browser mode", value);
 
     // jsdom has no DataTransfer; install FileList on the Dropzone input.
@@ -387,8 +405,8 @@ export function createRunStartDialogHarness() {
 
     const disabled = (name: string): boolean => {
       const found = buttons().filter((button) => buttonName(button) === (name === "Continue" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
-      const only = found[0];
-      if (found.length !== 1 || only === undefined) {
+      const only = found[0] ?? switchNamed(name);
+      if (found.length > 1 || only === undefined) {
         throw new Error(`expected exactly one control named "${name}", found ${String(found.length)}`);
       }
       return only.disabled || only.getAttribute("data-disabled") !== null;
@@ -402,10 +420,45 @@ export function createRunStartDialogHarness() {
       text: () => (document.body.textContent ?? "").replace(/\s+/gu, " "),
       press,
       type,
+      enter,
       choosePriority,
       chooseBrowserMode,
       drop,
     };
+  }
+
+  async function chooseVersion(version: string): Promise<void> {
+    const trigger = buttons().find(button => (button.getAttribute("aria-label") ?? "").endsWith(" version"));
+    if (trigger === undefined) throw new Error("the reference row draws no version picker");
+    await act(async () => { trigger.click(); });
+    const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent?.includes(version));
+    if (option === undefined) throw new Error(`no version ${version}`);
+    await act(async () => { option.click(); });
+    await settle();
+  }
+
+  /** Drives the Reference spreadsheets rows: Add (or Change) spreadsheet and search it, then optionally its version select and worksheet menu. */
+  async function chooseReference(spreadsheet: string, version?: string, worksheet?: string): Promise<void> {
+    const open = buttons().find(button => ["Add spreadsheet", "Change spreadsheet"].includes(button.textContent?.trim() ?? ""));
+    if (open === undefined) throw new Error("the dialog draws no Add spreadsheet button");
+    await act(async () => { open.click(); });
+    const search = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a spreadsheet"]');
+    if (search === null) throw new Error("the Add spreadsheet menu drew no search");
+    await act(async () => { typeInto(search, spreadsheet); });
+    const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(node => node.textContent?.includes(spreadsheet));
+    if (item === undefined) throw new Error(`no spreadsheet matches ${spreadsheet}`);
+    await act(async () => { item.click(); });
+    await settle();
+    if (version !== undefined) await chooseVersion(version);
+    if (worksheet !== undefined) {
+      const trigger = buttons().find(button => /worksheet, /u.test(button.getAttribute("aria-label") ?? ""));
+      if (trigger === undefined) throw new Error("the reference row draws no worksheet menu");
+      await act(async () => { trigger.click(); });
+      const choice = [...document.body.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(node => node.textContent?.includes(worksheet));
+      if (choice === undefined) throw new Error(`no worksheet ${worksheet}`);
+      await act(async () => { choice.click(); });
+      await settle();
+    }
   }
 
   // Compare presence as a boolean; formatting a jsdom node can exhaust the assertion budget.
@@ -424,9 +477,9 @@ export function createRunStartDialogHarness() {
     await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
     await dialog.press("Start 1 run");
-    assert.equal(dialog.stage(), "Confirm");
+    assert.equal(closed.at(-1), false);
     return dialog;
   }
 
-  return { cleanup, openDialog, stubClient, ACTOR_ID, WORKFLOW_ID, TYPED, HASH, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName };
+  return { cleanup, openDialog, stubClient, ACTOR_ID, WORKFLOW_ID, TYPED, HASH, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName, chooseReference, chooseVersion };
 }

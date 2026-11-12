@@ -3,7 +3,6 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, derivePersistedSe
 import { batchMemberRetryAvailable } from "../../../../src/backend/runs/queries/run-retry.js";
 import { workflowQueueCapabilities } from "../../../../src/backend/app/registries/workflow-registry.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { WorkerControlRecordSchema } from "../../../../src/models/run/worker-control.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it, vi } from "vitest";
@@ -63,14 +62,8 @@ it("serves a native Lookup batch root Retry, retains its session once on replay 
   const mismatched = h.kernel.execute({ ...command, commandId: randomUUID() });
   assert.ok(mismatched.state === "rejected" && mismatched.code === "schema-mismatch");
   descriptor = personLookupDescriptor;
-  const resetCommandId = randomUUID();
-  const reset = WorkerControlRecordSchema.parse({ commandId: resetCommandId, executorId: randomUUID(), scope: "worker-pool:person-lookup", basisVersion: 1,
-    admittedAt: h.clock.now().toISOString(), expiresAt: h.clock.now().toISOString(), phase: { state: "admitted" },
-    request: { commandId: resetCommandId, family: "worker-browser", type: "stop-worker", requestedBy: "local-operator", requestedAt: h.clock.now().toISOString(),
-      source: "dashboard", target: { workerId: "person-lookup-worker-1", expectedVersion: 1 } } });
   const blocked: ((repositories: AuthorityRepositories) => AuthorityRepositories)[] = [
-    repositories => ({ ...repositories, runs: { ...repositories.runs, admission: () => ({ state: "draining", commandId: reset.commandId }) } }),
-    repositories => ({ ...repositories, workerControls: { ...repositories.workerControls, resetForRun: () => reset } }),
+    repositories => ({ ...repositories, runs: { ...repositories.runs, admission: () => ({ state: "draining", commandId: randomUUID() }) } }),
   ];
   for (const view of blocked) {
     assert.equal(batchMemberRetryAvailable(view(h.database.authority), failed, descriptor, workflowQueueCapabilities("person-lookup")), false);

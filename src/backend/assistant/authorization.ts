@@ -192,22 +192,33 @@ export function createAssistantAuthorization(ports: Ports) {
       });
     },
     consume(capability: Chat, id: string) {
-      return ports.database.withAuthorityTransaction(() => {
+      // The claim commits before the kernel runs so its admitted command and recovery notice survive a thrown effect.
+      const claim = ports.database.withAuthorityTransaction(() => {
         const row = repository.action(z.uuid().parse(id));
         if (row === undefined) throw new AssistantAuthorizationError("assistant-action-missing");
         validate(capability, row);
-        if (row.state === "settled") return row.result;
+        if (row.state === "settled") return { state: "settled" as const, result: row.result };
         if (row.state !== "approved" || (row.command.family === "worker-browser" || row.command.family === "start")) throw new AssistantAuthorizationError("assistant-action-not-consumable");
-        const claimed = repository.transition(id, row.revision, "claimed");
-        activeClaims.add(row.command.commandId);
-        try {
-          const result = ports.kernel.execute(row.command);
+        return { state: "claimed" as const, claimed: repository.transition(id, row.revision, "claimed") };
+      });
+      if (claim.state === "settled") return claim.result;
+      const claimed = claim.claimed;
+      activeClaims.add(claimed.command.commandId);
+      try {
+        const result = ports.kernel.execute(claimed.command);
+        return ports.database.withAuthorityTransaction(() => {
           if (result.state === "pending") throw new AssistantAuthorizationError("assistant-sync-settlement-unproved");
           repository.transition(id, claimed.revision, "settled", result);
           ports.current();
           return result;
-        } finally { activeClaims.delete(row.command.commandId); }
-      });
+        });
+      } catch (error) {
+        ports.database.withAuthorityTransaction(() => {
+          const current = repository.action(id);
+          if (current?.state === "claimed") repository.transition(id, current.revision, "unknown");
+        });
+        throw error;
+      } finally { activeClaims.delete(claimed.command.commandId); }
     },
   });
 }

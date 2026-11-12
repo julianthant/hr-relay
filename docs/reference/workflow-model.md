@@ -48,20 +48,19 @@ it (a delegated child carries its parent's); a transaction refuses to derive its
 under a different build, and a parked-write resolution treats equal contracts as identical code only
 under the same build.
 
-`requiredWorkbookTypeIds` declares the types of existing library reference workbooks or linked
-masters this workflow directly needs. It preserves exact IDs and order, rejects invalid or repeated
-IDs, and is copied and frozen by the definition and descriptor factories. Omission means no
-requirements; production definitions declare an explicit array. It does not describe new output
-workbooks, spreadsheet intake, or delegated children's requirements. Retained step proofs inherit
-the parent declaration. The descriptor and its sealed planning and projections expose the same
-validated facts; workbook selection and reference snapshots belong to run planning. Onboarding
-and CRM Document Download require `onboarding-roster`; the I-9 PDF parent requires Action History.
+`requiredWorkbookFields` declares the mapped Library fields a workflow directly needs.
+`workbookReference` declares the captured logical ID, lookup key, read mode and writable output
+subset. The factories validate known fields and subset membership, copy and recursively freeze
+the declaration, and include it in the contract fingerprint. An empty field list has no reference.
+Retained step proofs inherit the declaration. Onboarding and CRM Document Download require email
+and name fields; the I-9 PDF parent requires Action History fields.
 
-Start planning takes explicit entry-scoped `workbookReferences`, derives lookup keys and fields from the workflow's admitted ingress declaration, requires
-exactly the declared types, and snapshots the selected or default workbook. Captured references bind
-canonical input before identity and output planning. Schema-bound references retain exact cell values, revision and every worksheet's identity
-in the confirmation fingerprint and native run input. Later master edits or default changes do not
-replace them. No workflow-specific key or field mapping is inferred.
+Start planning takes an explicit entry-scoped Library, named version and worksheet selection.
+For keyed reads it derives keys from admitted ingress; the frozen declaration supplies fields,
+key and logical ID. Each selected worksheet must map every required field exactly once. Captured
+references bind canonical input before identity and output planning. Their schema-bound values
+retain exact cells, revision and selected worksheet identity in the confirmation fingerprint and
+native run input. The confirmed Start rechecks the captured source before accepting it.
 [Run reference planning](frontend-backend-integration.md#run-reference-and-output-plans) owns explicit saved-row selection and public entry coverage.
 
 The I-9 PDF parent captures Action History's named version with no keys until OCR review supplies
@@ -264,7 +263,7 @@ object imported by the definition. A globally registered implementation does not
 module binding.
 
 Declared `scenarios` are contract data. They are not execution evidence. The current test lanes,
-parity contract, and required checks live in [guards and tests](guards-and-tests.md).
+and required checks live in [guards and tests](guards-and-tests.md).
 
 ### 1.5 Labels
 
@@ -533,7 +532,11 @@ A gate result or ordinary Rerun cannot substitute for write resolution.
 Every read entry explicitly declares `replay: "checkpoint"` or `"always-rerun"`.
 The executor validates and replays checkpoint ancestors. Ordinary execution runs `always-rerun`
 ancestors again; an authenticated Pause/Resume or failed-run continuation reuses their completed
-checkpoints after the same schema, fingerprint, provenance and freshness checks. Replay restores values, never browser
+checkpoints after the same schema, fingerprint, provenance and freshness checks. A completed `always-rerun` checkpoint
+that fails the freshness check toward a transaction the continuation does not retain is run again.
+A continuation compares a completed node's input with the rows it was bound from: its run's newest row
+up to the node's claim, else the row the run was created with. A retained delegation is compared with
+the rows its admission recorded. Replay restores values, never browser
 page state. Transactions recover through permanent write authority, not a read replay flag.
 
 ### 5.4 Entry validation
@@ -556,6 +559,9 @@ An override covers only its node and field paths, only the specified attempt, an
 whose policy is `override: "audited"`. A forbidden override refuses. Correcting a value does not
 refresh untouched live facts. Gate decisions are separate upstream evidence and cannot make an
 older observed input fresh.
+A gate decision ages only `checkpoint` dependencies; an `always-rerun` dependency is read again when the run resumes.
+A stale fact of a `checkpoint` task refuses the run. A stale fact of an `always-rerun` task makes the executor run that
+task again, so the refusal is never reported for it.
 
 ### 5.6 Recovery and Rerun
 
@@ -615,12 +621,15 @@ Accepted continuation retains exact completed task, gate, transaction and child-
 Continuation validation authenticates captured transaction coordinates and requires the exact settled
 natural-key intent and proof. Predecessor repeat-occurrence checkpoints are refused before admission;
 ordinary acknowledged repeats retain their distinct keys and own-run Resume remains supported.
-The executor compares original and current prepare and commit mappings before passing its unchanged
-native run and restored scope to the write sequencer. The sequencer retains all schema, implementation,
-proof, key and unresolved-sibling checks and reuses an eligible completion with no new probe, prepare,
-submit, intent, transaction checkpoint or confirmation publication. A correction that changes a
-completed task or transaction's mapped input refuses reuse. UNKNOWN, attempting and parked writes
-refuse Rerun; saved results never authorize another submit.
+For a settlement inherited from another run, the executor compares original and current prepare and
+commit mappings before passing its unchanged native run and restored scope to the write sequencer.
+The sequencer retains all schema, implementation, proof, key and unresolved-sibling checks and reuses
+an eligible completion with no new probe, prepare, submit, intent, transaction checkpoint or
+confirmation publication. A correction that changes a completed task or transaction's mapped input
+refuses reuse. A settlement the run made itself is not compared unless the transaction reaches a
+child run, directly or through a conditional dependency: the run's input is fixed, so a later read is
+an observation, and the sequencer's key and proof checks decide the replay. UNKNOWN, attempting and parked writes refuse Rerun; saved results
+never authorize another submit.
 
 Completed tasks whose dependencies include a transaction wait for its authenticated semantic output
 before replay comparison, correction and hydration. Their current branch and condition still apply.

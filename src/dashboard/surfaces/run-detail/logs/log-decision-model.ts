@@ -17,8 +17,12 @@ export type LogDecision = Readonly<{
   footer?: string;
   /** The served decision: its options, hints, recommended option and inputs. */
   served?: RunDecisionWire;
-  /** The served answer record; the decision shows as one answered line. */
+  /** The served answer record; the answered card keeps its content and swaps the actions for one outcome line. */
   answered?: DecisionAnswerWire;
+  /** What the answer is about, for the outcome line: `Match approved`, `Transaction confirmed · T0001`. */
+  answerNoun?: string;
+  /** The value the operator typed to confirm, printed after the noun. */
+  answeredInput?: string;
 }>;
 export const LOG_DECISION_STATUS = {
   parked: { label: "Write parked", tone: "warning", className: "text-ui-warning" }, failed: { label: "Failed", tone: "danger", className: "text-ui-danger" }, review: { label: "Review", tone: "info", className: "text-ui-info" }, held: { label: "Held", tone: "warning", className: "text-ui-warning" }, unconfirmed: { label: "Unconfirmed", tone: "warning", className: "text-ui-warning" }, loading: { label: "Loading", tone: "muted", className: "text-ui-muted" }, recorded: { label: "Recorded", tone: "muted", className: "text-ui-muted" }, resolved: { label: "Resolved", tone: "muted", className: "text-ui-muted" },
@@ -41,12 +45,18 @@ export function typedPickRow(table: CandidateTableWire, typed: string): Candidat
   if (table.typed === undefined || !new RegExp(table.typed.pattern, "u").test(value)) return undefined;
   return table.rows.find(row => row.eid === value || row.rowNumber === Number(value));
 }
+/** A typed value the server matches to a masked row: valid only by the served pattern. */
+export function serverMatchedTyped(table: CandidateTableWire, typed: string): string | undefined {
+  const value = typed.trim();
+  return table.typed?.serverMatched === true && new RegExp(table.typed.pattern, "u").test(value) ? value : undefined;
+}
 export function decisionAnswerValid(option: DecisionOptionWire, answer: LogDecisionAnswer): boolean {
   const input = option.input;
   switch (input?.kind) {
     case "candidate": {
       const picked = answer.candidate !== undefined && input.table.rows.some(row => row.id === answer.candidate);
-      const typed = answer.typed !== undefined && answer.typed.trim() !== "" && typedPickRow(input.table, answer.typed) !== undefined;
+      const typed = answer.typed !== undefined && answer.typed.trim() !== ""
+        && (typedPickRow(input.table, answer.typed) !== undefined || serverMatchedTyped(input.table, answer.typed) !== undefined);
       return picked !== typed;
     }
     case "text": {
@@ -67,4 +77,17 @@ export function answeredRow(option: DecisionOptionWire, answer: LogDecisionAnswe
   const table = option.input.table;
   if (answer.candidate !== undefined) return table.rows.find(row => row.id === answer.candidate);
   return answer.typed === undefined ? undefined : typedPickRow(table, answer.typed);
+}
+
+export type AnsweredKind = "done" | "retry" | "rejected" | "cancelled";
+/** The one outcome line an answered decision prints, read from the option the operator chose. */
+export function answeredOutcome(decision: Pick<LogDecision, "answered" | "answerNoun" | "answeredInput">): { outcome: string; kind: AnsweredKind } {
+  const id = decision.answered?.optionId ?? "";
+  const noun = decision.answerNoun ?? "Match";
+  if (id === "cancel-run") return { outcome: "Run cancelled", kind: "cancelled" };
+  if (decision.answeredInput !== undefined) return { outcome: `${noun} confirmed · ${decision.answeredInput}`, kind: "done" };
+  if (id.startsWith("approve")) return { outcome: `${noun} approved`, kind: "done" };
+  if (id.startsWith("reject")) return { outcome: `${noun} rejected`, kind: "rejected" };
+  if (/^(retry|check-again$|reopen-browser$|sign-in-again$|recover$|resume$)/u.test(id)) return { outcome: "Retried", kind: "retry" };
+  return { outcome: "Resolved", kind: "done" };
 }

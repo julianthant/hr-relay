@@ -83,7 +83,7 @@ describe("served Person Lookup Run and Rerun", () => {
     let request: unknown;
     const dialog = await h.openDialog(h.stubClient({ submitStartPlan: async input => { request = input; return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }), { workflows: [workflow], panelWorkflowId: descriptor.id });
     await dialog.type("10000001; 10000001; Example, Person");
-    assert.ok([...document.querySelectorAll("label")].some(label => label.textContent === "Employee IDs or names"));
+    assert.ok(document.querySelector('textarea[aria-label="Employee IDs or names"]'));
     assert.match(dialog.text(), /Lookup mode/u); assert.match(dialog.text(), /CRM check/u);
     await dialog.press("Continue"); await dialog.press("Continue");
     const planned = StartPlanRequestSchema.parse(request);
@@ -98,7 +98,7 @@ describe("served Person Lookup Run and Rerun", () => {
     const dialog = await h.openDialog(h.stubClient({ submitStartPlan: async input => { request = input; return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }), { workflows: [workflow], panelWorkflowId: descriptor.id });
     const match = document.querySelector<HTMLInputElement>('input[type="radio"][value="match"]'); assert.ok(match);
     await act(async () => match.click()); await dialog.type("Example, Person, x, x");
-    assert.match(dialog.text(), /Each entry starts one run\./u);
+    assert.match(dialog.text(), /Search by ID or name, or match on details\./u);
     assert.equal(/Enter employee IDs\./iu.test(dialog.text()), false);
     assert.equal(dialog.disabled("Continue"), true);
     await dialog.type("Example, Person, x, 123456789");

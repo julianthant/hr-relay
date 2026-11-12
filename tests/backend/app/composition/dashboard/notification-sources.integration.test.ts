@@ -1,7 +1,7 @@
 import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { readNotificationSources } from "../../../../../src/backend/app/composition/dashboard/notification-sources.js";
 import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -51,6 +51,21 @@ describe("canonical notification producers", () => {
       fail = false; await observer.observe(); await observer.observe();
       expect(observer.status()).toEqual({ state: "ready", pending: 0 }); expect(f.inbox.list("local-operator")[0].count).toBe(1);
       await observer.stop();
+    } finally { await f.close(); }
+  });
+  it("reads the runs once while the store key is unchanged and again after a write", async () => {
+    const f = await fixture();
+    try {
+      seedRun(f, runRecordOf({ seed: 1, lifecycle: { state: "parked-gate", gateId: "confirm", parkedAt: f.clock.now().toISOString(), resumeAt: "collect" } }));
+      const list = vi.spyOn(f.reader, "list");
+      const first = readNotificationSources(f.db, f.reader);
+      const reads = list.mock.calls.length;
+      expect(first.observations).toHaveLength(1);
+      expect(readNotificationSources(f.db, f.reader)).toEqual({ observations: [], diagnostics: first.diagnostics });
+      expect(list).toHaveBeenCalledTimes(reads);
+      seedRun(f, runRecordOf({ seed: 2, lifecycle: { state: "parked-gate", gateId: "confirm", parkedAt: f.clock.now().toISOString(), resumeAt: "collect" } }));
+      expect(readNotificationSources(f.db, f.reader).observations).toHaveLength(2);
+      expect(list.mock.calls.length).toBeGreaterThan(reads);
     } finally { await f.close(); }
   });
   it("crosses the third-failure threshold and publishes each captured native observation", async () => {

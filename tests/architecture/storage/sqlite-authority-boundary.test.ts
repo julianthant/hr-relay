@@ -25,6 +25,7 @@ const PRIVATE_SQLITE_ADAPTERS = [
   "src/backend/storage/sqlite/native-run-deletion.ts",
   "src/backend/storage/sqlite/notification-publications.ts",
   "src/backend/storage/sqlite/pre-build-run-deletion.ts",
+  "src/backend/storage/sqlite/worker-custody-migration.ts",
   "src/backend/storage/sqlite/ocr-review.ts",
   "src/backend/storage/sqlite/profile-local-databases.ts",
   "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
@@ -37,7 +38,6 @@ const PRIVATE_SQLITE_ADAPTERS = [
   "src/backend/storage/sqlite/timeline-repository.ts",
   "src/backend/storage/sqlite/transaction-selection.ts",
   "src/backend/storage/sqlite/workbook-library-repository.ts",
-  "src/backend/storage/sqlite/worker-control.ts",
   "src/backend/storage/sqlite/worker-slots.ts",
 ];
 const ADAPTER_PATH = "src/backend/storage/sqlite/authority-database.ts";

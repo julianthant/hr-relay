@@ -23,6 +23,7 @@ import { runLogoutSettlementCase } from "../../../support/helpers/credential-sou
 import { createBoundProfileFixture, finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import { composeDashboardApplication } from "../../../../src/backend/app/composition/dashboard/profile-session-routes.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
 import { StorageMaintenanceCustodyUnavailableError } from "../../../../src/backend/storage/maintenance/custody-availability.js";
@@ -251,6 +252,10 @@ it("keeps schema-4 login refused until stopped startup converts a ready saved pr
     const failure = vi.spyOn(settingsMaintenance, "upgradeProtectedSettings").mockRejectedValueOnce(new Error("synthetic closed conversion failure"));
     try { await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, clock); }
     finally { failure.mockRestore(); }
+    const boot = readLocalDebugLog(join(f.workspace, rebuildRuntimeIsolation.stateRoot));
+    assert.equal(boot.state, "present");
+    assert.equal(boot.records.some(record => record.payload.kind === "debug" && record.payload.event.area === "profile-startup-settings-upgrade"), true);
+    assert.doesNotMatch(JSON.stringify(boot.records), /synthetic closed conversion failure/u);
     assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), bytes);
     machine = acquireEntrypointAdmission(f.workspace, "shared", lifetime);
     runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });

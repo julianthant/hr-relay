@@ -7,7 +7,7 @@
 | Operator | The one HR person using the dashboard. |
 | Served / mock | Dashboard data from the backend or fixtures, selected per workflow in `config/dashboard-workflow-sources.json`. [Dashboard instructions](../../src/dashboard/AGENTS.md#rules) own source-switch rules. |
 | Dry run | `dryRun=true`: a live read and preview of every applicable form, with no UCPath submission or Kuali finalization. Local run evidence may persist. It is different from a mock run. |
-| Sign-off | The operator's explicit approval of a workflow's live dry run. Tests and parity do not constitute sign-off. [Dashboard ready on the Mac](../roadmap/roadmap.md#dashboard-ready-on-the-mac) owns the release sequence. |
+| Sign-off | The operator's explicit approval of a workflow's live dry run. Tests do not constitute sign-off. [Dashboard ready on the Mac](../roadmap/roadmap.md#dashboard-ready-on-the-mac) owns the release sequence. |
 | Person Lookup | A read-only UCPath person search cross-checked against CRM, also delegated to by other workflows. |
 | Separations | One Kuali separation document processed into an employee termination across Kuali, UCPath and Kronos. Writes occur only outside dry runs. |
 | OCR | PDF page reading, record grouping and identity lookup for operator review and release. It writes nothing to HR systems. |

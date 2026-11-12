@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { it } from "vitest";
@@ -15,7 +16,7 @@ it("refuses stale reviewed plans atomically, freshly confirms current settings a
     const kernel = createCommandKernel({ lifecycle: f.service, appVersion: "0.1.0", configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
       authority: f.database, clock: f.clock, ids: { uuid: randomUUID }, descriptors,
       writeResolution: { recheck: () => { throw new Error("unused write"); }, resolveAbsent: () => { throw new Error("unused write"); } },
-      workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
+      workerRuntime: { pool: unusedWorkerPool() },
     });
     const planner = createStartPlanService({ authority: f.database, authorityRead: f.database, descriptors,
       clock: f.clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, configFingerprint: f.snapshot.fingerprint,
@@ -32,8 +33,9 @@ it("refuses stale reviewed plans atomically, freshly confirms current settings a
     const refusal = kernel.execute(stale); assert.ok(refusal.state === "rejected"); assert.equal(refusal.code, "replan-required");
     assert.equal(f.database.authority.startPlans.get(old.startPlanId)?.consumedBy, undefined);
     assert.deepEqual(f.database.authority.runs.listByWorkflow(personLookupDescriptor.id), []);
-    assert.equal(f.database.authority.commands.get(stale.commandId), undefined);
-    assert.equal(f.database.getMeta().authorityGeneration, generation); assert.deepEqual(f.published, []);
+    assert.equal(f.database.authority.commands.get(stale.commandId)?.commandId, stale.commandId);
+    assert.equal(f.database.authority.commandAudits.findByCommand(stale.commandId)?.result.state, "rejected");
+    assert.equal(f.database.getMeta().authorityGeneration, generation + 2); assert.deepEqual(f.published, []);
     const fresh = plan(); assert.equal(fresh.planned.length, 1, JSON.stringify(fresh.refused)); assert.equal(fresh.configSnapshotId, f.database.authority.runtimeConfig.get()?.configSnapshotId);
     assert.notEqual(fresh.configSnapshotId, old.configSnapshotId);
     const accepted = command(fresh); const first = kernel.execute(accepted); assert.equal(first.state, "applied");

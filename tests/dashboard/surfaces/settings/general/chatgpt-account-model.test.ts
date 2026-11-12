@@ -24,9 +24,9 @@ function button(name: string): HTMLButtonElement {
 }
 async function click(name: string) { await act(async () => { button(name).click(); }); }
 
-function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut">> = {}): ChatGptAccountPort {
+function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut" | "forgetAccount">> = {}): ChatGptAccountPort {
   return { mode: "live", getSnapshot: () => snapshot, subscribe: () => () => undefined,
-    signIn: () => Promise.resolve(), signOut: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
+    signIn: () => Promise.resolve(), forgetAccount: () => Promise.resolve(), signOut: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
 }
 
 describe("General ChatGPT account", () => {
@@ -43,7 +43,9 @@ describe("General ChatGPT account", () => {
     assert.equal(port.getSnapshot().state, "connected");
     assert.match(host?.textContent ?? "", /jordan.lee@example\.com/u);
     assert.doesNotMatch(host?.textContent ?? "", /Using ChatGPT plan|Preview/u);
-    assert.equal(document.activeElement, host?.querySelector(`a[href="${CHATGPT_USAGE_URL}"]`));
+    const focused = document.activeElement;
+    assert.ok(focused instanceof HTMLButtonElement && host?.contains(focused), "focus recovers inside the account region after Connect");
+    assert.equal(focused.textContent, "Disconnect", "the first control of the connected account row takes focus");
   });
 
   it("requests plan access directly for a disabled account, then signs out", async () => {

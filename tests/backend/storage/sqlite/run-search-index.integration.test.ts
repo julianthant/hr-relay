@@ -11,7 +11,7 @@ import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-ad
 
 const retainedCorruptionOwners = new Set<object>();
 
-it("refuses a missing genuine permanent successful start audit before nonmatching reads or unrelated mutation", async () => {
+it("refuses a missing genuine permanent successful start audit on nonmatching reads and open across an unrelated mutation", async () => {
   const h = await sourceBoundHarness();
   const held: { h: typeof h; database?: AuthorityDatabase; raw?: DatabaseSync; primary?: { error: unknown } } = { h };
   retainedCorruptionOwners.add(held);
@@ -66,6 +66,12 @@ it("refuses a missing genuine permanent successful start audit before nonmatchin
       throw retainAuthoritySourceClosure([...(mutationFailure === undefined ? [] : [mutationFailure.error]),
         ...(restoreFailure === undefined ? [] : [restoreFailure.error])], { admission: held });
     }
+    const nonmatchingSearch = () => database.authority.runs.search({ q: "NONMATCH", scope: "run", facets: { actor: "nonmatching-actor" }, limit: 1 });
+    assert.throws(nonmatchingSearch, /run-search-index-rebuild-required/u);
+    const renamed = database.authority.runs.updatePresentation({ runId: unrelated.envelope.runId,
+      expectedVersion: unrelated.version, displayName: "Unrelated rename", now: h.clock.now().toISOString() });
+    if (renamed.state !== "applied") throw new Error("a write that does not read the missing audit applies");
+    assert.throws(nonmatchingSearch, /run-search-index-rebuild-required/u);
     const generation = database.getMeta().authorityGeneration;
     const bytes = [readFileSync(h.authorityPath), readFileSync(`${h.authorityPath}-wal`)];
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
@@ -74,11 +80,6 @@ it("refuses a missing genuine permanent successful start audit before nonmatchin
       return { name, rows: raw.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all() };
     });
     const before = inventory();
-    assert.throws(() => database.authority.runs.search({ q: "NONMATCH", scope: "run", facets: { actor: "nonmatching-actor" }, limit: 1 }), /run-search-index-rebuild-required/u);
-    assert.throws(() => database.authority.runs.updatePresentation({ runId: unrelated.envelope.runId,
-      expectedVersion: unrelated.version, displayName: "Must not mutate", now: h.clock.now().toISOString() }), /run-search-retained-actor-source-missing/u);
-    assert.deepEqual(database.authority.runs.get(unrelated.envelope.runId), unrelated);
-    assert.equal(database.getMeta().authorityGeneration, generation);
     assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(h.authorityPath), /run-search-retained-actor-source-missing/u);
     for (const openMode of ["current-runtime", "storage-doctor-read-only-no-migrate"] as const) {
       assert.throws(() => {

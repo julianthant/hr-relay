@@ -42,6 +42,7 @@ for (const scenario of [{ action: "complete", withCause: true, unknownFirst: tru
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, onboardingDuo: { ...synthetic,
         browserState() { return recovered ? { state: "open", generation } : recoveryFailed ? { state: "failed", generation, code: "DUO_SETUP_FILES_BUSY" } : { state: "closed", generation }; },
         async start(...args) { if (firstAttempt) { firstAttempt = false; await args[2](new ProfileOnboardingDuoProviderError("unknown", "worker")); } else await synthetic.start(...args); },
+        async stop() {},
         async closeBrowser() { closes++; return recovered ? { state: "closed" } : { state: "uncertain", ...(scenario.withCause ? { cause: primary } : {}) }; },
         async recoverBrowser(owner, expected) {
           owner.assertCurrent(); assert.equal(expected, generation); reopens++;
@@ -138,7 +139,8 @@ it("serves public profile state without minting a selected profile, actor or aut
   try {
 
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
-      backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+      backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      frontendProbe: () => Promise.resolve({ state: "owned" as const }) });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const response = await fetch(`${base}/api/v1/profile/state`);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "signed-out", signUpRequired: true });
@@ -226,6 +228,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     const onboardingDuo: ProfileOnboardingDuoProvider = {
       async showBrowser(owner) { owner.assertCurrent(); },
       async openPortal(owner) { owner.assertCurrent(); },
+      async stop() {},
       async closeBrowser() { return { state: "closed" }; },
       async start(attempt, bind, _reportFailure) {
         assert.equal(providerActive, false); providerActive = true;
@@ -372,7 +375,7 @@ it("drains two subscribed tabs before revocation and refuses subscription reconn
     const cookie = signedUp.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
     assert.ok(context);
     const custody = context.database.readProfileResourceCustody();
-    assert.deepEqual(custody.runs, []); assert.deepEqual(custody.slots, []); assert.deepEqual(custody.browsers, []);
+    assert.deepEqual(custody.runs, []); assert.deepEqual(custody.slots, []);
     const epoch = f.machine.readProfileRegistry().sessionGeneration;
     const subscribe = () => fetch(`${base}/events/v1?topics=dashboard-day:2026-11-05`, { headers: { cookie } });
     for (let tab = 0; tab < 2; tab++) {

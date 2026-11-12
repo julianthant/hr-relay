@@ -81,13 +81,15 @@ export const PublicProfileStateSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("signed-out"), signUpRequired: z.boolean().optional(),
     resumable: z.literal(true).optional(), logoutIncomplete: z.literal(true).optional() }),
   z.strictObject({ state: z.literal("error"), code: ErrorCodeSchema, firstRunCheck: ProfileFirstRunCheckSchema.optional() }),
-  z.strictObject({ state: z.literal("active"), profileId: ProfileIdSchema, duoState: ProfileRegistryRowSchema.shape.duoState, epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), firstRunCheck: ProfileFirstRunCheckSchema.optional() }),
+  z.strictObject({ state: z.literal("active"), profileId: ProfileIdSchema, duoState: ProfileRegistryRowSchema.shape.duoState, epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), firstRunCheck: ProfileFirstRunCheckSchema.optional(),
+    account: z.strictObject({ name: z.string(), initials: ProfileRegistryRowSchema.shape.initials, timekeeper: ProfileRegistryRowSchema.shape.timekeeperName,
+      lastSignedInAt: ProfileRegistryRowSchema.shape.lastSignedInAt }).optional() }),
   z.strictObject({ state: z.literal("cancelling"), operationId: z.uuid() }),
   ProfileOnboardingStateSchema,
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema, firstRunCheck: ProfileFirstRunCheckSchema.optional() }),
 ]).superRefine((value, context) => {
   if (value.state !== "active" || value.firstRunCheck === undefined) return;
-  if (value.firstRunCheck.state !== "passed" || value.firstRunCheck.profileId !== value.profileId || value.firstRunCheck.epoch !== value.epoch) {
+  if (value.firstRunCheck.state === "unavailable" || value.firstRunCheck.profileId !== value.profileId || value.firstRunCheck.epoch !== value.epoch) {
     context.addIssue({ code: "custom", path: ["firstRunCheck"], message: "profile-first-run-check-active-identity-invalid" });
   }
 });

@@ -484,7 +484,7 @@ describe("redaction surface scan — the declaration audit", () => {
       const path = `${surface.startsWith("request/") ? "workbook." : ""}libraryId`;
       assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "captured-hr-value");
     }
-    for (const [surface, path] of [["wire/intake-session", "exclusions[].reason"], ["wire/workbook-intake", "session.exclusions[].reason"], ["wire/intake-command-result", "request.payload.reason"], ["wire/intake-command-result", "request.reason"]]) {
+    for (const [surface, path] of [["wire/intake-session", "exclusions[].reason"], ["wire/workbook-intake", "session.exclusions[].reason"], ["wire/intake-command-result", "request.payload.reason"], ["wire/intake-command-result", "request.reason"], ["wire/worker-command-result", "request.reason"]]) {
       assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "operator-authored", `${surface}|${path}`);
     }
     for (const surface of ["durable/saved-workbook", "wire/saved-workbook", "wire/workbook-list", "wire/workbook-history"]) {

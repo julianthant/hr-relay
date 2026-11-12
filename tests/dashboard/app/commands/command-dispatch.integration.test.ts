@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 import { randomUUID } from "node:crypto";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
@@ -5,9 +6,8 @@ import { createStartPlanService } from "../../../../src/backend/runs/commands/st
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
-import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
-import { PositiveIntSchema as positiveIntSchemaForReset } from "../../../../src/rules/identity/ids.js";
 
 import assert_m0 from "node:assert/strict";
 import { rmSync as rmSync_m0 } from "node:fs";
@@ -107,7 +107,7 @@ async function createHarness(): Promise<{
       resolveAbsent: () => { throw new Error("unused in test"); },
       recheck: () => { throw new Error("unused in test"); },
     },
-    workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("worker runtime is not wired in this fixture"); }, spawnPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, refreshPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, reopenPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, stopPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, pausePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, resumePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); } } },
+    workerRuntime: { pool: unusedWorkerPool() },
   });
 
   return { database, kernel, clock, lifecycle };
@@ -154,7 +154,7 @@ afterEach_m0(_afterEachFixture0);
     testWorkerPorts(harness.database, harness.clock, { path: syntheticDatabasePath(harness.database), descriptor: personLookupDescriptor_m0, poolIndex: 1 });
     const claimMember1 = harness.database.authority.workerSlots.get("person-lookup-worker-1");
     if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-    const claim = harness.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(harness.database, "person-lookup", claimMember1.poolIndex).workerLifetime, workflow: "person-lookup", workerId: "person-lookup-worker-1", now: NOW_m0 });
+    const claim = harness.database.authority.runs.claimNext({ workflow: "person-lookup", workerId: "person-lookup-worker-1", now: NOW_m0 });
     assert_m0.equal(claim.state, "claimed");
     const currentRun = harness.database.authority.runs.get(runId);
     assert_m0.ok(currentRun !== undefined);
@@ -572,7 +572,8 @@ afterEach_m0(_afterEachFixture0);
 
     // Deleting parent deletes tree leaves-first
     if (parentDelete.state === "ready") {
-      const deleted = harness.kernel.execute(CommandRequestSchema_m0.parse(parentDelete.request));
+      const admittedRefusal = CommandRequestSchema_m0.parse(parentDelete.request);
+      const deleted = harness.kernel.execute({ ...admittedRefusal, commandId: randomUUID() });
       assert_m0.equal(deleted.state, "applied");
       if (deleted.state === "applied") {
         assert_m0.deepEqual(
@@ -643,14 +644,14 @@ describe_m1("the controls post the arms the wire declares", () => {
     assert_m1.deepEqual(request.target, { workflowId: "separations", expectedVersion: 0 });
   });
 
-  it_m1("stops a worker against its LEASE version, which is a different basis", () => {
+  it_m1("stops a worker against its member lifetime and version", () => {
     const request = CommandRequestSchema_m1.parse(composeStopWorkerCommand_m1(
-      { workerId: "person-lookup-worker-1", membershipRevision: positiveIntSchemaForReset.parse(1), leaseVersion: 12, controlBasis: { leaseGeneration: positiveIntSchemaForReset.parse(2), controlRevision: positiveIntSchemaForReset.parse(3) } },
+      { workerId: "person-lookup-worker-1", workflowId: "person-lookup", lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000", version: 12 },
       ACTOR,
     ));
 
     assert_m1.equal(request.type, "stop-worker");
-    assert_m1.deepEqual(request.target, { workerId: "person-lookup-worker-1", membershipRevision: 1, expectedVersion: 12, controlBasis: { leaseGeneration: 2, controlRevision: 3 } });
+    assert_m1.deepEqual(request.target, { workerId: "person-lookup-worker-1", workflowId: "person-lookup", lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000", expectedVersion: 12 });
   });
 });
 }

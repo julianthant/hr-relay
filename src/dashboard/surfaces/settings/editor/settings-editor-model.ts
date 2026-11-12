@@ -179,18 +179,19 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     } catch { setSave({ state: "refused", code: "SETTINGS_DRAFT_INVALID", message: formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_DRAFT_INVALID", {})).text }); }
   };
   const autosave = useEffectEvent(submit);
+  const invalid = Object.values(errors).some(error => error !== undefined);
   useEffect(() => {
     if (!readReady || editor.state !== "loaded" || save.state !== "idle" || readProblem !== undefined
-      || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined)) return;
+      || Object.keys(draft).length === 0 || invalid) return;
     const timer = window.setTimeout(() => autosave(), 700);
     return () => window.clearTimeout(timer);
-  }, [draft, editor, errors, readProblem, readReady, save.state]);
+  }, [draft, editor, invalid, readProblem, readReady, save.state]);
   const retry = (): void => { if (pending.current !== undefined) void perform(pending.current); };
   const onFieldBlur = (event: SettingsBlurEvent): void => {
     const path = blurredSettingsPath(event);
     if (path === undefined) return;
     if (path.startsWith("protected.")) {
-      if (protectedEditor.save.state === "idle") protectedEditor.submit();
+      if (protectedEditor.save.state === "idle" && !protectedEditor.explicitSave) protectedEditor.submit();
     } else if (save.state === "idle" && Object.keys(draft).some(key => path === key || path.startsWith(`${key}.`))) submit();
   };
   const reload = (): void => { void refresh().catch(() => undefined); };

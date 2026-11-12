@@ -1,7 +1,6 @@
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { runClaim } from "../../../../src/models/run/record.js";
-import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { CreateRunRequestSchema } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
@@ -48,7 +47,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
             sourceId: "10000000-0000-4000-8000-000000000001" }] } } };
       assert.equal(h.database.authority.runs.enqueue({ ...source, lifecycle: { state: "queued" } }).state, "inserted");
       const claimed = h.database.authority.runs.claimNext({ workflow: source.envelope.workflow,
-        workerId: h.database.authority.workerSlots.list(h.descriptor.id)[0].workerId, workerLifetime: testWorkerLifetime(h.database, h.descriptor.id, h.database.authority.workerSlots.list(h.descriptor.id)[0].poolIndex).workerLifetime, now: h.clock.now().toISOString() });
+        workerId: h.database.authority.workerSlots.list(h.descriptor.id)[0].workerId, now: h.clock.now().toISOString() });
       assert.ok(claimed.state === "claimed");
       assert.equal(h.database.authority.runs.transition({ runId: source.envelope.runId, expectedVersion: claimed.run.version,
         claim: { workerId: h.database.authority.workerSlots.list(h.descriptor.id)[0].workerId, claimGeneration: claimed.run.claimGeneration },
@@ -106,9 +105,11 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     assert.ok(warning.rerun); assert.equal(warning.rerun.warnings.length, 1);
     assert.ok(warning.planned.every((entry) => !Object.hasOwn(entry, "runId") && !Object.hasOwn(entry, "traceId")));
     const unacknowledged = h.command(warning);
-    assert.equal(h.kernel.execute(unacknowledged).state, "confirmation-required");
+    const confirmation = h.kernel.execute(unacknowledged);
+    assert.equal(confirmation.state, "confirmation-required");
     assert.equal(h.database.authority.startPlans.get(warning.startPlanId)?.consumedBy, undefined);
-    assert.equal(h.database.authority.commands.get(unacknowledged.commandId), undefined);
+    assert.deepEqual(h.database.authority.commands.get(unacknowledged.commandId), unacknowledged);
+    assert.deepEqual(h.database.authority.commandAudits.findByCommand(unacknowledged.commandId)?.result, confirmation);
     assert.deepEqual(effects(h), before);
     const accepted = h.proposal(source, warning.rerun.warningDigest);
     assert.deepEqual(effects(h), before, "warning Confirm only acknowledges a plan");

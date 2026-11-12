@@ -374,8 +374,9 @@ afterEach(cleanup);
     assert.deepEqual(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID), run);
     assert.deepEqual(h.database.authority.writeIntents.get(intent.writeIntentId), intent);
     assert.equal(h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, run.envelope.itemId, WRITE_FIXTURE_NODE_ID), undefined);
-    assert.equal(h.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(h.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(h.database.authority.commands.get(command.commandId), command);
+    assert.equal(h.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.equal(h.database.getMeta().authorityGeneration, generation + 1);
   });
 });
 }

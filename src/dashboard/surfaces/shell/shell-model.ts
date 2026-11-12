@@ -52,7 +52,7 @@ export function useSelectedWorkflow(workflows: readonly { readonly id: string }[
   const setSelectedWorkflowId = useCallback((id: string) => {
     if (!canSelectWorkflowId(id)) return false;
     setChoice({ change, saved: selected, id });
-    void change?.({ "preferences.selectedWorkflowId": { set: id } });
+    if (id !== selected) void change?.({ "preferences.selectedWorkflowId": { set: id } });
     return true;
   }, [canSelectWorkflowId, change, selected]);
   return { selectedWorkflowId, setSelectedWorkflowId, canSelectWorkflowId };
@@ -207,5 +207,5 @@ const NEEDS_YOU_STATUSES: QueueStatus[] = ["awaiting-approval", "blocked"];
 export function needsYouCount(counts: readonly StatusCountWire[]): number {
   return NEEDS_YOU_STATUSES.reduce((total, status) => total + statusCount(counts, status), 0);
 }
-export { ALWAYS_TALLIED,buildSessionPanelView,buildSessionPoolGroups,canStopWorker,capacityChip,connectionTone,planPoolIntent,poolFactsForWorkflow,poolIndexOfWorkerId,poolMemberWorkerId,poolSlotIsUnmet,sessionMembershipForWorker,sessionPoolGroupFor,WORKER_STATE_ORDER,WORKER_STOP_REASON_LABEL,WORKER_TONE,workerBrowserView,workerDirectiveNote,workerElapsedSeconds } from "../sessions/session-panel-model.js";
+export { ALWAYS_TALLIED,buildSessionPanelView,buildSessionPoolGroups,canStopWorker,capacityChip,connectionTone,planPoolIntent,poolFactsForWorkflow,poolIndexOfWorkerId,poolMemberWorkerId,poolSlotIsUnmet,sessionMembershipForWorker,sessionPoolGroupFor,WORKER_STATE_ORDER,WORKER_TONE,workerBrowserView,workerDirectiveNote,workerElapsedSeconds } from "../sessions/session-panel-model.js";
 export type { PoolPlanIntent,SessionPoolGroup,SessionPoolMemberSlot,WorkerBrowserSlot,WorkerCardWire,WorkerPoolFacts,WorkerPoolWire,WorkerSessionMembership,WorkerState } from "../sessions/session-panel-model.js";

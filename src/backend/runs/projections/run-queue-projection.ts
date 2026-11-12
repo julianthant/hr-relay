@@ -5,10 +5,11 @@ import { isQueueMember, isQueueTopLevel, type QueueParent } from "../../../model
 import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { displayScalar } from "../queries/data.js";
-import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../models/run/worker-control.js";
+import type { WorkerMemberView } from "../../runtime/workers/worker-pool.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
 import { notificationDisplayContext } from "../queries/notification-display.js";
+import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/evidence-identity.js";
@@ -22,6 +23,7 @@ import {
   WorkerCardUnavailableReasonSchema,
   notificationWireOf,
   notificationSourceEventOf,
+  QUEUE_NOT_STARTING_NO_WORKER,
   QueueSurfaceWireSchema,
   TERMINAL_QUEUE_STATUSES,
   type DashboardDayWire,
@@ -60,16 +62,15 @@ import {
 } from "../../../models/trust/failure.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../models/events/types.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
-import { isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
 import type { RunSessionRecord } from "../../../models/run/session.js";
 import type { WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
 import { allowsSubjectIdentity, resolveResultTitle, verifiedResultDisplayValue, resolveSubjectTitle } from "./run-subject-title.js";
-import { lastRunOf, stepInterruptOf, workerCardOf, type WorkerBrowserFold, type WorkerCardWire } from "./worker-cards.js";
+import { lastRunOf, stepInterruptOf, workerCardOf, type WorkerCardWire } from "./worker-cards.js";
 import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import type { TimelineRepository } from "../../../models/events/timeline.js";
 import { readTimelineRecords, timelineSpanLocation } from "../../storage/events/timeline-reader.js";
-import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
+import { nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
 import { deriveRunStatus, foldCategoryState, panelKindOf, taskStateOf, type TaskExecutionState } from "../../../rules/runs/run-status.js";
 import { LogIdentityRefusedError, ProjectionDegradedError } from "../commands/refusals.js";
 
@@ -117,8 +118,6 @@ interface WorkerFold {
   startedAt: string;
   endedAt?: string;
   currentRunId?: string;
-  // Delete closed sessions from held-browser state; a closed session is not an owned browser.
-  browsers: Map<string, WorkerBrowserFold>;
   eventCount: number;
 }
 
@@ -157,21 +156,20 @@ export interface RunQueueProjectionDeps {
     /** Durable inbox rows served by day. */
     listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
     latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
+    command?(commandId: string): CommandRequest | undefined;
     listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
     listCheckpoints: RunTimelineEvidenceSource["authority"]["listCheckpoints"];
     listGateResults: RunTimelineEvidenceSource["authority"]["listGateResults"];
 
     listWorkerSlots?(): readonly WorkerSlotRecord[];
     listWorkerRuns?(workerId: string): readonly RunRecord[];
-    workerOwnerAlive?(lease: WorkerLeaseRecord): boolean;
-    listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
-    getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
-    workerBrowsers?(workerId: string): readonly WorkerBrowserObservation[];
+    /** The profile runtime's worker pool members; absent where no pool runs (then no worker card is served). */
+    workerMembers?(): readonly WorkerMemberView[];
     heldDuoSystems?(workerId: string): readonly string[];
-    workerControls?(): readonly WorkerControlRecord[];
-    ownsWorker?(lease: WorkerLeaseRecord): boolean;
     /** Whether the run holds an `attempting` (fenced, unsettled) write intent. */
     writeInFlight?(runId: string): boolean;
+    /** Absent in fixtures that have no SQLite generation. Present, an unchanged key skips the live-run read. */
+    changeKey?(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }>;
 
     listWorkerPools(): readonly WorkerPoolRecord[];
     listRunBatches(): readonly RunSessionRecord[];
@@ -304,47 +302,6 @@ const MEMBER_PREVIEW_LIMIT = 3;
 type LinkedRunView = QueueSurfaceWire["linkedRuns"][number];
 
 
-// Exclude heartbeat timestamps and versions to avoid republishing each beat; served versions are not the CAS basis.
-function workerLeaseFingerprintOf(leases: ReadonlyMap<string, WorkerLeaseRecord>): string {
-  const facts = [...leases.values()]
-    .sort((a, b) => a.workerId.localeCompare(b.workerId))
-    .map((lease) => ({
-      workerId: lease.workerId,
-      workflow: lease.workflow,
-      leaseGeneration: lease.leaseGeneration,
-      controlRevision: lease.controlRevision,
-      processId: lease.processId,
-      browserSystems: lease.browserSystems ?? null,
-      directive: lease.control.directive,
-      lifecycle: lifecycleCardFactsOf(lease.lifecycle),
-    }));
-  return JSON.stringify(facts);
-}
-
-/** The lifecycle arm's card-drawn fields — every arm named, so a new arm is a type error here. */
-function lifecycleCardFactsOf(lifecycle: WorkerLeaseRecord["lifecycle"]): Record<string, string> {
-  switch (lifecycle.state) {
-    case "starting":
-      return { state: lifecycle.state, startedAt: lifecycle.startedAt };
-    case "idle":
-    case "stopping":
-      return { state: lifecycle.state, startedAt: lifecycle.startedAt };
-    case "waiting":
-      return { state: lifecycle.state, startedAt: lifecycle.startedAt, activity: lifecycle.activity, ...(lifecycle.runId === undefined ? {} : { runId: lifecycle.runId }) };
-    case "busy":
-      return { state: lifecycle.state, startedAt: lifecycle.startedAt, runId: lifecycle.runId };
-    case "paused":
-      return { state: lifecycle.state, startedAt: lifecycle.startedAt, pausedAt: lifecycle.pausedAt };
-    case "stopped":
-      return {
-        state: lifecycle.state,
-        startedAt: lifecycle.startedAt,
-        stoppedAt: lifecycle.stoppedAt,
-        reason: lifecycle.reason,
-      };
-  }
-}
-
 /* ── the projection ──────────────────────────────────────────────────────── */
 
 export class RunQueueProjection {
@@ -359,6 +316,7 @@ export class RunQueueProjection {
 
   #workerAuthorityFingerprint: string;
   #publishedBatchVersions: ReadonlyMap<string, number> = new Map();
+  #storedCanonical: { key: string; storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
   #cursorValue = 0;
   #generationValue: number;
   #health: RunQueueProjectionHealth = { state: "live" };
@@ -457,7 +415,7 @@ export class RunQueueProjection {
       this.#cursorValue += 1;
       this.#notify({ runIds: [], workerChanged: true });
     } catch (error) {
-      this.#degrade(`worker lease reconcile failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.#degrade(`worker authority reconcile failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -555,7 +513,7 @@ export class RunQueueProjection {
     if (node?.kind !== "transaction") return undefined;
     const completion = node.commit.uses.writeSafety.completion;
     const contract = { probe: node.commit.uses.writeSafety.idempotency.probe, prepare: node.prepare.uses, commit: node.commit.uses,
-      verify: completion.kind === "receipt" ? undefined : completion.verify }[spanPath.split("/")[2] ?? ""];
+      verify: completion.kind === "receipt" ? undefined : completion.verify }[spanPath.split("/")[2]?.split("#")[0] ?? ""];
     return contract === undefined ? undefined : "id" in contract ? String(contract.id) : String(contract.taskId);
   }
 
@@ -688,17 +646,13 @@ export class RunQueueProjection {
         this.#workers.set(event.workerId, {
           workerId: event.workerId,
           startedAt: event.ts,
-          browsers: new Map(),
           eventCount: 1,
         });
         return { runIds: [], workerChanged: true };
       }
       const worker = this.#workers.get(event.workerId)
-        ?? { workerId: event.workerId, startedAt: event.ts, browsers: new Map(), eventCount: 0 };
+        ?? { workerId: event.workerId, startedAt: event.ts, eventCount: 0 };
       this.#workers.set(event.workerId, worker);
-
-      const session = browserSessionOfSpanPath(event.spanPath, event.system);
-      worker.browsers.set(session.sessionId, { ...session, openedAt: event.ts });
       worker.eventCount += 1;
       return { runIds: [], workerChanged: true };
     }
@@ -768,8 +722,6 @@ export class RunQueueProjection {
     const worker = this.#workers.get(event.workerId);
     if (worker !== undefined) {
       if (event.kind === "worker") worker.endedAt = event.ts;
-
-      else worker.browsers.delete(browserSessionOfSpanPath(event.spanPath).sessionId);
       worker.eventCount += 1;
     }
     return { runIds: [], workerChanged: true };
@@ -865,50 +817,38 @@ export class RunQueueProjection {
     }
   }
 
-  #ownerFact(lease: WorkerLeaseRecord) {
-    if (!isLiveWorker(lease)) return { state: "stopped" } as const;
-    try {
-      return this.#deps.authority.workerOwnerAlive?.(lease) === true ? { state: "alive" } as const
-        : { state: "unavailable", reason: "Worker process custody is unavailable." } as const;
-    } catch (error) {
-      return { state: "unavailable", reason: error instanceof Error ? error.message : "Worker process custody could not be verified." } as const;
-    }
-  }
-
-  #cardLeases(): ReadonlyMap<string, WorkerLeaseRecord> {
-    const leases = new Map<string, WorkerLeaseRecord>();
-    for (const lease of this.#deps.authority.listLiveWorkerLeases()) leases.set(lease.workerId, lease);
-    for (const workerId of this.#workers.keys()) {
-      if (leases.has(workerId)) continue;
-      const settled = this.#deps.authority.getWorkerLease(workerId);
-      if (settled !== undefined) leases.set(workerId, settled);
-    }
-    return leases;
-  }
-
   /** Capture shared authority at a snapshot/reconcile boundary, including the batch revisions row patches may expose. */
-  #captureSharedAuthorityFingerprint(canonicalRuns = listCanonicalRuns(this.#deps.reader, "live")): string {
-    const pools = this.#deps.authority.listWorkerPools().map((pool) => ({
-      workflowId: pool.workflow,
-      desiredWorkers: pool.desiredWorkers,
-      version: pool.version,
-      plannedBy: pool.plannedBy,
-      plannedAt: pool.plannedAt,
-    }));
-    const batches = this.#deps.authority.listRunBatches().map(({ sessionId, version }) => ({ sessionId, version })).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
-    const runs = canonicalRuns.map((run) => ({
-      envelope: run.envelope, displayName: run.displayName, runNumber: run.runNumber,
-      sessionId: run.sessionId, appVersion: run.appVersion,
-      lifecycle: run.lifecycle.state === "claimed" || run.lifecycle.state === "validating" || run.lifecycle.state === "running"
-        ? { ...run.lifecycle, heartbeatAt: undefined } : run.lifecycle,
-      cancelRequested: run.cancelRequested,
-      // Served step interrupts change with the pause request and the write fence.
-      pause: run.pause,
-      ...(runClaim(run) === undefined ? {} : { writeInFlight: this.#deps.authority.writeInFlight?.(run.envelope.runId) }),
-    }));
-    const leases = this.#cardLeases();
-    const controlFacts = [...leases.values()].map(lease => ({ workerId: lease.workerId, owned: this.#deps.authority.ownsWorker?.(lease), custody: this.#ownerFact(lease), browsers: this.#deps.authority.workerBrowsers?.(lease.workerId) }));
-    const fingerprint = JSON.stringify({ members: this.#deps.authority.listWorkerSlots?.(), leases: workerLeaseFingerprintOf(leases), pools, batches, runs, controlFacts, controls: this.#deps.authority.workerControls?.() });
+  #captureSharedAuthorityFingerprint(canonicalRuns?: readonly RunRecord[]): string {
+    const key = this.#deps.authority.changeKey?.();
+    const keyText = key === undefined ? undefined : `${key.authorityGeneration}:${key.dataVersion}:${key.totalChanges}`;
+    const stored = canonicalRuns === undefined && keyText !== undefined && this.#storedCanonical?.key === keyText ? this.#storedCanonical : undefined;
+    let built: { storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined = stored;
+    if (built === undefined) {
+      const source = canonicalRuns ?? listCanonicalRuns(this.#deps.reader, "live");
+      const pools = this.#deps.authority.listWorkerPools().map((pool) => ({
+        workflowId: pool.workflow,
+        desiredWorkers: pool.desiredWorkers,
+        version: pool.version,
+        plannedBy: pool.plannedBy,
+        plannedAt: pool.plannedAt,
+      }));
+      const batches = this.#deps.authority.listRunBatches().map(({ sessionId, version }) => ({ sessionId, version })).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+      const runs = source.map((run) => ({
+        envelope: run.envelope, displayName: run.displayName, runNumber: run.runNumber,
+        sessionId: run.sessionId, appVersion: run.appVersion,
+        lifecycle: run.lifecycle.state === "claimed" || run.lifecycle.state === "validating" || run.lifecycle.state === "running"
+          ? { ...run.lifecycle, heartbeatAt: undefined } : run.lifecycle,
+        cancelRequested: run.cancelRequested,
+        // Served step interrupts change with the pause request and the write fence.
+        pause: run.pause,
+      }));
+      built = { storeJson: JSON.stringify({ pools, batches, runs }), claimedIds: source.filter((run) => runClaim(run) !== undefined).map((run) => run.envelope.runId), batches };
+      if (canonicalRuns === undefined && keyText !== undefined) this.#storedCanonical = { key: keyText, ...built };
+    }
+    const workers = this.#deps.authority.workerMembers?.().map(view => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version }));
+    const writeInFlight = built.claimedIds.map((id) => [id, this.#deps.authority.writeInFlight?.(id)]);
+    const fingerprint = JSON.stringify({ members: this.#deps.authority.listWorkerSlots?.(), workers, writeInFlight }) + built.storeJson;
+    const batches = built.batches;
     this.#publishedBatchVersions = new Map(batches.map(({ sessionId, version }) => [sessionId, version]));
     return fingerprint;
   }
@@ -1282,6 +1222,33 @@ export class RunQueueProjection {
     return chips.length === 0 ? { state: "absent", reason: "this run has no applicable detail values" } : { state: "present", value: chips };
   }
 
+  /** A queued row names NO_WORKER when every active slot of its workflow is exited. */
+  #notStarting(workflowId: string, status: QueueSurfaceWire["status"]): QueueSurfaceWire["notStarting"] {
+    if (status !== "queued") return undefined;
+    const slots = this.#deps.authority.listWorkerSlots?.();
+    const views = this.#deps.authority.workerMembers?.();
+    if (slots === undefined || views === undefined) return undefined;
+    const active = slots.filter(slot => slot.workflow === workflowId && slot.retiredAt === null);
+    const viewOf = (workerId: string) => views.find(view => view.member.workerId === workerId);
+    const live = active.filter(slot => {
+      const view = viewOf(slot.workerId);
+      return view !== undefined && view.state !== "exited";
+    });
+    if (live.length === 0) {
+      const exited = active.some(slot => viewOf(slot.workerId)?.state === "exited");
+      return exited ? QUEUE_NOT_STARTING_NO_WORKER : undefined;
+    }
+    const ordered = [...live].sort((left, right) => left.workerId < right.workerId ? -1 : left.workerId > right.workerId ? 1 : 0);
+    const refusals = ordered.flatMap(slot => {
+      const refusal = viewOf(slot.workerId)?.activity?.refusal;
+      return refusal === undefined ? [] : [refusal];
+    });
+    if (refusals.length !== ordered.length) return undefined;
+    const refusal = refusals[0];
+    if (refusal === undefined) return undefined;
+    return { code: refusal.code, summary: refusal.summary ?? operatorFailureSentence(refusal.code) };
+  }
+
   #surfaceFold(row: RunFoldRecord | undefined, authority: RunRecord, children: readonly RunRecord[], context: QueueReadContext): SurfaceFold {
     const queued = authority.envelope;
     context.runs.set(queued.runId, authority);
@@ -1311,11 +1278,8 @@ export class RunQueueProjection {
       state: pauseUnavailable ? "unavailable" : authority.pause?.state === "requested" ? "pause-pending" : authority.pause?.state === "paused" ? "paused" : "running",
       ...(pauseUnavailable || authority.pause?.state === "requested" ? {} : { command: authority.pause?.state === "paused" ? "resume" as const : "pause" as const }) };
     const claim = runClaim(authority);
-    const interrupt = claim === undefined ? undefined : stepInterruptOf(authority,
-      this.#deps.authority.workerControls?.().some(record => record.request.type === "stop-worker" && record.phase.state !== "succeeded"
-        && record.phase.state !== "refused" && record.reset?.work.kind === "current" && record.reset.work.current.runId === queued.runId
-        && record.reset.work.current.claimGeneration === claim.claimGeneration) === true,
-      this.#deps.authority.writeInFlight?.(queued.runId) === true);
+    const interrupt = claim === undefined ? undefined : stepInterruptOf(authority, this.#deps.authority.writeInFlight?.(queued.runId) === true);
+    const notStarting = this.#notStarting(queued.workflow, status);
     const base = {
       runId: queued.runId,
       itemId: queued.itemId,
@@ -1357,6 +1321,7 @@ export class RunQueueProjection {
       outcome: this.#resultOutcome(authority, receipt, descriptor?.outcomeProjection),
       facts: this.#facts(authority, descriptor, status, receipt),
       status,
+      ...(notStarting === undefined ? {} : { notStarting }),
       ...(status === "cancelled" ? { cancelledBy: cancelledBy(authority) } : {}),
       liveMessage: interrupt?.step === "finish-write" ? { state: "present", value: "Finishing the save first" }
         : pauseControl.state === "pause-pending" ? { state: "present", value: "Restarts this step on Resume" }
@@ -1536,68 +1501,42 @@ export class RunQueueProjection {
 
 
     let members: readonly WorkerSlotRecord[] | undefined;
-    let workerOperations: readonly WorkerControlRecord[] | undefined;
     let workerAuthority: DashboardDayWire["workerAuthority"];
     const workerCards: DashboardDayWire["workerCards"] = [];
     const unavailableWorkerCards: NonNullable<DashboardDayWire["unavailableWorkerCards"]> = [];
     try {
       members = this.#deps.authority.listWorkerSlots?.().filter(member => member.retiredAt === null);
-      workerOperations = this.#deps.authority.workerControls?.();
-      workerAuthority = members !== undefined && workerOperations !== undefined ? { state: "present", members: [...members] }
-        : { state: "unavailable", members: [...(members ?? [])], reason: "Worker membership or operation authority is unavailable." };
+      const views = this.#deps.authority.workerMembers?.();
+      workerAuthority = members !== undefined && views !== undefined ? { state: "present", members: [...members] }
+        : { state: "unavailable", members: [...(members ?? [])], reason: "Worker membership is unavailable." };
+      for (const member of members ?? []) {
+        if (views === undefined) continue;
+        // A card that cannot be built is served as unavailable; its siblings still render.
+        try {
+          const view = views.find(candidate => candidate.member.workerId === member.workerId);
+          const runId = view?.activity?.runId;
+          const lastRun = runId === undefined && (view === undefined || view.state === "exited"
+            || view.state === "running" && (view.activity === undefined || view.activity.state === "idle")) ? this.#workerLastRun(member.workerId) : undefined;
+          const timelineRunId = runId ?? (lastRun?.state === "present" ? lastRun.runId : undefined);
+          workerCards.push(workerCardOf({ slot: member, view, foldRevision: this.#workers.get(member.workerId)?.eventCount ?? 0,
+            duoSystems: this.#deps.authority.heldDuoSystems?.(member.workerId),
+            writeInFlight: runId => this.#deps.authority.writeInFlight?.(runId) === true,
+            ...(lastRun === undefined ? {} : { lastRun }),
+            ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces) }
+              : lastRun?.state === "unavailable" && lastRun.reason === "run-unavailable" ? { timeline: { state: "unavailable", reason: "run-unavailable" } } : {}),
+            resolveRun: runId => {
+              const read = this.#deps.reader.read(runId);
+              return read.state === "present" && read.disposition === "live" ? read.run : undefined;
+            } }));
+        } catch (error) {
+          const reason = WorkerCardUnavailableReasonSchema.safeParse(error instanceof Error ? error.message : undefined);
+          unavailableWorkerCards.push({ member: workerPoolMember(member), workerId: member.workerId,
+            availability: { state: "unavailable", reason: reason.success ? reason.data : "worker-card-unavailable" } });
+        }
+      }
     } catch (error) {
       workerAuthority = { state: "unavailable", members: [...(members ?? [])],
         reason: error instanceof Error ? error.message : "Worker authority could not be verified." };
-    }
-    for (const member of members ?? []) {
-      try {
-        const lease = this.#deps.authority.getWorkerLease(member.workerId);
-        if (lease === undefined) throw new Error("worker-lifetime-unavailable");
-        if (this.#deps.authority.listWorkerRuns === undefined) throw new Error("worker-current-run-authority-unavailable");
-        const active = this.#deps.authority.listWorkerRuns(member.workerId);
-        const heldRunId = "runId" in lease.lifecycle ? lease.lifecycle.runId : undefined;
-        const runIds = new Set<string>();
-        for (const run of active) {
-          const read = this.#deps.reader.read(run.envelope.runId);
-          if (runIds.has(run.envelope.runId) || !("workerId" in run.lifecycle) || run.lifecycle.workerId !== member.workerId
-            || run.envelope.workflow !== member.workflow || run.lifecycle.workerLifetime?.membershipRevision !== member.membershipRevision
-            || run.lifecycle.workerLifetime.leaseGeneration !== lease.leaseGeneration
-            || read.state !== "present" || read.disposition !== "live" || read.run.envelope.runId !== run.envelope.runId
-            || read.run.envelope.workflow !== run.envelope.workflow || read.run.envelope.attempt !== run.envelope.attempt
-            || read.run.claimGeneration !== run.claimGeneration || !("workerId" in read.run.lifecycle)
-            || read.run.lifecycle.workerId !== member.workerId || read.run.lifecycle.state !== run.lifecycle.state
-            || read.run.lifecycle.claimedAt !== run.lifecycle.claimedAt
-            || read.run.lifecycle.workerLifetime?.membershipRevision !== member.membershipRevision
-            || read.run.lifecycle.workerLifetime.leaseGeneration !== lease.leaseGeneration) {
-            throw new Error("worker-current-run-authority-unavailable");
-          }
-          runIds.add(run.envelope.runId);
-        }
-        if (active.length !== (heldRunId === undefined ? 0 : 1) || active.some(run => run.envelope.runId !== heldRunId)) {
-          throw new Error("worker-current-run-authority-unavailable");
-        }
-        const fold = this.#workers.get(lease.workerId);
-        const lastRun = heldRunId === undefined && (lease.lifecycle.state === "idle" || lease.lifecycle.state === "stopped")
-          ? this.#workerLastRun(lease.workerId) : undefined;
-        const timelineRunId = heldRunId ?? (lastRun?.state === "present" ? lastRun.runId : undefined);
-        workerCards.push(workerCardOf({ lease, member, ownerAlive: this.#ownerFact(lease).state === "alive",
-          observations: this.#deps.authority.workerBrowsers?.(lease.workerId), operations: workerOperations,
-          owned: this.#deps.authority.ownsWorker?.(lease), duoSystems: this.#deps.authority.heldDuoSystems?.(lease.workerId),
-          ...(lastRun === undefined ? {} : { lastRun }),
-          ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces) }
-            : lastRun?.state === "unavailable" && lastRun.reason === "run-unavailable" ? { timeline: { state: "unavailable", reason: "run-unavailable" } } : {}),
-          fold: fold === undefined ? undefined : { revision: fold.eventCount, browsers: [...fold.browsers.values()] },
-          writeInFlight: runId => this.#deps.authority.writeInFlight?.(runId) === true,
-          resolveRun: runId => {
-            const read = this.#deps.reader.read(runId);
-            return read.state === "present" && read.disposition === "live" ? read.run : undefined;
-          },
-        }));
-      } catch (error) {
-        const reason = WorkerCardUnavailableReasonSchema.safeParse(error instanceof Error ? error.message : undefined);
-        unavailableWorkerCards.push({ member: workerPoolMember(member), workerId: member.workerId,
-          availability: { state: "unavailable", reason: reason.success ? reason.data : "worker-card-unavailable" } });
-      }
     }
 
     return DashboardDayWireSchema.parse({
@@ -1625,8 +1564,6 @@ export class RunQueueProjection {
       workerCards,
       ...(unavailableWorkerCards.length === 0 ? {} : { unavailableWorkerCards }),
       workerAuthority,
-      workerOperations: (workerOperations ?? []).map(record => record.phase.state === "succeeded" && record.phase.acknowledgement.kind === "parked-write-check"
-        ? { ...record, phase: { ...record.phase, acknowledgement: { kind: "parked-write-check", result: record.phase.acknowledgement.result } } } : record),
 
       workerPools: this.#deps.authority.listWorkerPools().map((pool) => ({
         workflowId: pool.workflow,
@@ -1642,6 +1579,7 @@ export class RunQueueProjection {
           receipt: id => this.#deps.authority.getReceipt(id),
           presentation: this.#deps,
           checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
+          command: id => this.#deps.authority.command?.(id),
         }), notificationSourceEventOf(record, this.#deps.authority.latestNotificationSource?.(record.notificationId))))
         .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || String(a.notificationId).localeCompare(String(b.notificationId))),
     });

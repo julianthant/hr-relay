@@ -12,7 +12,7 @@ import type { DashboardApp } from "./api-types.js";
 import type { ShellRouteDeps } from "./shell-types.js";
 import { wireError } from "./failure-status.js";
 
-export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "refreshAccount" | "signIn" | "signOut" | "readStatus">; readonly chatGptOcrTest?: ChatGptOcrTestService }
+export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "refreshAccount" | "signIn" | "signOut" | "forgetAccount" | "readStatus">; readonly chatGptOcrTest?: ChatGptOcrTestService }
 function failure(error: unknown, dispatched = false, unknownCode: ErrorCatalogCode = "CHATGPT_AUTH_UNAVAILABLE") {
   const known = error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError;
   const code: ErrorCatalogCode = known ? error.code : unknownCode;
@@ -127,6 +127,16 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
       const accountService = service();
       dispatched = true;
       return c.json(ChatGptSignOutResultSchema.parse(await accountService.signOut()));
+    } catch (error) { return c.json(ChatGptSignOutResultSchema.parse(failure(error, dispatched))); }
+  });
+  app.post("/api/v1/settings/chatgpt-account/forget-account", async c => {
+    c.header("Cache-Control", "no-store");
+    let dispatched = false;
+    try {
+      if (!ChatGptEmptyRequestSchema.safeParse(await c.req.json()).success) throw new ChatGptAccountError("CHATGPT_AUTH_INVALID");
+      const accountService = service();
+      dispatched = true;
+      return c.json(ChatGptSignOutResultSchema.parse(await accountService.forgetAccount()));
     } catch (error) { return c.json(ChatGptSignOutResultSchema.parse(failure(error, dispatched))); }
   });
 }

@@ -70,7 +70,7 @@ export default ts.config(
 
   // Lint the same authored root configs as TypeScript.
   {
-    files: ["vitest.config.ts", "vite.dashboard.config.ts", "vite.parity.config.ts"],
+    files: ["vitest.config.ts", "vite.dashboard.config.ts", "vite.mocks.config.ts"],
     plugins: { "unused-imports": unusedImports },
     languageOptions: { globals: { ...globals.node } },
     rules: { ...unusedImportsRules, ...typeAwareTuning },

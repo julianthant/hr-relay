@@ -85,7 +85,7 @@ describe("parked write read-only recheck", () => {
       assert.equal(h.kernel.execute(command).state, "applied");
       const worker = testWorkerLifetime(h.database, run.envelope.workflow, 1);
       const claimed = h.database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId: worker.workerId,
-        workerLifetime: worker.workerLifetime, now: h.clock.now().toISOString() });
+        now: h.clock.now().toISOString() });
       assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("claim required");
       const claim = { workerId: worker.workerId, claimGeneration: claimed.run.claimGeneration };
       let current = claimed.run;
@@ -103,7 +103,7 @@ describe("parked write read-only recheck", () => {
       if (mode === "canonical") {
         const outcome = service.recoverCrash({ commandId: lifecycleCommandId("lost-recheck", { runId: run.envelope.runId, version: current.version }),
           runId: run.envelope.runId, expectedVersion: current.version, claim,
-          ...h.database.crashRunRecoveryIdentity(run.envelope.runId), now: h.clock.now().toISOString() }, lock);
+          now: h.clock.now().toISOString() }, lock);
         assert.equal(outcome.state, "applied");
       } else reconcileStartupCrash({ machine: h.profile.machine, admission: h.profile.admission, database: h.database,
         clock: h.clock, lifecycle: service, lock });
@@ -115,10 +115,10 @@ describe("parked write read-only recheck", () => {
 
   it("refuses stale versions, generations, unsupported transaction IDs and operator proof", async () => {
     const { h, intent, run, command } = await parked();
-    assert.equal(h.kernel.execute({ ...command, target: { ...command.target, expectedVersion: run.version + 1 } }).state, "conflict");
-    assert.equal(h.kernel.execute({ ...command, target: { ...command.target, intentGeneration: intent.generation + 1 } }).state, "rejected");
-    assert.equal(h.kernel.execute({ ...command, payload: { ...command.payload, transactionId: "T998877" } }).state, "rejected");
-    assert.throws(() => h.kernel.execute({ ...command, payload: { ...command.payload, proof: { schemaHash: "a".repeat(64), value: {} } } }));
+    assert.equal(h.kernel.execute({ ...command, commandId: "eeeeeeee-0013-4000-8000-001300000001", target: { ...command.target, expectedVersion: run.version + 1 } }).state, "conflict");
+    assert.equal(h.kernel.execute({ ...command, commandId: "eeeeeeee-0013-4000-8000-001300000002", target: { ...command.target, intentGeneration: intent.generation + 1 } }).state, "rejected");
+    assert.equal(h.kernel.execute({ ...command, commandId: "eeeeeeee-0013-4000-8000-001300000003", payload: { ...command.payload, transactionId: "T998877" } }).state, "rejected");
+    assert.throws(() => h.kernel.execute({ ...command, commandId: "eeeeeeee-0013-4000-8000-001300000004", payload: { ...command.payload, proof: { schemaHash: "a".repeat(64), value: {} } } }));
     assert.equal(h.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
     assert.equal(h.kernel.execute(command).state, "applied");
     assert.equal(h.kernel.execute({ ...command, commandId: "dddddddd-1234-4000-8000-123400000000", target: { ...command.target, expectedVersion: run.version + 1 } }).state, "rejected");

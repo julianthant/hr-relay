@@ -449,12 +449,16 @@ function ocrArtifactLeaves(scope: EvidenceValueScope, prefix: string): unknown[]
   ];
 }
 
-function ocrManifestLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+function ocrManifestHeadLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   return [
     ...ocrArtifactLeaves(scope, `${prefix}document.`),
     ...open(scope, `${prefix}pageCount`),
-    ...ocrPrivateLeaves(scope, `${prefix}fingerprint`, `${prefix}pages`),
+    ...ocrPrivateLeaves(scope, `${prefix}fingerprint`),
   ];
+}
+
+function ocrManifestLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrManifestHeadLeaves(scope, prefix), ...ocrPrivateLeaves(scope, `${prefix}pages`)];
 }
 
 function ocrPageInputLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
@@ -484,17 +488,21 @@ function ocrPageReadingLeaves(scope: EvidenceValueScope): unknown[] {
 }
 
 function ocrRosterLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrRosterReferenceLeaves(scope, prefix), ...ocrPrivateLeaves(scope, `${prefix}rows`)];
+}
+
+function ocrRosterReferenceLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   return [
-    ...ocrPrivateLeaves(scope, prefix.slice(0, -1), `${prefix}rows`, `${prefix}workbookId`, `${prefix}referenceDigest`),
+    ...ocrPrivateLeaves(scope, prefix.slice(0, -1), `${prefix}workbookId`, `${prefix}referenceDigest`),
     ...ocrArtifactLeaves(scope, `${prefix}artifact.`),
     ...open(scope, `${prefix}readAt`, `${prefix}workbookType`, `${prefix}workbookVersion`),
   ];
 }
 
-function ocrReviewSeedLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+function ocrReviewCheckpointLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   return [
     ...ocrManifestLeaves(scope, `${prefix}accounting.manifest.`),
-    ...ocrRosterLeaves(scope, `${prefix}roster.`),
+    ...ocrRosterReferenceLeaves(scope, `${prefix}roster.`),
     ...open(scope, ...["formType", "accounting.formType", "pages", "grouping.formType",
       "grouping.unidentified", "grouping.otherForms", "grouping.dataless"].map(path => `${prefix}${path}`)),
     ...ocrPrivateLeaves(scope, ...["sourceRunId", "accounting.readingId", "accounting.outcomes",
@@ -503,7 +511,7 @@ function ocrReviewSeedLeaves(scope: EvidenceValueScope, prefix: string): unknown
 }
 
 function ocrResultLeaves(scope: EvidenceValueScope): unknown[] {
-  return [...ocrReviewSeedLeaves(scope, "review."), ...ocrPrivateLeaves(scope, "identities")];
+  return [...ocrReviewCheckpointLeaves(scope, "review."), ...ocrPrivateLeaves(scope, "identities")];
 }
 
 function approvedOcrReferenceLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
@@ -603,7 +611,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...ocrPrivateLeaves(taskOutput("ocr/read-approved-records"), "sources"),
   ...open(taskOutput("workbooks/read-reference"), "state", "reference.snapshot.version", "reference.request.fields", "reference.snapshot.type.fields"),
   ...population(taskOutput("workbooks/read-reference"), "reference.snapshot.rows", "reference.snapshot.worksheets"),
-  ...["referenceDigest", "reference.request.typeId", "reference.request.libraryId", "reference.request.versionId", "reference.request.keys",
+  ...["referenceDigest", "sources", "reference.request.typeId", "reference.request.libraryId", "reference.request.versionId", "reference.request.keys",
     "reference.snapshot.libraryId", "reference.snapshot.versionId", "reference.snapshot.versionName", "reference.snapshot.type.id", "reference.snapshot.type.name",
     "reference.snapshot.type.keyFieldId", "reference.snapshot.type.defaultWorkbookId"].map(path =>
     ({ scope: taskOutput("workbooks/read-reference"), path, classification: "sensitive-hr", transform: "drop" })),
@@ -612,6 +620,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...[taskOutput("workflow:crm-doc-download/read-document-rows"), workflowResult("crm-doc-download-reference")].flatMap(scope => [
     ...population(scope, "people"), ...open(scope, "state"),
     { scope, path: "referenceDigest", classification: "sensitive-hr", transform: "drop" },
+    { scope, path: "sourceDigests", classification: "sensitive-hr", transform: "drop" },
   ]),
   ...[taskOutput("workflow:crm-doc-download/read-worksheet-archives"), workflowResult("crm-doc-download"), workflowResult("crm-doc-download-package-worksheets")].flatMap(scope => [
     ...population(scope, "worksheets", "collection.files"),
@@ -625,15 +634,15 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...["crm-doc-download", "crm-doc-download-reference", "crm-doc-download-package-worksheets"].flatMap(id => [
     ...open(gateResult(id, "document-row-choice"), "state", "decision"), ...population(gateResult(id, "document-row-choice"), "people"),
     { scope: gateResult(id, "document-row-choice"), path: "referenceDigest", classification: "sensitive-hr", transform: "drop" },
+    { scope: gateResult(id, "document-row-choice"), path: "sourceDigests", classification: "sensitive-hr", transform: "drop" },
 
   ]),
   ...open(taskOutput("extraction/extract-pdf-pages"), "pageCount"),
   ...ocrPrivateLeaves(taskOutput("extraction/extract-pdf-pages"), "pages"),
-  ...ocrManifestLeaves(taskOutput("workflow:ocr/read-source-pages"), "manifest."),
-  ...ocrPrivateLeaves(taskOutput("workflow:ocr/read-source-pages"), "pages"),
+  ...ocrManifestHeadLeaves(taskOutput("workflow:ocr/read-source-pages"), "manifest."),
   ...[taskOutput("workflow:ocr-page/read-page-reading"), taskOutput("workflow:ocr-page/read-manual-reading")].flatMap(ocrPageReadingLeaves),
-  ...ocrReviewSeedLeaves(taskOutput("workflow:ocr/read-review-seed"), ""),
-  ...ocrResultLeaves(taskOutput("workflow:ocr/read-result")),
+  ...ocrReviewCheckpointLeaves(taskOutput("workflow:ocr/read-review-seed"), ""),
+  ...ocrPrivateLeaves(taskOutput("workflow:ocr/read-result"), "review.digest", "identities"),
   ...["ocr", "ocr-source-pages"].flatMap(id => [
     ...ocrArtifactLeaves(workflowInput(id), "document."),
     ...ocrRosterLeaves(workflowInput(id), "roster."),
@@ -650,8 +659,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...ocrResultLeaves(workflowResult("ocr")),
   ...ocrPrivateLeaves(workflowResult("ocr"), "approvedSnapshot", "approvedSnapshot.snapshotId", "approvedSnapshot.sourceRunId", "approvedSnapshot.digest"),
   ...open(workflowResult("ocr"), "approvedSnapshot.revision"),
-  ...ocrManifestLeaves(workflowResult("ocr-source-pages"), "manifest."),
-  ...ocrPrivateLeaves(workflowResult("ocr-source-pages"), "pages"),
+  ...ocrManifestHeadLeaves(workflowResult("ocr-source-pages"), "manifest."),
   ...ocrPrivateLeaves(gateResult("ocr", "approve-records"), "snapshotId", "sourceRunId", "digest"),
   ...open(gateResult("ocr", "approve-records"), "revision"),
   ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-hire-writes"].flatMap(id => [

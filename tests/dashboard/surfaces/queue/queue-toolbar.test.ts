@@ -3,9 +3,8 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,it } from "vitest";
-import type { BulkVerbPlan } from "../../../../src/dashboard/app/commands/bulk-dispatch.js";
+import { bulkUnavailableSentence, type BulkVerbPlan } from "../../../../src/dashboard/app/commands/bulk-dispatch.js";
 import { PauseAllQuitControls, QueueToolbar, RunPauseControl } from "../../../../src/dashboard/surfaces/queue/queue-toolbar.js";
-import { BulkRunCommandResponseSchema } from "../../../../src/rules/commands/commands.js";
 
 const noop = (): void => undefined;
 
@@ -120,79 +119,15 @@ describe("the selection band's refusal, when a selection yields no bulk plan", (
 });
 
 
-function outcomeBandText(unavailable: readonly string[]): string {
-  const markup = renderToStaticMarkup(createElement(QueueToolbar, {
-    sort: "attention",
-    onSort: noop,
-    selectMode: true,
-    onSelectMode: noop,
-    selectedCount: 3,
-    visibleIds: [runId(1), runId(2), runId(3)],
-    onSelectAll: noop,
-    onClearSelection: noop,
-    bulkPlans: [],
-    bulkUnavailable: unavailable,
-    onBulk: noop,
-    bulkOutcome: {
-      plan: {
-        verb: "cancel",
-        label: "Cancel",
-        eligible: [{ runId: runId(1), title: "Jordan Reyes", expectedVersion: 3 }],
-        skipped: [],
-        unavailable,
-      },
-      subjects: new Map([[runId(1), "Jordan Reyes"]]),
-      // Parsed THROUGH the schema, not hand-built: a band tested against a
-      // shape the wire cannot produce is a band tested against nothing.
-      response: BulkRunCommandResponseSchema.parse({
-        state: "vector",
-        bulkCommandId: "0f3b6d5a-2e5a-4b8f-9a4e-1c2d3e4f5a6b",
-        type: "cancel",
-        requestedCount: 1,
-        results: [{
-          runId: runId(1),
-          commandId: "1f3b6d5a-2e5a-4b8f-9a4e-1c2d3e4f5a6b",
-          outcome: "applied",
-          replayed: false,
-          detail: "cancelled",
-        }],
-      }),
-    },
-    onDismissBulkOutcome: noop,
-    onSelectRun: noop,
-  }));
-  return markup
-    .replace(/<[^>]*>/gu, " ")
-    .replace(/&#x27;/gu, "'")
-    .replace(/&quot;/gu, "\"")
-    .replace(/&amp;/gu, "&")
-    .replace(/\s+/gu, " ")
-    .trim();
-}
-
-describe("the outcome band's third bucket", () => {
+describe("the review dialog's third bucket", () => {
   it("speaks in the PAST about rows that were already gone when the batch was sent", () => {
-    const text = outcomeBandText([runId(7), runId(8)]);
-    assert.ok(
-      text.includes(
-        "2 selected rows were no longer on this day when this batch was sent, so nothing was sent for them",
-      ),
-      `the outcome sentence must be past tense throughout: ${text}`,
-    );
-    assert.ok(
-      !text.includes("are no longer on this day, so nothing can be sent for them from this screen: "),
-      `the present-tense sentence must not be the one pinned to a past instant: ${text}`,
-    );
+    const text = bulkUnavailableSentence(2, "past");
+    assert.equal(text, "2 selected rows were no longer on this day when this batch was sent, so nothing was sent for them");
+    assert.notEqual(text, bulkUnavailableSentence(2, "present"), "the present-tense sentence must not be the one pinned to a past instant");
   });
 
   it("agrees with itself in the SINGULAR too", () => {
-    const text = outcomeBandText([runId(7)]);
-    assert.ok(
-      text.includes(
-        "1 selected row was no longer on this day when this batch was sent, so nothing was sent for it",
-      ),
-      `one row is "was", not "were" and not "is": ${text}`,
-    );
+    assert.equal(bulkUnavailableSentence(1, "past"), "1 selected row was no longer on this day when this batch was sent, so nothing was sent for it");
   });
 });
 

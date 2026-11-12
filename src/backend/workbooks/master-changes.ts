@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { WorkbookLibraryError } from './workbook-library-error.js';
 import { EditableWorkbookWireSchema, WorkbookOperationReceiptSchema, type EditableWorkbookWire, type WorkbookType, type WorkbookOperation, type WorkbookOperationReceipt } from '../../models/dashboard/workbooks.js';
 import { canonicalJsonStringify } from '../../rules/validation/canonical-json.js';
 
@@ -6,16 +7,18 @@ export const WorkbookOwnershipSchema = z.record(z.string(), z.discriminatedUnion
   z.strictObject({ owner: z.literal('relay'), value: WorkbookOperationReceiptSchema.shape.changes.element.shape.newValue }), z.strictObject({ owner: z.literal('operator') }),
 ]));
 export type WorkbookOwnership = z.infer<typeof WorkbookOwnershipSchema>;
+export type WorkbookRowKeyWitness = Readonly<{ sheetId: string; rowId: string; keyFieldId: string; key: string }>;
+export type WorkbookReplayContext = { witnesses: WorkbookRowKeyWitness[]; captured: boolean };
 const same = (a: unknown, b: unknown) => canonicalJsonStringify(JSON.parse(JSON.stringify(a ?? null))) === canonicalJsonStringify(JSON.parse(JSON.stringify(b ?? null)));
 const address = (sheet: string, row: string, field: string) => JSON.stringify([sheet, row, field]);
 function columns(sheet: EditableWorkbookWire['sheets'][number], field: string): number[] {
   return sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === field ? [index] : []) ?? [];
 }
-function workbookKey(value: unknown): string | undefined {
+export function workbookKey(value: unknown): string | undefined {
   if (typeof value === 'string') return value.length ? value : undefined;
   return typeof value === 'number' && Number.isFinite(value) ? String(value) : undefined;
 }
-function workbookCells(workbook: EditableWorkbookWire, type: WorkbookType | undefined) {
+function workbookCells(workbook: EditableWorkbookWire, type: Pick<WorkbookType, 'keyFieldId' | 'fields'> | undefined) {
   const cells = new Map<string, { sheetId: string; rowId: string; fieldId: string; key?: string; value: EditableWorkbookWire['sheets'][number]['rows'][number]['cells'][number]['value'] }>();
   const counts = new Map<string, number>();
   if (type?.keyFieldId) for (const sheet of workbook.sheets) {
@@ -37,7 +40,7 @@ function workbookCells(workbook: EditableWorkbookWire, type: WorkbookType | unde
   }
   return cells;
 }
-function journalChanges(before: EditableWorkbookWire, after: EditableWorkbookWire, type: WorkbookType | undefined) {
+function journalChanges(before: EditableWorkbookWire, after: EditableWorkbookWire, type: Pick<WorkbookType, 'keyFieldId' | 'fields'> | undefined) {
   const oldCells = workbookCells(before, type), newCells = workbookCells(after, type);
   return [...new Set([...oldCells.keys(), ...newCells.keys()])].flatMap(id => {
     const previous = oldCells.get(id), next = newCells.get(id);
@@ -54,16 +57,171 @@ export function workbookMatches(workbook: EditableWorkbookWire, keyField: string
       ? [{ sheetId: sheet.id, rowId: row.id, sheet, row }] : []);
   });
 }
+function syncByCapturedKeys(workbook: EditableWorkbookWire, incoming: EditableWorkbookWire,
+  ownership: WorkbookOwnership, witnesses: readonly WorkbookRowKeyWitness[]) {
+  const next = structuredClone(incoming), relocated: WorkbookOwnership = {}, movedWitnesses: WorkbookRowKeyWitness[] = [];
+  const sheets = new Map<string, { old: EditableWorkbookWire['sheets'][number]; current: EditableWorkbookWire['sheets'][number] }>();
+  const addressSchema = z.tuple([z.string(), z.string(), z.string()]);
+  const indexes = new Map<string, Map<string, number>>();
+  for (const sheet of workbook.sheets) indexes.set(sheet.id, new Map<string, number>(sheet.rows.map((row, index) => [row.id, index])));
+  const owners = Object.entries(ownership).flatMap(([id, owner]) => {
+    let decoded: unknown;
+    try { decoded = JSON.parse(id); } catch (cause) { throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT', { cause }); }
+    const parsed = addressSchema.safeParse(decoded);
+    if (!parsed.success) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT', { cause: parsed.error });
+    const [sheetId, rowId, fieldId] = parsed.data;
+    const sheet = workbook.sheets.find(sheet => sheet.id === sheetId);
+    const rowIndex = indexes.get(sheetId)?.get(rowId) ?? -1;
+    return sheet !== undefined && rowIndex >= (sheet.headerRow ?? 1) ? [{ sheetId, rowId, fieldId, owner }] : [];
+  });
+  for (const current of next.sheets) {
+    const sources = workbook.sheets.filter(sheet => sheet.name === current.name);
+    if (sources.length === 0) {
+      if (current.columnBindings !== undefined) return undefined;
+      continue;
+    }
+    if (sources.length !== 1 || current.columnBindings !== undefined) return undefined;
+    const old = sources[0];
+    if (sheets.has(old.id)) return undefined;
+    const mapped = old.columnBindings?.filter(binding => binding.fieldId !== null) ?? [];
+    if (!old.columnBindings || mapped.length === 0) {
+      if (owners.some(owner => owner.sheetId === old.id) || witnesses.some(witness => witness.sheetId === old.id)) return undefined;
+      continue;
+    }
+    const ownedFields = new Set(owners.filter(owner => owner.sheetId === old.id).map(owner => owner.fieldId));
+    const keyFields = new Set(witnesses.filter(witness => witness.sheetId === old.id).map(witness => witness.keyFieldId));
+    const anchors = mapped.filter(binding => binding.fieldId !== null && (!ownedFields.has(binding.fieldId) || keyFields.has(binding.fieldId)));
+    if (anchors.length === 0 || new Set(mapped.map(binding => binding.sourceHeader)).size !== mapped.length) return undefined;
+    const headers = current.rows.flatMap((row, index) => anchors.every(binding => row.cells.filter(cell => cell.value === binding.sourceHeader).length === 1) ? [index] : []);
+    if (headers.length !== 1) return undefined;
+    current.headerRow = headers[0] + 1;
+    current.sourceHeaderRow = current.headerRow;
+    const header = current.rows[headers[0]];
+    current.columnBindings = header.cells.map((cell, index) => {
+      const matches = old.columnBindings?.filter(binding => binding.sourceHeader === cell.value) ?? [];
+      const binding = matches.length === 1 ? matches[0] : undefined;
+      return binding === undefined ? { id: `${current.id}:column:${index}`, sourceColumn: index,
+        sourceHeader: typeof cell.value === 'string' ? cell.value : '', fieldId: null, basis: 'unmapped' as const }
+        : { ...binding, sourceColumn: index };
+    });
+    sheets.set(old.id, { old, current });
+  }
+  const targets = new Map<string, { sheet: EditableWorkbookWire['sheets'][number]; row: EditableWorkbookWire['sheets'][number]['rows'][number] }>();
+  const reverseTargets = new Map<string, string>();
+  const witnessesByRow = new Map<string, WorkbookRowKeyWitness[]>();
+  for (const witness of witnesses) {
+    const id = JSON.stringify([witness.sheetId, witness.rowId]);
+    const group = witnessesByRow.get(id) ?? [];
+    group.push(witness); witnessesByRow.set(id, group);
+  }
+  type Sheet = EditableWorkbookWire['sheets'][number];
+  type Row = Sheet['rows'][number];
+  const rowsById = new WeakMap<Sheet, Map<string, Row>>();
+  const columnsBySheet = new WeakMap<Sheet, Map<string, number[]>>();
+  const indexedColumns = (sheet: Sheet, field: string) => {
+    let fields = columnsBySheet.get(sheet);
+    if (fields === undefined) { fields = new Map(); columnsBySheet.set(sheet, fields); }
+    let indexes = fields.get(field);
+    if (indexes === undefined) { indexes = columns(sheet, field); fields.set(field, indexes); }
+    return indexes;
+  };
+  const rowFor = (sheet: Sheet, id: string) => {
+    let rows = rowsById.get(sheet);
+    if (rows === undefined) { rows = new Map<string, Row>(sheet.rows.map(row => [row.id, row])); rowsById.set(sheet, rows); }
+    return rows.get(id);
+  };
+  const keysBySheet = new WeakMap<Sheet, Map<string, Map<string, Row[]>>>();
+  const keyedRows = (sheet: Sheet, field: string, key: string) => {
+    let fields = keysBySheet.get(sheet);
+    if (fields === undefined) { fields = new Map(); keysBySheet.set(sheet, fields); }
+    let keys = fields.get(field);
+    if (keys === undefined) {
+      const indexes = indexedColumns(sheet, field);
+      if (indexes.length !== 1) return undefined;
+      keys = new Map();
+      for (const row of sheet.rows.slice(sheet.headerRow ?? 1)) {
+        const value = workbookKey(row.cells[indexes[0]]?.value);
+        if (value === undefined) continue;
+        const group = keys.get(value) ?? [];
+        group.push(row); keys.set(value, group);
+      }
+      fields.set(field, keys);
+    }
+    return keys.get(key) ?? [];
+  };
+  const locate = (sheetId: string, rowId: string) => {
+    const identity = JSON.stringify([sheetId, rowId]);
+    if (targets.has(identity)) return targets.get(identity);
+    const mapped = sheets.get(sheetId), oldRow = mapped && rowFor(mapped.old, rowId);
+    if (!mapped || !oldRow || (indexes.get(sheetId)?.get(rowId) ?? -1) < (mapped.old.headerRow ?? 1)) return undefined;
+    const proofs = witnessesByRow.get(identity) ?? [];
+    if (!proofs.length) return undefined;
+    let target: { sheet: typeof mapped.current; row: typeof mapped.current.rows[number] } | undefined;
+    for (const witness of proofs) {
+      const oldMatches = keyedRows(mapped.old, witness.keyFieldId, witness.key);
+      const matches = keyedRows(mapped.current, witness.keyFieldId, witness.key);
+      if (oldMatches?.length !== 1 || oldMatches[0] !== oldRow || matches === undefined) return undefined;
+      if (matches.length !== 1 || target && target.row !== matches[0]) return undefined;
+      target = { sheet: mapped.current, row: matches[0] };
+    }
+    if (target) {
+      const destination = JSON.stringify([target.sheet.id, target.row.id]);
+      const previous = reverseTargets.get(destination);
+      if (previous !== undefined && previous !== identity) return undefined;
+      reverseTargets.set(destination, identity);
+      targets.set(identity, target);
+    }
+    return target;
+  };
+  for (const owner of owners) {
+    const target = locate(owner.sheetId, owner.rowId), source = sheets.get(owner.sheetId);
+    const oldRow = source && rowFor(source.old, owner.rowId);
+    if (!target || !source || !oldRow) return undefined;
+    const sourceColumns = indexedColumns(source.old, owner.fieldId);
+    let targetColumns = indexedColumns(target.sheet, owner.fieldId);
+    if (sourceColumns.length !== 1 || targetColumns.length > 1) return undefined;
+    const oldCell = oldRow.cells[sourceColumns[0]];
+    if (!oldCell || owner.owner.owner === 'relay' && !same(oldCell.value, owner.owner.value)) return undefined;
+    if (!targetColumns.length) {
+      const binding = source.old.columnBindings?.[sourceColumns[0]];
+      if (!binding || !target.sheet.columnBindings || target.sheet.rows.some(row => row.cells.length !== target.sheet.width)) return undefined;
+      const index = target.sheet.width++;
+      target.sheet.columnBindings.push({ ...structuredClone(binding), sourceColumn: index });
+      target.sheet.rows.forEach((row, rowIndex) => row.cells.push({ value: rowIndex === (target.sheet.headerRow ?? 1) - 1 ? binding.sourceHeader : null }));
+      targetColumns = [index];
+      columnsBySheet.get(target.sheet)?.set(owner.fieldId, targetColumns);
+    }
+    const cell = target.row.cells[targetColumns[0]];
+    Object.assign(cell, structuredClone(oldCell));
+    for (const name of ['richText', 'hyperlink', 'tooltip'] as const) if (oldCell[name] === undefined) delete cell[name];
+    const id = address(target.sheet.id, target.row.id, owner.fieldId);
+    if (relocated[id] !== undefined) return undefined;
+    relocated[id] = owner.owner;
+  }
+  for (const witness of witnesses) {
+    const target = locate(witness.sheetId, witness.rowId);
+    if (target === undefined) return undefined;
+    movedWitnesses.push({ ...witness, sheetId: target.sheet.id, rowId: target.row.id });
+  }
+  return { workbook: next, ownership: relocated, witnesses: movedWitnesses };
+}
 export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWire; version: number; ownership: WorkbookOwnership;
-  type: WorkbookType | undefined; operation: WorkbookOperation; libraryId: string; sequence: number }>): Readonly<{
+  type: Pick<WorkbookType, 'keyFieldId' | 'fields'> | undefined; operation: WorkbookOperation; libraryId: string; sequence: number;
+  context?: WorkbookReplayContext }>): Readonly<{
     workbook: EditableWorkbookWire; ownership: WorkbookOwnership; receipt: WorkbookOperationReceipt;
   }> {
   let workbook = structuredClone(input.workbook), ownership = structuredClone(input.ownership);
-  const { operation, type } = input, change = operation.change;
+  let nextWitnesses = input.context?.witnesses ?? [];
+  let nextCaptured = input.context?.captured ?? false;
+  let appliedWitness: WorkbookRowKeyWitness | undefined;
+  const { operation } = input, change = operation.change;
+  const type = operation.source.kind === 'run-reference'
+    ? { keyFieldId: operation.source.authority.keyFieldId, fields: operation.source.authority.writableFields } : input.type;
   const receipt: WorkbookOperationReceipt = { operationId: operation.operationId, sequence: input.sequence, libraryId: input.libraryId,
     state: 'applied', version: input.version, ...('key' in change ? { key: change.key } : {}), candidates: [], changes: [], source: operation.source, at: operation.at };
   const refuse = (reason: NonNullable<WorkbookOperationReceipt['reason']>, resolve = false) => ({ workbook: input.workbook, ownership: input.ownership,
     receipt: WorkbookOperationReceiptSchema.parse({ ...receipt, state: resolve ? 'resolve-required' : 'refused', reason, changes: [] }) });
+  if (operation.source.kind === 'run-reference' && change.kind !== 'patch') return refuse('invalid');
   if ('expectedVersion' in change && change.expectedVersion !== undefined && change.expectedVersion !== input.version) return refuse('version-conflict', change.kind === 'patch');
   if (change.kind !== 'metadata' && change.kind !== 'version' && (workbook.hasFormulas || workbook.unsupportedMetadata || ('workbook' in change && (change.workbook.hasFormulas || change.workbook.unsupportedMetadata)))) return refuse('metadata-unsupported');
   if (change.kind === 'version' || change.kind === 'metadata') return { workbook, ownership, receipt };
@@ -81,12 +239,28 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
       }
     });
     workbook = structuredClone(next);
+    nextWitnesses = nextWitnesses.filter(witness => {
+      const sheet = workbook.sheets.find(sheet => sheet.id === witness.sheetId);
+      const row = sheet?.rows.find(row => row.id === witness.rowId);
+      const keyColumns = sheet === undefined ? [] : columns(sheet, witness.keyFieldId);
+      return row !== undefined && keyColumns.length === 1 && workbookKey(row.cells[keyColumns[0]]?.value) === witness.key;
+    });
     receipt.changes = journalChanges(input.workbook, workbook, type);
   } else {
-    if (!type || type.keyFieldId === null) return refuse('invalid');
+    if (change.kind !== 'sync' && (!type || type.keyFieldId === null)) return refuse('invalid');
     if (change.kind === 'sync') {
       if (change.workbook.libraryId !== input.libraryId) return refuse('invalid');
+      if (nextCaptured || type?.keyFieldId === null) {
+        const mapped = syncByCapturedKeys(workbook, change.workbook, ownership, nextWitnesses);
+        if (mapped === undefined) return refuse('sync-ambiguous', true);
+        workbook = mapped.workbook;
+        ownership = mapped.ownership;
+        nextWitnesses = mapped.witnesses;
+        receipt.changes = journalChanges(input.workbook, workbook, type);
+      } else {
+      if (!type || type.keyFieldId === null) return refuse('invalid');
       const next = structuredClone(change.workbook), nextOwnership: WorkbookOwnership = {};
+      const legacyTargets = new Map<string, { sheetId: string; rowId: string; sheet: EditableWorkbookWire['sheets'][number]; row: EditableWorkbookWire['sheets'][number]['rows'][number] }>();
       for (const incoming of next.sheets) {
         if (incoming.columnBindings) continue;
         const sources = workbook.sheets.filter(sheet => sheet.name === incoming.name);
@@ -122,6 +296,7 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
           const matches = workbookMatches(next, type.keyFieldId, key);
           if (matches.length !== 1) return refuse('sync-ambiguous', true);
           const target = matches[0];
+          legacyTargets.set(JSON.stringify([sheet.id, row.id]), target);
           let targetColumns = columns(target.sheet, field);
           const sourceColumns = columns(sheet, field);
           if (sourceColumns.length !== 1 || targetColumns.length > 1) return refuse('sync-ambiguous', true);
@@ -142,9 +317,18 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
           nextOwnership[address(target.sheetId, target.rowId, field)] = owner;
         }
       }
+      nextWitnesses = nextWitnesses.flatMap(witness => {
+        const target = legacyTargets.get(JSON.stringify([witness.sheetId, witness.rowId]));
+        if (target === undefined) return [];
+        const keyColumns = columns(target.sheet, witness.keyFieldId);
+        return keyColumns.length === 1 && workbookKey(target.row.cells[keyColumns[0]]?.value) === witness.key
+          ? [{ ...witness, sheetId: target.sheetId, rowId: target.rowId }] : [];
+      });
       workbook = next; ownership = nextOwnership;
       receipt.changes = journalChanges(input.workbook, workbook, type);
+      }
     } else {
+      if (!type || type.keyFieldId === null) return refuse('invalid');
       if (!Object.keys(change.values).length || Object.keys(change.values).some(field => !type.fields.includes(field))) return refuse('invalid');
       let matches = workbookMatches(workbook, type.keyFieldId, change.key);
       receipt.candidates = matches.map(({ sheetId, rowId }) => ({ sheetId, rowId }));
@@ -168,6 +352,8 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
         if (matches.length !== 1) return refuse('duplicate-key', true);
       }
       const match = matches[0];
+      if (change.kind === 'patch' || change.kind === 'add') appliedWitness = { sheetId: match.sheetId, rowId: match.rowId,
+        keyFieldId: type.keyFieldId, key: change.key };
       for (const [field, value] of Object.entries(change.values)) {
         if (field === type.keyFieldId && workbookKey(value) !== change.key) return refuse('invalid');
         if (change.kind === 'add' && field === type.keyFieldId) continue;
@@ -185,45 +371,11 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
   const parsed = EditableWorkbookWireSchema.safeParse(workbook);
   if (!parsed.success) return refuse('invalid');
   workbook = parsed.data;
+  if (appliedWitness !== undefined) {
+    if (!nextWitnesses.some(witness => same(witness, appliedWitness))) nextWitnesses = [...nextWitnesses, appliedWitness];
+    if (operation.source.kind === 'run-reference') nextCaptured = true;
+  }
+  if (input.context) { input.context.witnesses = nextWitnesses; input.context.captured = nextCaptured; }
   receipt.version++;
   return { workbook, ownership, receipt: WorkbookOperationReceiptSchema.parse(receipt) };
-}
-
-export function mergeMasterWorkbooks(sources: readonly Readonly<{ libraryId: string; savedAt: string; workbook: EditableWorkbookWire }>[], type: WorkbookType,
-  name: string, duplicates: 'keep-newer' | 'keep-both'): EditableWorkbookWire | undefined {
-  const first = sources[0];
-  if (!first || sources.length < 2 || duplicates === 'keep-newer' && type.keyFieldId === null
-    || sources.some(source => source.workbook.hasFormulas || source.workbook.unsupportedMetadata || !same(source.workbook.themes, first.workbook.themes))) return undefined;
-  const winners = new Map<string, { source: typeof first; rowId: string; sheetId: string }>();
-  if (duplicates === 'keep-newer') for (const source of sources) for (const sheet of source.workbook.sheets) {
-    const indexes = columns(sheet, type.keyFieldId!);
-    if (indexes.length !== 1) return undefined;
-    for (const row of sheet.rows.slice(sheet.headerRow ?? 1)) {
-      const key = workbookKey(row.cells[indexes[0]]?.value);
-      if (key === undefined) continue;
-      const previous = winners.get(key);
-      if (previous?.source.savedAt === source.savedAt) return undefined;
-      if (previous === undefined || previous.source.savedAt < source.savedAt) winners.set(key, { source, rowId: row.id, sheetId: sheet.id });
-    }
-  }
-  const sheets = new Map<string, EditableWorkbookWire['sheets'][number]>();
-  const layout = (sheet: EditableWorkbookWire['sheets'][number]) => ({ width: sheet.width, hidden: sheet.hidden, headerRow: sheet.headerRow ?? 1,
-    columnBindings: sheet.columnBindings?.map(binding => ({ sourceColumn: binding.sourceColumn, sourceHeader: binding.sourceHeader, fieldId: binding.fieldId })),
-    heading: sheet.rows.slice(0, sheet.headerRow ?? 1).map(row => row.cells) });
-  for (const source of sources) for (const sheet of source.workbook.sheets) {
-    let target = sheets.get(sheet.name);
-    if (target !== undefined && !same(layout(target), layout(sheet))) return undefined;
-    if (target === undefined) {
-      target = { ...structuredClone(sheet), id: JSON.stringify([source.libraryId, sheet.id]), rows: structuredClone(sheet.rows.slice(0, sheet.headerRow ?? 1)) };
-      sheets.set(sheet.name, target);
-    }
-    const keyColumn = type.keyFieldId === null ? undefined : columns(sheet, type.keyFieldId)[0];
-    for (const row of sheet.rows.slice(sheet.headerRow ?? 1)) {
-      const key = keyColumn === undefined ? undefined : workbookKey(row.cells[keyColumn]?.value);
-      const winner = key === undefined ? undefined : winners.get(key);
-      if (duplicates === 'keep-newer' && winner && (winner.source !== source || winner.sheetId !== sheet.id || winner.rowId !== row.id)) continue;
-      target.rows.push({ ...structuredClone(row), id: JSON.stringify([source.libraryId, sheet.id, row.id]) });
-    }
-  }
-  return EditableWorkbookWireSchema.parse({ ...first.workbook, name, sheets: [...sheets.values()] });
 }

@@ -30,7 +30,7 @@ it.each([false, true])("serves sequencer transaction role spans through run deta
   const emitted = h.emitter.events();
   const roles = dryRun ? ["probe", "prepare"] : ["probe", "prepare", "commit", "verify"];
   const starts = emitted.filter(event => event.t === "span.started" && event.kind === "task");
-  assert.deepEqual(starts.map(event => event.spanPath), roles.map(role => `${run.envelope.traceId}/submit-write/${role}`));
+  assert.deepEqual(starts.map(event => event.spanPath), roles.map(role => `${run.envelope.traceId}/submit-write/${role}#${String(claim.claimGeneration)}`));
   const current = h.database.authority.runs.get(run.envelope.runId);
   assert.ok(current);
   const w = await makeWorld({ reader: sqliteRunReader(h.database, h.clock) }); worlds.push(w);

@@ -18,9 +18,7 @@ export function aggregateMemberRetryAvailable(repositories: AuthorityRepositorie
     || parent.lifecycle.state === "terminal" && !["done", "failed"].includes(parent.lifecycle.outcome)
     || owner.contractFingerprint !== parent.envelope.contractFingerprint || owner.version !== parent.envelope.descriptorVersion
     || descriptor.contractFingerprint !== run.envelope.contractFingerprint || descriptor.version !== run.envelope.descriptorVersion
-    || repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId
-    || repositories.workerControls.resetForRun(parent.envelope.runId) !== undefined
-    || repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return false;
+    || repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId) return false;
   const authorization = authorizeWorkflowDelegationRefresh(owner, parent);
   const plan = authorization === undefined ? undefined : workflowDelegationAccounting(authorization, parent);
   if (plan === undefined) return false;
@@ -37,8 +35,7 @@ export function batchMemberRetryAvailable(repositories: AuthorityRepositories, r
   if (capabilities?.retryBatchMembers !== true || run.envelope.parent !== undefined || run.sessionId === undefined
     || run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed" || descriptor === undefined
     || descriptor.id !== run.envelope.workflow || descriptor.version !== run.envelope.descriptorVersion
-    || descriptor.contractFingerprint !== run.envelope.contractFingerprint || repositories.runs.admission().state !== "open"
-    || repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return false;
+    || descriptor.contractFingerprint !== run.envelope.contractFingerprint || repositories.runs.admission().state !== "open") return false;
   const sourceSnapshot = repositories.configSnapshots.get(run.envelope.configSnapshotId);
   if (sourceSnapshot === undefined || sourceSnapshot.fingerprint !== run.envelope.configFingerprint) throw new Error("run-retry-source-snapshot-mismatch");
   const runtime = repositories.runtimeConfig.get();

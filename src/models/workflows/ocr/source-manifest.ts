@@ -31,6 +31,8 @@ export const OcrSourceManifestSchema = ManifestContentSchema.extend({ fingerprin
     }
   });
 export type OcrSourceManifest = z.infer<typeof OcrSourceManifestSchema>;
+/** The manifest without its page list, as read-source-pages records it. */
+export const OcrSourceManifestHeadSchema = ManifestContentSchema.omit({ pages: true }).extend({ fingerprint: FingerprintSchema });
 
 export function buildOcrSourceManifest(document: ArtifactRef, rendered: z.infer<typeof ExtractPdfPagesOutputSchema>): OcrSourceManifest {
   const output = ExtractPdfPagesOutputSchema.parse(rendered);

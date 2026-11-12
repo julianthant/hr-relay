@@ -40,6 +40,7 @@ const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
   "/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/chatgpt-account/test-ocr": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/chatgpt-account/sign-out": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/settings/chatgpt-account/forget-account": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/path-picker": { guard: "operatorMutationIngressGuard" },
 });
 

@@ -1,12 +1,14 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { AssistantFile } from './assistant-panel-model.js';
 
-export const ASSISTANT_MODELS = ['Default', 'GPT-6.1 Sol', 'GPT-6 Astra', 'GPT-6 Sol', 'GPT-6 Luna', 'GPT-5.6 Sol', 'GPT-5.6 Terra', 'GPT-5.6 Luna'] as const;
+export const ASSISTANT_MODEL = 'GPT-6.1 Sol';
 export const ASSISTANT_EFFORTS = ['Light', 'Medium', 'High', 'xHigh', 'Max'] as const;
 export const ASSISTANT_APPROVALS = [
   { label: 'Ask before every action', description: 'Confirm each proposed change.' },
+  { label: 'Full access', description: 'Relay acts without asking each time.' },
 ] as const;
-export type ComposerMenu = 'attach' | 'approval' | 'model' | 'effort' | 'voice';
+export const FULL_ACCESS = ASSISTANT_APPROVALS[1].label;
+export type ComposerMenu = 'attach' | 'approval' | 'model' | 'voice';
 export interface ComposerValue { readonly text: string; readonly files: readonly AssistantFile[]; readonly model: string; readonly effort: string; readonly approval: string }
 export interface ComposerDraft { readonly text: string; readonly files: readonly AssistantFile[] }
 export interface ComposerDraftPort { read(): ComposerDraft; retain(draft: ComposerDraft): void }
@@ -14,7 +16,6 @@ export function useComposer({ onSend, draft, initialText = '', settlementKey }: 
   const [text, setText] = useState(() => draft?.read().text ?? initialText);
   const [files, setFiles] = useState<readonly AssistantFile[]>(() => draft?.read().files ?? []);
   useLayoutEffect(() => { draft?.retain({ text, files }); }, [draft, text, files]);
-  const [model, setModel] = useState<string>(ASSISTANT_MODELS[1]);
   const [effort, setEffort] = useState<string>('Medium');
   const [approval, setApproval] = useState<string>(ASSISTANT_APPROVALS[0].label);
   const [menu, setMenu] = useState<ComposerMenu | null>(null);
@@ -51,15 +52,15 @@ export function useComposer({ onSend, draft, initialText = '', settlementKey }: 
     const field = textarea.current;
     if (!field) return;
     field.style.height = 'auto';
-    field.style.height = `${Math.min(120, Math.max(50, field.scrollHeight))}px`;
+    field.style.height = `${Math.min(120, Math.max(54, field.scrollHeight))}px`;
   }, [text]);
   async function send() {
     if (!text.trim() || sending.current) return;
     sending.current = true;
     submitted.current = { version: draftVersion.current, text, files };
     try {
-      if (await onSend({ text, files, model, effort, approval })) { setText(''); setFiles([]); setMenu(null); }
+      if (await onSend({ text, files, model: ASSISTANT_MODEL, effort, approval })) { setText(''); setFiles([]); setMenu(null); }
     } finally { sending.current = false; }
   }
-  return { text, setText, files, setFiles, model, setModel, effort, setEffort, approval, setApproval, menu, setMenu, textarea, fileInput, popup, send };
+  return { text, setText, files, setFiles, effort, setEffort, approval, setApproval, menu, setMenu, textarea, fileInput, popup, send };
 }

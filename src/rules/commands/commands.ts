@@ -4,8 +4,6 @@ import { AssistantModelPreferenceSchema } from "../../models/config/assistant-mo
 import { NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
 import { RunContinuationSchema } from "../../models/run/continuation.js";
 import { RunDisplayNameSchema } from "../../models/run/display-name.js";
-import { WorkerSlotRecordSchema } from "../../models/run/worker-slot.js";
-import { WorkerControlBasisSchema } from "../../models/run/worker.js";
 import { FailureResolutionActionSchema,FailureResolutionTargetSchema } from "../../models/trust/failure-resolution.js";
 import { WriteIntentRecordSchema } from "../write-safety/write-safety.js";
 export { RunDisplayNameSchema } from "../../models/run/display-name.js";
@@ -124,10 +122,11 @@ const WorkerPoolVersionTargetSchema = z.strictObject({
   expectedVersion: NonNegativeIntSchema,
 });
 
-const WorkerVersionTargetSchema = z.strictObject({
+// A member command cites the pool member's lifetime in this boot (null before its first spawn) and its in-memory version.
+const WorkerMemberTargetSchema = z.strictObject({
   workerId: WorkerIdSchema,
-  expectedVersion: PositiveIntSchema,
-  controlBasis: WorkerControlBasisSchema.optional(),
+  lifetimeId: z.uuid().nullable(),
+  expectedVersion: NonNegativeIntSchema,
 });
 
 export const StartCommandRequestSchema = z.strictObject({
@@ -158,15 +157,10 @@ export const IntakeCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("enqueue-intake-manifest"), target: IntakeVersionTargetSchema, payload: z.strictObject({ dryRun: z.boolean(), reviewBinding: FingerprintSchema.optional() }) }),
 ]);
 
-export const LiveWorkerResetRequestSchema = z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("stop-worker"),
-  target: WorkerVersionTargetSchema.extend({ expectedVersion: PositiveIntSchema.optional(), membershipRevision: PositiveIntSchema, controlBasis: WorkerControlBasisSchema }) });
+const WorkerMemberControlTargetSchema = WorkerMemberTargetSchema.extend({ workflowId: WorkflowIdSchema });
 
-const WorkerMemberControlTargetSchema = z.strictObject({ workerId: WorkerIdSchema, workflowId: WorkflowIdSchema,
-  membershipRevision: PositiveIntSchema, controlBasis: WorkerControlBasisSchema, expectedVersion: NonNegativeIntSchema });
-
-export const ParkedWriteCheckTargetSchema = WorkerVersionTargetSchema.extend({
-  controlBasis: WorkerControlBasisSchema, membershipRevision: PositiveIntSchema,
-  processId: PositiveIntSchema, startedAt: IsoInstantSchema,
+export const ParkedWriteCheckTargetSchema = WorkerMemberTargetSchema.extend({
+  lifetimeId: z.uuid(),
   installationId: z.uuid(), profileId: z.uuid(), workflowId: WorkflowIdSchema, itemId: ItemIdSchema,
   runId: RunIdSchema, runVersion: PositiveIntSchema, runAttempt: PositiveIntSchema, traceId: TraceIdSchema, nodeId: NodeIdSchema,
   writeIntentId: WriteIntentIdSchema, intentVersion: PositiveIntSchema, intentGeneration: PositiveIntSchema,
@@ -189,14 +183,25 @@ export const ParkedWriteCheckResultSchema = z.strictObject({
 export type ParkedWriteCheckTarget = z.infer<typeof ParkedWriteCheckTargetSchema>;
 export type ParkedWriteCheckResult = z.infer<typeof ParkedWriteCheckResultSchema>;
 
+/** The worker's observed check, kept on the command audit. */
+export const ParkedWriteCheckAcknowledgementSchema = z.strictObject({ result: ParkedWriteCheckResultSchema, evidence: SchemaBoundCanonicalValueSchema.optional(),
+  findingsIdentity: z.strictObject({ activityId: z.uuid(), descriptorVersion: PositiveIntSchema, contractFingerprint: FingerprintSchema,
+    claimGeneration: PositiveIntSchema, implFingerprint: FingerprintSchema }).optional() }).superRefine((ack, context) => {
+  if (ack.findingsIdentity !== undefined && (ack.evidence === undefined || ack.result.probeTaskId !== "ucpath/read-transaction-findings"
+    || ack.result.state !== "unknown" || ack.result.provenance !== "system-probe")) {
+    context.addIssue({ code: "custom", message: "held findings require their registered unverified read evidence" });
+  }
+});
+export type ParkedWriteCheckAcknowledgement = z.infer<typeof ParkedWriteCheckAcknowledgementSchema>;
+
 export const WorkerBrowserCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("check-parked-write"), target: ParkedWriteCheckTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["remove-worker", "retry-worker"]), target: WorkerMemberControlTargetSchema }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("stop-worker"), target: WorkerVersionTargetSchema.extend({ expectedVersion: PositiveIntSchema.optional(), membershipRevision: PositiveIntSchema.optional() }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("stop-worker"), target: WorkerMemberControlTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("plan-worker-count"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ desiredWorkers: z.number().int().min(0) }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("spawn-worker"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ workerId: WorkerIdSchema }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["pause-worker", "resume-worker"]), target: WorkerVersionTargetSchema }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["refresh-browser", "reopen-browser"]), target: z.strictObject({ workerId: WorkerIdSchema, browserSessionId: BrowserSessionIdSchema, expectedVersion: PositiveIntSchema, controlBasis: WorkerControlBasisSchema.optional() }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["pause-worker", "resume-worker"]), target: WorkerMemberControlTargetSchema }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["refresh-browser", "reopen-browser"]), target: WorkerMemberTargetSchema.extend({ lifetimeId: z.uuid(), browserSessionId: BrowserSessionIdSchema }) }),
 ]);
 
 export const AssistantModelPreferenceCommandRequestSchema = z.strictObject({
@@ -292,7 +297,8 @@ export const WorkbookReferenceRowChoiceTargetSchema = RunVersionTargetSchema.ext
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-workbook-reference-row"),
     target: WorkbookReferenceRowChoiceTargetSchema,
-    payload: z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1) }) }),
+    payload: z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1),
+      referenceDigest: FingerprintSchema.optional(), workbookVersion: PositiveIntSchema.optional() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-workbook-row"),
     target: WorkbookRowChoiceTargetSchema,
     payload: z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1) }) }),
@@ -315,6 +321,20 @@ export const GateCommandRequestSchema = z.strictObject({
     ocrApproval: z.strictObject({ expectedRevision: PositiveIntSchema, reviewDigest: FingerprintSchema,
       selectedRecordIds: z.array(z.string().min(1)).min(1) }).optional() }),
 });
+
+/** The dashboard's identity-review answer: opaque refs the server served; ingress resolves them to a `resolve-gate` before the kernel. */
+export const IdentityGateAnswerRequestSchema = z.strictObject({
+  ...CommandEnvelopeFields,
+  family: z.literal("gate"),
+  type: z.literal("answer-identity-gate"),
+  target: GateCommandRequestSchema.shape.target,
+  payload: z.union([
+    z.strictObject({ decision: z.literal("approved"), gateRef: z.uuid(), optionRef: z.uuid() }),
+    z.strictObject({ decision: z.literal("approved"), gateRef: z.uuid(), typedEid: z.string().regex(/^\d{8}$/u) }),
+    z.strictObject({ decision: z.literal("rejected"), gateRef: z.uuid() }),
+  ]),
+});
+export type IdentityGateAnswerRequest = z.infer<typeof IdentityGateAnswerRequestSchema>;
 
 export const OcrReviewCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("ocr-review"), type: z.literal("correct-ocr-record"),
@@ -387,8 +407,15 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
 ]);
 
 export const CommandRejectionCodeSchema = z.enum([
+  "WORKER_PAUSE_SETTLING",
   "OCR_REVIEW_REFUSED",
   "RUN_CONTINUATION_REFUSED",
+  "RUN_START_PLAN_EXPIRED",
+  "RUN_START_READINESS_BLOCKED",
+  "RUN_START_READINESS_UNAVAILABLE",
+  "RUN_START_READINESS_CHANGED",
+  "PREFLIGHT_EVIDENCE_EXPIRED",
+  "PREFLIGHT_TIMEOUT",
   "invalid-state",
   "target-not-found",
   "target-deleted",
@@ -411,6 +438,7 @@ export const CommandRejectionCodeSchema = z.enum([
   "active-version-blockers",
     /* The arm is schema-recognized but its owning milestone has not activated it; this result is computed with ZERO authority side effects. */
   "capability-unavailable",
+  "bulk-child-errored",
 ]);
 
 export const RunWorkerStartupFailureSchema = z.strictObject({
@@ -508,7 +536,7 @@ export const CommandResultSchema = z.discriminatedUnion("state", [
   }
 });
 
-export function commandNoChangeResultMatches(request: CommandRequest, result: CommandResult): boolean {
+export function commandNoChangeResultMatches(request: DashboardCommandRequest, result: CommandResult): boolean {
   if (result.state !== "applied" && result.state !== "already-applied" || result.noChange === undefined) return true;
   return request.family === "notification" && "members" in request.target && request.target.matchingCount === 0;
 }
@@ -522,9 +550,15 @@ export const CommandAuditRecordSchema = z.strictObject({
   versionChanges: z.array(z.strictObject({ target: CommandTargetReferenceSchema, before: NonNegativeIntSchema, after: PositiveIntSchema })),
   affectedDependencyIds: z.array(DependencyIdSchema),
   writeResolution: WriteIntentRecordSchema.optional(),
+  parkedWriteCheck: ParkedWriteCheckAcknowledgementSchema.optional(),
 }).superRefine((audit, context) => {
   if (audit.result.state === "pending") context.addIssue({ code: "custom", path: ["result"], message: "pending-command-cannot-have-terminal-audit" });
   const request = audit.request;
+  if (audit.parkedWriteCheck !== undefined && (request.type !== "check-parked-write" || audit.result.state !== "applied"
+    || audit.parkedWriteCheck.result.commandId !== request.commandId || audit.parkedWriteCheck.result.requestedBy !== request.requestedBy
+    || canonicalJsonStringify(audit.parkedWriteCheck.result.target) !== canonicalJsonStringify(request.target))) {
+    context.addIssue({ code: "custom", path: ["parkedWriteCheck"], message: "a parked-write check result belongs to its exact applied check command" });
+  }
   if (!commandNoChangeResultMatches(request, audit.result)) context.addIssue({ code: "custom", path: ["result", "noChange"], message: "no-change result requires the exact empty notification collection request" });
   if ((audit.result.state === "applied" || audit.result.state === "already-applied") && audit.result.noChange !== undefined
     && (audit.versionChanges.length !== 0 || audit.affectedDependencyIds.length !== 0 || audit.writeResolution !== undefined)) {
@@ -565,10 +599,6 @@ export const RunLifecycleCommandOperationSchema = z.enum([
   "pause",
   "resume",
   "acknowledge-pause",
-  "worker-admission",
-  "worker-standing-recovery",
-  "worker-verification-admission",
-  "worker-verification-retirement",
   "terminalize",
   "requeue",
   "retry",
@@ -606,10 +636,6 @@ export const RunLifecycleCommandRecordSchema = z.strictObject({
 
 export const RunLifecycleCommandResultIdentitySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("application"), runtimeGeneration: PositiveIntSchema }),
-  z.strictObject({ kind: z.literal("worker-recovery"), workerId: WorkerIdSchema, oldLeaseGeneration: PositiveIntSchema,
-    leaseGeneration: PositiveIntSchema, phase: z.enum(["idle", "paused"]), settledAt: IsoInstantSchema }),
-  z.strictObject({ kind: z.literal("worker"), slot: WorkerSlotRecordSchema,
-    beforePoolVersion: NonNegativeIntSchema, afterPoolVersion: PositiveIntSchema }),
   z.strictObject({ kind: z.literal("run"), runId: RunIdSchema, appliedVersion: PositiveIntSchema,
     continuation: RunContinuationSchema.optional(),
     terminal: z.strictObject({ outcome: z.enum(["cancelled", "discarded", "superseded"]), endedAt: IsoInstantSchema }).optional(),
@@ -960,10 +986,13 @@ export function commandAssistantAvailability(isActive: (family: string, action: 
 
 export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>;
 export type CommandRequest = z.infer<typeof CommandRequestSchema>;
+/** What the dashboard may send to `/api/v1/commands`: a kernel command, or an identity answer ingress resolves into one. */
+export const DashboardCommandRequestSchema = z.union([CommandRequestSchema, IdentityGateAnswerRequestSchema]);
+export type DashboardCommandRequest = z.infer<typeof DashboardCommandRequestSchema>;
 /** Start, or a run command that leaves work queued for a worker of its workflow; only these may carry workerStartup. */
 export type CapacityRequest = Extract<CommandRequest, { family: "start" } | { family: "run" }>;
 const QUEUEING_RUN_TYPES: ReadonlySet<string> = new Set(["resume", "retry", "recover-run"]);
-export function needsWorkerCapacity(request: CommandRequest): request is CapacityRequest {
+export function needsWorkerCapacity(request: DashboardCommandRequest): request is CapacityRequest {
   return request.family === "start" || request.family === "run" && QUEUEING_RUN_TYPES.has(request.type);
 }
 export type CommandResult = z.infer<typeof CommandResultSchema>;

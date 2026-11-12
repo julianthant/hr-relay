@@ -30,7 +30,7 @@ import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storag
 import { runCredentialSourceRetentionCase, runLogoutSettlementCase } from "../../../support/helpers/credential-source-retention.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import { withOperationProof, revalidateOperationProof } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 
@@ -53,7 +53,7 @@ for (const change of ["registry-replacement", "native-stage", "unexpected-member
   });
 
 for (const boundary of ["before-admission", "before-commit"] as const)
-  it(`refuses an already-open ordinary worker heartbeat revoked ${boundary} without committing database changes`, async () => {
+  it(`refuses an already-open ordinary worker slot write revoked ${boundary} without committing database changes`, async () => {
     const f = await fixture();
     let database: AuthorityDatabase | undefined, owner: RuntimeAdmission | undefined;
     try {
@@ -62,22 +62,17 @@ for (const boundary of ["before-admission", "before-commit"] as const)
       database = AuthorityDatabase.open(owner, { path: join(owner.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" },
         undefined, undefined, undefined, undefined, createCredentialStore({ admission: owner, stateRoot: owner.stateRoot }));
       const db = database, at = "2026-09-06T12:01:00.000Z";
-      const member = db.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-        commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: process.pid, now: at }, randomUUID()));
-      const started = db.authority.workerLeases.start({ workerId: member.workerId, workflow: member.workflow,
-        browserSystems: [], processId: process.pid, requestedBy: "local-operator", now: at });
-      assert.equal(started.state, "started");
-      const before = db.authority.workerLeases.get(member.workerId), generation = db.getMeta().authorityGeneration;
+      const member = db.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, "person-lookup", 1, at));
+      const before = db.authority.workerSlots.get(member.workerId), generation = db.getMeta().authorityGeneration;
       assert.ok(before);
-      const heartbeat = () => db.authority.workerLeases.reportLifecycle({ workerId: member.workerId,
-        leaseGeneration: before.leaseGeneration, lifecycle: before.lifecycle, now: at });
+      const slotWrite = () => db.authority.workerSlots.setPaused({ workerId: member.workerId, paused: true, now: at });
       if (boundary === "before-admission") {
         f.busy(); assert.equal(f.session.logOut(active.token, { at }).state, "cancelling");
-        assert.throws(heartbeat, /profile-storage-claim-generation-changed/u);
+        assert.throws(slotWrite, /profile-storage-claim-generation-changed/u);
       } else {
-        assert.throws(() => db.withAuthorityTransaction(() => { heartbeat(); f.registry.advanceSession(null); }), /profile-registry-observation-changed/u);
+        assert.throws(() => db.withAuthorityTransaction(() => { slotWrite(); f.registry.advanceSession(null); }), /profile-registry-observation-changed/u);
       }
-      assert.deepEqual(db.authority.workerLeases.get(member.workerId), before);
+      assert.deepEqual(db.authority.workerSlots.get(member.workerId), before);
       assert.equal(db.getMeta().authorityGeneration, generation);
       owner.assertLive();
     } finally { database?.close(); owner?.release(); await f.cleanup(); }
@@ -417,7 +412,7 @@ it.each(["held", "released"] as const)("observes healthy profile evidence across
     withPrivateFileLock(join(root, ".tracker", "control"), ".installation-mutation.lock", () => { if (phase === "held") pause(); });
     if (phase === "released") pause();
     machine.release(); fs.writeFileSync(done, "done");
-    await lifetime.close(); process.disconnect();
+    process.exit(0);
   `, f.workspace, phase, ready, finish, done, String(f.lifetime.port)], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
   const closed = once(child, "close"); let output = "";
   assert.ok(child.stderr);

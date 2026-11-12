@@ -2,6 +2,7 @@ import { type ApplicationUpdateHost } from "../../../runs/lifecycle/application-
 import type { ProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo.js";
 import { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import type { RuntimePreflightRunnerFactory } from "../../preflight/runtime-runners.js";
+import type { probeOwnedViteServer } from "../../host/local-vite-probe.js";
 import type { DashboardBuildCommand } from "./build-identity.js";
 import { createTrustNotifications } from "./notifications.js";
 import { z } from "zod";
@@ -10,7 +11,7 @@ import type { RuntimeIsolation } from "../../../../models/config/define-runtime-
 import { type IdFactory } from "../../../../rules/identity/identifiers.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
-import { type WorkerCliLaunchSpec,type WorkerProcessSpawner } from "../../../runtime/workers/worker-supervisor.js";
+import { type WorkerCliLaunchSpec,type WorkerProcessSpawner } from "./worker-process.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
 import { composeProfileAssistantAuthorization,composeProfileRuntime } from "../storage-compose.js";
@@ -55,11 +56,12 @@ export interface DashboardComposeInput {
   readonly applicationTransport?: Readonly<{ listener: DashboardHttpListener; accepts: (request: Request) => boolean }>;
   /** Test-only preflight probe override; production always checks the isolated frontend port. */
   readonly frontendPortOverride?: 0;
+  /** Test-only replacement for the dev-frontend ownership probe of profile requests. */
+  readonly frontendProbe?: typeof probeOwnedViteServer;
 
   readonly workerProcess?: Readonly<{
     spawn?: WorkerProcessSpawner;
     launch?: WorkerCliLaunchSpec;
-    birth?: Readonly<{ pollMs: number; timeoutMs: number }>;
     scheduler?: MonotonicDeadlineScheduler;
     /** Receives one structured JSON line per supervisor fault; default writes to stderr. */
     faultSink?: (line: string) => void;

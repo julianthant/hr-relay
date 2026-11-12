@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
-import { inspectNativeAuthority, inspectNormalAuthority, settlePredecessorRunEvidence } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { applyAuthorityMigrationsAfter, inspectNativeAuthority, inspectNormalAuthority, settlePredecessorRunEvidence } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { commandFromRow } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { AUTHORITY_APPLICATION_ID, BUILD_ID_ENVELOPE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { prepareNativeRunDeletion } from "../../../../src/backend/storage/sqlite/native-run-deletion.js";
@@ -16,13 +16,6 @@ import { CONFIG_SNAPSHOT, NOW, UUID_2, UUID_3, UUID_4, UUID_5 } from "../../../s
 import { QUEUED_RUN, RUN_ID, TRACE_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
 const SHAPE_VERSION = BUILD_ID_ENVELOPE_SCHEMA_VERSION - 1;
-
-/** The rest of the forward path after the pre-build deletion, so the stamped version has its real shape. */
-function applyLaterMigrations(database: DatabaseSync): void {
-  for (const migration of SQLITE_MIGRATIONS.filter(row => row.version >= BUILD_ID_ENVELOPE_SCHEMA_VERSION)) {
-    for (const statement of migration.statements) database.exec(statement);
-  }
-}
 
 function store(): DatabaseSync {
   const database = new DatabaseSync(":memory:");
@@ -64,8 +57,7 @@ function owner(database: DatabaseSync) {
 
 function upgrade(database: DatabaseSync): void {
   database.exec("BEGIN EXCLUSIVE");
-  deletePreBuildRuns(database, NOW, () => { throw new Error("artifact-unexpected"); }, owner(database));
-  applyLaterMigrations(database);
+  applyAuthorityMigrationsAfter(database, SHAPE_VERSION, { now: NOW, captureFile: () => { throw new Error("artifact-unexpected"); } });
   database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
   database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
   database.exec("COMMIT");
@@ -95,8 +87,7 @@ it("deletes a predecessor queued run through the cancel door without inserting a
     const terminal = PredecessorRunRecordSchema.parse(JSON.parse(String(database.prepare("SELECT terminal_run_json FROM run_results").get()?.terminal_run_json)));
     assert.equal("buildId" in terminal.envelope, false);
     assert.equal(inspectNativeAuthority(database, SHAPE_VERSION).schemaVersion, SHAPE_VERSION);
-    deletePreBuildRuns(database, NOW, () => { throw new Error("artifact-unexpected"); }, owner(database));
-    applyLaterMigrations(database);
+    applyAuthorityMigrationsAfter(database, SHAPE_VERSION, { now: NOW, captureFile: () => { throw new Error("artifact-unexpected"); } });
     database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
     database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
     database.exec("COMMIT");

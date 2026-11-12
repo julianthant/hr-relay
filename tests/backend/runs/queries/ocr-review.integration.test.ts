@@ -1,10 +1,11 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { composeShell } from "../../../../src/backend/app/composition/dashboard/shell.js";
-import { projectWorkbookReferences } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { projectWorkbookCompatibilityFromRepository } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { descriptorSetHash, WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { buildOcrReviewSection } from "../../../../src/backend/runs/queries/ocr-review.js";
@@ -39,7 +40,7 @@ it("projects editable native records, persists corrections/exclusions and freeze
   const unused = (): never => { throw new Error("Unrequested fixture effect"); };
   const shell = composeShell({ database: f.database, projection, clock: f.clock, appVersion: "0.1.0", ids: { uuid: randomUUID },
     artifacts: f.artifacts, descriptors: { resolve: f.resolve }, descriptorSetHash: projection.descriptorSetHash(), actorLabel: () => "Fixture operator",
-    preflightReport: () => healthyDashboardPreflightReport(f.clock), workbookReferences: workflows => projectWorkbookReferences(f.database.authority.workbooks, workflows),
+    preflightReport: () => healthyDashboardPreflightReport(f.clock), workbookCompatibility: workflows => projectWorkbookCompatibilityFromRepository(f.database.authority.workbooks, workflows),
     activity: { read: unused, readSelected: unused }, backfillGaps: { detected: unused } });
   try {
     const bootstrap = buildBootstrap(shell.bootstrap), workflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);
@@ -73,8 +74,7 @@ it("projects editable native records, persists corrections/exclusions and freeze
   const kernel = createCommandKernel({ authority: f.database, lifecycle: reader, clock: f.clock, ids: { uuid: randomUUID }, appVersion: "0.1.0",
     descriptors: publicDescriptors, readableDescriptors: { resolve: f.resolve }, configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { recheck: unused, resolveAbsent: unused },
-    workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused,
-      stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
+    workerRuntime: { pool: unusedWorkerPool(unused) } });
   const start = authenticateRootRun(f.database.authority, f.run).command;
   const refused = kernel.execute({ ...start, commandId: randomUUID() });
   assert.equal(refused.state, "rejected"); if (refused.state === "rejected") assert.equal(refused.code, "target-not-found");
