@@ -8,7 +8,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | Path | Contents |
 | --- | --- |
 | `AGENTS.md` | Repository instructions. Nearer instructions own backend, registry, system, and dashboard constraints. |
-| `.agents/` | Project agent data: skill entrypoints in `skills/`, with canonical operating references in `skill-library/`. |
+| `.agents/` | Project agent data: skill entrypoints in `skills/`, with each skill's references in its own `references/`. |
 | `config/` | Runtime isolation and test-data configuration. |
 | `docs/reference/` | Current contracts and this map. |
 | `docs/guides/` | Workflow authoring guide. |
