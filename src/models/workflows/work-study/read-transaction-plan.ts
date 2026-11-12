@@ -18,8 +18,8 @@ export const WorkStudyPlanSchema = z.strictObject({
 });
 export type WorkStudyPlan = z.infer<typeof WorkStudyPlanSchema>;
 
-export const WorkStudyPlanTransaction = defineTaskContract({
-  id: taskId("workflow:work-study/plan-transaction"), title: "Plan work-study transaction", effect: "read",
+export const WorkStudyReadTransactionPlan = defineTaskContract({
+  id: taskId("workflow:work-study/read-transaction-plan"), title: "Plan work-study transaction", effect: "read",
   input: z.strictObject({ input: WorkStudyInput, read: UcpathPayPathReadSchema }),
   output: WorkStudyPlanSchema, errorCodes: ["INCONSISTENT_INPUTS"],
   subject: { kind: "none", reason: "pure fold of this run's input and its PayPath read" },

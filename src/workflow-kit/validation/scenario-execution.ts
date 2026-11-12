@@ -70,6 +70,7 @@ export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchem
   { scenarioId: "workbooks/publish", file: "tests/backend/workbooks/workflow-workbook-service.integration.test.ts" },
   { scenarioId: "workbooks/read-reference", file: "tests/backend/workbooks/workflow-workbook-service.reference.integration.test.ts" },
   { scenarioId: "crm-doc-download/worksheet-archives", file: "tests/workflows/crm-doc-download/workflow.integration.test.ts" },
+  { scenarioId: "work-study/planned-transaction", file: "tests/workflows/work-study/workflow.integration.test.ts" },
   { scenarioId: "i9-check/person", file: "tests/workflows/i9-check/workflow.integration.test.ts" },
   { scenarioId: "onbase/one-page", file: "tests/backend/systems/onbase/tasks/read-source-page.test.ts" },
   { scenarioId: "onbase/invalid-pdf", file: "tests/backend/systems/onbase/tasks/read-source-page.test.ts" },

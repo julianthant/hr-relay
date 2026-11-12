@@ -1,4 +1,4 @@
 import { defineWorkflowStore } from "../../workflow-kit/task-registry.js";
-import { planWorkStudyTransactionTask } from "./tasks/plan-transaction.js";
+import { readWorkStudyTransactionPlanTask } from "./tasks/read-transaction-plan.js";
 
-export const workStudyStore = defineWorkflowStore("work-study", { planTransaction: planWorkStudyTransactionTask });
+export const workStudyStore = defineWorkflowStore("work-study", { readTransactionPlan: readWorkStudyTransactionPlanTask });

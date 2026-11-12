@@ -1,5 +1,5 @@
 import type { UcpathPayPathRead } from "../../models/ui/ucpath-paypath.js";
-import type { WorkStudyPlan } from "../../models/workflows/work-study/plan-transaction.js";
+import type { WorkStudyPlan } from "../../models/workflows/work-study/read-transaction-plan.js";
 import type { WorkStudyInputValue } from "../../models/workflows/work-study/input.js";
 
 export const WORK_STUDY_POSITION_CHANGE_REASON = "JRL";
