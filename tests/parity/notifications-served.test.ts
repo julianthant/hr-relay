@@ -75,7 +75,7 @@ for (const theme of ["dark", "light"] as const) {
       await row("Morrow, Bea").getByRole("button", { name: "Cancel run", exact: true }).click();
       await page.getByRole("button", { name: "Cancel the run", exact: true }).click();
       await expect(page.getByText("Cancel run: rejected").first()).toBeVisible();
-      await row("EID 10873698").getByRole("button", { name: /^Bump/ }).click();
+      await row("EID 10873698").getByRole("button", { name: /^Run next/ }).click();
       await expect(page.getByText(/: row changed$/).first()).toBeVisible();
       await shot("priority-notifications");
       await page.getByRole("button", { name: /Retry: partial result/ }).click();
