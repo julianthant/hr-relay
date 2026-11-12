@@ -116,10 +116,7 @@ it("walks every lifecycle change over every pending interrupt", () => {
   }
 });
 
-// Declared but never produced; ticket runs-pause-stop-state-02 removes them from the schema and this list.
-const APPLICATION_STATES_FOR_REMOVAL = ["blocked"];
-
-it("produces every declared application state except those listed for removal", () => {
+it("produces every declared application state", () => {
   const answers = [
     [{ quitting: false, admission: "open" }, "ready"],
     [{ quitting: false, admission: "draining" }, "pausing"],
@@ -129,6 +126,5 @@ it("produces every declared application state except those listed for removal", 
   for (const [input, state] of answers) assert.equal(applicationStateOf(input), state, JSON.stringify(input));
   const declared: readonly string[] = ApplicationLifecycleSchema.shape.state.options;
   const produced = new Set<string>(answers.map(([, state]) => state));
-  assert.deepEqual(declared.filter(state => !APPLICATION_STATES_FOR_REMOVAL.includes(state)).sort(), [...produced].sort());
-  assert.ok(APPLICATION_STATES_FOR_REMOVAL.every(state => declared.includes(state) && !produced.has(state)));
+  assert.deepEqual([...declared].sort(), [...produced].sort());
 });

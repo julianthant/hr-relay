@@ -3,6 +3,7 @@ import { z } from "zod";
 import { PredecessorRunRecordSchema, RunRecordSchema, runClaim, runTransitionViolation, type PredecessorRunRecord, type RunRecord } from "../../../models/run/record.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
+import { interruptTransition } from "../../../rules/runs/run-interrupt.js";
 
 export const RUN_RECORD_JSON_SQL = "json_set(lifecycle_json, '$.envelope', json(envelope_json))";
 
@@ -102,8 +103,11 @@ export function transitionStoredRun(current: PredecessorRunRecord, candidate: Pr
   const violation = runTransitionViolation(current.lifecycle, candidate.lifecycle);
   if (violation !== undefined) throw new Error(`run ${current.envelope.runId}: ${violation}`);
   const { pause: candidatePause, ...withoutPause } = candidate;
-  const pause = current.pause?.state === "requested" && runClaim(current) !== undefined && runClaim(candidate) === undefined
-    && (candidate.lifecycle.state === "queued" || candidate.lifecycle.state === "parked-gate")
-    ? { ...current.pause, state: "paused" as const, pausedAt: now } : candidatePause;
+  // The pause field moves on its own: a pending stop does not keep a released claim's pause from settling.
+  const moved = interruptTransition({ lifecycle: current.lifecycle, ...(current.pause === undefined ? {} : { pause: current.pause }) },
+    { kind: "lifecycle", to: candidate.lifecycle.state });
+  if (moved.state === "refused") throw new Error(`run ${current.envelope.runId}: ${current.lifecycle.state} -> ${candidate.lifecycle.state} refused (${moved.reason})`);
+  const pause = current.pause !== undefined && moved.interrupt === "none" ? undefined
+    : current.pause?.state === "requested" && moved.interrupt === "paused" ? { ...current.pause, state: "paused" as const, pausedAt: now } : candidatePause;
   return schema.parse({ ...withoutPause, ...(pause === undefined ? {} : { pause }), version: current.version + 1, updatedAt: now });
 }

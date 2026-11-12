@@ -3,6 +3,7 @@ import { operatorFailureSentence } from "../../../models/failures/error-catalog.
 import { WorkerBrowserWireSchema, WorkerCardWireSchema, WorkerLastRunWireSchema, type StepInterruptWire } from "../../../models/dashboard/projection.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
+import { pendingInterruptOf } from "../../../rules/runs/run-interrupt.js";
 import type { WorkerChildBrowserObservation } from "../../runtime/workers/worker-messages.js";
 import type { WorkerExitFact, WorkerMemberView } from "../../runtime/workers/worker-pool.js";
 import { nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
@@ -31,7 +32,8 @@ function workerCardState(view: WorkerMemberView): WorkerCardWire["state"] {
 
 /** Stop is the run's durable cancellation (row Cancel, or the Reset's own Cancel), so the run alone says which interrupt is pending. */
 export function stepInterruptOf(run: RunRecord, writeInFlight: boolean): StepInterruptWire | undefined {
-  const action = run.cancelRequested === true ? "stop" : run.pause?.state === "requested" ? "pause" : undefined;
+  const pending = pendingInterruptOf(run);
+  const action = pending === "stop-requested" ? "stop" : pending === "pause-requested" ? "pause" : undefined;
   return action === undefined ? undefined : { action, step: writeInFlight ? "finish-write" : "cancel" };
 }
 
