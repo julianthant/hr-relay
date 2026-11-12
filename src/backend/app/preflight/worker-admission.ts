@@ -33,7 +33,7 @@ export async function claimWithPreflight(input: Readonly<{
   onObservationChanged?(attempt: number): void;
 }>): Promise<RunMutationOutcome | WorkerPreflightRefusal> {
   let prepared: Readonly<{ runId: string; version: number }> | undefined;
-  let lostRace = false;
+  let lastPreparation: "lost-race" | "refused" | undefined;
   for (let attempt = 0; attempt <= CLAIM_ATTEMPTS; attempt += 1) {
     if (input.signal.aborted) throw input.signal.reason;
     let selected: RunRecord | undefined;
@@ -55,7 +55,7 @@ export async function claimWithPreflight(input: Readonly<{
         if (refusal !== undefined) return refusal;
         throw error;
       }
-      if (attempt === CLAIM_ATTEMPTS) return lostRace ? { state: "refused", refusal: { reason: "none-eligible" } } : { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: error.run.envelope.runId };
+      if (attempt === CLAIM_ATTEMPTS) return lastPreparation === "lost-race" ? { state: "refused", refusal: { reason: "none-eligible" } } : { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: error.run.envelope.runId };
       try {
         await input.preflight.admission.prepare(error.scope, input.signal);
         input.preflight.admission.assertReady(error.scope);
@@ -67,11 +67,11 @@ export async function claimWithPreflight(input: Readonly<{
         const refusal = workerPreflightRefusal(preparationError, error.run.envelope.runId);
         if (refusal === undefined) {
           if (input.candidateCurrent(error.run)) throw preparationError;
-          lostRace = true;
+          lastPreparation = "lost-race";
           input.onObservationChanged?.(attempt + 1);
           continue;
         }
-        lostRace = false;
+        lastPreparation = "refused";
         if (refusal.code === "PREFLIGHT_BLOCKED" || refusal.code === "PREFLIGHT_TIMEOUT" || attempt === CLAIM_ATTEMPTS - 1) return refusal;
         input.onObservationChanged?.(attempt + 1);
       }
