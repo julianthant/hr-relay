@@ -863,7 +863,7 @@ export function RunStartDialog({
   const startEnabled = currentStage === "Confirm" && plan !== null && !(busy || applied || omissionMismatch || plan.planned.length === 0 || recoveryError !== null || (recovery !== null && recovery.target.startPlanId !== plan.startPlanId));
   // Enter continues or starts; Shift+Enter keeps its newline. Buttons, links and open pickers keep Enter for themselves.
   const enterRef = useRef<(() => void) | null>(null);
-  enterRef.current = startEnabled ? () => void confirmStart() : warningEnabled ? acknowledgeWarning : continueEnabled ? () => void advance() : null;
+  enterRef.current = previewOwnsStages ? null : startEnabled ? () => void confirmStart() : warningEnabled ? acknowledgeWarning : continueEnabled ? () => void advance() : null;
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
