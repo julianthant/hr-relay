@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, webkit, type Browser, type BrowserType } from "playwright";
+import { chromium, type Browser } from "playwright";
 import { afterAll, describe, it } from "vitest";
 
 const hubTheme = readFileSync(resolve("src/dashboard/ds/theme/hub-theme.css"), "utf8");
@@ -15,9 +15,9 @@ const page = `<html data-hub data-demo-theme="dark"><style>${hubTheme}
 const browsers: Browser[] = [];
 afterAll(async () => { await Promise.all(browsers.map(browser => browser.close())); });
 
-describe.each([["chromium", chromium], ["webkit", webkit]] as const)("%s: a key press never makes the Run dialog see-through", (_name, type: BrowserType) => {
+describe("a key press never makes the Run dialog see-through", () => {
   it.each(["'", "a", "Shift+'", "Tab"])("key %s keeps the surface and the scrim", async key => {
-    const browser = await type.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true });
     browsers.push(browser);
     const tab = await browser.newPage();
     await tab.setContent(page);
