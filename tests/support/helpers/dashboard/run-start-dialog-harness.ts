@@ -228,6 +228,7 @@ export function createRunStartDialogHarness() {
     readonly text: () => string;
     readonly press: (name: string) => Promise<void>;
     readonly type: (next: string) => Promise<void>;
+    readonly enter: (options?: { shift?: boolean; on?: Element }) => Promise<boolean>;
     readonly choosePriority: (next: string) => Promise<void>;
     readonly chooseBrowserMode: (next: string) => Promise<void>;
     readonly drop: (file: File) => Promise<void>;
@@ -337,6 +338,13 @@ export function createRunStartDialogHarness() {
       });
     };
 
+    const enter = async (options: { shift?: boolean; on?: Element } = {}): Promise<boolean> => {
+      const event = new KeyboardEvent("keydown", { key: "Enter", shiftKey: options.shift === true, bubbles: true, cancelable: true });
+      await act(async () => { (options.on ?? typedInput()).dispatchEvent(event); });
+      await settle();
+      return event.defaultPrevented;
+    };
+
     const chooseSwitch = async (name: string, on: boolean) => {
       const node = switchNamed(name);
       assert.ok(node, `missing switch ${name}`);
@@ -412,6 +420,7 @@ export function createRunStartDialogHarness() {
       text: () => (document.body.textContent ?? "").replace(/\s+/gu, " "),
       press,
       type,
+      enter,
       choosePriority,
       chooseBrowserMode,
       drop,

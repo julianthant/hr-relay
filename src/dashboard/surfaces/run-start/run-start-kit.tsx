@@ -485,9 +485,10 @@ export function RunReferenceRows({ requiredLabel, sheets, chosenLibraryId, chose
         </div>
         {found.length === 0 && <p className="m-0 px-2 py-2 text-[13px] leading-[18px] text-ui-muted">{needle === "" ? "Pin spreadsheets in Spreadsheets to list them here. Search finds the rest." : "No spreadsheets match."}</p>}
         {found.map(sheet => {
-          const uncoverable = sheet.worksheets.length === 0;
+          const uncoverable = sheet.worksheets.length === 0 && sheet.versions.length < 2;
+          const description = sheet.worksheets.length > 0 ? sheet.worksheets.join(", ") : uncoverable ? `No worksheet has ${requiredLabel}` : `Current version has no worksheet with ${requiredLabel}. Choose an earlier version.`;
           return <DropdownMenuItem key={sheet.libraryId} disabled={uncoverable} onClick={() => onPick(sheet.libraryId, sheet.currentVersionId)}>
-            <DropdownMenuItemCopy title={sheet.name} description={uncoverable ? `No worksheet has ${requiredLabel}` : sheet.worksheets.join(", ")} />
+            <DropdownMenuItemCopy title={sheet.name} description={description} />
           </DropdownMenuItem>;
         })}
       </DropdownMenuContent>

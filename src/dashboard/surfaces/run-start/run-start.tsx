@@ -858,6 +858,24 @@ export function RunStartDialog({
   })}</>;
   const continueEnabled = !busy && recoveryError === null && recovery === null && currentStage !== "Warning" && nextStage !== null
     && !(isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (rerunInputBlocked || stepsBlockedReason !== null)))) && !(currentStage === "Input" && blockedReason !== null);
+  const startEnabled = currentStage === "Confirm" && plan !== null && !(busy || applied || omissionMismatch || plan.planned.length === 0 || recoveryError !== null || (recovery !== null && recovery.target.startPlanId !== plan.startPlanId));
+  // Enter continues or starts; Shift+Enter keeps its newline. Buttons, links and open pickers keep Enter for themselves.
+  const enterRef = useRef<(() => void) | null>(null);
+  enterRef.current = startEnabled ? () => void confirmStart() : continueEnabled ? () => void advance() : null;
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented || event.isComposing) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target === null || (target !== document.body && target.closest('[role="dialog"]') === null)) return;
+      if (target.closest('a, button:not([role="checkbox"]):not([role="switch"]), [role="combobox"], [role="listbox"], [role="menu"], [role="option"]')) return;
+      if (enterRef.current === null) return;
+      event.preventDefault();
+      enterRef.current();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
   return (
     <Dialog open={open} onOpenChange={closeAndReset}>
       <DialogContent
@@ -1090,7 +1108,7 @@ export function RunStartDialog({
             />
           }
         >
-          {continueEnabled && <span className="text-[12px] text-ui-muted">{currentStage === "Confirm" ? "Enter to start" : "Enter to continue"}</span>}
+          {(startEnabled || continueEnabled) && <span className="text-[12px] text-ui-muted">{startEnabled ? "Enter to start" : "Enter to continue"}</span>}
           {currentStage !== "Warning" && previousStage !== null && (
             <Button variant="ghost" icon={<ArrowLeft aria-hidden className="size-3" />} onClick={() => setCurrentStage(previousStage)}>Back</Button>
           )}
