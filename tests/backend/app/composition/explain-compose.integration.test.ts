@@ -7,6 +7,7 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 
 import assert from "node:assert/strict";
 import { z } from "zod";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { DatabaseSync } from "node:sqlite";
 import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
 import { failureDebugDetails } from "../../../../src/backend/runtime/execution/run-failure.js";
@@ -136,7 +137,7 @@ describe("explain run", () => {
       code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", transient: false, writeState: "not-attempted",
       causeChain: [{ code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", role: "primary", transient: false }],
       debug: failureDebugDetails(error), remediation: [{ kind: "operator-action", message: "fixture" }], occurredAt: run.createdAt });
-    const protectedRun = { ...run, input: { ...run.input, parsed: { ...run.input.parsed, protectedBindings: [{ kind: "test-data-local" as const, inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "10000000-0000-4000-8000-000000000099" }] } } };
+    const protectedRun = RunRecordSchema.parse({ ...run, input: { ...run.input, parsed: { ...run.input.parsed, protectedBindings: [{ kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "10000000-0000-4000-8000-000000000099" }] } } });
     const view = buildExplainRunView({ run: { ...protectedRun, lifecycle: { state: "terminal", outcome: "failed", endedAt: run.createdAt, errorSummary: "fixture", failureId: failure.failureId } },
       checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure });
     const raw = new DatabaseSync(join(profile.stateRoot, "state.db"));
