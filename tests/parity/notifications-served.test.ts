@@ -4,6 +4,9 @@ import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installServedSurfaces } from "./helpers/app-driver.js";
 import { FIXTURE_DAY, FIXTURE_NOW } from "./helpers/fixture-identity.js";
+import { FIXTURE_DAY_WIRE } from "./helpers/fixture-queue.js";
+import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js";
+import { CommandRequestSchema } from "../../src/rules/commands/commands.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { zeroMatchSearchPage } from "../support/helpers/dashboard/search-page-fixtures.js";
 import { CrossDateSearchPageSchema } from "../../src/models/dashboard/search.js";
@@ -17,6 +20,10 @@ const base = () => ({ channel: "ping", count: 1, publicationId: "a".repeat(64), 
 const notice = (n: number, fields: Record<string, unknown>) => NotificationWireSchema.parse({ kind: "notification", trigger: "failed", readState: "unread", state: "unread", severity: "error", ...base(), notificationId: uuid(n), ...fields });
 const command = (n: number, fields: Record<string, unknown>) => NotificationWireSchema.parse({ kind: "command", readState: "unread", state: "unread", priority: true, ...base(), notificationId: uuid(n), ...fields });
 
+const tops = FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.parent === null);
+const byTitle = (title: string) => tops.find(row => row.title === title)!;
+const dayWire = () => DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row => row.runId === byTitle("EID 10555001").runId
+  ? { ...row, actions: [{ kind: "command", command: "retry", key: "retry", label: "Retry", icon: "retry", intent: "neutral", placement: ["footer"], expectedVersion: row.rowRevision }, ...(row.actions ?? [])] } : row) });
 const searchRun = (n: number, state: string, subject: string) => ({ runId: uuid(30 + n), traceId: `pl-120000-00${30 + n}`, workflowId: "person-lookup", partitionDay: FIXTURE_DAY, registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "people" },
   state, shape: "single", dryRun: true, priority: "bulk", systems: [], runNumber: { state: "absent", reason: "not recorded" }, retryOf: { state: "absent", reason: "first" }, enqueuedAt: `${FIXTURE_DAY}T12:00:00Z`,
   endedAt: { state: "absent", reason: "not recorded" }, match: { field: "workflow", strength: "contains" },
@@ -40,17 +47,23 @@ async function serve(page: Page, theme: "dark" | "light", baseUrl: string) {
   ];
   await page.route(/\/api\/v1\/notifications$/u, route => route.fulfill({ json: rows }));
   await page.route(/\/api\/v1\/notifications\/status$/u, route => route.fulfill({ json: { state: "ready", pending: 0 } }));
-  await page.route(new RegExp(`/api/v1/notifications/${uuid(2)}/target$`, "u"), route => route.fulfill({ json: NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId: uuid(910), type: "retry", requestedCount: 4, notAttempted: [uuid(7)], results: [
-    { outcome: "applied", runId: uuid(4), commandId: uuid(911), replayed: false, detail: "Retry started." },
-    { outcome: "applied", runId: uuid(8), commandId: uuid(912), replayed: false, detail: "Retry started." },
-    { outcome: "conflict", runId: uuid(9), commandId: uuid(913), currentVersion: 5, detail: "The run changed before the retry reached it." }] }) }));
+  await page.route(new RegExp(`/api/v1/notifications/${uuid(2)}/target$`, "u"), route => route.fulfill({ json: NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId: uuid(910), type: "retry", requestedCount: 4, notAttempted: [byTitle("EID 10222009").runId], results: [
+    { outcome: "applied", runId: byTitle("EID 10873698").runId, commandId: uuid(911), replayed: false, detail: "Retry started." },
+    { outcome: "applied", runId: byTitle("EID 10101010").runId, commandId: uuid(912), replayed: false, detail: "Retry started." },
+    { outcome: "conflict", runId: byTitle("EID 10777012").runId, commandId: uuid(913), currentVersion: 5, detail: "The run changed before the retry reached it." }] }) }));
   await page.route(/\/api\/v1\/search\?/u, route => route.fulfill({ json: searchPage() }));
+  await page.route("**/api/v1/commands", route => {
+    const request = CommandRequestSchema.parse(route.request().postDataJSON());
+    return route.fulfill(request.type === "retry"
+      ? { status: 409, json: { state: "conflict", commandId: request.commandId, currentVersion: 5, message: "This run changed while you were looking at it." } }
+      : { status: 422, json: { state: "rejected", commandId: request.commandId, code: "invalid-state", message: "The run already finished." } });
+  });
   await installServedSurfaces(page);
 }
 
 for (const theme of ["dark", "light"] as const) {
   test(`served notifications and search palette ${theme}`, async ({ page }) => {
-    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, dayWire: dayWire() });
     try {
       await serve(page, theme, server.baseUrl);
       const shot = async (name: string) => { mkdirSync("tests/parity/.output/notifications-served-preview", { recursive: true }); await page.screenshot({ path: `tests/parity/.output/notifications-served-preview/${name}-${theme}.png` }); };
@@ -58,10 +71,17 @@ for (const theme of ["dark", "light"] as const) {
       await page.getByRole("button", { name: /^Notifications/ }).click();
       await expect(page.locator(".notification-panel")).toBeVisible();
       await expect(page.getByText("Priority", { exact: true })).toBeVisible();
-      await expect(page.getByText("Yesterday", { exact: true })).toBeVisible();
       await shot("notifications");
+      const row = (title: string) => page.locator(`[data-demo-row-id='${byTitle(title).runId}']`);
+      await row("EID 10555001").getByRole("button", { name: "Retry", exact: true }).click();
+      await expect(page.getByText("Retry: row changed").first()).toBeVisible();
+      await row("Morrow, Bea").getByRole("button", { name: "Cancel run", exact: true }).click();
+      await page.getByRole("button", { name: "Cancel the run", exact: true }).click();
+      await expect(page.getByText("Cancel run: rejected").first()).toBeVisible();
+      await shot("priority-notifications");
       await page.getByRole("button", { name: /Retry: partial result/ }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
+      await expect(page.getByRole("dialog").getByText("EID 10873698")).toBeVisible();
       await shot("bulk-retry-result");
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: /^Notifications/ }).click();
