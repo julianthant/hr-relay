@@ -29,7 +29,7 @@ async function mountedLogs(page: Page, info: TestInfo, baseUrl: string, theme: (
     if (["empty", "waiting", "failed"].includes(scenario.id)) await attachPresentationReference(page, info, `logs-${scenario.id}-${theme.attribute}.png`);
   }
   for (const flow of MOCK_WORKFLOWS.filter(item => item.id !== "ocr")) {
-    if (["person-lookup", "separations"].includes(flow.id)) {
+    if (["person-lookup", "separations", "emergency-contact"].includes(flow.id)) {
       await page.goto(`${baseUrl}/?day=${FIXTURE_DAY}&view=${encodeURIComponent(JSON.stringify({ preview: flow.id, mockRun: `mock:${flow.id}:sample` }))}`);
     } else {
       await page.goto(`${baseUrl}/?day=${FIXTURE_DAY}`);

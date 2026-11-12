@@ -1,6 +1,7 @@
 /** Run-surface ingress: closed, serializable domain unions with exhaustive interpreters, so one declaration drives both the server's start command and the client's panel. */
 import { z } from "zod";
 import { PositiveIntSchema } from "../../rules/identity/ids.js";
+import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { collapseWhitespace } from "../fields/cell-coercion.js";
 
 /** A field name as it appears in a workflow input schema. */
@@ -402,11 +403,16 @@ export const InputRunSurfaceSchema = z.strictObject({
 export type InputRunSurface = z.infer<typeof InputRunSurfaceSchema>;
 
 export const UploadRunSurfaceSchema = z.strictObject({
-  pdfInput: z.strictObject({ documentsField: InputFieldNameSchema, asOfField: InputFieldNameSchema, reviewerField: InputFieldNameSchema }).optional(),
+  pdfInput: z.union([
+    z.strictObject({ documentsField: InputFieldNameSchema, asOfField: InputFieldNameSchema, reviewerField: InputFieldNameSchema }),
+    z.strictObject({ documentField: InputFieldNameSchema, fileNameField: InputFieldNameSchema, readingIdField: InputFieldNameSchema, fixed: z.record(z.string(), JsonValueSchema) }),
+  ]).optional(),
   title: TextTemplateSchema,
   fields: z.array(UploadFieldSpecSchema),
   accepts: z.array(FileAcceptSpecSchema).min(1),
   successMessage: TextTemplateSchema,
+  /* DERIVED, never authored: served on the bootstrap wire from the descriptor's dry-run support. */
+  supportsDryRun: z.boolean().optional(),
 });
 export type UploadRunSurface = z.infer<typeof UploadRunSurfaceSchema>;
 

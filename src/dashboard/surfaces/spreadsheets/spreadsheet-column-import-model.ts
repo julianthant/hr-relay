@@ -3,6 +3,7 @@ import { cellText, type EditableSheet, type EditableWorkbook } from '../../../ru
 import { fieldForSpreadsheetHeader, spreadsheetField } from '../../../models/fields/workbook-fields.js';
 import { spreadsheetEditorField, spreadsheetValueMatches, suggestSpreadsheetField } from './spreadsheet-fields-model.js';
 import { CustomRosterFieldIdSchema } from '../../../models/dashboard/workbooks.js';
+import { wholeCellEid } from '../../../models/fields/cell-coercion.js';
 
 export function spreadsheetHeaderRow(sheet: EditableSheet): number {
   const row = sheet.headerRow ?? 1;
@@ -64,6 +65,15 @@ export function spreadsheetColumnValueIssues(document: EditableWorkbook): readon
     return sheet.rows.slice(spreadsheetHeaderRow(sheet)).flatMap((row, index) => spreadsheetValueMatches(field.id, cellText(row.cells[column])) ? []
       : [`${sheet.name}, ${row.sourceRow === undefined ? 'current row' : 'row'} ${row.sourceRow ?? spreadsheetHeaderRow(sheet) + index + 1}, column ${columnName(binding.sourceColumn ?? column)}: does not match ${field.label}.`]);
   }) ?? []);
+}
+/** Non-empty rows whose kept Employee ID is blank or unusable; a roster reads those IDs as missing. */
+export function spreadsheetRowsWithoutEid(document: EditableWorkbook): number {
+  return document.sheets.reduce((total, sheet) => {
+    const column = sheet.columnBindings?.findIndex((binding, index) => binding.fieldId === 'eid' && !sheet.hidden.includes(index)) ?? -1;
+    if (column < 0) return total;
+    return total + sheet.rows.slice(spreadsheetHeaderRow(sheet)).filter(row => row.cells.some(cell => cellText(cell).trim())
+      && wholeCellEid(cellText(row.cells[column])) === null).length;
+  }, 0);
 }
 export function selectSpreadsheetColumns(document: EditableWorkbook): EditableWorkbook {
   const errors = spreadsheetColumnErrors(document);

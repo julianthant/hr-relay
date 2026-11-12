@@ -1257,7 +1257,8 @@ export async function executeClaimedRun(
             runSignal: controller.signal,
             adapters: provider.wiring.adapters,
             observe: event => {
-              taskLogger.debug("provider request", { ...event, nodeId: String(node.id), taskId: contract.id });
+              taskLogger.debug("provider request", { ...(event.requestId === undefined ? {} : { requestId: event.requestId }),
+                capability: event.capability, state: event.state, nodeId: String(node.id), taskId: contract.id });
               if (event.state !== "produced") deps.debugEvents?.emit({ category: "worker", phase: "failed", area: "provider",
                 code: "PROVIDER_CALL_FAILED", correlationId: event.requestId ?? runId,
                 reason: event.state === "timeout" ? "provider-timeout" : event.state === "aborted" ? "provider-aborted"

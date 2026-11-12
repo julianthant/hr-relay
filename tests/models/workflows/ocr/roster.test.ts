@@ -21,14 +21,24 @@ function reference() {
 function bound(value = reference()) { return { schemaHash: deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output"), value }; }
 
 describe("OCR captured workbook roster", () => {
-  it("coerces finite numeric Excel EIDs and refuses booleans, dates, negative or malformed identities", () => {
+  it("coerces finite numeric Excel EIDs and reads any unusable ID cell as missing instead of refusing the roster", () => {
     const numeric = reference(); numeric.snapshot.rows[0].matches[0].values.eid = 10000001;
     assert.equal(bindOcrRoster(bound(numeric), readAt).rows[0].eid, "10000001");
     assert.equal(numeric.snapshot.rows[0].matches[0].values.eid, 10000001);
-    for (const eid of [true, -10000001, 10000001.5, "invalid", { type: "date", value: readAt }]) {
-      const invalid = reference(); Reflect.set(invalid.snapshot.rows[0].matches[0].values, "eid", eid);
-      assert.throws(() => bindOcrRoster(bound(invalid), readAt));
+    for (const eid of [true, -10000001, 10000001.5, "invalid", "12345", "see note", "note:10000001", "10000001 (left)", "1000-0001", "-10000001", "10000001.5", { type: "date", value: readAt }]) {
+      const unusable = reference(); Reflect.set(unusable.snapshot.rows[0].matches[0].values, "eid", eid);
+      const rows = bindOcrRoster(bound(unusable), readAt).rows;
+      assert.equal(rows[0].eid, null); assert.equal(rows[0].name, "Example, Avery"); assert.equal(rows[1].eid, "10000001");
     }
+  });
+  it("accepts a whole-cell EID with surrounding spaces", () => {
+    const padded = reference(); padded.snapshot.rows[0].matches[0].values.eid = " 10000001 ";
+    assert.equal(bindOcrRoster(bound(padded), readAt).rows[0].eid, "10000001");
+  });
+  it("treats a whitespace-only EID or name as missing", () => {
+    const blank = reference(); Object.assign(blank.snapshot.rows[0].matches[0].values, { eid: " ", fullName: "  " });
+    const row = bindOcrRoster(bound(blank), readAt).rows[0];
+    assert.equal(row.eid, null); assert.equal(row.name, null);
   });
   it("retains the exact version, duplicate identities and missing values without rereading the library", () => {
     const captured = reference(), roster = bindOcrRoster(bound(captured), readAt);
@@ -39,13 +49,12 @@ describe("OCR captured workbook roster", () => {
     assert.equal(OcrWorkbookRosterEvidenceSchema.safeParse({ ...roster, rows: roster.rows.slice(1) }).success, false);
     assert.equal(OcrWorkbookRosterEvidenceSchema.safeParse({ ...roster, rows: [roster.rows[0], roster.rows[0]] }).success, false);
   });
-  it("refuses mismatched type, version, fields, duplicate source membership and invalid identity values", () => {
+  it("refuses mismatched type, version, fields, duplicate source membership and invalid names", () => {
     for (const change of [
       (value: ReturnType<typeof reference>) => { value.snapshot.version++; },
       (value: ReturnType<typeof reference>) => { Reflect.deleteProperty(value.request, "mode"); },
       (value: ReturnType<typeof reference>) => { value.snapshot.type.keyFieldId = "fullName"; },
       (value: ReturnType<typeof reference>) => { value.snapshot.rows[1] = value.snapshot.rows[0]; },
-      (value: ReturnType<typeof reference>) => { value.snapshot.rows[0].matches[0].values.eid = "invalid"; },
       (value: ReturnType<typeof reference>) => { value.snapshot.rows[0].matches[0].values.fullName = true; },
     ]) {
       const value = reference(); change(value);

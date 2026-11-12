@@ -12,6 +12,9 @@ import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-st
 import { createHash } from "node:crypto";
 import { WorkbookLibraryEntrySchema, WorkbookLibraryVersionViewSchema, projectWorkbookCompatibility } from "../../../../src/models/dashboard/workbook-library.js";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
+import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
+import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-contact/workflow.js";
+import { EmergencyContactInputSchema } from "../../../../src/models/workflows/emergency-contact/input.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
@@ -26,17 +29,16 @@ const reference = WorkbookLibraryEntrySchema.parse({ libraryId: "action-history-
   state: { libraryId: "action-history-file", revision: 4, selectedVersionId: "current", removed: false, origin: { kind: "local" },
     versions: ["earlier", "current"].map((id, index) => ({ id, name: id === "earlier" ? "Fall review" : "Current", snapshotId: id,
       version: index + 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" })) } });
-const fields = [...descriptor.requiredWorkbookFields];
-const versionWorkbook = { name: reference.name, libraryId: reference.libraryId, themes: [], hasFormulas: false,
+const workbookFor = (fields: readonly string[]) => ({ name: reference.name, libraryId: reference.libraryId, themes: [], hasFormulas: false,
   sheets: [{ id: 'history', name: 'Action History', width: fields.length, hidden: [],
     columnBindings: fields.map((fieldId, column) => ({ id: `binding-${column}`, sourceColumn: column, sourceHeader: fieldId, fieldId, basis: 'manual' as const })),
-    rows: [{ id: 'header', cells: fields.map(value => ({ value })) }, { id: 'person', cells: fields.map(value => ({ value: value === 'eid' ? '10800000' : '' })) }] }] };
-const compatibility = projectWorkbookCompatibility([descriptor], [{ libraryId: reference.libraryId, versionId: 'current', origin: { kind: 'local' }, removed: false,
+    rows: [{ id: 'header', cells: fields.map(value => ({ value })) }, { id: 'person', cells: fields.map(value => ({ value: value === 'eid' ? '10800000' : '' })) }] }] });
+const compatibilityFor = (workflow: Parameters<typeof projectWorkbookCompatibility>[0][number], fields: readonly string[]) => projectWorkbookCompatibility([workflow], [{ libraryId: reference.libraryId, versionId: 'current', origin: { kind: 'local' }, removed: false,
   sheets: [{ id: 'history', name: 'Action History', mappings: fields.map((fieldId, column) => ({ fieldId, column, basis: 'manual' as const })) }] }]);
-function client(served: Partial<DashboardClient>) {
-  return h.stubClient({ workbookCatalog: async () => [reference], workbookCompatibility: async () => compatibility,
+function client(served: Partial<DashboardClient>, fields: readonly string[] = descriptor.requiredWorkbookFields, workflow: Parameters<typeof projectWorkbookCompatibility>[0][number] = descriptor) {
+  return h.stubClient({ workbookCatalog: async () => [reference], workbookCompatibility: async () => compatibilityFor(workflow, fields),
     workbookTypes: async () => [reference.type], workbookLibraryVersion: async (_libraryId, versionId) => WorkbookLibraryVersionViewSchema.parse({
-      libraryId: reference.libraryId, version: reference.state.versions.find(version => version.id === versionId), workbook: versionWorkbook,
+      libraryId: reference.libraryId, version: reference.state.versions.find(version => version.id === versionId), workbook: workbookFor(fields),
     }), ...served });
 }
 function pdf(name: string, contents: string) {
@@ -147,4 +149,34 @@ it("retires an upload when the selected workflow changes and ignores its late re
   expect(dialog.text()).not.toContain(file.name);
   expect(document.querySelector('[aria-label="Selected PDFs"]')).toBeNull();
   expect(document.querySelector("textarea")).not.toBeNull();
+});
+
+it("plans one Emergency Contact run per uploaded PDF and says so on Confirm", async () => {
+  const contact = compileWorkflow(emergencyContactWorkflow).descriptor, uploads: string[] = [], plans: unknown[] = [];
+  const served = client({
+    uploadOcrSource: async request => {
+      uploads.push(request.fileName);
+      return OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
+        artifact: { id: `00000000-0000-4000-8000-${String(uploads.length).padStart(12, "0")}`, mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } });
+    }, submitStartPlan: async request => { plans.push(request); const plan = h.planResponse("5a000000-0000-4000-8000-000000000002");
+      return { ...plan, dryRun: true, workflowId: contact.id, planned: ["first.pdf", "second.pdf"].map(title => ({ ...plan.planned[0], title,
+        workbookReferences: [{ libraryId: reference.libraryId, version: reference.version, versionId: "earlier", versionName: "Fall review", worksheets: [{ sheetId: "history", name: "Action History" }], type: reference.type }] })) }; } }, [...contact.requiredWorkbookFields], contact);
+  const flow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: contact.id, label: contact.label, version: contact.version, steps: projectStartSteps(contact),
+    inputRun: { state: "absent", reason: "PDF input" }, uploadRun: contact.surfaces.uploadRun && { ...contact.surfaces.uploadRun, supportsDryRun: true }, requiredWorkbookFields: contact.requiredWorkbookFields, workbookReference: contact.workbookReference, referenceSources: [] };
+  const dialog = await h.openDialog(served, { workflows: [flow], panelWorkflowId: flow.workflowId });
+  await attach([pdf("first.pdf", "%PDF first"), pdf("second.pdf", "%PDF second")]);
+  await dialog.press("Continue");
+  for (const [label, optionText] of [['Choose a spreadsheet Reference spreadsheet', 'Action History.xlsx'], ['Choose a version Reference version', 'Fall review'], ['Choose a worksheet Reference worksheet', 'Action History']]) {
+    await dialog.press(label);
+    const option = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes(optionText)); assert.ok(option);
+    await act(async () => option.click()); await h.settle();
+  }
+  const dryRun = [...document.querySelectorAll<HTMLElement>('[role="checkbox"], [role="switch"]')].find(node => node.closest("label")?.textContent?.startsWith("Dry run"));
+  assert.ok(dryRun); await act(async () => dryRun.click());
+  await dialog.press("Continue");
+  const request = StartPlanRequestSchema.parse(plans[0]);
+  expect(request.dryRun).toBe(true);
+  expect(request.submissions).toHaveLength(2);
+  expect(request.submissions.map(submission => EmergencyContactInputSchema.parse(submission).fileName)).toEqual(uploads);
+  expect(dialog.text()).toContain("One run for each attached PDF");
 });

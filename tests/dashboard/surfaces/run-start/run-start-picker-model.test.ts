@@ -9,7 +9,7 @@ import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../parity/helpers/fixture-
 import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 
 const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
-const catalog = buildWorkflowCatalog(served);
+const catalog = buildWorkflowCatalog(served, true, servedFixtureSources([]));
 const ids = (query = "") => runPickerGroups(catalog, query).flatMap(group => group.entries.flatMap(node => [node.entry.id, ...node.members.map(child => child.entry.id)]));
 
 describe("shared run catalog", () => {

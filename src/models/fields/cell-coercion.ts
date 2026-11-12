@@ -1,5 +1,5 @@
 /** The pure per-cell coercion core: every helper turns ONE raw spreadsheet/PDF cell string into a schema-valid canonical value or a typed refusal, never a default. */
-import type { IntakeTargetFieldId, WorkflowId } from "../../rules/identity/ids.js";
+import { EidSchema, type IntakeTargetFieldId, type WorkflowId } from "../../rules/identity/ids.js";
 
 /** Where a cell sits, so a failure names the thing the operator must fix. */
 export interface CellLocation {
@@ -52,6 +52,12 @@ export function collapseWhitespace(raw: string): string {
 /** Ported verbatim from legacy `identity/eid.ts` — strip every non-digit. */
 export function normalizeEidDigits(raw: string): string {
   return raw.replace(/\D+/g, "");
+}
+
+/** A whole-cell UCPath EID or null: a safe non-negative integer stringifies, a string is trimmed, nothing else is read. */
+export function wholeCellEid(value: unknown): string | null {
+  const text = typeof value === "string" ? value.trim() : typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? String(value) : "";
+  return EidSchema.safeParse(text).data ?? null;
 }
 
 /** Ported verbatim from legacy `identity/person-name.ts`. */

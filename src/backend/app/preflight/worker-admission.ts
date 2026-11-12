@@ -23,14 +23,17 @@ class PreparationRequired extends Error {
   constructor(readonly scope: PreflightAdmissionScope, readonly run: RunRecord) { super("Selected run needs preflight preparation."); }
 }
 const CLAIM_ATTEMPTS = 4;
-/** Selection and assertion are atomic. A thrown preparation request rolls back before the claim write. Preparations stop at the attempt bound; a preparation that succeeds still claims. */
+/** Selection and assertion are atomic. A thrown preparation request rolls back before the claim write. Preparations stop at the attempt bound; a preparation that succeeds still claims.
+ * A preparation that fails because another worker changed the candidate re-selects; lost races alone end as an idle re-poll. */
 export async function claimWithPreflight(input: Readonly<{
   preflight: RuntimePreflight; signal: AbortSignal;
   prepareRun(run: RunRecord, signal: AbortSignal): Promise<void>;
   claim(admit: (run: RunRecord) => void): RunMutationOutcome;
+  candidateCurrent(run: RunRecord): boolean;
   onObservationChanged?(attempt: number): void;
 }>): Promise<RunMutationOutcome | WorkerPreflightRefusal> {
   let prepared: Readonly<{ runId: string; version: number }> | undefined;
+  let lastPreparation: "lost-race" | "refused" | undefined;
   for (let attempt = 0; attempt <= CLAIM_ATTEMPTS; attempt += 1) {
     if (input.signal.aborted) throw input.signal.reason;
     let selected: RunRecord | undefined;
@@ -52,7 +55,7 @@ export async function claimWithPreflight(input: Readonly<{
         if (refusal !== undefined) return refusal;
         throw error;
       }
-      if (attempt === CLAIM_ATTEMPTS) return { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: error.run.envelope.runId };
+      if (attempt === CLAIM_ATTEMPTS) return lastPreparation === "lost-race" ? { state: "refused", refusal: { reason: "none-eligible" } } : { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: error.run.envelope.runId };
       try {
         await input.preflight.admission.prepare(error.scope, input.signal);
         input.preflight.admission.assertReady(error.scope);
@@ -62,7 +65,13 @@ export async function claimWithPreflight(input: Readonly<{
         }
       } catch (preparationError) {
         const refusal = workerPreflightRefusal(preparationError, error.run.envelope.runId);
-        if (refusal === undefined) throw preparationError;
+        if (refusal === undefined) {
+          if (input.candidateCurrent(error.run)) throw preparationError;
+          lastPreparation = "lost-race";
+          input.onObservationChanged?.(attempt + 1);
+          continue;
+        }
+        lastPreparation = "refused";
         if (refusal.code === "PREFLIGHT_BLOCKED" || refusal.code === "PREFLIGHT_TIMEOUT" || attempt === CLAIM_ATTEMPTS - 1) return refusal;
         input.onObservationChanged?.(attempt + 1);
       }

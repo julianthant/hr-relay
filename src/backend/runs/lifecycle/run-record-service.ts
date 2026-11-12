@@ -1057,7 +1057,7 @@ export class RunRecordService {
       if (source.disposition !== "live" || run.lifecycle.state !== "terminal") return refused({ reason: "invalid-state" });
       assertOcrChildRetryCurrent(repositories, this, run);
       const delegation = run.envelope.parent === undefined ? undefined : prepareDelegationRetry(repositories, run, { ...request, refreshAuthorization: this.parentRefreshAuthorization(repositories, run) });
-      if (delegation !== undefined && (repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId
+      if (delegation !== undefined && (repositories.runtimeConfig.get()?.configFingerprint !== run.envelope.configFingerprint
         || request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint)) return refused({ reason: "runtime-stale" });
       if (descriptor.id !== run.envelope.workflow || descriptor.version !== run.envelope.descriptorVersion
         || descriptor.contractFingerprint !== run.envelope.contractFingerprint) {
@@ -1128,7 +1128,7 @@ export class RunRecordService {
       assertOcrChildRetryCurrent(repositories, this, run, request.continuationOwner);
       const delegation = run.envelope.parent === undefined ? undefined : prepareDelegationRetry(repositories, run, { ...request, refreshAuthorization: this.parentRefreshAuthorization(repositories, run) });
       if (delegation !== undefined && (request.continuationOwner === undefined
-        && repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId
+        && repositories.runtimeConfig.get()?.configFingerprint !== run.envelope.configFingerprint
         || !runSettingsAvailable(repositories, run.envelope)
         || request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint)) return refused({ reason: "runtime-stale" });
       if (descriptor.id !== run.envelope.workflow || descriptor.version !== run.envelope.descriptorVersion

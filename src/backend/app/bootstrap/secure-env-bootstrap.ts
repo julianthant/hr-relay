@@ -1,3 +1,4 @@
+import { serializeErrorCauses } from "../../../models/failures/error-origins.js";
 import { fileURLToPath } from "node:url";
 import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
 import { acquireRuntimeLifetimeLock,receiveRuntimeLifetimeLock,RuntimeLifetimeLock,WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
@@ -76,7 +77,8 @@ export async function runSecureEnvironmentBootstrap(
     // The child never closes its listener copy: the OS releases it at exit, after cleanup, so the port proves this process is gone.
     try { await runAdmittedEnvironmentBootstrap(args, dependencies, { lock, parentSignal: controller.signal }); }
     catch (error) {
-      process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+      // Class names and codes of the whole cause tree only: messages and stack paths can carry person data or the account name.
+      process.stderr.write(`${JSON.stringify({ code: "WORKER_EXIT_FAILED", causes: serializeErrorCauses(error).map(({ name, code }) => ({ name, code })) })}\n`);
       return exit(1);
     }
     return exit(typeof process.exitCode === "number" ? process.exitCode : 0);

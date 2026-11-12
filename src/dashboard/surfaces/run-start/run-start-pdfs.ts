@@ -16,6 +16,8 @@ export function previewPdfRun(surface: UploadRunSurface, draft: PdfRunDraft | nu
   const input = surface.pdfInput;
   if (input === undefined) throw refused();
   if (draft === null || draft.files.length === 0) return { entries: [], submissions: [], problem: null };
+  if ("documentField" in input) return { entries: draft.files.map((file, index) => ({ index, sourceText: file.source.fileName })), problem: null,
+    submissions: draft.files.map(({ source, readingId }) => JsonValueSchema.parse({ ...input.fixed, [input.documentField]: source.artifact, [input.fileNameField]: source.fileName, [input.readingIdField]: readingId })) };
   return { entries: [{ index: 0, sourceText: draft.files.map(file => file.source.fileName).join(", ") }], problem: null,
     submissions: [JsonValueSchema.parse({
       [input.documentsField]: draft.files.map(({ source, readingId }) => ({ document: source.artifact, fileName: source.fileName, readingId, reading: { kind: "subscription" } })),
