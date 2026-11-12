@@ -127,7 +127,8 @@ it("produces every declared application state except those listed for removal", 
     [{ quitting: true, admission: "draining" }, "quitting"],
   ] as const;
   for (const [input, state] of answers) assert.equal(applicationStateOf(input), state, JSON.stringify(input));
-  const produced = new Set(answers.map(([, state]) => state));
-  assert.deepEqual([...ApplicationLifecycleSchema.shape.state.options].filter(state => !APPLICATION_STATES_FOR_REMOVAL.includes(state)).sort(), [...produced].sort());
-  assert.ok(APPLICATION_STATES_FOR_REMOVAL.every(state => (ApplicationLifecycleSchema.shape.state.options as readonly string[]).includes(state) && !produced.has(state as never)));
+  const declared: readonly string[] = ApplicationLifecycleSchema.shape.state.options;
+  const produced = new Set<string>(answers.map(([, state]) => state));
+  assert.deepEqual(declared.filter(state => !APPLICATION_STATES_FOR_REMOVAL.includes(state)).sort(), [...produced].sort());
+  assert.ok(APPLICATION_STATES_FOR_REMOVAL.every(state => declared.includes(state) && !produced.has(state)));
 });
