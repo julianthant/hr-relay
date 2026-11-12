@@ -7,17 +7,6 @@ on:
         description: Calling workflow, portable or release.
         required: true
         type: string
-    outputs:
-      static:
-        value: ${{ jobs.static.result }}
-      privacy:
-        value: ${{ jobs.privacy.result }}
-      unit:
-        value: ${{ jobs.unit.result }}
-      integration:
-        value: ${{ jobs.integration.result }}
-      architecture:
-        value: ${{ jobs.architecture.result }}
 
 permissions:
   contents: read

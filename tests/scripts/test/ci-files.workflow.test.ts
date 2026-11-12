@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runInNewContext } from "node:vm";
@@ -10,8 +10,8 @@ import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from 
 import type { CiPlan } from "../../../scripts/test/ci-plan.js";
 
 const load = (name: string) => readFileSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url), "utf8");
-const ci = load("ci");
-const release = load("release");
+const staging = load("staging");
+const production = load("production");
 const checks = load("checks");
 const filters = { shared: "true", unit: "false", integration: "false", architecture: "false" };
 const planFor = (workflow: "portable" | "release", extra: Record<string, unknown> = {}) => createCiPlan({
@@ -30,14 +30,15 @@ function job(workflow: string, name: string): string {
 }
 const jobNames = (workflow: string) => [...(workflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([\w-]+):$/gmu)].map(match => match[1]);
 
-function expression(value: string, needs: unknown, context: Record<string, string>): unknown {
-  return runInNewContext(value.replace(/\$\{\{(.*?)\}\}/gu, "$1").replace(/\.([\w]+-[\w-]+)/gu, '["$1"]'), {
+function expression(value: string, needs: unknown, context: Record<string, unknown>): unknown {
+  return runInNewContext(value.replace(/\$\{\{(.*?)\}\}/gu, "$1").replaceAll("needs.*.result", "Object.values(needs).map(need => need.result)").replace(/\.([\w]+-[\w-]+)/gu, '["$1"]'), {
     needs, github: context, fromJSON: JSON.parse, toJSON: JSON.stringify, always: () => true, cancelled: () => false,
+    contains: (items: unknown[], item: string) => items.includes(item),
   });
 }
 
 function summary(workflow: string, name: string, plan: CiPlan, outcomes: Record<string, { result: string; outputs?: Record<string, string> }>,
-  context = { event_name: "pull_request", head_ref: "staging" }): string {
+  context: Record<string, unknown> = { event_name: "pull_request", head_ref: "staging" }): string {
   const skipped = { result: "skipped" };
   const needs = { macos: skipped, "unit-proofs": skipped, "release-batch": skipped, ...outcomes, changes: { ...outcomes.changes, outputs: { plan: JSON.stringify(plan) } } };
   const body = job(workflow, name);
@@ -147,41 +148,37 @@ async function discoverTimings(workflows: { id: number; path: string }[], emptyH
 }
 
 describe("separate event and admitted proof workflows", () => {
-  it("owns disjoint actual triggers and never loads release from staging CI", () => {
-    const ciTrigger = ci.split("\npermissions:\n")[0];
-    const releaseTrigger = release.split("\npermissions:\n")[0];
-    expect(ciTrigger).toContain("branches: [staging]");
-    const pullRequestTypes = ciTrigger.match(/types:\s*\[([^\]]*)\]/u)?.[1] ?? "";
-    expect(pullRequestTypes.split(",").map((item) => item.trim())).toContain("edited");
-    expect(ciTrigger).not.toContain("workflow_dispatch:");
-    expect(ciTrigger).not.toContain("push:");
-    expect(load("merge-train").split("\non:\n")[1]?.split("\npermissions:")[0]).toBe(`  push:
-    branches: [staging]
-    paths-ignore: ['docs/roadmap/**']
-  pull_request:
-    branches: [staging]
-    types: [auto_merge_enabled]
-  workflow_call:
+  it("defines two triggered workflows, each ending in one gate job", () => {
+    const stagingTrigger = staging.split("\npermissions:\n")[0];
+    const productionTrigger = production.split("\npermissions:\n")[0];
+    expect(stagingTrigger).toContain("run-name: ${{ github.event.pull_request.title || github.event.head_commit.message }}");
+    expect(stagingTrigger).toContain("push:\n    branches: [staging]\n    paths-ignore: ['docs/roadmap/**']");
+    expect(stagingTrigger).toContain("pull_request:\n    branches: [staging]");
+    const pullRequestTypes = stagingTrigger.match(/types:\s*\[([^\]]*)\]/u)?.[1] ?? "";
+    expect(pullRequestTypes.split(",").map((item) => item.trim())).toEqual(["opened", "edited", "synchronize", "reopened", "ready_for_review", "converted_to_draft", "auto_merge_enabled"]);
+    expect(stagingTrigger).not.toContain("workflow_dispatch:");
+    expect(productionTrigger).toContain("run-name: ${{ github.event.pull_request.title || inputs.title }}");
+    expect(productionTrigger).toContain("branches: [main]");
+    expect(productionTrigger).toMatch(/workflow_dispatch:\n {4}inputs:\n {6}title:\n[^\n]*\n {8}required: true/u);
+    expect(productionTrigger).not.toContain("push:");
+    expect(load("merge-train").split("\non:\n")[1]?.split("\npermissions:")[0]).toBe(`  workflow_call:
     inputs:
       pr: {type: string, default: ""}
       conclusion: {type: string, default: ""}
     secrets:
       TRAIN_TOKEN: {required: true}
 `);
-    expect(releaseTrigger).toContain("branches: [main]");
-    expect(releaseTrigger).toContain("workflow_dispatch:");
-    expect(ci).not.toContain("release.yml");
-    expect(job(ci, "checks")).toContain("uses: ./.github/workflows/checks.yml");
-    expect(job(ci, "checks")).toContain("kind: portable");
-    expect(job(release, "checks")).toContain("uses: ./.github/workflows/checks.yml");
-    expect(job(release, "checks")).toContain("kind: release");
+    expect(job(staging, "checks")).toContain("uses: ./.github/workflows/checks.yml");
+    expect(job(staging, "checks")).toContain("kind: portable");
+    expect(job(production, "checks")).toContain("uses: ./.github/workflows/checks.yml");
+    expect(job(production, "checks")).toContain("kind: release");
     expect(checks).not.toMatch(/uses: \.\/\.github\/workflows\//u);
     expect(checks).not.toMatch(/windows/iu);
-    for (const name of ["ci-pipeline", "ci-release-checks", "ci-checks", "release-checks"]) {
-      expect(existsSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url))).toBe(false);
-    }
-    expect(jobNames(ci)).toEqual(["names", "checks", "static", "privacy", "unit", "integration", "architecture", "train"]);
-    expect(jobNames(release)).toEqual(["checks", "static", "privacy", "unit", "integration", "architecture", "release"]);
+    expect(checks.split("\njobs:\n")[0]).not.toContain("outputs:");
+    expect(readdirSync(new URL("../../../.github/workflows", import.meta.url)).sort())
+      .toEqual(["checks.yml", "merge-train.yml", "production.yml", "staging.yml"]);
+    expect(jobNames(staging)).toEqual(["names", "checks", "staging", "train"]);
+    expect(jobNames(production)).toEqual(["checks", "production"]);
     expect(jobNames(checks)).toEqual(["changes", "static", "privacy", "ubuntu", "macos", "unit-proofs", "integration", "architecture", "release-batch", "unit"]);
   });
 
@@ -189,6 +186,8 @@ describe("separate event and admitted proof workflows", () => {
     expect(selectUsingAdapter("portable", "pull_request", "staging", "feature/test", filters)).toEqual(planFor("portable"));
     expect(selectUsingAdapter("release", "pull_request", "main", "staging", filters)).toEqual(planFor("release"));
     expect(selectUsingAdapter("release", "pull_request", "main", "feature/other", filters).fullRelease).toBe(false);
+    expect(selectUsingAdapter("release", "pull_request", "main", "hotfix/x", filters)).toEqual(planFor("release", { head: "hotfix/x" }));
+    expect(planFor("release", { head: "hotfix/x" }).fullRelease).toBe(true);
     expect(selectUsingAdapter("release", "workflow_dispatch", "", "", {}).releaseBatch).toBe(false);
     expect(selectUsingAdapter("release", "workflow_dispatch", "", "", {}).testJobs).toBe(23);
     expect(selectUsingAdapter("release", "pull_request", "main", "staging", { ...filters, shared: "false" }).testJobs).toBe(0);
@@ -211,17 +210,13 @@ describe("separate event and admitted proof workflows", () => {
       expect(job(workflow, "unit").match(/actions\/checkout@v7/gu)).toHaveLength(1);
       expect(job(workflow, "unit").match(/run: npm ci/gu)).toHaveLength(1);
     }
-    for (const workflow of [ci, release]) {
-      expect(job(workflow, "unit")).toContain('test "$PIPELINE" = success');
-      expect(job(workflow, "unit")).toContain('test "$RESULT" = success');
-      expect(job(workflow, "unit")).toContain("always()");
-    }
-    expect(job(ci, "train")).toContain("needs: [names, static, unit, integration, architecture, privacy]");
-    expect(job(ci, "train")).toContain("uses: ./.github/workflows/merge-train.yml");
+    expect(job(staging, "train")).toContain("needs: staging");
+    expect(job(staging, "train")).toContain("uses: ./.github/workflows/merge-train.yml");
     expect(job(checks, "release-batch")).toContain("needs: [changes, static, privacy, unit-proofs, integration, architecture]");
     expect(job(checks, "unit")).toContain("release-batch]");
     expect(job(checks, "unit")).not.toMatch(/^ {4}needs:.*\btimings\b/mu);
-    expect(job(release, "release")).toContain("needs: checks");
+    expect(job(staging, "staging")).toContain("needs: [names, checks]");
+    expect(job(production, "production")).toContain("needs: checks");
   });
 
   it("retains native/bootstrap budgets, post-failure groups and exact file membership", () => {
@@ -257,9 +252,6 @@ describe("separate event and admitted proof workflows", () => {
     expect(summary(source, "unit", plan, positive)).toBe("success");
     for (const result of ["failure", "cancelled"]) {
       expect(summary(source, "unit", plan, { ...positive, ubuntu: { result } })).toBe("failure");
-      expect(summary(workflow === "portable" ? ci : release, "unit", plan, {
-        checks: { result, outputs: { unit: "success" } },
-      })).toBe("failure");
     }
     expect(summary(source, "unit", plan, { ...positive, static: { result: "failure" } })).toBe("failure");
     expect(summary(source, "unit", plan, { ...positive, changes: { result: "failure" } })).toBe("failure");
@@ -280,17 +272,6 @@ describe("separate event and admitted proof workflows", () => {
     expect(publication(source, omitted, quiet)).toBe("upload=false\n");
   });
 
-  it.each([ci, release])("rejects incomplete calls or missing inner-unit outcomes at the actual outer fence", source => {
-    const plan = planFor(source === ci ? "portable" : "release");
-    expect(summary(source, "unit", plan, { checks: { result: "success", outputs: { unit: "success" } } })).toBe("success");
-    for (const result of ["failure", "cancelled", "skipped", ""]) {
-      expect(summary(source, "unit", plan, { checks: { result, outputs: { unit: "success" } } })).toBe("failure");
-      expect(summary(source, "unit", plan, { checks: { result: "success", outputs: { unit: result } } })).toBe("failure");
-    }
-    expect(summary(source, "unit", plan, { checks: { result: "success", outputs: {} } })).toBe("failure");
-  });
-
-
   it("requires both selected native groups and preserves legitimate work omissions", () => {
     const plan = planFor("release");
     expect(summary(checks, "integration", plan, releaseResults)).toBe("success");
@@ -303,31 +284,59 @@ describe("separate event and admitted proof workflows", () => {
     const outcomes = { ...releaseResults, ubuntu: { result: "skipped" }, macos: { result: "skipped" },
       "release-batch": { result: "skipped" } };
     expect(summary(checks, "unit", omitted, outcomes)).toBe("success");
-    expect(summary(release, "release", omitted, { checks: { result: "success", outputs: { unit: "success" } } })).toBe("success");
+    expect(summary(production, "production", omitted, { checks: { result: "success" } })).toBe("success");
   });
 
   it.each([
-    { event_name: "pull_request", head_ref: "staging", unit: "success", expected: "success" },
-    { event_name: "pull_request", head_ref: "feature/other", unit: "success", expected: "failure" },
-    { event_name: "pull_request", head_ref: "feature/other", unit: "skipped", expected: "failure" },
-    { event_name: "workflow_dispatch", head_ref: "", unit: "success", expected: "success" },
-    { event_name: "workflow_dispatch", head_ref: "", unit: "failure", expected: "failure" },
-    { event_name: "pull_request", head_ref: "staging", unit: "cancelled", expected: "failure" },
-    { event_name: "pull_request", head_ref: "staging", unit: "skipped", expected: "failure" },
-  ])("runs the required release fence ($event_name/$head_ref/$unit)", ({ event_name, head_ref, unit, expected }) => {
-    expect(summary(release, "release", planFor("release"), { checks: { result: "success", outputs: { unit } } }, { event_name, head_ref })).toBe(expected);
-  });
-  it("rejects an incomplete release call even when its inner unit output claims success", () => {
-    const plan = planFor("release");
-    for (const result of ["failure", "cancelled", "skipped", ""]) {
-      expect(summary(release, "release", plan, { checks: { result, outputs: { unit: "success" } } })).toBe("failure");
-    }
-    expect(summary(release, "release", plan, { checks: { result: "success", outputs: {} } })).toBe("failure");
+    { event_name: "pull_request", head_ref: "staging", checks: "success", expected: "success" },
+    { event_name: "pull_request", head_ref: "hotfix/x", checks: "success", expected: "success" },
+    { event_name: "pull_request", head_ref: "feature/other", checks: "success", expected: "failure" },
+    { event_name: "pull_request", head_ref: "hotfix", checks: "success", expected: "failure" },
+    { event_name: "workflow_dispatch", head_ref: "", checks: "success", expected: "success" },
+    { event_name: "workflow_dispatch", head_ref: "", checks: "failure", expected: "failure" },
+    ...["failure", "cancelled", "skipped", ""].map(checks => ({ event_name: "pull_request", head_ref: "staging", checks, expected: "failure" })),
+  ])("runs the production gate ($event_name/$head_ref/$checks)", ({ event_name, head_ref, checks: result, expected }) => {
+    expect(summary(production, "production", planFor("release"), { checks: { result } }, { event_name, head_ref })).toBe(expected);
   });
 
+  it.each(["failure", "cancelled"])("fails the staging gate when a needed job is %s", result => {
+    const pull = { event_name: "pull_request", event: { action: "synchronize" } };
+    const plan = planFor("portable");
+    expect(summary(staging, "staging", plan, { names: { result: "success" }, checks: { result: "success" } }, pull)).toBe("success");
+    expect(summary(staging, "staging", plan, { names: { result: "success" }, checks: { result } }, pull)).toBe("failure");
+    expect(summary(staging, "staging", plan, { names: { result }, checks: { result: "skipped" } }, pull)).toBe("failure");
+  });
+
+  it("skips the staging gate for pushes only; enabling auto-merge runs and judges the proofs", () => {
+    const plan = planFor("portable");
+    const skipped = { names: { result: "skipped" }, checks: { result: "skipped" } };
+    expect(summary(staging, "staging", plan, skipped, { event_name: "push", event: {} })).toBe("skipped");
+    const enable = { event_name: "pull_request", event: { action: "auto_merge_enabled" } };
+    expect(summary(staging, "staging", plan, { names: { result: "success" }, checks: { result: "success" } }, enable)).toBe("success");
+    for (const result of ["failure", "cancelled"]) {
+      expect(summary(staging, "staging", plan, { names: { result: "success" }, checks: { result } }, enable)).toBe("failure");
+    }
+    expect(job(staging, "names")).not.toContain("auto_merge_enabled");
+  });
 });
 
 describe("merge train admission", () => {
+  it("starts from staging.yml after the gate, on a push and on auto-merge, with the same-repository fence", () => {
+    const train = job(staging, "train");
+    const condition = train.match(/^ {4}if: (.+)$/mu)?.[1];
+    assert.ok(condition);
+    const run = (event_name: string, repository: string, result: string): unknown => runInNewContext(condition.replace(/^\$\{\{\s*|\s*\}\}$/gu, ""), {
+      github: { event_name, repository: "julianthant/relay", event: { pull_request: { head: { repo: { full_name: repository } } } } },
+      cancelled: () => false, needs: { staging: { result } },
+    });
+    expect(run("push", "", "skipped")).toBe(true);
+    expect(run("pull_request", "julianthant/relay", "skipped")).toBe(true);
+    expect(run("pull_request", "julianthant/relay", "success")).toBe(true);
+    expect(run("pull_request", "someone/fork", "success")).toBe(false);
+    expect(train).toContain("pr: ${{ needs.staging.result != 'skipped' && github.event.pull_request.number || '' }}");
+    expect(train).toContain("conclusion: ${{ needs.staging.result != 'skipped' && needs.staging.result || '' }}");
+  });
+
   it("selects only auto-merge PRs while retaining owner, repository and draft restrictions", () => {
     const train = load("merge-train");
     expect(train).toContain("--json number,isDraft,headRefOid,headRepositoryOwner,isCrossRepository,author,autoMergeRequest");
@@ -345,40 +354,49 @@ describe("merge train admission", () => {
 
 describe("shared timing discovery adapters", () => {
   it("uses one policy and handles an unregistered new release workflow without a 404 query", async () => {
-    expect(await discoverTimings([{ id: 1, path: ".github/workflows/ci.yml" }])).toEqual({ queried: [1], artifacts: [10], output: { run: "10" } });
-    expect(await discoverTimings([{ id: 1, path: ".github/workflows/ci.yml" }, { id: 2, path: ".github/workflows/release.yml" }]))
+    expect(await discoverTimings([{ id: 1, path: ".github/workflows/staging.yml" }])).toEqual({ queried: [1], artifacts: [10], output: { run: "10" } });
+    expect(await discoverTimings([{ id: 1, path: ".github/workflows/staging.yml" }, { id: 2, path: ".github/workflows/production.yml" }]))
       .toEqual({ queried: [1, 2], artifacts: [30, 20], output: { run: "20" } });
   });
 
   it("uses the seed only for valid no-history/no-retained-report cases", async () => {
     expect(await discoverTimings([])).toEqual({ queried: [], artifacts: [], output: {} });
-    expect(await discoverTimings([{ id: 1, path: ".github/workflows/ci.yml" }], true)).toEqual({ queried: [1], artifacts: [], output: {} });
+    expect(await discoverTimings([{ id: 1, path: ".github/workflows/staging.yml" }], true)).toEqual({ queried: [1], artifacts: [], output: {} });
   });
 
   it.each(["workflows", "runs", "artifacts"])("does not swallow unexpected API failures at %s", async failAt => {
-    await expect(discoverTimings([{ id: 1, path: ".github/workflows/ci.yml" }], false, failAt)).rejects.toThrow(/API/u);
+    await expect(discoverTimings([{ id: 1, path: ".github/workflows/staging.yml" }], false, failAt)).rejects.toThrow(/API/u);
   });
 });
 
 describe("per-PR cancellation with complete FIFO pipelines", () => {
-  it.each([ci, release])("supersedes the same PR/manual branch while separating other keys", source => {
+  it.each([staging, production])("supersedes the same PR/manual branch while separating other keys", source => {
     const header = source.split("\njobs:\n")[0];
     const group = header.match(/^ {2}group: (.+)$/mu)?.[1];
     assert.ok(group);
-    const key = (number: number | undefined, ref: string) => group.replace(/\$\{\{(.*?)\}\}/gu, (_, code: string) => String(runInNewContext(code, {
-      github: { workflow: source === ci ? "CI" : "Release", event: { pull_request: { number } }, ref },
+    const name = source === staging ? "Staging" : "Production";
+    const key = (number: number | undefined, ref: string, action = "synchronize") => group.replace(/\$\{\{(.*?)\}\}/gu, (_, code: string) => String(runInNewContext(code, {
+      github: { workflow: name, event: { action, pull_request: { number } }, ref },
     })));
     expect(key(90, "refs/pull/90/merge")).toBe(key(90, "refs/heads/updated-source"));
-    expect(key(undefined, "refs/heads/staging")).toBe(`ci-${source === ci ? "CI" : "Release"}-refs/heads/staging`);
+    expect(key(undefined, "refs/heads/staging", "")).toBe(`ci-${name}-refs/heads/staging`);
     expect(key(90, "refs/pull/90/merge")).not.toBe(key(91, "refs/pull/91/merge"));
-    expect(key(undefined, "refs/heads/staging")).not.toBe(key(undefined, "refs/heads/other"));
-    expect(header).toContain("cancel-in-progress: true");
+    expect(key(undefined, "refs/heads/staging", "")).not.toBe(key(undefined, "refs/heads/other", ""));
+    if (source === staging) expect(key(90, "refs/pull/90/merge", "auto_merge_enabled")).toBe(key(90, "refs/pull/90/merge"));
+    const cancel = header.match(/^ {2}cancel-in-progress: (.+)$/mu)?.[1];
+    assert.ok(cancel);
+    const cancels = (event_name: string, action: string): unknown => runInNewContext(cancel.replace(/^\$\{\{\s*|\s*\}\}$/gu, ""), { github: { event_name, event: { action } } });
+    expect(cancels("pull_request", "synchronize")).toBe(true);
+    if (source === staging) {
+      expect(cancels("pull_request", "auto_merge_enabled")).toBe(true);
+      expect(cancels("push", "")).toBe(false);
+    }
   });
 
-  it.each([ci, release])("queues the transitive whole proof pipeline while keeping train outside", source => {
+  it.each([staging, production])("queues the transitive whole proof pipeline while keeping train outside", source => {
     const admitted = job(source, "checks");
-    expect(admitted).toContain(source === ci ? "group: ci-runners" : "group: release-runners");
-    if (source === release) expect(admitted).not.toContain("group: ci-runners");
+    expect(admitted).toContain(source === staging ? "group: ci-runners" : "group: release-runners");
+    if (source === production) expect(admitted).not.toContain("group: ci-runners");
     expect(admitted).toContain("queue: max");
     expect(admitted).toContain("cancel-in-progress: false");
     const calleeName = admitted.match(/uses: \.\/\.github\/workflows\/([\w-]+)\.yml/u)?.[1];
@@ -394,26 +412,20 @@ describe("per-PR cancellation with complete FIFO pipelines", () => {
       return [name, ...dependencies.flatMap(dependency => closure(dependency, [...ancestors, name]))];
     };
     expect([...new Set(closure("unit"))].sort()).toEqual([...covered].sort());
-    expect(job(callee, "unit")).not.toMatch(/^ {4}needs:.*\btimings\b/mu);
     expect(callee).not.toContain("group: ci-runners");
-    if (source === ci) {
-      expect(job(source, "train")).toContain("needs: [names, static, unit, integration, architecture, privacy]");
-    } else {
-      for (const name of ["macos", "unit-proofs", "release-batch"]) expect(covered).toContain(name);
-      expect(job(callee, "unit")).toContain("release-batch]");
-      expect(job(callee, "unit")).not.toContain("timings]");
-    }
+    for (const name of ["macos", "unit-proofs", "release-batch"]) expect(covered).toContain(name);
   });
 });
 
 describe("cancelled admitted source work", () => {
-  it.each([[ci, checks], [release, checks]])("stops inner checkout work while the outer fence rejects cancellation", (entry, callee) => {
-    const inner = job(callee, "unit");
-    const outer = job(entry, "unit");
+  it.each(["staging", "production"])("stops inner checkout work while the %s gate rejects cancellation", name => {
+    const entry = name === "staging" ? staging : production;
+    const inner = job(checks, "unit");
+    const outer = job(entry, name);
     const condition = (body: string, cancelled: boolean) => {
       const code = body.match(/^ {4}if: \$\{\{ (.+) \}\}$/mu)?.[1];
       assert.ok(code);
-      return Boolean(runInNewContext(code, { cancelled: () => cancelled, always: () => true }));
+      return Boolean(runInNewContext(code, { cancelled: () => cancelled, always: () => true, github: { event_name: "pull_request", event: { action: "synchronize" } } }));
     };
     expect(inner).toContain("uses: actions/checkout@v7");
     expect(inner).toContain("run: npm ci");
@@ -422,8 +434,5 @@ describe("cancelled admitted source work", () => {
     expect(condition(inner, false)).toBe(true);
     expect(condition(inner, true)).toBe(false);
     expect(condition(outer, true)).toBe(true);
-    expect(summary(entry, "unit", planFor(entry === ci ? "portable" : "release"), {
-      checks: { result: "cancelled", outputs: { unit: "skipped" } },
-    })).toBe("failure");
   });
 });

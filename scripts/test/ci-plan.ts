@@ -31,7 +31,7 @@ export function createCiPlan(input: unknown): CiPlan {
   if (!manual && ["shared", ...suiteNames].some(name => !["true", "false"].includes(context.filters[name]))) {
     throw new Error("Path-filter outputs are incomplete or invalid.");
   }
-  const fullRelease = context.workflow === "release" && (manual || context.head === "staging");
+  const fullRelease = context.workflow === "release" && (manual || context.head === "staging" || context.head.startsWith("hotfix/"));
   const enabled = (suite: typeof suiteNames[number]) =>
     manual || context.filters.shared === "true" || context.filters[suite] === "true";
   const selected = { unit: enabled("unit"), integration: enabled("integration"), architecture: enabled("architecture") };
@@ -107,7 +107,7 @@ export function publishTimings(input: unknown, outcomes: unknown): boolean {
 const workflowsSchema = z.array(z.object({ id: z.number().int().positive(), path: z.string() }));
 export function registeredTimingWorkflows(input: unknown): number[] {
   return workflowsSchema.parse(input).filter(workflow =>
-    [".github/workflows/ci.yml", ".github/workflows/release.yml"].includes(workflow.path)).map(workflow => workflow.id);
+    [".github/workflows/staging.yml", ".github/workflows/production.yml"].includes(workflow.path)).map(workflow => workflow.id);
 }
 
 const historySchema = z.object({ currentRunId: z.number().int().positive(), runs: z.array(z.object({

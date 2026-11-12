@@ -56,6 +56,10 @@ describe("flat CI plan", () => {
     expect(invalid.fullRelease).toBe(false);
     expect(invalid.macos.include).toEqual([]);
     expect(invalid.releaseBatch).toBe(false);
+    const hotfix = createCiPlan(context("release", { head: "hotfix/x" }));
+    expect(hotfix.fullRelease).toBe(true);
+    expect(hotfix.macos.include).toEqual(createCiPlan(context("release")).macos.include);
+    expect(createCiPlan(context("release", { head: "hotfix" })).fullRelease).toBe(false);
   });
 
   it("refuses incorrect entry contexts and incomplete filters", () => {
@@ -148,8 +152,8 @@ describe("flat CI failure fences", () => {
 
 describe("registered CI timing history", () => {
   it("queries only registered eligible workflow IDs, including before release registration", () => {
-    expect(registeredTimingWorkflows([{ id: 1, path: ".github/workflows/ci.yml" }, { id: 3, path: ".github/workflows/other.yml" }])).toEqual([1]);
-    expect(registeredTimingWorkflows([{ id: 1, path: ".github/workflows/ci.yml" }, { id: 2, path: ".github/workflows/release.yml" }])).toEqual([1, 2]);
+    expect(registeredTimingWorkflows([{ id: 1, path: ".github/workflows/staging.yml" }, { id: 3, path: ".github/workflows/other.yml" }])).toEqual([1]);
+    expect(registeredTimingWorkflows([{ id: 1, path: ".github/workflows/staging.yml" }, { id: 2, path: ".github/workflows/production.yml" }])).toEqual([1, 2]);
     expect(registeredTimingWorkflows([])).toEqual([]);
     expect(timingRunIds({ currentRunId: 9, runs: [] })).toEqual([]);
     expect(hasTimingArtifact([])).toBe(false);
@@ -164,7 +168,7 @@ describe("registered CI timing history", () => {
     ] })).toEqual([6, 4, 5]);
     expect(hasTimingArtifact([{ name: "ci-timings", expired: true }])).toBe(false);
     expect(hasTimingArtifact([{ name: "ci-timings", expired: false }])).toBe(true);
-    expect(() => registeredTimingWorkflows([{ path: ".github/workflows/ci.yml" }])).toThrow();
+    expect(() => registeredTimingWorkflows([{ path: ".github/workflows/staging.yml" }])).toThrow();
     expect(() => timingRunIds({ currentRunId: 9, runs: [{ id: 1, created_at: "invalid", conclusion: "success" }] })).toThrow();
     expect(() => timingRunIds({ currentRunId: 9, runs: [{ id: 1, created_at: "2026-11-03T00:00:00Z", conclusion: "failure" }] })).toThrow();
     expect(() => hasTimingArtifact([{ name: "ci-timings" }])).toThrow();

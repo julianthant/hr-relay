@@ -128,11 +128,13 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-`ci.yml` triggers only for staging pull requests and admits the `checks.yml` call with kind `portable`.
-Merge train runs after the five top summaries and
-outside admission. `release.yml` triggers only for main pull requests or operator manual releases
-admits `checks.yml` with kind `release`, which plans the native and complete release pipeline.
-Both entries call the same file, which uses shared typed
+`staging.yml` (`Staging`) triggers for staging pull requests and pushes to `staging` and admits the `checks.yml`
+call with kind `portable`; its `staging` gate fails when `names` or `checks` failed or was cancelled.
+The merge train runs after that gate, on a push and on auto-merge, outside admission. `production.yml`
+(`Production`) triggers for main pull requests or an operator manual start with a required `title` input
+and admits `checks.yml` with kind `release`, which plans the native and complete release pipeline; its
+`production` gate fails when `checks` failed or was cancelled, and for a pull request head other than `staging` or `hotfix/*`.
+Both workflows call the same file, which uses shared typed
 selection/result/timing policy from `scripts/test/ci-plan.ts` and explicitly retain test budgets.
 The root check rules own platform placement and release authorization.
 `scripts/test/ci-files.ts` names the native
@@ -429,7 +431,7 @@ reaching CI and spending a full run. Allowed branches are `main`, `staging`, `de
 `dependabot/*`. A non-dependabot title must be `<Area>: <text>`; a conventional title such as
 `feat(ci): add names check` is rejected. An origin branch that already matches
 `task/<feature>/<lane>` stays valid when its lane is an older name. A worktree folder is
-`.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. `.github/workflows/ci.yml` runs that
+`.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. `.github/workflows/staging.yml` runs that
 command as its first job, and every other job waits on it. `pull_request` includes `edited`, so a
 title change at the same head runs the check again. `--all` lists off-pattern local branches and
 worktrees, and a local branch or linked worktree whose Concord ticket is `complete` or `closed`,

@@ -1,0 +1,51 @@
+name: Production
+
+run-name: ${{ github.event.pull_request.title || inputs.title }}
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  workflow_dispatch:
+    inputs:
+      title:
+        description: Run title
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    concurrency:
+      group: release-runners
+      queue: max
+      cancel-in-progress: false
+    uses: ./.github/workflows/checks.yml
+    with:
+      kind: release
+
+  production:
+    name: production
+    needs: checks
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          EVENT: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          PIPELINE: ${{ needs.checks.result }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            case "$HEAD_REF" in staging | hotfix/*) ;; *) exit 1 ;; esac
+          else
+            test "$EVENT" = workflow_dispatch
+          fi
+          test "$PIPELINE" = success
