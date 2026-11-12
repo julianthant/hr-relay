@@ -95,6 +95,7 @@ export const ERROR_CATALOG = Object.freeze({
   CRM_DOCUMENT_REFERENCE_UNAVAILABLE: catalogEntry("CRM identities could not be bound to the selected spreadsheet version and its legal/lived names. Review the retained reference and row choices.", EmptyParametersSchema),
   CRM_DOCUMENT_DOWNLOAD_FAILED: catalogEntry("CRM documents could not be downloaded and verified. No document collection was published.", EmptyParametersSchema),
   CRM_DOCUMENT_PACKAGE_FAILED: catalogEntry("CRM documents could not be verified and packaged. No document collection was published.", EmptyParametersSchema),
+  TOO_MANY_PAGES: catalogEntry("This PDF has more than 120 pages. Split the scan into files of at most 120 pages.", EmptyParametersSchema),
   OCR_SOURCE_REFUSED: catalogEntry("This PDF or source page could not be admitted for the current person and review. Reload the saved review or choose a valid PDF up to 25 MB.", EmptyParametersSchema),
   OCR_REVIEW_REFUSED: catalogEntry("The saved OCR review or selection changed or could not be authenticated. Reload the review before continuing.", EmptyParametersSchema),
   OCR_APPROVAL_UNAVAILABLE: catalogEntry("The approved OCR record authority is unavailable. Reload the run before continuing.", EmptyParametersSchema),

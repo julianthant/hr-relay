@@ -115,6 +115,7 @@ import { DuoCeremonyLeaseAcquireRequestSchema,DuoCeremonyLeaseRecordSchema,DuoCe
 import { localDatePart,systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { IdempotencyKeySchema,WriteAttemptRecordSchema,WriteIntentRecordSchema,type WriteAttemptRecord,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
+import type { WriteEvent } from "../../../rules/write-safety/write-transitions.js";
 import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeaseToken,type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import { assertWorkflowRunResultAuthorization,workflowDelegationAccounting,descriptorRuntimeNodes,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { assertCredentialCopyResourcesClosed, assertLogoutResourcesClosed } from "../maintenance/profile-custody.js";
@@ -128,7 +129,7 @@ import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAutho
 import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema,type ArtifactOutboxStorageRecord,type ArtifactSinkHeadRecord,type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
 
-import { AtomicWriteCommitInputSchema,AtomicWriteCommitReportSchema,PermanentWriteResolutionSchema,ResolvedParkedWriteAbsenceInputSchema,ResolvedParkedWriteCommitInputSchema,WriteFenceInputSchema,WriteFenceRecordsSchema,WriteIntentParkRequestSchema,WriteIntentRetrySettlementRequestSchema,WriteRecheckParkRequestSchema,WriteRecheckRequestSchema,WriteRefenceInputSchema,type AtomicWriteCommitReport,type AtomicWriteCommitStorageStep,type PermanentWriteResolution } from "./write-commit-contracts.js";
+import { applyWriteTransition,AtomicWriteCommitInputSchema,AtomicWriteCommitReportSchema,PermanentWriteResolutionSchema,ResolvedParkedWriteAbsenceInputSchema,ResolvedParkedWriteCommitInputSchema,WriteFenceInputSchema,WriteFenceRecordsSchema,WriteIntentParkRequestSchema,WriteIntentRetrySettlementRequestSchema,WriteRecheckParkRequestSchema,WriteRecheckRequestSchema,WriteRefenceInputSchema,type AtomicWriteCommitReport,type AtomicWriteCommitStorageStep,type PermanentWriteResolution } from "./write-commit-contracts.js";
 
 
 export class AuthoritySchemaVersionError extends Error {
@@ -3951,19 +3952,8 @@ export class AuthorityDatabase implements Disposable {
       throw new Error("confirmed-history-checkpoint-outcome-mismatch");
     }
     return this.withAuthorityTransaction(() => {
-      const currentIntent = this.#readRecord("write_intents", parsed.writeIntentId, WriteIntentRecordSchema);
-      if (currentIntent === undefined) throw new Error(`write intent ${parsed.writeIntentId} does not exist`);
-      if (currentIntent.status !== "attempting") {
-        throw new Error(`write intent ${parsed.writeIntentId} is ${currentIntent.status}; only attempting may commit`);
-      }
-      if (currentIntent.generation !== parsed.generation) {
-        throw new Error(`write intent ${parsed.writeIntentId} generation ${String(currentIntent.generation)} does not match commit generation ${String(parsed.generation)}`);
-      }
-      const currentAttempt = this.#readRecord("write_attempts", currentIntent.currentAttemptId, WriteAttemptRecordSchema);
-      if (currentAttempt === undefined) throw new Error(`current write attempt ${currentIntent.currentAttemptId} does not exist`);
-      if (currentAttempt.outcome.state !== "attempting") {
-        throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; only attempting may commit`);
-      }
+      const next = this.#transitionWrite(parsed.writeIntentId, { generation: parsed.generation }, { type: "commit" });
+      const { intent: currentIntent, attempt: currentAttempt } = next;
       WriteFenceRecordsSchema.parse({ intent: currentIntent, attempt: currentAttempt });
       this.#assertAtomicCommitMatchesIntent(parsed, currentIntent);
       const run=this.#readRunRow(currentIntent.runId);
@@ -3976,7 +3966,7 @@ export class AuthorityDatabase implements Disposable {
 
       const committedIntent = WriteIntentRecordSchema.parse({
         ...currentIntent,
-        status: "committed",
+        status: next.status,
         completionProof: parsed.completionProof,
         confirmedAt: parsed.confirmedAt,
         version: currentIntent.version + 1,
@@ -3985,7 +3975,7 @@ export class AuthorityDatabase implements Disposable {
       const committedAttempt = WriteAttemptRecordSchema.parse({
         ...currentAttempt,
         outcome: {
-          state: "committed",
+          state: next.outcome,
           completionProof: parsed.completionProof,
           confirmedAt: parsed.confirmedAt,
         },
@@ -4025,12 +4015,10 @@ export class AuthorityDatabase implements Disposable {
     const request = ResolvedParkedWriteCommitInputSchema.parse(input);
     const {commit,checkpoint,resolution} = request;
     return this.withAuthorityTransaction(()=>{
-      const current = this.#requireAttemptBearingWriteIntent(commit.writeIntentId,commit.generation,request.expectedIntentVersion);
-      if (current.status !== "parked") throw new Error("parked-write-resolution-parked-intent-required");
-      const attempt = this.#requireWriteAttempt(current.currentAttemptId);
-      if (attempt.outcome.state !== "parked") throw new Error("parked-write-resolution-original-attempt-required");
+      const next = this.#transitionWrite(commit.writeIntentId,{generation:commit.generation,version:request.expectedIntentVersion},{type:"resolve-present",resolution});
+      const {intent:current,attempt} = next;
       const run = this.#readRunRow(current.runId);
-      if (run === undefined || run.lifecycle.state !== "running" || current.recheck?.commandId !== resolution.commandId
+      if (current.status !== "parked" || run === undefined || run.lifecycle.state !== "running" || current.recheck?.commandId !== resolution.commandId
         || run.envelope.attempt !== current.runAttempt || commit.outcome.proofSource !== "recovery-probe") throw new Error("parked-write-recheck-run-mismatch");
       this.#assertCurrentExecution(current.runId, request.claim);
       authenticateParkedWriteRecheck(current, attempt, this.authority.commands.get(resolution.commandId), this.authority.commandAudits.get(resolution.auditId));
@@ -4042,7 +4030,7 @@ export class AuthorityDatabase implements Disposable {
         || checkpoint.contractFingerprint !== run.envelope.contractFingerprint || commit.transaction.traceId !== run.envelope.traceId
         || canonicalJsonStringify(checkpoint.output.value) !== canonicalJsonStringify(commit.outcome)) throw new Error("parked-write-resolution-checkpoint-mismatch");
       const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,recheck:_recheck,...base} = current;
-      const intent = WriteIntentRecordSchema.parse({...base,status:"committed",completionProof:commit.completionProof,
+      const intent = WriteIntentRecordSchema.parse({...base,status:next.status,completionProof:commit.completionProof,
         confirmedAt:commit.confirmedAt,version:current.version+1,updatedAt:commit.confirmedAt,resolution});
       authenticateStoredWriteResolution(this.#database,intent);
       const history = confirmedOperationTimeline({ledger:commit.transaction,span:commit.committedSpan,checkpoint,
@@ -4066,15 +4054,14 @@ export class AuthorityDatabase implements Disposable {
   settleResolvedParkedAbsence(input: unknown): WriteIntentRecord {
     const request = ResolvedParkedWriteAbsenceInputSchema.parse(input);
     return this.withAuthorityTransaction(()=>{
-      const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId,request.generation,request.expectedIntentVersion);
-      if (current.status !== "parked") throw new Error("parked-write-resolution-parked-intent-required");
-      const attempt = this.#requireWriteAttempt(current.currentAttemptId);
+      const next = this.#transitionWrite(request.writeIntentId,{generation:request.generation,version:request.expectedIntentVersion},{type:"resolve-absent",resolution:request.resolution});
+      const {intent:current,attempt} = next;
       const run = this.#readRunRow(current.runId);
-      if (attempt.outcome.state !== "parked" || run === undefined || run.version !== request.resolution.expectedRunVersion
+      if (current.status !== "parked" || run === undefined || run.version !== request.resolution.expectedRunVersion
         || run.lifecycle.state !== "parked-write" || run.lifecycle.writeIntentId !== current.writeIntentId
         || run.lifecycle.intentGeneration !== current.generation) throw new Error("parked-write-resolution-run-cas-mismatch");
       const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,recheck:_recheck,...base} = current;
-      const intent = WriteIntentRecordSchema.parse({...base,status:"retryable",settlement:request.settlement,
+      const intent = WriteIntentRecordSchema.parse({...base,status:next.status,settlement:request.settlement,
         resolvedAt:request.resolution.resolvedAt,version:current.version+1,updatedAt:request.resolution.resolvedAt,resolution:request.resolution});
       authenticateStoredWriteResolution(this.#database,intent);
       this.#replaceWriteIntent(intent);
@@ -5832,17 +5819,19 @@ export class AuthorityDatabase implements Disposable {
           return this.withAuthorityTransaction(() => {
             const refusal = this.#writeFenceRefusal(intent, claim);
             if (refusal !== undefined) return PermanentWriteResolutionSchema.parse({ state: "refused", refusal });
-            const current = this.#requireWriteIntent(intent.writeIntentId);
-            if (canonicalJsonStringify(current.status === "observed-present" ? null : current.occurrence ?? null)
+            const stored = this.#readWrite(intent.writeIntentId, {});
+            if (canonicalJsonStringify(stored.intent.status === "observed-present" ? null : stored.intent.occurrence ?? null)
               !== canonicalJsonStringify(intent.occurrence ?? null)) {
               throw new Error("re-fence may not change permanent occurrence authorization");
             }
             this.#assertBusinessWriteAdmission(intent);
-            if (current.status !== "retryable") {
-              throw new Error(`write intent ${intent.writeIntentId} is ${current.status}; only a retryable intent may re-fence`);
-            }
+            const next = applyWriteTransition(stored.intent, stored.attempt, { type: "refence" });
+            const current = next.intent;
             if (current.version !== expectedVersion) {
               throw new Error(`write intent ${intent.writeIntentId} is at version ${String(current.version)}, not ${String(expectedVersion)}; the re-fence is stale`);
+            }
+            if (intent.status !== next.status || attempt.outcome.state !== next.outcome) {
+              throw new Error(`re-fence of ${intent.writeIntentId} must present a ${next.status}/${next.outcome} write`);
             }
             if (intent.generation !== current.generation + 1) {
               throw new Error(`re-fence of ${intent.writeIntentId} must advance generation ${String(current.generation)} by exactly one, not to ${String(intent.generation)}`);
@@ -5874,14 +5863,14 @@ export class AuthorityDatabase implements Disposable {
         requestRecheck: (input: unknown) => {
           const request = WriteRecheckRequestSchema.parse(input);
           return this.withAuthorityTransaction(() => {
-            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
+            const { intent: current, attempt } = this.#readWrite(request.writeIntentId, { generation: request.generation, version: request.expectedVersion });
             if (current.status !== "parked" || current.recheck !== undefined) throw new Error("parked-write-recheck-parked-intent-required");
             const run = this.#readRunRow(current.runId);
             if (run?.lifecycle.state !== "parked-write" || run.version !== request.recheck.expectedRunVersion
               || run.lifecycle.writeIntentId !== current.writeIntentId || run.lifecycle.intentGeneration !== current.generation) throw new Error("parked-write-recheck-run-mismatch");
             const intent = WriteIntentRecordSchema.parse({ ...current, recheck: request.recheck,
               version: current.version + 1, updatedAt: request.recheck.requestedAt });
-            authenticateParkedWriteRecheck(intent, this.#requireWriteAttempt(current.currentAttemptId),
+            authenticateParkedWriteRecheck(intent, attempt,
               this.authority.commands.get(request.recheck.commandId), this.authority.commandAudits.get(request.recheck.auditId));
             this.#replaceWriteIntent(intent);
             return intent;
@@ -5890,7 +5879,7 @@ export class AuthorityDatabase implements Disposable {
         parkRecheck: (input: unknown) => {
           const request = WriteRecheckParkRequestSchema.parse(input);
           return this.withAuthorityTransaction(() => {
-            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
+            const { intent: current } = this.#readWrite(request.writeIntentId, { generation: request.generation, version: request.expectedVersion });
             if (current.status !== "parked" || current.recheck?.commandId !== request.commandId) throw new Error("parked-write-recheck-request-mismatch");
             const { recheck: _recheck, ...base } = current;
             const intent = WriteIntentRecordSchema.parse({ ...base, parkedCode: request.code, message: request.message,
@@ -5902,24 +5891,22 @@ export class AuthorityDatabase implements Disposable {
         parkAttempt: (input: unknown) => {
           const request = WriteIntentParkRequestSchema.parse(input);
           return this.withAuthorityTransaction(() => {
-            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
-            if (current.status !== "attempting") {
-              throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only an attempting intent may park`);
-            }
+            const next = this.#transitionWrite(request.writeIntentId, { generation: request.generation, version: request.expectedVersion },
+              { type: "park", code: request.code });
+            const { intent: current, attempt: currentAttempt } = next;
             const parked = WriteIntentRecordSchema.parse({
               ...current,
-              status: "parked",
+              status: next.status,
               parkedCode: request.code,
               message: request.message,
               authorityReason: request.authorityReason,
               version: current.version + 1,
               updatedAt: request.now,
             });
-            const currentAttempt = this.#requireAttemptingWriteAttempt(current.currentAttemptId);
             const parkedAttempt = WriteAttemptRecordSchema.parse({
               ...currentAttempt,
               outcome: {
-                state: "parked",
+                state: next.outcome,
                 code: request.code,
                 message: request.message,
                 authorityReason: request.authorityReason,
@@ -5934,10 +5921,9 @@ export class AuthorityDatabase implements Disposable {
         settleRetryable: (input: unknown) => {
           const request = WriteIntentRetrySettlementRequestSchema.parse(input);
           return this.withAuthorityTransaction(() => {
-            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
-            if (current.status !== "attempting") {
-              throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only attempting may settle retryable`);
-            }
+            const next = this.#transitionWrite(request.writeIntentId, { generation: request.generation, version: request.expectedVersion },
+              { type: "settle-safe-to-retry" });
+            const { intent: current, attempt: currentAttempt } = next;
             const { parkedCode: _parkedCode, message: _message, authorityReason: _authorityReason, ...base } = {
               parkedCode: undefined,
               message: undefined,
@@ -5946,19 +5932,15 @@ export class AuthorityDatabase implements Disposable {
             };
             const retryable = WriteIntentRecordSchema.parse({
               ...base,
-              status: "retryable",
+              status: next.status,
               settlement: request.settlement,
               resolvedAt: request.now,
               version: current.version + 1,
               updatedAt: request.now,
             });
-            const currentAttempt = this.#requireWriteAttempt(current.currentAttemptId);
-            if (currentAttempt.outcome.state !== "attempting") {
-              throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; it cannot settle retryable`);
-            }
             const settledAttempt = WriteAttemptRecordSchema.parse({
               ...currentAttempt,
-              outcome: { state: "safe-to-retry", settlement: request.settlement },
+              outcome: { state: next.outcome, settlement: request.settlement },
               recordedAt: request.now,
             });
             this.#replaceWriteIntent(retryable);
@@ -6925,35 +6907,26 @@ export class AuthorityDatabase implements Disposable {
     return current;
   }
 
-  #requireAttemptBearingWriteIntent(
-    writeIntentId: string,
-    generation: number,
-    expectedVersion: number,
-  ): Exclude<WriteIntentRecord, { status: "observed-present" }> {
+  #readWrite(writeIntentId: string, expected: Readonly<{ generation?: number; version?: number }>) {
     const current = this.#requireWriteIntent(writeIntentId);
-    if (current.status === "observed-present") {
-      throw new Error(`write intent ${writeIntentId} is observed-present; it carries no automation attempt to transition`);
+    if (expected.generation !== undefined && current.generation !== expected.generation) {
+      throw new Error(`write intent ${writeIntentId} is at generation ${String(current.generation)}, not ${String(expected.generation)}; the transition is stale`);
     }
-    if (current.generation !== generation) {
-      throw new Error(`write intent ${writeIntentId} is at generation ${String(current.generation)}, not ${String(generation)}; the transition is stale`);
+    if (expected.version !== undefined && current.version !== expected.version) {
+      throw new Error(`write intent ${writeIntentId} is at version ${String(current.version)}, not ${String(expected.version)}; the transition is stale`);
     }
-    if (current.version !== expectedVersion) {
-      throw new Error(`write intent ${writeIntentId} is at version ${String(current.version)}, not ${String(expectedVersion)}; the transition is stale`);
-    }
-    return current;
+    return Object.freeze({ intent: current,
+      attempt: current.status === "observed-present" ? undefined : this.#requireWriteAttempt(current.currentAttemptId) });
+  }
+
+  #transitionWrite(writeIntentId: string, expected: Readonly<{ generation?: number; version?: number }>, event: WriteEvent) {
+    const { intent, attempt } = this.#readWrite(writeIntentId, expected);
+    return applyWriteTransition(intent, attempt, event);
   }
 
   #requireWriteAttempt(writeAttemptId: string): WriteAttemptRecord {
     const attempt = this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema);
     if (attempt === undefined) throw new Error(`write attempt ${writeAttemptId} does not exist`);
-    return attempt;
-  }
-
-  #requireAttemptingWriteAttempt(writeAttemptId: string): WriteAttemptRecord {
-    const attempt = this.#requireWriteAttempt(writeAttemptId);
-    if (attempt.outcome.state !== "attempting") {
-      throw new Error(`write attempt ${writeAttemptId} is ${attempt.outcome.state}; only an attempting attempt may transition`);
-    }
     return attempt;
   }
 
@@ -7077,7 +7050,7 @@ export class AuthorityDatabase implements Disposable {
 
   #assertAtomicCommitMatchesIntent(
     input: z.infer<typeof AtomicWriteCommitInputSchema>,
-    intent: Extract<WriteIntentRecord, { status: "attempting" | "parked" }>,
+    intent: Exclude<WriteIntentRecord, { status: "observed-present" }>,
   ): void {
     const ledger = { kind: "ledger-entry", entry: input.transaction };
     const span = input.committedSpan;

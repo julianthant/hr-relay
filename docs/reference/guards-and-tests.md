@@ -429,6 +429,26 @@ case; a negative control establishes that the actual guard rejects the defect. A
 must resolve a nonempty production file set. A literal name, comment, or unused function is not
 executable enforcement.
 
+`names-check` (`tests/architecture/tooling/names-check.test.ts`) runs the shipped `names:check`
+command over the shared table in `tests/support/helpers/names-check-cases.ts`. A wrong name was
+reaching CI and spending a full run. Allowed branches are `main`, `staging`, `dependabot/*`,
+`feature/<kebab>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `design/<kebab>`, and
+`scratch/<kebab>-<digits>`. A staging pull request head must be `feature/*` or `fix/*`, except
+`dependabot/*`. A non-dependabot title must be `<Area>: <text>`; a conventional title such as
+`feat(ci): add names check` is rejected. An origin branch that already matches
+`task/<feature>/<lane>` stays valid when its lane is an older name. A worktree folder is
+`.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. `.github/workflows/ci.yml` runs that
+command as its first job, and every other job waits on it. `pull_request` includes `edited`, so a
+title change at the same head runs the check again. `--all` lists off-pattern local branches and
+worktrees, and a local branch or linked worktree whose Concord ticket is `complete` or `closed`,
+including a detached worktree named by `tasks.worktree`. An open ticket that owns the path, an
+open ticket on the checkout branch, or an open ticket on a branch named by a path owner, keeps
+that worktree unlisted. A closed checkout branch still lists the path when no open ticket owns it
+and no open ticket names a branch recorded on that path. The ledger is
+`~/.concord-ledger/<package.json name>/.concord/concord.db`, or the `--ledger` path.
+A missing ledger adds no ticket rows. An unreadable ledger fails the command. `--all` only lists;
+it never deletes.
+
 Removal names where the invariant goes and updates its inventory entry and consumers in the same
 change. The manifest protects against accidental removal or glob orphaning. It cannot prevent a
 coordinated edit to both a guard and its inventory row. Review and operator authorization remain
