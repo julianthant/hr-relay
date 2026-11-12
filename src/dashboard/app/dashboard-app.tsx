@@ -1042,7 +1042,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const servedSearchData = useSearchWiring({ client, enabled: workflowComposition.search === "served" && route.view?.search === true,
     query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows, titles: searchTitles });
   const librarySheets = useLibrarySheets(client, workflowComposition.search === "served" && route.view?.search === true);
-  const searchData = useMemo(() => workflowComposition.search === "mock" ? previewSearchData : { ...servedSearchData, sheets: librarySheets.sheets, unavailable: servedSearchData.unavailable ?? librarySheets.unavailable }, [workflowComposition.search, previewSearchData, servedSearchData, librarySheets]);
+  const searchData = useMemo(() => workflowComposition.search === "mock" ? previewSearchData : { ...servedSearchData, sheets: librarySheets.sheets, sheetsUnavailable: librarySheets.unavailable }, [workflowComposition.search, previewSearchData, servedSearchData, librarySheets]);
   const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast });
   const [notificationReads, setNotificationReads] = useState<NotificationReads>({});
   const notifications = useWorkspaceNotifications(notificationScenario(), {

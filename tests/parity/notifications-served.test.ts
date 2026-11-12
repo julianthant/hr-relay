@@ -46,7 +46,8 @@ async function serve(page: Page, theme: "dark" | "light", baseUrl: string) {
   ];
   await page.route(/\/api\/v1\/notifications$/u, route => route.fulfill({ json: rows }));
   await page.route(/\/api\/v1\/notifications\/status$/u, route => route.fulfill({ json: { state: "ready", pending: 0 } }));
-  await page.route(new RegExp(`/api/v1/notifications/${uuid(2)}/target$`, "u"), route => route.fulfill({ json: NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId: uuid(910), type: "retry", requestedCount: 4, notAttempted: [byTitle("EID 10222009").runId], results: [
+  await page.route(new RegExp(`/api/v1/notifications/${uuid(2)}/target$`, "u"), route => route.fulfill({ json: NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId: uuid(910), type: "retry", requestedCount: 4, notAttempted: [byTitle("EID 10222009").runId],
+    days: Object.fromEntries(["EID 10222009", "EID 10873698", "EID 10101010", "EID 10777012"].map(title => [byTitle(title).runId, FIXTURE_DAY])), results: [
     { outcome: "applied", runId: byTitle("EID 10873698").runId, commandId: uuid(911), replayed: false, detail: "Retry started." },
     { outcome: "applied", runId: byTitle("EID 10101010").runId, commandId: uuid(912), replayed: false, detail: "Retry started." },
     { outcome: "conflict", runId: byTitle("EID 10777012").runId, commandId: uuid(913), currentVersion: 5, detail: "The run changed before the retry reached it." }] }) }));
