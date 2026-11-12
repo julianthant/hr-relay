@@ -68,6 +68,19 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(sourceBytes(h, source), bytes);
   });
 
+  it("Enter acknowledges the repeat warning, advances to Values and enqueues nothing", async () => {
+    const h = await setup(); const source = await h.completeSource();
+    h.registerDescriptor(launchDescriptor("reject-active", { version: 2, fingerprint: "b".repeat(64) }));
+    await mount(h, source); await press("Continue");
+    assert.match(text(), /already submitted/u); assert.match(text(), /Enter to continue/u);
+    await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+    assert.equal(field("Employee ID").value, "10812345"); assert.doesNotMatch(text(), /already submitted/u);
+    assert.equal(h.finalCommands.length, 0);
+    await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
+    assert.ok(StartPlanRequestSchema.parse(h.submissions.at(-1)).warningAcknowledgment);
+    assert.equal(h.finalCommands.length, 0);
+  });
+
   it("submits Rerun without offering or retaining a worker choice", async () => {
     const h = await setup();
     const selectedStepKeys = h.descriptor.timeline.map(step => step.key);

@@ -858,10 +858,12 @@ export function RunStartDialog({
   })}</>;
   const continueEnabled = !busy && recoveryError === null && recovery === null && currentStage !== "Warning" && nextStage !== null
     && !(isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (rerunInputBlocked || stepsBlockedReason !== null)))) && !(currentStage === "Input" && blockedReason !== null);
+  const warningEnabled = currentStage === "Warning" && warning !== null && !busy && recoveryError === null && recovery === null;
+  const acknowledgeWarning = () => { if (warning === null) return; setAcknowledgment(warning.rerun.warningDigest); setPlan(null); reviewedRequest.current = null; setCurrentStage("Values"); };
   const startEnabled = currentStage === "Confirm" && plan !== null && !(busy || applied || omissionMismatch || plan.planned.length === 0 || recoveryError !== null || (recovery !== null && recovery.target.startPlanId !== plan.startPlanId));
   // Enter continues or starts; Shift+Enter keeps its newline. Buttons, links and open pickers keep Enter for themselves.
   const enterRef = useRef<(() => void) | null>(null);
-  enterRef.current = startEnabled ? () => void confirmStart() : continueEnabled ? () => void advance() : null;
+  enterRef.current = startEnabled ? () => void confirmStart() : warningEnabled ? acknowledgeWarning : continueEnabled ? () => void advance() : null;
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1108,7 +1110,7 @@ export function RunStartDialog({
             />
           }
         >
-          {(startEnabled || continueEnabled) && <span className="text-[12px] text-ui-muted">{startEnabled ? "Enter to start" : "Enter to continue"}</span>}
+          {(startEnabled || warningEnabled || continueEnabled) && <span className="text-[12px] text-ui-muted">{startEnabled ? "Enter to start" : "Enter to continue"}</span>}
           {currentStage !== "Warning" && previousStage !== null && (
             <Button variant="ghost" icon={<ArrowLeft aria-hidden className="size-3" />} onClick={() => setCurrentStage(previousStage)}>Back</Button>
           )}
@@ -1116,7 +1118,7 @@ export function RunStartDialog({
             Cancel
           </Button>
           {currentStage === "Warning" && warning !== null ? (
-            <Button variant="primary" onClick={() => { setAcknowledgment(warning.rerun.warningDigest); setPlan(null); reviewedRequest.current = null; setCurrentStage("Values"); }}>Confirm</Button>
+            <Button variant="primary" onClick={acknowledgeWarning}>Confirm</Button>
           ) : currentStage === "Confirm" && plan !== null ? (
             <Button
               variant="primary"
