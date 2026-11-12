@@ -23,7 +23,7 @@ it("work-study/planned-transaction — plans from the PayPath read with zero wri
   const h = await world.executorHarness({ descriptor: compiled.descriptor, sessions });
   const { database } = h.authority;
   const execution = canonicalChildExecution(h.deps, database, h.authority.path, id => id === compiled.descriptor.id ? compiled.descriptor : undefined);
-  const run = execution.start(compiled.descriptor, { emplId: "10000001", effectiveDate: "2026-08-03" });
+  const run = execution.start(compiled.descriptor, { emplId: "10000001", effectiveDate: "2026-08-03" }, { dryRun: false });
   await execution.execute(run, world.SIGNAL);
   const runId = run.envelope.runId;
   assert.deepEqual(database.authority.failures.listByRun(runId).map(failure => failure.summary), []);

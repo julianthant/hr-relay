@@ -563,7 +563,23 @@ function i9ReferenceLeaves(scope: EvidenceValueScope): unknown[] {
       .map(path => `reference.snapshot.${path}`));
 }
 
+const PAYPATH_POSITION_FIELDS = ["effectiveDate", "positionChangeReason", "positionPool", "positionNumber"] as const;
+function payPathReadLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...person(scope, `${prefix}emplId`, `${prefix}displayedName`),
+    ...open(scope, `${prefix}pageStateId`, `${prefix}observedAt`, ...PAYPATH_POSITION_FIELDS.map(field => `${prefix}position.${field}`))];
+}
+function workStudyPlanLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...person(scope, `${prefix}emplId`, `${prefix}name`),
+    ...open(scope, ...["effectiveDate", "positionChangeReason", "positionPool", "comments"].map(field => `${prefix}${field}`),
+      ...PAYPATH_POSITION_FIELDS.map(field => `${prefix}current.${field}`))];
+}
+
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...payPathReadLeaves(taskOutput("ucpath/read-paypath-position"), ""),
+  ...payPathReadLeaves(workflowResult("work-study-ucpath-auth"), ""),
+  ...workStudyPlanLeaves(taskOutput("workflow:work-study/read-transaction-plan"), ""),
+  ...["work-study", "work-study-transaction"].flatMap(id => [...workStudyPlanLeaves(workflowResult(id), "plan."), ...open(workflowResult(id), "state")]),
+  ...["work-study", "work-study-ucpath-auth", "work-study-transaction"].flatMap(id => [...person(workflowInput(id), "emplId"), ...open(workflowInput(id), "effectiveDate")]),
   ...approvedOcrRecordLeaves(taskOutput("ocr/read-approved-record"), "record."),
   ...approvedOcrSnapshotLeaves(taskOutput("ocr/read-approved-snapshot")),
   ...approvedOcrSnapshotLeaves(workflowResult("emergency-contact-read-document")),

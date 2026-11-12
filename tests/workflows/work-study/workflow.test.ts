@@ -5,6 +5,7 @@ import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.j
 import { workStudyWorkflow } from "../../../src/workflows/work-study/workflow.js";
 
 const ingress = WorkStudyInput;
+const OUTSIDE_EID_RANGE = "20000001";
 const descriptor = compileWorkflow(workStudyWorkflow).descriptor;
 
 it("accepts an Empl ID with an ISO effective date", () => {
@@ -13,7 +14,7 @@ it("accepts an Empl ID with an ISO effective date", () => {
 
 it.each([
   ["a short Empl ID", { emplId: "12345", effectiveDate: "2026-08-03" }],
-  ["an Empl ID outside the EID range", { emplId: "20000001", effectiveDate: "2026-08-03" }],
+  ["an Empl ID outside the EID range", { emplId: OUTSIDE_EID_RANGE, effectiveDate: "2026-08-03" }],
   ["a US-format date", { emplId: "10000001", effectiveDate: "08/03/2026" }],
   ["an impossible date", { emplId: "10000001", effectiveDate: "2026-02-30" }],
   ["an unknown key", { emplId: "10000001", effectiveDate: "2026-08-03", extra: "x" }],
