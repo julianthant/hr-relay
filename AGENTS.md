@@ -49,7 +49,6 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 | Ticket branch | `task/<feature>/<lane>`: from its feature branch, merged back with `--no-ff`, no PR |
 | Standalone fix | `fix/<area>-<symptom>`: one ticket, one PR into `staging` |
 | Design | `design/<area>`: mock with real components for operator approval, never merged |
-| Scratch | `scratch/<lane>-<n>`: focused CI feedback or a red probe, never merged, removed after use |
 | Worktree | `.worktrees/<feature>.<lane>`; the feature's own checkout is `.worktrees/<feature>` |
 | PR title | `<Area>: <what the operator gets>` |
 | Spec | `.work/specs/<feature>.md` |
@@ -102,9 +101,7 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 - Staging PRs run portable Ubuntu unit, integration and architecture suites plus static and
   privacy. Keep `NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` out of Ubuntu shards,
   retaining release coverage. Add new native proofs to `scripts/test/ci-files.ts`.
-- Only the operator starts full-release CI; agents never dispatch or rerun CI workflows. The
-  [focused-test script](docs/reference/guards-and-tests.md#focused-tests-in-github-actions) is
-  scratch feedback, not a release or merge proof.
+- Only the operator starts full-release CI; agents never dispatch or rerun CI workflows.
 - Native proofs and parity run in CI only for operator-started releases. Release checks build the
   web bundle, run coverage alone, then perf; coverage already selects unit, integration and
   architecture, so do not rerun those full suites for unchanged inputs.

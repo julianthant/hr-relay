@@ -251,21 +251,6 @@ A dropped connection can retain a slot's `lease` directory. Verify that its sync
 and tests have stopped before removing that exact empty directory with `rmdir`. Never remove a
 live lease. GitHub CI remains the merge gate.
 
-### Focused tests in GitHub Actions
-
-```sh
-scripts/ci/focused-tests.sh <lane> <ubuntu|macos|windows|both|all> <test file>...
-```
-
-Runs the named files on a scratch branch (`both` is Ubuntu and macOS, `all` adds Windows; Windows-native files run only here or on a Windows machine) without a PR, the Mac test slot or the PC. The script commits `HEAD`'s tree with
-`git commit-tree`, naming the files and runners in `Focused-tests:` and `Focused-os:` trailers, force-pushes it to
-`scratch/<lane>`, watches `.github/workflows/focused-tests.yml`, prints PASS/FAIL per file, job timings and the run URL,
-then deletes the branch. It refuses tracked uncommitted changes, since the run tests `HEAD`. A scratch push with no
-`Focused-tests` trailer ends as a skipped run. A trailer naming a bad file still fails, including a path outside
-`tests/` or a missing file. The workflow then runs `privacy:check`, then the files with the CI worker
-flags (`scripts/ci/focused-run.sh`). A scratch run is quick feedback, never merge evidence: the PR's CI is the gate.
-Lanes use distinct names; pushing the same lane again cancels its earlier run.
-
 ### CI scheduling
 
 Unit, integration and parity use two workers. Ubuntu jobs put test temp on tmpfs and have 20-minute
@@ -444,8 +429,7 @@ executable enforcement.
 `names-check` (`tests/architecture/tooling/names-check.test.ts`) runs the shipped `names:check`
 command over the shared table in `tests/support/helpers/names-check-cases.ts`. A wrong name was
 reaching CI and spending a full run. Allowed branches are `main`, `staging`, `dependabot/*`,
-`feature/<kebab>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `design/<kebab>`, and
-`scratch/<kebab>-<digits>`. A staging pull request head must be `feature/*` or `fix/*`, except
+`feature/<kebab>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, and `design/<kebab>`. A staging pull request head must be `feature/*` or `fix/*`, except
 `dependabot/*`. A non-dependabot title must be `<Area>: <text>`; a conventional title such as
 `feat(ci): add names check` is rejected. An origin branch that already matches
 `task/<feature>/<lane>` stays valid when its lane is an older name. A worktree folder is

@@ -86,10 +86,6 @@ CI-invoked merge train is outside the admitted call, after the six top summaries
 inside parent per-PR supersession. The standalone staging-push train remains separate. Batch
 repair pushes to avoid redundant CI work.
 
-A push to `scratch/**` without a `Focused-tests` trailer reports a notice and skips all focused
-test runners successfully. A requested path outside `tests/` or missing from the commit still fails;
-a test request must also name a supported `Focused-os` value.
-
 `scripts/test/ci-plan.ts` owns typed selection, proof, publication and timing-history policy. Both timed callees
 retain explicit test budgets. Portable `ci-checks.yml` jobs are `changes`, `static`, `privacy`, `ubuntu`,
 `integration`, `architecture`, `parity` and `unit`. `release-checks.yml` adds `macos`, `windows`,

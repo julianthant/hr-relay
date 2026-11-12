@@ -362,59 +362,6 @@ describe("merge train admission", () => {
   });
 });
 
-describe("focused test planning", () => {
-  function plan(files: string, os = "ubuntu") {
-    const source = job(load("focused-tests"), "plan");
-    const script = source.match(/^ {8}run: \|\n((?: {10}[^\n]*\n|\n)+)/mu)?.[1];
-    assert.ok(script);
-    const directory = mkdtempSync(join(tmpdir(), "relay-focused-plan-"));
-    const output = join(directory, "outputs");
-    try {
-      const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", `
-      git() {
-        case "$*" in
-          *Focused-tests*) printf '%s\\n' "$FOCUSED_FILES" ;;
-          *Focused-os*) printf '%s\\n' "$FOCUSED_OS" ;;
-          *) return 1 ;;
-        esac
-      }
-      ${script}
-    `], { env: { ...process.env, FOCUSED_FILES: files, FOCUSED_OS: os, GITHUB_OUTPUT: output }, encoding: "utf8" });
-      expect(result.error).toBeUndefined();
-      expect(result.signal).toBeNull();
-      return { ...result, outputs: existsSync(output) ? readFileSync(output, "utf8") : "" };
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  }
-
-  it("skips every runner successfully when the head has no test request", () => {
-    const result = plan("", "");
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("::notice::");
-    for (const output of ["files", "ubuntu", "macos", "windows", "web"]) expect(result.outputs).toContain(`${output}=false\n`);
-    const source = load("focused-tests");
-    for (const runner of ["ubuntu", "macos", "windows"]) expect(job(source, runner)).toContain(`if: needs.plan.outputs.${runner} == 'true'`);
-    for (const command of ["npm ci", "npm run privacy:check"]) {
-      expect(job(source, "plan")).toContain(`- run: ${command}\n        if: steps.plan.outputs.files != 'false'`);
-    }
-  });
-
-  it.each(["../package.json", "tests/missing.test.ts"])("still fails a bad request: %s", file => {
-    const result = plan(file);
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain("::error::");
-  });
-
-  it("retains explicit runner selection and rejects an invalid OS", () => {
-    const file = "tests/scripts/test/ci-files.workflow.test.ts";
-    const result = plan(file, "all");
-    expect(result.status).toBe(0);
-    expect(result.outputs).toBe(`files=${file}\nubuntu=true\nmacos=true\nwindows=true\nweb=false\n`);
-    expect(plan(file, "unknown").status).toBe(1);
-  });
-});
-
 describe("shared timing discovery adapters", () => {
   it("uses one policy and handles an unregistered new release workflow without a 404 query", async () => {
     expect(timingScript(portable)).toBe(timingScript(full));
