@@ -3,9 +3,8 @@ import { CONFIG_SNAPSHOT } from "../support/fixtures/phase1c-contract-fixtures.j
 import { testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
 import { sqliteRunReader } from "../support/helpers/canonical-run-reader.js";
 
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { currentBuildId } from "../../src/backend/runtime/build-id.js";
 import { buildRunResult } from "../../src/backend/runs/lifecycle/run-result.js";
 import { manualClock, type TestClock } from "../../src/rules/time/clock.js";
 import { ReadActiveStatus } from "../../src/models/workflows/person-lookup/read-active-status.js";
@@ -16,6 +15,9 @@ import { createNoteTimelineWriter } from "../../src/backend/storage/events/note-
 import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../src/backend/storage/sqlite/transaction-history.js";
 import { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
+import { createBoundProfileFixture } from "../support/helpers/admission-fixture.js";
+import { releaseSeededWriteOwners } from "../support/helpers/timeline-write-fixture.js";
+import { assertFakeKeychain } from "./fake-keychain-entry.js";
 import { descriptorSetHash } from "../../src/backend/app/registries/workflow-registry.js";
 import {
   createRunQueueProjection,
@@ -123,10 +125,10 @@ export interface PerfFixture {
     noteLines: number;
     receiptCount: number;
   }>;
-  close(): void;
+  close(): Promise<void>;
 }
 
-interface SeedContext {
+export interface SeedContext {
   readonly path: string;
   readonly workers: Map<string, string>;
   readonly database: AuthorityDatabase;
@@ -150,7 +152,7 @@ function instantOf(day: string, seed: number): Date {
   return new Date(at.getTime() + (seed % 20_000) * 1000);
 }
 
-function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
+export function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
   const descriptor = spec.separations === true ? separationsDescriptor : personLookupDescriptor;
   const rawInput = spec.separations === true ? { documentNumber: String(4510 + spec.seed), timekeeperName: "Synthetic Timekeeper" } : { emplId: "10873698" };
   const parsedInput = spec.separations === true ? SeparationsInput.parse(rawInput) : { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false };
@@ -178,6 +180,7 @@ function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
       traceId,
       descriptorVersion: descriptor.version,
       contractFingerprint: descriptor.contractFingerprint,
+      buildId: currentBuildId(),
       resolvedInstance,
       configFingerprint: CONFIG_FINGERPRINT,
       configSnapshotId: CONFIG_SNAPSHOT_ID,
@@ -644,17 +647,20 @@ function seedNotes(context: SeedContext, tally: SeedTally): number {
 /* ── composition ─────────────────────────────────────────────────────────── */
 
 
-export function seedDashboardPerfFixture(): PerfFixture {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-perf-dashboard-"));
+export async function seedDashboardPerfFixture(): Promise<PerfFixture> {
+  await assertFakeKeychain();
+  const profile = await createBoundProfileFixture();
+  const root = profile.stateRoot;
   const stateRoot = join(root, "state");
   const clock = manualClock(new Date(`${PERF_FIXTURE_PROFILE.day}T09:00:00.000-07:00`));
   const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 1000, migrationOwner: "dashboard-perf-fixture" },
+    { path: profile.path, busyTimeoutMs: 1000, migrationOwner: "dashboard-perf-fixture" },
     clock,
   );
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const spans = createTimelineEmitter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
   const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
-  const context: SeedContext = { workers: new Map(), path: join(root, "authority.sqlite"), database, clock, spans, notes };
+  const context: SeedContext = { workers: new Map(), path: profile.path, database, clock, spans, notes };
 
   const trust = createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors: [personLookupDescriptor] });
 
@@ -747,9 +753,10 @@ export function seedDashboardPerfFixture(): PerfFixture {
       noteLines,
       receiptCount: Math.min(tally.doneRunIds.length, PERF_FIXTURE_PROFILE.receiptRunCount),
     }),
-    close: (): void => {
+    close: (): Promise<void> => {
+      releaseSeededWriteOwners(database, clock.now().toISOString());
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      return profile.close();
     },
   });
 }
