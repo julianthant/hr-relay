@@ -33,6 +33,7 @@
     "test:pc": "tsx scripts/test/pc.ts",
     "test:watch": "vitest --project unit --project integration --project architecture --project perf",
     "perf:dashboard": "TZ=UTC tsx tests/perf/dashboard-benchmark.ts",
+    "test:smoke": "playwright test --config playwright.smoke.config.ts",
     "mocks": "playwright test --config playwright.mocks.config.ts",
     "build:observer-policy": "tsx scripts/build/windows-observer-policy.ts",
     "precli": "npm run build:observer-policy",
