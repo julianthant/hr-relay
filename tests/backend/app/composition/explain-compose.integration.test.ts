@@ -136,7 +136,8 @@ describe("explain run", () => {
       code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", transient: false, writeState: "not-attempted",
       causeChain: [{ code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", role: "primary", transient: false }],
       debug: failureDebugDetails(error), remediation: [{ kind: "operator-action", message: "fixture" }], occurredAt: run.createdAt });
-    const view = buildExplainRunView({ run: { ...run, lifecycle: { state: "terminal", outcome: "failed", endedAt: run.createdAt, errorSummary: "fixture", failureId: failure.failureId } },
+    const protectedRun = { ...run, input: { ...run.input, parsed: { ...run.input.parsed, protectedBindings: [{ kind: "test-data-local" as const, inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "10000000-0000-4000-8000-000000000099" }] } } };
+    const view = buildExplainRunView({ run: { ...protectedRun, lifecycle: { state: "terminal", outcome: "failed", endedAt: run.createdAt, errorSummary: "fixture", failureId: failure.failureId } },
       checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure });
     const raw = new DatabaseSync(join(profile.stateRoot, "state.db"));
     raw.prepare("INSERT INTO run_failures (id, run_id, fingerprint, code, resolution_json, resolution_version, payload_json, created_at) VALUES (?, ?, ?, ?, '{\"status\":\"unresolved\",\"version\":1}', 1, ?, ?)")

@@ -228,6 +228,8 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
     ? undefined
     : projectReceiptForOperator(evidence.receipt);
   const receipt = receiptProjection?.state === "available" ? receiptProjection.value : undefined;
+  // Names come from the stored record: the protected projection drops debug text.
+  const causes = evidence.failure === undefined ? { codes: [], classes: [] } : failureCauseNames(evidence.failure);
   const protectedInput = retainedRunProtectedBindings(evidence.run).length > 0;
   const failure = evidence.failure === undefined
     ? undefined
@@ -277,7 +279,8 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
           summary: failure.summary,
           writeState: failure.writeState,
           sameFingerprintSeen: Math.max(1, evidence.sameFingerprintSeen ?? 1),
-          ...(({ codes, classes }) => ({ causeCodes: codes, causeClasses: classes }))(failureCauseNames(failure)),
+          causeCodes: causes.codes,
+          causeClasses: causes.classes,
         },
       },
     lastSuccessfulAction: lastSuccessful === undefined
