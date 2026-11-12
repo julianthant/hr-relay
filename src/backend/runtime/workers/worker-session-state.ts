@@ -3,29 +3,31 @@ import type { WorkerBrowserObservation } from "../../../models/run/worker-contro
 import type { BrowserSessionCloseReason } from "../../../workflow-kit/session.js";
 
 /**
- * One worker's browser session for one system, from acquisition to proven closure.
+ * The browser a worker holds for one system, from acquisition to proven closure.
  *
  * `starting` is one acquisition: `launching` matches the browser root launch's `launching`, and
- * `signing-in` begins when that launch is `open`; the Duo ceremony lease is taken there. The
- * acquisition releases that lease last, so its release can fail after the browser's close proved.
- * A `closing` owned by the acquisition is a sign-in that failed or was stopped; the acquisition
- * can still lose custody of its browser root or its ceremony lease while that close runs.
- * `closure-unproved` holds a session whose close did not prove (or a failed control left it
- * untrusted); only a proven close leaves it. `failed` is custody the worker cannot prove: an
- * `unknown` root launch, a ceremony lease left held, or a pending acquisition that outlived its
- * close bound. A failed system may still hold a browser; closing it is the only move it admits,
- * and a proven close leaves the system failed with no browser, which nothing leaves.
+ * `signing-in` begins when that launch is `open`, where the Duo ceremony lease is taken. A
+ * `closing` owned by the acquisition is a sign-in that failed or was stopped. `closure-unproved`
+ * holds a browser whose close did not prove (or a failed control left it untrusted); only a
+ * proven close leaves it.
  */
-export type WorkerSessionState =
+export type WorkerSessionBrowser =
   | Readonly<{ state: "closed" }>
   | Readonly<{ state: "starting"; phase: "launching" | "signing-in" }>
   | Readonly<{ state: "authenticated"; lease: "idle" | "leased" }>
   | Readonly<{ state: "closing"; owner: "acquisition" | "session"; reason: BrowserSessionCloseReason }>
-  | Readonly<{ state: "closure-unproved" }>
-  | Readonly<{ state: "failed"; browser: "none" | "retained" }>
-  | Readonly<{ state: "failed"; browser: "closing"; reason: BrowserSessionCloseReason }>;
+  | Readonly<{ state: "closure-unproved" }>;
 
-export const WORKER_SESSION_STATE_KEYS = deepFreeze([
+/**
+ * A worker's browser session for one system. `failed` is custody the worker cannot prove: an
+ * `unknown` root launch, a ceremony lease left held, or a pending acquisition that outlived its
+ * close bound. The acquisition releases its ceremony lease last and may still settle after its
+ * close bound, so the browser keeps its own lifecycle underneath: a late browser still arrives
+ * and is still closed. Nothing clears `failed`; it refuses reuse and an empty close.
+ */
+export type WorkerSessionState = WorkerSessionBrowser | Readonly<{ state: "failed"; browser: WorkerSessionBrowser }>;
+
+export const WORKER_SESSION_BROWSER_KEYS = deepFreeze([
   "closed",
   "starting/launching",
   "starting/signing-in",
@@ -34,11 +36,9 @@ export const WORKER_SESSION_STATE_KEYS = deepFreeze([
   "closing/acquisition",
   "closing/session",
   "closure-unproved",
-  "failed/none",
-  "failed/retained",
-  "failed/closing",
 ] as const);
-export type WorkerSessionStateKey = (typeof WORKER_SESSION_STATE_KEYS)[number];
+export type WorkerSessionBrowserKey = (typeof WORKER_SESSION_BROWSER_KEYS)[number];
+export type WorkerSessionStateKey = WorkerSessionBrowserKey | `failed/${WorkerSessionBrowserKey}`;
 
 export type WorkerSessionEvent =
   /** An acquisition opens the system's browser. */
@@ -53,7 +53,7 @@ export type WorkerSessionEvent =
   | Readonly<{ type: "login-failed" }>
   /** The acquisition's Duo ceremony lease release failed while unwinding, possibly after its browser closed; the lease row stays held. */
   | Readonly<{ type: "ceremony-release-failed" }>
-  /** A close waited its acquisition bound for a pending acquisition. */
+  /** A close waited its acquisition bound for a pending acquisition, which may still settle. */
   | Readonly<{ type: "acquisition-close-timeout" }>
   /** A task lease or an operator control takes the session. */
   | Readonly<{ type: "lease" }>
@@ -88,10 +88,12 @@ export type WorkerSessionTransition =
   | Readonly<{ state: WorkerSessionState }>
   | Readonly<{ refused: WorkerSessionRefusal }>;
 
-type Verdict = Readonly<{ to: WorkerSessionStateKey }> | Readonly<{ refused: WorkerSessionRefusal }>;
+/** A browser target; `custody: "lost"` also makes the system failed. */
+type Verdict = Readonly<{ to: WorkerSessionBrowserKey; custody?: "lost" }> | Readonly<{ refused: WorkerSessionRefusal }>;
 
 const refuse = <Refusal extends WorkerSessionRefusal>(refused: Refusal) => deepFreeze({ refused });
 const PENDING = refuse("acquisition-pending");
+const NONE = refuse("no-session");
 const CLOSING = refuse("closing");
 const LOST = refuse("custody-lost");
 const NOT_LAUNCHING = refuse("not-launching");
@@ -105,35 +107,28 @@ const PHASE = {
 } as const;
 const UNACQUIRED = { "ceremony-release-failed": NOT_ACQUIRING, "acquisition-close-timeout": NOT_ACQUIRING } as const;
 const UNCLOSING = { "close-proved": NOT_CLOSING, "close-failed": NOT_CLOSING } as const;
-const CLOSING_ROW = {
-  launch: CLOSING, ...PHASE, lease: CLOSING, reset: NOT_LEASED, poison: CLOSING, close: CLOSING,
-  "close-proved": { to: "closed" }, "close-failed": { to: "closure-unproved" },
-} as const;
-
-const LOST_ROW = {
-  launch: LOST, launched: LOST, "launch-failed": LOST, "launch-uncertain": LOST, "signed-in": LOST, "login-failed": LOST,
-  "ceremony-release-failed": LOST, "acquisition-close-timeout": LOST, lease: LOST, reset: LOST, poison: LOST, close: LOST,
-  "close-proved": LOST, "close-failed": LOST,
-} as const;
+/** A custody loss marks the system failed; the browser moves only for an `unknown` launch. */
+const lost = <Key extends WorkerSessionBrowserKey>(to: Key) => ({ to, custody: "lost" }) as const;
 
 /**
- * Rows are states and columns are events. A closing target takes its reason from a close event,
- * from the close already running, or is a failed sign-in's `login-failed`.
+ * Rows are browser states and columns are events. A closing target takes its reason from a close
+ * event, keeps the reason of the close already running, or is a failed sign-in's `login-failed`.
  */
 export const WORKER_SESSION_TRANSITIONS = deepFreeze({
   closed: {
-    launch: { to: "starting/launching" }, ...PHASE, "launch-uncertain": { to: "failed/none" },
-    "ceremony-release-failed": { to: "failed/none" }, "acquisition-close-timeout": NOT_ACQUIRING,
-    lease: refuse("no-session"), reset: NOT_LEASED, poison: refuse("no-session"), close: refuse("no-session"), ...UNCLOSING,
+    launch: { to: "starting/launching" }, ...PHASE, "launch-uncertain": lost("closed"),
+    "ceremony-release-failed": lost("closed"), "acquisition-close-timeout": NOT_ACQUIRING,
+    lease: NONE, reset: NOT_LEASED, poison: NONE, close: NONE, ...UNCLOSING,
   },
   "starting/launching": {
     launch: PENDING, ...PHASE, launched: { to: "starting/signing-in" }, "launch-failed": { to: "closed" },
-    "launch-uncertain": { to: "failed/none" }, "ceremony-release-failed": { to: "failed/none" }, "acquisition-close-timeout": { to: "failed/none" },
+    "launch-uncertain": lost("closed"), "ceremony-release-failed": lost("starting/launching"),
+    "acquisition-close-timeout": lost("starting/launching"),
     lease: PENDING, reset: NOT_LEASED, poison: PENDING, close: PENDING, ...UNCLOSING,
   },
   "starting/signing-in": {
     launch: PENDING, ...PHASE, "signed-in": { to: "authenticated/idle" }, "login-failed": { to: "closing/acquisition" },
-    "ceremony-release-failed": { to: "failed/retained" }, "acquisition-close-timeout": { to: "failed/retained" },
+    "ceremony-release-failed": lost("starting/signing-in"), "acquisition-close-timeout": lost("starting/signing-in"),
     lease: PENDING, reset: NOT_LEASED, poison: PENDING, close: { to: "closing/acquisition" }, ...UNCLOSING,
   },
   "authenticated/idle": {
@@ -145,66 +140,87 @@ export const WORKER_SESSION_TRANSITIONS = deepFreeze({
     lease: refuse("session-busy"), reset: { to: "authenticated/idle" }, poison: { to: "closure-unproved" },
     close: { to: "closing/session" }, ...UNCLOSING,
   },
-  "closing/acquisition": { ...CLOSING_ROW, "ceremony-release-failed": { to: "failed/closing" }, "acquisition-close-timeout": { to: "failed/closing" } },
-  "closing/session": { ...CLOSING_ROW, ...UNACQUIRED },
+  "closing/acquisition": {
+    launch: CLOSING, ...PHASE, "ceremony-release-failed": lost("closing/acquisition"),
+    "acquisition-close-timeout": lost("closing/acquisition"),
+    lease: CLOSING, reset: NOT_LEASED, poison: CLOSING, close: CLOSING,
+    "close-proved": { to: "closed" }, "close-failed": { to: "closure-unproved" },
+  },
+  "closing/session": {
+    launch: CLOSING, ...PHASE, ...UNACQUIRED, lease: CLOSING, reset: NOT_LEASED, poison: CLOSING, close: CLOSING,
+    "close-proved": { to: "closed" }, "close-failed": { to: "closure-unproved" },
+  },
   "closure-unproved": {
-    launch: refuse("closure-unproved"), ...PHASE, "ceremony-release-failed": { to: "failed/retained" }, "acquisition-close-timeout": NOT_ACQUIRING,
+    launch: refuse("closure-unproved"), ...PHASE, "ceremony-release-failed": lost("closure-unproved"),
+    "acquisition-close-timeout": NOT_ACQUIRING,
     lease: refuse("closure-unproved"), reset: NOT_LEASED, poison: { to: "closure-unproved" }, close: { to: "closing/session" }, ...UNCLOSING,
   },
-  "failed/none": LOST_ROW,
-  "failed/retained": { ...LOST_ROW, close: { to: "failed/closing" }, ...UNCLOSING },
-  "failed/closing": { ...LOST_ROW, close: CLOSING, "close-proved": { to: "failed/none" }, "close-failed": { to: "failed/retained" } },
-} as const satisfies Record<WorkerSessionStateKey, Record<WorkerSessionEventType, Verdict>>);
+} as const satisfies Record<WorkerSessionBrowserKey, Record<WorkerSessionEventType, Verdict>>);
 
-const SETTLED_STATES = deepFreeze({
+const SETTLED_BROWSERS = deepFreeze({
   closed: { state: "closed" },
   "starting/launching": { state: "starting", phase: "launching" },
   "starting/signing-in": { state: "starting", phase: "signing-in" },
   "authenticated/idle": { state: "authenticated", lease: "idle" },
   "authenticated/leased": { state: "authenticated", lease: "leased" },
   "closure-unproved": { state: "closure-unproved" },
-  "failed/none": { state: "failed", browser: "none" },
-  "failed/retained": { state: "failed", browser: "retained" },
-} as const satisfies Record<Exclude<WorkerSessionStateKey, `closing/${string}` | "failed/closing">, WorkerSessionState>);
+} as const satisfies Record<Exclude<WorkerSessionBrowserKey, `closing/${string}`>, WorkerSessionBrowser>);
+
+export function workerSessionBrowserKey(browser: WorkerSessionBrowser): WorkerSessionBrowserKey {
+  switch (browser.state) {
+    case "starting": return `starting/${browser.phase}`;
+    case "authenticated": return `authenticated/${browser.lease}`;
+    case "closing": return `closing/${browser.owner}`;
+    default: return browser.state;
+  }
+}
 
 export function workerSessionStateKey(state: WorkerSessionState): WorkerSessionStateKey {
-  switch (state.state) {
-    case "starting": return `starting/${state.phase}`;
-    case "authenticated": return `authenticated/${state.lease}`;
-    case "closing": return `closing/${state.owner}`;
-    case "failed": return `failed/${state.browser}`;
-    default: return state.state;
-  }
+  return state.state === "failed" ? `failed/${workerSessionBrowserKey(state.browser)}` : workerSessionBrowserKey(state);
 }
 
 /** A pending sign-in is closed only by a stop; any other close waits for the acquisition to settle. */
 const STOP_REASONS: ReadonlySet<BrowserSessionCloseReason> = new Set(["parked", "worker-stop"]);
 
-export function transitionWorkerSession(state: WorkerSessionState, event: WorkerSessionEvent): WorkerSessionTransition {
-  const key = workerSessionStateKey(state);
+type BrowserStep = Readonly<{ browser: WorkerSessionBrowser; lost: boolean }> | Readonly<{ refused: WorkerSessionRefusal }>;
+
+function nextBrowser(browser: WorkerSessionBrowser, event: WorkerSessionEvent): BrowserStep {
+  const key = workerSessionBrowserKey(browser);
   const verdict: Verdict = WORKER_SESSION_TRANSITIONS[key][event.type];
   if ("refused" in verdict) return verdict;
-  if (verdict.to === "closing/acquisition" || verdict.to === "closing/session" || verdict.to === "failed/closing") {
-    const reason = event.type === "close" ? event.reason : state.state === "closing" ? state.reason : "login-failed";
+  const lostCustody = verdict.custody === "lost";
+  if (verdict.to === "closing/acquisition" || verdict.to === "closing/session") {
+    const reason = event.type === "close" ? event.reason : browser.state === "closing" ? browser.reason : "login-failed";
     if (key === "starting/signing-in" && event.type === "close" && !STOP_REASONS.has(reason)) return PENDING;
-    if (verdict.to === "failed/closing") return deepFreeze({ state: { state: "failed", browser: "closing", reason } });
-    return deepFreeze({ state: { state: "closing", owner: verdict.to === "closing/acquisition" ? "acquisition" : "session", reason } });
+    return { browser: { state: "closing", owner: verdict.to === "closing/acquisition" ? "acquisition" : "session", reason }, lost: lostCustody };
   }
-  return deepFreeze({ state: SETTLED_STATES[verdict.to] });
+  return { browser: SETTLED_BROWSERS[verdict.to], lost: lostCustody };
+}
+
+/**
+ * A failed system's browser moves as any other, but the system refuses reuse (launch, lease) and
+ * an empty close, so its closure is never proved.
+ */
+export function transitionWorkerSession(state: WorkerSessionState, event: WorkerSessionEvent): WorkerSessionTransition {
+  const failed = state.state === "failed";
+  if (failed && (event.type === "launch" || event.type === "lease")) return LOST;
+  const next = nextBrowser(failed ? state.browser : state, event);
+  if ("refused" in next) return failed && next.refused === "no-session" ? LOST : next;
+  return deepFreeze({ state: failed || next.lost ? { state: "failed", browser: next.browser } : next.browser });
 }
 
 /**
  * The health a worker reports for its session's browser: in use or closing is `unknown` until a
- * proof settles it. A failed system with no browser reports `closed`; its lost custody is reported
- * as unproved closure, not as browser health.
+ * proof settles it. A failed system reports its browser's health; its lost custody is reported as
+ * unproved closure, not as browser health.
  */
 export function workerSessionHealth(state: WorkerSessionState): WorkerBrowserObservation["health"] {
-  switch (state.state) {
+  const browser = state.state === "failed" ? state.browser : state;
+  switch (browser.state) {
     case "closed": return "closed";
     case "starting": return "starting";
-    case "authenticated": return state.lease === "idle" ? "authenticated" : "unknown";
+    case "authenticated": return browser.lease === "idle" ? "authenticated" : "unknown";
     case "closing": return "unknown";
     case "closure-unproved": return "failed";
-    case "failed": return state.browser === "none" ? "closed" : state.browser === "retained" ? "failed" : "unknown";
   }
 }
