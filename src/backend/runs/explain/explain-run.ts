@@ -9,6 +9,7 @@ import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
 import { projectReceiptForOperator } from "../../../models/trust/evidence.js";
 import {
   projectFailureForOperator,
+  failureCauseNames,
   type FailureRecord,
 } from "../../../models/trust/failure.js";
 import type { RunRecord } from "../../../models/run/record.js";
@@ -72,6 +73,8 @@ const ExplainRunViewSchema = z.strictObject({
     summary: z.string().min(1),
     writeState: z.string().min(1),
     sameFingerprintSeen: z.number().int().positive(),
+    causeCodes: z.array(z.string().min(1)),
+    causeClasses: z.array(z.string().min(1)),
   })),
   lastSuccessfulAction: present(z.string().min(1)),
   openGate: present(z.string().min(1)),
@@ -274,6 +277,7 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
           summary: failure.summary,
           writeState: failure.writeState,
           sameFingerprintSeen: Math.max(1, evidence.sameFingerprintSeen ?? 1),
+          ...(({ codes, classes }) => ({ causeCodes: codes, causeClasses: classes }))(failureCauseNames(failure)),
         },
       },
     lastSuccessfulAction: lastSuccessful === undefined
@@ -381,7 +385,8 @@ export function renderExplainRun(view: ExplainRunView): string {
     ...section("subject bindings", view.subjectBindings.map((entry) => `${entry.verdict}: ${entry.reason}`)),
     ...section("failure", [shown(view.failure, (failure) =>
       `${failure.code} (${failure.writeState}) fingerprint ${failure.fingerprint}\n`
-      + `    seen ${String(failure.sameFingerprintSeen)}× · ${failure.summary}`)]),
+      + `    seen ${String(failure.sameFingerprintSeen)}× · ${failure.summary}\n`
+      + `    causes: ${[...failure.causeCodes, ...failure.causeClasses].join(", ") || "(none)"}`)]),
     ...section("last successful action", [shown(view.lastSuccessfulAction, (value) => value)]),
     ...section("open gate", [shown(view.openGate, (value) => value)]),
     ...section("open dependency", [shown(view.openDependency, (value) => value)]),

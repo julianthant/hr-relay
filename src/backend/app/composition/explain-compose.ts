@@ -83,7 +83,7 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
       selected.assertCurrent();
     } finally { person.release(); }
     const page = { ...stored, records: stored.records.map(debugRecordView) };
-    return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
+    return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}${page.failureCauses.map(entry => `\nfailure ${entry.failureId} causes: ${[...entry.codes, ...entry.classes].join(", ") || "(none)"}`).join("")}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
   }
   if (subject !== "run") {
     throw new Error(

@@ -7,6 +7,10 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 
 import assert from "node:assert/strict";
 import { z } from "zod";
+import { DatabaseSync } from "node:sqlite";
+import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
+import { failureDebugDetails } from "../../../../src/backend/runtime/execution/run-failure.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { randomUUID } from "node:crypto";
 import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
 import { requireTrustRun } from "../../../../src/backend/runs/trust/run-reader.js";
@@ -118,6 +122,30 @@ describe("explain run", () => {
     for (const text of [explained, diagnostics]) {
       assert.match(text, /ECONNRESET/u); assert.match(text, /TypeError/u);
       for (const leaked of ["/Users/", "someone", "boom", "example.test", "eid=123", "stack"]) assert.equal(text.includes(leaked), false, leaked);
+    }
+  });
+
+  it("shows a stored failure's nested causes as codes and class names in explain run and diagnostics", async () => {
+    const database = await seeded();
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    class BrowserLoginError extends Error {}
+    const error = new Error("outer https://example.test/p?eid=123", { cause: new BrowserLoginError("at /Users/someone/Projects/x.ts eid 123") });
+    const run = requireTrustRun(createTrustRunReader(database), EXIT_RUN_ID);
+    const failure = FailureRecordSchema.parse({ diagnosticSafetyVersion: 1, failureId: randomUUID(), fingerprint: "f".repeat(64),
+      runId: run.envelope.runId, traceId: run.envelope.traceId, attempt: run.envelope.attempt, workflowId: run.envelope.workflow,
+      code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", transient: false, writeState: "none",
+      causeChain: [{ code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", role: "primary", transient: false }],
+      debug: failureDebugDetails(error), remediation: [{ kind: "operator-action", message: "fixture" }], occurredAt: run.createdAt });
+    const view = buildExplainRunView({ run: { ...run, lifecycle: { state: "terminal", outcome: "failed", endedAt: run.createdAt, errorSummary: "fixture", failureId: failure.failureId } },
+      checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure });
+    const raw = new DatabaseSync(join(profile.stateRoot, "state.db"));
+    raw.prepare("INSERT INTO run_failures (id, run_id, fingerprint, code, resolution_json, resolution_version, payload_json, created_at) VALUES (?, ?, ?, ?, '{\"status\":\"unresolved\",\"version\":1}', 1, ?, ?)")
+      .run(failure.failureId, failure.runId, failure.fingerprint, failure.code, canonicalJsonStringify(failure), failure.occurredAt);
+    raw.close();
+    const diagnostics = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID] });
+    for (const text of [renderExplainRun(view), diagnostics]) {
+      assert.match(text, /BrowserLoginError/u); assert.match(text, /RUN_INTERRUPTED_BY_CRASH/u);
+      for (const leaked of ["/Users/", "someone", "example.test", "eid", "at run"]) assert.equal(text.includes(leaked), false, leaked);
     }
   });
 
