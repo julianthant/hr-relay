@@ -25,12 +25,19 @@ function snapshot(root: string): { branches: string; worktrees: string; status: 
   };
 }
 
-function writeLedger(path: string, rows: readonly { id: string; status: string; branch?: string; notes?: string }[]): void {
+function writeLedger(path: string, rows: readonly { id: string; status: string; branch?: string; notes?: string; worktree?: string }[]): void {
   const database = new DatabaseSync(path);
-  database.exec("CREATE TABLE tasks (task_id TEXT PRIMARY KEY, branch TEXT, status TEXT NOT NULL, notes TEXT)");
-  const insert = database.prepare("INSERT INTO tasks (task_id, branch, status, notes) VALUES (?, ?, ?, ?)");
-  for (const row of rows) insert.run(row.id, row.branch ?? "", row.status, row.notes ?? null);
+  database.exec("CREATE TABLE tasks (task_id TEXT PRIMARY KEY, branch TEXT, worktree TEXT, status TEXT NOT NULL, notes TEXT)");
+  const insert = database.prepare("INSERT INTO tasks (task_id, branch, worktree, status, notes) VALUES (?, ?, ?, ?, ?)");
+  for (const row of rows) insert.run(row.id, row.branch ?? "", row.worktree ?? "", row.status, row.notes ?? null);
   database.close();
+}
+
+function worktreePath(root: string, folder: string): string {
+  const line = git(root, ["worktree", "list", "--porcelain"]).split("\n").find((entry) => entry.includes(`/${folder}`));
+  const path = line?.slice("worktree ".length);
+  if (path === undefined || path === "") throw new Error(`missing worktree ${folder}`);
+  return path;
 }
 
 describe("names:check", () => {
@@ -146,6 +153,52 @@ describe("names:check", () => {
         git(root, ["worktree", "remove", "--force", ".worktrees/closed-lane"]);
       } catch {
         // Cleanup only. The assertion above is the result that matters.
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("lists a detached worktree whose ticket is closed without deleting it", () => {
+    const root = mkdtempSync(join(tmpdir(), "names-check-detached-"));
+    const ledger = join(root, "ledger.db");
+    try {
+      initRepo(root);
+      git(root, ["branch", "task/names/closed"]);
+      git(root, ["worktree", "add", "-q", "--detach", ".worktrees/names.closed", "task/names/closed"]);
+      git(root, ["worktree", "add", "-q", "--detach", ".worktrees/open-detached", "HEAD"]);
+      git(root, ["worktree", "add", "-q", "--detach", ".worktrees/shared-lane", "HEAD"]);
+      const detached = worktreePath(root, ".worktrees/names.closed");
+      const openDetached = worktreePath(root, ".worktrees/open-detached");
+      const shared = worktreePath(root, ".worktrees/shared-lane");
+      writeLedger(ledger, [
+        { id: "detached", status: "complete", branch: "task/names/closed", worktree: detached },
+        { id: "open-path", status: "active", worktree: openDetached },
+        { id: "shared-closed", status: "complete", branch: "feature/shared", worktree: shared },
+        { id: "shared-open", status: "active", branch: "feature/shared" },
+      ]);
+      const before = snapshot(root);
+      const first = runNamesCheck(["--all", "--ledger", ledger], root);
+      const second = runNamesCheck(["--all", "--ledger", ledger], root);
+      const expected = [
+        "task/names/closed: ticket is closed",
+        `${detached}: ticket is closed`,
+      ].sort((left, right) => left.localeCompare(right));
+      expect(first.status).toBe(0);
+      expect(second.status).toBe(0);
+      expect(first.stderr).toBe("");
+      expect(first.stdout).toBe(second.stdout);
+      expect(first.stdout).toBe(`${expected.join("\n")}\n`);
+      expect(first.stdout).not.toContain("open-detached");
+      expect(first.stdout).not.toContain("shared-lane");
+      expect(first.stdout).not.toContain("feature/shared");
+      expect(snapshot(root)).toEqual(before);
+    } finally {
+      for (const folder of [".worktrees/names.closed", ".worktrees/open-detached", ".worktrees/shared-lane"]) {
+        try {
+          git(root, ["worktree", "remove", "--force", folder]);
+        } catch {
+          // Cleanup only. The assertion above is the result that matters.
+        }
       }
       rmSync(root, { recursive: true, force: true });
     }

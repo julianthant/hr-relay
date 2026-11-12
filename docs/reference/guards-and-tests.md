@@ -440,8 +440,9 @@ reaching CI and spending a full run. Allowed branches are `main`, `staging`, `de
 `.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. `.github/workflows/ci.yml` runs that
 command as its first job, and every other job waits on it. `pull_request` includes `edited`, so a
 title change at the same head runs the check again. `--all` lists off-pattern local branches and
-worktrees, and a local branch or linked worktree whose Concord ticket is `complete` or `closed`.
-The ledger is `~/.concord-ledger/<package.json name>/.concord/concord.db`, or the `--ledger` path.
+worktrees, and a local branch or linked worktree whose Concord ticket is `complete` or `closed`,
+including a detached worktree named by `tasks.worktree`. The ledger is
+`~/.concord-ledger/<package.json name>/.concord/concord.db`, or the `--ledger` path.
 A missing ledger adds no ticket rows. An unreadable ledger fails the command. `--all` only lists;
 it never deletes.
 
