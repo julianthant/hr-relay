@@ -54,7 +54,7 @@ primitives.
   set `relayParityTheme` per theme, load each variant and scenario, and write PNGs to an output
   folder taken from an environment variable.
 - Run it alone: `npm run test:parity -- <spec> -g "<title>"`. Each run rebuilds
-  `dist/parity-dashboard`. Follow the local operations note's limits for local renders.
+  `dist/parity-dashboard`. Follow the limits in `.work/operations.md` for local renders.
 - Capture every variant and scenario light and dark at 1280, and at 1024 where layout changes, into
   the task's `.work/` folder. Look at every frame before handing it over.
 
