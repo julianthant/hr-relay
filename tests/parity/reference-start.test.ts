@@ -1,3 +1,4 @@
+import { setSwitchChecked } from "./helpers/switch-choice.js";
 import { expect } from "@playwright/test";
 import { CommandResultSchema, StartCommandRequestSchema } from "../../src/rules/commands/commands.js";
 import { test } from "./helpers/fixtures.js";
@@ -81,11 +82,11 @@ test.describe("separations start-run continuity", () => {
 
 
         await page.getByRole("button", { name: "Continue", exact: true }).click();
-        await expect(page.getByRole("checkbox", { name: "Customize steps" })).toBeVisible();
+        await expect(page.getByRole("switch", { name: "Customize steps" })).toBeVisible();
 
 
 
-        await page.getByRole("checkbox", { name: "Customize steps" }).check();
+        await setSwitchChecked(page.getByRole("switch", { name: "Customize steps" }), true);
         await page.getByRole("button", { name: "Continue", exact: true }).click();
         await expect(page.getByRole("heading", { name: "Workflow steps" })).toBeVisible();
         await expect(page.getByText("6 / 6 included", { exact: true })).toBeVisible();
@@ -93,7 +94,7 @@ test.describe("separations start-run continuity", () => {
 
 
 
-        await page.getByRole("checkbox", { name: "Kronos timecard" }).uncheck();
+        await setSwitchChecked(page.getByRole("switch", { name: "Include Kronos timecard" }), false);
         await expect(page.getByText("5 / 6 included", { exact: true })).toBeVisible();
         await page.getByRole("textbox", { name: "Last day worked", exact: true }).fill("06/30/2026");
         await page.getByRole("textbox", { name: "Separation date", exact: true }).fill("07/01/2026");
@@ -104,7 +105,7 @@ test.describe("separations start-run continuity", () => {
 
         // Put it back, so the plan capture below photographs the same request
         // it always did: the drafts leave with the omission.
-        await page.getByRole("checkbox", { name: "Kronos timecard" }).check();
+        await setSwitchChecked(page.getByRole("switch", { name: "Include Kronos timecard" }), true);
         await expect(page.getByText("6 / 6 included", { exact: true })).toBeVisible();
 
         await page.getByRole("button", { name: "Preview plan", exact: true }).click();

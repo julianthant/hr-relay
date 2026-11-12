@@ -457,7 +457,7 @@ export function RunReferenceRows({ requiredLabel, sheets, chosenLibraryId, chose
   }, [chosenSheetId, worksheetsState, worksheets, onWorksheet]);
   const current = worksheets.find(sheet => sheet.sheetId === chosenSheetId)?.sheetName;
   return <div className="flex min-w-0 flex-col gap-3">
-    {catalogError !== null && <Banner tone="danger" title="Reference data unavailable">{catalogError}<Button onClick={onRefresh}>Refresh</Button></Banner>}
+    {catalogError && <Banner tone="danger" title="Reference data unavailable">{catalogError}<Button onClick={onRefresh}>Refresh</Button></Banner>}
     <RunList title="Reference spreadsheets" description={`Spreadsheets this run looks people up in. Needs ${requiredLabel}.`}>
       {chosen && <RunListRow title={chosen.name} description={missingSheet ? "Previous worksheet unavailable; choose again" : current ?? (worksheetsState === "loading" ? "Loading worksheets…" : undefined)}>
         <DropdownMenu>
@@ -469,7 +469,7 @@ export function RunReferenceRows({ requiredLabel, sheets, chosenLibraryId, chose
             </DropdownMenuRadioGroup>
           </DropdownMenuGroup></DropdownMenuContent>
         </DropdownMenu>
-        <Select aria-label={`${chosen.name} version`} variant="toolbar" className="w-[76px]" disabled={busy} value={chosenVersionId ?? chosen.currentVersionId} onChange={event => onVersion(event.target.value)}>
+        <Select aria-label={`${chosen.name} version`} variant="toolbar" className="min-w-[76px] max-w-[150px]" disabled={busy} value={chosenVersionId ?? chosen.currentVersionId} onChange={event => onVersion(event.target.value)}>
           {chosen.versions.map((version, index) => <option key={version.id} value={version.id}>{version.name || `v${chosen.versions.length - index}`}</option>)}
         </Select>
         <IconButton size="xs" label={`Remove ${chosen.name}`} icon={<X aria-hidden className={dsIcon.md} />} onClick={onRemove} />

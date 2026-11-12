@@ -897,7 +897,7 @@ export function RunStartDialog({
               <Banner tone="danger" title="The request did not complete">{error}</Banner>
             )}
 
-            {currentStage !== "Options" && <section className="flex flex-col gap-1">
+            {currentStage !== "Options" && currentStage !== "Input" && currentStage !== "Values" && <section className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between gap-3">
               <h3 className="text-heading font-semibold">{currentStage === "Steps" ? isRerun ? "Choose what to run again" : "Workflow steps" : currentStage === "Values" ? "Values for the new run" : currentStage === "Confirm" ? "Review the plan" : workflow === undefined ? "No workflow" : "Run input"}</h3>
               {currentStage === "Steps" && workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} / {workflow.steps.length} included</span>}

@@ -20,7 +20,7 @@ async function reviewRerun(page: Page, server: RunRerunServer) {
   await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(dialog.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10812345");
   await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-  await setSwitchChecked(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true }), true);
+  await setSwitchChecked(dialog.getByRole("switch", { name: "Dry run", exact: true }), true);
   await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Start dry run", exact: true })).toBeVisible();
   await expect(dialog.locator("summary").filter({ hasText: /View .* accepted/u })).toHaveCount(0);
@@ -37,7 +37,7 @@ test("ordinary batch dry run enqueues one reviewed vector and no work before fin
     const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     await dialog.getByPlaceholder("Employee ID").fill("10812346\n10812347");
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-    await setSwitchChecked(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true }), true);
+    await setSwitchChecked(dialog.getByRole("switch", { name: "Dry run", exact: true }), true);
     await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
     const submit = dialog.getByRole("button", { name: "Start dry run", exact: true }); await expect(submit).toBeVisible();
     await expect(dialog.locator("summary").filter({ hasText: /View .* accepted/u })).toHaveCount(0);
