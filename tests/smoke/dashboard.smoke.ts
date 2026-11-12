@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { startSeededServer, SEEDED_DAY, type SeededServer } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
-import { PARITY_DIST_DIR } from "../support/helpers/dashboard/served-fixtures/bundle.js";
+import { MOCK_DIST_DIR } from "../support/helpers/dashboard/served-fixtures/bundle.js";
 
 let seeded: SeededServer;
 test.beforeAll(async () => {
-  seeded = await startSeededServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, productApp: true });
+  seeded = await startSeededServer({ distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" }, productApp: true });
 });
 test.afterAll(async () => { await seeded.close(); });
 

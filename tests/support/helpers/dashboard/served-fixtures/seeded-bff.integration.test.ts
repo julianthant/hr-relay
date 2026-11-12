@@ -22,9 +22,9 @@ afterEach(async () => {
 });
 
 async function boot(): Promise<SeededServer> {
-  const distDir = mkdtempSync(join(tmpdir(), "hrauto-parity-dist-"));
+  const distDir = mkdtempSync(join(tmpdir(), "hrauto-mock-dist-"));
   roots.push(distDir);
-  writeFileSync(join(distDir, "index.html"), "<!doctype html><title>parity</title>");
+  writeFileSync(join(distDir, "index.html"), "<!doctype html><title>mock</title>");
   // API-only probe: nothing renders the app here, so the bundle is declared
   // unverified instead of demanding a working-tree build.
   const server = await startSeededServer({
@@ -42,7 +42,7 @@ async function dashboardDay(baseUrl: string, day: string) {
   return body;
 }
 
-describe("seeded parity BFF (adapter #2 — real machinery)", () => {
+describe("seeded mock BFF (adapter #2 — real machinery)", () => {
   it("serves a strict bootstrap document", async () => {
     const server = await boot();
     const bootstrap = FrontendBootstrapWireSchema.parse(
@@ -58,7 +58,7 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
       await dashboardDay(server.baseUrl, server.day),
     );
     // Keyed by the plain string: run ids are branded on the wire, and the
-    // seed reports them as the raw ids a parity spec would address.
+    // seed reports them as the raw ids a mock spec would address.
     const byId = new Map(day.queueSurfaces.map((surface) => [String(surface.runId), surface]));
 
     const expected: readonly [string, string][] = [

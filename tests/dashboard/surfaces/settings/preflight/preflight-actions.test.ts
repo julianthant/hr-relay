@@ -10,7 +10,7 @@ import { PreflightReportContent } from "../../../../../src/dashboard/surfaces/se
 import { PreflightCheckIdSchema } from "../../../../../src/models/preflight/preflight-contract.js";
 import { FingerprintSchema } from "../../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
-import { FIXTURE_EDITABLE_SETTINGS } from "../../../../parity/helpers/fixture-settings.js";
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../../mocks/helpers/fixture-settings.js";
 import { createPreflightHarness } from "../../../../support/fixtures/preflight-seams.js";
 
 import { usePreflightActions } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-actions-model.js";

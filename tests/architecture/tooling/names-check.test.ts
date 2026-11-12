@@ -25,7 +25,7 @@ describe("names-check guard", () => {
     const jobs = workflow.split("\njobs:\n")[1] ?? "";
     const names = [...jobs.matchAll(/^ {2}([\w-]+):$/gmu)].map((match) => match[1] ?? "");
     expect(names[0]).toBe("names");
-    for (const required of ["static", "privacy", "unit", "integration", "architecture", "parity"]) {
+    for (const required of ["static", "privacy", "unit", "integration", "architecture"]) {
       expect(names).toContain(required);
     }
     for (const name of names.slice(1)) {

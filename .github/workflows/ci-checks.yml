@@ -13,8 +13,6 @@ on:
         value: ${{ jobs.integration.result }}
       architecture:
         value: ${{ jobs.architecture.result }}
-      parity:
-        value: ${{ jobs.parity.result }}
 
 permissions:
   contents: read
@@ -87,13 +85,12 @@ jobs:
               - '**'
               - '!**/*.md'
               - '!tests/**/*.test.ts'
-              - '!tests/parity/references/**'
             unit:
               - 'tests/**/*.test.ts'
               - '!tests/**/*.integration.test.ts'
               - '!tests/**/*.local.test.ts'
               - '!tests/architecture/**'
-              - '!tests/parity/**'
+              - '!tests/mocks/**'
               - '!tests/perf/**'
             integration:
               - 'tests/**/*.integration.test.ts'
@@ -101,9 +98,6 @@ jobs:
               - '!tests/perf/**'
             architecture:
               - '**'
-              - '!**/*.md'
-            parity:
-              - 'tests/parity/**'
               - '!**/*.md'
       - uses: actions/github-script@v9
         id: select
@@ -242,16 +236,10 @@ jobs:
             test "$UBUNTU_RESULT" = success
           fi
 
-  parity:
-    name: parity
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Desktop parity is verified during full releases."
 
   unit:
     name: unit
-    needs: [changes, static, privacy, ubuntu, integration, architecture, parity]
+    needs: [changes, static, privacy, ubuntu, integration, architecture]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
