@@ -71,7 +71,12 @@ manual start; it calls the same `checks.yml` with kind `release`; the plan adds 
 release-batch jobs. A run's title is its pull request title; a manual Production run takes its title from its
 required `title` input. `checks.yml` is the only file that defines test jobs.
 
-Each pull request run ends in one gate job: `staging` needs `names` and `checks`; `production` needs `checks`.
+Security jobs run only in `Production`; Staging runs none. `codeql` (CodeQL analysis of JavaScript and TypeScript)
+runs for pull requests into `main` and for pushes to `main`, so the default branch always has an analysis; a push to
+`main` runs only `codeql`. `dependencies` (`npm audit --omit=dev --audit-level=high`) runs for pull requests into
+`main`. Results appear under the repository's code scanning alerts, which needs CodeQL default setup off.
+
+Each pull request run ends in one gate job: `staging` needs `names` and `checks`; `production` needs `checks`, `codeql` and `dependencies`.
 The gate fails when any job it needs failed or was cancelled, and no other job repeats a result. The `production` gate
 also fails for a pull request whose head is neither `staging` nor `hotfix/*`; both heads run the full plan, and a manual
 start passes. The merge train starts from `staging.yml` after the `staging` gate, on a push to `staging` and when
