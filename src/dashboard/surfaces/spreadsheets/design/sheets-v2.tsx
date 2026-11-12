@@ -75,8 +75,8 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const add = async (document: EditableWorkbook) => {
     const outcome = await importWorkbook(adapter, document);
     if (outcome.state === 'added') {
-      const missing = outcome.rowsWithoutEid;
-      toast({ tone: 'success', title: `Added ${outcome.name}`, description: missing > 0 ? `${missing.toLocaleString()} ${missing === 1 ? 'row has' : 'rows have'} no usable employee ID and will be read as missing.` : undefined });
+      const noEid = outcome.rowsWithoutEid;
+      toast({ tone: 'success', title: `Added ${outcome.name}`, description: noEid > 0 ? `${noEid.toLocaleString()} ${noEid === 1 ? 'row has' : 'rows have'} no usable employee ID and will be read as missing.` : undefined });
       return true;
     }
     toast({ tone: 'danger', title: outcome.state === 'pending' ? `Still confirming ${pendingImportName(adapter)}` : "Couldn't add the spreadsheet",
