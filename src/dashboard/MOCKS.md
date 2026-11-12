@@ -1,7 +1,7 @@
 # Mock scene runner
 
-`npm run mocks` runs Playwright with `playwright.parity.config.ts` to render `/ui-mock` scenes from the
-parity dashboard build. It is not a test gate and CI never runs it. Dashboard behaviour is proven by
+`npm run mocks` runs Playwright with `playwright.mocks.config.ts` to render `/ui-mock` scenes from the
+mock dashboard build. It is not a test gate and CI never runs it. Dashboard behaviour is proven by
 Vitest unit/integration tests and `/verify` browser checks.
 
 ## Run
@@ -19,14 +19,14 @@ Headless Chromium, 1280×720, device scale factor 1, no touch, and no mobile emu
 use the `graphite-warm` theme with `data-demo-theme="dark"`. Fixture processes and browsers use
 `America/Los_Angeles`.
 
-`tests/parity/helpers/global-setup.ts` builds or verifies the bundle once before workers start.
-`helpers/bundle.ts` owns `dist/parity-dashboard` and its input stamp. Fixture/seeded BFF servers use
+`tests/mocks/helpers/global-setup.ts` builds or verifies the bundle once before workers start.
+`helpers/bundle.ts` owns `dist/mock-dashboard` and its input stamp. Fixture/seeded BFF servers use
 ephemeral ports and owned temporary state rather than dashboard runtime ports or live HR state.
-`helpers/workflow-composition.ts` selects the test composition explicitly. `tests/parity/app-entry.tsx`
+`helpers/workflow-composition.ts` selects the test composition explicitly. `tests/mocks/app-entry.tsx`
 sets the harness flag that `mockParam` in `src/dashboard/app/mock-surfaces.ts` reads, so a served
 dashboard never shows a mock.
 
-Playwright writes failure artifacts under `tests/parity/.output/`.
+Playwright writes failure artifacts under `tests/mocks/.output/`.
 
 ## Current presentation choices
 
@@ -61,7 +61,7 @@ presentation.
   typed fields, selected header/column import, real XLSX workers and bounded editor history.
   The former Library/Types tabs and Date added column are absent.
 - The HUB Assistant mounts in the shell. Product conversations use the served assistant controller with per-chat cancellation and account authority.
-  Canonical selected-run actions require explicit Confirm and show their exact public plan. Confirmed starts and cancellations resolve in the thread; unknown outcomes retain the disabled card. Other proposals without issued action authority keep confirmation unavailable. Explicit parity composition retains the approved conversation and workflow
+  Canonical selected-run actions require explicit Confirm and show their exact public plan. Confirmed starts and cancellations resolve in the thread; unknown outcomes retain the disabled card. Other proposals without issued action authority keep confirmation unavailable. Explicit mock composition retains the approved conversation and workflow
   samples; workbook registration and exact-version reads use the served library.
 - Archive and UI catalog URLs show removal notices; their pages and Queue context menus are absent.
 - Loading skeletons preserve the geometry of the surface they replace.
@@ -69,7 +69,7 @@ presentation.
 Julian approved the HUB-R4 composer over HUB-R3 on October 19, 2026 at 2:41 PM PT
 (`relay-plan/briefs/HUB-WIRE-1.md`). The approved combined presentation inventory is 107 TSX files,
 22 stylesheets and two theme modules (131 paths). The inventory test and exact path fixture own
-that freeze. Legacy parity drivers follow the current visible controls; removed presentation
+that freeze. Legacy mock drivers follow the current visible controls; removed presentation
 contracts are replaced with inclusion/exclusion, geometry, keyboard and interaction assertions.
 
 See [DESIGN.md](DESIGN.md) for composition rules and

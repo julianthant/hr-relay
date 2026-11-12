@@ -1,28 +1,28 @@
 
 import type { Page } from "@playwright/test";
-export const PARITY_VIEWPORTS = Object.freeze([
+export const MOCK_VIEWPORTS = Object.freeze([
   { name: "1280x720", width: 1280, height: 720 },
 ] as const);
 
-export const PARITY_THEMES = Object.freeze([
+export const MOCK_THEMES = Object.freeze([
   { name: "graphite-warm", attribute: "dark" },
 ] as const);
 
-export type ParityViewport = (typeof PARITY_VIEWPORTS)[number];
-export type ParityTheme = (typeof PARITY_THEMES)[number];
+export type MockViewport = (typeof MOCK_VIEWPORTS)[number];
+export type MockTheme = (typeof MOCK_THEMES)[number];
 
 export interface A11ySnapshotSource {
   locator(selector: string): { ariaSnapshot(): Promise<string> };
 }
 
-export async function installTheme(page: Page, theme: ParityTheme): Promise<void> {
+export async function installTheme(page: Page, theme: MockTheme): Promise<void> {
   await page.addInitScript(
-    attribute => { Reflect.set(window, "relayParityTheme", attribute); },
+    attribute => { Reflect.set(window, "relayMockTheme", attribute); },
     theme.attribute,
   );
 }
 
-export async function assertThemeApplied(page: Page, theme: ParityTheme): Promise<void> {
+export async function assertThemeApplied(page: Page, theme: MockTheme): Promise<void> {
   const observed = await page.evaluate(() => ({
     html: document.documentElement.getAttribute("data-demo-theme"),
     body: document.body.getAttribute("data-demo-theme"),

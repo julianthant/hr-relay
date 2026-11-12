@@ -2,11 +2,11 @@ import { expect } from "@playwright/test";
 import { test } from "./fixtures.js";
 import { gotoAppState,type AppRoute } from "./app-driver.js";
 import {
-PARITY_THEMES,
-PARITY_VIEWPORTS,
+MOCK_THEMES,
+MOCK_VIEWPORTS,
 assertThemeApplied,
 installTheme,
-type ParityTheme,
+type MockTheme,
 } from "./capture.js";
 import { type FixtureServer } from "../../support/helpers/dashboard/fixture-bff.js";
 import { assertShellGeometry } from "./geometry.js";
@@ -15,15 +15,15 @@ export interface ReferenceScene { readonly id: string; readonly route: AppRoute 
 export type SceneAnchors = Readonly<Record<string, (page: import("@playwright/test").Page) => Promise<void>>>;
 export function registerReferenceScenes(states: readonly ReferenceScene[], server: () => FixtureServer, anchors: SceneAnchors) {
 
-for (const viewport of PARITY_VIEWPORTS) {
-  for (const theme of PARITY_THEMES) {
+for (const viewport of MOCK_VIEWPORTS) {
+  for (const theme of MOCK_THEMES) {
     test.describe(`${theme.name} @ ${viewport.name}`, () => {
       for (const state of states) {
         test(state.id, async ({ page }) => {
           const errors = failOnPageErrors(page);
           await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
-          await installTheme(page, theme satisfies ParityTheme);
+          await installTheme(page, theme satisfies MockTheme);
           await gotoAppState(page, server().baseUrl, state.route);
 
           if (
@@ -33,7 +33,7 @@ for (const viewport of PARITY_VIEWPORTS) {
             || state.route.activity !== undefined
             || state.route.settings !== undefined
           ) await dismissWorkflowWindow(page);
-          await assertThemeApplied(page, theme satisfies ParityTheme);
+          await assertThemeApplied(page, theme satisfies MockTheme);
           await page.waitForTimeout(120);
 
 

@@ -7,7 +7,7 @@ export function servedFixtureSources(workflows: readonly RunStartWorkflow[]): Wo
   return Object.freeze({ ...Object.fromEntries(Object.entries(WORKFLOW_SOURCES).map(([id, source]) => [id, source === "hidden" ? source : "mock" as const])), ...Object.fromEntries(workflows.map(flow => [flow.workflowId, "served" as const])) });
 }
 
-export function PARITY_WORKFLOW_COMPOSITION(workflows: readonly RunStartWorkflow[]): WorkflowComposition {
+export function MOCK_WORKFLOW_COMPOSITION(workflows: readonly RunStartWorkflow[]): WorkflowComposition {
   const sources = servedFixtureSources(workflows);
   const previewSources = Object.freeze({ ...sources, ...servedFixtureSources([]) });
   return Object.freeze({ sources, initialMockRuns: seedMockRuns, assistant: "mock" as const, inbox: "mock" as const, search: "mock" as const, explorerSources: previewSources, logsSources: previewSources, sessions: "mock" as const, activity: "mock" as const, dataSources: Object.freeze({ ...sources, "person-lookup": "served" as const }),

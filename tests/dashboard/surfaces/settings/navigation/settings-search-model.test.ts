@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { searchSettings,settingsSearchIndex } from "../../../../../src/dashboard/surfaces/settings/navigation/settings-search-model.js";
 import { buildSettingsNav } from "../../../../../src/dashboard/surfaces/settings/settings-model.js";
-import { fixtureSettingsDocument } from "../../../../parity/helpers/fixture-settings.js";
+import { fixtureSettingsDocument } from "../../../../mocks/helpers/fixture-settings.js";
 
 const document = fixtureSettingsDocument();
 const groups = buildSettingsNav(document);

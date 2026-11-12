@@ -49,7 +49,7 @@ packaged mode. That packaging mode is not implemented by this source build.
 The [root codebase instructions](../../AGENTS.md#codebase) own source mirroring and filenames.
 
 `tests/architecture/test-layout.test.ts` checks canonical filenames and existing tracked source
-owners. It permits the exact `architecture/`, `parity/`, `perf/`, `types/`, and `support/` subtrees
+owners. It permits the exact `architecture/`, `mocks/`, `perf/`, `types/`, and `support/` subtrees
 to have their own organization. It rejects alternate test suffixes, unmatched source paths, and
 helpers that hide test registrations behind a helper-style name.
 
@@ -59,7 +59,7 @@ helpers that hide test registrations behind a helper-style name.
 | Integration | `<module>.integration.test.ts`; Vitest `integration` | Real isolated SQLite, sockets, processes, browser adapters, and composed execution. |
 | Architecture | `tests/architecture/**/*.test.ts`; Vitest `architecture` | Repository-wide boundaries, registries, source/AST checks, and negative controls. Some guards also exercise real adapters. |
 | Types | `tests/types/`; `npm run typecheck` | Type inference and illegal calls pinned with `@ts-expect-error` and positive controls. |
-| Mock scenes | `tests/parity/`; `npm run mocks` | `/ui-mock` frames rendered from the parity build. Not a test gate; CI never runs it. |
+| Mock scenes | `tests/mocks/`; `npm run mocks` | `/ui-mock` frames rendered from the mock build. Not a test gate; CI never runs it. |
 | Performance | `tests/perf/**/*.test.ts`; Vitest `perf` via `npm run test:perf`. `tests/perf/dashboard-benchmark.ts` via `npm run perf:dashboard`. | Fixture performance checks outside coverage, deterministic structural counters, and separately reported host-dependent timings. |
 | Local | `<module>.local.test.ts` and `<module>.local.integration.test.ts`; Vitest `local` via `npm run test:local`. | Tests that need the operator's machine or accounts: a live dry run against UCPath, Kuali, CRM or Duo, the real login Keychain, or the real store. The topic name `local` is that marker. |
 
@@ -95,13 +95,13 @@ integration and architecture only. Coverage stays on those three and does not se
 
 | Project | Include | Exclude |
 | --- | --- | --- |
-| `unit` | `tests/**/*.test.ts` | `tests/**/*.integration.test.ts`, `tests/**/*.local.test.ts`, `tests/architecture/**`, `tests/parity/**`, `tests/perf/**` |
+| `unit` | `tests/**/*.test.ts` | `tests/**/*.integration.test.ts`, `tests/**/*.local.test.ts`, `tests/architecture/**`, `tests/mocks/**`, `tests/perf/**` |
 | `integration` | `tests/**/*.integration.test.ts` | `tests/**/*.local.integration.test.ts`, `tests/perf/**` |
 | `architecture` | `tests/architecture/**/*.test.ts` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` |
 | `perf` | `tests/perf/**/*.test.ts` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` |
-| `local` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` | `tests/parity/**` |
+| `local` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` | `tests/mocks/**` |
 
-`tests/parity/` is outside Vitest. There is no scenario project or current `tests/scenario/`
+`tests/mocks/` is outside Vitest. There is no scenario project or current `tests/scenario/`
 corpus. Scenario declarations retained in workflow/contracts are graph metadata, not execution
 results. Role-derived scenario paths do not prove that a file exists.
 
@@ -494,7 +494,7 @@ helpers or imports outside the span can still change meaning and need ordinary c
 `test:coverage`, and `test:perf` scripts, the single TypeScript program, all authored `src`, `tests`,
 and `scripts` roots,
 and the three root configs `vitest.config.ts`, `vite.dashboard.config.ts`, and
-`vite.parity.config.ts`. Both lint CLI targets and typed ESLint blocks must cover those inputs.
+`vite.mocks.config.ts`. Both lint CLI targets and typed ESLint blocks must cover those inputs.
 Warnings and unmatched patterns fail. An inert wrapper containing the expected words fails.
 
 `guard-manifest.test.ts` also pins Vitest topology, reporter selection, exclusion-list digest,
@@ -530,7 +530,7 @@ with nonempty reasons. An exclusion cannot silently grow into a parent scope.
 
 ## 7. Mock scenes
 
-`npm run mocks` runs Playwright through `playwright.parity.config.ts` to render `/ui-mock` scenes.
+`npm run mocks` runs Playwright through `playwright.mocks.config.ts` to render `/ui-mock` scenes.
 It is not a test gate; CI never runs it.
 
 The lane uses headless Chromium, 1280×720, device scale factor 1, no mobile/touch emulation,
@@ -538,18 +538,18 @@ The lane uses headless Chromium, 1280×720, device scale factor 1, no mobile/tou
 use `graphite-warm` with `data-demo-theme="dark"`. Explicit interaction cases may exercise other
 supported desktop conditions.
 
-`tests/parity/helpers/global-setup.ts` builds or verifies the parity bundle once before workers.
-`helpers/bundle.ts` owns `dist/parity-dashboard` and its input/output stamp.
+`tests/mocks/helpers/global-setup.ts` builds or verifies the mock bundle once before workers.
+`helpers/bundle.ts` owns `dist/mock-dashboard` and its input/output stamp.
 `helpers/workflow-composition.ts` explicitly selects fixture or seeded composition. BFFs use
 owned temporary state and ephemeral ports, not live runtime ports or HR state. A fixture must
 contain the exact state its assertion claims to cover.
 
-Outputs live under ignored `tests/parity/.output/`.
+Outputs live under ignored `tests/mocks/.output/`.
 
 The mock runner child uses runner containment with an inactivity bound of **180,000 ms** without
 stdout/stderr. A stall fails, preserves diagnostics, and stops the group with TERM then KILL.
 Continuous output can defeat an inactivity bound; it does not prove progress. Inner deadlines
-remain unchanged. [The mock scene runner](../../src/dashboard/PARITY.md) owns scene rules; [frontend/backend integration](frontend-backend-integration.md) owns wiring
+remain unchanged. [The mock scene runner](../../src/dashboard/MOCKS.md) owns scene rules; [frontend/backend integration](frontend-backend-integration.md) owns wiring
 acceptance.
 
 ## 8. Behavior and safety test owners

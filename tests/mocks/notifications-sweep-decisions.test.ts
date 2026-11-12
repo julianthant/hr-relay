@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
-import { PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { MOCK_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 
 // Decision cards with buttons (synthetic reference fixtures): footer buttons are 28px. Frames go to the gitignored .work folder.
@@ -8,12 +8,12 @@ const OUT = `${process.env.NOTIFICATIONS_MOCK_OUT ?? "/Users/julianhein/Projects
 const THEMES = (process.env.NOTIFICATIONS_MOCK_THEMES ?? "light,dark").split(",") as ("light" | "dark")[];
 test.use({ deviceScaleFactor: Number(process.env.NOTIFICATIONS_MOCK_SCALE ?? 1) });
 let server: FixtureServer;
-test.beforeAll(async () => { server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } }); });
+test.beforeAll(async () => { server = await startFixtureServer({ distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" } }); });
 test.afterAll(async () => { await server.close(); });
 
 for (const theme of THEMES) for (const fixture of ["ucpath-found"]) test(`decision card ${fixture} @ ${theme}`, async ({ page }) => {
   test.setTimeout(120_000);
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${server.baseUrl}/?fixture=${fixture}${fixture === "ucpath-found" ? "&state=exact" : ""}`);
   const logs = page.getByRole("region", { name: "Selected run logs", exact: true });

@@ -462,7 +462,7 @@ operator message. The model,
 effort, approval and voice controls remain unavailable. The served model and effort labels come from
 the selected person’s preference; setup changes use the existing composer command. Test assistant
 in Settings › Preflight explicitly runs the same public capability verification; its result is bound to
-the current account and clears on account change, disposal or after 15 minutes. Named verification failures remain in the conversation and never enable inference. The explicit parity composition supplies approved mock conversations and sample workflow
+the current account and clears on account change, disposal or after 15 minutes. Named verification failures remain in the conversation and never enable inference. The explicit mock composition supplies approved mock conversations and sample workflow
 scenes; product failures never select those producers. Chat titles, selected chat, text drafts and displayed replies survive refresh in the current browser
 tab’s session storage, scoped only after the server verifies the selected person. Another person’s
 key is never adopted. Saved text confers no command or model authority: restored pending requests
@@ -514,7 +514,7 @@ live consumers continue to require their evidence.
 
 Every assistant mutation requires an explicit Confirm. Settings grants enable proposals and never authorize automatic changes. Retired permission modes cannot be selected or granted; their terminal history stays inert. A grant alone does not verify
 account capability. Browser dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
-draft validation, autosave, uncertainty and readback. Explicit parity previews keep their local controls.
+draft validation, autosave, uncertainty and readback. Explicit mock previews keep their local controls.
 
 General composes ChatGPT account, appearance, ordinary General fields and annual dates, with Delete account last. The assistant permission row and its search destination are absent; Relay always requires explicit confirmation for its actions. Appearance has a Light/Dark toggle and an Animations switch with no row descriptions or person names. Preference feedback retains loading, saving, failure and uncertain states below the rows.
 Delete account uses the active ready profile's session owner and the typed delete client. Its confirmation
@@ -743,7 +743,7 @@ The mounted component set and the approved mock define presentation. Wiring chan
 view-model inputs, ports, hooks, and callbacks while keeping the rendered mock case identical.
 [The wiring contract](frontend-backend-integration.md#current-frontend-mock-wiring-checklist) names each
 surface's required identity, persistence, transitions, and acceptance checks. Shared
-[design rules](../../src/dashboard/DESIGN.md) and [mock scene runner](../../src/dashboard/PARITY.md)
+[design rules](../../src/dashboard/DESIGN.md) and [mock scene runner](../../src/dashboard/MOCKS.md)
 own composition and visual checks.
 
 Command results remain `applied`, `already-applied`, `confirmation-required`, `conflict`, or `rejected`

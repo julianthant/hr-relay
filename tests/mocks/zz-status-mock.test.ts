@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { join } from "node:path";
 import { test } from "./helpers/fixtures.js";
-import { PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { MOCK_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { serveSettings } from "./helpers/served-settings.js";
@@ -22,7 +22,7 @@ const SETTINGS_PAGE: Partial<Record<StatusMockId, string>> = {
 };
 
 let server: FixtureServer;
-test.beforeAll(async () => { server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } }); });
+test.beforeAll(async () => { server = await startFixtureServer({ distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" } }); });
 test.afterAll(async () => { await server.close(); });
 
 async function settle(page: Page) {
@@ -34,7 +34,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
   test.setTimeout(240_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   for (const id of STATUS_MOCK_IDS.filter(item => ONLY === undefined || ONLY.includes(item))) {
     await page.setViewportSize({ width: WIDTH, height: HEIGHT });
     const settings = SETTINGS_PAGE[id];
@@ -298,7 +298,7 @@ for (const theme of THEMES) test(`run input every workflow @ ${theme} ${WIDTH}`,
   test.setTimeout(240_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
   for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]) {
@@ -370,7 +370,7 @@ for (const theme of THEMES) test(`settings pages @ ${theme} ${WIDTH}`, async ({ 
   test.setTimeout(240_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   for (const id of ["general", "activity", "keyboard"]) {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${id}${id === "general" ? "&statusMock=general-a" : id === "activity" ? "" : "&statusMock=general-a"}`);
@@ -393,7 +393,7 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
   test.setTimeout(240_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=activity`);
   await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
@@ -506,7 +506,7 @@ for (const theme of THEMES) test(`logs footer states @ ${theme} ${WIDTH}`, async
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre&assistantOpen=0`);
   const logs = page.locator(".dashboard-log-column");
@@ -537,7 +537,7 @@ for (const theme of THEMES) test(`sidebar collapse widens logs @ ${theme} ${WIDT
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre&assistantOpen=0`);
   await page.getByRole("button", { name: "Emergency Contact" }).first().click();
@@ -562,7 +562,7 @@ for (const theme of THEMES) test(`command result toasts @ ${theme} ${WIDTH}`, as
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-results&assistantOpen=0`);
   const queueTop = () => page.locator(".dashboard-log-column").evaluate(node => Math.round(node.getBoundingClientRect().top));
@@ -592,7 +592,7 @@ for (const theme of THEMES) test(`command unknown toast @ ${theme} ${WIDTH}`, as
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=command-unknown&assistantOpen=0`);
   const toast = page.locator("[data-slot=toast]");
@@ -618,7 +618,7 @@ for (const theme of THEMES) test(`logs cards @ ${theme} ${WIDTH}`, async ({ page
   test.setTimeout(240_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: LOGS_HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=centre&assistantOpen=0`);
   const logs = page.locator(".dashboard-log-column");

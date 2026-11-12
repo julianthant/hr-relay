@@ -47,7 +47,7 @@ test-results/
 dist/
 
 # Mock scene runner scratch: failure screenshots and traces.
-tests/parity/.output/
+tests/mocks/.output/
 
 # OS
 .DS_Store

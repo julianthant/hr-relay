@@ -9,8 +9,8 @@ import { DashboardClientProvider } from "../../../src/dashboard/state/client-con
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
 import { CommandRequestSchema, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
 import { lifecycleCommandId } from "../../../src/rules/commands/lifecycle-command-id.js";
-import { PARITY_WORKFLOW_COMPOSITION } from "../../parity/helpers/workflow-composition.js";
-import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -34,7 +34,7 @@ async function mount() {
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   await act(async () => root.render(createElement(DashboardClientProvider, { client,
-    children: createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION }) })));
+    children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION }) })));
   const button = (name: string) => {
     const button = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.getAttribute("aria-label") === name || button.textContent === name);
     assert.ok(button, `missing ${name}`); return button;

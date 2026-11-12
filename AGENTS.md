@@ -24,7 +24,7 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 - Add a guard only for a real recurring mistake, with its reason in `docs/guard-inventory.json`.
 - Mirror source once under `tests/`: drop `src/`, retain `scripts/`, `fast-duo/` and root paths.
   Put `<module>.test.ts` beside `<module>.integration.test.ts`; split files over about 800 lines
-  by topic. Keep architecture, parity (mock scenes), perf and types in their own trees; shared fixtures and
+  by topic. Keep architecture, mocks, perf and types in their own trees; shared fixtures and
   helpers belong in `tests/support/`.
 - Use kebab-case filenames, named exports, `.js` relative imports and `.tsx` only in the dashboard.
   Use recursively strict Zod schemas at durable, wire and config boundaries; no unchecked casts

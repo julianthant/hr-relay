@@ -65,7 +65,7 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 - `npm run typecheck && npm run lint && npm run test:coverage` is the gate; `--max-warnings 0`, no debt manifest.
 
 ## 8 · Visual evidence
-Dashboard visual evidence comes from `/verify` browser runs; [the mock scene runner](../../../../src/dashboard/PARITY.md)
+Dashboard visual evidence comes from `/verify` browser runs; [the mock scene runner](../../../../src/dashboard/MOCKS.md)
 renders `/ui-mock` frames only. Old visual receipts are historical; a green accessibility tree does not establish
 current visual acceptance (D187).
 
