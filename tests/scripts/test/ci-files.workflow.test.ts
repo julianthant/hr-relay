@@ -121,6 +121,8 @@ describe("separate event and admitted proof workflows", () => {
     const ciTrigger = ci.split("\npermissions:\n")[0];
     const releaseTrigger = release.split("\npermissions:\n")[0];
     expect(ciTrigger).toContain("branches: [staging]");
+    const pullRequestTypes = ciTrigger.match(/types:\s*\[([^\]]*)\]/u)?.[1] ?? "";
+    expect(pullRequestTypes.split(",").map((item) => item.trim())).toContain("edited");
     expect(ciTrigger).not.toContain("workflow_dispatch:");
     expect(ciTrigger).not.toContain("push:");
     expect(load("merge-train").split("\non:\n")[1]?.split("\npermissions:")[0]).toBe(`  push:

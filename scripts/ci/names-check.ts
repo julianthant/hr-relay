@@ -1,6 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+
+const CLOSED_TICKET = new Set(["complete", "closed"]);
 
 const KEBAB = "[a-z0-9]+(?:-[a-z0-9]+)*";
 const CONVENTIONAL_AREA = /^(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test|wip)(?:\([^)]*\))?$/u;
@@ -14,6 +19,8 @@ interface Request {
   worktree?: string;
   originBranches: string[];
   originSet: boolean;
+  ledger?: string;
+  ledgerSet: boolean;
 }
 
 function report(name: string, reason: string): string {
@@ -52,13 +59,103 @@ function localBranchNames(): string[] {
   return gitLines(["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
 }
 
-function linkedWorktreePaths(): string[] {
-  const paths: string[] = [];
+interface LinkedWorktree {
+  path: string;
+  branch?: string;
+}
+
+function linkedWorktrees(): LinkedWorktree[] {
+  const records: LinkedWorktree[] = [];
+  let current: LinkedWorktree | undefined;
   for (const line of gitLines(["worktree", "list", "--porcelain"])) {
-    if (line.startsWith("worktree ")) paths.push(line.slice("worktree ".length));
+    if (line.startsWith("worktree ")) {
+      if (current !== undefined) records.push(current);
+      current = { path: line.slice("worktree ".length) };
+      continue;
+    }
+    if (current !== undefined && line.startsWith("branch refs/heads/")) {
+      current.branch = line.slice("branch refs/heads/".length);
+    }
   }
+  if (current !== undefined) records.push(current);
   // The first porcelain record is the main checkout, not a .worktrees folder.
-  return paths.slice(1);
+  return records.slice(1);
+}
+
+function branchToken(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const name = value.trim();
+  if (name === "" || name === "none" || /\s/u.test(name)) return undefined;
+  return name;
+}
+
+function branchFromNotes(notes: string | null): string | undefined {
+  if (notes === null) return undefined;
+  return branchToken(/^Branch:\s*`([^`]+)`/mu.exec(notes)?.[1]);
+}
+
+function textColumn(value: unknown, ledger: string, column: string): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string") throw new Error(`ticket ledger is unreadable (${ledger}): tasks.${column} is not text`);
+  return value;
+}
+
+function closedTicketBranches(ledger: string): ReadonlySet<string> {
+  let database: DatabaseSync;
+  try {
+    database = new DatabaseSync(ledger, { readOnly: true, timeout: 2000 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unreadable";
+    throw new Error(`ticket ledger is unreadable (${ledger}): ${message}`, { cause: error });
+  }
+  try {
+    const rows = database.prepare("SELECT branch, status, notes FROM tasks").all();
+    const byBranch = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const status = textColumn(row.status ?? null, ledger, "status");
+      if (status === null || status === "") throw new Error(`ticket ledger is unreadable (${ledger}): tasks.status is missing`);
+      const column = textColumn(row.branch ?? null, ledger, "branch");
+      const notes = textColumn(row.notes ?? null, ledger, "notes");
+      const named = branchToken(column ?? undefined) ?? branchFromNotes(notes);
+      if (named === undefined) continue;
+      const statuses = byBranch.get(named) ?? new Set<string>();
+      statuses.add(status);
+      byBranch.set(named, statuses);
+    }
+    const closed = new Set<string>();
+    for (const [branch, statuses] of byBranch) {
+      if ([...statuses].every((item) => CLOSED_TICKET.has(item))) closed.add(branch);
+    }
+    return closed;
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("ticket ledger is unreadable")) throw error;
+    const message = error instanceof Error ? error.message : "unreadable";
+    throw new Error(`ticket ledger is unreadable (${ledger}): ${message}`, { cause: error });
+  } finally {
+    database.close();
+  }
+}
+
+function discoveredLedger(): string | undefined {
+  const top = gitText(["rev-parse", "--show-toplevel"]);
+  const manifest = join(top, "package.json");
+  if (!existsSync(manifest)) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(manifest, "utf8"));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unreadable";
+    throw new Error(`package.json is unreadable: ${message}`, { cause: error });
+  }
+  if (typeof parsed !== "object" || parsed === null || !("name" in parsed)) {
+    throw new Error("package.json name is not a single path segment");
+  }
+  const name = parsed.name;
+  if (typeof name !== "string" || !/^[A-Za-z0-9._-]+$/u.test(name)) {
+    throw new Error("package.json name is not a single path segment");
+  }
+  const path = join(homedir(), ".concord-ledger", name, ".concord", "concord.db");
+  return existsSync(path) ? path : undefined;
 }
 
 function currentBranch(): string {
@@ -119,7 +216,7 @@ function worktreeProblem(path: string): string | undefined {
 }
 
 function parse(argv: readonly string[]): Request {
-  const request: Request = { all: false, titleSet: false, originBranches: [], originSet: false };
+  const request: Request = { all: false, titleSet: false, originBranches: [], originSet: false, ledgerSet: false };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
     if (token === "--all") {
@@ -147,6 +244,10 @@ function parse(argv: readonly string[]): Request {
         request.originBranches.push(value);
         request.originSet = true;
         break;
+      case "--ledger":
+        request.ledger = value;
+        request.ledgerSet = true;
+        break;
       default:
         reject(report(token, "names:check does not recognize this argument"));
     }
@@ -154,16 +255,19 @@ function parse(argv: readonly string[]): Request {
   return request;
 }
 
-function listOffPattern(extraOrigin: readonly string[]): string[] {
+function listOffPattern(extraOrigin: readonly string[], ledger: string | undefined): string[] {
   const origin = [...new Set([...originBranchNames(), ...extraOrigin])];
+  const closed = ledger === undefined ? new Set<string>() : closedTicketBranches(ledger);
   const lines: string[] = [];
   for (const branch of localBranchNames()) {
     const problem = branchProblem(branch, origin);
     if (problem) lines.push(problem);
+    else if (closed.has(branch)) lines.push(report(branch, "ticket is closed"));
   }
-  for (const path of linkedWorktreePaths()) {
-    const problem = worktreeProblem(path);
+  for (const worktree of linkedWorktrees()) {
+    const problem = worktreeProblem(worktree.path);
     if (problem) lines.push(problem);
+    if (worktree.branch !== undefined && closed.has(worktree.branch)) lines.push(report(worktree.path, "ticket is closed"));
   }
   return lines.sort((left, right) => left.localeCompare(right));
 }
@@ -171,7 +275,11 @@ function listOffPattern(extraOrigin: readonly string[]): string[] {
 function main(): void {
   const request = parse(process.argv.slice(2));
   if (request.all) {
-    const lines = listOffPattern(request.originBranches);
+    const ledger = request.ledgerSet ? request.ledger : discoveredLedger();
+    if (request.ledgerSet && (ledger === undefined || !existsSync(ledger))) {
+      reject(report(ledger ?? "--ledger", "ticket ledger was not found"));
+    }
+    const lines = listOffPattern(request.originBranches, ledger);
     if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n`);
     return;
   }

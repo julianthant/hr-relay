@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { nameCases, runNamesCheck } from "../../scripts/ci/names-check-cases.js";
+import { nameCases, runNamesCheck } from "../../support/helpers/names-check-cases.js";
 
 describe("names-check guard", () => {
   it.each(nameCases)("$label", ({ args, ok, offender }) => {
@@ -20,6 +20,8 @@ describe("names-check guard", () => {
 
   it("runs first in ci.yml and every other job waits on it", () => {
     const workflow = readFileSync(new URL("../../../.github/workflows/ci.yml", import.meta.url), "utf8");
+    const types = workflow.match(/types:\s*\[([^\]]*)\]/u)?.[1] ?? "";
+    expect(types.split(",").map((item) => item.trim())).toContain("edited");
     const jobs = workflow.split("\njobs:\n")[1] ?? "";
     const names = [...jobs.matchAll(/^ {2}([\w-]+):$/gmu)].map((match) => match[1] ?? "");
     expect(names[0]).toBe("names");
