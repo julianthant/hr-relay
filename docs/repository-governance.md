@@ -26,8 +26,9 @@ performance. The [release instructions](../AGENTS.md#pr-and-release-flow) own pr
 ## Merge train and automatic fixes
 
 Push roadmap-only commits (`docs/roadmap/**`) straight to `staging` to skip staging CI and the merge train.
-`.github/workflows/merge-train.yml` runs on other pushes to `staging`, when auto-merge is enabled
-on a PR targeting `staging`, and as CI's final job.
+`staging.yml` starts `.github/workflows/merge-train.yml` (a `workflow_call` workflow) after the
+`staging` gate on a PR, on other pushes to `staging`, and when auto-merge is enabled
+on a PR targeting `staging`.
 It labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then merges
 `staging` into open, non-draft, same-repository PRs by `julianthant` targeting `staging` that have
 auto-merge enabled and lack the latest `staging`. Enabling auto-merge starts a train run without
@@ -63,22 +64,30 @@ privacy, within twenty Ubuntu runners. On operator-started full releases, use al
 runners for native files. The release runner starts after
 the routine suites finish.
 
-`ci.yml` runs only for staging pull requests and calls `checks.yml` with kind `portable`. Its existing
-merge-train call follows the five required summaries. `release.yml` runs only for main pull requests or operator manual releases and
-calls the same `checks.yml` with kind `release`; the plan adds macOS native and
-release-batch jobs. `checks.yml` is the only file that defines test jobs.
+`.github/workflows` holds `staging.yml`, `production.yml`, `checks.yml` and `merge-train.yml`.
+`Staging` (`staging.yml`) runs for pull requests into `staging` and pushes to `staging`; it runs `names`, then
+`checks.yml` with kind `portable`. `Production` (`production.yml`) runs for pull requests into `main` and for a
+manual start; it calls the same `checks.yml` with kind `release`; the plan adds macOS native and
+release-batch jobs. A run's title is its pull request title; a manual Production run takes its title from its
+required `title` input. `checks.yml` is the only file that defines test jobs.
 
-Both event entries use per-PR/manual-branch supersession with a workflow/PR-or-ref concurrency
+Each pull request run ends in one gate job: `staging` needs `names` and `checks`; `production` needs `checks`.
+The gate fails when any job it needs failed or was cancelled, and no other job repeats a result. The `production` gate
+also fails for a pull request whose head is neither `staging` nor `hotfix/*`; both heads run the full plan, and a manual
+start passes. The merge train starts from `staging.yml` after the `staging` gate, on a push to `staging` and when
+auto-merge is enabled.
+
+Both workflows use per-PR/manual-branch supersession with a workflow/PR-or-ref concurrency
 group and `cancel-in-progress: true`. New pushes cancel older runs for that same key. Each entry
 queues one complete reusable check call with `queue: max` and `cancel-in-progress: false`.
-Staging CI uses the `ci-runners` job-level FIFO; Release uses its own `release-runners` FIFO,
-so Release neither waits behind nor blocks staging PR runs. Each admitted call holds all proofs,
+Staging uses the `ci-runners` job-level FIFO; Production uses its own `release-runners` FIFO,
+so Production neither waits behind nor blocks staging PR runs. Each admitted call holds all proofs,
 selected batch and timing publication until its callee finishes; the callees never reacquire admission. GitHub orders waiting
 calls by arrival, accepts at most 100 pending calls, and cancels extra arrivals on overflow.
 
-CI-invoked merge train is outside the admitted call, after the five top summaries, while remaining
-inside parent per-PR supersession. The standalone staging-push train remains separate. Batch
-repair pushes to avoid redundant CI work.
+The merge train is outside the admitted call, after the `staging` gate, while remaining
+inside parent per-PR supersession. A push to `staging` and enabling auto-merge run in groups that never
+cancel. Batch repair pushes to avoid redundant CI work.
 
 `scripts/test/ci-plan.ts` owns typed selection, proof, publication and timing-history policy. Both timed callees
 retain explicit test budgets. `checks.yml` jobs are `changes`, `static`, `privacy`, `ubuntu`, `macos`,
@@ -88,23 +97,21 @@ It has no `timings` job. The `unit` job is one checkout
 and one install: it checks proofs, merges durations, uploads `ci-timings` only when every proof passed,
 then runs final verification. It runs unless cancelled, excludes downstream train to avoid a cycle,
 and rejects failed, cancelled or missing outcomes.
-Cancellation stops that inner checkout/install work. The always-running outer
-required `unit` additionally requires the called pipeline and its inner unit output to succeed,
-so cancelled, skipped, failed or missing results cannot merge. Required names stay `static`,
-`privacy`, `unit`, `integration` and `architecture` on staging, plus `release` on main.
-Other cancelled summaries and the train may stop.
+Cancellation stops that inner checkout/install work. The always-running gate fails on a failed or
+cancelled needed job, so those results cannot merge. The required names are `staging` on staging and
+`production` on main. The train may stop when cancelled.
 
 Run static, privacy and affected portable unit, integration and architecture suites for ready PRs
 into `staging`. For PRs from `staging` into `main`, add selected native proofs and release.
 Path filters select affected suites. Draft pushes run static, privacy and
 affected unit files; becoming ready starts full applicable validation. Only the operator may start
-a manual full-release dispatch; it selects all routine suites, including native proofs. Other PR heads targeting `main` omit
-native proofs and expensive release work; their required release summary fails. Drafts cannot merge. Protected-branch pushes do not
+a manual full-release dispatch; it selects all routine suites, including native proofs. Other PR heads targeting `main`, except `staging` and `hotfix/*`, omit
+native proofs and expensive release work; their `production` gate fails. Drafts cannot merge. Protected-branch pushes do not
 repeat CI; Markdown-only PRs run static and privacy. A deliberately omitted suite has a successful
 summary, while failed change detection or any failed/cancelled selected group fails its summary.
 Markdown-only release PRs omit coverage and perf.
 
-Timing discovery enumerates registered workflow IDs for the exact `ci.yml` and `release.yml` paths,
+Timing discovery enumerates registered workflow IDs for the exact `staging.yml` and `production.yml` paths,
 then orders their successful histories together, newest first, excluding the current run. An
 unregistered new release workflow is not queried. Unexpected API failures fail CI; a valid absence
 of retained reports selects the committed seed. Every admitted run downloads the newest retained
