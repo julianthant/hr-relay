@@ -519,7 +519,7 @@ it("claims after three changed observations when the fourth preparation succeeds
 });
 
 async function twoQueuedRuns() {
-  const h = await harness(); const ingress = { ...h.ingress, submissions: [{ emplId: "10873698" }, { emplId: "10873699" }] };
+  const h = await harness(); const ingress = { ...h.ingress, submissions: [{ emplId: "10873698" }, { emplId: "10000002" }] };
   await h.plans.prepare?.(ingress, signal()); const plan = h.plans.plan(ingress);
   assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
   assert.equal(h.database.authority.runs.listByWorkflow(plan.workflowId).length, 2);
@@ -540,11 +540,11 @@ it("re-selects the next queued run when another worker claims the candidate duri
     const { h, workers, claim, candidateCurrent, strictPrepare } = await twoQueuedRuns();
     const prepared: string[] = [];
     let raced: string | undefined;
-    const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(), candidateCurrent, claim: claim(workers[0]!),
+    const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(), candidateCurrent, claim: claim(workers[0]),
       prepareRun: async run => {
         prepared.push(run.envelope.runId);
         if (raced === undefined) {
-          const other = await claimWithPreflight({ preflight: h.preflight, signal: signal(), candidateCurrent, claim: claim(workers[1]!), prepareRun: async () => undefined });
+          const other = await claimWithPreflight({ preflight: h.preflight, signal: signal(), candidateCurrent, claim: claim(workers[1]), prepareRun: async () => undefined });
           assert.ok(other.state === "applied" && "run" in other);
           raced = other.run.envelope.runId;
           assert.equal(raced, run.envelope.runId);
@@ -563,7 +563,7 @@ it("still rejects a preparation failure while its candidate is unchanged", async
   try {
     const { h, workers, claim, candidateCurrent } = await twoQueuedRuns();
     const failure = new Error("synthetic preparation failure");
-    await assert.rejects(claimWithPreflight({ preflight: h.preflight, signal: signal(), candidateCurrent, claim: claim(workers[0]!),
+    await assert.rejects(claimWithPreflight({ preflight: h.preflight, signal: signal(), candidateCurrent, claim: claim(workers[0]),
       prepareRun: async () => { throw failure; } }), error => error === failure);
   } finally { await _afterEachFixture0(); }
 });
@@ -572,7 +572,7 @@ it("ends exhausted lost claim races as an idle re-poll, not a refusal", async ()
   try {
     const { h, workers, claim } = await twoQueuedRuns();
     let preparations = 0;
-    const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(), candidateCurrent: () => false, claim: claim(workers[0]!),
+    const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(), candidateCurrent: () => false, claim: claim(workers[0]),
       prepareRun: async () => { preparations++; throw new OcrPublicationRefusedError(); } });
     assert.deepEqual(result, { state: "refused", refusal: { reason: "none-eligible" } });
     assert.equal(preparations, 4);

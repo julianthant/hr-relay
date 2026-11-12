@@ -62,7 +62,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number;
       retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule; ocr?: WorkflowModule;
-      lookupNames?: readonly string[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
+      lookupNames?: readonly string[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; holdPages?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
       failManualPageOnce?: number; stopAfterPageFailure?: boolean;
       signerLookup?: Readonly<{ firstNames: readonly string[]; failOnce?: string }>;
       reviewedPages?: readonly ReviewedPageFacts[]; operatorEvidence?: boolean;
@@ -280,7 +280,15 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         }
         return { run: database.authority.runs.get(parentRun.envelope.runId), outcomes };
       };
-      let result = options.pauseAtLookup === true ? await executeToLookup() : await canonical.execute(parentRun, signal);
+      // holdPages: stop once the OCR run has queued its page runs, before any page is claimed.
+      const executeToPages = async () => {
+        const outcomes: Awaited<ReturnType<typeof canonical.execute>>["outcomes"] = [];
+        const pagesQueued = () => database.authority.runs.listChildren(parentRun.envelope.runId)
+          .some(child => child.envelope.workflow === "ocr-page" && child.lifecycle.state === "queued");
+        while (!pagesQueued()) outcomes.push((await canonical.step(parentRun, signal)).outcome);
+        return { run: database.authority.runs.get(parentRun.envelope.runId), outcomes };
+      };
+      let result = options.holdPages === true ? await executeToPages() : options.pauseAtLookup === true ? await executeToLookup() : await canonical.execute(parentRun, signal);
       if ((failedPage || failedSigner) && options.stopAfterPageFailure !== true && result.run?.lifecycle.state === "queued") {
         const continued = await canonical.execute(parentRun, new AbortController().signal);
         result = { ...continued, outcomes: [...result.outcomes, ...continued.outcomes] };
@@ -288,7 +296,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       const run = root === ocrRoot ? parentRun
         : database.authority.runs.listChildren(parentRun.envelope.runId).find(child => child.envelope.workflow === "ocr");
       assert.ok(run);
-      if (actorId === "local-operator") {
+      if (actorId === "local-operator" && options.holdPages !== true) {
         const failures = result.outcomes.filter(outcome => outcome.state === "failed").map(outcome => {
           const failure = database.authority.failures.get(outcome.failureId); assert.ok(failure);
           return { nodeId: failure.nodeId, taskId: failure.taskId, code: failure.code,

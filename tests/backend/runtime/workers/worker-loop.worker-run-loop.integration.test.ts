@@ -15,6 +15,11 @@ import { createDebugEventWriter } from "../../../../src/backend/logs/debug-event
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { emergencyContactModule, personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { claimWithPreflight } from "../../../../src/backend/app/preflight/worker-admission.js";
+import { OcrPublicationRefusedError } from "../../../../src/backend/runs/lifecycle/ocr-checkpoint-publication.js";
+import { requiredPreflightChecks } from "../../../../src/models/preflight/preflight.js";
+import { PREFLIGHT_CHECKS } from "../../../../src/models/runtime/runtime-dependencies.js";
+import { createPreflightAdmission, PreflightAdmissionScopeSchema } from "../../../../src/rules/preflight/preflight-admission.js";
 
 const {loopHarness, cleanup } = createWorkerDirectiveTestWorld();
 
@@ -195,6 +200,42 @@ describe("worker run loop", () => {
     const browserStarts = events.filter((event) => "kind" in event && event.kind === "browser"
       && event.t === "span.started");
     assert.equal(browserStarts.length, 2);
+  });
+
+  it("re-polls on the idle cadence with no refusal standing when every claim attempt loses its race", async () => {
+    const h = await loopHarness();
+    const queued = personLookupQueuedRun();
+    h.authority.database.authority.runs.enqueue(queued);
+    const scope = PreflightAdmissionScopeSchema.parse({ configSnapshotId: queued.envelope.configSnapshotId, configFingerprint: queued.envelope.configFingerprint,
+      descriptorFingerprint: queued.envelope.contractFingerprint, requestedCapabilities: ["executor.run"] });
+    const admission = createPreflightAdmission({ clock: h.authority.clock, scheduler: h.scheduler, validate() {},
+      runners: () => PREFLIGHT_CHECKS.filter(spec => requiredPreflightChecks(["executor.run"]).includes(spec.id)).map(spec => ({ check: spec.id, kind: spec.runner,
+        async run(check) { return { check, state: "healthy" as const, summary: "Fixture healthy" }; } })) });
+    const preflight = { admission, currentScope: () => scope, runScope: () => scope, descriptor: () => personLookupDescriptor,
+      prepareSession: async () => { throw new Error("no browser session prepares in this race"); } };
+    const runtime = h.authority.database.authority.runtimeConfig.get(); assert.ok(runtime);
+    const standings: unknown[] = [];
+    let preparations = 0, claims = 0;
+    const looping = runWorkerLoop({ ...h.deps, exitWhenIdle: false, onStanding: standing => { standings.push(standing); },
+      claimNext: request => {
+        claims += 1;
+        if (claims === 2) h.stop.abort();
+        return claimWithPreflight({ preflight, signal: new AbortController().signal, candidateCurrent: () => false,
+          prepareRun: async () => { preparations += 1; throw new OcrPublicationRefusedError(); },
+          claim: admit => h.deps.lifecycle.claimNext({ commandId: request.commandId, workflow: request.workflow, workerId: request.workerId,
+            runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
+              settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } }, admit) });
+      } });
+    const idleTimer = () => h.scheduler.pending().find(entry => entry.deadlineMonotonicMs - h.authority.clock.monotonicMs() === 1_000);
+    while (idleTimer() === undefined) await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(preparations, 4);
+    idleTimer()?.fire();
+    const report = await looping;
+    assert.deepEqual(report.outcomes, []);
+    assert.equal(report.stopped, "stop-signal");
+    assert.equal(report.preflightRefusal, undefined);
+    assert.deepEqual(standings.filter(standing => standing !== undefined), []);
+    assert.equal(h.authority.database.authority.runs.get(queued.envelope.runId)?.lifecycle.state, "queued");
   });
 
   it("keeps sessions across consecutive child runs of one workflow under a parent-workflow home", async () => {
