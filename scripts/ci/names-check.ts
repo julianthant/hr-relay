@@ -100,10 +100,10 @@ function textColumn(value: unknown, ledger: string, column: string): string | nu
   return value;
 }
 
-interface ClosedTickets {
-  branches: ReadonlySet<string>;
-  worktrees: ReadonlySet<string>;
-  liveBranches: ReadonlySet<string>;
+export interface TicketOwner {
+  status: string;
+  branch?: string;
+  worktree?: string;
 }
 
 function repoRoot(): string {
@@ -116,7 +116,12 @@ function canonicalWorktree(path: string, root: string): string {
   return resolve(absolute);
 }
 
-function closedTickets(ledger: string, root: string): ClosedTickets {
+function sameWorktree(left: string, right: string): boolean {
+  const normalize = (value: string): string => value.replaceAll("\\", "/").replace(/\/+$/u, "");
+  return normalize(left) === normalize(right);
+}
+
+function ticketRows(ledger: string, root: string): TicketOwner[] {
   let database: DatabaseSync;
   try {
     database = new DatabaseSync(ledger, { readOnly: true, timeout: 2000 });
@@ -126,9 +131,7 @@ function closedTickets(ledger: string, root: string): ClosedTickets {
   }
   try {
     const rows = database.prepare("SELECT branch, worktree, status, notes FROM tasks").all();
-    const byBranch = new Map<string, Set<string>>();
-    const byWorktree = new Map<string, Set<string>>();
-    const pathBranches = new Map<string, Set<string>>();
+    const owners: TicketOwner[] = [];
     for (const row of rows) {
       const status = textColumn(row.status ?? null, ledger, "status");
       if (status === null || status === "") throw new Error(`ticket ledger is unreadable (${ledger}): tasks.status is missing`);
@@ -137,36 +140,12 @@ function closedTickets(ledger: string, root: string): ClosedTickets {
       const worktree = textColumn(row.worktree ?? null, ledger, "worktree");
       const named = branchToken(column ?? undefined) ?? branchFromNotes(notes);
       const path = worktree === null || worktree.trim() === "" ? undefined : canonicalWorktree(worktree.trim(), root);
-      if (named !== undefined) {
-        const statuses = byBranch.get(named) ?? new Set<string>();
-        statuses.add(status);
-        byBranch.set(named, statuses);
-      }
-      if (path !== undefined) {
-        const statuses = byWorktree.get(path) ?? new Set<string>();
-        statuses.add(status);
-        byWorktree.set(path, statuses);
-        if (named !== undefined) {
-          const branches = pathBranches.get(path) ?? new Set<string>();
-          branches.add(named);
-          pathBranches.set(path, branches);
-        }
-      }
+      const owner: TicketOwner = { status };
+      if (named !== undefined) owner.branch = named;
+      if (path !== undefined) owner.worktree = path;
+      owners.push(owner);
     }
-    const branches = new Set<string>();
-    const liveBranches = new Set<string>();
-    for (const [branch, statuses] of byBranch) {
-      if ([...statuses].every((item) => CLOSED_TICKET.has(item))) branches.add(branch);
-      else liveBranches.add(branch);
-    }
-    const worktrees = new Set<string>();
-    for (const [path, statuses] of byWorktree) {
-      if (![...statuses].every((item) => CLOSED_TICKET.has(item))) continue;
-      const named = pathBranches.get(path) ?? new Set<string>();
-      if ([...named].some((branch) => liveBranches.has(branch))) continue;
-      worktrees.add(path);
-    }
-    return { branches, worktrees, liveBranches };
+    return owners;
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("ticket ledger is unreadable")) throw error;
     const message = error instanceof Error ? error.message : "unreadable";
@@ -174,6 +153,24 @@ function closedTickets(ledger: string, root: string): ClosedTickets {
   } finally {
     database.close();
   }
+}
+
+function closedBranch(branch: string, rows: readonly TicketOwner[]): boolean {
+  const owners = rows.filter((row) => row.branch === branch);
+  return owners.length > 0 && owners.every((row) => CLOSED_TICKET.has(row.status));
+}
+
+export function closedWorktreeLine(path: string, checkoutBranch: string | undefined, rows: readonly TicketOwner[]): string | undefined {
+  const pathOwners = rows.filter((row) => {
+    const owned = row.worktree?.trim() ?? "";
+    return owned !== "" && sameWorktree(owned, path);
+  });
+  if (pathOwners.some((row) => !CLOSED_TICKET.has(row.status))) return undefined;
+  const branchOwners = checkoutBranch === undefined ? [] : rows.filter((row) => row.branch === checkoutBranch);
+  if (branchOwners.some((row) => !CLOSED_TICKET.has(row.status))) return undefined;
+  const owners = checkoutBranch === undefined ? pathOwners : [...pathOwners, ...branchOwners];
+  if (!owners.some((row) => CLOSED_TICKET.has(row.status))) return undefined;
+  return report(path, "ticket is closed");
 }
 
 function discoveredLedger(): string | undefined {
@@ -298,22 +295,18 @@ function parse(argv: readonly string[]): Request {
 function listOffPattern(extraOrigin: readonly string[], ledger: string | undefined): string[] {
   const origin = [...new Set([...originBranchNames(), ...extraOrigin])];
   const root = repoRoot();
-  const closed = ledger === undefined
-    ? { branches: new Set<string>(), worktrees: new Set<string>(), liveBranches: new Set<string>() }
-    : closedTickets(ledger, root);
+  const rows = ledger === undefined ? [] : ticketRows(ledger, root);
   const lines: string[] = [];
   for (const branch of localBranchNames()) {
     const problem = branchProblem(branch, origin);
     if (problem) lines.push(problem);
-    else if (closed.branches.has(branch)) lines.push(report(branch, "ticket is closed"));
+    else if (closedBranch(branch, rows)) lines.push(report(branch, "ticket is closed"));
   }
   for (const worktree of linkedWorktrees()) {
     const problem = worktreeProblem(worktree.path);
     if (problem) lines.push(problem);
-    const pathClosed = closed.worktrees.has(canonicalWorktree(worktree.path, root));
-    const branchLive = worktree.branch !== undefined && closed.liveBranches.has(worktree.branch);
-    const branchClosed = worktree.branch !== undefined && closed.branches.has(worktree.branch);
-    if (!branchLive && (pathClosed || branchClosed)) lines.push(report(worktree.path, "ticket is closed"));
+    const line = closedWorktreeLine(canonicalWorktree(worktree.path, root), worktree.branch, rows);
+    if (line !== undefined) lines.push(line);
   }
   return lines.sort((left, right) => left.localeCompare(right));
 }

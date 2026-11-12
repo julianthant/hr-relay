@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
+import { closedWorktreeLine, type TicketOwner } from "../../../scripts/ci/names-check.js";
 import { nameCases, runNamesCheck } from "../../support/helpers/names-check-cases.js";
 
 function git(cwd: string, args: readonly string[]): string {
@@ -40,7 +41,54 @@ function worktreePath(root: string, folder: string): string {
   return path;
 }
 
+const path = "/repo/.worktrees/names.closed";
+
+const worktreeLineCases: readonly { label: string; checkout?: string; rows: readonly TicketOwner[]; line?: string }[] = [
+  {
+    label: "closed checkout branch and no path rows",
+    checkout: "task/names/closed",
+    rows: [{ status: "complete", branch: "task/names/closed" }],
+    line: `${path}: ticket is closed`,
+  },
+  {
+    label: "closed checkout branch plus an active row on the same path",
+    checkout: "task/names/closed",
+    rows: [
+      { status: "complete", branch: "task/names/closed", worktree: path },
+      { status: "active", branch: "feature/still-open", worktree: path },
+    ],
+  },
+  {
+    label: "detached path all closed",
+    rows: [{ status: "complete", worktree: path }],
+    line: `${path}: ticket is closed`,
+  },
+  {
+    label: "detached path with an active owner",
+    rows: [{ status: "active", worktree: path }],
+  },
+  {
+    label: "one complete and one active on the same path",
+    rows: [
+      { status: "complete", worktree: path },
+      { status: "active", worktree: path },
+    ],
+  },
+  {
+    label: "active ticket on the checkout branch",
+    checkout: "task/names/closed",
+    rows: [
+      { status: "complete", worktree: path },
+      { status: "active", branch: "task/names/closed" },
+    ],
+  },
+];
+
 describe("names:check", () => {
+  it.each(worktreeLineCases)("worktree line: $label", ({ checkout, rows, line }) => {
+    expect(closedWorktreeLine(path, checkout, rows)).toBe(line);
+  });
+
   it.each(nameCases)("$label", ({ args, ok, offender }) => {
     const result = runNamesCheck(args);
     expect(result.error).toBeUndefined();
@@ -182,6 +230,7 @@ describe("names:check", () => {
       const expected = [
         "task/names/closed: ticket is closed",
         `${detached}: ticket is closed`,
+        `${shared}: ticket is closed`,
       ].sort((left, right) => left.localeCompare(right));
       expect(first.status).toBe(0);
       expect(second.status).toBe(0);
@@ -189,7 +238,6 @@ describe("names:check", () => {
       expect(first.stdout).toBe(second.stdout);
       expect(first.stdout).toBe(`${expected.join("\n")}\n`);
       expect(first.stdout).not.toContain("open-detached");
-      expect(first.stdout).not.toContain("shared-lane");
       expect(first.stdout).not.toContain("feature/shared");
       expect(snapshot(root)).toEqual(before);
     } finally {
@@ -199,6 +247,39 @@ describe("names:check", () => {
         } catch {
           // Cleanup only. The assertion above is the result that matters.
         }
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves an attached worktree unlisted when an active ticket owns that path", () => {
+    const root = mkdtempSync(join(tmpdir(), "names-check-attached-"));
+    const ledger = join(root, "ledger.db");
+    try {
+      initRepo(root);
+      git(root, ["branch", "task/names/closed"]);
+      git(root, ["worktree", "add", "-q", ".worktrees/names.closed", "task/names/closed"]);
+      const path = worktreePath(root, ".worktrees/names.closed");
+      writeLedger(ledger, [
+        { id: "closed", status: "complete", branch: "task/names/closed", worktree: path },
+        { id: "open", status: "active", branch: "feature/still-open", worktree: path },
+      ]);
+      const before = snapshot(root);
+      const first = runNamesCheck(["--all", "--ledger", ledger], root);
+      const second = runNamesCheck(["--all", "--ledger", ledger], root);
+      expect(first.status).toBe(0);
+      expect(second.status).toBe(0);
+      expect(first.stderr).toBe("");
+      expect(first.stdout).toBe(second.stdout);
+      expect(first.stdout).toBe("task/names/closed: ticket is closed\n");
+      expect(first.stdout).not.toContain(path);
+      expect(first.stdout).not.toContain("feature/still-open");
+      expect(snapshot(root)).toEqual(before);
+    } finally {
+      try {
+        git(root, ["worktree", "remove", "--force", ".worktrees/names.closed"]);
+      } catch {
+        // Cleanup only. The assertion above is the result that matters.
       }
       rmSync(root, { recursive: true, force: true });
     }
