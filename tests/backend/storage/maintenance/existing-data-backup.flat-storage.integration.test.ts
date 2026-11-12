@@ -26,9 +26,13 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 
+// The flat profile fixture proves its own closure with lsof before deleting its temp folder, so hosts
+// without lsof (Windows) skip every fixture case.
+const hasLsof = spawnSync("lsof", ["-v"], { stdio: "ignore" }).error === undefined;
+const fixtureIt = it.skipIf(!hasLsof);
 // Process closure is provable only on macOS (process-closure.ts); elsewhere backup closure refuses with
 // profile-process-closure-unproved before these cases reach the behaviour they check, so they skip there.
-const closureIt = it.skipIf(process.platform !== "darwin");
+const closureIt = it.skipIf(!hasLsof || process.platform !== "darwin");
 let previousUmask = process.umask();
 beforeEach(() => { previousUmask = process.umask(0o077); });
 afterEach(() => { process.umask(previousUmask); });
@@ -198,7 +202,7 @@ closureIt("archives genuinely never-initialized native6 settings without creatin
   } finally { await f.close(); }
 });
 
-it.each(["server", "workers", "geocode"] as const)("refuses an old-build %s process record before backup admission", async name => {
+fixtureIt.each(["server", "workers", "geocode"] as const)("refuses an old-build %s process record before backup admission", async name => {
   const f = await createHistoricalFlatProfileFixture();
   try {
     plantOldBuildArtifact(f.processLockRoot, name);
@@ -210,7 +214,7 @@ it.each(["server", "workers", "geocode"] as const)("refuses an old-build %s proc
 });
 
 for (const change of ["schema", "claim-prefix", "credential-mode", "symlink", "hardlink"] as const) {
-  (change === "schema" || change === "claim-prefix" ? it : closureIt)(`refuses ${change} before publishing a flat backup`, async () => {
+  (change === "schema" || change === "claim-prefix" ? fixtureIt : closureIt)(`refuses ${change} before publishing a flat backup`, async () => {
     const f = await createHistoricalFlatProfileFixture();
     const held = change === "hardlink" ? join(f.workspace, "credential-alias") : `${f.protectedPath}.held`;
     if (change === "schema") { const db = new DatabaseSync(f.databasePath); try { db.exec("PRAGMA user_version=7"); } finally { db.close(); } }
@@ -311,7 +315,7 @@ closureIt("refuses a foreign managed-file owner without certifying a backup", as
 });
 
 for (const change of ["database-identity", "artifact-root-identity", "sidecar-membership"] as const) {
-  it(`revokes held backup admission after ${change} drift`, async () => {
+  fixtureIt(`revokes held backup admission after ${change} drift`, async () => {
     const f = await createHistoricalFlatProfileFixture(), admission = await acquireFlatArchiveFixture(f.workspace, f.lifetime);
     try {
       if (change === "database-identity") { const path = `${f.databasePath}.new`; writeFileSync(path, readFileSync(f.databasePath), { mode: statSync(f.databasePath).mode & 0o7777 }); renameSync(path, f.databasePath); }
@@ -339,7 +343,7 @@ closureIt("completes only a proved empty installation backup allocation", async 
   } finally { await f.close(); }
 });
 
-it("refuses flat backup without publishing where the platform cannot prove process closure", async () => {
+fixtureIt("refuses flat backup without publishing where the platform cannot prove process closure", async () => {
   const f = await createHistoricalFlatProfileFixture(), platform = Object.getOwnPropertyDescriptor(process, "platform");
   assert.ok(platform);
   try {
@@ -420,7 +424,7 @@ closureIt("publishes no backup when process closure is lost during the copy", as
 });
 
 for (const key of ["stateRoot", "artifactRoot", "reportsDir"] as const) {
-  it(`refuses an authentic historical snapshot with an unsupported ${key}`, async () => {
+  fixtureIt(`refuses an authentic historical snapshot with an unsupported ${key}`, async () => {
     const f = await createHistoricalFlatProfileFixture(), database = new DatabaseSync(f.databasePath);
     try {
       const row = database.prepare("SELECT payload_json FROM settings_snapshots LIMIT 1").get(); assert.equal(typeof row?.payload_json, "string");
