@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { ciPlanSchema, createCiPlan, hasTimingArtifact, registeredTimingWorkflows, timingRunIds } from "../../../scripts/test/ci-plan.js";
@@ -128,6 +130,9 @@ describe("separate event and admitted proof workflows", () => {
     expect(load("merge-train").split("\non:\n")[1]?.split("\npermissions:")[0]).toBe(`  push:
     branches: [staging]
     paths-ignore: ['docs/roadmap/**']
+  pull_request:
+    branches: [staging]
+    types: [auto_merge_enabled]
   workflow_call:
     inputs:
       pr: {type: string, default: ""}
@@ -287,6 +292,75 @@ describe("separate event and admitted proof workflows", () => {
 
 });
 
+describe("merge train admission", () => {
+  it("selects only auto-merge PRs while retaining owner, repository and draft restrictions", () => {
+    const train = load("merge-train");
+    expect(train).toContain("--json number,isDraft,headRefOid,headRepositoryOwner,isCrossRepository,author,autoMergeRequest");
+    expect(train).toContain('.isDraft == false and .isCrossRepository == false and .author.login == "julianthant"');
+    expect(train).toContain('.headRepositoryOwner.login == "${{ github.repository_owner }}" and .autoMergeRequest != null');
+    const condition = job(train, "train").match(/^ {4}if: (.+)$/mu)?.[1];
+    assert.ok(condition);
+    for (const event_name of ["push", "pull_request"]) {
+      expect(runInNewContext(condition, { github: { event_name, repository: "julianthant/relay", event: {
+        pull_request: { user: { login: "julianthant" }, head: { repo: { full_name: "julianthant/relay" } } },
+      } } })).toBe(true);
+    }
+  });
+});
+
+describe("focused test planning", () => {
+  function plan(files: string, os = "ubuntu") {
+    const source = job(load("focused-tests"), "plan");
+    const script = source.match(/^ {8}run: \|\n((?: {10}[^\n]*\n|\n)+)/mu)?.[1];
+    assert.ok(script);
+    const directory = mkdtempSync(join(tmpdir(), "relay-focused-plan-"));
+    const output = join(directory, "outputs");
+    try {
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", `
+      git() {
+        case "$*" in
+          *Focused-tests*) printf '%s\\n' "$FOCUSED_FILES" ;;
+          *Focused-os*) printf '%s\\n' "$FOCUSED_OS" ;;
+          *) return 1 ;;
+        esac
+      }
+      ${script}
+    `], { env: { ...process.env, FOCUSED_FILES: files, FOCUSED_OS: os, GITHUB_OUTPUT: output }, encoding: "utf8" });
+      expect(result.error).toBeUndefined();
+      expect(result.signal).toBeNull();
+      return { ...result, outputs: existsSync(output) ? readFileSync(output, "utf8") : "" };
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+
+  it("skips every runner successfully when the head has no test request", () => {
+    const result = plan("", "");
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("::notice::");
+    for (const output of ["files", "ubuntu", "macos", "windows", "web"]) expect(result.outputs).toContain(`${output}=false\n`);
+    const source = load("focused-tests");
+    for (const runner of ["ubuntu", "macos", "windows"]) expect(job(source, runner)).toContain(`if: needs.plan.outputs.${runner} == 'true'`);
+    for (const command of ["npm ci", "npm run privacy:check"]) {
+      expect(job(source, "plan")).toContain(`- run: ${command}\n        if: steps.plan.outputs.files != 'false'`);
+    }
+  });
+
+  it.each(["../package.json", "tests/missing.test.ts"])("still fails a bad request: %s", file => {
+    const result = plan(file);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("::error::");
+  });
+
+  it("retains explicit runner selection and rejects an invalid OS", () => {
+    const file = "tests/scripts/test/ci-files.workflow.test.ts";
+    const result = plan(file, "all");
+    expect(result.status).toBe(0);
+    expect(result.outputs).toBe(`files=${file}\nubuntu=true\nmacos=true\nwindows=true\nweb=false\n`);
+    expect(plan(file, "unknown").status).toBe(1);
+  });
+});
+
 describe("shared timing discovery adapters", () => {
   it("uses one policy and handles an unregistered new release workflow without a 404 query", async () => {
     expect(timingScript(portable)).toBe(timingScript(full));
@@ -322,7 +396,8 @@ describe("per-PR cancellation with complete FIFO pipelines", () => {
 
   it.each([ci, release])("queues the transitive whole proof pipeline while keeping train outside", source => {
     const admitted = job(source, "checks");
-    expect(admitted).toContain("group: ci-runners");
+    expect(admitted).toContain(source === ci ? "group: ci-runners" : "group: release-runners");
+    if (source === release) expect(admitted).not.toContain("group: ci-runners");
     expect(admitted).toContain("queue: max");
     expect(admitted).toContain("cancel-in-progress: false");
     const calleeName = admitted.match(/uses: \.\/\.github\/workflows\/([\w-]+)\.yml/u)?.[1];
