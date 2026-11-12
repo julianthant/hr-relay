@@ -718,7 +718,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             const folded = settleCommandResult(outcome.reply);
             if (folded.kind === "refused") {
               const surface = dayWire?.queueSurfaces.find(row => row.runId === request.target.runId);
-              const entry = commandResultFeedEntry({ settlement: { ...folded, problem: outcome.feedback.text, message: outcome.feedback.text },
+              const entry = commandResultFeedEntry({ settlement: { ...folded, problem: outcome.feedback.text },
                 targetRunId: request.target.runId, expectedVersion: request.target.expectedVersion, commandId: request.commandId,
                 subject: surface?.title ?? `run ${request.target.runId}`, workflowLabel: workflowLabelOf(surface?.workflowId ?? activeWorkflowId),
                 actionLabel: label, clock: fmtClock(nowIso), actorId: request.requestedBy });

@@ -22,8 +22,7 @@ const command = (n: number, fields: Record<string, unknown>) => NotificationWire
 
 const tops = FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.parent === null);
 const byTitle = (title: string) => tops.find(row => row.title === title)!;
-const dayWire = () => DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row => row.runId === byTitle("EID 10555001").runId
-  ? { ...row, actions: [{ kind: "command", command: "retry", key: "retry", label: "Retry", icon: "retry", intent: "neutral", placement: ["footer"], expectedVersion: row.rowRevision }, ...(row.actions ?? [])] } : row) });
+const dayWire = () => DashboardDayWireSchema.parse(FIXTURE_DAY_WIRE);
 const searchRun = (n: number, state: string, subject: string) => ({ runId: uuid(30 + n), traceId: `pl-120000-00${30 + n}`, workflowId: "person-lookup", partitionDay: FIXTURE_DAY, registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "people" },
   state, shape: "single", dryRun: true, priority: "bulk", systems: [], runNumber: { state: "absent", reason: "not recorded" }, retryOf: { state: "absent", reason: "first" }, enqueuedAt: `${FIXTURE_DAY}T12:00:00Z`,
   endedAt: { state: "absent", reason: "not recorded" }, match: { field: "workflow", strength: "contains" },
@@ -54,7 +53,7 @@ async function serve(page: Page, theme: "dark" | "light", baseUrl: string) {
   await page.route(/\/api\/v1\/search\?/u, route => route.fulfill({ json: searchPage() }));
   await page.route("**/api/v1/commands", route => {
     const request = CommandRequestSchema.parse(route.request().postDataJSON());
-    return route.fulfill(request.type === "retry"
+    return route.fulfill(request.type === "bump"
       ? { status: 409, json: { state: "conflict", commandId: request.commandId, currentVersion: 5, message: "This run changed while you were looking at it." } }
       : { status: 422, json: { state: "rejected", commandId: request.commandId, code: "invalid-state", message: "The run already finished." } });
   });
@@ -73,11 +72,11 @@ for (const theme of ["dark", "light"] as const) {
       await expect(page.getByText("Priority", { exact: true })).toBeVisible();
       await shot("notifications");
       const row = (title: string) => page.locator(`[data-demo-row-id='${byTitle(title).runId}']`);
-      await row("EID 10555001").getByRole("button", { name: "Retry", exact: true }).click();
-      await expect(page.getByText("Retry: row changed").first()).toBeVisible();
       await row("Morrow, Bea").getByRole("button", { name: "Cancel run", exact: true }).click();
       await page.getByRole("button", { name: "Cancel the run", exact: true }).click();
       await expect(page.getByText("Cancel run: rejected").first()).toBeVisible();
+      await row("EID 10873698").getByRole("button", { name: /^Bump/ }).click();
+      await expect(page.getByText(/: row changed$/).first()).toBeVisible();
       await shot("priority-notifications");
       await page.getByRole("button", { name: /Retry: partial result/ }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
