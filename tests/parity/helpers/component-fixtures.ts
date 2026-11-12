@@ -3,7 +3,7 @@ import { build, preview } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-const fixtures = ["account", "approved-controls", "hub-assistant"] as const;
+const fixtures = ["approved-controls"] as const;
 type ComponentFixture = typeof fixtures[number];
 const fixtureRoot = resolve(import.meta.dirname, "../fixtures");
 const outputRoot = resolve(import.meta.dirname, "../../../dist/parity-components");
