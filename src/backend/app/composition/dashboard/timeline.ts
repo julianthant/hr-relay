@@ -38,16 +38,17 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
         const bundle = database.authority.diagnosticBundles.get(bundleId);
         if (bundle === undefined) throw new Error(`diagnostic-retention-bundle-missing: ${bundleId}`);
         // Shared or pending bytes still need their association for a later sweep.
-        return bundle.attachments.every(attachment => {
+        for (const attachment of bundle.attachments) {
           try {
             inspectArtifactDeletionFile(admission, ArtifactRefSchema.parse({ id: attachment.artifactId,
               sha256: attachment.digest, bytes: attachment.byteLength, mediaType: attachment.mediaType }));
-            return false;
           } catch (error) {
-            if (error instanceof Error && "code" in error && error.code === "ENOENT") return true;
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
             throw error;
           }
-        });
+          return false;
+        }
+        return true;
       });
       retention.sweep(eligible);
     } catch (error) {
