@@ -49,7 +49,7 @@ it("clears the final Search entry and disables Continue", async () => {
   assert.equal(dialog.typedInput().value, "");
   assert.equal(document.querySelector('[aria-label="Parsed input"]'), null);
   assert.equal(dialog.disabled("Continue"), true);
-  assert.match(dialog.text(), /0 runs/u);
+  assert.match(dialog.text(), /Type at least one value/u);
 });
 
 it("keeps Match identifiers raw in the editor and masked in its preview", async () => {
