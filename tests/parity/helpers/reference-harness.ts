@@ -1,6 +1,5 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixtures.js";
-import { resolve } from "node:path";
 import { PARITY_DIST_DIR } from "./bundle.js";
 import { startFixtureServer,type FixtureServer } from "../../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
@@ -9,7 +8,6 @@ import { FIXTURE_START_PICKER_BOOTSTRAP,FIXTURE_START_PICKER_DAY_WIRE,FIXTURE_ST
 import { FIXTURE_STORAGE_DEGRADED_BOOTSTRAP } from "./fixture-storage.js";
 import { startSeededServer,type SeededServer } from "./seeded-bff.js";
 import { startSeparationsStartServer } from "./run-rerun-server.js";
-export const REFERENCES = resolve(import.meta.dirname, "../references");
 export function registerReferenceServers(kinds: readonly ("server" | "startPickerServer" | "separationsStartServer" | "storageServer" | "seeded")[]) {
 let server: FixtureServer | undefined;
 let startPickerServer: FixtureServer | undefined;

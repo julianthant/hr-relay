@@ -524,7 +524,7 @@ pending deletion's original epoch. Rendering, navigation and Cancel dispatch not
 dispatches once and disables deletion. Only the delete endpoint's final signed-out acknowledgment exits
 the profile. Refused, nonfinal and lost replies stay visible and locked across Settings navigation,
 without automatic retry or an erasure claim. A missing served profile keeps the control unavailable.
-The isolated `delete-account` parity fixture exercises mock state without reading or erasing data.
+
 Shared date controls display `MM/DD/YYYY` and preserve partial input during unrelated renders.
 Provider budget/model and API-key controls are absent. Browser viewport is developer configuration,
 not an end-user field.
@@ -739,11 +739,11 @@ feature imports or registered workflow IDs as specimen values. It is not an oper
 
 ## Verification and wiring
 
-The mounted component set and current parity references define presentation. Wiring changes producers,
+The mounted component set and the approved mock define presentation. Wiring changes producers,
 view-model inputs, ports, hooks, and callbacks while keeping the rendered mock case identical.
 [The wiring contract](frontend-backend-integration.md#current-frontend-mock-wiring-checklist) names each
 surface's required identity, persistence, transitions, and acceptance checks. Shared
-[design rules](../../src/dashboard/DESIGN.md) and [parity guidance](../../src/dashboard/PARITY.md)
+[design rules](../../src/dashboard/DESIGN.md) and [mock scene runner](../../src/dashboard/PARITY.md)
 own composition and visual checks.
 
 Command results remain `applied`, `already-applied`, `confirmation-required`, `conflict`, or `rejected`
@@ -855,8 +855,7 @@ activity. Neither table resolution can grant authority while selectors remain un
 
 Full-preview accounting counts exercised applicable steps, including submit rehearsals where no click occurs.
 The result card shows verified-person, checked-field, and sample-transaction facts; only Not clicked, Unavailable,
-and Skipped exceptions carry chips. Preview values carry a Sample tag with a Dry-run sample accessible name; they confer no real-run authority. The `dry-run` parity fixture demonstrates complete
-and partial exercise without executing workflows. Executor and served projection wiring are separate.
+and Skipped exceptions carry chips. Preview values carry a Sample tag with a Dry-run sample accessible name; they confer no real-run authority. Executor and served projection wiring are separate.
 
 ### Required capture presentation
 
