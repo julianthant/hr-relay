@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -110,15 +110,26 @@ function repoRoot(): string {
   return resolve(gitText(["rev-parse", "--path-format=absolute", "--git-common-dir"]), "..");
 }
 
+function canonicalIdentity(path: string): string {
+  const lexical = resolve(path);
+  try {
+    return realpathSync(lexical);
+  } catch (error) {
+    if (!existsSync(lexical)) return lexical;
+    const message = error instanceof Error ? error.message : "unreadable";
+    throw new Error(`worktree path is unreadable (${lexical}): ${message}`, { cause: error });
+  }
+}
+
 function canonicalWorktree(path: string, root: string): string {
   const slash = path.replaceAll("\\", "/").replace(/\/+$/u, "");
   const absolute = slash.startsWith("/") || /^[A-Za-z]:\//u.test(slash) ? slash : join(root, slash);
-  return resolve(absolute);
+  return canonicalIdentity(absolute);
 }
 
 function sameWorktree(left: string, right: string): boolean {
   const normalize = (value: string): string => value.replaceAll("\\", "/").replace(/\/+$/u, "");
-  return normalize(left) === normalize(right);
+  return canonicalIdentity(normalize(left)) === canonicalIdentity(normalize(right));
 }
 
 function ticketRows(ledger: string, root: string): TicketOwner[] {

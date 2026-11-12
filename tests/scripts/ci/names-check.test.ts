@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -32,6 +32,14 @@ function writeLedger(path: string, rows: readonly { id: string; status: string; 
   const insert = database.prepare("INSERT INTO tasks (task_id, branch, worktree, status, notes) VALUES (?, ?, ?, ?, ?)");
   for (const row of rows) insert.run(row.id, row.branch ?? "", row.worktree ?? "", row.status, row.notes ?? null);
   database.close();
+}
+
+function varAlias(porcelain: string): string {
+  const real = realpathSync(porcelain);
+  if (!real.startsWith("/private/")) throw new Error(`expected a /private worktree path, got ${real}`);
+  const alias = `/${real.slice("/private/".length)}`;
+  if (realpathSync(alias) !== real) throw new Error(`alias ${alias} does not resolve to ${real}`);
+  return alias;
 }
 
 function worktreePath(root: string, folder: string): string {
@@ -273,6 +281,73 @@ describe("names:check", () => {
       expect(first.stdout).toBe(second.stdout);
       expect(first.stdout).toBe("task/names/closed: ticket is closed\n");
       expect(first.stdout).not.toContain(path);
+      expect(first.stdout).not.toContain("feature/still-open");
+      expect(snapshot(root)).toEqual(before);
+    } finally {
+      try {
+        git(root, ["worktree", "remove", "--force", ".worktrees/names.closed"]);
+      } catch {
+        // Cleanup only. The assertion above is the result that matters.
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("lists a detached worktree when the ledger path is the /var alias", () => {
+    const root = mkdtempSync(join(tmpdir(), "names-check-alias-detached-"));
+    const ledger = join(root, "ledger.db");
+    try {
+      initRepo(root);
+      git(root, ["branch", "task/names/closed"]);
+      git(root, ["worktree", "add", "-q", "--detach", ".worktrees/names.closed", "task/names/closed"]);
+      const porcelain = worktreePath(root, ".worktrees/names.closed");
+      writeLedger(ledger, [
+        { id: "closed", status: "complete", branch: "task/names/closed", worktree: varAlias(porcelain) },
+      ]);
+      const before = snapshot(root);
+      const first = runNamesCheck(["--all", "--ledger", ledger], root);
+      const second = runNamesCheck(["--all", "--ledger", ledger], root);
+      const expected = [
+        "task/names/closed: ticket is closed",
+        `${porcelain}: ticket is closed`,
+      ].sort((left, right) => left.localeCompare(right));
+      expect(first.status).toBe(0);
+      expect(second.status).toBe(0);
+      expect(first.stderr).toBe("");
+      expect(first.stdout).toBe(second.stdout);
+      expect(first.stdout).toBe(`${expected.join("\n")}\n`);
+      expect(snapshot(root)).toEqual(before);
+    } finally {
+      try {
+        git(root, ["worktree", "remove", "--force", ".worktrees/names.closed"]);
+      } catch {
+        // Cleanup only. The assertion above is the result that matters.
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("an active ticket at the /var alias keeps the attached worktree unlisted", () => {
+    const root = mkdtempSync(join(tmpdir(), "names-check-alias-attached-"));
+    const ledger = join(root, "ledger.db");
+    try {
+      initRepo(root);
+      git(root, ["branch", "task/names/closed"]);
+      git(root, ["worktree", "add", "-q", ".worktrees/names.closed", "task/names/closed"]);
+      const porcelain = worktreePath(root, ".worktrees/names.closed");
+      writeLedger(ledger, [
+        { id: "closed", status: "complete", branch: "task/names/closed", worktree: porcelain },
+        { id: "open", status: "active", branch: "feature/still-open", worktree: varAlias(porcelain) },
+      ]);
+      const before = snapshot(root);
+      const first = runNamesCheck(["--all", "--ledger", ledger], root);
+      const second = runNamesCheck(["--all", "--ledger", ledger], root);
+      expect(first.status).toBe(0);
+      expect(second.status).toBe(0);
+      expect(first.stderr).toBe("");
+      expect(first.stdout).toBe(second.stdout);
+      expect(first.stdout).toBe("task/names/closed: ticket is closed\n");
+      expect(first.stdout).not.toContain(porcelain);
       expect(first.stdout).not.toContain("feature/still-open");
       expect(snapshot(root)).toEqual(before);
     } finally {
