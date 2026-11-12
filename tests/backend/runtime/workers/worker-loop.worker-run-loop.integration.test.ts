@@ -210,7 +210,7 @@ describe("worker run loop", () => {
       descriptorFingerprint: queued.envelope.contractFingerprint, requestedCapabilities: ["executor.run"] });
     const admission = createPreflightAdmission({ clock: h.authority.clock, scheduler: h.scheduler, validate() {},
       runners: () => PREFLIGHT_CHECKS.filter(spec => requiredPreflightChecks(["executor.run"]).includes(spec.id)).map(spec => ({ check: spec.id, kind: spec.runner,
-        async run(check) { return { check, state: "healthy" as const, summary: "Fixture healthy" }; } })) });
+        async run() { return { check: spec.id, state: "healthy" as const, summary: "Fixture healthy" }; } })) });
     const preflight = { admission, currentScope: () => scope, runScope: () => scope, descriptor: () => personLookupDescriptor,
       prepareSession: async () => { throw new Error("no browser session prepares in this race"); } };
     const runtime = h.authority.database.authority.runtimeConfig.get(); assert.ok(runtime);
