@@ -102,7 +102,8 @@ it("defers idle updates while a paused run is retained", async () => {
   assert.equal(f.database.authority.runs.admission().state, "open");
 });
 
-it("ends a Pause all and quit that cannot complete when the operator resumes a paused run", async () => {
+/** A Pause all and quit accepted over one claimed run that has not reached its step boundary and one queued run. */
+async function pendingQuitWorld() {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   cleanups.push(() => { vi.useRealTimers(); });
   const f = await settingsFixture(); cleanups.push(f.close);
@@ -113,12 +114,11 @@ it("ends a Pause all and quit that cannot complete when the operator resumes a p
     configIdentity: { configSnapshotId: runtime.configSnapshotId, configFingerprint: runtime.configFingerprint },
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { recheck: unexpected, resolveAbsent: unexpected }, workerRuntime: { pool: unusedWorkerPool(unexpected) } });
-  const waiting = f.create();
   const { member } = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: workflowProjections(personLookupDescriptor).systems });
   const stuck = f.create({ matchKey: "settings-proof-stuck" });
   const claim = f.database.authority.runs.claimNext({ workflow: "person-lookup", workerId: member.workerId, now: f.clock.now().toISOString() });
-  assert.ok(claim.state === "claimed");
-  const claimedId = claim.run.envelope.runId, queuedId = claimedId === stuck.envelope.runId ? waiting.envelope.runId : stuck.envelope.runId;
+  assert.ok(claim.state === "claimed" && claim.run.envelope.runId === stuck.envelope.runId);
+  const waiting = f.create();
   let quits = 0;
   const lifecycle = createApplicationLifecycle({ database: f.database, requestQuit() { quits += 1; }, onFailure: error => { throw error; } });
   cleanups.push(lifecycle.dispose);
@@ -129,16 +129,44 @@ it("ends a Pause all and quit that cannot complete when the operator resumes a p
   lifecycle.quitAccepted();
   await vi.advanceTimersByTimeAsync(200);
   assert.equal(quits, 0);
-  assert.equal(lifecycle.snapshot().state, "pausing");
-  const paused = f.database.authority.runs.get(queuedId); assert.ok(paused);
-  assert.equal(paused.pause?.state, "paused");
-  assert.equal(f.database.authority.runs.get(claimedId)?.pause?.state, "requested");
+  const acknowledgeStuck = (commandId: string) => f.service.acknowledgePause({ commandId, runId: stuck.envelope.runId,
+    claim: { workerId: member.workerId, claimGeneration: claim.run.claimGeneration } }).state;
+  return { f, lifecycle, runtime, waiting, acknowledgeStuck, quits: () => quits };
+}
 
-  const resumed = f.service.resumePaused({ commandId: "a1000000-0000-4000-8000-000000000011", runId: queuedId, expectedVersion: paused.version });
+it("ends a Pause all and quit that cannot complete when the operator resumes a paused run", async () => {
+  const { f, lifecycle, waiting, quits } = await pendingQuitWorld();
+  assert.equal(lifecycle.snapshot().state, "pausing");
+  const paused = f.database.authority.runs.get(waiting.envelope.runId); assert.ok(paused);
+  assert.equal(paused.pause?.state, "paused");
+  const resumed = f.service.resumePaused({ commandId: "a1000000-0000-4000-8000-000000000011", runId: waiting.envelope.runId, expectedVersion: paused.version });
   assert.equal(resumed.state, "applied");
   assert.equal(f.database.authority.runs.admission().state, "open");
   assert.equal(lifecycle.snapshot().state, "ready");
   await vi.advanceTimersByTimeAsync(200);
-  assert.equal(quits, 0);
+  assert.equal(quits(), 0);
   f.create({ matchKey: "settings-proof-after-quit" });
+});
+
+it("quits once the last claimed run of a Pause all and quit reaches its boundary", async () => {
+  const { lifecycle, acknowledgeStuck, quits } = await pendingQuitWorld();
+  assert.equal(acknowledgeStuck("a1000000-0000-4000-8000-000000000014"), "applied");
+  assert.equal(lifecycle.snapshot().state, "pausing");
+  await vi.advanceTimersByTimeAsync(200);
+  assert.equal(quits(), 1);
+});
+
+it("does not quit for a released Pause all and quit when a logout hold takes admission before the next poll", async () => {
+  const { f, lifecycle, runtime, waiting, acknowledgeStuck, quits } = await pendingQuitWorld();
+  const paused = f.database.authority.runs.get(waiting.envelope.runId); assert.ok(paused?.pause?.state === "paused");
+  assert.equal(f.service.resumePaused({ commandId: "a1000000-0000-4000-8000-000000000011", runId: waiting.envelope.runId, expectedVersion: paused.version }).state, "applied");
+
+  // Logout takes admission and quiesces every run before the quit observer polls again.
+  f.database.authority.runs.holdAdmission({ commandId: "a1000000-0000-4000-8000-000000000012", runtimeGeneration: runtime.generation, reason: "logout" });
+  const resumed = f.database.authority.runs.get(waiting.envelope.runId); assert.ok(resumed);
+  assert.equal(f.service.pause({ commandId: "a1000000-0000-4000-8000-000000000013", runId: waiting.envelope.runId, expectedVersion: resumed.version }).state, "applied");
+  assert.equal(acknowledgeStuck("a1000000-0000-4000-8000-000000000014"), "applied");
+  assert.equal(lifecycle.snapshot().state, "pausing");
+  await vi.advanceTimersByTimeAsync(200);
+  assert.equal(quits(), 0);
 });

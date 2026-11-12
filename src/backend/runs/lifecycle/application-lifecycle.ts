@@ -37,8 +37,9 @@ export function createApplicationLifecycle(input: Readonly<{
   const observeQuit = () => {
     scheduled = undefined;
     try {
-      // A Resume during the quit released its hold: the quit is over and admission is open again.
-      if (snapshot().state === "ready") return;
+      snapshot();
+      // A Resume during the quit released its hold: the quit is over, even if another hold has since closed admission.
+      if (input.database.authority.runs.quitAdmission() === undefined) return;
       const ready = input.database.withAuthorityReadSnapshot(() => input.database.readApplicationActivity().runs
         .every(run => run.lifecycle.state === "terminal" || run.lifecycle.state === "parked-write" || runClaim(run) === undefined && run.pause?.state === "paused"));
       if (!ready) { scheduled = setTimeout(observeQuit, 50); return; }

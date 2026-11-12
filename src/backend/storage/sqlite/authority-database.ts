@@ -392,10 +392,22 @@ type DeletedRunRepository = Readonly<{
 
 type CanonicalRunClaimOutcome = RunClaimOutcome | Readonly<{ state: "refused"; refusal: RunRecordRefusal }>;
 
+/** A confirmed Pause all and quit of the bound runtime generation (`held`) that no application-admission release names; binds the generation twice. */
+const UNRELEASED_QUIT_HOLD_SQL = `held.family='application'
+  AND json_extract(held.request_json,'$.type')='pause-all-and-quit'
+  AND json_extract(held.request_json,'$.payload.confirmed')=1
+  AND json_extract(held.request_json,'$.target.runtimeGeneration')=?
+  AND NOT EXISTS(SELECT 1 FROM commands release WHERE release.state IN ('executing','succeeded') AND release.family='run-lifecycle'
+    AND json_extract(release.request_json,'$.operation')='application-admission'
+    AND json_extract(release.request_json,'$.request.runtimeGeneration')=?
+    AND json_extract(release.request_json,'$.request.releases')=held.id)`;
+
 type RunRepository = Readonly<{
   holdAdmission(input: unknown): void;
   releaseQuitAdmission(input: unknown): void;
   admission(): RunAdmission;
+  /** The current runtime's unreleased Pause all and quit, whether or not an earlier hold also closes admission. */
+  quitAdmission(): string | undefined;
 
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
 
@@ -6213,21 +6225,20 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #runAdmission(): RunAdmission {
-    const generation = this.authority.runtimeConfig.get()?.generation;
+    const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
     const row = z.strictObject({ commandId: z.uuid(), hold: z.enum(["quit", "update", "shutdown", "logout"]) }).optional().parse(this.#database.prepare(`SELECT id AS commandId,
       CASE family WHEN 'application' THEN 'quit' ELSE json_extract(request_json,'$.request.reason') END AS hold FROM commands held
-      WHERE state IN ('executing','succeeded') AND ((family='application'
-      AND json_extract(request_json,'$.type')='pause-all-and-quit'
-      AND json_extract(request_json,'$.payload.confirmed')=1
-      AND json_extract(request_json,'$.target.runtimeGeneration')=?
-      AND NOT EXISTS(SELECT 1 FROM commands release WHERE release.state IN ('executing','succeeded') AND release.family='run-lifecycle'
-        AND json_extract(release.request_json,'$.operation')='application-admission'
-        AND json_extract(release.request_json,'$.request.runtimeGeneration')=?
-        AND json_extract(release.request_json,'$.request.releases')=held.id)) OR (family='run-lifecycle'
+      WHERE state IN ('executing','succeeded') AND ((${UNRELEASED_QUIT_HOLD_SQL}) OR (family='run-lifecycle'
       AND json_extract(request_json,'$.operation')='application-admission'
       AND json_type(request_json,'$.request.reason')='text'
-      AND json_extract(request_json,'$.request.runtimeGeneration')=?)) ORDER BY created_at,id LIMIT 1`).get(generation ?? 0, generation ?? 0, generation ?? 0));
+      AND json_extract(request_json,'$.request.runtimeGeneration')=?)) ORDER BY created_at,id LIMIT 1`).get(generation, generation, generation));
     return row === undefined ? { state: "open" } : { state: "draining", commandId: row.commandId, hold: row.hold };
+  }
+
+  #quitAdmission(): string | undefined {
+    const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
+    return z.strictObject({ commandId: z.uuid() }).optional().parse(this.#database.prepare(`SELECT id AS commandId FROM commands held
+      WHERE state IN ('executing','succeeded') AND ${UNRELEASED_QUIT_HOLD_SQL} ORDER BY created_at,id LIMIT 1`).get(generation, generation))?.commandId;
   }
 
   #insertAdmissionCommand(repositories: AuthorityRepositories, request: z.infer<typeof ApplicationAdmissionRequestSchema>): void {
@@ -6257,6 +6268,7 @@ export class AuthorityDatabase implements Disposable {
         this.#insertAdmissionCommand(repositories, request);
       }),
       admission: () => this.#runAdmission(),
+      quitAdmission: () => this.#quitAdmission(),
       enqueue: (input: unknown) => {
         const record = RunRecordSchema.parse(input);
         if (record.lifecycle.state !== "queued") {
