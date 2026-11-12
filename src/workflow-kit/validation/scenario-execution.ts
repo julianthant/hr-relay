@@ -26,6 +26,7 @@ const INTEGRATION_SCENARIO_FILES = [
   "tests/backend/workbooks/workflow-workbook-service.integration.test.ts",
   "tests/backend/workbooks/workflow-workbook-service.reference.integration.test.ts",
   "tests/workflows/crm-doc-download/workflow.integration.test.ts",
+  "tests/workflows/work-study/workflow.integration.test.ts",
   "tests/backend/systems/onbase/tasks/read-source-page.test.ts",
   "tests/backend/systems/onbase/driver/interpreter.test.ts",
   "tests/workflows/onbase/workflow.integration.test.ts",

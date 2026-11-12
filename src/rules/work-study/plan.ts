@@ -7,16 +7,22 @@ export const WORK_STUDY_POSITION_POOL = "F";
 
 /** ISO date-only `YYYY-MM-DD` as PayPath's `MM/DD/YYYY`. */
 export function workStudyUsDate(isoDate: string): string {
-  throw new Error(`not implemented: workStudyUsDate(${isoDate})`);
+  const [year, month, day] = isoDate.split("-");
+  return `${month}/${day}/${year}`;
 }
 
 export function workStudyComments(isoDate: string): string {
-  throw new Error(`not implemented: workStudyComments(${isoDate})`);
+  return `Updated pool id to ${WORK_STUDY_POSITION_POOL} per work study award ${workStudyUsDate(isoDate)}`;
 }
 
 /** Folds one run's input and its PayPath read into the planned transaction; throws `WorkStudyPlanRefusedError` when the read is for another Empl ID. */
 export function planWorkStudyTransaction(input: WorkStudyInputValue, read: UcpathPayPathRead): WorkStudyPlan {
-  throw new Error(`not implemented: planWorkStudyTransaction(${input.emplId}, ${read.emplId})`);
+  if (read.emplId !== input.emplId) throw new WorkStudyPlanRefusedError();
+  return {
+    emplId: input.emplId, name: read.displayedName, effectiveDate: workStudyUsDate(input.effectiveDate),
+    positionChangeReason: WORK_STUDY_POSITION_CHANGE_REASON, positionPool: WORK_STUDY_POSITION_POOL,
+    comments: workStudyComments(input.effectiveDate), current: read.position,
+  };
 }
 
 export class WorkStudyPlanRefusedError extends Error {

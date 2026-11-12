@@ -11,7 +11,7 @@ export const UCPATH_AUTH_STEP = Object.freeze({
   operatorFields: [
     { label: "Employee", sources: [{ nodeId: PAYPATH_POSITION_NODE, kind: "output", fieldPath: "displayedName" }], example: "Lee, Jordan" },
     { label: "Employee ID", sources: [{ nodeId: PAYPATH_POSITION_NODE, kind: "output", fieldPath: "emplId" }], example: "10000001" },
-    { label: "Current position pool", sources: [{ nodeId: PAYPATH_POSITION_NODE, kind: "output", fieldPath: "position.positionPool" }], example: "" },
+    { label: "Current position pool", sources: [{ nodeId: PAYPATH_POSITION_NODE, kind: "output", fieldPath: "position.positionPool" }], example: "A" },
   ] as const,
   review: {
     pages: [{
