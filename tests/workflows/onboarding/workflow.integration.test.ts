@@ -426,8 +426,8 @@ describe("onboarding roster names in a real run", () => {
   });
 
   it("refuses a new hire and every other-name pick for a concurrent hire over dropped matches, serving only the manual rehire path", async () => {
-    // 10800005 differs from the hire's name only in punctuation, which the UCPath hire query refuses.
-    const dropped = [{ emplId: "10800001", name: "Other, Person" }, { emplId: "10800005", name: "HIRE,FIXTURE" }];
+    // 10800002 differs from the hire's name only in punctuation, which the UCPath hire query refuses.
+    const dropped = [{ emplId: "10800001", name: "Other, Person" }, { emplId: "10800002", name: "HIRE,FIXTURE" }];
     const personMatch = SearchPersonMatchOutputSchema.parse({ hits: dropped, confirmed: [], dropped: dropped.map(hit => ({ ...hit, reason: "Last name does not match" })) });
     const f = await runWorld.executionFixture(false, { match: "unique", dryRun: true, mode: "rehire", personMatch }), root = f.start();
     const parked = await f.rawExecution.execute(root, new AbortController().signal);
@@ -438,8 +438,8 @@ describe("onboarding roster names in a real run", () => {
     const gate = GateDecisionWireSchema.parse(buildRunGate(deps, root.envelope.runId, undefined, parked.run));
     assert.ok(gate.state === "open" && gate.decision !== undefined, "the dead end is explained instead of a bare Waiting");
     assert.deepEqual(gate.decision.options, []);
-    assert.match(gate.decision.context ?? "", /Under another name: Other, Person \(••••0001\): Last name does not match; HIRE,FIXTURE \(••••0005\): Last name does not match\..*file the rehire by hand in UCPath\./u);
-    for (const payload of [{ arm: "new-hire" }, { arm: "existing-person", rowId: "10800005" }, { arm: "existing-person", rowId: "10800001" }]) {
+    assert.match(gate.decision.context ?? "", /Under another name: Other, Person \(••••0001\): Last name does not match; HIRE,FIXTURE \(••••0002\): Last name does not match\..*file the rehire by hand in UCPath\./u);
+    for (const payload of [{ arm: "new-hire" }, { arm: "existing-person", rowId: "10800002" }, { arm: "existing-person", rowId: "10800001" }]) {
       const resolution = resolveGateArmAnswer(deps, GateArmAnswerRequestSchema.parse({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator",
         source: "run-detail", family: "gate", type: "answer-gate-arm", target: { runId: root.envelope.runId, gateId: "hire-review", expectedVersion: parked.run.version }, payload }), undefined);
       assert.equal(resolution.state, "refused", JSON.stringify(payload));
