@@ -465,7 +465,7 @@ test("general interactions", async ({ page }) => {
   await expect(page.getByText("Run without a browser window")).toHaveCount(0);
   await expect(page.getByRole("switch", { name: "Full access" })).toHaveCount(0);
   await expect(page.getByText("Default permissions")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Change", exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Change Downloads", exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
