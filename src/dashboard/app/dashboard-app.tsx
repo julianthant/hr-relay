@@ -315,7 +315,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
   if (bootstrap.state === "failed") {
     return (
       <main
-        data-parity-ready="failed"
+        data-mock-ready="failed"
         className="flex min-h-screen items-center justify-center bg-[color:var(--ds-surface-page)] p-[var(--ds-space-loose)]"
       >
         <div className="max-w-prose text-[color:var(--ds-fg)]">
@@ -329,7 +329,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
   }
   return (
     <main
-      data-parity-ready="loading"
+      data-mock-ready="loading"
       className="flex min-h-0 flex-1 flex-col bg-[color:var(--ds-surface-page)]"
     >
       <DashboardSkeleton settings={new URLSearchParams(window.location.search).has("settings")} settingsContent={
@@ -1235,7 +1235,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       showSessions: () => setSessionsOpen(true),
     }}>
     <div
-      data-parity-ready={ready ? "true" : "loading"}
+      data-mock-ready={ready ? "true" : "loading"}
       className="dashboard-shell relative flex min-h-0 min-w-0 flex-1 flex-col"
       data-settings-takeover={["settings", "archive", "activity", "explore"].includes(takeover)}
     >
