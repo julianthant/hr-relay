@@ -63,6 +63,23 @@ describe("I-9 UCOP login", () => {
     assert.equal(failed.evidence().length, 0);
   });
 
+  it("waits for a confirmed training dismissal to leave the training route before proving the application", async () => {
+    const notice = `${APP}/training/RequiredTrainingNotification`;
+    const world = await contextFor({
+      url: "about:blank",
+      elements: { "i9-launch": { navigatesTo: SSO }, "sso-submit": {}, "sso-username": {}, "sso-password": {} },
+      elementsByUrl: {
+        [notice]: { ...NO_SIGN_IN_FORMS, "i9-search-options": {}, "i9-training-dismiss": {}, "i9-training-confirm": {} },
+        [APP]: appElements,
+      },
+      settlesTo: [SSO, notice, APP],
+    }, undefined, "i9");
+    assert.equal(await i9LoginRecipe(world.context), "logged-in");
+    assert.ok(world.harness.actions().includes("click:i9-training-confirm"));
+    assert.equal(world.harness.url(), APP);
+    assert.equal(world.evidence().length, 1);
+  });
+
   it("waits for campus selection to reach an existing app session without requiring an SSO form", async () => {
     const world = await contextFor({
       url: "about:blank",
