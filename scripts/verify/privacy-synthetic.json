@@ -180,7 +180,7 @@
   "publicConfigFiles": [
     {
       "path": ".npmrc",
-      "sha256": "d4454eb72fdf5706d03d2d002058622c498e649a5c5faa35a133e9a817a6d79a"
+      "sha256": "d929102a7fc1ba7239ce079f12e8c9c764d83c026280ebd826d1bb5410693b2b"
     }
   ],
   "credentialCanaries": [
