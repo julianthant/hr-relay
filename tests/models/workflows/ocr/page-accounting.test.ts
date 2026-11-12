@@ -4,7 +4,7 @@ import { extractFormPageTask } from "../../../../src/backend/processing/ocr/task
 import { OCR_EXTRACTION_RESPONSE_HASH } from "../../../../src/models/processing/ocr/extract-form-page.js";
 import { accountOcrPages, bindManualOcrPageReading, bindOcrPageReading, ocrExtractionItemId, OcrPageAccountingSchema, OcrPageOutcomeSchema, OcrPageReadingSchema } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { buildOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-seed.js";
-import { type OcrPageInput } from "../../../../src/models/workflows/ocr/source-manifest.js";
+import { ocrExtractionId, type OcrPageInput } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { admittedPage, donePage, READ_AT, READING_ID, SOURCE_RUN_ID, sourceFixture, submittedPage } from "../../../support/fixtures/ocr/source-pages.js";
 
 async function fakeProviderPage(input: OcrPageInput, response: unknown, requests: unknown[] = [], observations: unknown[] = []) {
@@ -95,6 +95,22 @@ describe("OCR source-bound page processing", () => {
     assert.throws(() => bindOcrPageReading(inputs[0], { ...reading.extraction,
       record: { ...reading.extraction.record, answers: [] } }));
     assert.equal(reading.extraction.readAt, READ_AT);
+  });
+
+  it("admits an Emergency Contact reading stored by the Emergency Contact build", () => {
+    const { inputs: [input] } = sourceFixture(1);
+    const read: Record<string, string> = { "contact.name": "Example, Robin", "contact.relationship": "Spouse", "employee.name": "Example, Avery" };
+    const paths = ["contact.address1", "contact.cellPhone", "contact.city", "contact.homePhone", "contact.name", "contact.postalCode",
+      "contact.relationship", "contact.state", "contact.workPhone", "employee.address1", "employee.cellPhone", "employee.city",
+      "employee.dateCompleted", "employee.employeeId", "employee.homePhone", "employee.name", "employee.postalCode", "employee.state"];
+    const stored = { input, extractionId: ocrExtractionId(input), extraction: { formType: "emergency-contact",
+      source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "synthetic-test-model" }, readAt: READ_AT,
+      sourceSha256: input.image.sha256, sourcePage: 1, pageKind: "emergency-contact",
+      record: { answers: paths.map(path => path in read ? { state: "read", path, raw: read[path], value: read[path], confidence: 0.9 }
+        : { state: "absent", path, reason: "blank" }), blockingPaths: [],
+      answersFingerprint: "e8f0de6ca410751f6cc93d6d41da61e625705a707242570fcf0c8f4fef12e53f" },
+      pageFingerprint: "cb76f330876b5d31e2318727d51c5f3cd6fb16cdcaf44114a74375cf82fcf0c5" } };
+    assert.deepEqual(OcrPageReadingSchema.safeParse(stored).error?.issues ?? [], []);
   });
 
   it("admits manual assertions without provider inference and refuses foreign operator or page bindings", () => {
