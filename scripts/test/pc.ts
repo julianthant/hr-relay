@@ -43,6 +43,13 @@ export function readPcTiming(line: string, runId: string): PcTiming | undefined 
   return event.timing;
 }
 
+export function pcListingArgs(patterns: readonly string[]): string[][] {
+  return patterns.length > 0 ? [[...projects]] : [
+    ["--project", "architecture"],
+    ["--project", "unit", "--project", "integration", "--changed=origin/staging"],
+  ];
+}
+
 export function selectPcFiles(listed: readonly string[], patterns: readonly string[]) {
   const normalized = listed.map(file => file.replaceAll("\\", "/").replace(/^\.\//u, ""));
   for (const pattern of patterns) {
@@ -196,11 +203,16 @@ async function mac(patterns: string[]): Promise<number> {
   const record = (timing: PcTiming) => { result.timings.push(timing); };
   process.stdout.write(`test:pc result: ${join(run, "result.json")}\n`);
   try {
-    const listing = join(run, "listed.json");
-    await measurePcPhase("listing", record, () => checked(process.execPath, ["node_modules/vitest/vitest.mjs", "list", ...projects, "--filesOnly", `--json=${listing}`,
-      ...(patterns.length === 0 ? ["--changed=origin/staging"] : [])], root, log));
-    const listed = z.array(z.object({ file: z.string() })).parse(JSON.parse(readFileSync(listing, "utf8")))
-      .map(({ file }) => relative(root, file).replaceAll("\\", "/"));
+    const listed = await measurePcPhase("listing", record, async () => {
+      const files: string[] = [];
+      for (const [index, args] of pcListingArgs(patterns).entries()) {
+        const listing = join(run, `listed-${index}.json`);
+        await checked(process.execPath, ["node_modules/vitest/vitest.mjs", "list", ...args, "--filesOnly", `--json=${listing}`], root, log);
+        files.push(...z.array(z.object({ file: z.string() })).parse(JSON.parse(readFileSync(listing, "utf8")))
+          .map(({ file }) => relative(root, file).replaceAll("\\", "/")));
+      }
+      return files;
+    });
     const selected = selectPcFiles(listed, patterns.map(pattern => isAbsolute(pattern) ? relative(root, pattern) : pattern.replace(/^\.\//u, "")));
     result.files = selected.files;
     if (selected.skipped.length) process.stdout.write(`test:pc skipping ${selected.skipped.length} native file(s); GitHub CI owns them.\n`);

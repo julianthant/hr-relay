@@ -89,6 +89,11 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
   local slot, never both. CI-path lanes run typecheck and lint serially; tests wait for the named
   runner. Pause local tests during operator live runs. Run full suites only in a granted slot; PR
   CI supplies the feature's full run. Run native proofs on platform-matching machines.
+- Before clearing a push, pass the whole architecture suite and the unit and integration tests
+  affected by the diff against `origin/staging`. On the main Mac, run `npm run test:pc` without
+  file arguments. On a backend host, run `npx vitest run --project architecture`, then
+  `npx vitest run --project unit --project integration --changed=origin/staging` in the ticket's
+  checkout under its assigned test slot.
 - Before review/push, complete typecheck, lint/static checks and source generators whose inputs
   changed; report unrun tests for the reviewer and CI. Never commit a failure caused by the change;
   a demonstrated base failure may proceed with its evidence recorded.
@@ -103,8 +108,8 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 - Native proofs and parity run in CI only for operator-started releases. Release checks build the
   web bundle, run coverage alone, then perf; coverage already selects unit, integration and
   architecture, so do not rerun those full suites for unchanged inputs.
-- PC feedback never blocks a repair push or replaces the published head's PR CI; never run
-  macOS-native proofs or parity there. Keep machine slot details in `.work/operations.md`.
+- Keep the published head's PR CI as the merge proof. Never run macOS-native proofs or parity
+  on the PC. Keep machine slot details in `.work/operations.md`.
 - Refresh `scripts/test/ci-durations.json` when job end times spread more than a minute. Generate
   derived files through their source, never by hand.
 - Before local coverage, verify free memory, no swap pressure and no listener on the runtime

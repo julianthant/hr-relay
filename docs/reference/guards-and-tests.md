@@ -173,12 +173,17 @@ Both platforms select from this one list; platform refusals remain failures unti
 
 ### Pre-push tests on the PC
 
-The optional PC runner executes affected portable files in WSL Ubuntu.
+The PC runner executes the whole portable architecture suite and the unit and integration tests
+affected by the diff against `origin/staging` in WSL Ubuntu. Before a push is cleared, the main Mac
+runs `npm run test:pc` without file arguments. A backend host runs
+`npx vitest run --project architecture`, then
+`npx vitest run --project unit --project integration --changed=origin/staging` in the ticket checkout
+under its assigned test slot.
 The [root check rules](../../AGENTS.md#checks) and assigned local operations note govern its use:
 
 ```sh
 export RELAY_TEST_HOST=user@your-wsl-tailnet-node
-npm run test:pc                            # affected by the diff against origin/staging
+npm run test:pc                            # all architecture + affected unit and integration
 npm run test:pc -- tests/scripts/test/pc.test.ts
 npm run test:pc -- 'tests/backend/runs/**/*.integration.test.ts'
 ```
@@ -188,8 +193,10 @@ satisfying `package.json`, Git, flock, and Chromium's libraries installed with
 `npx playwright install --with-deps chromium`. Keep its private host in local configuration.
 Normal SSH host verification applies.
 
-Vitest selects the files; the runner subtracts `NATIVE_FILES`, `SERIAL_FILES` and
-`SERIAL_STORAGE_FILES` with one skip note. Those files run in GitHub CI. Each leased slot fetches
+With no file arguments, Vitest lists the architecture project in full and lists unit and integration
+with `--changed=origin/staging`. With file arguments, it lists all three projects without a changed
+filter and selects only the requested paths or globs. The runner subtracts `NATIVE_FILES`,
+`SERIAL_FILES` and `SERIAL_STORAGE_FILES` with one skip note. Those files run in GitHub CI. Each leased slot fetches
 `origin/staging`'s pinned commit directly from the public GitHub repository. The Mac verifies that
 base is advertised by origin before sending a binary Git patch of the allowed candidate tree.
 The patch includes committed-but-unpushed, staged, unstaged and untracked non-ignored files,
