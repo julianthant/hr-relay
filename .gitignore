@@ -50,6 +50,7 @@ dist/
 # The REFERENCE set under tests/parity/references/ is committed on purpose —
 # that is the evidence; this is only what a failing run left behind.
 tests/parity/.output/
+tests/smoke/.output/
 
 # OS
 .DS_Store
