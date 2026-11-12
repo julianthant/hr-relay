@@ -12,7 +12,7 @@ const ci = load("ci");
 const release = load("release");
 const portable = load("ci-checks");
 const full = load("release-checks");
-const filters = { shared: "true", unit: "false", integration: "false", architecture: "false", parity: "false" };
+const filters = { shared: "true", unit: "false", integration: "false", architecture: "false" };
 const planFor = (workflow: "portable" | "release", extra: Record<string, unknown> = {}) => createCiPlan({
   workflow, event: "pull_request", base: workflow === "portable" ? "staging" : "main",
   head: workflow === "portable" ? "feature/test" : "staging", draft: false, filters, ...extra,
@@ -263,7 +263,7 @@ describe("separate event and admitted proof workflows", () => {
       "release-batch": { result: "skipped" }, timings: { result: "skipped" } };
     expect(summary(full, "unit", omitted, outcomes)).toBe("success");
     expect(summary(release, "release", omitted, { checks: { result: "success", outputs: { unit: "success" } } })).toBe("success");
-    expect(summary(full, "parity", plan, { ...releaseResults, macos: { result: "cancelled" } })).toBe("failure");
+    expect(summary(full, "parity", plan, { ...releaseResults, macos: { result: "cancelled" } })).toBe("success");
   });
 
   it.each([

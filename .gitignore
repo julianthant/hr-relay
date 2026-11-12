@@ -43,10 +43,10 @@ coverage/
 test-results/
 
 # Built frontend bundle (`npm run web:build`) — regenerated,
-# and the parity lane rebuilds it before capturing.
+# and the mock scene runner rebuilds it before rendering.
 dist/
 
-# Playwright parity lane scratch: failure screenshots and traces.
+# Mock scene runner scratch: failure screenshots and traces.
 tests/parity/.output/
 
 # OS

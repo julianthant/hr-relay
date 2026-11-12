@@ -101,9 +101,6 @@ jobs:
             architecture:
               - '**'
               - '!**/*.md'
-            parity:
-              - 'tests/parity/**'
-              - '!**/*.md'
       - uses: actions/github-script@v9
         id: select
         env:
@@ -228,13 +225,13 @@ jobs:
           path: scripts/test/
       - uses: actions/cache@v6
         id: browsers
-        if: matrix.suite == 'parity' || fromJSON(needs.changes.outputs.plan).integration
+        if: fromJSON(needs.changes.outputs.plan).integration
         with:
           path: ~/Library/Caches/ms-playwright
-          key: ${{ runner.os }}-${{ runner.arch }}-macos-15-playwright-${{ matrix.suite == 'parity' && 'chromium-webkit' || 'chromium' }}-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-macos-15-playwright-chromium-${{ hashFiles('package-lock.json') }}
       - name: Install browsers on cache miss
         if: steps.browsers.outcome == 'success' && steps.browsers.outputs.cache-hit != 'true'
-        run: npx playwright install chromium ${{ matrix.suite == 'parity' && 'webkit' || '' }}
+        run: npx playwright install chromium
       - run: npm run web:build
         if: matrix.suite == 'native' && fromJSON(needs.changes.outputs.plan).integration
       - name: Mount test temp on a RAM disk
@@ -289,15 +286,6 @@ jobs:
           path: ${{ runner.temp }}/durations/
           if-no-files-found: ignore
           retention-days: 14
-      - name: Desktop parity
-        if: ${{ !cancelled() && matrix.suite == 'parity' }}
-        run: npm run test:parity -- --shard=${{ matrix.shard }}/${{ matrix.shards }} --workers=2
-      - uses: actions/upload-artifact@v7
-        if: ${{ always() && matrix.suite == 'parity' }}
-        with:
-          name: parity-results-${{ matrix.shard }}
-          path: tests/parity/.output/
-          include-hidden-files: true
 
   windows:
     needs: changes
@@ -430,21 +418,10 @@ jobs:
 
   parity:
     name: parity
-    needs: [changes, macos]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Require the selected suite's runner jobs
-        env:
-          SELECTED: ${{ fromJSON(needs.changes.outputs.plan).parity }}
-          RUNNER_RESULTS: ${{ needs.macos.result }}
-        run: |
-          if [ "$SELECTED" = false ]; then
-            echo "Suite not selected for this pull request."
-          else
-            test "$SELECTED" = true
-            test "$RUNNER_RESULTS" = "success"
-          fi
+      - run: echo "No desktop parity suite; this check name stays required by branch protection."
 
   release-batch:
     name: release batch

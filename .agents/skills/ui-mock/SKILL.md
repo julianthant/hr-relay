@@ -4,8 +4,8 @@ description: >-
   Use this skill when the operator wants to see and pick between design variants of a Relay
   dashboard screen, panel or control before it is built: it builds the variants inside the parity
   harness from the real components and synthetic fixtures, renders them, and hands the frames over
-  for the operator's pick. Not for building or wiring an approved design, updating parity
-  references, or standalone HTML mockups.
+  for the operator's pick. Not for building or wiring an approved design, or standalone HTML
+  mockups.
 metadata:
   exposed: "true"
 ---
@@ -53,7 +53,7 @@ primitives.
   `startFixtureServer` from `tests/support/helpers/dashboard/fixture-bff.ts` on `PARITY_DIST_DIR`,
   set `relayParityTheme` per theme, load each variant and scenario, and write PNGs to an output
   folder taken from an environment variable.
-- Run it alone: `npm run test:parity -- <spec> -g "<title>"`. Each run rebuilds
+- Run it alone: `npm run mocks -- <spec> -g "<title>"`. Each run rebuilds
   `dist/parity-dashboard`. Follow the local operations note's limits for local renders.
 - Capture every variant and scenario light and dark at 1280, and at 1024 where layout changes, into
   the task's `.work/` folder. Look at every frame before handing it over.
@@ -66,5 +66,5 @@ and wait for the operator's pick. Before handing over, run typecheck, lint on ch
 `npm run privacy:check`.
 
 The pick then follows the dashboard instructions: only the chosen variant is built, in a UI-only
-task with mock data and its parity specs, before wiring. Remove the mock switch and scene
+task with mock data and its unit tests, before wiring. Remove the mock switch and scene
 spec after the implementation ships unless the operator keeps them.

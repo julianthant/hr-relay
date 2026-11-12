@@ -24,7 +24,7 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 - Add a guard only for a real recurring mistake, with its reason in `docs/guard-inventory.json`.
 - Mirror source once under `tests/`: drop `src/`, retain `scripts/`, `fast-duo/` and root paths.
   Put `<module>.test.ts` beside `<module>.integration.test.ts`; split files over about 800 lines
-  by topic. Keep architecture, parity, perf and types in their own trees; shared fixtures and
+  by topic. Keep architecture, parity (mock scenes), perf and types in their own trees; shared fixtures and
   helpers belong in `tests/support/`.
 - Use kebab-case filenames, named exports, `.js` relative imports and `.tsx` only in the dashboard.
   Use recursively strict Zod schemas at durable, wire and config boundaries; no unchecked casts
@@ -100,11 +100,11 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 - Only the operator starts full-release CI; agents never dispatch or rerun CI workflows. The
   [focused-test script](docs/reference/guards-and-tests.md#focused-tests-in-github-actions) is
   scratch feedback, not a release or merge proof.
-- Native proofs and parity run in CI only for operator-started releases. Release checks build the
+- Native proofs run in CI only for operator-started releases. Release checks build the
   web bundle, run coverage alone, then perf; coverage already selects unit, integration and
   architecture, so do not rerun those full suites for unchanged inputs.
 - PC feedback never blocks a repair push or replaces the published head's PR CI; never run
-  macOS-native proofs or parity there. Keep machine slot details in `.work/operations.md`.
+  macOS-native proofs there. Keep machine slot details in `.work/operations.md`.
 - Refresh `scripts/test/ci-durations.json` when job end times spread more than a minute. Generate
   derived files through their source, never by hand.
 - Before local coverage, verify free memory, no swap pressure and no listener on the runtime

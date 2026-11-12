@@ -97,7 +97,7 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Desktop parity is verified during full releases."
+      - run: echo "No desktop parity suite; this check name stays required by branch protection."
 
   train:
     name: merge train

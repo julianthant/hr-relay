@@ -101,9 +101,6 @@ jobs:
             architecture:
               - '**'
               - '!**/*.md'
-            parity:
-              - 'tests/parity/**'
-              - '!**/*.md'
       - uses: actions/github-script@v9
         id: select
         env:
@@ -246,7 +243,7 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Desktop parity is verified during full releases."
+      - run: echo "No desktop parity suite; this check name stays required by branch protection."
 
   timings:
     needs: [changes, static, privacy, ubuntu, integration, architecture, parity]

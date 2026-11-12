@@ -19,8 +19,8 @@ for folder owners and the [dashboard contract](../../docs/reference/dashboard-su
   built only from existing components. The Explorer timeline comes from the workflow's registered
   definition, never from a hand-written layout.
 - If real behavior needs a changed or new component, describe it (what, where, why) and ask the
-  operator. Approved components are built first in a UI-only task with mock data and their parity
-  specs, then wired.
+  operator. Approved components are built first in a UI-only task with mock data and their unit
+  tests, then wired.
 - `.tsx` files under `app/` and `surfaces/` export components only. Hooks, folds, constants and
   vocabulary go in a sibling `*-model.ts`. The `ds/ui.tsx` barrel is the exception.
 - Use served data for availability, identity, status and write results. Never invent them in the
@@ -73,10 +73,8 @@ judging a visual difference.
 ## Checks
 
 - Follow the [root test path](../../AGENTS.md#checks) for runner placement and slots.
-  Use filtered parity for one surface and full parity for shared shell, tokens, primitives or
-  models. Complete assigned parity before the last dashboard commit, or record the CI obligation.
-- Preserve parity assertions, states, themes, widths, membership and deadlines; never weaken one
-  to hide a defect or make wiring pass.
-- Assigned targeted local parity and browser verification run serially with one worker under the
+- Prove dashboard behaviour with Vitest unit/integration tests and `/verify` browser checks; there
+  is no Playwright behaviour suite. `tests/parity/` holds only `/ui-mock` scenes.
+- Assigned local mock renders and browser verification run serially with one worker under the
   local slot's containment rules. Stop at the first unexpected RED; this authorizes no full suite.
 - A declared workflow scenario ID alone proves no execution.

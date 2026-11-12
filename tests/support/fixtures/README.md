@@ -1,6 +1,6 @@
 # Shared test support
 
-This catalogue lists every shared non-test module in `tests/support/`. Fixtures contain synthetic data; resource harnesses allocate only when explicitly called. Tests of support modules sit beside them. `tests/parity/` retains the desktop screenshot contract.
+This catalogue lists every shared non-test module in `tests/support/`. Fixtures contain synthetic data; resource harnesses allocate only when explicitly called. Tests of support modules sit beside them. `tests/parity/` holds only `/ui-mock` scenes.
 
 `config/test-data.json` owns tracked public subjects, named files and synthetic ranges through `src/backend/app/registries/test-data.ts`. Private `config/test-data.local.json` inputs are accessed through the opaque runtime input source and never shared fixtures. Preserve ranges, clocks and dataset sizes.
 
@@ -28,7 +28,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/child-execution-write-workflow.ts` | child write workflow with durable attempting and UNKNOWN controls |
 | `helpers/assistant-function-fixtures.ts` | synthetic assistant function descriptors and recording call owners |
 | `fixtures/person-lookup-presentation.ts` | fictional served Person Lookup presentation evidence |
-| `fixtures/person-lookup-log-snapshots.ts` | fictional served Person Lookup run-log snapshots (success, multiple matches, no match, CRM off, failed) for log projection tests and the parity log fixture page |
+| `fixtures/person-lookup-log-snapshots.ts` | fictional served Person Lookup run-log snapshots (success, multiple matches, no match, CRM off, failed) for log projection tests |
 | `fixtures/crm-doc-download.ts` | synthetic verified CRM identities and retained worksheet roster rows |
 | `fixtures/i9-check.ts` | synthetic OCR-derived I-9 inputs and UCPath identity/retention evidence |
 | `fixtures/i9-check-start.ts` | admitted synthetic I-9 PDF pages, review snapshots and source coordinates |

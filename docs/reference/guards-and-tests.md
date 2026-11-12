@@ -59,7 +59,7 @@ helpers that hide test registrations behind a helper-style name.
 | Integration | `<module>.integration.test.ts`; Vitest `integration` | Real isolated SQLite, sockets, processes, browser adapters, and composed execution. |
 | Architecture | `tests/architecture/**/*.test.ts`; Vitest `architecture` | Repository-wide boundaries, registries, source/AST checks, and negative controls. Some guards also exercise real adapters. |
 | Types | `tests/types/`; `npm run typecheck` | Type inference and illegal calls pinned with `@ts-expect-error` and positive controls. |
-| Parity | `tests/parity/`; `npm run test:parity` | Desktop focus, keyboard, loading, geometry, and interaction behavior with mock values in a real browser. |
+| Mock scenes | `tests/parity/`; `npm run mocks` | `/ui-mock` frames rendered from the parity build. Not a test gate; CI never runs it. |
 | Performance | `tests/perf/**/*.test.ts`; Vitest `perf` via `npm run test:perf`. `tests/perf/dashboard-benchmark.ts` via `npm run perf:dashboard`. | Fixture performance checks outside coverage, deterministic structural counters, and separately reported host-dependent timings. |
 | Local | `<module>.local.test.ts` and `<module>.local.integration.test.ts`; Vitest `local` via `npm run test:local`. | Tests that need the operator's machine or accounts: a live dry run against UCPath, Kuali, CRM or Duo, the real login Keychain, or the real store. The topic name `local` is that marker. |
 
@@ -82,7 +82,7 @@ answers remain independent of the producer under test. Tests never rewrite track
 in place. Generator behavior is exercised in scratch directories so parallel
 readers cannot observe temporary corruption or silently repaired inputs.
 
-Vitest fixtures and desktop parity use `America/Los_Angeles` explicitly. Parity browser contexts
+Vitest fixtures and mock scenes use `America/Los_Angeles` explicitly. Mock browser contexts
 use the same zone, so reviewed local dates and times do not depend on the host's time zone.
 
 ## 2. Vitest selection and commands
@@ -129,9 +129,9 @@ The worker default belongs to the root configuration so CLI limits apply to ever
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
 `ci.yml` triggers only for staging pull requests and admits the portable-only `ci-checks.yml` call.
-Its top parity job is a plain passing omission, with merge train after the six top summaries and
+Its top parity job is a plain passing omission kept for branch protection, with merge train after the six top summaries and
 outside admission. `release.yml` triggers only for main pull requests or operator manual releases
-and alone admits `release-checks.yml`, which owns the native/parity and complete release pipeline.
+and alone admits `release-checks.yml`, which owns the native and complete release pipeline.
 Staging never references or loads a release/native workflow call. Both callees use shared typed
 selection/result/timing policy from `scripts/test/ci-plan.ts` and explicitly retain test budgets.
 The root check rules own platform placement and release authorization.
@@ -154,9 +154,8 @@ Other native files count half because two workers share them.
 | unit | Ubuntu | 2 (3 without integration) | unit files except `NATIVE_FILES` |
 | architecture | Ubuntu | 2 | architecture files |
 | integration | Ubuntu | 14 | integration files except `NATIVE_FILES` and `SERIAL_FILES` |
-| native | macOS, operator-started full releases only | 5 (2 when parity runs) | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |
+| native | macOS, operator-started full releases only | 5 | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |
 | native | Windows, operator-started full releases only | 5 (1 for unit only) | The same native membership and isolated serial/storage groups |
-| parity | macOS, operator-started full releases only | 3 shards | Desktop parity |
 
 With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The job-level whole-pipeline FIFO
 admission and draft policy are described in [repository governance](../repository-governance.md).
@@ -260,7 +259,7 @@ Lanes use distinct names; pushing the same lane again cancels its earlier run.
 
 ### CI scheduling
 
-Unit, integration and parity use two workers. Ubuntu jobs put test temp on tmpfs and have 20-minute
+Unit and integration use two workers. Ubuntu jobs put test temp on tmpfs and have 20-minute
 budgets; macOS jobs use a RAM disk with Spotlight indexing off and have 30-minute budgets. Budgets are
 hang guards. CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
 Vitest test and hook limits, test wait helpers and the browser deadlines tests pass to product code by it.
@@ -278,15 +277,15 @@ dispatches bypass the draft limit.
 | Unit test files only | Unit and architecture. |
 | Integration test files only | Integration and architecture. |
 | Architecture test files only | Architecture. |
-| Parity test files only | Parity and architecture. |
-| Parity helpers, fixtures or entrypoints | All four; unit and integration also import these. |
+| Mock scene files only | Architecture. |
+| Mock scene helpers, fixtures or entrypoints | Unit, integration and architecture; unit and integration also import these. |
 | Local or perf test files only | Architecture; local remains machine-only and perf remains release-only. |
 
 Select the union for mixed changes. Staging PRs execute only the portable entry workflow. Valid
-`staging` → `main` releases select native/parity work and the isolated coverage/performance batch.
+`staging` → `main` releases select native work and the isolated coverage/performance batch.
 Other heads into main omit native/batch work and fail the required release source-head check.
 Markdown-only releases omit those expensive jobs but explicitly pass the required release summary
-after proof validation. Operator manual releases select all routine native/parity suites; the
+after proof validation. Operator manual releases select all routine native suites; the
 coverage/performance batch remains PR-only. Machine-readable docs count as configuration. Release
 authorization belongs to the root check rules. Protected branch pushes do not repeat CI.
 
@@ -302,11 +301,11 @@ publication, rejecting failed or missing outcomes. Cancellation stops its checko
 In releases it also checks the selected batch, after
 `unit-proofs` allows batch execution without a cycle. The required outer `unit` always validates
 both the complete call result and inner unit output as success. Train is excluded from the inner
-fence because it runs downstream. Staging's required parity is plain successful omission; release
-parity validates actual proof output. Portable selected suites require Ubuntu success. Selected
+fence because it runs downstream. The required `parity` is a plain successful omission on both
+workflows. Portable selected suites require Ubuntu success. Selected
 eligible full-release unit/integration require both native platforms to succeed, regardless of
 matrix absence or emptiness; native omission is valid only outside such a selected suite.
-Selected parity requires macOS success. An expected omission must be exactly skipped. Invalid
+An expected omission must be exactly skipped. Invalid
 selectors, matrix counts and missing outputs never become successful defaults.
 
 Timing discovery first enumerates registered IDs for exactly the CI and release workflow paths.
@@ -322,8 +321,7 @@ proves the selections give each file to exactly one job, so selected paths need 
 selection/history adapters and actual summary-shell failures for staging, source/head, Markdown
 and manual cases. Source/API-list checks are not the Actions graph proof: the operator reviews
 the actual published staging graph to confirm no release workflow is loaded.
-Parity's three Playwright shards' `--list --reporter=json` test identities must also form the
-unsharded listing exactly once. Coverage, perf and local selection are unchanged.
+Coverage, perf and local selection are unchanged.
 
 ## 3. Private test temporary directory
 
@@ -341,7 +339,7 @@ loads cached JavaScript while retaining source URLs, direct-execution checks, IP
 checkout resolution. Each module is keyed by its TypeScript/TSX loader and source bytes; changed
 or test-created sources are compiled on first use. A new run rebuilds the cache with the current
 compiler and configuration. Product launch commands and the explicit tsx serialization test keep
-tsx. Parity's global setup shares the same preparation and cleanup.
+tsx. The mock scene runner's global setup shares the same preparation and cleanup.
 
 On macOS, `scripts/test/ram-tmp.sh <mebibytes>` formats an APFS RAM disk with `newfs_apfs` as
 the current user, enables volume ownership with `sudo -n /usr/sbin/diskutil enableOwnership`,
@@ -355,7 +353,7 @@ The mount logs physical memory, CPU count and requested disk size. Test jobs use
 runners. Keep room for Node and Chromium;
 raise the disk size only after a measured peak no longer fits.
 
-Parity launches Playwright directly. After 180 seconds without output it kills that child and
+The mock scene runner launches Playwright directly. After 180 seconds without output it kills that child and
 its descendants, and only then releases the command lock. It does not take a suite lock. The
 command lock remains the private file under `.tracker/data/locks`.
 
@@ -531,10 +529,10 @@ serialized exclusion-list SHA-256 from `guard-inventory.json`. A planned owner m
 match files. An active owner must exist and match files. Owners must be exact, independent paths,
 with nonempty reasons. An exclusion cannot silently grow into a parent scope.
 
-## 7. Desktop parity
+## 7. Mock scenes
 
-`npm run test:parity` runs Playwright through `playwright.parity.config.ts`; the Playwright exit
-code is the result. The suite stores no screenshot or accessibility references.
+`npm run mocks` runs Playwright through `playwright.parity.config.ts` to render `/ui-mock` scenes.
+It is not a test gate; CI never runs it.
 
 The lane uses headless Chromium, 1280×720, device scale factor 1, no mobile/touch emulation,
 `fullyParallel: true`, two workers, zero retries, and a **120,000 ms** test timeout. Default scenes
@@ -549,11 +547,10 @@ contain the exact state its assertion claims to cover.
 
 Outputs live under ignored `tests/parity/.output/`.
 
-The parity child uses runner containment with an inactivity bound of **180,000 ms** without
+The mock runner child uses runner containment with an inactivity bound of **180,000 ms** without
 stdout/stderr. A stall fails, preserves diagnostics, and stops the group with TERM then KILL.
 Continuous output can defeat an inactivity bound; it does not prove progress. Inner deadlines
-remain unchanged. [Dashboard parity](../../src/dashboard/PARITY.md) owns detailed scene and
-verification rules; [frontend/backend integration](frontend-backend-integration.md) owns wiring
+remain unchanged. [The mock scene runner](../../src/dashboard/PARITY.md) owns scene rules; [frontend/backend integration](frontend-backend-integration.md) owns wiring
 acceptance.
 
 ## 8. Behavior and safety test owners
@@ -589,8 +586,7 @@ and UNKNOWN-submit refusal. [Write safety](write-safety.md) owns those runtime r
 A dashboard change accounts for the client/shared schema, producer/view-model, callbacks, mounted
 controls, and every consumer of changed shared data. Wiring tests exercise both command refusal
 arms (`rejected` and `conflict`), late settlements, request identity, and focus/remount behavior
-where relevant. A visible assertion pairs with an independent wire or authority fact. Parity proves
-presentation with mock values; it does not prove production service readiness.
+where relevant. A visible assertion pairs with an independent wire or authority fact.
 
 Focused tests establish the changed behavior, then lint and affected generated checks establish
 the candidate. Full acceptance uses the assigned final gate. Actual commands, exits, failures,
@@ -656,5 +652,5 @@ the new assertions. Durable receipt evidence is separate from terminal display s
 
 ## Not built yet
 
-- Wiring-base and per-workflow acceptance still need the operator's served-screen sign-off and admitted live evidence; fixture/parity success cannot supply either.
+- Wiring-base and per-workflow acceptance still need the operator's served-screen sign-off and admitted live evidence; fixture success cannot supply either.
 - Current workflows have no executable `tests/scenario/` rehearsal corpus; manifest-backed live proof must exist before it can be reported as run.

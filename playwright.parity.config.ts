@@ -1,4 +1,4 @@
-/** Desktop parity runs browser behaviour specs and mock scenes against isolated servers. */
+/** Renders /ui-mock scenes from the parity dashboard build against isolated fixture servers. */
 import "./tests/support/helpers/credential-keychain-process-preload.mjs";
 import { availableParallelism } from "node:os";
 import { defineConfig } from "@playwright/test";

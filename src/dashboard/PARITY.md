@@ -1,42 +1,32 @@
-# Dashboard parity suite
+# Mock scene runner
 
-`npm run test:parity` runs Playwright with `playwright.parity.config.ts`; its exit code is the result. The suite checks
-keyboard, focus, loading, geometry and interaction behavior in a real browser with mock values, and renders `/ui-mock`
-scenes. It stores no screenshot or accessibility references. It does not prove live workflow or service readiness.
+`npm run mocks` runs Playwright with `playwright.parity.config.ts` to render `/ui-mock` scenes from the
+parity dashboard build. It is not a test gate and CI never runs it. Dashboard behaviour is proven by
+Vitest unit/integration tests and `/verify` browser checks.
 
-## Run and filter
+## Run
 
 ```sh
-npm run test:parity
-npm run test:parity -- frontend-controls.test.ts
-npm run test:parity -- --grep "keyboard-only"
+npm run mocks -- zz-status-mock.test.ts -g "<title>"
 ```
 
-Use the matching surface spec for a focused check. Shared shell, tokens, primitives, and models
-need the full suite at the assigned gate. Filters are forwarded to Playwright.
+Each scene spec writes PNGs to the folder its environment variable names (for example
+`STATUS_MOCK_OUT`). Run one scene at a time, serially, with one worker.
 
 ## Configuration and isolation
 
-The default lane is headless Chromium, 1280×720, device scale factor 1, no touch, and no mobile
-emulation. Default scenes use the `graphite-warm` theme with `data-demo-theme="dark"`.
-It uses up to four workers locally, bounded by available CPUs, and two per CI shard, `fullyParallel: true`, no
-retries, and a 120-second test timeout. Fixture processes and browsers use `America/Los_Angeles`.
-Individual desktop interaction specs cover resize, zoom-related canvas behavior,
-keyboard access, and reduced motion. `workflow-batches.test.ts` explicitly tests light and dark
-outside the default theme. Do not add phone or coarse-pointer variants.
+Headless Chromium, 1280×720, device scale factor 1, no touch, and no mobile emulation. Default scenes
+use the `graphite-warm` theme with `data-demo-theme="dark"`. Fixture processes and browsers use
+`America/Los_Angeles`.
 
 `tests/parity/helpers/global-setup.ts` builds or verifies the bundle once before workers start.
-`helpers/bundle.ts` owns `dist/parity-dashboard` and its input stamp. Parity inputs include the
-UI control fixtures under `tests/support/helpers/dashboard/controls/`; changing a fixture invalidates
-the bundle. Per-spec
-`ensureParityBundle()` checks the same proof. Fixture/seeded BFF servers use ephemeral ports and
-owned temporary state rather than dashboard runtime ports or live HR state.
-`helpers/workflow-composition.ts` selects the test composition explicitly.
+`helpers/bundle.ts` owns `dist/parity-dashboard` and its input stamp. Fixture/seeded BFF servers use
+ephemeral ports and owned temporary state rather than dashboard runtime ports or live HR state.
+`helpers/workflow-composition.ts` selects the test composition explicitly. `tests/parity/app-entry.tsx`
+sets the harness flag that `mockParam` in `src/dashboard/app/mock-surfaces.ts` reads, so a served
+dashboard never shows a mock.
 
-## Read failures
-
-Playwright writes test artifacts and `results.json` under `tests/parity/.output/`. CI uploads the
-output directory, including failure screenshots and error contexts alongside the JSON report.
+Playwright writes failure artifacts under `tests/parity/.output/`.
 
 ## Current presentation choices
 
@@ -81,30 +71,6 @@ Julian approved the HUB-R4 composer over HUB-R3 on October 19, 2026 at 2:41 PM P
 22 stylesheets and two theme modules (131 paths). The inventory test and exact path fixture own
 that freeze. Legacy parity drivers follow the current visible controls; removed presentation
 contracts are replaced with inclusion/exclusion, geometry, keyboard and interaction assertions.
-
-## Verification rules
-
-- Use deterministic synthetic image bytes for image fixtures.
-- Build once before parallel workers; each server owns its port and state root.
-- Assert a test's selector preconditions, not whatever element happens to be index zero.
-- Measure geometry and hit boxes in the browser; a token or class list alone cannot establish the rendered size.
-- Use desktop target/spacing checks and preserve keyboard access without restoring touch-only variants.
-- Assert both inclusion and exclusion for a schema-bound tab, disclosure, unavailable state, or conditional mark.
-- Count repeated facts and reasons when the requirement is one occurrence; presence alone cannot detect duplication.
-- Prove an important reason without relying on `title`, and prove full text without a clipping container.
-- Exercise the mounted control when correctness depends on wiring, dispatch identity, focus, or refresh/remount behavior.
-- Focus a jsdom press target explicitly when testing focus; programmatic `click()` does not move focus there.
-- Compare DOM identities as booleans instead of asking assertion formatting to inspect an entire live DOM tree.
-- Keep fake transport tests at the subscription seam and real stream-ending classification tests at the transport seam.
-- Preserve separate replay rules: patches at or below the held cursor are stale; same-cursor snapshots are valid replacements.
-- Pin generation reset, superseded-stream settlement, and exact-cursor resume separately from row patch folds.
-- Test request identity against late settlements as well as already-settled result invalidation.
-- Keep a regression scoped to its row kind; unrelated note/fence pixels and accessible names remain unchanged.
-- Verify every consumer of a shared record head and both reassuring and cautionary outcome arms.
-- Pin schema-unrepresentable omissions with an assertion rather than inventing unreachable UI fixtures.
-- Verify token definitions and runtime writers; CSS silently accepts undefined custom properties.
-- Keep spacer arithmetic bound to actual row heights; render all rows before viewport measurement, clamp elastic overscroll, and reject non-finite measurements.
-- Verify output counts, search, copy, selection, and cleanup when optimizing offscreen rendering; layout deferral does not bound memory.
 
 See [DESIGN.md](DESIGN.md) for composition rules and
 [the wiring contract](../../docs/reference/frontend-backend-integration.md) for producer acceptance.
