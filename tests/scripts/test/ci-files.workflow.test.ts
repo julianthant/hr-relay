@@ -160,7 +160,7 @@ describe("separate event and admitted proof workflows", () => {
     expect(productionTrigger).toContain("run-name: ${{ github.event.pull_request.title || inputs.title }}");
     expect(productionTrigger).toContain("branches: [main]");
     expect(productionTrigger).toMatch(/workflow_dispatch:\n {4}inputs:\n {6}title:\n[^\n]*\n {8}required: true/u);
-    expect(productionTrigger).not.toContain("push:");
+    expect(productionTrigger).toContain("push:\n    branches: [main]");
     expect(load("merge-train").split("\non:\n")[1]?.split("\npermissions:")[0]).toBe(`  workflow_call:
     inputs:
       pr: {type: string, default: ""}
@@ -178,7 +178,7 @@ describe("separate event and admitted proof workflows", () => {
     expect(readdirSync(new URL("../../../.github/workflows", import.meta.url)).sort())
       .toEqual(["checks.yml", "merge-train.yml", "production.yml", "staging.yml"]);
     expect(jobNames(staging)).toEqual(["names", "checks", "staging", "train"]);
-    expect(jobNames(production)).toEqual(["checks", "production"]);
+    expect(jobNames(production)).toEqual(["checks", "codeql", "dependencies", "production"]);
     expect(jobNames(checks)).toEqual(["changes", "static", "privacy", "ubuntu", "macos", "unit-proofs", "integration", "architecture", "release-batch", "unit"]);
   });
 
@@ -216,7 +216,7 @@ describe("separate event and admitted proof workflows", () => {
     expect(job(checks, "unit")).toContain("release-batch]");
     expect(job(checks, "unit")).not.toMatch(/^ {4}needs:.*\btimings\b/mu);
     expect(job(staging, "staging")).toContain("needs: [names, checks]");
-    expect(job(production, "production")).toContain("needs: checks");
+    expect(job(production, "production")).toContain("needs: [checks, codeql, dependencies]");
   });
 
   it("retains native/bootstrap budgets, post-failure groups and exact file membership", () => {
@@ -284,7 +284,19 @@ describe("separate event and admitted proof workflows", () => {
     const outcomes = { ...releaseResults, ubuntu: { result: "skipped" }, macos: { result: "skipped" },
       "release-batch": { result: "skipped" } };
     expect(summary(checks, "unit", omitted, outcomes)).toBe("success");
-    expect(summary(production, "production", omitted, { checks: { result: "success" } })).toBe("success");
+    expect(summary(production, "production", omitted, { checks: { result: "success" }, codeql: { result: "success" }, dependencies: { result: "success" } })).toBe("success");
+  });
+
+  it("runs the security jobs only in Production: codeql on pull requests and pushes, dependencies on pull requests", () => {
+    expect(job(production, "codeql")).toContain("if: ${{ github.event_name != 'workflow_dispatch' }}");
+    expect(job(production, "codeql")).toContain("security-events: write");
+    expect(job(production, "codeql")).toContain("github/codeql-action/init@v4");
+    expect(job(production, "codeql")).toContain("github/codeql-action/analyze@v4");
+    expect(job(production, "dependencies")).toContain("if: ${{ github.event_name == 'pull_request' }}");
+    expect(job(production, "dependencies")).toContain("run: npm audit --omit=dev --audit-level=high");
+    expect(job(production, "checks")).toContain("if: ${{ github.event_name != 'push' }}");
+    expect(job(production, "production")).toContain("github.event_name != 'push'");
+    expect(staging).not.toMatch(/codeql|npm audit/u);
   });
 
   it.each([
@@ -296,7 +308,20 @@ describe("separate event and admitted proof workflows", () => {
     { event_name: "workflow_dispatch", head_ref: "", checks: "failure", expected: "failure" },
     ...["failure", "cancelled", "skipped", ""].map(checks => ({ event_name: "pull_request", head_ref: "staging", checks, expected: "failure" })),
   ])("runs the production gate ($event_name/$head_ref/$checks)", ({ event_name, head_ref, checks: result, expected }) => {
-    expect(summary(production, "production", planFor("release"), { checks: { result } }, { event_name, head_ref })).toBe(expected);
+    expect(summary(production, "production", planFor("release"), { checks: { result }, codeql: { result: "success" }, dependencies: { result: "success" } }, { event_name, head_ref })).toBe(expected);
+  });
+
+  it.each(["codeql", "dependencies"])("fails the production gate for a pull request when %s did not succeed", name => {
+    const context = { event_name: "pull_request", head_ref: "staging" };
+    const ok = { checks: { result: "success" }, codeql: { result: "success" }, dependencies: { result: "success" } };
+    for (const result of ["failure", "cancelled", "skipped"]) {
+      expect(summary(production, "production", planFor("release"), { ...ok, [name]: { result } }, context)).toBe("failure");
+    }
+  });
+
+  it("skips the production gate on a push to main", () => {
+    const skipped = { checks: { result: "skipped" }, codeql: { result: "success" }, dependencies: { result: "skipped" } };
+    expect(summary(production, "production", planFor("release"), skipped, { event_name: "push", head_ref: "" })).toBe("skipped");
   });
 
   it.each(["failure", "cancelled"])("fails the staging gate when a needed job is %s", result => {
