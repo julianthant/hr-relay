@@ -49,7 +49,6 @@ import {
 import type { CommandResult, RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
 import { runStartRefusalToast, settleCommandResult } from "../../app/commands/command-result.js";
 import {
-  inputRunValueNoun,
   type InputRunSurface,
   type TypedInputDraft,
   type UploadRunSurface,
