@@ -7,7 +7,7 @@ import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/
 import { StartCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import type { RerunLaunchSource } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 
 import assert from "node:assert/strict";
 import { act, createElement, type ReactElement } from "react";
@@ -19,7 +19,7 @@ import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../../src/models/dashboard/start-plan.js";
 import { CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
-import { FIXTURE_BOOTSTRAP } from "../../../parity/helpers/fixture-day.js";
+import { FIXTURE_BOOTSTRAP } from "../../../mocks/helpers/fixture-day.js";
 
 export function createRunStartDialogHarness() {
   // jsdom lacks overlay measurement APIs; these stubs supply capabilities without asserting geometry.

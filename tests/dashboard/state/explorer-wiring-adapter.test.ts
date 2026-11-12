@@ -1,5 +1,5 @@
 import { ViewNavigationContext } from "../../../src/dashboard/app/navigation/view-route-model.js";
-import { servedFixtureSources as previewFixtureSources } from "../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";

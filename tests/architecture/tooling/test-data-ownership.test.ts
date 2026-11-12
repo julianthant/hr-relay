@@ -11,7 +11,7 @@ import { gitVisibleFiles,repoRelative,REPO_ROOT } from "../support/helpers/guard
 function isUnitTest(path: string): boolean {
   return path.startsWith("tests/") && /\.test\.(?:ts|js)$/u.test(path)
     && !/\.integration\.test\.(?:ts|js)$/u.test(path)
-    && !/^tests\/(?:architecture|parity|perf)\//u.test(path);
+    && !/^tests\/(?:architecture|mocks|perf)\//u.test(path);
 }
 const ARCHITECTURE_HELPERS_ROOT = /^tests\/architecture\/(?:support|[^/]+)\/helpers\//u;
 const SHARED_RESOURCE_HARNESSES = new Set([
@@ -377,7 +377,7 @@ describe("test-data ownership", () => {
     assert.deepEqual(observed, [], "cross-tier code must use shared fixture homes");
     assert.equal(isUnitTest("tests/backend/helper.test.js"), true);
     assert.equal(isUnitTest("tests/support/helpers/helper.test.ts"), true);
-    for (const path of ["tests/backend/helper.integration.test.js", "tests/architecture/guard.test.ts", "tests/parity/reference.test.ts", "tests/perf/benchmark.ts", "tests/support/helpers/helper.ts"]) {
+    for (const path of ["tests/backend/helper.integration.test.js", "tests/architecture/guard.test.ts", "tests/mocks/reference.test.ts", "tests/perf/benchmark.ts", "tests/support/helpers/helper.ts"]) {
       assert.equal(isUnitTest(path), false, path);
     }
     assert.equal(importsFromText("tests/backend/composition.integration.test.ts", 'import "../models/helper.test.js";')[0]?.resolved, "tests/models/helper.test.js");

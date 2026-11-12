@@ -122,7 +122,7 @@ const contracts: Record<MockWorkflowId, Contract> = {
 export const MOCK_WORKFLOWS: readonly MockWorkflow[] = WORKFLOW_PREVIEW_DEFINITIONS.map(flow => ({ ...flow, ...contracts[flow.id] }));
 export const MOCK_WORKFLOW_CATALOG = Object.freeze({
   sourceCommit: "631cc3ae35ac28de443210ebcc5f33648a77df6c",
-  sourcePath: "tests/parity/helpers/fixture-identity.ts",
+  sourcePath: "tests/mocks/helpers/fixture-identity.ts",
   personLookupContractFingerprint: "e8b456516a5fe0d4afe33f45190a36f9771a768147d75f28929b8b5c130bf024",
   descriptorSetHash: FingerprintSchema.parse("3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405"),
   workflows: MOCK_WORKFLOWS.filter(flow => flow.id !== "ocr"),

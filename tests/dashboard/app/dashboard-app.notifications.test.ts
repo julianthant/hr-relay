@@ -8,7 +8,7 @@ import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { parseRoute } from "../../../src/dashboard/app/navigation/url-state.js";
 import { PRODUCT_WORKFLOW_COMPOSITION, workflowComposition, type WorkflowSourcePolicy } from "../../../src/dashboard/app/workflow-sources.js";
-import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
+import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
 import { FIXTURE_IDS } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { FIXTURE_FAILURE_SECTIONS } from "../../support/fixtures/dashboard/run-detail/receipts-failures.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";

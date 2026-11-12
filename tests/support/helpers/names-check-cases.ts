@@ -40,6 +40,7 @@ export const nameCases: readonly NameCase[] = [
   { label: "rejects task/NotKebab/Old_Lane even on origin", args: ["--branch", "task/NotKebab/Old_Lane", "--origin-branch", "task/NotKebab/Old_Lane"], ok: false, offender: "task/NotKebab/Old_Lane" },
   { label: "rejects feature/Old_Name even on origin", args: ["--branch", "feature/Old_Name", "--origin-branch", "feature/Old_Name"], ok: false, offender: "feature/Old_Name" },
   { label: "accepts a staging feature head and an area title", args: ["--branch", "feature/workspace-conventions", "--base", "staging", "--title", "Workspace conventions: check names"], ok: true, offender: "" },
+  { label: "accepts a staging chore head", args: ["--branch", "chore/remove-parity-suite", "--base", "staging", "--title", "Tests: remove the parity suite"], ok: true, offender: "" },
   { label: "accepts a staging fix head", args: ["--branch", "fix/ci-names", "--base", "staging", "--title", "CI: reject a bad branch name"], ok: true, offender: "" },
   { label: "accepts a dependabot staging head with a conventional title", args: ["--branch", "dependabot/npm_and_yarn/foo", "--base", "staging", "--title", "chore(deps): bump foo"], ok: true, offender: "" },
   { label: "rejects a staging task head", args: ["--branch", "task/workspace-conventions/name-check", "--base", "staging", "--title", "Workspace: keep the task branch off staging"], ok: false, offender: "task/workspace-conventions/name-check" },

@@ -26,7 +26,7 @@ import { DashboardCommandRequestSchema, CommandResultSchema, ParkedWriteCheckTar
 import { ActorIdSchema, RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
-import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
+import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
 import { UcpathReadTransactionFindings } from "../../../src/models/systems/ucpath/read-transaction-findings.js";
 import { workbookReferenceChoice, workbookReferenceDetail } from "../../support/fixtures/workbook-reference-choice.js";
 import { workbookReferenceChoiceId } from "../../../src/dashboard/surfaces/run-detail/logs/workbook-write-model.js";
