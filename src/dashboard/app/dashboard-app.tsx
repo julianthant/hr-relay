@@ -1090,7 +1090,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     }
     if (destination.kind === "bulk-result" && (destination.type === "cancel" || destination.type === "retry" || destination.type === "resume")) {
       const rows = notificationContext.current.rows;
-      const title = (runId: string) => rows.find(row => row.runId === runId)?.title ?? runId;
+      const title = (runId: string) => rows.find(row => row.runId === runId)?.title ?? "Earlier run";
       const response = BulkRunCommandResponseSchema.safeParse({ state: "vector", bulkCommandId: destination.bulkCommandId, type: destination.type, requestedCount: destination.requestedCount, results: destination.results });
       if (!response.success) { refused(notificationTargetUnavailable()); return; }
       const ids = [...destination.results.map(result => result.runId), ...destination.notAttempted];
