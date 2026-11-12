@@ -62,8 +62,15 @@ describe("hireReviewDecision", () => {
     assert.match(hireReviewDecision("new-hire", allDropped, { ...NAMES, ssn: null }, ARMS, "hire-review", 7)?.context ?? "", /Searched by name and date of birth\. Under another name/u);
   });
 
-  it("serves only the same-name dropped hits for a concurrent hire, nothing when none carries the name, and never the SSN", () => {
-    assert.equal(hireReviewDecision("rehire", allDropped, NAMES, ARMS, "hire-review", 7), undefined);
+  it("serves only the same-name dropped hits for a concurrent hire, only the manual rehire path when none carries the name, and never the SSN", () => {
+    const deadEnd = hireReviewDecision("rehire", allDropped, NAMES, ARMS, "hire-review", 7);
+    assert.deepEqual(deadEnd?.options, [], "no arm is answerable, but the card is served instead of a bare Waiting");
+    assert.match(deadEnd?.context ?? "", /Under another name: Other, Person \(••••0001\): Last name does not match;.*cancel this run and file the rehire by hand in UCPath\./u);
+    const spaced = { emplId: "10000004", name: "Smith Jones, Jonathan" };
+    const punctuation = hireReviewDecision("rehire", SearchPersonMatchOutputSchema.parse({ hits: [spaced], confirmed: [], dropped: [{ ...spaced, reason: "No Person Org record" }] }),
+      { ...NAMES, lastName: "Smith-Jones" }, ARMS, "hire-review", 7);
+    assert.deepEqual(punctuation?.options, [], "a name equal only after punctuation is never offered: the UCPath hire accepts case and spacing alone");
+    assert.match(punctuation?.context ?? "", /Under another name: Smith Jones, Jonathan \(••••0004\): No Person Org record\./u);
     const sameName = { emplId: "10000002", name: "Smith, Jonathan" };
     const decision = hireReviewDecision("rehire", SearchPersonMatchOutputSchema.parse({ hits: [sameName], confirmed: [], dropped: [{ ...sameName, reason: "No Person Org record" }] }), NAMES, ARMS, "hire-review", 7);
     assert.deepEqual(decision?.options.map(({ id }) => id), ["existing-person"]);

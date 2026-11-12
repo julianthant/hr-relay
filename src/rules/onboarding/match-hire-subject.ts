@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { HireSubjectSchema, OnboardingMatchHireSubject } from "../../models/workflows/onboarding/match-hire-subject.js";
 import type { SearchPersonMatchOutputSchema } from "../../models/systems/ucpath/search-person-match.js";
+import { isHireNameForm } from "../ucpath/hire-name.js";
 
 const normalizedName = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
@@ -32,16 +33,15 @@ export type HireReviewChoices = Readonly<{
 /**
  * The hire-review arms an operator may answer: a new hire only when Person Org confirmed nobody (over hits, the operator rules every one out),
  * an existing person among the confirmed hits or, when none is confirmed, among the dropped hits that carry the hire's own name.
- * A hit under another name stays unpickable: the UCPath hire scans and checks identity by the hire's name.
+ * A hit under another name stays unpickable: the UCPath hire scans and checks identity by the hire's name, in exactly the forms `isHireNameForm` accepts.
  */
-export function hireReviewChoices(mode: "new-hire" | "rehire", match: Match, hire: Readonly<{ firstName: string; lastName: string }>): HireReviewChoices {
+export function hireReviewChoices(mode: "new-hire" | "rehire", match: Match, hire: Readonly<{ firstName: string; middleName: string; lastName: string }>): HireReviewChoices {
   assertClassifiedMatch(match);
-  const hireName = normalizedName(`${hire.lastName}, ${hire.firstName}`);
   return {
     newHire: mode === "new-hire" && match.confirmed.length === 0,
     existing: match.confirmed.length > 0
       ? match.confirmed.map(({ emplId, name }) => ({ emplId, name, confirmedBy: "person-org" as const }))
-      : match.dropped.filter(({ name }) => normalizedName(name) === hireName).map(({ emplId, name, reason }) => ({ emplId, name, confirmedBy: "operator" as const, reason })),
+      : match.dropped.filter(({ name }) => isHireNameForm(hire, name)).map(({ emplId, name, reason }) => ({ emplId, name, confirmedBy: "operator" as const, reason })),
   };
 }
 

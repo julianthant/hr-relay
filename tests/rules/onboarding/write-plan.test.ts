@@ -52,6 +52,11 @@ describe("reviewed onboarding write plan", () => {
       "a dropped hit under another name is refused: the UCPath hire scans and checks identity by the hire's name");
     assert.throws(() => readOnboardingWritePlan({ ...picked, approval: { ...picked.approval, confirmedBy: "person-org" } }), /existing-hire-choice-not-independently-confirmed/u);
     assert.throws(() => readOnboardingWritePlan({ ...picked, approval: { ...picked.approval, emplId: EidSchema.parse("10800004") } }), /existing-hire-choice-not-independently-confirmed/u);
+    const squeezed = { emplId: EidSchema.parse("10800005"), name: "HIRE,FIXTURE" };
+    const punctuation = SearchPersonMatchOutputSchema.parse({ hits: [squeezed], confirmed: [], dropped: [{ ...squeezed, reason: "No Person Org record" }] });
+    assert.throws(() => readOnboardingWritePlan({ ...picked, match: punctuation, subject: matchHireSubject({ mode: "new-hire", firstName: "Fixture", lastName: "Hire", match: punctuation }),
+      approval: { ...picked.approval, emplId: squeezed.emplId } }), /existing-hire-choice-not-independently-confirmed/u,
+    "a name equal only after punctuation is refused before the UCPath hire query, which accepts case and spacing alone");
   });
   it("refuses an operator pick or a new hire while Person Org confirmed a hit", () => {
     const other = { emplId: EidSchema.parse("10800001"), name: "Other, Person" };

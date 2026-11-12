@@ -146,7 +146,7 @@ function hireReviewFacts(deps: RunDetailQueryDeps, authority: RunRecord) {
 
 /** `hireReviewChoices`, or undefined for a match that fails its structural checks. */
 function safeHireReviewChoices(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>,
-  hire: Readonly<{ firstName: string; lastName: string }>): HireReviewChoices | undefined {
+  hire: Readonly<{ firstName: string; middleName: string; lastName: string }>): HireReviewChoices | undefined {
   try {
     return hireReviewChoices(mode, match, hire);
   } catch {
@@ -193,7 +193,8 @@ export function hireReviewDecision(mode: "new-hire" | "rehire", match: z.infer<t
       + (names.ssn === null ? "Searched by name and date of birth." : "Searched by name, date of birth and SSN.") : "")
     + (unpickable.length === 0 ? "" : ` Under another name: ${unpickable.map(hit => `${hit.name} (${maskedEid(hit.emplId)}): ${hit.reason}`).join("; ")}. `
       + "Relay cannot file a hire under another name. If one of them is this person, cancel this run and file the rehire by hand in UCPath.");
-  return ordered.length === 0 ? undefined : projectDecision("review-before-write", ordered, { context });
+  // With no eligible arm (a concurrent hire whose hits are all under another name) the card still explains the manual rehire.
+  return ordered.length === 0 && unpickable.length === 0 ? undefined : projectDecision("review-before-write", ordered, { context });
 }
 
 const STALE_HIRE_REVIEW = "This review changed. Reload it before answering.";

@@ -1576,18 +1576,18 @@ export async function executeClaimedRun(
 
     const CONDITION_SKIP = { outcome: "skipped", notRunReason: "condition-false" } as const;
     /** A task span for a node that owns no task execution, so its timeline step reads settled. */
-    const emitSettledSpan = (node: RuntimeFlowNode, end: Readonly<{ outcome: "done" }> | typeof CONDITION_SKIP): void => {
-      const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
+    const emitSettledSpan = (node: RuntimeFlowNode, end: Readonly<{ outcome: "done" }> | typeof CONDITION_SKIP,
+      spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration)): void => {
       emit({ t: "span.started", kind: "task", ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath, name: runtimeNodeLabel(node) });
       emit({ t: "span.ended", kind: "task", ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath, ...end });
     };
-    /** Whether this node's join already recorded its settlement on the run's timeline since `since` (an ordinary reclaim re-reads a settled join). */
-    const joinSettledSince = (nodeId: string, since: string): boolean => {
+    /** Whether this attempt's timeline already closed the task span at `spanPath` (an ordinary reclaim re-reads a settled join). */
+    const spanEnded = (spanPath: string): boolean => {
       const timeline = deps.authority.authority.timelineEvents;
       for (let after = 0; ;) {
         const page = timeline.page({ runId, after, limit: 1000 });
         if (page.some(({ payload }) => payload.kind === "span" && payload.event.t === "span.ended" && payload.event.kind === "task"
-          && payload.event.attempt === envelope.attempt && payload.event.spanPath.startsWith(`${envelope.traceId}/${nodeId}#`) && payload.event.ts >= since)) return true;
+          && payload.event.attempt === envelope.attempt && payload.event.spanPath === spanPath)) return true;
         const last = page.at(-1);
         if (page.length < 1000 || last === undefined) return false;
         after = last.cursor;
@@ -2175,8 +2175,9 @@ export async function executeClaimedRun(
             }
             outputs[String(node.id)] = JsonValueSchema.parse(resolution.output);
             // A settled join reads done, or not needed when it bound no members, once per manifest; its dry-run and dependency accounting stay resolved.
-            if (entry.mode !== "replay-child" && evidence.manifest.join !== "none" && !joinSettledSince(node.id, evidence.manifest.createdAt)) {
-              emitSettledSpan(node, evidence.manifest.children.length === 0 ? CONDITION_SKIP : { outcome: "done" });
+            const joinSpanPath = `${envelope.traceId}/${node.id}#join-${evidence.manifest.manifestId}`;
+            if (entry.mode !== "replay-child" && evidence.manifest.join !== "none" && !spanEnded(joinSpanPath)) {
+              emitSettledSpan(node, evidence.manifest.children.length === 0 ? CONDITION_SKIP : { outcome: "done" }, joinSpanPath);
             }
           } catch (error) {
             if (error instanceof RunAbandonedError || error instanceof WorkerSessionClosureUnprovedError

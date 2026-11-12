@@ -425,17 +425,25 @@ describe("onboarding roster names in a real run", () => {
     assert.ok(done.run?.lifecycle.state === "terminal" && done.run.lifecycle.outcome === "done", JSON.stringify(f.database.authority.failures.listByRun(root.envelope.runId)));
   });
 
-  it("refuses a new hire for a concurrent hire over dropped matches", async () => {
-    const dropped = [{ emplId: "10800001", name: "Other, Person" }];
+  it("refuses a new hire and every other-name pick for a concurrent hire over dropped matches, serving only the manual rehire path", async () => {
+    // 10800005 differs from the hire's name only in punctuation, which the UCPath hire query refuses.
+    const dropped = [{ emplId: "10800001", name: "Other, Person" }, { emplId: "10800005", name: "HIRE,FIXTURE" }];
     const personMatch = SearchPersonMatchOutputSchema.parse({ hits: dropped, confirmed: [], dropped: dropped.map(hit => ({ ...hit, reason: "Last name does not match" })) });
     const f = await runWorld.executionFixture(false, { match: "unique", dryRun: true, mode: "rehire", personMatch }), root = f.start();
     const parked = await f.rawExecution.execute(root, new AbortController().signal);
-    assert.ok(parked.run?.lifecycle.state === "parked-gate");
+    assert.ok(parked.run?.lifecycle.state === "parked-gate" && parked.run.lifecycle.gateId === "hire-review");
     const reader = testRunService(f.database, f.clock);
-    const deps = { runReader: reader, canonical: { reader, database: f.database, descriptors: { resolve: () => descriptor } } } as unknown as RunDetailQueryDeps;
-    const resolution = resolveGateArmAnswer(deps, GateArmAnswerRequestSchema.parse({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator",
-      source: "run-detail", family: "gate", type: "answer-gate-arm", target: { runId: root.envelope.runId, gateId: "hire-review", expectedVersion: parked.run.version }, payload: { arm: "new-hire" } }), undefined);
-    assert.equal(resolution.state, "refused");
+    const deps = { runReader: reader, authority: { listGateResults: (runId: string) => f.database.authority.gateResults.listByRun(runId) },
+      canonical: { reader, database: f.database, descriptors: { resolve: () => descriptor } } } as unknown as RunDetailQueryDeps;
+    const gate = GateDecisionWireSchema.parse(buildRunGate(deps, root.envelope.runId, undefined, parked.run));
+    assert.ok(gate.state === "open" && gate.decision !== undefined, "the dead end is explained instead of a bare Waiting");
+    assert.deepEqual(gate.decision.options, []);
+    assert.match(gate.decision.context ?? "", /Under another name: Other, Person \(••••0001\): Last name does not match; HIRE,FIXTURE \(••••0005\): Last name does not match\..*file the rehire by hand in UCPath\./u);
+    for (const payload of [{ arm: "new-hire" }, { arm: "existing-person", rowId: "10800005" }, { arm: "existing-person", rowId: "10800001" }]) {
+      const resolution = resolveGateArmAnswer(deps, GateArmAnswerRequestSchema.parse({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator",
+        source: "run-detail", family: "gate", type: "answer-gate-arm", target: { runId: root.envelope.runId, gateId: "hire-review", expectedVersion: parked.run.version }, payload }), undefined);
+      assert.equal(resolution.state, "refused", JSON.stringify(payload));
+    }
   });
 
   it("files a resolved roster name and patches only the Employee ID and Transaction Number cells", async () => {
