@@ -75,7 +75,13 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
       return options.json ? JSON.stringify(report, null, 2) : report.state === "absent" ? `boot diagnostics: absent (${report.reason})`
         : report.records.map(record => `${record.occurredAt} ${JSON.stringify(record.payload)}`).join("\n");
     }
-    const stored = AuthorityDatabase.inspectTimelinePageReadOnly(admission, captureSelectedProfileStorage(admission).authorityPath, options.request);
+    const selected = captureSelectedProfileStorage(admission);
+    const person = admission.admitProfile(selected.profileId);
+    let stored: ReturnType<typeof AuthorityDatabase.inspectTimelinePageReadOnly>;
+    try {
+      stored = AuthorityDatabase.inspectTimelinePageReadOnly(person, selected.authorityPath, options.request);
+      selected.assertCurrent();
+    } finally { person.release(); }
     const page = { ...stored, records: stored.records.map(debugRecordView) };
     return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
   }
