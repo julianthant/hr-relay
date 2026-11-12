@@ -28,8 +28,8 @@ export function retainPublicFailureCustody(error: Error, retainedCustodyFailures
   return custodyUnproved;
 }
 
-export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver"> & { timelineTimer: ReturnType<typeof setInterval>; hub: ReturnType<typeof composeShell>["hub"]; stopWorkerControl: StartupCleanup; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
-  const { profile, selected, requireProducerClosure, notificationObserver, timelineTimer, hub, stopWorkerControl, assistantAuthorization, shutdownRequested, noteWriter, server, gateParkTimer, custody } = input;
+export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver" | "loopDelayMonitor"> & { timelineTimer: ReturnType<typeof setInterval>; hub: ReturnType<typeof composeShell>["hub"]; stopWorkerControl: StartupCleanup; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
+  const { profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, timelineTimer, hub, stopWorkerControl, assistantAuthorization, shutdownRequested, noteWriter, server, gateParkTimer, custody } = input;
   let producerClosure: Promise<void> | undefined, producersClosed = false;
   const closeProducers = (): Promise<void> => {
     producerClosure ??= (async () => {
@@ -39,6 +39,7 @@ export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDa
       })();
       clearInterval(timelineTimer);
       clearInterval(gateParkTimer);
+      try { loopDelayMonitor.stop(); } catch (error) { failures.push(error); }
       const notificationClosure = (async () => {
         try { await notificationObserver.stop(); } catch (error) { failures.push(error); }
       })();
