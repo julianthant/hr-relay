@@ -1,6 +1,6 @@
 # Repository governance
 
-The [root Git instructions](../AGENTS.md#git) own branch and release policy.
+The [Conventions](../AGENTS.md#conventions) own branch naming. The [root Git instructions](../AGENTS.md#git) own release policy.
 
 ## Branch protection
 

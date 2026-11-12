@@ -11,8 +11,8 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
   decisions on it. Work only on the ticket. Read the codebase map and the
   [roadmap](docs/roadmap/roadmap.md); update the roadmap only when asked.
 - Treat the main checkout's ignored `.work/` as scratch: per-task evidence at absolute paths from
-  worktrees, deleted when the task merges. Never commit it. Read the local operations note the
-  ticket names for machine constraints.
+  worktrees, deleted when the task merges. Never commit it. Read `.work/operations.md` there
+  for machine constraints.
 
 ## Codebase
 
@@ -36,26 +36,38 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
   `src/models/failures/error-catalog.ts`.
 - Keep instructions in `AGENTS.md` only. Do not create `CLAUDE.md`.
 
+## Conventions
+
+- Give each piece of work one name and use it everywhere. A feature is `<area>-<deliverable>`; the
+  area is a screen name, a workflow ID, or a non-screen area such as `storage`, `workers` or `ci`.
+  A ticket is `<feature> / <lane>`; a lane is one to three words, unique within its feature.
+
+| Thing | Name |
+| --- | --- |
+| Ticket ID | `<feature>-NN` |
+| Feature branch | `feature/<feature>`: from `origin/staging`, one PR into `staging` |
+| Ticket branch | `task/<feature>/<lane>`: from its feature branch, merged back with `--no-ff`, no PR |
+| Standalone fix | `fix/<area>-<symptom>`: one ticket, one PR into `staging` |
+| Design | `design/<area>`: mock with real components for operator approval, never merged |
+| Scratch | `scratch/<lane>-<n>`: focused CI feedback or a red probe, never merged, removed after use |
+| Worktree | `.worktrees/<feature>.<lane>`; the feature's own checkout is `.worktrees/<feature>` |
+| PR title | `<Area>: <what the operator gets>` |
+| Spec | `.work/specs/<feature>.md` |
+| Evidence | `.work/evidence/<feature>/<lane>/`, deleted when the ticket merges |
+
+- Use no other branch prefix. Run `npm run names:check` before the first push and before opening a
+  PR.
+- Keep the main checkout on a clean `staging` and work only in `.worktrees/`. A ticket lives on one
+  machine with its tests; work moves between machines only as pushed branches.
+- Leave no stash behind at the end of a session: commit to the ticket branch.
+- Merge a ticket branch into its feature branch only after the reviewer clears its SHA, then remove
+  its worktree and branch in the same step.
+- Separate backend and UI lanes for one area; merge the backend first.
+- Read `.work/operations.md` in the main checkout for machine roles, slots and ports.
+
 ## Git
 
 - Keep `main` as released production and `staging` as operator-preview integration.
-- Name every branch, worktree, lane and ticket for one dashboard area and one kind of work.
-  Split work across areas into separate lanes. Use screen names, workflow IDs, or a non-screen
-  area such as `storage`, `workers` or `ci`; never name a branch only `ci/<slug>`.
-- Name deliverables in one to three words. Use `ui` or `backend` alone only for that entire side
-  of an area. Tickets identify UI, backend or workflow work. Separate backend and UI lanes for one
-  area; merge the backend first.
-- Put worktrees in the main checkout's ignored `.worktrees/`, with the branch prefix removed
-  from the folder name.
-
-| Kind | Branch | Base and destination |
-| --- | --- | --- |
-| Design | `design/<area>` | Mock with real components for rendered operator approval; never merge or open a PR. |
-| Feature | `feature/<area>-<deliverable>` | Branch from `origin/staging`; one ready PR into `staging`. |
-| Task | `task/<feature>/<slice>` | Branch from its feature; merge back with `--no-ff`, no PR or GitHub CI. |
-| Fix | `fix/<area>-<symptom>` | Branch from `origin/staging`; one bounded PR into `staging`. |
-| Check | `check/<what>` | Local live-check build; never merge, remove after use. |
-| Scratch | `scratch/<lane>-<n>` | Focused CI feedback only; never merge, remove after use. |
 
 ### PR and release flow
 
@@ -92,7 +104,7 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
   web bundle, run coverage alone, then perf; coverage already selects unit, integration and
   architecture, so do not rerun those full suites for unchanged inputs.
 - PC feedback never blocks a repair push or replaces the published head's PR CI; never run
-  macOS-native proofs or parity there. Keep machine slot details in the local operations note.
+  macOS-native proofs or parity there. Keep machine slot details in `.work/operations.md`.
 - Refresh `scripts/test/ci-durations.json` when job end times spread more than a minute. Generate
   derived files through their source, never by hand.
 - Before local coverage, verify free memory, no swap pressure and no listener on the runtime
