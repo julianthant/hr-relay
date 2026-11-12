@@ -24,7 +24,7 @@ it("a worker that loses an OCR page claim race claims the next page instead of f
     descriptorFingerprint: f.run.envelope.contractFingerprint, requestedCapabilities: ["executor.run"] });
   const admission = createPreflightAdmission({ clock: f.clock, scheduler: f.harness.scheduler, validate() {},
     runners: () => PREFLIGHT_CHECKS.filter(spec => requiredPreflightChecks(["executor.run"]).includes(spec.id)).map(spec => ({ check: spec.id, kind: spec.runner,
-      async run(check) { return { check, state: "healthy" as const, summary: "Fixture healthy" }; } })) });
+      async run() { return { check: spec.id, state: "healthy" as const, summary: "Fixture healthy" }; } })) });
   const preflight = { admission, currentScope: () => scope, runScope: () => scope, descriptor: () => f.root.descriptor,
     prepareSession: async () => { throw new Error("no browser session prepares in this race"); } };
   const runtime = repositories.runtimeConfig.get(); assert.ok(runtime);
