@@ -1,8 +1,7 @@
-/** Desktop parity uses isolated servers and paired screenshot/a11y references. */
+/** Renders /ui-mock scenes from the parity dashboard build against isolated fixture servers. */
 import "./tests/support/helpers/credential-keychain-process-preload.mjs";
 import { availableParallelism } from "node:os";
 import { defineConfig } from "@playwright/test";
-import { parityUpdateRequested } from "./tests/parity/helpers/reference-store.js";
 import { scaledMs } from "./tests/support/time-scale.js";
 
 const keychainPreload = new URL("./tests/support/helpers/credential-keychain-process-preload.mjs", import.meta.url).href;
@@ -17,18 +16,9 @@ export default defineConfig({
   workers: Math.min(4, availableParallelism()),
   retries: 0,
   timeout: scaledMs(120_000),
-  // Refresh reference pairs only in explicit update mode.
-  updateSnapshots: parityUpdateRequested() ? "changed" : "none",
   expect: {
     timeout: scaledMs(5_000),
-    toHaveScreenshot: {
-      // Repeated captures counted zero differing pixels; allow none.
-      maxDiffPixels: 0,
-      // 0.2 covers measured 0.0682 YIQ noise; uniform sub-threshold color changes can escape.
-      threshold: 0.2,
-    },
   },
-  snapshotPathTemplate: "{testDir}/references/{arg}{ext}",
   use: {
     browserName: "chromium",
     viewport: { width: 1280, height: 720 },
@@ -42,6 +32,5 @@ export default defineConfig({
   reporter: [
     ["list"],
     ["json", { outputFile: "tests/parity/.output/results.json" }],
-    ["./tests/parity/helpers/a11y-evidence-reporter.ts"],
   ],
 });

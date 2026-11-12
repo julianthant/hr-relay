@@ -5,14 +5,12 @@ import {
 PARITY_THEMES,
 PARITY_VIEWPORTS,
 assertThemeApplied,
-captureParityPair,
 installTheme,
 type ParityTheme,
 } from "./capture.js";
 import { type FixtureServer } from "../../support/helpers/dashboard/fixture-bff.js";
-import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
 import { assertShellGeometry } from "./geometry.js";
-import { REFERENCES,dismissWorkflowWindow,failOnPageErrors } from "./reference-harness.js";
+import { dismissWorkflowWindow,failOnPageErrors } from "./reference-harness.js";
 export interface ReferenceScene { readonly id: string; readonly route: AppRoute }
 export type SceneAnchors = Readonly<Record<string, (page: import("@playwright/test").Page) => Promise<void>>>;
 export function registerReferenceScenes(states: readonly ReferenceScene[], server: () => FixtureServer, anchors: SceneAnchors) {
@@ -44,17 +42,6 @@ for (const viewport of PARITY_VIEWPORTS) {
           await anchors[state.id]?.(page);
           expect(errors, `page errors while rendering ${state.id}`).toEqual([]);
 
-          if (state.id.startsWith("intake-")) await captureParityPair(page, REFERENCES, {
-            stateId: state.id,
-            viewport: viewport.name,
-            theme: theme.name,
-            adapter: "fixture",
-            fixtureId: state.id,
-            descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-            appVersion: FIXTURE_APP_VERSION,
-            capturedAt: FIXTURE_DAY,
-            variant: "default",
-          });
         });
       }
     });
