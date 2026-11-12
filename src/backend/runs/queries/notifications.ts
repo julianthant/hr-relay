@@ -25,6 +25,11 @@ export function createNotificationTargetQuery(deps: {
 }) {
   return (id: string, actor: string): NotificationTarget => {
     const notificationId = NotificationIdSchema.parse(id), actorId = ActorIdSchema.parse(actor);
+    const dayOf = (runId: string): string | undefined => {
+      const current = deps.read(runId);
+      if (current.state !== "present") return undefined;
+      return localDatePart(new Date((deps.host?.(current.run) ?? current.run).envelope.enqueuedAt));
+    };
     const refused = (reason: Extract<NotificationTarget, { kind: "refused" }>["reason"]): NotificationTarget => ({ kind: "refused", reason });
     try {
       const row = deps.get(notificationId);
@@ -34,8 +39,8 @@ export function createNotificationTargetQuery(deps: {
       const link = row.links[0];
       if (link === undefined) return refused("target-unavailable");
       if (link.kind === "storage") return { kind: "storage" };
-      if (link.kind === "recovery" || link.kind === "command-result") return commandTarget(link, deps.command(link.commandId), refused);
-      if (link.kind === "bulk-result") return bulkTarget(link.bulkCommandId, deps.bulk(link.bulkCommandId), refused);
+      if (link.kind === "recovery" || link.kind === "command-result") return commandTarget(link, deps.command(link.commandId), dayOf, refused);
+      if (link.kind === "bulk-result") return bulkTarget(link.bulkCommandId, deps.bulk(link.bulkCommandId), dayOf, refused);
       const current = deps.read(link.runId);
       if (current.state !== "present") return refused("run-unavailable");
       const host = deps.host?.(current.run);
@@ -54,16 +59,19 @@ export function createNotificationTargetQuery(deps: {
   };
 }
 
-function commandTarget(link: { kind: "recovery" | "command-result"; commandId: string }, command: CommandNotice | undefined, refused: (reason: "target-unavailable") => NotificationTarget): NotificationTarget {
+function commandTarget(link: { kind: "recovery" | "command-result"; commandId: string }, command: CommandNotice | undefined, dayOf: (runId: string) => string | undefined, refused: (reason: "target-unavailable") => NotificationTarget): NotificationTarget {
   if (command === undefined || command.request.commandId !== link.commandId) return refused("target-unavailable");
   if (command.result === undefined) {
     if (link.kind === "recovery" && command.state === "admitted") return NotificationTargetSchema.parse({ kind: "recovery", commandId: link.commandId, request: publicWriteCommand(command.request) });
     return refused("target-unavailable");
   }
-  return NotificationTargetSchema.parse({ kind: "command-result", commandId: link.commandId, request: publicWriteCommand(command.request), result: command.result });
+  const runId = command.request.family === "run" && "runId" in command.request.target ? command.request.target.runId : undefined;
+  const day = runId === undefined ? undefined : dayOf(runId);
+  if (runId !== undefined && day === undefined) return refused("target-unavailable");
+  return NotificationTargetSchema.parse({ kind: "command-result", commandId: link.commandId, ...(day === undefined ? {} : { day }), request: publicWriteCommand(command.request), result: command.result });
 }
 
-function bulkTarget(bulkCommandId: string, bulk: { acceptance: BulkRunCommandAcceptanceRecord; children: readonly CommandNotice[] } | undefined, refused: (reason: "target-unavailable") => NotificationTarget): NotificationTarget {
+function bulkTarget(bulkCommandId: string, bulk: { acceptance: BulkRunCommandAcceptanceRecord; children: readonly CommandNotice[] } | undefined, dayOf: (runId: string) => string | undefined, refused: (reason: "target-unavailable") => NotificationTarget): NotificationTarget {
   if (bulk === undefined || bulk.acceptance.bulkCommandId !== bulkCommandId) return refused("target-unavailable");
   const { acceptance } = bulk;
   const targets = acceptance.request.targets;
@@ -87,8 +95,10 @@ function bulkTarget(bulkCommandId: string, bulk: { acceptance: BulkRunCommandAcc
     results.push(outcome);
   }
   if (byRun.size !== 0) return refused("target-unavailable");
+  const days: Record<string, string> = {};
+  for (const target of targets) { const day = dayOf(target.runId); if (day !== undefined) days[target.runId] = day; }
   return NotificationTargetSchema.parse({
-    kind: "bulk-result", bulkCommandId, type: acceptance.request.type, requestedCount: targets.length, results, notAttempted,
+    kind: "bulk-result", bulkCommandId, type: acceptance.request.type, requestedCount: targets.length, results, notAttempted, days,
   });
 }
 

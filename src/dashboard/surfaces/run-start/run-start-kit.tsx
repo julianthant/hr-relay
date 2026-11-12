@@ -1,11 +1,17 @@
 import type { RefObject, ReactNode } from "react";
-import { Check, FlaskConical, X } from "lucide-react";
+import { Check, ChevronDown, FlaskConical, Search, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { SurfaceField, InputRunSurface, TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { cn } from "../../lib/utils.js";
 import {
   Badge,
   Banner,
   Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuItemCopy,
+  DropdownMenuTrigger,
   Card,
   CardBody,
   Checkbox,
@@ -28,6 +34,7 @@ import { fmtClock } from "../shared/status/format.js";
 import type { StartPlanResponse } from "../../client/index.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
 import { RunList, RunListRow, RunSection } from "../../ds/primitives/run-list.js";
+import { DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../ds/primitives/dropdown-menu.js";
 import { typedInputMode, typedInputDefaults, inputRunFieldLabel, inputRunDelimiterHint, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft } from "./run-start-model.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 /** the non-default run flags shown in the preview and confirmation */
@@ -355,9 +362,10 @@ export function StepOmissionFactsForm({
   );
 }
 
-/** Short grey lines for the design mock's input controls. */
-const MOCK_CONTROL_NOTES: Readonly<Record<string, string>> = { crmCheck: "Cross-check each person against CRM." };
+/** The approved grey lines under the Lookup rows, by the mode label or control field they describe. */
+const INPUT_NOTES: Readonly<Record<string, string>> = { "Lookup mode": "Search by ID or name, or match on details.", crmCheck: "Cross-check each person against CRM." };
 
+/** The approved Lookup / Input / Parsed input layout, used by the served Run and Rerun dialogs and the design preview alike. */
 export function TypedInput({
   surface,
   workflowId,
@@ -367,7 +375,6 @@ export function TypedInput({
   inputRef,
   draft = {},
   onValue,
-  presentation = "served",
   rowInput,
 }: {
   rowInput?: ReactNode;
@@ -378,7 +385,6 @@ export function TypedInput({
   preview: RunInputPreview;
   draft?: TypedInputDraft;
   onValue?: (field: string, value: string | boolean) => void;
-  presentation?: "mock" | "served";
   /** the dialog's handle on the box, so an exit from a banner can focus it */
   inputRef?: RefObject<HTMLTextAreaElement | null>;
 }) {
@@ -393,8 +399,8 @@ export function TypedInput({
     : "";
   const entryText = (entries: RunInputPreview["entries"]) => entries.map(entry => entry.sourceText).join(separator);
   const inputLabel = mode?.inputLabel ?? inputRunFieldLabel(surface.parser);
-  const hint = (mode?.hint ?? inputRunDelimiterHint(surface.parser)).replace(presentation === "mock" ? /semicolon or a new line\./u : /$^/u, "semicolon or Shift+Enter.");
-  const box = <Textarea key={workflowId} ref={inputRef} autoFocus rows={4} value={text} aria-label={presentation === "mock" ? inputLabel : undefined}
+  const hint = (mode?.hint ?? inputRunDelimiterHint(surface.parser)).replace(/semicolon or a new line\./u, "semicolon or Shift+Enter.");
+  const box = <Textarea key={workflowId} ref={inputRef} autoFocus rows={4} value={text} aria-label={inputLabel}
       placeholder={mode?.placeholder ?? (inputRunFieldLabel(surface.parser) === "Kuali ID" ? surface.placeholder.replaceAll("Kuali document numbers", "Kuali IDs") : surface.placeholder)}
       onChange={event => onText(event.target.value)}
       onBlur={() => {
@@ -403,28 +409,21 @@ export function TypedInput({
           if (normalized !== text) onText(normalized);
         }
       }} />;
-  const field = <Field label={inputLabel} description={hint} error={presentation === "served" ? preview.problem : undefined}>{box}</Field>;
-  const controls = declaration && <>
-    <SegmentedChoice label={declaration.modeLabel} value={mode?.value ?? ""}
-      options={declaration.modes.map(candidate => ({ value: candidate.value, label: candidate.label }))}
-      onChange={value => onValue?.(declaration.modeField, value)} />
-    {declaration.controls.filter(control => control.placement === "input" && control.modes.includes(mode?.value ?? "")).map(control =>
-      <Checkbox key={control.field} label={control.label} checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value === true)} />)}
-  </>;
-  if (presentation === "mock" && declaration !== undefined) return <>
-    <RunList title="Lookup">
-      <RunListRow title={declaration.modeLabel} description="Search by ID or name, or match on details.">
+  return <>
+    {declaration && <RunList title="Lookup">
+      <RunListRow title={declaration.modeLabel} description={INPUT_NOTES[declaration.modeLabel]}>
         <div className="w-[250px]"><SegmentedChoice hideLabel label={declaration.modeLabel} value={mode?.value ?? ""}
           options={declaration.modes.map(candidate => ({ value: candidate.value, label: candidate.label }))}
           onChange={value => onValue?.(declaration.modeField, value)} /></div>
       </RunListRow>
       {declaration.controls.filter(control => control.placement === "input" && control.modes.includes(mode?.value ?? "")).map(control =>
-        <RunListRow key={control.field} title={control.label} description={MOCK_CONTROL_NOTES[control.field]}>
+        <RunListRow key={control.field} title={control.label} description={INPUT_NOTES[control.field]}>
           <Switch hideLabel label={control.label} checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value)} className="!min-h-0 !w-auto !py-0" />
         </RunListRow>)}
-    </RunList>
-    <RunSection title="Input" description={`${inputLabel}. ${hint}`}>{box}</RunSection>
-    {preview.entries.length > 0 && <RunList title="Parsed input" label="Parsed input" aside={`${preview.entries.length} ${preview.entries.length === 1 ? "run" : "runs"}`}>
+    </RunList>}
+    {rowInput === undefined ? <RunSection title="Input" description={`${inputLabel}. ${hint}`}>{box}{preview.problem !== null && <p role="alert" className="m-0 text-caption text-ui-danger">{preview.problem}</p>}</RunSection>
+      : <>{rowInput}{preview.problem !== null && <Banner tone="danger" title="Selected rows need attention">{preview.problem}</Banner>}</>}
+    {rowInput === undefined && preview.entries.length > 0 && <RunList title="Parsed input" label="Parsed input" aside={`${preview.entries.length} ${preview.entries.length === 1 ? "run" : "runs"}`}>
       {preview.entries.map(entry => <RunListRow key={entry.index} title={<span className="font-mono">{entry.sourceText}</span>}>
         {editableParser !== undefined && <IconButton size="xs" label={`Remove ${entry.sourceText}`} icon={<X aria-hidden className={dsIcon.md} />}
           onClick={() => {
@@ -434,21 +433,65 @@ export function TypedInput({
       </RunListRow>)}
     </RunList>}
   </>;
-  if (rowInput !== undefined) return <>{controls}{rowInput}{preview.problem !== null && <Banner tone="danger" title="Selected rows need attention">{preview.problem}</Banner>}</>;
-  return <>{controls}<div className="flex flex-col gap-[var(--ds-space-snug)]">{field}
-    {preview.entries.length > 0 && <section aria-label="Parsed input" className="mt-3 flex flex-col gap-3">
-      <div className="flex items-center justify-between"><h4 className="text-body font-semibold">Parsed input</h4><Badge tone="neutral">{preview.entries.length} {preview.entries.length === 1 ? "run" : "runs"}</Badge></div>
-      <ul className={cn("launch-parsed-input m-0 grid list-none gap-2 p-0", editableParser !== undefined && "grid-cols-2")}>
-        {preview.entries.map(entry => <li key={entry.index} className="flex min-w-0 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-[10px] py-2">
-          <span className="text-body">{entry.index + 1}.</span>
-          <span className="min-w-0 flex-1 break-words font-mono text-caption">{entry.sourceText}</span>
-          {editableParser !== undefined && <IconButton size="xs" label={`Remove ${entry.sourceText}`} icon={<X aria-hidden className={dsIcon.md} />}
-            onClick={() => {
-              onText(entryText(preview.entries.filter(candidate => candidate.index !== entry.index)));
-              inputRef?.current?.focus();
-            }} />}
-        </li>)}
-      </ul>
-    </section>}
-  </div></>;
+}
+
+export interface ReferenceSheet { readonly libraryId: string; readonly name: string; readonly versions: readonly { readonly id: string; readonly name: string }[]; readonly currentVersionId: string; readonly worksheets: readonly string[] }
+export interface ReferenceWorksheet { readonly sheetId: string; readonly sheetName: string }
+
+/** The served Run and Rerun dialogs' reference spreadsheet list: the approved rows (spreadsheet, worksheet picker, version picker, remove ×) and the Add spreadsheet search menu, over the library the run reads. One spreadsheet per run: adding another replaces the current one. */
+export function RunReferenceRows({ requiredLabel, sheets, chosenLibraryId, chosenVersionId, chosenSheetId, worksheets, worksheetsState, worksheetsError, busy, catalogError, onPick, onVersion, onWorksheet, onRemove, onRefresh }: {
+  requiredLabel: string; sheets: readonly ReferenceSheet[];
+  chosenLibraryId?: string; chosenVersionId?: string; chosenSheetId: string;
+  worksheets: readonly ReferenceWorksheet[]; worksheetsState: "loading" | "ready" | "error"; worksheetsError: string | null;
+  busy: boolean; catalogError: string | null;
+  onPick: (libraryId: string, versionId: string) => void; onVersion: (versionId: string) => void; onWorksheet: (sheetId: string) => void; onRemove: () => void; onRefresh: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const chosen = sheets.find(sheet => sheet.libraryId === chosenLibraryId);
+  const needle = query.trim().toLowerCase();
+  // The library serves no pins, so an empty search shows the guidance line; typing searches every spreadsheet and worksheet name, A-Z.
+  const found = needle === "" ? [] : sheets.filter(sheet => [sheet.name, ...sheet.worksheets].some(name => name.toLowerCase().includes(needle))).toSorted((a, b) => a.name.localeCompare(b.name));
+  const missingSheet = chosenSheetId !== "" && !worksheets.some(sheet => sheet.sheetId === chosenSheetId);
+  useEffect(() => {
+    if (chosenSheetId === "" && worksheetsState === "ready" && worksheets.length > 0) onWorksheet(worksheets[0].sheetId);
+  }, [chosenSheetId, worksheetsState, worksheets, onWorksheet]);
+  const current = worksheets.find(sheet => sheet.sheetId === chosenSheetId)?.sheetName;
+  return <div className="flex min-w-0 flex-col gap-3">
+    {catalogError && <Banner tone="danger" title="Reference data unavailable">{catalogError}<Button onClick={onRefresh}>Refresh</Button></Banner>}
+    <RunList title="Reference spreadsheets" description={`Spreadsheets this run looks people up in. Needs ${requiredLabel}.`}>
+      {chosen && <RunListRow title={chosen.name} description={missingSheet ? "Previous worksheet unavailable; choose again" : current ?? (worksheetsState === "loading" ? "Loading worksheets…" : undefined)}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><Button variant="outline" disabled={busy || worksheetsState !== "ready"} aria-label={`${chosen.name} worksheet, ${current ?? "none chosen"}`} className="ds-menu-trigger w-[150px] min-w-0 justify-between" iconAfter={<ChevronDown aria-hidden />}><span className="min-w-0 truncate">{current ?? "Choose worksheet"}</span></Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-[280px] max-h-[320px] overflow-y-auto"><DropdownMenuGroup>
+            <DropdownMenuLabel>{chosen.name}</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={chosenSheetId} onValueChange={onWorksheet}>
+              {worksheets.map(sheet => <DropdownMenuRadioItem key={sheet.sheetId} value={sheet.sheetId}>{sheet.sheetName}</DropdownMenuRadioItem>)}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuGroup></DropdownMenuContent>
+        </DropdownMenu>
+        <Select aria-label={`${chosen.name} version`} variant="toolbar" className="min-w-[76px] max-w-[150px]" disabled={busy} value={chosenVersionId ?? chosen.currentVersionId} onChange={event => onVersion(event.target.value)}>
+          {chosen.versions.map((version, index) => <option key={version.id} value={version.id}>{version.name || `v${chosen.versions.length - index}`}</option>)}
+        </Select>
+        <IconButton size="xs" label={`Remove ${chosen.name}`} icon={<X aria-hidden className={dsIcon.md} />} onClick={onRemove} />
+      </RunListRow>}
+    </RunList>
+    {worksheetsState === "error" && <p role="alert" className="m-0 text-caption text-ui-danger">{worksheetsError}</p>}
+    {chosen && worksheetsState === "ready" && worksheets.length === 0 && <p role="status" className="m-0 text-caption text-ui-muted">No worksheets in this version have {requiredLabel}.</p>}
+    <div><DropdownMenu onOpenChange={open => { if (open) setQuery(""); }}>
+      <DropdownMenuTrigger asChild><Button variant="outline" disabled={busy} className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden />}>{chosen ? "Change spreadsheet" : "Add spreadsheet"}</Button></DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-[320px] max-h-[320px] overflow-y-auto">
+        <div className="ds-menu-search-row" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}>
+          <Search aria-hidden /><input aria-label="Find a spreadsheet" placeholder="Find a spreadsheet" value={query} onChange={event => setQuery(event.target.value)} autoComplete="off" spellCheck={false} />
+        </div>
+        {found.length === 0 && <p className="m-0 px-2 py-2 text-[13px] leading-[18px] text-ui-muted">{needle === "" ? "Pin spreadsheets in Spreadsheets to list them here. Search finds the rest." : "No spreadsheets match."}</p>}
+        {found.map(sheet => {
+          const uncoverable = sheet.worksheets.length === 0 && sheet.versions.length < 2;
+          const description = sheet.worksheets.length > 0 ? sheet.worksheets.join(", ") : uncoverable ? `No worksheet has ${requiredLabel}` : `Current version has no worksheet with ${requiredLabel}. Choose an earlier version.`;
+          return <DropdownMenuItem key={sheet.libraryId} disabled={uncoverable} onClick={() => onPick(sheet.libraryId, sheet.currentVersionId)}>
+            <DropdownMenuItemCopy title={sheet.name} description={description} />
+          </DropdownMenuItem>;
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu></div>
+  </div>;
 }
