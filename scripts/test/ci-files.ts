@@ -89,7 +89,6 @@ export const LINUX_NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/configuration/credential-key-custody.integration.test.ts",
   "tests/backend/storage/configuration/credential-store.storage-restore-drill.integration.test.ts",
   "tests/backend/storage/admission/process-identity.integration.test.ts",
-  "tests/backend/storage/maintenance/upgrade.ready-bound.integration.test.ts",
   "tests/backend/storage/sqlite/authority-database.incomplete-inventory.integration.test.ts",
   "tests/backend/storage/sqlite/authority-database.storage-restore-drill.integration.test.ts",
   "tests/backend/storage/sqlite/backup-inspection.integration.test.ts",

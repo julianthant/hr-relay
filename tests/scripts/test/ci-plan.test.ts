@@ -34,7 +34,7 @@ describe("flat CI plan", () => {
     const portable = createCiPlan(context());
     expect(portable.ubuntu.include.filter(row => row.suite === "unit")).toHaveLength(2);
     expect(portable.ubuntu.include.filter(row => row.suite === "architecture")).toHaveLength(2);
-    expect(portable.ubuntu.include.filter(row => row.suite === "integration")).toHaveLength(14);
+    expect(portable.ubuntu.include.filter(row => row.suite === "integration")).toHaveLength(20);
     expect(portable.macos.include).toEqual([]);
     expect(portable).not.toHaveProperty("windows");
     expect(portable.testJobs).toBe(18);
