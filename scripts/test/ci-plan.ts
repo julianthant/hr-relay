@@ -45,7 +45,7 @@ export function createCiPlan(input: unknown): CiPlan {
   const ubuntu = [
     ...(selected.unit ? jobs("unit", selected.integration ? 2 : 3) : []),
     ...(selected.architecture ? jobs("architecture", 2) : []),
-    ...(selected.integration ? jobs("integration", 14) : []),
+    ...(selected.integration ? jobs("integration", 20) : []),
   ];
   const nativeShards = selected.integration ? 5 : selected.unit ? 1 : 0;
   const macos = fullRelease ? jobs("native", nativeShards) : [];

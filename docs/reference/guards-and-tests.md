@@ -155,7 +155,7 @@ Other native files count half because two workers share them.
 | --- | --- | --- | --- |
 | unit | Ubuntu | 2 (3 without integration) | unit files except `NATIVE_FILES`, plus `LINUX_NATIVE_FILES` |
 | architecture | Ubuntu | 2 | architecture files |
-| integration | Ubuntu | 14 | integration files except `NATIVE_FILES` and `SERIAL_FILES`, plus `LINUX_NATIVE_FILES` |
+| integration | Ubuntu | 20 | integration files except `NATIVE_FILES` and `SERIAL_FILES`, plus `LINUX_NATIVE_FILES` |
 | perf | Ubuntu | 1 | `npm run test:perf` on ready pull requests |
 | smoke | Ubuntu | 1 | `npm run test:smoke` on the built dashboard on ready pull requests |
 | native | macOS, operator-started full releases only | 5 | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |

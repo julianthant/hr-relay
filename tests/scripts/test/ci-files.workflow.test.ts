@@ -244,7 +244,7 @@ describe("separate event and admitted proof workflows", () => {
     expect(selectUsingAdapter("release", "pull_request", "main", "hotfix/x", filters)).toEqual(planFor("release", { head: "hotfix/x" }));
     expect(planFor("release", { head: "hotfix/x" }).fullRelease).toBe(true);
     expect(selectUsingAdapter("release", "workflow_dispatch", "", "", {})).toMatchObject({ perf: false, smoke: false });
-    expect(selectUsingAdapter("release", "workflow_dispatch", "", "", {}).testJobs).toBe(23);
+    expect(selectUsingAdapter("release", "workflow_dispatch", "", "", {}).testJobs).toBe(29);
     expect(selectUsingAdapter("release", "pull_request", "main", "staging", { ...filters, shared: "false" }).testJobs).toBe(0);
     expect(() => selectUsingAdapter("portable", "pull_request", "staging", "feature/test", {})).toThrow();
   });

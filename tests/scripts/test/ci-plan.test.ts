@@ -34,15 +34,15 @@ describe("flat CI plan", () => {
     const portable = createCiPlan(context());
     expect(portable.ubuntu.include.filter(row => row.suite === "unit")).toHaveLength(2);
     expect(portable.ubuntu.include.filter(row => row.suite === "architecture")).toHaveLength(2);
-    expect(portable.ubuntu.include.filter(row => row.suite === "integration")).toHaveLength(14);
+    expect(portable.ubuntu.include.filter(row => row.suite === "integration")).toHaveLength(20);
     expect(portable.macos.include).toEqual([]);
     expect(portable).not.toHaveProperty("windows");
-    expect(portable.testJobs).toBe(18);
+    expect(portable.testJobs).toBe(24);
     for (const manual of [false, true]) {
       const plan = createCiPlan(context("release", manual ? { event: "workflow_dispatch", base: "", head: "", filters: {}, draft: true } : {}));
       expect(plan.macos.include).toEqual(Array.from({ length: 5 }, (_, i) => ({ suite: "native", shard: i + 1, shards: 5 })));
       expect(plan).not.toHaveProperty("windows");
-      expect(plan.testJobs).toBe(23);
+      expect(plan.testJobs).toBe(29);
     }
   });
 

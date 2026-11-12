@@ -59,7 +59,7 @@ existing deadlines under duration-based assignment. Native integration jobs firs
 full-Chromium installation through `scripts/test/chromium-preflight.ts` by opening a blank page
 and observing the owned browser process exit. This one-time setup has no retries; timed proofs still use fresh profiles and their existing
 deadlines. A full staging run uses two
-Ubuntu unit shards, two architecture shards and fourteen integration shards, plus static and
+Ubuntu unit shards, two architecture shards and twenty integration shards, plus static and
 privacy and the separate perf and smoke jobs. On operator-started full releases, use all five macOS
 runners for native files.
 
