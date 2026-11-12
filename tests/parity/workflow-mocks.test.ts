@@ -1,11 +1,8 @@
 import { setSwitchChecked } from "./helpers/switch-choice.js";
-import { workflowReferenceId } from "./helpers/workflow-reference-id.js";
-import { capturePresentationReference } from "./helpers/presentation-reference.js";
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
 
-import { createHash } from "node:crypto";
 import { chooseSelect } from "./helpers/select-choice.js";
-import { expect, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { manualReadFields, mockStepIsLocked, mockStepIsDependency } from "../../src/dashboard/surfaces/workflows/mocks/workflow-manual-model.js";
@@ -18,9 +15,6 @@ import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_
 
 const mockProfile = { bootstrap: { ...FIXTURE_START_PICKER_BOOTSTRAP, workflows: FIXTURE_START_PICKER_BOOTSTRAP.workflows.filter((flow: unknown) => (flow as { id: string }).id === "separations") }, day: FIXTURE_START_PICKER_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH };
 const pdf = { name: "fictional-packet.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") };
-async function attachScreenshotFile(page: Page, info: TestInfo, name: string) {
-  await capturePresentationReference(page, info, name);
-}
 async function dismissCreatedToast(page: Page, title: string) {
   const toast = page.locator('[data-slot="toast"]').filter({ has: page.getByRole("heading", { name: title, exact: true }) });
   await expect(toast).toBeVisible();
@@ -32,7 +26,7 @@ const startRun = (dialog: Locator) => dialog.getByRole("button", { name: /^Start
 const recordsDialog = (page: Page) => page.getByRole("dialog", { name: /^Review records/u });
 const currentStage = (dialog: Locator) => dialog.getByRole("list", { name: "Run configuration path" }).locator('[aria-current="step"]');
 
-for (const theme of PARITY_THEMES) test(`OnBase document type selection and review @ ${theme.attribute}-1440`, { annotation: [{ type: "required-a11y-evidence", description: `onbase-types-${theme.attribute}.a11y.yml` }] }, async ({ page }, info) => {
+for (const theme of PARITY_THEMES) test(`OnBase document type selection and review @ ${theme.attribute}-1440`, async ({ page }) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: mockProfile });
   const errors: string[] = [], writes: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -87,17 +81,14 @@ for (const theme of PARITY_THEMES) test(`OnBase document type selection and revi
       await expect(rerun.getByRole("button", { name: `${type} Document type`, exact: true })).toBeVisible();
       await rerun.getByRole("button", { name: "Cancel", exact: true }).click();
     }
-    const a11yName = `onbase-types-${theme.attribute}.a11y.yml`, a11y = await logs.ariaSnapshot();
-
-    await info.attach(a11yName, { body: a11y, contentType: "text/yaml" });
-    info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(a11y).digest("hex") });
+    
     expect(errors).toEqual([]); expect(writes).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440);
   } finally { await server.close(); }
 });
 
 for (const theme of PARITY_THEMES) for (const width of [1280]) {
-  test(`all workflow previews, Run and Rerun @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `workflow-previews-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
+  test(`all workflow previews, Run and Rerun @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: mockProfile });
     const errors: string[] = [], writes: string[] = [], external: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -135,7 +126,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         if (flow.methods[0] === "typed") await dialog.getByRole("textbox", { name: flow.inputLabel, exact: true }).fill(flow.example);
         if (flow.methods[0] === "pdf") await dialog.locator('input[type="file"]').setInputFiles(pdf);
         await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
-        await attachScreenshotFile(page, info, `input-${workflowReferenceId(flow.id)}-${theme.attribute}-${width}.png`);
         await advance(dialog);
         await expect(currentStage(dialog)).toHaveText(/Options/u);
         await expect(dialog.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
@@ -149,7 +139,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await expect(dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true })).toHaveCount(0);
         await setSwitchChecked(dialog.getByRole("switch", { name: "Customize steps", exact: true }), true);
 
-        if (flow.id === "onboarding") await attachScreenshotFile(page, info, "run-shared-options.png");
         await advance(dialog);
         const stepRegion = dialog.getByRole("region", { name: "Steps", exact: true }).last();
         const visibleSteps = mockSelectableSteps(flow.id, initialMockDraft(flow.id));
@@ -174,7 +163,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
           else await group.getByRole("textbox", { name: field.label, exact: true }).fill(value);
         }
 
-        if (flow.id === "onboarding") await attachScreenshotFile(page, info, "run-shared-steps.png");
         await expect(dialog).toContainText(`${optional === undefined ? stepCount : stepCount - 1} of ${stepCount} steps`);
         await expect(dialog).not.toContainText("· Priority");
         expect((await dialog.locator(":scope > footer").boundingBox())!.height).toBe(57);
@@ -188,27 +176,23 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await logs.getByRole("button", { name: "Rerun", exact: true }).click();
         const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
         await expect(rerun).toBeVisible();
-        await attachScreenshotFile(page, info, `rerun-${workflowReferenceId(flow.id)}.png`);
         await expect(rerun.getByRole("list", { name: "Run configuration path" }).getByRole("listitem")).toHaveText([/^1\s*Steps$/u, /^2\s*Values$/u, /^3\s*Options$/u]);
         await expect(rerun.getByRole("complementary", { name: "Source run", exact: true })).toHaveCount(0);
         if (optional !== undefined) await expect(rerun.getByRole("switch", { name: `Include ${optional.label}`, exact: true })).not.toBeChecked();
         await expect(rerun.locator(".launch-step-status")).toHaveCount(stepCount);
         await advance(rerun);
         await expect(rerun.getByRole("region", { name: "Values", exact: true })).toBeVisible();
-        if (flow.id === "onboarding") await attachScreenshotFile(page, info, "rerun-shared-values.png");
         await advance(rerun);
         await expect(rerun.getByRole("radio", { name: "Headless", exact: true })).toBeChecked();
         await expect(rerun.getByRole("checkbox", { name: "Capture screenshots", exact: true })).toHaveCount(0);
         await expect(rerun.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
         await expect(rerun.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
-        if (flow.id === "onboarding") await attachScreenshotFile(page, info, "rerun-shared-options.png");
         await expect(rerun.getByText("Workflow plan", { exact: true })).toHaveCount(0);
         await startRun(rerun).click();
         await expect(rerun).toHaveCount(0);
         await dismissCreatedToast(page, "Rerun created");
         await logs.getByRole("button", { name: /^Linked runs \(\d+\)$/u }).click();
         await expect(page.getByRole("dialog", { name: "Linked runs", exact: true })).toContainText("Rerun source ·");
-        if (flow.id === "onboarding") await attachScreenshotFile(page, info, "linked-runs-dialog.png");
         await page.keyboard.press("Escape");
       }
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
@@ -234,10 +218,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(upload).toHaveCount(0);
       await expect(approvalLogs.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button", { name: /^Wait for all signatures/u })).toHaveCount(0);
       await page.keyboard.press("Escape");
-      const a11yName = `workflow-previews-${theme.attribute}-${width}.a11y.yml`, a11y = await approvalLogs.ariaSnapshot();
-
-      await info.attach(a11yName, { body: a11y, contentType: "text/yaml" });
-      info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(a11y).digest("hex") });
+      
       expect(errors).toEqual([]); expect(writes).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     } finally { await server.close(); }

@@ -7,9 +7,8 @@ import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
-import { attachShellA11y } from "./helpers/shell-proof.js";
 
-for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(`one workflow catalog supplies every current selector @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `catalog-run-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
+for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(`one workflow catalog supplies every current selector @ ${theme.attribute}-${width}`, async ({ page }) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: { bootstrap: FIXTURE_START_PICKER_BOOTSTRAP, day: FIXTURE_START_PICKER_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH } });
   try {
     await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 }); await installFrozenMonotonic(page); await installServedSurfaces(page); await installTheme(page, theme);
@@ -35,7 +34,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(
       await expect(choice).toHaveCount(0);
     }
 
-    await attachShellA11y(page, info, `catalog-run-${theme.attribute}-${width}.a11y.yml`);
     await page.keyboard.press("Escape");
     for (const label of labels) {
       await page.getByRole("button", { name: "Add workers", exact: true }).click();

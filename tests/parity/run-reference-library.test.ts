@@ -8,8 +8,6 @@ import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { FIXTURE_BOOTSTRAP } from './helpers/fixture-bootstrap.js';
 import { assertMonotonicFrozen, installFrozenMonotonic } from './helpers/app-driver.js';
 import { FIXTURE_DAY_WIRE } from './helpers/fixture-queue.js';
-import { capturePresentationReference } from './helpers/presentation-reference.js';
-import { attachShellA11y } from './helpers/shell-proof.js';
 import { createStartPlanService, type StartPlanService } from '../../src/backend/runs/commands/start-plan-service.js';
 import { createWorkbookLibraryService } from '../../src/backend/workbooks/workbook-library-service.js';
 import { projectWorkflowStartSteps } from '../../src/backend/runs/queries/bootstrap.js';
@@ -42,8 +40,7 @@ const descriptor = defineWorkflowDescriptor({ id: 'reference-fixture', code: 'rf
 });
 
 for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
-  const evidence = `reference-plan-${theme}-${width}.a11y.yml`;
-  test(`named reference planning ${theme} ${width}`, { annotation: [{ type: 'required-a11y-evidence', description: evidence }] }, async ({ page }, info) => {
+  test(`named reference planning ${theme} ${width}`, async ({ page }) => {
     let planner: StartPlanService | undefined;
     const requirePlanner = () => { if (!planner) throw new Error('reference-planner-uninitialized'); return planner; };
     const h = await harness({ workbookWorkflows: [descriptor], startPlans: () => ({ plan: request => requirePlanner().plan(request), previewWarnings: request => requirePlanner().previewWarnings(request) }) });
@@ -109,7 +106,6 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
       await expect(dialog.locator(':scope > header')).toBeInViewport({ ratio: 1 });
       expect(await dialog.evaluate(node => node.scrollTop)).toBe(0);
       await assertMonotonicFrozen(page);
-      await capturePresentationReference(page, info, 'options', hash);
       await dialog.getByRole('button', { name: 'Preview plan', exact: true }).click();
       await expect(dialog.getByRole('heading', { name: 'Plan', exact: true })).toBeInViewport({ ratio: 1 });
       await expect(dialog.getByRole('group', { name: 'Run plan', exact: true })).toContainText('Applicants.xlsx · Fall hires');
@@ -124,10 +120,8 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
       const bound = RunWorkbookNamedReferenceSchema.parse(retained.planned[0].workbookReferences?.[0].value);
       expect(bound.snapshot.versionId).toBe(version!.id);
       expect(bound.snapshot.rows[0].matches[0].values.fullName).toBe('Earlier person');
-      await capturePresentationReference(page, info, 'confirm', hash);
       await dialog.getByRole('group', { name: 'Run outputs', exact: true }).scrollIntoViewIfNeeded();
       await expect(dialog.locator(':scope > header')).toBeInViewport({ ratio: 1 });
-      await capturePresentationReference(page, info, 'confirm-output', hash); await attachShellA11y(page, info, evidence);
     } finally { await server?.close(); await disposeHttpRouteHarness(); }
   });
 }

@@ -1,6 +1,5 @@
 
 import { chooseSelect } from "./helpers/select-choice.js";
-import { createHash } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -76,8 +75,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } finally { await server.close(); }
   });
 
-  const logsEvidence = `logs-presentation-${theme.attribute}-${width}.a11y.yml`;
-  test(`approved Logs local presentation @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: logsEvidence }] }, async ({ page }) => {
+  test(`approved Logs local presentation @ ${theme.attribute} ${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
@@ -207,9 +205,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole("tooltip")).toHaveCount(0);
       const table = surface.locator('[data-log-field="fill"]').first().locator("..").locator("..");
       expect(await table.evaluate(node => getComputedStyle(node).backgroundColor)).toBe(theme.attribute === "dark" ? "rgb(31, 31, 35)" : "rgb(244, 244, 244)");
-      const snapshot = await surface.ariaSnapshot();
-      test.info().annotations.push({ type: `a11y-attachment-sha256:${logsEvidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
-      await test.info().attach(logsEvidence, { body: snapshot, contentType: "text/yaml" });
 
       await surface.getByRole("searchbox", { name: "Search logs" }).fill("termination filed");
       await expect(surface.getByRole("heading", { name: "Verify termination", exact: true })).toBeVisible();
@@ -271,12 +266,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } finally { await server.close(); }
   });
 
-  const sessionsEvidence = `sessions-presentation-${theme.attribute}-${width}.a11y.yml`;
-  const sessionsAddEvidence = `sessions-add-${theme.attribute}-${width}.a11y.yml`;
-  test(`Sessions local presentation @ ${theme.attribute} ${width}`, { annotation: [
-    { type: "required-a11y-evidence", description: sessionsEvidence },
-    { type: "required-a11y-evidence", description: sessionsAddEvidence },
-  ] }, async ({ page }) => {
+  test(`Sessions local presentation @ ${theme.attribute} ${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
@@ -343,9 +333,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(first.getByRole("button", { name: "Pause", exact: true })).toHaveText("");
       await expect(first.getByRole("button", { name: "Stop", exact: true })).toHaveText("");
       await expect(idle.getByRole("button", { name: "Remove worker", exact: true })).toHaveText("");
-      const snapshot = await panel.ariaSnapshot();
-      test.info().annotations.push({ type: `a11y-attachment-sha256:${sessionsEvidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
-      await test.info().attach(sessionsEvidence, { body: snapshot, contentType: "text/yaml" });
 
       await first.getByRole("button", { name: "Pause", exact: true }).click();
       await expect(first).toContainText("Paused");
@@ -411,9 +398,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(dialog).toHaveCSS("opacity", "1");
       await expect(dialog).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(24, 24, 27)" : "rgb(255, 255, 255)");
 
-      const addSnapshot = await dialog.ariaSnapshot();
-      test.info().annotations.push({ type: `a11y-attachment-sha256:${sessionsAddEvidence}`, description: createHash("sha256").update(addSnapshot).digest("hex") });
-      await test.info().attach(sessionsAddEvidence, { body: addSnapshot, contentType: "text/yaml" });
       await dialog.getByRole("button", { name: "Add workers", exact: true }).click();
       await expect(dialog).toHaveCount(0);
       await expect(panel.getByRole("article")).toHaveCount(12);

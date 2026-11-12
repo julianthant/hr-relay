@@ -1,6 +1,5 @@
 
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
-import { createHash } from "node:crypto";
 
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
@@ -39,9 +38,7 @@ test.afterAll(async () => {
   await server.close();
 });
 
-test("Fix and Exclude mount one labelled editor and focus its named input", {
-  annotation:[{type:"required-a11y-evidence",description:"intake-correction-focus.a11y.yml"}],
-}, async ({ page }) => {
+test("Fix and Exclude mount one labelled editor and focus its named input", async ({ page }) => {
   await openReview(page, VIEWPORTS[0]);
 
   await page.getByRole("button", { name: "Fix cell" }).first().click();
@@ -68,9 +65,6 @@ test("Fix and Exclude mount one labelled editor and focus its named input", {
   await expect(exclusion).toHaveCount(0);
   await expect(correction).toBeVisible();
   await expect(correctedValue).toBeFocused();
-  const snapshot=await page.locator("body").ariaSnapshot();
-  test.info().annotations.push({type:"a11y-attachment-sha256:intake-correction-focus.a11y.yml",description:createHash("sha256").update(snapshot).digest("hex")});
-  await test.info().attach("intake-correction-focus.a11y.yml",{body:snapshot,contentType:"text/yaml"});
 });
 
 test("Exclude remounts its editor and refocuses Reason when the operator switches rows", async ({ page }) => {

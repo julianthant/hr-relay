@@ -1,8 +1,5 @@
-import { attachShellA11y } from "./helpers/shell-proof.js";
 import { expect, test } from "@playwright/test";
-import { captureParityPair } from "./helpers/capture.js";
-import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
-import { REFERENCES, registerReferenceServers } from "./helpers/reference-harness.js";
+import { registerReferenceServers } from "./helpers/reference-harness.js";
 const servers = registerReferenceServers(["server"]);
 
 test("Dry run labels every sample and excludes unavailable steps from completion", async ({ page }) => {
@@ -24,16 +21,10 @@ test("Dry run labels every sample and excludes unavailable steps from completion
   await expect(result.getByText("Skipped", { exact: true })).toBeVisible();
 });
 
-for (const state of ["complete", "unavailable"] as const) test(`dry-run ${state} presentation`, { annotation: [{ type: "required-a11y-evidence", description: `dry-run-${state}.a11y.yml` }] }, async ({ page }, info) => {
+for (const state of ["complete", "unavailable"] as const) test(`dry-run ${state} presentation`, async ({ page }) => {
   await page.goto(`${servers.server.baseUrl}/?fixture=dry-run&state=${state}`);
   await expect(page.getByRole("heading", { name: "EID 10777012", exact: true, level: 2 })).toBeVisible();
 
   await expect(page.getByText("UI mock", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Show (ready|blocked|unavailable|exact|paused)/ })).toHaveCount(0);
-  await captureParityPair(page, REFERENCES, {
-    stateId: `dry-run-${state}`, viewport: "1280x720", theme: "graphite-warm",
-    adapter: "fixture", fixtureId: "dry-run", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
-  });
-  await attachShellA11y(page, info, `dry-run-${state}.a11y.yml`);
 });

@@ -1,4 +1,3 @@
-import { attachShellA11y } from "./helpers/shell-proof.js";
 
 import { expect } from '@playwright/test';
 import { test } from "./helpers/fixtures.js";
@@ -9,16 +8,12 @@ import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const captures = ['review-jump', 'workers', 'ocr-dates', 'idle'];
-  test(`log jumps, dialog contrast, account and log date controls @ ${theme.attribute}-${width}`, {
-    annotation: captures.map(name => ({ type: 'required-a11y-evidence', description: `${name}-${theme.attribute}-${width}.a11y.yml` })),
-  }, async ({ page }, info) => {
+  test(`log jumps, dialog contrast, account and log date controls @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
     const errors: string[] = [], writes: { method: string; url: string }[] = [], catalogRequests: string[] = [];
 
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => { if (request.method() !== 'GET') writes.push({ method: request.method(), url: request.url() }); if (request.url().includes('/api/v1/ui-catalog')) catalogRequests.push(request.url()); });
-    const captureSemanticEvidence = async (name: string) => { await attachShellA11y(page, info, `${name}-${theme.attribute}-${width}.a11y.yml`); };
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
       for (const [seed, label] of [[5, 'Review'], [6, 'Resolve'], [4, 'View failure']] as const) {
@@ -40,7 +35,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           return target.getAttribute('role') === 'group' && !target.closest('.sr-only') && bounds.width > 100 && bounds.height > 20
             && bounds.top >= viewport.top && bounds.top < viewport.bottom && getComputedStyle(target).outlineStyle === 'solid';
         })).toBe(true);
-        if (seed === 5) await captureSemanticEvidence('review-jump');
         const latest = panel.getByRole('button', { name: 'Go to latest action', exact: true });
         await latest.click();
         expect(await page.evaluate(() => window.scrollY)).toBe(0); await expect(header).toBeVisible();
@@ -65,7 +59,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(appearance.buttons[0]?.fill).not.toBe(appearance.buttons[1]?.fill);
       await dialog.getByRole('combobox', { name: 'Workflow', exact: true }).click(); await expect(page.getByRole('listbox')).toBeVisible();
       await page.keyboard.press('Escape'); await expect(dialog).toBeVisible(); await expect(page.getByRole('listbox')).toHaveCount(0);
-      await expect(add).toBeEnabled(); await captureSemanticEvidence('workers');
+      await expect(add).toBeEnabled();
       await cancel.click();
       await installServedSurfaces(page);
       await page.goto(`${server.baseUrl}/?settings=general`);
@@ -84,12 +78,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole('textbox', { name: 'Date signed', exact: true })).toHaveValue('04/23/2026');
       await expect(page.getByRole('img', { name: /Source page 1 of single-oath/ })).toBeVisible();
 
-      await captureSemanticEvidence('ocr-dates');
       await page.goto(`${server.baseUrl}/?day=2026-08-03`);
       const date = page.getByRole('group', { name: 'Log date controls', exact: true });
       await expect(date.getByRole('spinbutton', { name: /month/ })).toHaveText('08'); await expect(date.getByRole('spinbutton', { name: /day/ })).toHaveText('03'); await expect(date.getByRole('spinbutton', { name: /year/ })).toHaveText('2026');
 
-      await captureSemanticEvidence('idle');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); expect(errors).toEqual([]); expect(writes).toEqual([signInWrite]);
     } finally { await server.close(); }
   });

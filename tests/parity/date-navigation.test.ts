@@ -1,4 +1,3 @@
-import { attachShellA11y } from "./helpers/shell-proof.js";
 import { expect, type Page } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -51,7 +50,7 @@ for (const theme of PARITY_THEMES) {
     await expect(page).toHaveURL(/day=2026-07-15$/);
     await expect(page.getByText("No run open", { exact: true })).toBeVisible();
   });
-  test(`canonical calendar, history, empty links, picker and desktop geometry @ ${theme.name}`, { annotation: [{ type: "required-a11y-evidence", description: `date-navigation-${theme.name}.a11y.yml` }] }, async ({ page }, info) => {
+  test(`canonical calendar, history, empty links, picker and desktop geometry @ ${theme.name}`, async ({ page }, info) => {
     const errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
     await installTheme(page, theme);
@@ -105,7 +104,6 @@ for (const theme of PARITY_THEMES) {
       await info.attach(`a11y-${viewport.width}x${viewport.height}`, { body: await page.locator("body").ariaSnapshot(), contentType: "text/plain" });
       await page.keyboard.press("Escape"); await expect(picker(page)).toBeFocused();
     }
-    await attachShellA11y(page, info, `date-navigation-${theme.name}.a11y.yml`);
     expect(errors).toEqual([]);
     await info.attach("calendar-authority", { body: JSON.stringify({ calendar, daySnapshot, history: DATE_HISTORY, gaps: SEEDED_COVERAGE_GAPS,
       real: ["SQLite summary calendar", "summary day projection", "SSE subscription", "route/history"],

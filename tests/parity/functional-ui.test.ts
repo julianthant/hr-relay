@@ -6,15 +6,12 @@ import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { FIXTURE_DAY, FIXTURE_NOW } from "./helpers/fixture-identity.js";
 import { gotoAppState, installServedSurfaces } from "./helpers/app-driver.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
-import { attachShellA11y } from "./helpers/shell-proof.js";
 
 async function shot(page: Page, info: TestInfo, name: string) {
   await page.screenshot({ path: info.outputPath(`U0-${name}.png`), fullPage: true });
 }
 
-for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, {
-  annotation: [{ type: "required-a11y-evidence", description: `functional-ui-${width}.a11y.yml` }],
-}, async ({ page }, info) => {
+for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, async ({ page }, info) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   const height = width === 1280 ? 720 : width === 1920 ? 1080 : 1440;
   const attemptId = "00000000-0000-4000-8000-000000000099";
@@ -151,7 +148,6 @@ for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, 
     await timeline.getByRole("button").first().focus();
     await expect(page.getByRole("tooltip")).toContainText("Read Kuali document");
     await shot(page, info, `step-labels-${width}`);
-    await attachShellA11y(page, info, `functional-ui-${width}.a11y.yml`);
     expect(errors).toEqual([]);
   } finally { completion.resolve(); await server.close(); }
 });

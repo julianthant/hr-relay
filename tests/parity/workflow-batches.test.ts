@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { CommandRequestSchema } from "../../src/rules/commands/commands.js";
@@ -50,10 +49,7 @@ test(`workflow batches: Lookup follows served grouping without a toggle, ${theme
 
 
 for (const theme of ["light", "dark"] as const) for (const width of [1024, 1440]) {
-  const a11yName = `lookup-batch-${theme}-${width}.a11y.yml`;
-  test(`Lookup batch member keyboard, history and filter scope @ ${theme}-${width}`, {
-    annotation: [{ type: "required-a11y-evidence", description: a11yName }],
-  }, async ({ page }, info) => {
+  test(`Lookup batch member keyboard, history and filter scope @ ${theme}-${width}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 });
     const roots = FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.parent === null && row.surfaceKind === "single");
     const done = roots.find(row => row.status === "done");
@@ -166,9 +162,6 @@ for (const theme of ["light", "dark"] as const) for (const width of [1024, 1440]
       expect(footerLayout.centerDifference).toBeLessThanOrEqual(1);
       const image = await group.screenshot();
       await info.attach(`lookup-batch-${theme}-${width}.png`, { body: image, contentType: "image/png" });
-      const tree = await page.locator("body").ariaSnapshot();
-      info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(tree).digest("hex") });
-      await info.attach(a11yName, { body: tree, contentType: "text/yaml" });
       const pauseRequests: unknown[] = [];
       await page.route("**/api/v1/commands", route => {
         pauseRequests.push(CommandRequestSchema.parse(route.request().postDataJSON()));

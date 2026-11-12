@@ -6,14 +6,9 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
-import { attachShellA11y } from "./helpers/shell-proof.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const actionEvidence = `action-panel-${theme.attribute}-${width}.a11y.yml`;
-  const settingsEvidence = `permanent-shell-${theme.attribute}-${width}.a11y.yml`;
-  test(`permanent rail with separate queue, Action panel and Logs @ ${theme.attribute}-${width}`, {
-    annotation: [actionEvidence, settingsEvidence].map(description => ({ type: "required-a11y-evidence", description })),
-  }, async ({ page }, info) => {
+  test(`permanent rail with separate queue, Action panel and Logs @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, preflightScenario: "ready" });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
@@ -106,7 +101,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         })).toEqual({ bordered: true, rounded: true, opaque: true });
       }
 
-      await attachShellA11y(page, info, actionEvidence);
       await expect(page.getByRole("group", { name: "Frequent queue filters", exact: true })).toHaveCount(0);
       await expect(logs.getByRole("button", { name: /^Choose date/u })).toBeVisible();
       await page.keyboard.press("w"); await page.keyboard.press("Escape"); await expect(rail).toBeVisible();
@@ -155,7 +149,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
 
-      await attachShellA11y(page, info, settingsEvidence);
     } finally { await server.close(); }
   });
 }

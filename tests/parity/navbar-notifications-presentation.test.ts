@@ -1,19 +1,14 @@
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { seedMockRuns } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import { attachShellA11y } from "./helpers/shell-proof.js";
 import { installServedSurfaces } from "./helpers/app-driver.js";
 
 
-import { expect, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
-
-async function captureSemanticEvidence(page: Page, info: TestInfo, name: string) {
-  await attachShellA11y(page, info, `${name}.a11y.yml`);
-}
 
 function contrastRatio(foreground: string, background: string): number {
   const luminance = (color: string) => {
@@ -41,7 +36,7 @@ function disconnectedRequests(page: Page) {
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const size = `${theme.attribute}-${width}`;
-  test(`permanent workspace rail and local controls @ ${size}`, { annotation: ["navbar", "navbar-search", "navbar-calendar"].map(name => ({ type: "required-a11y-evidence", description: `${name}-${size}.a11y.yml` })) }, async ({ page }, info) => {
+  test(`permanent workspace rail and local controls @ ${size}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
@@ -73,7 +68,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("link", { name: "Analytics", exact: true }).click();
       await expect(page.getByRole("link", { name: "Analytics", exact: true })).toHaveAttribute("aria-current", "page");
 
-      await captureSemanticEvidence(page, info, `navbar-${size}`);
       await page.getByRole("link", { name: "Explorer", exact: true }).click();
       await expect(page.getByRole("region", { name: "Workflow explorer preview" })).toBeVisible();
       await page.getByRole("button", { name: "Back to dashboard", exact: true }).click();
@@ -124,7 +118,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await input.press('Home');
       await expect(options.first()).toHaveAttribute('aria-selected', 'true');
 
-      await captureSemanticEvidence(page, info, `navbar-search-${size}`);
       await page.keyboard.press("Escape");
       await expect(trigger).toBeFocused();
       await expect(trigger).toHaveAttribute('aria-expanded', 'false');
@@ -152,7 +145,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(calendar.getByRole("button", { name: "July 2026, year selector", exact: true })).toBeVisible();
       expect(await calendar.locator("[data-slot='calendar-cell'][tabindex='0']").count()).toBe(1);
 
-      await captureSemanticEvidence(page, info, `navbar-calendar-${size}`);
       await calendar.getByRole("button", { name: /Monday, July 20, 2026/u }).click();
       await expect(dateField.getByRole("spinbutton", { name: /^month/u })).toHaveText("07");
       await expect(dateField.getByRole("spinbutton", { name: /^day/u })).toHaveText("20");
@@ -179,7 +171,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } finally { await server.close(); }
   });
 
-  test(`notification filters, retired history gaps and local actions @ ${size}`, { annotation: [{ type: "required-a11y-evidence", description: `notifications-normal-${size}.a11y.yml` }] }, async ({ page }, info) => {
+  test(`notification filters, retired history gaps and local actions @ ${size}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
@@ -210,7 +202,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(await rows.first().locator("button.notification-item").evaluate(node => parseFloat(getComputedStyle(node).borderRadius))).toBeGreaterThan(0);
       await expect(inbox.getByText("Person Lookup", { exact: true }).first()).toBeVisible();
 
-      await captureSemanticEvidence(page, info, `notifications-normal-${size}`);
       await expect(inbox.getByText("History gap", { exact: true })).toHaveCount(0);
       const failed = rows.filter({ has: page.locator("button.notification-item", { hasText: "Run failed" }) });
       await failed.hover();
@@ -247,7 +238,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } finally { await server.close(); }
   });
 
-  test(`notification empty, loading, unavailable and ping states @ ${size}`, { annotation: ["notifications-empty", "notifications-loading", "notifications-unavailable", "notification-ping"].map(name => ({ type: "required-a11y-evidence", description: `${name}-${size}.a11y.yml` })) }, async ({ page }, info) => {
+  test(`notification empty, loading, unavailable and ping states @ ${size}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
@@ -262,7 +253,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         else if (scenario === "loading") await expect(inbox.getByRole("status", { name: "Loading notifications", exact: true })).toHaveText("");
         else await expect(inbox.getByRole("alert")).toContainText("Notification data could not be loaded.");
         await expect(inbox.getByRole("button", { name: /^(?:Mark as (?:read|unread)|Snooze)$/ })).toHaveCount(0);
-        await captureSemanticEvidence(page, info, `notifications-${scenario}-${size}`);
 
       }
       await page.goto(`${server.baseUrl}/?notificationsPreview=ping`);
@@ -271,7 +261,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(ping).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(24, 24, 27)" : "rgb(255, 255, 255)");
       await expect(ping).toContainText("EID 10101010");
 
-      await captureSemanticEvidence(page, info, `notification-ping-${size}`);
       await expect(ping).toHaveAttribute("aria-label", "Dismiss notification");
       await page.getByRole("button", { name: /^Notifications/u }).click();
       await expect(ping).toHaveCount(0);

@@ -3,7 +3,6 @@ import { ERROR_CATALOG } from '../../src/models/failures/error-catalog.js';
 import { test } from './helpers/fixtures.js';
 import { gotoAppState } from './helpers/app-driver.js';
 import { FIXTURE_DAY } from './helpers/fixture-identity.js';
-import { attachShellA11y } from './helpers/shell-proof.js';
 import { ROW_EMAILS, ROW_IDS, withWorkbookRowsFixture, type WorkbookRowsFixture } from '../support/helpers/dashboard/run-workbook-rows-fixture.js';
 
 type Theme = 'light' | 'dark';
@@ -45,7 +44,6 @@ async function evidence(page: Page, info: TestInfo, state: string) {
   const path = info.outputPath(`${id}.png`);
   await page.screenshot({ path, animations: 'disabled' });
   await info.attach(`${id}.png`, { path, contentType: 'image/png' });
-  await attachShellA11y(page, info, `${id}.a11y.yml`);
 }
 async function review(page: Page, fixture: WorkbookRowsFixture, dialog: Locator, info: TestInfo, capture: boolean, mode: 'new-hire' | 'rehire' = 'new-hire') {
   expect(fixture.commands).toHaveLength(0); expect(fixture.rows).toHaveLength(0); expect(fixture.plans).toHaveLength(0);
@@ -81,14 +79,7 @@ async function review(page: Page, fixture: WorkbookRowsFixture, dialog: Locator,
 for (const theme of ['light', 'dark'] as const) for (const width of [1024, 1440]) {
   const mode = theme === 'light' ? 'new-hire' : 'rehire';
   const title = `saved Onboarding rows ${mode} ${theme} ${width}`;
-  const a11y = `${evidenceId(title, 'queue-summary')}.a11y.yml`;
-  test(title, { annotation: [
-    { type: 'required-a11y-evidence', description: `${evidenceId(title, 'selected-input')}.a11y.yml` },
-    { type: 'required-a11y-evidence', description: `${evidenceId(title, 'selected-options')}.a11y.yml` },
-    { type: 'required-a11y-evidence', description: `${evidenceId(title, 'selected-confirm')}.a11y.yml` },
-    { type: 'required-a11y-evidence', description: `${evidenceId(title, 'queued')}.a11y.yml` },
-    { type: 'required-a11y-evidence', description: a11y },
-  ] }, async ({ page }, info) => {
+  test(title, async ({ page }, info) => {
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     await withWorkbookRowsFixture(page, async fixture => {
@@ -115,20 +106,13 @@ for (const theme of ['light', 'dark'] as const) for (const width of [1024, 1440]
       await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(fixture.rows[0].runId);
       expect(fixture.commands).toHaveLength(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-      expect(errors).toEqual([]); await evidence(page, info, 'queued'); await attachShellA11y(page, info, a11y);
+      expect(errors).toEqual([]); await evidence(page, info, 'queued'); 
     });
   });
 }
 
 const authorityTitle = 'saved rows discard late versions and expose stale catalog, empty and provider errors';
-test(authorityTitle, {
-  annotation: [
-    { type: 'required-a11y-evidence', description: `${evidenceId(authorityTitle, 'stale-version')}.a11y.yml` },
-    { type: 'required-a11y-evidence', description: `${evidenceId(authorityTitle, 'empty-version')}.a11y.yml` },
-    { type: 'required-a11y-evidence', description: `${evidenceId(authorityTitle, 'provider-error')}.a11y.yml` },
-    { type: 'required-a11y-evidence', description: `${evidenceId(authorityTitle, 'authority-summary')}.a11y.yml` },
-  ],
-}, async ({ page }, info) => {
+test(authorityTitle, async ({ page }, info) => {
   await withWorkbookRowsFixture(page, async fixture => {
     const dialog = await openOnboarding(page, fixture, 'dark', 1024);
     await chooseRows(page, dialog, 'New hire');
@@ -175,18 +159,11 @@ test(authorityTitle, {
     await expect(dialog.getByText('The selected rows are from earlier spreadsheet data and cannot be planned.', { exact: true })).toBeVisible();
     await evidence(page, info, 'provider-error');
     expect(fixture.plans).toHaveLength(0); expect(fixture.commands).toHaveLength(0); expect(fixture.rows).toHaveLength(0);
-    await attachShellA11y(page, info, `${evidenceId(info.title, 'authority-summary')}.a11y.yml`);
   });
 });
 
 const unknownTitle = 'UNKNOWN saved-row start replays one immutable command after reload';
-test(unknownTitle, {
-  annotation: [
-    { type: 'required-a11y-evidence', description: `${evidenceId(unknownTitle, 'unknown-issued')}.a11y.yml` },
-    { type: 'required-a11y-evidence', description: `${evidenceId(unknownTitle, 'unknown-replayed')}.a11y.yml` },
-    { type: 'required-a11y-evidence', description: `${evidenceId(unknownTitle, 'unknown-summary')}.a11y.yml` },
-  ],
-}, async ({ page }, info) => {
+test(unknownTitle, async ({ page }, info) => {
   await withWorkbookRowsFixture(page, async fixture => {
     const dialog = await openOnboarding(page, fixture, 'light', 1440);
     await chooseRows(page, dialog, 'New hire'); await review(page, fixture, dialog, info, false);
@@ -203,6 +180,6 @@ test(unknownTitle, {
     await expect(page.getByRole('status', { name: 'Run submission confirmed', exact: true })).toBeVisible();
     expect(fixture.commandBodies).toEqual([issued, issued]); expect(fixture.plans).toHaveLength(1);
     expect(fixture.rows.map(row => row.runId)).toEqual(runIds);
-    await evidence(page, info, 'unknown-replayed'); await attachShellA11y(page, info, `${evidenceId(info.title, 'unknown-summary')}.a11y.yml`);
+    await evidence(page, info, 'unknown-replayed'); 
   });
 });

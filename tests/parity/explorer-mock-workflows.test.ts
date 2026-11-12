@@ -1,6 +1,5 @@
 
 import { chooseSelect } from "./helpers/select-choice.js";
-import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -8,10 +7,7 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const evidence = `explorer-mocks-${theme.attribute}-${width}.a11y.yml`;
-  test(`Explorer onboarding and contact mock paths @ ${theme.attribute} ${width}`, {
-    annotation: [{ type: "required-a11y-evidence", description: evidence }],
-  }, async ({ page }) => {
+  test(`Explorer onboarding and contact mock paths @ ${theme.attribute} ${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
@@ -76,9 +72,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.locator("#explorer-step-1")).toContainText("Authentication waits until the contact packet is reviewed.");
       await expect(surface.locator("#explorer-step-2")).toContainText("Extract the contact packet");
 
-      const snapshot = await surface.ariaSnapshot();
-      test.info().annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
-      await test.info().attach(evidence, { body: snapshot, contentType: "text/yaml" });
       await expect(surface.getByRole("button", { name: "Preview paths", exact: true })).toHaveCount(0);
       const review = surface.getByRole("combobox", { name: "Contact review preview" });
       await review.focus();

@@ -1,5 +1,4 @@
 import { chooseSelect } from "./helpers/select-choice.js";
-import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { logDecisionExamples } from "../../src/dashboard/surfaces/run-detail/logs/log-decision-fixture.js";
@@ -11,8 +10,7 @@ import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const evidence = `log-decisions-${theme.attribute}-${width}.a11y.yml`;
-  test(`approved log decisions and viewer @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidence }] }, async ({ page }, _info) => {
+  test(`approved log decisions and viewer @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], effects: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -134,9 +132,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await screenshot.getByRole("button", { name: "Retry screenshot", exact: true }).click();
       await expect(screenshot.locator("img")).toHaveJSProperty("naturalWidth", 850);
       await expect(screenshot.getByRole("alert")).toHaveCount(0);
-      const snapshot = await surface.ariaSnapshot();
-      test.info().annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
-      await test.info().attach(evidence, { body: snapshot, contentType: "text/yaml" });
       expect(errors).toEqual([]);
       expect(effects).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

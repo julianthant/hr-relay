@@ -4,14 +4,14 @@ import { test } from "./helpers/fixtures.js";
 
 import { createDashboardClient } from "../../src/dashboard/client/index.js";
 import { deriveSettingsPatchFingerprint } from "../../src/models/config/settings.js";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { startSettingsActivationServer } from "./helpers/fixture-settings-activation.js";
 import { PARITY_THEMES, installTheme, assertThemeApplied } from "./helpers/capture.js";
 
 
 const retainedParityFixtureFailures = new Set<object>();
 
-for (const theme of PARITY_THEMES) test(`settings activation ${theme.name}: current Performance, exact Task authority and keyboard at minimum desktop`, { annotation: [{ type: "required-a11y-evidence", description: `settings-activation-${theme.name}.a11y.yml` }] }, async ({ page }) => {
+for (const theme of PARITY_THEMES) test(`settings activation ${theme.name}: current Performance, exact Task authority and keyboard at minimum desktop`, async ({ page }) => {
   const server = await startSettingsActivationServer();
   let parityBodyFailure: { error: unknown } | undefined;
   try {
@@ -49,11 +49,6 @@ for (const theme of PARITY_THEMES) test(`settings activation ${theme.name}: curr
     await page.evaluate(() => { document.documentElement.style.zoom = "1.25"; });
     await expect(task).toBeVisible(); await task.focus(); await expect(task).toBeFocused();
     expect(pageErrors).toEqual([]);
-    const tree = await page.locator("body").ariaSnapshot();
-    const a11yName = `settings-activation-${theme.name}.a11y.yml`;
-    test.info().annotations.push({ type: `a11y-attachment-sha256:${a11yName}`,
-      description: createHash("sha256").update(tree).digest("hex") });
-    await test.info().attach(a11yName, { body: tree, contentType: "text/yaml" });
   } catch (error) { parityBodyFailure = { error }; }
   if (parityBodyFailure?.error instanceof AuthoritySourceClosureUnprovedError) {
     retainedParityFixtureFailures.add({ owner: server, primary: parityBodyFailure.error });

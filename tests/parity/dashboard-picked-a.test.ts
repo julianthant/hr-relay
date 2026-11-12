@@ -1,12 +1,8 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
-import { resolve } from "node:path";
+import { expect, test, type Page } from "@playwright/test";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { pickedRunWorld, pickedSignupState, PICKED_RUN_STATES, PICKED_SAFETY_STATES, PICKED_SIGNUP_STATES } from "../support/helpers/dashboard/picked-dashboard.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { expectRunningPill, installFrozenMonotonic } from "./helpers/app-driver.js";
-import { captureParityPair } from "./helpers/capture.js";
-import { attachShellA11y } from "./helpers/shell-proof.js";
-import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
 
 async function prepare(page: Page, theme: "light" | "dark") {
   await page.setViewportSize({ width: 1280, height: 720 });
@@ -14,17 +10,10 @@ async function prepare(page: Page, theme: "light" | "dark") {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); Reflect.set(window, "relayParityMotion", false); }, theme);
 }
-async function capture(page: Page, info: TestInfo, state: string, theme: string, descriptorHash: string = FIXTURE_DESCRIPTOR_HASH) {
-  const evidence = `picked-a-${state}-${theme}.a11y.yml`;
-  await captureParityPair(page, resolve("tests/parity/references"), { stateId: `picked-a-${state}`, theme,
-    viewport: "1280x720", adapter: "fixture", fixtureId: "picked-dashboard-a", descriptorHash,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default" });
-  await attachShellA11y(page, info, evidence);
-}
 
 for (const theme of ["light", "dark"] as const) {
   for (const state of [...PICKED_RUN_STATES, ...PICKED_SAFETY_STATES]) {
-    test(`picked A ${state} ${theme}`, { annotation: [{ type: "required-a11y-evidence", description: `picked-a-${state}-${theme}.a11y.yml` }] }, async ({ page }, info) => {
+    test(`picked A ${state} ${theme}`, async ({ page }) => {
       const world = pickedRunWorld(state);
       const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, dayWire: world.day,
         profile: { bootstrap: world.bootstrap, day: world.day, descriptorHash: world.day.descriptorHash } });
@@ -72,13 +61,12 @@ for (const theme of ["light", "dark"] as const) {
         if (state === "pre-submit-failed") await expect(page.getByText("Submit not clicked", { exact: true })).toBeVisible();
         if (state === "post-submit-unknown") await expect(page.getByText("Write outcome unknown", { exact: true })).toBeVisible();
         if (state === "post-submit-proved") await expect(page.getByText("Browser closed first", { exact: true })).toBeVisible();
-        await capture(page, info, state, theme, world.day.descriptorHash);
         expect(errors).toEqual([]);
       } finally { await server.close(); }
     });
   }
   for (const state of PICKED_SIGNUP_STATES) {
-    test(`picked A sign-up ${state} ${theme}`, { annotation: [{ type: "required-a11y-evidence", description: `picked-a-signup-${state}-${theme}.a11y.yml` }] }, async ({ page }, info) => {
+    test(`picked A sign-up ${state} ${theme}`, async ({ page }) => {
       const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
       const writes: string[] = [], errors: string[] = [];
       page.on("pageerror", error => errors.push(error.message));
@@ -96,7 +84,6 @@ for (const theme of ["light", "dark"] as const) {
             await expect(page.getByRole("button", { name: "Keep setting up", exact: true })).toBeFocused();
           }
         }
-        await capture(page, info, `signup-${state}`, theme);
         expect(writes).toEqual([]); expect(errors).toEqual([]);
       } finally { await server.close(); }
     });

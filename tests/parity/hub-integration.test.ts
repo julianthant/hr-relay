@@ -6,7 +6,6 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
-import { attachShellA11y } from './helpers/shell-proof.js';
 import { harness, disposeHttpRouteHarness } from '../support/helpers/backend/http-route-harness.js';
 
 const evidence = resolve('tests/parity/.output/hub-integration');
@@ -16,7 +15,7 @@ async function rectangles(page: Page) {
 }
 for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440, 1920, 2560]) for (const theme of ['light', 'dark']) {
   const name = `hub-integration-${engine}-${width}-${theme}`;
-  test(`HUB integration matrix ${engine} ${width} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `${name}.a11y.yml` }] }, async ({ browserFor, hubServer: server }, info) => {
+  test(`HUB integration matrix ${engine} ${width} ${theme}`, async ({ browserFor, hubServer: server }) => {
     mkdirSync(evidence, { recursive: true });
     const h = await harness();
     const browser = await browserFor(engine), page = await browser.newPage({ viewport: { width, height: width === 1440 ? 900 : width === 1920 ? 1080 : 1440 } });
@@ -120,7 +119,6 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
         await expect(page.getByRole('menu')).toHaveCSS('transition-duration', '0s');
         await page.keyboard.press('Escape'); await expect(trigger).toBeFocused();
       }
-      await attachShellA11y(page, info, `${name}.a11y.yml`);
       expect(errors).toEqual([]); expect(writes).toHaveLength(1);
       expect(writes.every(path => /^\/api\/v1\/workbooks(?:\/[^/]+\/save)?$/u.test(path))).toBe(true);
       writeFileSync(resolve(evidence, `${name}.json`), JSON.stringify({ engine, width, theme, metrics, errors, writes }, null, 2));
@@ -130,7 +128,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
 
 for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440, 1920, 2560]) for (const theme of ['light', 'dark']) for (const finding of ['draft', 'ordinary title', 'workflow title'] as const) {
   const name = `hub-r2-${engine}-${width}-${theme}-${finding.replaceAll(' ', '-')}`;
-  test(`HUB R2 ${finding} survives mounted chat transitions ${engine} ${width} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `${name}.a11y.yml` }] }, async ({ browserFor, hubServer: server }, info) => {
+  test(`HUB R2 ${finding} survives mounted chat transitions ${engine} ${width} ${theme}`, async ({ browserFor, hubServer: server }) => {
     const h = await harness();
     const browser = await browserFor(engine), page = await browser.newPage({ viewport: { width, height: width === 1440 ? 900 : width === 1920 ? 1080 : 1440 } });
     const errors: string[] = [];
@@ -201,7 +199,6 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
         await expect(panel.locator('header .hub-chat-title')).toHaveText('Untouched automatic title');
         await expect(panel.getByRole('log', { name: 'Assistant conversation', exact: true }).getByText('Untouched automatic title', { exact: true })).toBeVisible();
       }
-      await attachShellA11y(page, info, `${name}.a11y.yml`);
       mkdirSync(evidence, { recursive: true });
       await panel.screenshot({ path: resolve(evidence, `${name}.png`), animations: 'disabled' });
       expect(errors).toEqual([]);
@@ -209,7 +206,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
   });
 }
 
-test('HUB served product uses typed answers and refusals without sample execution or policy authority', { annotation: [{ type: 'required-a11y-evidence', description: 'hub-served.a11y.yml' }] }, async ({ page }, info) => {
+test('HUB served product uses typed answers and refusals without sample execution or policy authority', async ({ page }, info) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
   const writes: string[] = [], errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -250,6 +247,5 @@ test('HUB served product uses typed answers and refusals without sample executio
     expect(writes).toEqual(['/api/v1/assistant/respond', '/api/v1/assistant/respond', '/api/v1/assistant/respond']); expect(errors).toEqual([]);
     await panel.screenshot({ path: resolve(evidence, 'hub-served-proposal.png'), animations: 'disabled' });
     await info.attach('hub-served.png', { body: readFileSync(resolve(evidence, 'hub-served-proposal.png')), contentType: 'image/png' });
-    await attachShellA11y(page, info, 'hub-served.a11y.yml');
   } finally { await server.close(); }
 });

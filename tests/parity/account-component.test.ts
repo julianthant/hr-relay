@@ -1,6 +1,5 @@
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
-import { attachShellA11y } from "./helpers/shell-proof.js";
 import type { PreviewServer } from "vite";
 import { previewComponentFixture } from "./helpers/component-fixtures.js";
 import { PARITY_THEMES } from "./helpers/capture.js";
@@ -31,9 +30,7 @@ test.afterAll(async () => {
 });
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const evidenceName = `account-component-${theme.name}-${String(width)}.a11y.yml`;
-  const ocrEvidence = cases.filter(entry => entry.state.startsWith("ocr-")).map(entry => `preflight-${entry.state}-${"action" in entry ? entry.action : "success"}-${theme.name}-${String(width)}.a11y.yml`);
-  test(`account and preflight component fixture states ${theme.name} ${String(width)}`, { annotation: [evidenceName, ...ocrEvidence].map(description => ({ type: "required-a11y-evidence", description })) }, async ({ page }, info) => {
+  test(`account and preflight component fixture states ${theme.name} ${String(width)}`, async ({ page }) => {
     const errors: string[] = [], network: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (new URL(request.url()).origin !== baseUrl) network.push(request.url()); });
@@ -69,11 +66,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         }
       }
       await page.evaluate(() => document.fonts.ready);
-      if (isOcr) await attachShellA11y(page, info, `preflight-${entry.state}-${action}-${theme.name}-${String(width)}.a11y.yml`);
-      else await expect(account.getByRole("button", { name: "Test OCR", exact: true })).toHaveCount(0);
+      if (!isOcr) await expect(account.getByRole("button", { name: "Test OCR", exact: true })).toHaveCount(0);
 
     }
-    await attachShellA11y(page, info, evidenceName);
     expect(errors).toEqual([]); expect(network).toEqual([]);
   });
 }

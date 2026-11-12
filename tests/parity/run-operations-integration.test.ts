@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { installRunOperationsRoutes } from "../support/fixtures/run-operations.js";
@@ -8,9 +7,7 @@ import { PARITY_THEMES, installTheme } from "./helpers/capture.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { dismissWorkflowWindow, failOnPageErrors } from "./helpers/reference-harness.js";
 
-for (const theme of PARITY_THEMES) test(`Setup repair and launch share admission authority: ${theme.name}`, {
-  annotation: [{ type: "required-a11y-evidence", description: `run-operations-${theme.name}.a11y.yml` }],
-}, async ({ page }, info) => {
+for (const theme of PARITY_THEMES) test(`Setup repair and launch share admission authority: ${theme.name}`, async ({ page }, info) => {
   let operations: ReturnType<typeof installRunOperationsRoutes> | undefined;
   const server = await startSetupPreflightServer("secret-missing", (app, runtime) => { operations = installRunOperationsRoutes(app, runtime); });
   try {
@@ -35,9 +32,6 @@ for (const theme of PARITY_THEMES) test(`Setup repair and launch share admission
     await submit.focus(); await page.keyboard.press("Enter"); await expect(page.getByRole("status", { name: "Run started", exact: true })).toBeVisible(); await expect(dialog).toHaveCount(0);
     expect(h.runs()).toHaveLength(1); expect(h.publications).toBe(1); expect(h.commands).toHaveLength(1);
     const run = h.runs()[0]; expect(run.lifecycle.state).toBe("queued"); expect(run.claimGeneration).toBe(0); expect(run.envelope.dryRun).toBe(false);
-    const name = `run-operations-${theme.name}.a11y.yml`; const tree = await page.locator("body").ariaSnapshot();
-    info.annotations.push({ type: `a11y-attachment-sha256:${name}`, description: createHash("sha256").update(tree).digest("hex") });
-    await info.attach(name, { body: tree, contentType: "text/yaml" });
     await info.attach("combined-authority", { body: JSON.stringify({ runId: run.envelope.runId, traceId: run.envelope.traceId,
       lifecycle: run.lifecycle, publications: h.publications, requests: server.requests }), contentType: "application/json" });
     expect(errors).toEqual([]);

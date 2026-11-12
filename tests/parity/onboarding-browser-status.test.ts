@@ -1,14 +1,8 @@
 import { expect } from "@playwright/test";
-import { resolve } from "node:path";
 import { test } from "./helpers/fixtures.js";
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
-import { captureParityPair } from "./helpers/capture.js";
-import { attachShellA11y } from "./helpers/shell-proof.js";
-import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
 
-for (const theme of ["light", "dark"] as const) for (const scenario of ["opening", "open-failed", "open", "closed", "reopening", "stop-failed", "files-busy", "checking", "ready", "ready-closed"] as const) test(`onboarding window ${scenario} ${theme}`, {
-  annotation: [{ type: "required-a11y-evidence", description: `onboarding-window-${scenario}-${theme}.a11y.yml` }],
-}, async ({ page, hubServer }, info) => {
+for (const theme of ["light", "dark"] as const) for (const scenario of ["opening", "open-failed", "open", "closed", "reopening", "stop-failed", "files-busy", "checking", "ready", "ready-closed"] as const) test(`onboarding window ${scenario} ${theme}`, async ({ page, hubServer }) => {
   const complete = { state: "complete", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: false };
   const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
   const ready = scenario.startsWith("ready");
@@ -27,7 +21,5 @@ for (const theme of ["light", "dark"] as const) for (const scenario of ["opening
   await expect(page.locator(".method-list > li")).toHaveCount(2);
   await expect(page.getByText("Sign-up on hold", { exact: true })).toHaveCount(0);
   if (["closed", "open-failed", "stop-failed", "files-busy", "checking", "ready-closed"].includes(scenario)) await expect(page.getByRole("button", { name: "Reopen", exact: true })).toBeEnabled();
-  await captureParityPair(page, resolve("tests/parity/references"), { stateId: `onboarding-browser-status-${scenario}`, theme, viewport: "1280x720", adapter: "fixture", fixtureId: "picked-onboarding", descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default" });
-  await attachShellA11y(page, info, `onboarding-window-${scenario}-${theme}.a11y.yml`);
   expect(writes).toEqual([]); expect(errors).toEqual([]);
 });

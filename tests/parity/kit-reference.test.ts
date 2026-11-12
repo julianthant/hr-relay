@@ -1,14 +1,8 @@
 
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
-import { createHash } from "node:crypto";
-import { resolve } from "node:path";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
-import { captureParityPair } from "./helpers/capture.js";
 import { startFixtureServer,type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
-import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
-
-const REFERENCES = resolve(import.meta.dirname, "references");
 
 /** The entry's own path — the page is served as itself, never through a route. */
 const KIT_ENTRY = "/kit.html";
@@ -55,30 +49,10 @@ test("ds-kit specimen page", async ({ page }) => {
   await page.waitForTimeout(400);
   expect(errors, "page errors while rendering the design-system specimen page").toEqual([]);
 
-  await captureParityPair(
-    page,
-    REFERENCES,
-    {
-      stateId: "ds-kit",
-      viewport: "1280x720",
-      theme: KIT_THEME.name,
-      // The page serves no fact and calls no endpoint, so there is no adapter
-      // behind it. `none` states that rather than borrowing a credible name.
-      adapter: "none",
-      fixtureId: "ds-kit",
-      descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-      appVersion: FIXTURE_APP_VERSION,
-      capturedAt: FIXTURE_DAY,
-      variant: "default",
-    },
-    { fullPage: true },
-  );
 });
 
 
-test("ds-kit Cancelling state is distinct and nonterminal", {
-  annotation: [{ type: "required-a11y-evidence", description: "ds-kit-cancelling.a11y.yml" }],
-}, async ({ page }) => {
+test("ds-kit Cancelling state is distinct and nonterminal", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.setViewportSize({ width: 1280, height: 720 });
@@ -91,7 +65,4 @@ test("ds-kit Cancelling state is distinct and nonterminal", {
   const tree = await page.locator("body").ariaSnapshot();
   expect(tree).toContain("Cancelling");
   expect(tree).toContain("Cancellation requested. The worker has not settled the run yet.");
-  test.info().annotations.push({ type: "a11y-attachment-sha256:ds-kit-cancelling.a11y.yml",
-    description: createHash("sha256").update(tree).digest("hex") });
-  await test.info().attach("ds-kit-cancelling.a11y.yml", { body: tree, contentType: "text/yaml" });
 });

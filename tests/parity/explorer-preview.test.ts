@@ -1,7 +1,5 @@
-import { attachPresentationReference } from "./helpers/presentation-reference.js";
 
 import { chooseSelect } from "./helpers/select-choice.js";
-import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -9,10 +7,7 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1280]) {
-  const evidence = `explorer-preview-${theme.attribute}-${width}.a11y.yml`;
-  test(`complete Explorer layout and source return @ ${theme.attribute} ${width}`, {
-    annotation: [{ type: "required-a11y-evidence", description: evidence }],
-  }, async ({ page }) => {
+  test(`complete Explorer layout and source return @ ${theme.attribute} ${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: 720 });
@@ -29,7 +24,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(workflows).toHaveAttribute("data-value", "fixture-separations");
       await workflows.click();
       await expect(page.locator('[data-slot="select-content"][data-open]').getByRole("option")).toHaveText(["Person Lookup", "I-9 Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule", "Onboarding Documents", "OnBase", "Old Kronos Reports"]);
-      await attachPresentationReference(page, test.info(), "explorer-workflow-menu.png");
       await page.keyboard.press("Escape");
       await expect(surface.getByRole("complementary", { name: "Workflow browser" })).toHaveCount(0);
       expect(await surface.locator('[data-step-number="1"] > span').evaluate((node) => node.getBoundingClientRect().width)).toBe(28);
@@ -38,9 +32,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       for (const name of ["Expand all", "Collapse all", "Version registry", "Show action legend"]) {
         await expect(surface.getByRole("button", { name, exact: true })).toHaveCount(0);
       }
-      const snapshot = await surface.ariaSnapshot();
-      test.info().annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
-      await test.info().attach(evidence, { body: snapshot, contentType: "text/yaml" });
 
       const pendingForm = surface.locator('#explorer-step-17 details[data-disclosure]').first();
       await pendingForm.locator(':scope > summary').click();
@@ -57,7 +48,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(panel.getByRole("button", { name: "Close field source" })).toBeFocused();
       await expect(panel).toContainText("Workforce Job Summary");
       await expect(panel).toContainText("Department option list");
-      await attachPresentationReference(page, test.info(), "department-source-drawer.png");
       await panel.getByRole("button", { name: "Go to original field", exact: true }).nth(1).click();
       await expect(surface.locator("#explorer-field-3-options")).toBeFocused();
       await expect(surface.locator('details[data-disclosure="3-request-options"]')).toHaveAttribute("open", "");

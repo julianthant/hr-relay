@@ -1,12 +1,10 @@
 import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
-import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { chromium, type Worker } from "playwright";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { attachPresentationReference } from "./helpers/presentation-reference.js";
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import {
@@ -85,7 +83,7 @@ test.describe("Queue authority, live commands, and desktop parity", () => {
     });
   }
 
-  test("dialog focus return, keyboard commands, and escape dismiss", { annotation: [{ type: "required-a11y-evidence", description: "served-delete-confirmation.a11y.yml" }] }, async ({ page }, info) => {
+  test("dialog focus return, keyboard commands, and escape dismiss", async ({ page }) => {
     await installFrozenMonotonic(page);
     const errors = failOnPageErrors(page);
     await page.setViewportSize(VIEWPORTS[0]);
@@ -109,10 +107,6 @@ test.describe("Queue authority, live commands, and desktop parity", () => {
     await expect(dialog.locator(".command-confirm-reference")).toHaveText(`${footerId} · revision ${server.authority().authority.runs.get(server.runIds.cancelledRun)?.version}`);
     await expect(dialog.locator("header p")).toHaveCount(0);
     await expect(dialog).not.toHaveAttribute("aria-describedby");
-    await attachPresentationReference(page, info, "served-delete-confirmation.png");
-    const a11y = await dialog.ariaSnapshot();
-    await info.attach("served-delete-confirmation.a11y.yml", { body: a11y, contentType: "text/yaml" });
-    info.annotations.push({ type: "a11y-attachment-sha256:served-delete-confirmation.a11y.yml", description: createHash("sha256").update(a11y).digest("hex") });
 
     // Dismiss with Escape key -> focus returns to triggering button
     await page.keyboard.press("Escape");

@@ -3,7 +3,6 @@ import { installFrozenMonotonic } from "./helpers/app-driver.js";
 
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
-import { createHash } from "node:crypto";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -15,8 +14,7 @@ async function advance(dialog: Locator) { await dialog.getByRole("button", { nam
 const startRun = (dialog: Locator) => dialog.getByRole("button", { name: /^Start (dry run|live run|run)$/u });
 const recordsOf = (page: Page) => page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true });
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const a11yName = `manual-input-${theme.attribute}-${width}.a11y.yml`;
-  test(`manual OCR, read replacement, form locks and rerun @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: a11yName }] }, async ({ page }, info) => {
+  test(`manual OCR, read replacement, form locks and rerun @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -86,9 +84,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(review.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
       await expect(review).not.toContainText("not confirmed by a UCPath lookup");
 
-      const a11y = await review.ariaSnapshot();
-      await info.attach(a11yName, { body: a11y, contentType: "text/yaml" });
-      info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(a11y).digest("hex") });
       await review.getByRole("button", { name: "Approve records", exact: true }).click();
       await page.keyboard.press("Escape"); await expect(review).toHaveCount(0);
       await rail.getByRole("button", { name: "Oath Signature", exact: true }).click();

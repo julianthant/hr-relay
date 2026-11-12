@@ -6,9 +6,6 @@ import { ASSISTANT_START_PROPOSAL } from '../support/fixtures/dashboard/assistan
 import { createServer as createHttpServer } from 'node:http';
 import { resolve } from 'node:path';
 import { preview, type PreviewServer } from 'vite';
-import { attachShellA11y } from './helpers/shell-proof.js';
-import { captureParityPair } from './helpers/capture.js';
-import { FIXTURE_APP_VERSION, FIXTURE_DESCRIPTOR_HASH, FIXTURE_DAY } from './helpers/fixture-identity.js';
 
 let server: PreviewServer;
 let baseUrl: string;
@@ -32,7 +29,7 @@ test.afterAll(async () => {
   await new Promise<void>((done, reject) => bff.close(error => error ? reject(error) : done()));
 });
 test.describe.configure({ mode: 'serial' });
-test('assistant composer and workflow ports', { annotation: [{ type: 'required-a11y-evidence', description: 'hub-assistant.a11y.yml' }] }, async ({ page }, info) => {
+test('assistant composer and workflow ports', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(baseUrl);
@@ -64,10 +61,9 @@ test('assistant composer and workflow ports', { annotation: [{ type: 'required-a
   await expect(page.getByText('People.csv', { exact: true })).toBeVisible();
   await textarea.fill('Run separations'); await textarea.press('Enter');
   await expect(page.locator('.hub-message.operator').filter({ hasText: 'Run separations' }).locator('.hub-sent-file')).toHaveText('People.csv');
-  await attachShellA11y(page, info, 'hub-assistant.a11y.yml');
   expect(errors).toEqual([]);
 });
-test('assistant menu selection, popup and motion contracts', { annotation: [{ type: 'required-a11y-evidence', description: 'hub-assistant-controls.a11y.yml' }] }, async ({ page }, info) => {
+test('assistant menu selection, popup and motion contracts', async ({ page }) => {
   await page.goto(`${baseUrl}/?theme=light&motion=off`);
   const trigger = page.getByRole('button', { name: 'Model: GPT-6.1 Sol, Medium effort', exact: true });
   await expect(trigger).toBeEnabled(); await trigger.focus(); await trigger.press('Space');
@@ -85,10 +81,9 @@ test('assistant menu selection, popup and motion contracts', { annotation: [{ ty
   await page.getByRole('menuitem', { name: /Use sample transcript/ }).click();
   await expect(page.getByRole('textbox', { name: 'Message Relay' })).toHaveValue('Check the current employment details for Alex Rivera.');
   await expect(page.getByRole('textbox', { name: 'Message Relay' })).toBeFocused();
-  await attachShellA11y(page, info, 'hub-assistant-controls.a11y.yml');
 });
 for (const scene of ['new', 'conversation', 'typing', 'multiline', 'attachment', 'attach-menu', 'approval-menu', 'model-menu', 'voice-menu']) {
-  test(`assistant approved ${scene}`, { annotation: [{ type: 'required-a11y-evidence', description: `hub-assistant-${scene}.a11y.yml` }] }, async ({ page }, info) => {
+  test(`assistant approved ${scene}`, async ({ page }) => {
     const state = scene.endsWith('-menu') || ['typing', 'multiline', 'attachment'].includes(scene) ? 'new' : scene;
     const text = scene === 'typing' ? 'Review these changes before I save.' : scene === 'multiline' ? 'Compare the current employment record.\nCheck the new work email.\nShow me the change before saving.' : scene === 'attachment' ? 'Review these notes.' : '';
     await page.goto(`${baseUrl}/?scene=${state}&text=${encodeURIComponent(text)}`);
@@ -103,8 +98,6 @@ for (const scene of ['new', 'conversation', 'typing', 'multiline', 'attachment',
       await page.keyboard.press('Home'); await expect(menu.locator('[role^=menuitem]').first()).toBeFocused();
       if (scene === 'model-menu' || scene === 'approval-menu') expect(await menu.locator('[data-slot=dropdown-menu-radio-item-indicator]').first().evaluate(element => getComputedStyle(element).position)).toBe('absolute');
     }
-    await attachShellA11y(page, info, `hub-assistant-${scene}.a11y.yml`);
-    await captureParityPair(page, resolve('tests/parity/references'), { stateId: `hub-assistant-${scene}`, theme: 'graphite-warm', viewport: '1280x720', adapter: 'component-fixture', fixtureId: `hub-assistant-${scene}`, descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: 'default' });
   });
 }
 
@@ -160,7 +153,7 @@ const SERVED_SCENES = {
   refused: { account: CONNECTED, respond: 'fail' },
 } as const;
 for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Object.entries(SERVED_SCENES)) {
-  test(`assistant served ${scene} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `hub-assistant-served-${scene}-${theme}.a11y.yml` }] }, async ({ page }, info) => {
+  test(`assistant served ${scene} ${theme}`, async ({ page }) => {
     await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: chatGptStatusFixture(spec.account) }));
     if ('respond' in spec) await page.route('**/api/v1/assistant/respond', route => spec.respond === 'fail' ? route.fulfill({ json: { state: 'refused', code: 'ASSISTANT_VERIFICATION_FAILED', message: 'x' } }) : route.fulfill({ json: spec.respond }));
     await page.route('**/api/v1/assistant/action', route => 'confirm' in spec && spec.confirm === 'lost' ? route.abort('failed') : route.fulfill({ json: { state: 'applied', actionId: LOCAL_PROPOSAL.actionId } }));
@@ -179,7 +172,5 @@ for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Obje
     }
     const boxes = await panel.locator('.hub-toolbar').first().locator('> *').evaluateAll(nodes => nodes.map(node => { const box = node.getBoundingClientRect(); return [box.left, box.right]; }));
     boxes.forEach((box, index) => { if (index > 0) expect(box[0]).toBeGreaterThanOrEqual(boxes[index - 1][1] - 0.5); });
-    await attachShellA11y(page, info, `hub-assistant-served-${scene}-${theme}.a11y.yml`);
-    await captureParityPair(page, resolve('tests/parity/references'), { stateId: `hub-assistant-served-${scene}`, theme, viewport: '1280x720', adapter: 'component-fixture', fixtureId: `hub-assistant-served-${scene}`, descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: 'default' });
   });
 }

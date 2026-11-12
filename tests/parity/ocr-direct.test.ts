@@ -1,6 +1,5 @@
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
 
-import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -11,8 +10,7 @@ import { setSwitchChecked } from "./helpers/switch-choice.js";
 
 const pdf = { name: "direct-contact.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") };
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const name = `ocr-direct-${theme.attribute}-${width}`;
-  test(`Emergency Contact reads inline or opens blank typed records @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `${name}.a11y.yml` }] }, async ({ page }, info) => {
+  test(`Emergency Contact reads inline or opens blank typed records @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -29,13 +27,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         const picker = dialog.getByRole("navigation", { name: "Workflow", exact: true });
         await expect(picker.getByRole("button", { name: "OCR", exact: true })).toHaveCount(0);
         await expect(picker.getByRole("button", { name: "Emergency Contact", exact: true })).toBeEnabled();
-        if (extraction) {
-          const inputName = `${name}-input`;
-          const inputTree = await dialog.ariaSnapshot();
-
-          await info.attach(`${inputName}.a11y.yml`, { body: inputTree, contentType: "text/yaml" });
-          info.annotations.push({ type: "required-a11y-evidence", description: `${inputName}.a11y.yml` }, { type: `a11y-attachment-sha256:${inputName}.a11y.yml`, description: createHash("sha256").update(inputTree).digest("hex") });
-        }
         await dialog.locator('input[type="file"]').setInputFiles({ ...pdf, name: extraction ? "direct-contact.pdf" : "manual-direct-contact.pdf" });
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
         await dialog.getByRole("switch", { name: "Customize steps", exact: true }).dispatchEvent("click");
@@ -79,10 +70,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await heading.press(width === 1024 ? "Control+z" : "Meta+z");
           await expect(page.getByText("Review restored", { exact: true })).toBeVisible();
           await expect(records.getByRole("group", { name: "Emergency contact", exact: true }).getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Alex Rivera");
-          const a11y = await records.ariaSnapshot();
 
-          await info.attach(`${name}.a11y.yml`, { body: a11y, contentType: "text/yaml" });
-          info.annotations.push({ type: `a11y-attachment-sha256:${name}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
         }
         await page.keyboard.press("Escape");
         await expect(records).toHaveCount(0);

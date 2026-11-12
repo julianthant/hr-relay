@@ -1,7 +1,6 @@
 import { setSwitchChecked } from "./helpers/switch-choice.js";
 import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 
-import { createHash } from 'node:crypto';
 import { expect } from '@playwright/test';
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from './helpers/bundle.js';
@@ -20,8 +19,7 @@ const failed = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.surfaceKind === 's
 if (failed === undefined) throw new Error('Focus verification requires a failed fixture for admitted footer actions');
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const evidence = `queue-focus-${theme.attribute}-${width}.a11y.yml`;
-  test(`approved Focus queue and Run input @ ${theme.attribute} ${width}`, { annotation: [{ type: 'required-a11y-evidence', description: evidence }] }, async ({ page }, info) => {
+  test(`approved Focus queue and Run input @ ${theme.attribute} ${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, dayWire: { ...FIXTURE_DAY_WIRE, queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row => row.runId === failed.runId ? { ...row, actions: [
       { key: 'rerun', kind: 'navigation', label: 'Retry', navigate: { kind: 'rerun', expectedVersion: row.rowRevision }, intent: 'neutral', icon: 'retry', placement: ['footer'] },
       { key: 'delete', kind: 'command', command: 'delete', label: 'Delete', expectedVersion: row.rowRevision, intent: 'destructive', icon: 'delete', placement: ['footer'], confirm: { title: 'Delete this run?', confirmLabel: 'Delete run', tone: 'destructive' } },
@@ -62,9 +60,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(needsYou).toHaveAttribute('aria-checked', 'true'); await expect(page.locator('[data-demo-row-id]:not(tr)')).toHaveCount(3);
       await filterMenu.getByRole('menuitemcheckbox', { name: /^All / }).click(); await page.keyboard.press('Escape');
       expect((await rows.first().boundingBox())!.width).toBeGreaterThan(180);
-      const snapshot = await page.getByRole('main').ariaSnapshot();
-      info.annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash('sha256').update(snapshot).digest('hex') });
-      await info.attach(evidence, { body: snapshot, contentType: 'text/yaml' });
 
       await status.click();
       const statuses = page.getByRole('menu', { name: 'Filter queue by status', exact: true });

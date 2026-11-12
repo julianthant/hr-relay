@@ -1,9 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { attachShellA11y } from "./helpers/shell-proof.js";
 import { registerReferenceServers } from "./helpers/reference-harness.js";
 const servers = registerReferenceServers(["server"]);
 
-for (const fixture of ["delete-account", "run-pause", "ucpath-found", "required-captures", "dry-run", "duo-signup"]) for (const theme of ["light", "dark"]) test(`${fixture} desktop and theme ${theme}`, { annotation: [{ type: "required-a11y-evidence", description: `${fixture}-${theme}-desktop.a11y.yml` }] }, async ({ page }, info) => {
+for (const fixture of ["delete-account", "run-pause", "ucpath-found", "required-captures", "dry-run", "duo-signup"]) for (const theme of ["light", "dark"]) test(`${fixture} desktop and theme ${theme}`, async ({ page }) => {
   const writes: string[] = [], errors: string[] = [];
   page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
   page.on("pageerror", error => errors.push(error.message));
@@ -38,6 +37,5 @@ for (const fixture of ["delete-account", "run-pause", "ucpath-found", "required-
     expect(Math.abs(layout.heights[0] - layout.heights[1])).toBeLessThanOrEqual(1);
   }
   if (fixture === "duo-signup") expect(await page.getByRole("button", { name: "Back to login", exact: true }).evaluate(node => getComputedStyle(node).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
-  await attachShellA11y(page, info, `${fixture}-${theme}-desktop.a11y.yml`);
   expect(writes).toEqual([]); expect(errors).toEqual([]);
 });

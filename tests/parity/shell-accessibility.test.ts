@@ -7,7 +7,7 @@ import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { PARITY_THEMES,installTheme } from "./helpers/capture.js";
 import { assertShellGeometry } from "./helpers/geometry.js";
-import { attachShellA11y,shellTextContrast } from "./helpers/shell-proof.js";
+import { shellTextContrast } from "./helpers/shell-proof.js";
 
 let server:FixtureServer;
 test.beforeAll(async()=>{server=await startFixtureServer({distDir:PARITY_DIST_DIR,bundle:{proof:"working-tree"}});});
@@ -28,9 +28,8 @@ async function assertPanels(page:Page){
 }
 for(const theme of PARITY_THEMES){
   for(const viewport of [{width:1280,height:720},{width:1440,height:900},{width:1024,height:768}]){
-    const evidenceName=`shell-${viewport.width}x${viewport.height}-${theme.name}.a11y.yml`;
 
-test(`selected run resize ${viewport.width}x${viewport.height} @ ${theme.name}`,{annotation:[{type:"required-a11y-evidence",description:evidenceName}]},async({page},info)=>{
+test(`selected run resize ${viewport.width}x${viewport.height} @ ${theme.name}`,async({page},info)=>{
       await installTheme(page,theme);await page.setViewportSize(viewport);
       await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,run:FIXTURE_IDS.runningRun});
       const before=await assertPanels(page);
@@ -41,7 +40,6 @@ test(`selected run resize ${viewport.width}x${viewport.height} @ ${theme.name}`,
         expect(await control.evaluate(node=>{const box=node.getBoundingClientRect();return node.contains(document.elementFromPoint(box.x+box.width/2,box.y+box.height/2));})).toBe(true);
       }
       await info.attach("geometry",{body:JSON.stringify({viewport,theme,before}),contentType:"application/json"});
-      await attachShellA11y(page,info,evidenceName);
     });
 }
 

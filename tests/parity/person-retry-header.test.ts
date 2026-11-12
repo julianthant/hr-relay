@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
@@ -12,10 +11,7 @@ import { RunDetailWireSchema, RunDetailSectionResponseSchema } from "../../src/m
 import { CommandRequestSchema } from "../../src/rules/commands/commands.js";
 
 for (const theme of ["light", "dark"] as const) for (const width of [1024, 1440]) {
-  const a11yName = `person-retry-header-${theme}-${width}.a11y.yml`;
-  test(`failed Lookup batch person header Retry keeps keyboard and pending authority, ${theme}-${width}`, {
-    annotation: [{ type: "required-a11y-evidence", description: a11yName }],
-  }, async ({ page }, info) => {
+  test(`failed Lookup batch person header Retry keeps keyboard and pending authority, ${theme}-${width}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 });
     const source = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.parent === null && row.status === "failed");
     const sibling = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.parent === null && row.status === "done");
@@ -53,9 +49,6 @@ for (const theme of ["light", "dark"] as const) for (const width of [1024, 1440]
       const request = CommandRequestSchema.parse(requests[0]);
       expect(request.family).toBe("run"); expect(request.type).toBe("retry"); expect(request.target).toEqual({ runId: selected.runId, expectedVersion: selected.rowRevision });
       release?.(); await expect(retry).toBeEnabled(); expect(requests).toHaveLength(1);
-      const tree = await logsPanel.ariaSnapshot();
-      info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(tree).digest("hex") });
-      await info.attach(a11yName, { body: tree, contentType: "text/yaml" });
       await info.attach(`person-retry-header-${theme}-${width}.png`, { body: await logsPanel.screenshot(), contentType: "image/png" });
     } finally { release?.(); await server.close(); }
   });

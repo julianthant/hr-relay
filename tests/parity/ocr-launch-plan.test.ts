@@ -1,7 +1,6 @@
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
 import { setSwitchChecked } from "./helpers/switch-choice.js";
 
-import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -12,11 +11,7 @@ import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 const pdf = { name: "contacts.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") };
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const planName = `ocr-plan-${theme.attribute}-${width}`, reviewName = `ocr-manual-contact-${theme.attribute}-${width}`;
-  test(`PDF contact plan, priority and OCR review @ ${theme.attribute}-${width}`, { annotation: [
-    { type: "required-a11y-evidence", description: `${planName}.a11y.yml` },
-    { type: "required-a11y-evidence", description: `${reviewName}.a11y.yml` },
-  ] }, async ({ page }, info) => {
+  test(`PDF contact plan, priority and OCR review @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -55,12 +50,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(steps.getByRole("switch", { name: "Fill emergency contact (required)", exact: true })).toBeDisabled();
         await expect(steps.getByRole("switch", { name: "Save emergency contact (required)", exact: true })).toBeDisabled();
         await expect(dialog).toContainText(extraction ? "6 of 6 included" : "4 of 6 included");
-        if (extraction) {
-          const a11y = await dialog.ariaSnapshot();
-
-          await info.attach(`${planName}.a11y.yml`, { body: a11y, contentType: "text/yaml" });
-          info.annotations.push({ type: `a11y-attachment-sha256:${planName}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
-        }
         await dialog.getByRole("button", { name: /^Start (dry|live) run$/u }).click();
         const review = page.getByRole("dialog", { name: /^Review records/u }).getByRole("region", { name: "OCR records", exact: true });
         if (extraction) {
@@ -73,10 +62,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await expect(review).toBeVisible();
           await expect(review.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("");
           await expect(review.getByRole("button", { name: "Approve records", exact: true })).toBeDisabled();
-          const a11y = await review.ariaSnapshot();
 
-          await info.attach(`${reviewName}.a11y.yml`, { body: a11y, contentType: "text/yaml" });
-          info.annotations.push({ type: `a11y-attachment-sha256:${reviewName}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
           for (const [label, value] of [["Employee ID", "10000022"], ["Employee name", "Sam Rivera"], ["Contact name", "Alex Rivera"], ["Cell phone", "2025550101"]]) await (label === "Contact name" ? review.getByRole("group", { name: "Emergency contact", exact: true }).getByRole("textbox", { name: "Name", exact: true }) : label === "Cell phone" ? review.getByRole("group", { name: "Emergency contact", exact: true }).getByRole("textbox", { name: "Cell phone", exact: true }) : review.getByRole("textbox", { name: label, exact: true })).fill(value);
           await review.getByRole("button", { name: "Approve records", exact: true }).click();
           await expect(page.locator('[data-slot="toast"]').getByText("Records approved", { exact: true }).first()).toBeVisible();

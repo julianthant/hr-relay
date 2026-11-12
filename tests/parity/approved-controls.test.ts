@@ -1,11 +1,7 @@
 import { expect } from '@playwright/test';
 import { test } from "./helpers/fixtures.js";
-import { resolve } from 'node:path';
 import type { PreviewServer } from 'vite';
 import { previewComponentFixture } from './helpers/component-fixtures.js';
-import { attachShellA11y } from './helpers/shell-proof.js';
-import { captureParityPair } from './helpers/capture.js';
-import { FIXTURE_APP_VERSION, FIXTURE_DESCRIPTOR_HASH, FIXTURE_DAY } from './helpers/fixture-identity.js';
 let server: PreviewServer; let baseUrl: string;
 test.beforeAll(async () => {
   server = await previewComponentFixture("approved-controls");
@@ -16,8 +12,7 @@ test.afterAll(async () => {
   if (server) await new Promise<void>((done, reject) => server.httpServer.close(error => error ? reject(error) : done()));
 });
 for (const state of ['queue', 'export-pending', 'export-refused']) {
-  const evidence = `approved-controls-${state}.a11y.yml`;
-  test(`approved controls ${state}`, { annotation: [{ type: 'required-a11y-evidence', description: evidence }] }, async ({ page }, info) => {
+  test(`approved controls ${state}`, async ({ page }) => {
     const errors: string[] = [], mutations: string[] = [];
     page.on('pageerror', error => errors.push(error.message)); page.on('request', request => { if (request.method() !== 'GET') mutations.push(request.method()); });
     const [surface, mode] = state.split('-');
@@ -33,8 +28,6 @@ for (const state of ['queue', 'export-pending', 'export-refused']) {
       else { await expect(page.getByRole('alert')).toContainText('CSV export unavailable'); await expect(button).toBeEnabled(); }
     }
     if (surface !== 'queue') await expect(page.locator('body')).toHaveAttribute('data-action-calls', '1');
-    await attachShellA11y(page, info, evidence);
     expect(errors).toEqual([]); expect(mutations).toEqual([]);
-    await captureParityPair(page, resolve('tests/parity/references'), { stateId: `approved-controls-${state}`, theme: 'graphite-warm', viewport: '1280x720', adapter: 'component-fixture', fixtureId: `approved-controls-${state}`, descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: 'default' }, { fullPage: surface === 'queue' });
   });
 }

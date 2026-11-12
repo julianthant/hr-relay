@@ -1,7 +1,6 @@
 
 import { expect, type Locator } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
-import { createHash } from "node:crypto";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -50,14 +49,8 @@ async function checkAliases(node: Locator) {
   expect(mismatches).toEqual([]);
 }
 
-async function attachTree(node: Locator, name: string) {
-  const tree = await node.ariaSnapshot();
-  test.info().annotations.push({ type: `a11y-attachment-sha256:${name}`, description: createHash("sha256").update(tree).digest("hex") });
-  await test.info().attach(name, { body: tree, contentType: "text/yaml" });
-}
-
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`one neutral dashboard palette @ ${theme.attribute} ${width}`, { annotation: ["logs", "explorer", "activity", "settings", "dialog"].map(name => ({ type: "required-a11y-evidence", description: `palette-${name}-${theme.attribute}-${width}.a11y.yml` })) }, async ({ page }) => {
+  test(`one neutral dashboard palette @ ${theme.attribute} ${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
@@ -105,7 +98,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await page.mouse.move(0, 0);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
-        await attachTree(page.locator("body"), `palette-${name}-${theme.attribute}-${width}.a11y.yml`);
       }
       await page.goto(server.baseUrl + `/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}`);
       const add = page.getByRole("region", { name: "Session Panel", exact: true }).getByRole("button", { name: "Add workers", exact: true });
@@ -126,7 +118,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       });
       expect(contrastRatio(buttonColors.foreground, await paintedBackground(dialog.getByRole("button", { name: "Add workers", exact: true })))).toBeGreaterThanOrEqual(4.5);
 
-      await attachTree(page.locator("body"), `palette-dialog-${theme.attribute}-${width}.a11y.yml`);
       expect(writes).toEqual([]);
     } finally { await server.close(); }
   });

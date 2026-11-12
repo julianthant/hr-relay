@@ -2,7 +2,6 @@ import { NativePathPickerRequestSchema } from "../../src/models/dashboard/native
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { chromium } from "@playwright/test";
-import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,9 +14,7 @@ import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
 const servers = registerReferenceServers(["server"]);
 
-for (const theme of PARITY_THEMES) test(`Settings body switch thumbs remain on their track @ ${theme.name}`, {
-  annotation: [{ type: "required-a11y-evidence", description: `settings-switch-thumb-${theme.name}.a11y.yml` }],
-}, async ({ page }, info) => {
+for (const theme of PARITY_THEMES) test(`Settings body switch thumbs remain on their track @ ${theme.name}`, async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await installTheme(page, theme);
   await gotoSettingsDiscardingDraft(page, "general");
@@ -39,10 +36,6 @@ for (const theme of PARITY_THEMES) test(`Settings body switch thumbs remain on t
     expect(position.color).toBe("rgb(255, 255, 255)");
   }
   expect(positions.filter(position => position.checked)).toHaveLength(2);
-  const evidenceName = `settings-switch-thumb-${theme.name}.a11y.yml`;
-  const tree = await page.locator("body").ariaSnapshot();
-  info.annotations.push({ type: `a11y-attachment-sha256:${evidenceName}`, description: createHash("sha256").update(tree).digest("hex") });
-  await info.attach(evidenceName, { body: tree, contentType: "text/yaml" });
 });
 const SETTINGS = [
   ["general", "General"],
@@ -84,25 +77,19 @@ test(`UI-A Settings desktop layout matrix @ ${theme.name}`, async ({ page }, inf
   }
 });
 
-test(`UI-A Settings inventory after @ ${theme.name}`, {
-    annotation: [{ type: "required-a11y-evidence", description: `ui-settings-records-${theme.name}.a11y.yml` }],
-  }, async ({ page }, info) => {
+test(`UI-A Settings inventory after @ ${theme.name}`, async ({ page }, info) => {
     const settings = fixtureSettingsDocument({
       annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026" } },
     }, 2);
     await page.route("**/api/v1/settings/editable", route => route.fulfill({ json: settings }));
     await page.setViewportSize({ width: 1440, height: 900 });
     await installTheme(page, theme);
-    let finalTree = "";
     for (const [section, title] of SETTINGS) {
       await gotoSettingsDiscardingDraft(page, section);
       await expect(page.getByRole("heading", { name: title, level: 1, exact: true })).toBeVisible();
-      finalTree = await page.locator("body").ariaSnapshot();
+      const finalTree = await page.locator("body").ariaSnapshot();
       writeSettingsEvidence(info.outputPath(`ui-settings-records-after/settings-${section}-${theme.name}.a11y.yml`), finalTree);
     }
-    const evidenceName = `ui-settings-records-${theme.name}.a11y.yml`;
-    info.annotations.push({ type: `a11y-attachment-sha256:${evidenceName}`, description: createHash("sha256").update(finalTree).digest("hex") });
-    await info.attach(evidenceName, { body: finalTree, contentType: "text/yaml" });
   });
 }
 

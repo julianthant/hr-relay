@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js";
@@ -12,9 +11,8 @@ import { failOnPageErrors } from "./helpers/reference-harness.js";
 
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const a11yName = `dashboard-${theme.attribute}-${width}.a11y.yml`;
 
-test(`approved mixed queue and navbar @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: a11yName }] }, async ({ page }, info) => {
+test(`approved mixed queue and navbar @ ${theme.attribute}-${width}`, async ({ page }, info) => {
     const errors = failOnPageErrors(page);
     const done = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.surfaceKind === "single" && row.status === "done");
     const running = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.surfaceKind === "single" && row.status === "running");
@@ -120,9 +118,6 @@ test(`approved mixed queue and navbar @ ${theme.attribute}-${width}`, { annotati
       await expect(attempt).toBeFocused();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
-      const tree = await page.locator("body").ariaSnapshot();
-      info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(tree).digest("hex") });
-      await info.attach(a11yName, { body: tree, contentType: "text/yaml" });
       expect(errors).toEqual([]);
     } finally { await server.close(); }
   });

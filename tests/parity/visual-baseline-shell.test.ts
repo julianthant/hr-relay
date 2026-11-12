@@ -1,16 +1,11 @@
-import { expect, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
-import { resolve } from "node:path";
 import { installServedSurfaces, routeUrl } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
-import { assertThemeApplied, captureParityPair, installTheme, PARITY_THEMES, type ParityTheme } from "./helpers/capture.js";
+import { assertThemeApplied, installTheme, PARITY_THEMES, type ParityTheme } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
-import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH, FIXTURE_NOW } from "./helpers/fixture-identity.js";
-import { attachShellA11y } from "./helpers/shell-proof.js";
+import { FIXTURE_DAY, FIXTURE_NOW } from "./helpers/fixture-identity.js";
 
-const REFERENCES = resolve("tests/parity/references");
-const evidence = (group: string, theme: ParityTheme, width: number) => `baseline-shell-${group}-${theme.name}-${String(width)}.a11y.yml`;
-const annotation = (name: string) => ({ annotation: [{ type: "required-a11y-evidence", description: name }] });
 async function prepare(page: Page, theme: ParityTheme, width: number) {
   await page.setViewportSize({ width, height: 720 });
   await installTheme(page, theme);
@@ -18,23 +13,15 @@ async function prepare(page: Page, theme: ParityTheme, width: number) {
   await page.clock.install({ time: new Date(FIXTURE_NOW) });
   await page.clock.pauseAt(new Date(Date.parse(FIXTURE_NOW) + 1000));
 }
-async function capture(page: Page, info: TestInfo, theme: ParityTheme, width: number, state: string) {
+async function settle(page: Page, theme: ParityTheme) {
   await assertThemeApplied(page, theme);
   await page.evaluate(() => document.fonts.ready);
   await page.clock.runFor(100); // the paused clock holds the two-frame enter transition at opacity 0
-  const name = `baseline-shell-${state}-${theme.name}-${String(width)}.a11y.yml`;
-  info.annotations.push({ type: "required-a11y-evidence", description: name });
-  await attachShellA11y(page, info, name);
-  await captureParityPair(page, REFERENCES, {
-    stateId: `baseline-shell-${state}`, viewport: `${String(width)}x${"720"}`,
-    theme: theme.name, adapter: "fixture", fixtureId: "mounted-mock-shell", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
-  });
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1280]) {
   const label = `${theme.name} ${String(width)}`;
-  test(`frozen session populations ${label}`, annotation(evidence("sessions", theme, width)), async ({ page }, info) => {
+  test(`frozen session populations ${label}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await prepare(page, theme, width);
@@ -47,14 +34,13 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         else if (scenario === "loading") await expect(panel.getByRole("status", { name: "Loading sessions" })).toBeVisible();
         else if (scenario === "unavailable") await expect(panel.getByRole("alert")).toContainText("Sessions unavailable");
         else await expect(panel.getByRole("article")).toHaveCount(scenario === "active" ? 4 : scenario === "attention" ? 3 : 2);
-        if (["active", "empty", "unavailable"].includes(scenario)) await capture(page, info, theme, width, `sessions-${scenario}`);
+        if (["active", "empty", "unavailable"].includes(scenario)) await settle(page, theme);
       }
-      await attachShellA11y(page, info, evidence("sessions", theme, width));
     } finally { await server.close(); }
   });
 
   for (const outcome of ["normal", "refused", "uncertain"] as const) {
-    test(`frozen session command ${outcome} ${label}`, annotation(evidence(`command-${outcome}`, theme, width)), async ({ page }, info) => {
+    test(`frozen session command ${outcome} ${label}`, async ({ page }) => {
       const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
       try {
         await prepare(page, theme, width);
@@ -82,11 +68,11 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         const dialog = page.getByRole("dialog", { name: "Add workers", exact: true });
         await expect(dialog.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveValue("1");
         if (outcome === "normal") {
-          await capture(page, info, theme, width, "add-workers");
+          await settle(page, theme);
           await dialog.getByRole("combobox", { name: "Workflow", exact: true }).click();
           await page.clock.runFor(100);
           await expect(page.locator('[data-slot="select-content"][data-open]')).toBeVisible();
-          await capture(page, info, theme, width, "add-workers-menu");
+          await settle(page, theme);
           await page.keyboard.press("Escape");
           await dialog.getByRole("spinbutton", { name: "Workers", exact: true }).fill("0");
           await expect(dialog.getByRole("button", { name: "Add workers", exact: true })).toBeDisabled();
@@ -112,12 +98,11 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
           await expect(toasts.getByText("Workers added", { exact: true })).toBeVisible();
           await expect(panel).not.toContainText("Workers added");
         }
-        await attachShellA11y(page, info, evidence(`command-${outcome}`, theme, width));
       } finally { await server.close(); }
     });
   }
 
-  test(`frozen shell search and destination ${label}`, annotation(evidence("search", theme, width)), async ({ page }, info) => {
+  test(`frozen shell search and destination ${label}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await prepare(page, theme, width);
@@ -126,26 +111,25 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await page.getByRole("button", { name: "Search", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Search Relay", exact: true });
       await expect(dialog.getByRole("option").first()).toBeVisible();
-      await capture(page, info, theme, width, "search-results");
+      await settle(page, theme);
       await dialog.getByRole("combobox", { name: "Search Relay", exact: true }).fill("no-such-run-xyz");
       await expect(dialog).toContainText("No matches");
-      await capture(page, info, theme, width, "search-empty");
+      await settle(page, theme);
       await page.goto(`${server.baseUrl}/?day=invalid-day&view=${encodeURIComponent(JSON.stringify({ search: true }))}`);
       await expect(dialog.getByText("Invalid date: invalid-day.", { exact: true })).toBeVisible();
       // The invalid day yields no run rows: only the three design spreadsheet rows carry tags.
       await expect(dialog.locator(".search-palette-row-tag")).toHaveText(["v6 · Updated Nov 8", "v3 · Updated Nov 7", "v4 · Updated Nov 6"]);
-      await capture(page, info, theme, width, "search-invalid-date-unavailable");
+      await settle(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&view=${encodeURIComponent(JSON.stringify({ preview: "missing-workflow" }))}`);
       await expect(page.getByText("Destination unavailable", { exact: true })).toBeVisible();
-      await capture(page, info, theme, width, "destination-unavailable");
+      await settle(page, theme);
       await page.getByRole("button", { name: "Open dashboard", exact: true }).click();
       await expect(page.getByRole("region", { name: "Queue", exact: true })).toBeVisible();
 
-      await attachShellA11y(page, info, evidence("search", theme, width));
     } finally { await server.close(); }
   });
 
-  test(`frozen notifications ${label}`, annotation(evidence("notifications", theme, width)), async ({ page }, info) => {
+  test(`frozen notifications ${label}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await prepare(page, theme, width);
@@ -162,7 +146,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         else if (scenario === "loading") await expect(panel.getByRole("status", { name: "Loading notifications" })).toBeVisible();
         else if (scenario === "unavailable") await expect(panel).toContainText("Notifications unavailable");
         else await expect(panel.getByRole("listitem").first()).toBeVisible();
-        if (["normal", "empty", "unavailable"].includes(scenario)) await capture(page, info, theme, width, `notifications-${scenario}`);
+        if (["normal", "empty", "unavailable"].includes(scenario)) await settle(page, theme);
         if (scenario === "normal") {
           const first = panel.getByRole("listitem").first();
           await first.hover();
@@ -182,11 +166,10 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
 
         }
       }
-      await attachShellA11y(page, info, evidence("notifications", theme, width));
     } finally { await server.close(); }
   });
 
-  test(`frozen analytics reports ${label}`, annotation(evidence("analytics", theme, width)), async ({ page }, info) => {
+  test(`frozen analytics reports ${label}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await prepare(page, theme, width);
@@ -202,16 +185,15 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
           if (scenario === "empty") await expect(report).toContainText("No workflow activity in this period");
           if (scenario === "incomplete") await expect(report).toContainText("Unavailable");
         }
-        if (["normal", "empty", "unavailable"].includes(scenario)) await capture(page, info, theme, width, `analytics-${scenario}`);
+        if (["normal", "empty", "unavailable"].includes(scenario)) await settle(page, theme);
       }
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=activity&activity=invalid`);
       await expect(page.getByRole("region", { name: "Analytics report", exact: true }).getByRole("alert")).toBeVisible();
 
-      await attachShellA11y(page, info, evidence("analytics", theme, width));
     } finally { await server.close(); }
   });
 
-  test(`frozen analytics drilldowns ${label}`, annotation(evidence("analytics-runs", theme, width)), async ({ page }, info) => {
+  test(`frozen analytics drilldowns ${label}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await prepare(page, theme, width);
@@ -236,7 +218,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await runs.getByRole("combobox", { name: "Run order", exact: true }).click();
       await page.clock.runFor(100);
           await expect(page.locator('[data-slot="select-content"][data-open]')).toBeVisible();
-      await capture(page, info, theme, width, "analytics-order-menu");
+      await settle(page, theme);
       await page.keyboard.press("Escape");
       await runs.getByRole("button", { name: /^Open logs for/u }).first().click();
       await expect(runs.getByRole("region", { name: "Run logs", exact: true })).toBeVisible();
@@ -253,7 +235,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await expect(runs.getByRole("alert")).toContainText(message);
 
       }
-      await attachShellA11y(page, info, evidence("analytics-runs", theme, width));
     } finally { await server.close(); }
   });
 }

@@ -5,13 +5,9 @@ import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_START_PICKER_DESCRIPTOR_HASH } from "./helpers/fixture-start.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
-import { attachShellA11y } from "./helpers/shell-proof.js";
 
 for (const composition of ["product", "parity"] as const) {
-  const evidence = `mock-workflow-queues-${composition}.a11y.yml`;
-  test(`mock workflow queues use ${composition} data`, {
-    annotation: [{ type: "required-a11y-evidence", description: evidence }],
-  }, async ({ page }, info) => {
+  test(`mock workflow queues use ${composition} data`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" },
       ...(composition === "product" ? { profile: {
         bootstrap: FIXTURE_START_PICKER_BOOTSTRAP,
@@ -38,16 +34,12 @@ for (const composition of ["product", "parity"] as const) {
           }
         }
       }
-      await attachShellA11y(page, info, evidence);
     } finally { await page.close(); await server.close(); }
   });
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const evidence = `dashboard-e2e-${theme.attribute}-${width}.a11y.yml`;
-  test(`product workflow previews retain the shell through clicks and reloads ${theme.attribute} ${width}`, {
-    annotation: [{ type: "required-a11y-evidence", description: evidence }],
-  }, async ({ page }, info) => {
+  test(`product workflow previews retain the shell through clicks and reloads ${theme.attribute} ${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: {
       bootstrap: FIXTURE_START_PICKER_BOOTSTRAP, day: FIXTURE_START_PICKER_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
     } });
@@ -83,7 +75,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("button", { name: "Close assistant", exact: true }).click();
       await expect(page.locator("#hub-shell-assistant")).toBeHidden();
       await expect(assistant).toBeFocused();
-      await attachShellA11y(page, info, evidence);
     } finally { await page.close(); await server.close(); }
   });
 }

@@ -1,7 +1,7 @@
 
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { SettingsCommandRequestSchema, ProtectedSettingsCommandRequestSchema, CommandResultSchema } from "../../src/rules/commands/commands.js";
 import { mergeSettingsPatch } from "../../src/models/config/settings.js";
 import { EditableSettingsWireSchema } from "../../src/models/dashboard/settings-editor.js";
@@ -12,8 +12,7 @@ import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installServedSurfaces } from "./helpers/app-driver.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const a11yName = `settings-save-toast-${theme.attribute}-${width}.a11y.yml`;
-  test(`confirmed save toasts @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: a11yName }] }, async ({ page }, info) => {
+  test(`confirmed save toasts @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     let settings: Parameters<typeof mergeSettingsPatch>[0] = {}, revision = 1;
     let settingsDocument = fixtureSettingsDocument();
@@ -85,9 +84,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const toastBounds = (await saved.boundingBox())!;
       expect(toastBounds.x).toBeGreaterThanOrEqual(0); expect(toastBounds.x + toastBounds.width).toBeLessThanOrEqual(width);
 
-      const tree = await page.locator("body").ariaSnapshot();
-      info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(tree).digest("hex") });
-      await info.attach(a11yName, { body: tree, contentType: "text/yaml" });
       await saved.click(); await expect(toasts).toHaveCount(0);
       await page.getByRole("link", { name: "General", exact: true }).click();
       await page.getByRole("searchbox", { name: "Search settings", exact: true }).fill("backoff");

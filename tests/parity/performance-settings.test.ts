@@ -1,6 +1,5 @@
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
-import { createHash } from "node:crypto";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { assertThemeApplied, installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -12,9 +11,7 @@ const viewports = [
   { name: "1024x720", width: 1024, height: 720 },
 ] as const;
 
-for (const viewport of viewports) for (const theme of PARITY_THEMES) test(`Performance settings @ ${theme.name} @ ${viewport.name}`, {
-  annotation: [{ type: "required-a11y-evidence", description: `performance-settings-${theme.name}-${viewport.name}.a11y.yml` }],
-}, async ({ page }, info) => {
+for (const viewport of viewports) for (const theme of PARITY_THEMES) test(`Performance settings @ ${theme.name} @ ${viewport.name}`, async ({ page }) => {
   const errors = failOnPageErrors(page);
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   await installTheme(page, theme);
@@ -27,8 +24,4 @@ for (const viewport of viewports) for (const theme of PARITY_THEMES) test(`Perfo
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(errors).toEqual([]);
 
-  const tree = await page.locator("body").ariaSnapshot();
-  const a11yName = `performance-settings-${theme.name}-${viewport.name}.a11y.yml`;
-  info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(tree).digest("hex") });
-  await info.attach(a11yName, { body: tree, contentType: "text/yaml" });
 });

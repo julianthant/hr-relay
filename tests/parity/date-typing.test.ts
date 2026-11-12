@@ -1,5 +1,4 @@
 
-import { createHash } from "node:crypto";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -7,8 +6,7 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const name = `date-typing-${theme.attribute}-${width}`;
-  test(`date typing retains month and day through every year digit @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `${name}.a11y.yml` }] }, async ({ page }, info) => {
+  test(`date typing retains month and day through every year digit @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -40,10 +38,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(calendar.getByRole("button", { name: /Monday, April 27, 2026/ })).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(month).toHaveText("04"); await expect(day).toHaveText("27"); await expect(year).toHaveText("2026");
-      const a11y = await page.ariaSnapshot();
 
-      await info.attach(`${name}.a11y.yml`, { body: a11y, contentType: "text/yaml" });
-      info.annotations.push({ type: `a11y-attachment-sha256:${name}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
       expect(errors).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     } finally { await server.close(); }

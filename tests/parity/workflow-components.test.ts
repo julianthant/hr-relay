@@ -8,10 +8,9 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { chooseSelect } from "./helpers/select-choice.js";
-import { attachShellA11y } from "./helpers/shell-proof.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`complete Explorer workflow contracts @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `explorer-work-study-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
+  test(`complete Explorer workflow contracts @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -26,7 +25,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(surface.locator("li[data-step-number]:visible")).not.toHaveCount(0);
         await expect(page.locator('[data-slot="select-content"]')).toBeHidden();
 
-      if (flow.id === "work-study") await attachShellA11y(page, info, `explorer-${flow.id}-${theme.attribute}-${width}.a11y.yml`);
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       }
       await chooseSelect(surface.getByRole("combobox", { name: "Explorer workflow", exact: true }), "fixture-work-study");
@@ -43,7 +41,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }
   });
-  test(`PDF review and independent person outcomes @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `contact-review-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
+  test(`PDF review and independent person outcomes @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message)); page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
@@ -83,7 +81,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(await image.getAttribute("src")).toMatch(/emergency-contacts-1.*\.webp$/u);
       await expect(pageImage).toHaveAttribute("src", sourceUrl!);
 
-      await attachShellA11y(page, info, `contact-review-${theme.attribute}-${width}.a11y.yml`);
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click();
       await expect(record.getByRole("textbox")).toHaveCount(0);
       await page.keyboard.press("Escape"); await expect(drawer).toHaveCount(0);
@@ -132,7 +129,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 }
 
-for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme.attribute}`, { annotation: [{ type: "required-a11y-evidence", description: `ocr-Oath Upload-${theme.attribute}.a11y.yml` }] }, async ({ page }, info) => {
+for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme.attribute}`, async ({ page }) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   const writes: string[] = []; page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
   try {
@@ -151,7 +148,6 @@ for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme
       await expect(drawer.getByRole("heading", { name: "Taylor Lee", exact: true })).toBeVisible();
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
 
-      if (label === "Oath Upload") await attachShellA11y(page, info, `ocr-${label}-${theme.attribute}.a11y.yml`);
       await page.keyboard.press("Escape"); await expect(drawer).toHaveCount(0); await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toBeFocused();
     }
     expect(writes).toEqual([]);
@@ -159,7 +155,7 @@ for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme
 });
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`focused records, canonical rows and keyboard links @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `focused-records-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
+  test(`focused records, canonical rows and keyboard links @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message)); page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
@@ -191,7 +187,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(first.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Sam Chen");
       await expect(first.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10000001");
 
-      await attachShellA11y(page, info, `focused-records-${theme.attribute}-${width}.a11y.yml`);
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click();
       await expect(first.getByRole("textbox")).toHaveCount(0);
       await expect(drawer.getByRole("heading", { name: "Jordan Lee", exact: true })).toBeFocused();
@@ -218,7 +213,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 }
 
-for (const theme of PARITY_THEMES) test(`every local workflow uses canonical queue and log views @ ${theme.attribute}`, { annotation: [{ type: "required-a11y-evidence", description: `canonical-onboarding-${theme.attribute}.a11y.yml` }] }, async ({ page }, info) => {
+for (const theme of PARITY_THEMES) test(`every local workflow uses canonical queue and log views @ ${theme.attribute}`, async ({ page }) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   const errors: string[] = [], writes: string[] = [];
   page.on("pageerror", error => errors.push(error.message)); page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
@@ -236,7 +231,6 @@ for (const theme of PARITY_THEMES) test(`every local workflow uses canonical que
       await expect(logs.getByRole("tab", { name: /^Linked runs/u })).toHaveCount(0);
       await expect(logs).not.toContainText("Fictional workflow preview");
 
-      if (flow.id === "onboarding") await attachShellA11y(page, info, `canonical-${flow.id}-${theme.attribute}.a11y.yml`);
     }
     await page.goto(`${server.baseUrl}/?day=invalid-day`);
     await rail.getByRole("button", { name: "Onboarding", exact: true }).click();

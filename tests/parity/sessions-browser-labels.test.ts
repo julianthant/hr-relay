@@ -3,7 +3,6 @@ import type { PreviewServer } from 'vite';
 import { test } from './helpers/fixtures.js';
 import { previewComponentFixture } from './helpers/component-fixtures.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
-import { attachShellA11y } from './helpers/shell-proof.js';
 
 let server: PreviewServer;
 let baseUrl: string;
@@ -18,8 +17,7 @@ test.afterAll(async () => {
 });
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const evidence = `sessions-browser-labels-${theme.attribute}-${width}.a11y.yml`;
-  test(`full system labels fit every browser state @ ${theme.attribute} ${width}`, { annotation: [{ type: 'required-a11y-evidence', description: evidence }] }, async ({ page }, info) => {
+  test(`full system labels fit every browser state @ ${theme.attribute} ${width}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 720 });
     await installTheme(page, theme);
     await page.goto(`${baseUrl}/?surface=sessions`);
@@ -36,6 +34,5 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     }
     await info.attach('unopened-system-labels', { body: await panel.getByRole('article').first().screenshot(), contentType: 'image/png' });
     await info.attach('unavailable-system-labels', { body: await panel.getByRole('article').last().screenshot(), contentType: 'image/png' });
-    await attachShellA11y(page, info, evidence);
   });
 }

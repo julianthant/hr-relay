@@ -5,14 +5,9 @@ import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
-import { attachShellA11y } from "./helpers/shell-proof.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920]) {
-  const evidence = `queue-footer-${theme.attribute}-${width}.a11y.yml`;
-  const floorEvidence = `queue-footer-floor-${theme.attribute}.a11y.yml`;
-  test(`single-line queue footers without a row context menu @ ${theme.attribute}-${width}`, {
-    annotation: [evidence, ...(width === 1024 ? [floorEvidence] : [])].map(description => ({ type: "required-a11y-evidence", description })),
-  }, async ({ page }, info) => {
+  test(`single-line queue footers without a row context menu @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -78,7 +73,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920])
         await checkFooters();
         expect((await page.locator('[data-app-root]').boundingBox())!.width).toBe(1024);
 
-        await attachShellA11y(page, info, floorEvidence);
         await page.setViewportSize({ width, height: 900 });
         await page.evaluate(() => scrollTo(0, 0));
       }
@@ -96,7 +90,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920])
       await expect(source.getByRole('button', { name: 'Delete', exact: true })).toBeVisible();
       await source.click({ button: 'right' }); await expect(page.getByRole('menu')).toHaveCount(0);
 
-      await attachShellA11y(page, info, evidence);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }

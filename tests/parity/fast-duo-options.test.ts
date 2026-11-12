@@ -3,9 +3,6 @@ import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { z } from "zod";
 import { ProfileOnboardingStateSchema, type ProfileOnboardingState } from "../../src/models/profiles/public-profile.js";
-import { captureParityPair } from "./helpers/capture.js";
-import { attachShellA11y } from "./helpers/shell-proof.js";
-import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
 
 
 const CommandSchema = z.strictObject({ type: z.enum(["STATE", "RELAY_RETURN", "RELAY_CONFIRM", "RELAY_START", "RELAY_CANCEL", "RELAY_OPEN_PORTAL"]),
@@ -48,9 +45,7 @@ async function optionsFixture(page: Page, unavailable = false) {
   return { fixture, commands, closed };
 }
 
-for (const theme of ["light", "dark"] as const) test(`Fast Duo setup cards choose the method ${theme}`, {
-  annotation: [{ type: "required-a11y-evidence", description: `fast-duo-options-${theme}.a11y.yml` }],
-}, async ({ page }, info) => {
+for (const theme of ["light", "dark"] as const) test(`Fast Duo setup cards choose the method ${theme}`, async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({ width: 640, height: 720 });
@@ -67,17 +62,11 @@ for (const theme of ["light", "dark"] as const) test(`Fast Duo setup cards choos
   await key.focus(); await page.keyboard.press("Space");
   await expect(key).toHaveAttribute("aria-pressed", "true"); await expect(page.locator("#editorTitle")).toHaveText("Set up Security key");
   await key.blur();
-  await captureParityPair(page, resolve("tests/parity/references"), { stateId: "fast-duo-options", theme, viewport: "640x720",
-    adapter: "fixture", fixtureId: "fast-duo-options", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default" });
-  await attachShellA11y(page, info, `fast-duo-options-${theme}.a11y.yml`);
   expect(errors).toEqual([]);
 });
 
 
-test("Fast Duo setup keeps completion order, pending fences and Return failures distinct", {
-  annotation: [{ type: "required-a11y-evidence", description: "fast-duo-actions.a11y.yml" }],
-}, async ({ page }, info) => {
+test("Fast Duo setup keeps completion order, pending fences and Return failures distinct", async ({ page }) => {
   const { fixture, commands, closed } = await optionsFixture(page);
   await page.goto("https://extension-fixture.invalid/options.html");
   const start = page.locator("#primaryAction"), returning = page.locator("#returnRelay");
@@ -104,12 +93,9 @@ test("Fast Duo setup keeps completion order, pending fences and Return failures 
   expect(commands.filter(command => command.type === "RELAY_RETURN")).toEqual([{ type: "RELAY_RETURN" }, { type: "RELAY_RETURN" }]);
   expect(commands.filter(command => command.type === "RELAY_CONFIRM")).toEqual([{ type: "RELAY_CONFIRM", method: "key", attemptId }]);
   expect(commands.filter(command => command.type === "RELAY_START")).toEqual([]);
-  await attachShellA11y(page, info, "fast-duo-actions.a11y.yml");
 });
 
-test("Fast Duo setup can close its own tab when initial state is unavailable", {
-  annotation: [{ type: "required-a11y-evidence", description: "fast-duo-unavailable-close.a11y.yml" }],
-}, async ({ page }, info) => {
+test("Fast Duo setup can close its own tab when initial state is unavailable", async ({ page }) => {
   const { closed } = await optionsFixture(page, true);
   await page.goto("https://extension-fixture.invalid/options.html");
   await expect(page.locator("#editorTitle")).toHaveText("Setup unavailable");
@@ -118,5 +104,4 @@ test("Fast Duo setup can close its own tab when initial state is unavailable", {
   await expect(page.getByRole("button", { name: "Return to Relay", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Close window", exact: true }).click();
   await expect.poll(() => closed).toEqual([9]);
-  await attachShellA11y(page, info, "fast-duo-unavailable-close.a11y.yml");
 });

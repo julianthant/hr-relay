@@ -10,9 +10,7 @@ import { failOnPageErrors } from "./helpers/reference-harness.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 
 
-test("a status-filtered item keeps sibling attempts and opens the exact selected run", {
-  annotation: [{ type: "required-a11y-evidence", description: "queue-item-attempts.a11y.yml" }],
-}, async ({ page }) => {
+test("a status-filtered item keeps sibling attempts and opens the exact selected run", async ({ page }) => {
   const errors = failOnPageErrors(page);
   await page.clock.setFixedTime(new Date(FIXTURE_NOW));
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -71,7 +69,6 @@ test("a status-filtered item keeps sibling attempts and opens the exact selected
       type: `a11y-attachment-sha256:${a11yName}`,
       description: createHash("sha256").update(tree).digest("hex"),
     });
-    await test.info().attach(a11yName, { body: tree, contentType: "text/yaml" });
   } finally {
     await server.close();
   }

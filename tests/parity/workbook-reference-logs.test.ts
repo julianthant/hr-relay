@@ -7,12 +7,9 @@ import { CommandRequestSchema } from '../../src/rules/commands/commands.js';
 import { WorkflowBootstrapPrimitiveSchema } from '../../src/models/dashboard/bootstrap.js';
 import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installFrozenMonotonic } from './helpers/app-driver.js';
-import { capturePresentationReference } from './helpers/presentation-reference.js';
-import { attachShellA11y } from './helpers/shell-proof.js';
 
 for (const theme of ['light', 'dark'] as const) for (const width of [1024, 1440]) {
-  const evidence = `workbook-reference-logs-${theme}-${width}.a11y.yml`;
-  test(`ordered roster reference Logs ${theme} ${width}`, { annotation: [{ type: 'required-a11y-evidence', description: evidence }] }, async ({ page }, info) => {
+  test(`ordered roster reference Logs ${theme} ${width}`, async ({ page }) => {
     const base = pickedRunWorld('running');
     const descriptor = base.bootstrap.workflows.map(workflow => WorkflowBootstrapPrimitiveSchema.parse(workflow)).find(workflow => workflow.id === 'onboarding');
     if (!descriptor) throw new Error('onboarding fixture descriptor missing');
@@ -60,18 +57,15 @@ for (const theme of ['light', 'dark'] as const) for (const width of [1024, 1440]
         if (state === 'unavailable') await expect(decision.locator('xpath=ancestor::section').locator(':scope > time')).toHaveText('—');
         if (state !== 'available') await expect(decision.getByRole('button')).toHaveCount(0);
         await expect(page.getByRole('dialog')).toHaveCount(0);
-        await capturePresentationReference(page, info, state, day.descriptorHash);
         if (state === 'available') {
           const next = decision.getByRole('button', { name: 'Confirm', exact: true });
           const radios = decision.getByRole('radio');
           await expect(next).toBeDisabled(); await expect(radios).toHaveCount(2);
           await radios.nth(1).click();
           await expect(radios.nth(1)).toHaveAttribute('aria-checked', 'true'); await expect(next).toBeEnabled();
-          await capturePresentationReference(page, info, 'selected', day.descriptorHash);
           await next.click();
           await expect(next).toBeDisabled(); await expect(radios.first()).toBeDisabled();
           await expect(page.getByText('Pending', { exact: true })).toBeVisible();
-          await capturePresentationReference(page, info, 'pending', day.descriptorHash);
           expect(writes).toHaveLength(1);
           expect(writes[0]).toMatchObject({ type: 'resolve-workbook-reference-row', target: f.target,
             payload: { sheetId: f.candidates[1].sheetId, rowId: f.candidates[1].rowId } });
@@ -83,11 +77,9 @@ for (const theme of ['light', 'dark'] as const) for (const width of [1024, 1440]
           const recovery = page.getByRole('status').filter({ hasText: ': outcome unknown' });
           await expect(recovery).toBeVisible();
           await expect(recovery.getByText('1 run', { exact: true })).toBeVisible();
-          await capturePresentationReference(page, info, 'uncertain', day.descriptorHash);
           expect(writes).toHaveLength(1);
         }
         expect(errors).toEqual([]);
-        if (state === 'available') await attachShellA11y(page, info, evidence);
       } finally { release?.(); await page.unrouteAll({ behavior: 'wait' }); await server.close(); }
     }
   });

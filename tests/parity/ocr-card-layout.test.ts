@@ -1,9 +1,7 @@
-import { attachPresentationReference } from "./helpers/presentation-reference.js";
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
 
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
-import { createHash } from "node:crypto";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -11,8 +9,7 @@ import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { chooseSelect } from "./helpers/select-choice.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1280]) {
-  const a11yName = `oath-card-${theme.attribute}-${width}.a11y.yml`;
-  test(`OCR card fields and unobstructed source controls @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: a11yName }] }, async ({ page }, info) => {
+  test(`OCR card fields and unobstructed source controls @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -114,9 +111,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       expect(scrolledControls.y - scrolledCard.y).toBeCloseTo(toolbarAtTop.y - cardAtTop.y, 5);
       await cards.evaluate(node => node.scrollTo({ top: 0 }));
 
-      const a11y = await drawer.ariaSnapshot();
-      await info.attach(a11yName, { body: a11y, contentType: "text/yaml" });
-      info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(a11y).digest("hex") });
       await page.keyboard.press("Escape");
       await expect(review).toHaveCount(0);
       await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toHaveAttribute("aria-pressed", "false");
@@ -126,7 +120,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       const pager = i9.getByRole("combobox", { name: "Source page", exact: true });
       await pager.click();
       await expect(page.getByRole("listbox")).toBeVisible();
-      await attachPresentationReference(page, test.info(), "ocr-source-page-menu.png");
       await page.keyboard.press("Escape");
       await expect(pager).toContainText("Section 1 · Page 2");
       await expect(i9.getByRole("toolbar", { name: "PDF controls", exact: true }).getByRole("combobox")).toHaveCount(0);

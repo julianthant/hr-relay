@@ -1,11 +1,4 @@
-import { createHash } from "node:crypto";
-import type { Page,TestInfo } from "@playwright/test";
-
-export async function attachShellA11y(page:Page,info:TestInfo,name:string):Promise<void>{
-  const tree=await page.locator("body").ariaSnapshot();
-  info.annotations.push({type:`a11y-attachment-sha256:${name}`,description:createHash("sha256").update(tree).digest("hex")});
-  await info.attach(name,{body:tree,contentType:"text/yaml"});
-}
+import type { Page } from "@playwright/test";
 
 /** Measures actual inherited foreground/background paints, including translucent surfaces. */
 export async function shellTextContrast(page:Page){

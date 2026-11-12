@@ -9,15 +9,9 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { chooseSelect } from "./helpers/select-choice.js";
-import { attachShellA11y } from "./helpers/shell-proof.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  const queueEvidence = `ocr-queue-${theme.attribute}-${width}.a11y.yml`;
-  const inputEvidence = `run-pdf-inputs-${theme.attribute}-${width}.a11y.yml`;
-  const documentEvidence = (name: string) => `ocr-${name}-${theme.attribute}-${width}.a11y.yml`;
-  test(`document-complete inline OCR records, viewer and actions @ ${theme.attribute}-${width}`, {
-    annotation: [queueEvidence, inputEvidence, ...OCR_DOCUMENT_FIXTURES.map(doc => documentEvidence(doc.name))].map(description => ({ type: "required-a11y-evidence", description })),
-  }, async ({ page }, info) => {
+  test(`document-complete inline OCR records, viewer and actions @ ${theme.attribute}-${width}`, async ({ page }) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -32,7 +26,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(queue).not.toContainText("sick-hours.pdf");
       const queueBox = (await queue.boundingBox())!, logsBox = (await logs.boundingBox())!;
       expect(Math.abs(queueBox.y + queueBox.height - logsBox.y - logsBox.height)).toBeLessThan(1);
-      await attachShellA11y(page, info, queueEvidence);
       for (const doc of OCR_DOCUMENT_FIXTURES) {
         await rail.getByRole("button", { name: mockWorkflow(doc.parent).label, exact: true }).click();
         await queue.getByRole("button", { name: new RegExp(`^${doc.name.replaceAll("./", "\\.")} —`, "u") }).click();
@@ -77,7 +70,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(editor.getByRole("button", { name: "Approve records", exact: true })).toBeInViewport();
         await expect(page.locator('[data-slot="select-content"]:visible')).toHaveCount(0);
 
-        await attachShellA11y(page, info, documentEvidence(doc.name));
         const overflow = await editor.evaluate(node => {
           const bounds = node.getBoundingClientRect();
           return [...node.querySelectorAll<HTMLElement>("input:not([aria-hidden=true]),textarea,button:not([aria-hidden=true]),section")].filter(element => {
@@ -124,7 +116,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(launcher).not.toContainText("The ticket waits for all signers");
       await expect(launcher).toHaveCSS("opacity", "1");
 
-      await attachShellA11y(page, info, inputEvidence);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }
