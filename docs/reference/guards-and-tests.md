@@ -260,8 +260,9 @@ scripts/ci/focused-tests.sh <lane> <ubuntu|macos|windows|both|all> <test file>..
 Runs the named files on a scratch branch (`both` is Ubuntu and macOS, `all` adds Windows; Windows-native files run only here or on a Windows machine) without a PR, the Mac test slot or the PC. The script commits `HEAD`'s tree with
 `git commit-tree`, naming the files and runners in `Focused-tests:` and `Focused-os:` trailers, force-pushes it to
 `scratch/<lane>`, watches `.github/workflows/focused-tests.yml`, prints PASS/FAIL per file, job timings and the run URL,
-then deletes the branch. It refuses tracked uncommitted changes, since the run tests `HEAD`. The workflow refuses an
-empty list, a path outside `tests/` or a missing file, then runs `privacy:check`, then the files with the CI worker
+then deletes the branch. It refuses tracked uncommitted changes, since the run tests `HEAD`. A scratch push with no
+`Focused-tests` trailer ends as a skipped run. A trailer naming a bad file still fails, including a path outside
+`tests/` or a missing file. The workflow then runs `privacy:check`, then the files with the CI worker
 flags (`scripts/ci/focused-run.sh`). A scratch run is quick feedback, never merge evidence: the PR's CI is the gate.
 Lanes use distinct names; pushing the same lane again cancels its earlier run.
 
@@ -299,13 +300,17 @@ authorization belongs to the root check rules. Protected branch pushes do not re
 
 Both event entries use per-PR/manual-branch workflow concurrency with cancellation enabled. New
 pushes supersede older runs for the same workflow/PR-or-ref key. Each entry admits one complete
-reusable check call through the shared job-level `ci-runners` FIFO, `queue: max` and
-`cancel-in-progress: false`. Every mandatory proof, selected batch and timing publisher remains
+reusable check call with `queue: max` and `cancel-in-progress: false`. Staging uses the `ci-runners`
+FIFO. Release runs in its own lane and neither waits behind nor blocks staging pull-request runs.
+Every mandatory proof, selected batch and timing publication remains
 inside that callee; no callee reacquires admission. Merge train follows the six top summaries
 outside the admitted call; the standalone staging-push train is unchanged.
 
-Each callee's final `unit` runs unless cancelled and checks all mandatory proofs and timing
-publication, rejecting failed or missing outcomes. Cancellation stops its checkout/install work.
+Neither callee has a `timings` job. Portable jobs are `changes`, `static`, `privacy`, `ubuntu`,
+`integration`, `architecture`, `parity` and `unit`. Release adds `macos`, `windows`, `unit-proofs`
+and `release-batch`. Each callee's `unit` runs unless cancelled, with one checkout and one install.
+It checks proofs, merges durations, uploads `ci-timings` only when every proof passed, then runs
+final verification, rejecting failed, cancelled or missing outcomes. Cancellation stops its checkout/install work.
 In releases it also checks the selected batch, after
 `unit-proofs` allows batch execution without a cycle. The required outer `unit` always validates
 both the complete call result and inner unit output as success. Train is excluded from the inner

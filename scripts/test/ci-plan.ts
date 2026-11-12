@@ -95,7 +95,18 @@ export function verifyCiResults(input: unknown, outcomes: unknown): void {
   const plan = ciPlanSchema.parse(input);
   const results = resultsSchema.parse(outcomes);
   verifyProofs(plan, results);
-  requireResult(results, "timings", plan.testJobs > 0 ? "success" : "skipped");
+}
+
+export function publishTimings(input: unknown, outcomes: unknown): boolean {
+  const plan = ciPlanSchema.parse(input);
+  const results = resultsSchema.parse(outcomes);
+  try {
+    verifyProofs(plan, results);
+  } catch (error) {
+    if (error instanceof Error && /^CI \S+ must be (?:success|skipped)\.$/u.test(error.message)) return false;
+    throw error;
+  }
+  return plan.testJobs > 0;
 }
 
 const workflowsSchema = z.array(z.object({ id: z.number().int().positive(), path: z.string() }));
@@ -126,6 +137,7 @@ if (isDirectExecution(import.meta.url)) {
   else if (command === "workflows") result = registeredTimingWorkflows(input);
   else if (command === "history") result = timingRunIds(input);
   else if (command === "artifact") result = hasTimingArtifact(input);
+  else if (command === "publish") result = publishTimings(input, JSON.parse(outcomes ?? ""));
   else if (command === "unit-proof" || command === "proofs" || command === "verify") {
     const plan = input;
     const results: unknown = JSON.parse(outcomes ?? "");

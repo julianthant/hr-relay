@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createCiPlan, hasTimingArtifact, registeredTimingWorkflows, timingRunIds, verifyCiResults, verifyProofs, verifyUnitProof } from "../../../scripts/test/ci-plan.js";
+import { createCiPlan, hasTimingArtifact, publishTimings, registeredTimingWorkflows, timingRunIds, verifyCiResults, verifyProofs, verifyUnitProof } from "../../../scripts/test/ci-plan.js";
 
 const filters = { shared: "true", unit: "false", integration: "false", architecture: "false", parity: "false" };
 const context = (workflow = "portable", extra: Record<string, unknown> = {}) => ({ workflow, event: "pull_request",
@@ -9,7 +9,7 @@ const context = (workflow = "portable", extra: Record<string, unknown> = {}) => 
   draft: false, filters, ...extra });
 const portableResults = { changes: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
   ubuntu: { result: "success" }, integration: { result: "success" }, architecture: { result: "success" },
-  parity: { result: "success" }, timings: { result: "success" } };
+  parity: { result: "success" } };
 const releaseResults = { ...portableResults, macos: { result: "success" }, windows: { result: "success" },
   "unit-proofs": { result: "success" }, "release-batch": { result: "success" } };
 
@@ -80,25 +80,36 @@ describe("flat CI plan", () => {
     expect(valid.status).toBe(0);
     expect(JSON.parse(valid.stdout)).toEqual(createCiPlan(context()));
     expect(cli("verify", createCiPlan(context()), portableResults).status).toBe(0);
-    expect(cli("verify", createCiPlan(context()), { ...portableResults, timings: { result: "cancelled" } }).status).toBe(1);
+    expect(cli("verify", createCiPlan(context()), { ...portableResults, ubuntu: { result: "failure" } }).status).toBe(1);
+    expect(cli("verify", createCiPlan(context()), { ...portableResults, ubuntu: { result: "cancelled" } }).status).toBe(1);
+    expect(JSON.parse(cli("publish", createCiPlan(context()), portableResults).stdout)).toBe(true);
+    expect(JSON.parse(cli("publish", createCiPlan(context()), { ...portableResults, static: { result: "failure" } }).stdout)).toBe(false);
+    expect(JSON.parse(cli("publish", createCiPlan(context()), { ...portableResults, static: { result: "cancelled" } }).stdout)).toBe(false);
     expect(cli("plan", context("portable", { filters: {} })).status).toBe(1);
     expect(cli("unknown", {}).status).toBe(1);
   });
 });
 
 describe("flat CI failure fences", () => {
-  it("requires every proof plus timing publication, with legitimate manual/Markdown omissions", () => {
+  it("requires every proof, and publishes timings only after every proof passes", () => {
     expect(() => verifyCiResults(createCiPlan(context()), portableResults)).not.toThrow();
     expect(() => verifyCiResults(createCiPlan(context("release")), releaseResults)).not.toThrow();
-    expect(() => verifyCiResults(createCiPlan(context("release", { event: "workflow_dispatch", base: "", head: "", filters: {} })),
-      { ...releaseResults, "release-batch": { result: "skipped" } })).not.toThrow();
+    const manual = createCiPlan(context("release", { event: "workflow_dispatch", base: "", head: "", filters: {} }));
+    expect(() => verifyCiResults(manual, { ...releaseResults, "release-batch": { result: "skipped" } })).not.toThrow();
+    expect(publishTimings(createCiPlan(context()), portableResults)).toBe(true);
+    expect(publishTimings(createCiPlan(context("release")), releaseResults)).toBe(true);
+    expect(publishTimings(manual, { ...releaseResults, "release-batch": { result: "skipped" } })).toBe(true);
+    expect(publishTimings(createCiPlan(context()), { ...portableResults, privacy: { result: "failure" } })).toBe(false);
+    expect(publishTimings(createCiPlan(context()), { ...portableResults, privacy: { result: "cancelled" } })).toBe(false);
+    expect(() => publishTimings(createCiPlan(context()), { changes: { result: "bogus" } })).toThrow();
     for (const workflow of ["portable", "release"]) {
       const plan = createCiPlan(context(workflow, { filters: { ...filters, shared: "false" } }));
       const omitted = { ...releaseResults, ubuntu: { result: "skipped" }, macos: { result: "skipped" },
-        windows: { result: "skipped" }, "release-batch": { result: "skipped" }, timings: { result: "skipped" } };
+        windows: { result: "skipped" }, "release-batch": { result: "skipped" } };
       expect(() => verifyCiResults(plan, omitted)).not.toThrow();
+      expect(publishTimings(plan, omitted)).toBe(false);
       expect(() => verifyCiResults(plan, { ...omitted, ubuntu: { result: "success" } })).toThrow();
-      expect(() => verifyCiResults(plan, { ...omitted, timings: { result: "success" } })).toThrow();
+      expect(publishTimings(plan, { ...omitted, ubuntu: { result: "failure" } })).toBe(false);
     }
   });
 

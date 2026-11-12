@@ -90,9 +90,13 @@ A push to `scratch/**` without a `Focused-tests` trailer reports a notice and sk
 test runners successfully. A requested path outside `tests/` or missing from the commit still fails;
 a test request must also name a supported `Focused-os` value.
 
-`scripts/test/ci-plan.ts` owns typed selection/proof/timing-history policy. Both timed callees
-retain explicit test budgets. Their final `unit` runs unless cancelled and validates every mandatory
-proof, selected batch and timing publication, excluding downstream train to avoid a cycle.
+`scripts/test/ci-plan.ts` owns typed selection, proof, publication and timing-history policy. Both timed callees
+retain explicit test budgets. Portable `ci-checks.yml` jobs are `changes`, `static`, `privacy`, `ubuntu`,
+`integration`, `architecture`, `parity` and `unit`. `release-checks.yml` adds `macos`, `windows`,
+`unit-proofs` and `release-batch`. Neither callee has a `timings` job. The `unit` job is one checkout
+and one install: it checks proofs, merges durations, uploads `ci-timings` only when every proof passed,
+then runs final verification. It runs unless cancelled, excludes downstream train to avoid a cycle,
+and rejects failed, cancelled or missing outcomes.
 Cancellation stops that inner checkout/install work. The always-running outer
 required `unit` additionally requires the called pipeline and its inner unit output to succeed,
 so cancelled, skipped, failed or missing results cannot merge. Required names stay `static`,
@@ -115,8 +119,9 @@ then orders their successful histories together, newest first, excluding the cur
 unregistered new release workflow is not queried. Unexpected API failures fail CI; a valid absence
 of retained reports selects the committed seed. Every admitted run downloads the newest retained
 eligible `ci-timings` artifact before selecting files. Its immutable `ci-balancing` artifact gives every shard identical duration inputs.
-After mandatory proof validation succeeds, each workflow merges its portable/native file reports
-into inherited timings and publishes `ci-timings` for the next run. Report names include the runner OS and selection group;
+After mandatory proof validation succeeds, the `unit` job merges its portable/native file reports
+into inherited timings and publishes `ci-timings` for the next run. A failed or cancelled proof,
+or a plan with no test jobs, does not upload that artifact. Report names include the runner OS and selection group;
 when both platforms report one file, the slower duration wins independently of artifact order.
 Measurements for omitted suites remain intact.
 Without a retained artifact, CI explicitly uses the committed `scripts/test/ci-durations.json` seed;

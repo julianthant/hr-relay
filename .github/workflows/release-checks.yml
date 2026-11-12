@@ -479,40 +479,9 @@ jobs:
       - run: npm run test:coverage
       - run: npm run test:perf
 
-  timings:
-    needs: [changes, static, privacy, ubuntu, integration, architecture, parity, macos, windows, unit-proofs, release-batch]
-    if: ${{ !cancelled() && needs.changes.result == 'success' && fromJSON(needs.changes.outputs.plan).testJobs > 0 }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - env:
-          PLAN: ${{ needs.changes.outputs.plan }}
-          RESULTS: ${{ toJSON(needs) }}
-        run: node --import tsx scripts/test/ci-plan.ts proofs "$PLAN" "$RESULTS"
-      - uses: actions/download-artifact@v8
-        with:
-          name: ci-balancing
-          path: scripts/test/
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: durations-*
-          path: ${{ runner.temp }}/durations
-          merge-multiple: true
-      - run: npx tsx scripts/test/ci-files.ts durations "$RUNNER_TEMP/durations"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ci-timings
-          path: scripts/test/ci-durations.json
-          retention-days: 14
-
   unit:
     name: unit
-    needs: [changes, static, privacy, ubuntu, integration, architecture, parity, macos, windows, unit-proofs, release-batch, timings]
+    needs: [changes, static, privacy, ubuntu, integration, architecture, parity, macos, windows, unit-proofs, release-batch]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -522,7 +491,39 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - env:
+      - name: Require every proof
+        env:
+          PLAN: ${{ needs.changes.outputs.plan }}
+          RESULTS: ${{ toJSON(needs) }}
+        run: node --import tsx scripts/test/ci-plan.ts proofs "$PLAN" "$RESULTS"
+      - name: Decide ci-timings publication
+        id: publish
+        env:
+          PLAN: ${{ needs.changes.outputs.plan }}
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          decision=$(node --import tsx scripts/test/ci-plan.ts publish "$PLAN" "$RESULTS")
+          echo "upload=$decision" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
+        if: ${{ success() && steps.publish.outputs.upload == 'true' }}
+        with:
+          name: ci-balancing
+          path: scripts/test/
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: durations-*
+          path: ${{ runner.temp }}/durations
+          merge-multiple: true
+      - run: npx tsx scripts/test/ci-files.ts durations "$RUNNER_TEMP/durations"
+        if: ${{ success() && steps.publish.outputs.upload == 'true' }}
+      - uses: actions/upload-artifact@v7
+        if: ${{ success() && steps.publish.outputs.upload == 'true' }}
+        with:
+          name: ci-timings
+          path: scripts/test/ci-durations.json
+          retention-days: 14
+      - name: Verify the required unit result
+        env:
           PLAN: ${{ needs.changes.outputs.plan }}
           RESULTS: ${{ toJSON(needs) }}
         run: node --import tsx scripts/test/ci-plan.ts verify "$PLAN" "$RESULTS"
