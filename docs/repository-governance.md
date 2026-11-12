@@ -43,9 +43,9 @@ with the default token do not start CI.
 The merge train uses a blob-filtered full-history checkout, retaining ancestry and fetching
 historical file contents on demand within its five-minute job budget.
 
-Cursor Bugbot reviews every push and only comments. The [review loop](../AGENTS.md#review-before-push)
-owns reviewer/coder responsibility, including the easy-lane exception. The
-[PR flow](../AGENTS.md#pr-and-release-flow) owns repairs and escalation. A `needs-human` label
+Cursor Bugbot reviews every push and only comments. The
+[PR flow](../AGENTS.md#pr-and-release-flow) routes reviewer/coder responsibility and owns repairs
+and escalation. A `needs-human` label
 identifies work requiring the operator. Red required checks prevent a merge.
 
 CI takes Node from `package.json` engines and caches npm. The [check rules](../AGENTS.md#checks)
