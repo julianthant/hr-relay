@@ -217,7 +217,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
           reading, corrected, pageBytes, command, root, resolve, stores, signerReads, pageReads, readResult: () => {
             const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
               "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);
-            return OcrResultSchema.parse(checkpoint.output.value);
+            return ReadOcrResult.output.parse(checkpoint.output.value);
           } };
       }
       const upload = await sources.upload({ actorId: "local-operator", fileName: "source.pdf", mediaType: "application/pdf",
