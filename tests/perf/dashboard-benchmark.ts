@@ -1,4 +1,5 @@
 
+import "./fake-keychain-entry.js";
 import { execFileSync } from "node:child_process";
 import { realpathSync, writeFileSync } from "node:fs";
 import { cpus, totalmem } from "node:os";

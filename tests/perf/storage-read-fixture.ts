@@ -1,10 +1,11 @@
-import { manualClock, type TestClock } from "../../src/rules/time/clock.js";
+import { manualClock, systemClock, type TestClock } from "../../src/rules/time/clock.js";
 import { createNoteTimelineWriter } from "../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
 import { createBoundProfileFixture } from "../support/helpers/admission-fixture.js";
 import { CONFIG_SNAPSHOT } from "../support/fixtures/phase1c-contract-fixtures.js";
 import { enqueueRun, type SeedContext } from "./dashboard-fixture.js";
+import { assertFakeKeychain } from "./fake-keychain-entry.js";
 
 export const STORAGE_READ_FIXTURE_DAYS = Object.freeze(["2026-08-10", "2026-08-11", "2026-08-12", "2026-08-13", "2026-08-14"] as const);
 /** Notes per run, so the timeline grows with the run count the way a real store's does. */
@@ -24,7 +25,8 @@ export interface StorageReadFixture {
 
 /** `runCount` queued runs (one in five a Separations run) spread over five days, each with a short note trail. */
 export async function seedStorageReadFixture(runCount: number): Promise<StorageReadFixture> {
-  const started = performance.now();
+  await assertFakeKeychain();
+  const started = systemClock.monotonicMs();
   const profile = await createBoundProfileFixture();
   const path = profile.path;
   const clock = manualClock(new Date(`${STORAGE_READ_FIXTURE_DAYS[0]}T09:00:00.000-07:00`));
@@ -53,7 +55,7 @@ export async function seedStorageReadFixture(runCount: number): Promise<StorageR
         }
       }
     });
-    const seedMs = performance.now() - started;
+    const seedMs = systemClock.monotonicMs() - started;
     return Object.freeze({
       path, clock, reader, writer, runCount, seedMs,
       close: async (): Promise<void> => {

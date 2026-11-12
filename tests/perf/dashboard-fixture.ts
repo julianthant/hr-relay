@@ -17,6 +17,7 @@ import { createTransactionHistory } from "../../src/backend/storage/sqlite/trans
 import { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
 import { createBoundProfileFixture } from "../support/helpers/admission-fixture.js";
 import { releaseSeededWriteOwners } from "../support/helpers/timeline-write-fixture.js";
+import { assertFakeKeychain } from "./fake-keychain-entry.js";
 import { descriptorSetHash } from "../../src/backend/app/registries/workflow-registry.js";
 import {
   createRunQueueProjection,
@@ -647,6 +648,7 @@ function seedNotes(context: SeedContext, tally: SeedTally): number {
 
 
 export async function seedDashboardPerfFixture(): Promise<PerfFixture> {
+  await assertFakeKeychain();
   const profile = await createBoundProfileFixture();
   const root = profile.stateRoot;
   const stateRoot = join(root, "state");

@@ -1,5 +1,6 @@
 
 import { DatabaseSync } from "node:sqlite";
+import { systemClock } from "../../src/rules/time/clock.js";
 
 type PrepareFn = (typeof DatabaseSync)["prototype"]["prepare"];
 
@@ -31,7 +32,7 @@ export function assertStatementCounterObserves(database: Readonly<{ prepareProbe
 
 export interface PreparedStatementTrace {
   readonly sql: string;
-  /** `performance.now()` when `prepare()` was entered and returned. */
+  /** Monotonic milliseconds when `prepare()` was entered and returned. */
   readonly startedAt: number;
   readonly endedAt: number;
 }
@@ -51,9 +52,9 @@ export function traceSqliteStatements<Result>(
   }
   const original = descriptor.value as PrepareFn;
   const tracing = function tracingPrepare(this: DatabaseSync, ...args: Parameters<PrepareFn>): ReturnType<PrepareFn> {
-    const startedAt = performance.now();
+    const startedAt = systemClock.monotonicMs();
     const statement = original.apply(this, args);
-    statements.push({ sql: args[0], startedAt, endedAt: performance.now() });
+    statements.push({ sql: args[0], startedAt, endedAt: systemClock.monotonicMs() });
     return statement;
   };
   Object.defineProperty(prototype, "prepare", { ...descriptor, value: tracing });

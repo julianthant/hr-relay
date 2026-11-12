@@ -1,3 +1,4 @@
+import "./fake-keychain-entry.js";
 import { execFileSync } from "node:child_process";
 import { realpathSync, writeFileSync } from "node:fs";
 import { cpus, hostname, tmpdir, totalmem } from "node:os";
@@ -6,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { createDebugEventWriter } from "../../src/backend/logs/debug-events.js";
 import { queryQueueSummaries } from "../../src/backend/runs/queries/queue-summaries.js";
+import { systemClock } from "../../src/rules/time/clock.js";
 import { seedStorageReadFixture, STORAGE_READ_NOTES_PER_RUN, type StorageReadFixture } from "./storage-read-fixture.js";
 import { assertStatementCounterObserves, traceSqliteStatements, type PreparedStatementTrace } from "./sqlite-statement-counter.js";
 
@@ -104,13 +106,13 @@ export function measureStorageRead(fixture: StorageReadFixture, read: StorageRea
   const checkStatements = new Set<number>();
   let served = 0;
   for (let index = 0; index < iterations; index += 1) {
-    const appendStarted = performance.now();
+    const appendStarted = systemClock.monotonicMs();
     const appended = debugEvents.emit({ category: "http", phase: "failed", correlationId: `storage-read-${read}-${String(index)}` });
-    appendMs.push(performance.now() - appendStarted);
+    appendMs.push(systemClock.monotonicMs() - appendStarted);
     if (appended.state !== "inserted") throw new Error(`the second connection's debug event was ${appended.state}, so nothing was committed`);
-    const started = performance.now();
+    const started = systemClock.monotonicMs();
     const traced = traceSqliteStatements(() => subject.read(fixture));
-    const elapsed = performance.now() - started;
+    const elapsed = systemClock.monotonicMs() - started;
     served = subject.served(traced.value, fixture);
     const window = wholeStoreCheck(traced.statements);
     const prepareMs = traced.statements.reduce((sum, statement) => sum + statement.endedAt - statement.startedAt, 0);
@@ -138,15 +140,36 @@ export function growth(points: readonly { runCount: number; medianMs: number }[]
   return { slope, verdict };
 }
 
+function probe(command: string, args: readonly string[]): string {
+  try {
+    return execFileSync(command, args, { encoding: "utf8" });
+  } catch (error) {
+    throw new Error(`the disk probe \`${command} ${args.join(" ")}\` failed; the baseline must name the disk it ran on`, { cause: error });
+  }
+}
+
+function field(output: string, name: string, source: string): string {
+  const value = new RegExp(`^\\s*${name}:\\s*(.+)$`, "mu").exec(output)?.[1]?.trim();
+  if (value === undefined || value === "") throw new Error(`\`${source}\` reported no ${name}`);
+  return value;
+}
+
+/** The volume that holds the fixtures' temporary stores, and on macOS the physical disk behind it. */
+function disk(): string {
+  const volume = probe("df", ["-P", realpathSync(tmpdir())]).trim().split("\n").at(-1)?.split(/\s+/u)[0];
+  if (volume === undefined || !volume.startsWith("/dev/")) throw new Error(`\`df -P\` named no device for ${tmpdir()}`);
+  if (process.platform !== "darwin") return volume;
+  const info = probe("diskutil", ["info", volume]);
+  const store = field(info, "APFS Physical Store", `diskutil info ${volume}`).replace(/s\d+$/u, "");
+  const media = field(probe("diskutil", ["info", store]), "Device / Media Name", `diskutil info ${store}`);
+  return `${media} (${field(info, "File System Personality", `diskutil info ${volume}`)}, solid state ${field(info, "Solid State", `diskutil info ${volume}`)})`;
+}
+
 function machine() {
   const cpu = cpus();
-  const sh = (command: string, args: readonly string[]) => { try { return execFileSync(command, args, { encoding: "utf8" }); } catch { return ""; } };
-  const volume = sh("df", ["-P", realpathSync(tmpdir())]).trim().split("\n").at(-1)?.split(/\s+/u)[0] ?? "unknown";
-  const disk = process.platform === "darwin"
-    ? sh("diskutil", ["info", volume]).split("\n").filter(line => /Device \/ Media Name|Solid State|File System Personality/u.test(line)).map(line => line.trim().replace(/\s+/gu, " ")).join("; ")
-    : volume;
-  return { host: hostname(), cpu: cpu[0]?.model ?? "unknown", cores: cpu.length, memoryGb: round(totalmem() / 1024 ** 3),
-    node: process.version, platform: `${process.platform}-${process.arch}`, disk: disk === "" ? volume : disk };
+  if (cpu[0] === undefined) throw new Error("os.cpus() reported no CPU");
+  return { host: hostname(), cpu: cpu[0].model, cores: cpu.length, memoryGb: round(totalmem() / 1024 ** 3),
+    node: process.version, platform: `${process.platform}-${process.arch}`, disk: disk() };
 }
 
 export async function runStorageReadBenchmark(): Promise<void> {
@@ -154,6 +177,7 @@ export async function runStorageReadBenchmark(): Promise<void> {
   const flag = (name: string) => { const index = argv.indexOf(name); return index === -1 ? undefined : argv[index + 1]; };
   const iterations = z.coerce.number().int().min(STORAGE_READ_MIN_ITERATIONS).parse(flag("--iterations") ?? STORAGE_READ_MIN_ITERATIONS);
   const jsonPath = flag("--json");
+  const host = machine();
   const commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   const trackedTreeClean = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { encoding: "utf8" }).trim() === "";
   const measurements: ReadMeasurement[] = [];
@@ -176,7 +200,7 @@ export async function runStorageReadBenchmark(): Promise<void> {
   }
   const growthByRead = Object.fromEntries((Object.keys(STORAGE_READS) as StorageReadId[]).map(read => [read,
     growth(measurements.filter(entry => entry.read === read).map(entry => ({ runCount: entry.runCount, medianMs: entry.total.medianMs })))]));
-  const report = { measuredAt: new Date().toISOString(), commit, trackedTreeClean, machine: machine(), iterations,
+  const report = { measuredAt: systemClock.now().toISOString(), commit, trackedTreeClean, machine: host, iterations,
     fixture: { sizes: STORAGE_READ_SIZES, timelineEventsPerRun: 1 + STORAGE_READ_NOTES_PER_RUN, seeds }, measurements, appends, growth: growthByRead };
 
   const cell = (value: Distribution) => `${value.medianMs.toFixed(2)} / ${value.p95Ms.toFixed(2)}`;
