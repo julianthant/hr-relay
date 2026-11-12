@@ -65,7 +65,7 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 - `npm run typecheck && npm run lint && npm run test:coverage` is the gate; `--max-warnings 0`, no debt manifest.
 
 ## 8 · Visual evidence
-`npm run test:parity` is the active desktop visual contract. Read [guards and tests](../../../../docs/reference/guards-and-tests.md)
+`npm run test:parity` runs the desktop browser behaviour specs. Read [guards and tests](../../../../docs/reference/guards-and-tests.md)
 for its runner and evidence requirements, and [dashboard parity](../../../../src/dashboard/PARITY.md)
 for scene rules. Old visual receipts are historical; a green accessibility tree does not establish
 current visual acceptance (D187).

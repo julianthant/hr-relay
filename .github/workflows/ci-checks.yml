@@ -87,7 +87,6 @@ jobs:
               - '**'
               - '!**/*.md'
               - '!tests/**/*.test.ts'
-              - '!tests/parity/references/**'
             unit:
               - 'tests/**/*.test.ts'
               - '!tests/**/*.integration.test.ts'

@@ -293,7 +293,7 @@ and persisted-read path.
 `tests/support/processes/failure-resolution-peer.ts` runs the independent annotation writers;
 `tests/support/helpers/failure-resolution/fixtures.ts` owns their launch and closure.
 
-`tests/parity/` holds the desktop presentation contract and its references.
+`tests/parity/` holds desktop browser behaviour specs and mock scenes.
 `tests/perf/` holds dashboard performance checks. `tests/types/` holds compile-time inputs and their checks.
 `tests/scripts/docs/roadmap.test.ts` tests roadmap parsing.
 The private `config/test-data.local.json` input is ignored. Runtime state and artifact roots are declared

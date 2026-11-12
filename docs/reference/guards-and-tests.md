@@ -59,7 +59,7 @@ helpers that hide test registrations behind a helper-style name.
 | Integration | `<module>.integration.test.ts`; Vitest `integration` | Real isolated SQLite, sockets, processes, browser adapters, and composed execution. |
 | Architecture | `tests/architecture/**/*.test.ts`; Vitest `architecture` | Repository-wide boundaries, registries, source/AST checks, and negative controls. Some guards also exercise real adapters. |
 | Types | `tests/types/`; `npm run typecheck` | Type inference and illegal calls pinned with `@ts-expect-error` and positive controls. |
-| Parity | `tests/parity/`; `npm run test:parity` | Desktop pixels, accessibility, focus, keyboard, loading, and interaction behavior with mock values. |
+| Parity | `tests/parity/`; `npm run test:parity` | Desktop focus, keyboard, loading, geometry, and interaction behavior with mock values in a real browser. |
 | Performance | `tests/perf/**/*.test.ts`; Vitest `perf` via `npm run test:perf`. `tests/perf/dashboard-benchmark.ts` via `npm run perf:dashboard`. | Fixture performance checks outside coverage, deterministic structural counters, and separately reported host-dependent timings. |
 | Local | `<module>.local.test.ts` and `<module>.local.integration.test.ts`; Vitest `local` via `npm run test:local`. | Tests that need the operator's machine or accounts: a live dry run against UCPath, Kuali, CRM or Duo, the real login Keychain, or the real store. The topic name `local` is that marker. |
 
@@ -79,7 +79,7 @@ rooted in real runtime paths and requires browser factories to use isolated prof
 Retain each test that uniquely protects a failure mode. Consolidation requires the same failure
 mode, seam, and oracle, with a mapped surviving test that still fails for the defect. Expected
 answers remain independent of the producer under test. Tests never rewrite tracked generated files
-or parity references in place. Generator behavior is exercised in scratch directories so parallel
+in place. Generator behavior is exercised in scratch directories so parallel
 readers cannot observe temporary corruption or silently repaired inputs.
 
 Vitest fixtures and desktop parity use `America/Los_Angeles` explicitly. Parity browser contexts
@@ -278,7 +278,7 @@ dispatches bypass the draft limit.
 | Unit test files only | Unit and architecture. |
 | Integration test files only | Integration and architecture. |
 | Architecture test files only | Architecture. |
-| Parity test files or references only | Parity and architecture. |
+| Parity test files only | Parity and architecture. |
 | Parity helpers, fixtures or entrypoints | All four; unit and integration also import these. |
 | Local or perf test files only | Architecture; local remains machine-only and perf remains release-only. |
 
@@ -534,12 +534,10 @@ with nonempty reasons. An exclusion cannot silently grow into a parent scope.
 ## 7. Desktop parity
 
 `npm run test:parity` runs Playwright through `playwright.parity.config.ts`; the Playwright exit
-code is the result. `helpers/a11y-evidence-reporter.ts` fails the run when a passed test that declares
-`required-a11y-evidence` lacks the exact attached `.a11y.yml` body or its matching sha256 annotation. `npm run test:parity:update` sets `PARITY_UPDATE=1` for explicit update mode. A reference update
-follows the [dashboard check rules](../../src/dashboard/AGENTS.md#checks).
+code is the result. The suite stores no screenshot or accessibility references.
 
 The lane uses headless Chromium, 1280×720, device scale factor 1, no mobile/touch emulation,
-`fullyParallel: true`, two workers, zero retries, and a **120,000 ms** test timeout. Default captures
+`fullyParallel: true`, two workers, zero retries, and a **120,000 ms** test timeout. Default scenes
 use `graphite-warm` with `data-demo-theme="dark"`. Explicit interaction cases may exercise other
 supported desktop conditions.
 
@@ -548,14 +546,6 @@ supported desktop conditions.
 `helpers/workflow-composition.ts` explicitly selects fixture or seeded composition. BFFs use
 owned temporary state and ephemeral ports, not live runtime ports or HR state. A fixture must
 contain the exact state its assertion claims to cover.
-
-`tests/parity/references/` stores PNG, `.a11y.yml`, and `.meta.json` reference triples.
-`helpers/reference-store.ts` compares accessibility and metadata byte for byte. Screenshot checks
-use `maxDiffPixels: 0` and `threshold: 0.2`. Zero counted differing pixels are allowed. The threshold
-is per-pixel color tolerance, so a subtle uniform color change can escape that comparison.
-Token, semantic, and interaction checks cover separate claims. Assert mode uses
-`updateSnapshots: "none"`; missing or changed references fail and remain unchanged. One explicit
-update mode refreshes all halves together.
 
 Outputs live under ignored `tests/parity/.output/`.
 

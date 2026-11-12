@@ -20,7 +20,7 @@ for folder owners and the [dashboard contract](../../docs/reference/dashboard-su
   definition, never from a hand-written layout.
 - If real behavior needs a changed or new component, describe it (what, where, why) and ask the
   operator. Approved components are built first in a UI-only task with mock data and their parity
-  references, then wired.
+  specs, then wired.
 - `.tsx` files under `app/` and `surfaces/` export components only. Hooks, folds, constants and
   vocabulary go in a sibling `*-model.ts`. The `ds/ui.tsx` barrel is the exception.
 - Use served data for availability, identity, status and write results. Never invent them in the
@@ -75,10 +75,8 @@ judging a visual difference.
 - Follow the [root test path](../../AGENTS.md#checks) for runner placement and slots.
   Use filtered parity for one surface and full parity for shared shell, tokens, primitives or
   models. Complete assigned parity before the last dashboard commit, or record the CI obligation.
-- Update parity, visual and accessibility references only for an assigned operator-approved UI
-  change or signed-off served-workflow switch, in a separate logical commit in the same PR.
-  Never refresh them to hide a defect or make wiring pass. Preserve states, themes, widths,
-  assertions, tolerances, membership and deadlines.
+- Preserve parity assertions, states, themes, widths, membership and deadlines; never weaken one
+  to hide a defect or make wiring pass.
 - Assigned targeted local parity and browser verification run serially with one worker under the
   local slot's containment rules. Stop at the first unexpected RED; this authorizes no full suite.
 - A declared workflow scenario ID alone proves no execution.

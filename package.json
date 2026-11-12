@@ -34,7 +34,6 @@
     "test:watch": "vitest --project unit --project integration --project architecture --project perf",
     "perf:dashboard": "TZ=UTC tsx tests/perf/dashboard-benchmark.ts",
     "test:parity": "playwright test --config playwright.parity.config.ts",
-    "test:parity:update": "PARITY_UPDATE=1 playwright test --config playwright.parity.config.ts",
     "build:observer-policy": "tsx scripts/build/windows-observer-policy.ts",
     "precli": "npm run build:observer-policy",
     "predashboard": "npm run build:observer-policy",

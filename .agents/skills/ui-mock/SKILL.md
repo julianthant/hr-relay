@@ -31,7 +31,7 @@ primitives.
   passing fixtures already use.
 - Missing served data is a backend or projection gap: list it in the report. Never design a
   control or placeholder around it.
-- Mock frames are evidence, not references. Never run `npm run test:parity:update` for a mock.
+- Mock frames are evidence for the operator's pick; they are never stored as test references.
 
 ## Build
 
@@ -66,5 +66,5 @@ and wait for the operator's pick. Before handing over, run typecheck, lint on ch
 `npm run privacy:check`.
 
 The pick then follows the dashboard instructions: only the chosen variant is built, in a UI-only
-task with mock data and its parity references, before wiring. Remove the mock switch and scene
+task with mock data and its parity specs, before wiring. Remove the mock switch and scene
 spec after the implementation ships unless the operator keeps them.

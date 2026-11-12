@@ -739,7 +739,7 @@ feature imports or registered workflow IDs as specimen values. It is not an oper
 
 ## Verification and wiring
 
-The mounted component set and current parity references define presentation. Wiring changes producers,
+The mounted component set and the approved mock define presentation. Wiring changes producers,
 view-model inputs, ports, hooks, and callbacks while keeping the rendered mock case identical.
 [The wiring contract](frontend-backend-integration.md#current-frontend-mock-wiring-checklist) names each
 surface's required identity, persistence, transitions, and acceptance checks. Shared

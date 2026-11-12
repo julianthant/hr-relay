@@ -77,8 +77,8 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
   latest base into your branch; never rebase or force-push. Never merge a PR by hand.
 - Workflow behavior PRs wait for a live dry run and operator sign-off. Required check names live
   in [repository governance](docs/repository-governance.md).
-- Refer repairs requiring workflow/CI configuration edits, HR write-path changes, weakened guards,
-  unrelated parity updates or expanded scope to the operator with `needs-human`.
+- Refer repairs requiring workflow/CI configuration edits, HR write-path changes, weakened guards
+  or expanded scope to the operator with `needs-human`.
 - The main checkout owns runtime state, credentials and ports.
 - Release only on the operator's explicit go: merge `staging` into `main` with a merge commit,
   then sync `main` back into `staging`.

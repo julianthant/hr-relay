@@ -1,8 +1,8 @@
 # Dashboard parity suite
 
-`npm run test:parity` runs Playwright with `playwright.parity.config.ts`; its exit code is the result. A reporter fails the run when a test that declares `required-a11y-evidence` lacks its attached tree or matching sha256 annotation. The suite checks the
-presentation contract with mock values, plus keyboard, focus, loading, and interaction behavior.
-It does not prove live workflow or service readiness.
+`npm run test:parity` runs Playwright with `playwright.parity.config.ts`; its exit code is the result. The suite checks
+keyboard, focus, loading, geometry and interaction behavior in a real browser with mock values, and renders `/ui-mock`
+scenes. It stores no screenshot or accessibility references. It does not prove live workflow or service readiness.
 
 ## Run and filter
 
@@ -13,61 +13,35 @@ npm run test:parity -- --grep "keyboard-only"
 ```
 
 Use the matching surface spec for a focused check. Shared shell, tokens, primitives, and models
-need the full suite at the assigned gate. Filters are forwarded to Playwright. Keep the configured
-reporters; the a11y evidence reporter is part of the gate.
-
-`npm run test:parity:update` is the deliberate reference-update command. Use it only for an
-operator-approved UI change, or a workflow's served-data switch after operator screen sign-off,
-in a separate commit. Never refresh references to make wiring pass.
+need the full suite at the assigned gate. Filters are forwarded to Playwright.
 
 ## Configuration and isolation
 
 The default lane is headless Chromium, 1280×720, device scale factor 1, no touch, and no mobile
-emulation. Default reference captures use the `graphite-warm` theme with `data-demo-theme="dark"`.
+emulation. Default scenes use the `graphite-warm` theme with `data-demo-theme="dark"`.
 It uses up to four workers locally, bounded by available CPUs, and two per CI shard, `fullyParallel: true`, no
 retries, and a 120-second test timeout. Fixture processes and browsers use `America/Los_Angeles`.
 Individual desktop interaction specs cover resize, zoom-related canvas behavior,
 keyboard access, and reduced motion. `workflow-batches.test.ts` explicitly tests light and dark
-outside the default reference axis. Do not add phone or coarse-pointer variants.
+outside the default theme. Do not add phone or coarse-pointer variants.
 
 `tests/parity/helpers/global-setup.ts` builds or verifies the bundle once before workers start.
 `helpers/bundle.ts` owns `dist/parity-dashboard` and its input stamp. Parity inputs include the
 UI control fixtures under `tests/support/helpers/dashboard/controls/`; changing a fixture invalidates
-the bundle. Control reference cases wait for their loaded heading before capture. Per-spec
+the bundle. Per-spec
 `ensureParityBundle()` checks the same proof. Fixture/seeded BFF servers use ephemeral ports and
 owned temporary state rather than dashboard runtime ports or live HR state.
 `helpers/workflow-composition.ts` selects the test composition explicitly.
 
-## Reference files
-
-`tests/parity/references/` contains a PNG, `.a11y.yml`, and `.meta.json` for each captured state.
-Names use `stateId--theme--viewport` with an optional variant suffix. Metadata records the adapter,
-fixture, descriptor hash, app version, viewport, theme, variant, and capture time.
-
-Playwright compares screenshots with `maxDiffPixels: 0` and per-pixel `threshold: 0.2`.
-The allowed count of changed pixels is zero. The threshold is a color-comparison tolerance;
-a subtle uniform color change can remain below it, so token and semantic tests still matter.
-`helpers/reference-store.ts` compares accessibility and metadata text byte for byte. Missing
-references fail in assert mode. One update switch refreshes all halves together.
-
-`helpers/reference-scenes.ts` and the surface scene modules name key captures.
-`dashboard-reference.test.ts` covers shell scenes and access variants. `kit-reference.test.ts`
-captures the real specimen full-page. Interaction specs assert transient behavior that a resting
-screenshot cannot establish.
-
 ## Read failures
 
-Playwright writes test artifacts and `results.json` under `tests/parity/.output/`. A pixel mismatch
-includes the expected, actual, and diff images. Accessibility/metadata drift names the fixture,
-theme, viewport, variant, reference path, and differing lines. Inspect both visual and semantic
-halves before changing source.
-CI uploads the output directory, including failure images and error contexts alongside the JSON report.
+Playwright writes test artifacts and `results.json` under `tests/parity/.output/`. CI uploads the
+output directory, including failure screenshots and error contexts alongside the JSON report.
 
 ## Current presentation choices
 
-The checked-in references are the current expectation. These choices distinguish the dashboard
-from the original specimen/demo or retained backend presentation; none permits a diff against the
-current corpus.
+These choices distinguish the dashboard from the original specimen/demo or retained backend
+presentation.
 
 - Search uses first Escape to clear a nonempty query and a second Escape to close.
 - Intake dismisses through the header’s Close control; closing preserves the durable session.
@@ -110,7 +84,7 @@ contracts are replaced with inclusion/exclusion, geometry, keyboard and interact
 
 ## Verification rules
 
-- Keep reference outputs separate from fixture inputs; use deterministic synthetic image bytes instead of reading mutable PNG references.
+- Use deterministic synthetic image bytes for image fixtures.
 - Build once before parallel workers; each server owns its port and state root.
 - Assert a test's selector preconditions, not whatever element happens to be index zero.
 - Measure geometry and hit boxes in the browser; a token or class list alone cannot establish the rendered size.
