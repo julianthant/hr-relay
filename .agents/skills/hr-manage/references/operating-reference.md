@@ -1,9 +1,9 @@
 # Repository operating reference
 
-[Root instructions](../../../AGENTS.md) own agent rules, review, tests and reporting.
+[Root instructions](../../../../AGENTS.md) own agent rules, review, tests and reporting.
 Read this reference for runtime commands and environment behavior. The
-[codebase map](../../../docs/reference/codebase-structure.md) names source owners;
-[reference contracts](../../../docs/README.md#reference-index) describe each subsystem.
+[codebase map](../../../../docs/reference/codebase-structure.md) names source owners;
+[reference contracts](../../../../docs/README.md#reference-index) describe each subsystem.
 
 ## Commands
 
@@ -29,7 +29,7 @@ Workflow execution starts from the signed-in dashboard Run surface. Ctrl+C on th
 command stops both servers. Separate Vite sessions need a restart after the backend restarts to
 renew ownership proof. Contract fingerprints are computed in memory without preparation. A running
 dashboard freezes its build id at start, so worker code changes need a runtime restart.
-[Guards and tests](../../../docs/reference/guards-and-tests.md) describes script selection and build identity.
+[Guards and tests](../../../../docs/reference/guards-and-tests.md) describes script selection and build identity.
 
 ## Operational isolation
 
@@ -53,7 +53,7 @@ SQLite holds ordinary settings and immutable snapshots with database authority; 
 credential store holds protected values. Clean shutdown and upgrades create verified SQLite
 backups. Flat archive admission does not claim, register or adopt historical rows. The start-clean
 reader verifies the archive before removal. Run deletion retains terminal records and
-`deleted_runs` tombstones. [Clock, configuration and secrets](../../../docs/reference/clock-config-secrets.md)
+`deleted_runs` tombstones. [Clock, configuration and secrets](../../../../docs/reference/clock-config-secrets.md)
 describes source and recovery restrictions.
 
 ## Environment
@@ -68,18 +68,18 @@ local credential store, rather than `.env`.
 
 The typed subject registry checks availability before private input reads or browser composition.
 Unknown, unavailable, consumed or pending subjects block execution; available subjects with bad
-input fail. The [root safety rules](../../../AGENTS.md#runtime-safety) govern secret handling and
-live verification. [Guards and tests](../../../docs/reference/guards-and-tests.md#10-rehearsal-and-test-data-provenance)
+input fail. The [root safety rules](../../../../AGENTS.md#runtime-safety) govern secret handling and
+live verification. [Guards and tests](../../../../docs/reference/guards-and-tests.md#10-rehearsal-and-test-data-provenance)
 describes subject provenance.
 
 ## Browser and porting references
 
-[Fast Duo](../../../fast-duo/README.md) describes extension staging and full Chromium requirements.
+[Fast Duo](../../../../fast-duo/README.md) describes extension staging and full Chromium requirements.
 The workflow session factory uses `paths.duoExtensionDir` and `workflow-manifest.json`, provisioning
 retained credentials into trusted session storage before login. New credential enrollment needs
 the operator.
 
-[Live verification](../../skills/verify/SKILL.md) and its feature map describe dashboard dry runs.
-The global playwright-cli reference owns browser tool usage. The root instructions own
-[production isolation and copy provenance](../../../AGENTS.md#runtime-safety); source and selector
+[Live verification](../../verify/SKILL.md) and its feature map describe dashboard dry runs.
+The global `playwright-cli` skill owns browser tool usage. The root instructions own
+[production isolation and copy provenance](../../../../AGENTS.md#runtime-safety); source and selector
 fixture owners are in the codebase map.
