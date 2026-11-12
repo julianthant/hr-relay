@@ -246,9 +246,6 @@ function refineRunRecord(record: RefinedRunRecord, context: z.RefinementCtx): vo
     });
   }
   refineRunCompletion(record, context);
-  if (record.lifecycle.state === "terminal" && record.pause !== undefined) {
-    context.addIssue({ code: "custom", path: ["pause"], message: "a terminal run has no pending pause" });
-  }
   if (!isClaimedRunState(record.lifecycle.state) || !("heartbeatAt" in record.lifecycle)) return;
   if (record.claimGeneration === 0) {
     context.addIssue({

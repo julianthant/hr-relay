@@ -39,7 +39,7 @@ import { AssistantActionRecordSchema,AssistantChatRecordSchema,AssistantGrantRec
 import { LogoutOperationSchema,ProfileDatabaseBindingSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
 import { completionFromAuthorization } from "../../../models/run/completion.js";
 import { DeletedRunRecordSchema,RunDeleteInputSchema,type DeletedRunRecord } from "../../../models/run/deleted-run.js";
-import { PredecessorRunRecordSchema,RunLifecycleSchema,RunRecordSchema,runClaim,runTransitionViolation,type PredecessorRunRecord,type RunRecord } from "../../../models/run/record.js";
+import { PredecessorRunRecordSchema,RunRecordSchema,runClaim,runTransitionViolation,type PredecessorRunRecord,type RunRecord } from "../../../models/run/record.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
 import { RunResultRecordSchema, readRunPreviewResult,createRunTerminalEvidenceResult,deriveCheckpointOutputDigest,deriveCheckpointProvenanceDigest,deriveTerminalFailureDigest,terminalDelegationDependencyRecord,terminalGateDependencyRecord,refreshedRunSettlement,terminalEvidenceResult,type RunResultRecord } from "../../../models/run/result.js";
 import { RunSessionRecordSchema,type RunSessionRecord } from "../../../models/run/session.js";
@@ -2407,8 +2407,9 @@ export class AuthorityDatabase implements Disposable {
           const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", commandId, operation: "transition", request,
             requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0transition\0${canonicalJsonStringify(request)}`),
             fence: { kind: "version", expectedVersion: current.version }, recordedAt: now });
+          // The terminal transition drops pause, so the paused-run refusal reads the current record.
           if (Object.hasOwn(current, "pause")) throw new Error("queued-run-cancellation-pause-refused");
-          const updated = transitionStoredRun(current, { ...current, lifecycle: RunLifecycleSchema.parse(lifecycle) }, now, PredecessorRunRecordSchema);
+          const updated = transitionStoredRun(current, PredecessorRunRecordSchema.parse({ ...current, lifecycle }), now, PredecessorRunRecordSchema);
           const entries = Object.entries(runRecordColumns(updated, PredecessorRunRecordSchema)).filter(([key]) => key !== "id" && key !== "pause_state");
           const changes = Number(database.prepare(`UPDATE runs SET ${entries.map(([key]) => `${key} = ?`).join(",")} WHERE id = ? AND version = ?`)
             .run(...entries.map(([, value]) => value), updated.envelope.runId, current.version).changes);
@@ -6479,8 +6480,7 @@ export class AuthorityDatabase implements Disposable {
           request.expectedVersion,
           request.now,
           request.claim,
-          // The transition settles the pause; a terminal candidate still carries the current one.
-          (current) => ({ ...current, lifecycle: request.lifecycle }),
+          (current) => RunRecordSchema.parse({ ...current, lifecycle: request.lifecycle }),
         );
       },
       requeue: (input: unknown) => {
