@@ -31,6 +31,11 @@ export const SubjectEvidenceSchema = z.discriminatedUnion("kind", [
 ]);
 export type SubjectEvidence = z.infer<typeof SubjectEvidenceSchema>;
 
+/** The one list of codes a parked write intent or attempt may carry. */
+export const WRITE_PARK_CODES = ["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"] as const;
+export const WriteParkCodeSchema = z.enum(WRITE_PARK_CODES);
+export type WriteParkCode = z.infer<typeof WriteParkCodeSchema>;
+
 export const AbsentEvidenceSchema = z.strictObject({
   idempotencyKeyDigest: FingerprintSchema,
   source: ObservationIdSchema,
