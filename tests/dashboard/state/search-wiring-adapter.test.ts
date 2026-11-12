@@ -41,6 +41,12 @@ it("keeps unavailable subject explicit without inventing an alias or destination
   const row = searchResults(snapshot)[0]; assert.equal(row.subject, searchMessage("SEARCH_SUBJECT_UNAVAILABLE")); assert.equal(row.publicId, undefined);
   assert.deepEqual(row.destination, { kind: "run", runId: missing.results[0].runId, day: "2026-08-03" });
 });
+it("shows the queue's display label for a raw run state", async () => {
+  const states = ["parked-gate", "parked-write", "done", "failed", "queued"] as const;
+  const labelled = CrossDateSearchPageSchema.parse({ ...zeroMatchSearchPage(), totalMatches: states.length, results: states.map((state, n) => ({ ...result(n), state })) });
+  const snapshot = await readSearchSnapshot({ searchRuns: async () => labelled }, { q: "x" }, new AbortController().signal);
+  assert.deepEqual(searchResults(snapshot).map(row => row.state), ["Review", "Write parked", "Done", "Failed", "Queued"]);
+});
 it("does no reads in mock/closed mode and suppresses a stale query result", async () => {
   const requests: { q: string; finish: (page: unknown) => void }[] = [];
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => new Promise<Response>(resolve => {

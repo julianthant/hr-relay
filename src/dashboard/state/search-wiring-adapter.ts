@@ -1,3 +1,5 @@
+import { DISPLAY_STATUS_LABELS, displayStatusOf } from "../../models/dashboard/status-vocabulary.js";
+import type { QueueStatus } from "../surfaces/shared/status/status-model.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CrossDateSearchQuerySchema, CrossDateSearchStateFacetSchema, compareCrossDateSearchResults, currentCorpusSearchQuery, type CrossDateSearchPage, type CrossDateSearchQueryInput } from "../../models/dashboard/search.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -34,11 +36,16 @@ export async function readSearchSnapshot(client: Pick<DashboardClient, "searchRu
   return { query, snapshot: first.snapshot, totalMatches: first.totalMatches, results };
 }
 
+const SEARCH_STATE_TO_QUEUE: Readonly<Record<CrossDateSearchPage["results"][number]["state"], QueueStatus>> = {
+  queued: "queued", claimed: "running", validating: "running", running: "running", "parked-gate": "awaiting-approval", "parked-write": "blocked",
+  done: "done", failed: "failed", interrupted: "failed", cancelled: "cancelled", discarded: "cancelled", superseded: "cancelled",
+};
+
 export function searchResults(snapshot: Awaited<ReturnType<typeof readSearchSnapshot>>): readonly NavbarSearchResult[] {
   return snapshot.results.map(row => ({ id: row.runId,
     subject: row.metadata.subject.state === "available" ? row.metadata.subject.value : searchMessage("SEARCH_SUBJECT_UNAVAILABLE"),
     workflow: row.registration.state === "registered" ? row.registration.label : row.workflowId,
-    day: row.partitionDay, state: row.state,
+    day: row.partitionDay, state: DISPLAY_STATUS_LABELS[displayStatusOf(SEARCH_STATE_TO_QUEUE[row.state])],
     ...(row.runNumber.state === "present" ? { publicId: String(row.runNumber.value) } : {}),
     destination: { kind: "run", runId: row.runId, day: row.partitionDay },
   }));

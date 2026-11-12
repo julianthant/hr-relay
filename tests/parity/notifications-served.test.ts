@@ -70,13 +70,13 @@ for (const theme of ["dark", "light"] as const) {
       await page.getByRole("button", { name: /^Notifications/ }).click();
       await expect(page.locator(".notification-panel")).toBeVisible();
       await expect(page.getByText("Priority", { exact: true })).toBeVisible();
-      await shot("notifications");
       const row = (title: string) => page.locator(`[data-demo-row-id='${byTitle(title).runId}']`);
+      await row("EID 10873698").getByRole("button", { name: /^Run next/ }).click();
+      await expect(page.getByText(/: row changed$/).first()).toBeVisible();
       await row("Morrow, Bea").getByRole("button", { name: "Cancel run", exact: true }).click();
       await page.getByRole("button", { name: "Cancel the run", exact: true }).click();
       await expect(page.getByText("Cancel run: rejected").first()).toBeVisible();
-      await row("EID 10873698").getByRole("button", { name: /^Run next/ }).click();
-      await expect(page.getByText(/: row changed$/).first()).toBeVisible();
+      await shot("notifications");
       await shot("priority-notifications");
       await page.getByRole("button", { name: /Retry: partial result/ }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
@@ -84,7 +84,9 @@ for (const theme of ["dark", "light"] as const) {
       await shot("bulk-retry-result");
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: /^Notifications/ }).click();
-      await page.getByRole("button", { name: "Search", exact: true }).click();
+      await page.locator("[data-slot=toast]").evaluateAll(toasts => toasts.forEach(toast => toast.dispatchEvent(new MouseEvent("click", { bubbles: true }))));
+      await expect(page.locator("[data-slot=toast]")).toHaveCount(0);
+            await page.getByRole("button", { name: "Search", exact: true }).click();
       await expect(page.getByRole("dialog").getByText("Quick actions")).toBeVisible();
       await expect(page.getByRole("dialog").getByText("Person Lookup · Done")).toBeVisible();
       await shot("search-palette");
