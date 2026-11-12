@@ -61,12 +61,14 @@ for (const { mode: failure, name } of [
   const runtimeFailure = new WorkerSessionClosureUnprovedError("closure-worker", [new Error("injected-session-failure")]);
   let failedWorkerId: string | undefined, injectedLoggingFailures = 0;
   const createWriter = debugEvents.createDebugEventWriter;
-  if (failure === "close-log" || failure === "runtime-log") vi.spyOn(debugEvents, "createDebugEventWriter").mockImplementation(options => {
+  const emitted: Record<string, unknown>[] = [];
+  if (failure === "close" || failure === "close-log" || failure === "runtime-log") vi.spyOn(debugEvents, "createDebugEventWriter").mockImplementation(options => {
     const writer = createWriter(options);
     return { emit(...args: Parameters<typeof writer.emit>) {
       const input = args[0];
+      if (typeof input === "object" && input !== null) emitted.push({ ...input });
       const code = failure === "close-log" ? "WORKER_SESSION_CLOSURE_UNPROVED" : "WORKER_RUNTIME_FAILED";
-      if (typeof input === "object" && input !== null && "code" in input && input.code === code && injectedLoggingFailures === 0) {
+      if (failure !== "close" && typeof input === "object" && input !== null && "code" in input && input.code === code && injectedLoggingFailures === 0) {
         injectedLoggingFailures++;
         throw loggingFailure;
       }
@@ -132,6 +134,17 @@ for (const { mode: failure, name } of [
     });
     if (failure === "close" || failure === "close-log") {
       assert.ok(report); assert.equal(report.closure, "unproved"); assert.deepEqual(report.outcomes, []);
+    }
+    if (failure === "close") {
+      // The unproved closure's nested causes reach the debug log as value-free cause rows under the fault's correlation.
+      const fault = emitted.find(event => event.code === "WORKER_SESSION_CLOSURE_UNPROVED" && event.area === "browser-session");
+      assert.ok(fault);
+      const causes = emitted.filter(event => event !== fault && event.correlationId === fault.correlationId);
+      assert.ok(causes.length >= 2, JSON.stringify(causes));
+      for (const cause of causes) {
+        assert.equal(cause.area, "browser-session"); assert.equal(typeof cause.message, "string");
+        assert.doesNotMatch(JSON.stringify(cause), /fixture cleanup failed/u);
+      }
     }
     else if (failure === "runtime-log") {
       assert.equal(report, undefined); assert.ok(failedWorkerId);
