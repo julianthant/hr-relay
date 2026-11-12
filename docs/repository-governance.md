@@ -86,8 +86,8 @@ selected batch and timing publication until its callee finishes; the callees nev
 calls by arrival, accepts at most 100 pending calls, and cancels extra arrivals on overflow.
 
 The merge train is outside the admitted call, after the `staging` gate, while remaining
-inside parent per-PR supersession. A push to `staging` and enabling auto-merge run in groups that never
-cancel. Batch repair pushes to avoid redundant CI work.
+inside parent per-PR supersession. Enabling auto-merge starts a full `Staging` run for that PR (the same per-PR group, so it replaces a run still
+in progress for the same head), and its own gate decides the `staging` check; a push to `staging` never cancels. Batch repair pushes to avoid redundant CI work.
 
 `scripts/test/ci-plan.ts` owns typed selection, proof, publication and timing-history policy. Both timed callees
 retain explicit test budgets. `checks.yml` jobs are `changes`, `static`, `privacy`, `ubuntu`, `macos`,

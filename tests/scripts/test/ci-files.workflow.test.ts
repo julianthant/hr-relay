@@ -307,11 +307,16 @@ describe("separate event and admitted proof workflows", () => {
     expect(summary(staging, "staging", plan, { names: { result }, checks: { result: "skipped" } }, pull)).toBe("failure");
   });
 
-  it("skips the staging gate for pushes and for enabling auto-merge", () => {
+  it("skips the staging gate for pushes only; enabling auto-merge runs and judges the proofs", () => {
     const plan = planFor("portable");
-    const needs = { names: { result: "skipped" }, checks: { result: "skipped" } };
-    expect(summary(staging, "staging", plan, needs, { event_name: "push", event: {} })).toBe("skipped");
-    expect(summary(staging, "staging", plan, needs, { event_name: "pull_request", event: { action: "auto_merge_enabled" } })).toBe("skipped");
+    const skipped = { names: { result: "skipped" }, checks: { result: "skipped" } };
+    expect(summary(staging, "staging", plan, skipped, { event_name: "push", event: {} })).toBe("skipped");
+    const enable = { event_name: "pull_request", event: { action: "auto_merge_enabled" } };
+    expect(summary(staging, "staging", plan, { names: { result: "success" }, checks: { result: "success" } }, enable)).toBe("success");
+    for (const result of ["failure", "cancelled"]) {
+      expect(summary(staging, "staging", plan, { names: { result: "success" }, checks: { result } }, enable)).toBe("failure");
+    }
+    expect(job(staging, "names")).not.toContain("auto_merge_enabled");
   });
 });
 
@@ -377,13 +382,13 @@ describe("per-PR cancellation with complete FIFO pipelines", () => {
     expect(key(undefined, "refs/heads/staging", "")).toBe(`ci-${name}-refs/heads/staging`);
     expect(key(90, "refs/pull/90/merge")).not.toBe(key(91, "refs/pull/91/merge"));
     expect(key(undefined, "refs/heads/staging", "")).not.toBe(key(undefined, "refs/heads/other", ""));
-    if (source === staging) expect(key(90, "refs/pull/90/merge", "auto_merge_enabled")).not.toBe(key(90, "refs/pull/90/merge"));
+    if (source === staging) expect(key(90, "refs/pull/90/merge", "auto_merge_enabled")).toBe(key(90, "refs/pull/90/merge"));
     const cancel = header.match(/^ {2}cancel-in-progress: (.+)$/mu)?.[1];
     assert.ok(cancel);
     const cancels = (event_name: string, action: string): unknown => runInNewContext(cancel.replace(/^\$\{\{\s*|\s*\}\}$/gu, ""), { github: { event_name, event: { action } } });
     expect(cancels("pull_request", "synchronize")).toBe(true);
     if (source === staging) {
-      expect(cancels("pull_request", "auto_merge_enabled")).toBe(false);
+      expect(cancels("pull_request", "auto_merge_enabled")).toBe(true);
       expect(cancels("push", "")).toBe(false);
     }
   });

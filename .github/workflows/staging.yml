@@ -16,13 +16,13 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.action == 'auto_merge_enabled' && 'train-' || '' }}${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'auto_merge_enabled' }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   names:
     name: names
-    if: ${{ github.event_name == 'pull_request' && github.event.action != 'auto_merge_enabled' }}
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -49,7 +49,7 @@ jobs:
   staging:
     name: staging
     needs: [names, checks]
-    if: ${{ always() && github.event_name == 'pull_request' && github.event.action != 'auto_merge_enabled' }}
+    if: ${{ always() && github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - env:
