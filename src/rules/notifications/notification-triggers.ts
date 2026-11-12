@@ -100,7 +100,7 @@ export const NotificationTriggerEventSchema = z.discriminatedUnion("kind", [
   BackfillGapTriggerEventSchema,
   z.strictObject({ kind: z.literal("command-refused"), commandId: CommandIdSchema, outcome: z.enum(["rejected", "conflict"]) }),
   z.strictObject({ kind: z.literal("command-unknown"), commandId: CommandIdSchema }),
-  z.strictObject({ kind: z.literal("bulk-incomplete"), bulkCommandId: CommandIdSchema }),
+  z.strictObject({ kind: z.literal("bulk-incomplete"), bulkCommandId: CommandIdSchema, summary: z.string().min(1).max(1_000).optional() }),
 ]);
 export type NotificationTriggerEvent = z.infer<typeof NotificationTriggerEventSchema>;
 
@@ -246,7 +246,7 @@ export function projectNotificationTrigger(input: unknown): NotificationProjecti
           trigger: "command",
           channel: "ping",
           title: "Batch not fully done",
-          summary: "Some items in this batch were not done. Open it to see each one.",
+          summary: event.summary ?? "Some items in this batch were not done. Open it to see each one.",
           links: [{ kind: "bulk-result", bulkCommandId: event.bulkCommandId }],
         };
     }

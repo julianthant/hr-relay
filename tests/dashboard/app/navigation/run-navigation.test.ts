@@ -93,7 +93,7 @@ describe("notification composition and canonical navigation", () => {
     const targets = [
       NotificationTargetSchema.parse({ kind: "recovery", commandId, request }),
       NotificationTargetSchema.parse({ kind: "command-result", commandId, request, result }),
-      NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId: commandId, type: "pause", requestedCount: 1, results: [], notAttempted: [] }),
+      NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId: commandId, type: "pause", requestedCount: 1, results: [], notAttempted: [], days: {} }),
     ];
     for (const commandTarget of targets) expect((await resolveRunNavigation(client, commandTarget, origin, () => true)).state).toBe("refused");
     expect(client.dashboardDay).not.toHaveBeenCalled();
