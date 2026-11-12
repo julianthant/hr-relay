@@ -44,14 +44,15 @@ function world(options: Partial<Pick<WorkerPoolDependencies, "platform" | "onCha
   const ports: ReturnType<typeof fakePort>[] = [];
   const settled: WorkerExitFact[] = [];
   const faults: unknown[] = [];
+  const closedStops: unknown[] = [];
   let nextPid: number | undefined = 4242;
   const pool = createWorkerPool({ profileId: PROFILE, sessionGeneration: 3, clock, platform: options.platform ?? "darwin", ids: { uuid: randomUUID },
     timeouts: { readyMs: 1_000, gracefulMs: 2_000, sigtermMs: 3_000, exitObservationMs: 500 },
     scheduler: { schedule(at, run) { const timer = { at, run, cancelled: false }; timers.push(timer); return { cancel() { timer.cancelled = true; } }; } },
     spawn: () => { const port = fakePort(nextPid); ports.push(port); return port.port; },
     settleExit: async (_member, exit) => { settled.push(exit); await options.settle?.(exit); },
-    onFault: (_member, error) => { faults.push(error); }, onChange: view => { options.onChange?.(view); } });
-  return { pool, ports, settled, faults, clock,
+    onFault: (_member, error) => { faults.push(error); }, onStopChannelClosed: (_member, error) => { closedStops.push(error); }, onChange: view => { options.onChange?.(view); } });
+  return { pool, ports, settled, faults, closedStops, clock,
     set nextPid(value: number | undefined) { nextPid = value; },
     async advance(ms: number) {
       clock.advanceMonotonic(ms);
@@ -216,6 +217,35 @@ describe("worker pool", () => {
     port.exit(1, null); await flush();
     assert.equal(w.pool.snapshot()[0]?.state, "exited");
     assert.equal(w.settled.length, 1);
+  });
+
+  it("records a stop send that hit a closed channel as expected once the member's exit is observed", async () => {
+    const w = world(), { port, target } = await running(w);
+    port.state.sendError = Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+    const stopping = w.pool.stop(target, "operator"); await flush();
+    assert.equal(w.faults.length, 0);
+    port.exit(0, null);
+    await stopping;
+    assert.equal(w.faults.length, 0);
+    assert.deepEqual(w.closedStops.map(error => (error as { code?: string }).code), ["EPIPE"]);
+  });
+
+  it("still faults a closed-channel stop send when no exit is observed in the window", async () => {
+    const w = world(), { port, target } = await running(w);
+    port.state.sendError = Object.assign(new Error("channel closed"), { code: "ERR_IPC_CHANNEL_CLOSED" });
+    void w.pool.stop(target, "operator"); await flush();
+    assert.equal(w.faults.length, 0);
+    await w.advance(500);
+    assert.equal(w.faults.length, 1);
+    assert.equal(w.closedStops.length, 0);
+  });
+
+  it("faults at once on any other stop send error", async () => {
+    const w = world(), { port, target } = await running(w);
+    port.state.sendError = new Error("write failed");
+    void w.pool.stop(target, "operator"); await flush();
+    assert.equal(w.faults.length, 1);
+    assert.equal(w.closedStops.length, 0);
   });
 
   it("rejects pending requests on disconnect and stays running until the OS exit", async () => {

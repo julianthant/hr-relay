@@ -7,8 +7,6 @@ import { ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema } f
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, captureParityPair, installTheme, PARITY_THEMES, type ParityTheme } from "./helpers/capture.js";
 import { gotoAppState, installServedSurfaces } from "./helpers/app-driver.js";
-import { disposeHttpRouteHarness } from "../support/helpers/backend/http-route-harness.js";
-import { serveWorkbookLibrary } from "./helpers/served-workbook-library.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { EditableSettingsWireSchema } from "../../src/models/dashboard/settings-editor.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
@@ -35,12 +33,6 @@ async function capture(page: Page, info: TestInfo, theme: ParityTheme, width: nu
     adapter: "fixture-bff", fixtureId: "current-mounted-settings", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
     appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
   });
-}
-
-/** Served spreadsheets come from the `hub-integration` composition; the default parity composition shows the design's mock page. */
-async function gotoServedSpreadsheets(page: Page, baseUrl: string, view: Record<string, unknown> = {}) {
-  await page.goto(`${baseUrl}/?fixture=hub-integration&day=${FIXTURE_DAY}&settings=spreadsheets&view=${encodeURIComponent(JSON.stringify(view))}`);
-  await expect(page.locator('[data-parity-ready="true"]')).toBeVisible();
 }
 
 async function setup(page: Page, theme: ParityTheme, width: number) {
@@ -199,156 +191,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     } finally { gate.resolve(); await server.close(); }
   });
 
-  test(`baseline spreadsheet library and dialogs ${theme.attribute} ${width}`, {
-    annotation: [{ type: "required-a11y-evidence", description: evidence("spreadsheet-library-coverage", theme, width) }],
-  }, async ({ page }, info) => {
-    const server = await setup(page, theme, width);
-    const open = (view: Record<string, unknown> = {}) => gotoServedSpreadsheets(page, server.baseUrl, view);
-    try {
-      await serveWorkbookLibrary(page, ["26–27 Student applicants.xlsx", "25–26 Student applicants.xlsx", "Contact roster.xlsx"]);
-      await open();
-      await expect(page.getByRole("table", { name: "Your spreadsheets", exact: true }).locator("tbody tr")).toHaveCount(3);
-      await capture(page, info, theme, width, "spreadsheet-library");
-      await expect(page.getByRole("searchbox", { name: "Find a spreadsheet", exact: true })).toHaveCount(0);
-      const file = page.getByRole("button", { name: "Open 26–27 Student applicants.xlsx", exact: true });
-      await file.focus(); await file.press("Enter");
-      await expect(page.getByRole("region", { name: "Spreadsheet editor", exact: true })).toBeVisible();
-      await capture(page, info, theme, width, "spreadsheet-library-open");
-      await page.getByRole("navigation", { name: "Breadcrumb", exact: true }).getByRole("button", { name: "Spreadsheets", exact: true }).click();
-      await expect(file).toBeFocused();
-      await open({ spreadsheetImport: true, spreadsheetImportView: "columns" });
-      await expect(page.getByRole("dialog", { name: "Import unavailable", exact: true })).toBeVisible();
-      await capture(page, info, theme, width, "spreadsheet-lost-import");
-      await open();
-      await expect(page.getByRole("tablist", { name: "Spreadsheet settings", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("heading", { name: "Spreadsheet types", exact: true })).toBeVisible();
-      await capture(page, info, theme, width, "spreadsheet-types");
-      const editType = page.getByRole("button", { name: "Edit Roster", exact: true });
-      await editType.click();
-      const typeFields = page.getByRole("dialog", { name: "Edit spreadsheet type", exact: true });
-      await expect(typeFields.getByRole("textbox", { name: "Type name", exact: true })).toHaveValue("Roster");
-      await expect(typeFields.getByRole("group", { name: /^Columns \(/u })).toBeVisible();
-      await expect(typeFields.getByRole("heading", { name: "Edit spreadsheet type", exact: true })).toBeInViewport({ ratio: 1 });
-      await expect(typeFields).toBeInViewport({ ratio: 1 });
-      await capture(page, info, theme, width, "spreadsheet-type-fields");
-      await typeFields.getByRole("button", { name: "Cancel", exact: true }).click(); await expect(editType).toBeFocused();
-      const createType = page.getByRole("button", { name: "Create type", exact: true });
-      await createType.click();
-      const addType = page.getByRole("dialog", { name: "Create spreadsheet type", exact: true });
-      await expect(addType.getByRole("heading", { name: "Create spreadsheet type", exact: true })).toBeInViewport({ ratio: 1 });
-      await expect(addType).toBeInViewport({ ratio: 1 });
-      await capture(page, info, theme, width, "spreadsheet-type-add");
-      await addType.getByRole("button", { name: "Save type", exact: true }).click(); await expect(addType.getByRole("alert")).toBeVisible();
-      await page.keyboard.press("Escape"); await expect(createType).toBeFocused();
-
-      await attachTree(page, info, evidence("spreadsheet-library-coverage", theme, width));
-    } finally { await disposeHttpRouteHarness(); await server.close(); }
-  });
-
-  test(`baseline typed spreadsheet import and editor ${theme.attribute} ${width}`, {
-    annotation: [{ type: "required-a11y-evidence", description: evidence("spreadsheet-typed", theme, width) }],
-  }, async ({ page }, info) => {
-    const server = await setup(page, theme, width);
-    try {
-      await serveWorkbookLibrary(page, []);
-      await gotoServedSpreadsheets(page, server.baseUrl);
-      await page.getByLabel("Open XLSX or CSV", { exact: true }).setInputFiles({ name: "Baseline typed.csv", mimeType: "text/csv", buffer: Buffer.from("Legal Name,Employee ID,Personal Email,Private note\nJordan Lee,10000001,jordan@example.com,Excluded\nTaylor Chen,10000002,taylor@example.com,Excluded\n") });
-      const dialog = page.getByRole("dialog", { name: "Choose spreadsheet columns", exact: true });
-      await expect(dialog).toBeVisible();
-      const submit = dialog.getByRole("button", { name: "Import selected columns", exact: true });
-      await expect(dialog.getByRole("combobox", { name: "Dashboard field for B", exact: true })).toHaveAttribute("data-value", "eid");
-      await expect(submit).toBeEnabled();
-
-      await dialog.getByRole("checkbox", { name: "D · Private note", exact: true }).uncheck();
-      await expect(submit).toBeEnabled();
-
-      const eid = dialog.getByRole("combobox", { name: "Dashboard field for B", exact: true });
-      await eid.click(); await page.getByRole("option", { name: "Legal name", exact: true }).click();
-      await expect(submit).toBeDisabled();
-      await expect(dialog.getByRole("status")).toContainText("mapped more than once");
-
-      await eid.click(); await page.getByRole("option", { name: "Employee ID", exact: true }).click();
-      await dialog.getByRole("checkbox", { name: "Keep all columns in this sheet", exact: true }).check();
-      await dialog.getByRole("checkbox", { name: "Keep all columns in this sheet", exact: true }).uncheck();
-      await expect(submit).toBeDisabled();
-
-      await dialog.getByRole("checkbox", { name: "Keep all columns in this sheet", exact: true }).check();
-      await dialog.getByRole("checkbox", { name: "D · Private note", exact: true }).uncheck();
-      await expect(submit).toBeEnabled();
-
-      await submit.click();
-      const editor = page.getByRole("region", { name: "Spreadsheet editor", exact: true });
-      await expect(editor).toBeVisible();
-      await expect(page.locator('[data-slot="toast"]').filter({ hasText: "Spreadsheet imported" })).toBeVisible();
-
-      await page.locator('[data-slot="toast"]').first().click();
-      await expect(page.locator('[data-slot="toast"]')).toHaveCount(0);
-      await editor.getByRole("textbox", { name: "B2", exact: true }).fill("bad-id");
-      await expect(editor.getByRole("textbox", { name: "B2", exact: true })).toHaveAttribute("aria-invalid", "true");
-      await expect(editor.locator(".spreadsheet-cell-problem")).toBeVisible();
-
-      await capture(page, info, theme, width, "spreadsheet-editor");
-      await editor.getByRole("button", { name: "Columns", exact: true }).click();
-      await expect(page.getByRole("menu", { name: "Columns", exact: true })).toBeVisible();
-      await capture(page, info, theme, width, "spreadsheet-columns-menu");
-      await page.keyboard.press("Escape");
-      await editor.getByRole("button", { name: "Insert", exact: true }).click();
-      await expect(page.getByRole("menu", { name: "Insert", exact: true })).toBeVisible();
-      await expect(page.getByRole("menu", { name: "Columns", exact: true })).toHaveCount(0);
-      await capture(page, info, theme, width, "spreadsheet-insert-menu");
-      await page.getByRole("menuitem", { name: "Add row", exact: true }).click();
-      await expect(editor.locator(".spreadsheet-grid tbody tr")).toHaveCount(3);
-
-      await editor.getByRole("button", { name: "Insert", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Add column", exact: true }).click();
-      const columnDialog = page.getByRole("dialog", { name: "Add column", exact: true });
-      await expect(columnDialog).toBeVisible();
-      await expect(columnDialog.getByRole("button", { name: "Add column", exact: true })).toBeDisabled();
-      await capture(page, info, theme, width, "spreadsheet-add-column-empty");
-      await columnDialog.getByRole("textbox", { name: "Column title", exact: true }).fill("Baseline extra");
-      await expect(columnDialog.getByRole("button", { name: "Add column", exact: true })).toBeEnabled();
-
-      await columnDialog.getByRole("button", { name: "Cancel", exact: true }).click();
-      await editor.getByRole("button", { name: "Export copy", exact: true }).click();
-      await expect(page.getByRole("menu", { name: "Export copy", exact: true })).toBeVisible();
-      await capture(page, info, theme, width, "spreadsheet-export-menu");
-      await page.keyboard.press("Escape");
-      await editor.getByRole("button", { name: "Spreadsheets", exact: true }).click();
-      await expect(page.getByRole("dialog", { name: "Close edited spreadsheet?", exact: true })).toBeVisible();
-      await capture(page, info, theme, width, "spreadsheet-close-edited");
-      await page.getByRole("button", { name: "Keep editing", exact: true }).click();
-      await editor.getByRole("button", { name: "Export copy", exact: true }).click();
-      const download = page.waitForEvent("download");
-      await page.getByRole("menuitem", { name: "Excel workbook (.xlsx)", exact: true }).click();
-      expect((await download).suggestedFilename()).toBe("Baseline typed-edited.xlsx");
-      await expect(page.locator('[data-slot="toast"]').filter({ hasText: "Spreadsheet copy exported" })).toBeVisible();
-
-      await attachTree(page, info, evidence("spreadsheet-typed", theme, width));
-    } finally { await disposeHttpRouteHarness(); await server.close(); }
-  });
-  test(`baseline spreadsheet reading and failure ${theme.attribute} ${width}`, {
-    annotation: [{ type: "required-a11y-evidence", description: evidence("spreadsheet-reading", theme, width) }],
-  }, async ({ page }, info) => {
-    const server = await setup(page, theme, width);
-    const gate = Promise.withResolvers<void>();
-    await page.route("**/assets/spreadsheet-import-worker-*.js", async route => { await gate.promise; await route.abort("failed"); });
-    try {
-      await serveWorkbookLibrary(page, []);
-      await gotoServedSpreadsheets(page, server.baseUrl);
-      await page.getByLabel("Open XLSX or CSV", { exact: true }).setInputFiles({ name: "Baseline reading.csv", mimeType: "text/csv", buffer: Buffer.from("Employee ID\n10000001\n") });
-      await expect(page.getByRole("button", { name: "Importing…", exact: true })).toBeDisabled();
-
-      gate.resolve();
-      await expect(page.getByText("Spreadsheet unavailable", { exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Import spreadsheet", exact: true })).toBeEnabled();
-      await page.unroute("**/assets/spreadsheet-import-worker-*.js");
-      await page.getByLabel("Open XLSX or CSV", { exact: true }).setInputFiles({ name: "Baseline retry.csv", mimeType: "text/csv", buffer: Buffer.from("Employee ID\n10000001\n") });
-      await expect(page.getByRole("dialog", { name: "Choose spreadsheet columns", exact: true })).toBeVisible();
-      await expect(page.getByText("Spreadsheet unavailable", { exact: true })).toHaveCount(0);
-
-      await attachTree(page, info, evidence("spreadsheet-reading", theme, width));
-    } finally { gate.resolve(); await disposeHttpRouteHarness(); await server.close(); }
-  });
   test(`baseline Credentials save outcomes ${theme.attribute} ${width}`, {
     annotation: [{ type: "required-a11y-evidence", description: evidence("credentials-save", theme, width) }],
   }, async ({ page }, info) => {

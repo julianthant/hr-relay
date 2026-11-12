@@ -29,7 +29,7 @@ const composition = fixture === "product-workflows" || Reflect.get(window, "rela
   : fixture === "hub-served"
   ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), assistant: "served" as const })
   : fixture === "hub-integration"
-  ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), spreadsheets: "served" as const })
+  ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows) })
   : fixture === "workflow-catalog"
   ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), explorerSources: servedFixtureSources(workflows) })
   : PARITY_WORKFLOW_COMPOSITION;

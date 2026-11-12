@@ -175,8 +175,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: false, resumable: true }));
     }
     const active = current(c.req.raw);
-    return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: active.profileId, epoch: active.epoch,
-      duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.duoState }));
+    return c.json(PublicProfileStateSchema.parse(activeState(active.profileId, active.epoch)));
   });
   app.use("/api/v1/profile/sign-in", operatorMutationIngressGuard);
   app.use("/api/v1/profile/resume", operatorMutationIngressGuard);
@@ -184,6 +183,12 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.use("/api/v1/profile/logout", operatorMutationIngressGuard);
   app.use("/api/v1/profile/delete-account", operatorMutationIngressGuard);
   app.use("/api/v1/profile/onboarding/*", operatorMutationIngressGuard);
+  const activeState = (profileId: string, epoch: number) => {
+    const row = machine.readProfileRegistry().profiles.find(value => value.profileId === profileId);
+    if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+    return { state: "active" as const, profileId, epoch, duoState: row.duoState,
+      account: { name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName, lastSignedInAt: row.lastSignedInAt } };
+  };
   const mountActive = async (result: ActiveProfileSession, onInitialPreflight = input.onInitialPreflight): Promise<PublicProfileState> => {
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
@@ -210,7 +215,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
         throw new ProfileRuntimeStartFailedError({ cause: error });
       });
     selection = { sessionId: randomUUID(), token: result.token, profileId: result.profileId, epoch: result.epoch, runtime };
-    return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
+    return activeState(result.profileId, result.epoch);
   };
   const activate = async (request: Request, mode: "signup" | "signin" | "resume"): Promise<PublicProfileState> => {
     if (transitioning || pending !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
@@ -218,8 +223,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       if (mode !== "resume") throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
       const { token, profileId, epoch } = selection;
       profileRuntime.assertCurrent(token);
-      return PublicProfileStateSchema.parse({ state: "active", profileId, epoch,
-        duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.duoState });
+      return PublicProfileStateSchema.parse(activeState(profileId, epoch));
     }
     transitioning = true;
     try {

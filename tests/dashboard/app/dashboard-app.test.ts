@@ -254,15 +254,16 @@ async function press(button: HTMLButtonElement): Promise<void> {
   });
 }
 
-async function dirtyBrowserSettings(): Promise<{ input: HTMLInputElement; value: boolean }> {
-  const row = document.querySelector('[data-settings-path="browser.headless"]');
-  const input = row?.querySelector('[role="switch"]');
-  const control = row?.querySelector(".ds-switch-control");
-  assert_m1.ok(input instanceof HTMLInputElement && control instanceof HTMLElement, "Settings browser switch did not mount");
-  const value = !input.checked;
-  await act_m1(async () => control.click());
-  assert_m1.equal(input.checked, value);
-  return { input, value };
+async function dirtyBrowserSettings(): Promise<{ input: HTMLButtonElement; value: string }> {
+  const input = document.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
+  assert_m1.ok(input instanceof HTMLButtonElement, "Settings browser window control did not mount");
+  assert_m1.notEqual(input.dataset.value, "Small");
+  await act_m1(async () => input.click());
+  const option = document.querySelector('[role="option"][data-value="Small"]');
+  assert_m1.ok(option instanceof HTMLElement);
+  await act_m1(async () => option.click());
+  assert_m1.equal(input.dataset.value, "Small");
+  return { input, value: "Small" };
 }
 
 // jsdom does not implement Tab navigation; assert the first enabled descendant order directly.
@@ -624,17 +625,18 @@ afterEach_m1(_afterEachFixture0);
     await mountDashboard("?settings=general");
     const { input, value } = await dirtyBrowserSettings();
     const frame = frameOf("Settings");
-    const themeControl = document.querySelector('[data-settings-path="appearance.theme"] button');
-    assert_m1.ok(themeControl instanceof HTMLButtonElement);
-    const initialTheme = themeControl.textContent;
-    await act_m1(async () => themeControl.click());
-    assert_m1.equal(themeControl.textContent, initialTheme === "Light" ? "Dark" : "Light");
+    const themeRadios = [...document.querySelectorAll<HTMLInputElement>('[data-settings-path="appearance.theme"] input[type="radio"]')];
+    const initialTheme = themeRadios.find(radio => radio.checked)?.value;
+    const otherTheme = themeRadios.find(radio => !radio.checked);
+    assert_m1.ok(otherTheme);
+    await act_m1(async () => otherTheme.click());
+    assert_m1.equal(themeRadios.find(radio => radio.checked)?.value, initialTheme === "light" ? "dark" : "light");
     const notifications = document.querySelector(".rail-notification-toggle");
     assert_m1.ok(notifications instanceof HTMLButtonElement);
     assert_m1.match(notifications.getAttribute("aria-label") ?? "", /^Notifications, \d+ unread$/u);
     await press(notifications);
     assert_m1.equal(frameOf("Settings"), frame, "opening notifications preserves the runtime draft owner");
-    assert_m1.equal(input.checked, value, "browser appearance and notification controls preserve runtime edits");
+    assert_m1.equal(input.dataset.value, value, "browser appearance and notification controls preserve runtime edits");
     await press(notifications);
     const sectionLink = (label: string): HTMLAnchorElement => {
       const link = [...document.querySelectorAll("nav[aria-label='Settings sections'] a")]
@@ -660,9 +662,9 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(document.querySelector('[role="dialog"]') === null, true, "Escape closes the pending dirty-exit dialog");
     assert_m1.equal(document.activeElement === dashboard, true, "Escape restores focus to the persistent navigation control");
     await act_m1(async () => sectionLink("General").click());
-    const restored = document.querySelector('[data-settings-path="browser.headless"] [role="switch"]');
-    assert_m1.ok(restored instanceof HTMLInputElement);
-    assert_m1.equal(restored.checked, value);
+    const restored = document.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
+    assert_m1.ok(restored instanceof HTMLButtonElement);
+    assert_m1.equal(restored.dataset.value, value);
     await press(buttonNamed("Back to dashboard"));
     await press(buttonNamed("Discard changes"));
     assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
