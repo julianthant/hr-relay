@@ -6,10 +6,23 @@ import { join } from "node:path";
 import { buildPcSource, pcSyncFiles, preparePcSource } from "../../../scripts/test/pc-source.js";
 import { runInNewContext } from "node:vm";
 import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "../../../scripts/test/ci-files.js";
-import { measurePcPhase, pcDurationScript, readPcTiming, selectPcFiles } from "../../../scripts/test/pc.js";
+import { measurePcPhase, pcDurationScript, pcListingArgs, readPcTiming, selectPcFiles } from "../../../scripts/test/pc.js";
 
 describe("PC test selection", () => {
   const portable = ["tests/models/a.test.ts", "tests/backend/a.integration.test.ts", "tests/architecture/a.test.ts"];
+
+  it("lists the whole architecture project and changed unit and integration projects by default", () => {
+    expect(pcListingArgs([])).toEqual([
+      ["--project", "architecture"],
+      ["--project", "unit", "--project", "integration", "--changed=origin/staging"],
+    ]);
+  });
+
+  it("lists all three projects without a changed filter for explicit file requests", () => {
+    expect(pcListingArgs([portable[0]])).toEqual([
+      ["--project", "unit", "--project", "integration", "--project", "architecture"],
+    ]);
+  });
 
   it("keeps affected portable files and removes every native list", () => {
     const native = [...new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES])];
