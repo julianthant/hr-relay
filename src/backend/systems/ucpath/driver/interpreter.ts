@@ -1,4 +1,5 @@
 import { createUcpathHireOperations } from "./hire-operation.js";
+import { createUcpathPayPathOperations } from "./paypath-operation.js";
 import { UCPATH_HIRE_SUBJECT } from "../../../../models/ui/ucpath-hire.js";
 import { searchPersonMatchOnPage } from "./person-match-operation.js";
 import { createUcpathContactOperations } from "./contact-page.js";
@@ -82,6 +83,7 @@ export function createUcpathPersonOrgDriver(
   const hire = createUcpathHireOperations(assertCurrent, page, clock);
   return {
     ...hire,
+    ...createUcpathPayPathOperations(assertCurrent, page, clock),
     ...createUcpathContactOperations(assertCurrent, page, clock),
     system: "ucpath",
     searchPersonMatch: async (input) => {
