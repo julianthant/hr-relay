@@ -8,5 +8,5 @@ metadata:
 
 # hr-debug
 
-Run the global `diagnose` loop. The canonical [Relay debugging reference](../../skill-library/hr-debug/REFERENCE.md)
+Run the global `diagnose` loop. The canonical [Relay debugging reference](references/debugging.md)
 adds Relay's evidence sources, failure classes and forbidden first moves; read it before forming a theory.

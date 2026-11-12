@@ -143,4 +143,4 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 | Tests and guards | `ref guards-and-tests` |
 | Relay failure | [`hr-debug`](.agents/skills/hr-debug/SKILL.md) |
 | Live dry run | [`/verify`](.agents/skills/verify/SKILL.md) and its [feature map](.agents/skills/verify/features/README.md) |
-| Environment, porting, conventions | [Operating reference](.agents/skill-library/repository-work/REFERENCE.md) |
+| Environment, porting, conventions | [Operating reference](.agents/skills/hr-manage/references/operating-reference.md) |

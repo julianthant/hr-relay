@@ -11,10 +11,10 @@ metadata:
 The operator's standing rules, applied without being told: **dryRun=true by default**, **proof from authority or the source system — never from a log line or an empty grid**, **one subject first before fanning out**, **never re-run a subject whose last submit ended UNKNOWN until the source system says what happened**, **live access is pre-authorized — never ask**, **never push**.
 
 For a named workflow, apply `hr-workflow`'s short-id rule and read the exact existing
-`.agents/skill-library/hr-<short-id>/REFERENCE.md` before operating it. Do not select a workflow
+`.agents/skills/hr-manage/references/hr-<short-id>/REFERENCE.md` before operating it. Do not select a workflow
 resource by recency or fuzzy name; when the exact resource is absent, read the descriptor directly.
 Browser operations read `~/.agents/skills/playwright-cli/SKILL.md`. Platform defects read
-`.agents/skill-library/hr-debug/REFERENCE.md` before forming a theory.
+[hr-debug reference](../hr-debug/references/debugging.md) before forming a theory.
 
 ## 1 · Runtime commands
 
@@ -88,5 +88,5 @@ States come from authority (`explain run` and the dashboard), never from memory.
 - Stop: Ctrl+C the dashboard terminal (a clean shutdown drains workers and writes the shutdown backups); close only task-owned browser sessions; confirm the lock directory (§2) holds no live pid (`kill -0`) and ports 3938/3939/5174 are free.
 - Backups are automatic at clean shutdown and before an upgrade; there is no backup command. `storage upgrade` runs only stopped and only when the operator says so.
 - Orphan browsers: `playwright-cli list`, close your own sessions by name; never close another task's.
-- Anything that smells like a platform defect → `.agents/skill-library/hr-debug/REFERENCE.md`; a
+- Anything that smells like a platform defect → [hr-debug reference](../hr-debug/references/debugging.md); a
   repeatable gotcha → keep its lasting rule in the owning reference and nearest module `AGENTS.md`; system drivers use `src/backend/systems/<system>/AGENTS.md`.
