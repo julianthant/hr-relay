@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { copyFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, it, vi } from "vitest";
 import { composeDashboardTimeline } from "../../../../src/backend/app/composition/dashboard/timeline.js";
+import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import type { StartupCleanup } from "../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
@@ -11,6 +14,9 @@ import { operatorRequestedCapture } from "../../../../src/backend/logs/diagnosti
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
 import type { DiagnosticBundle } from "../../../../src/models/trust/diagnostic.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
+import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { trustWorld } from "../../../support/helpers/backend/trust-authority-fixture.js";
 
 const DAY_MS = 86_400_000;
@@ -164,5 +170,36 @@ it.each(["bytes", "rows"])("records one debug event per failed %s sweep and keep
     await timeline?.stop();
     vi.useRealTimers();
     await fixture.dispose();
+  }
+});
+
+it("clears the retention timer when the composed dashboard shuts down normally", async () => {
+  const fixture = await createBoundProfileFixture();
+  const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(fixture.workspace, name));
+  const profile = composeProfileRuntime({ admission: fixture.machine, clock, hostFacts: { primaryDisplay: null } });
+  let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
+  try {
+    const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+    assert.equal(active.state, "active");
+    if (active.state !== "active") throw new Error("synthetic active profile required");
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    dashboard = await composeDashboardRuntime({ lifetimeLock: fixture.lifetime, admission: fixture.machine,
+      profile: { runtime: profile, token: active.token }, repoRoot: fixture.workspace, clock,
+      isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {},
+      preflightRunnerFactory: healthyRuntimePreflightRunners });
+    assert.ok(vi.getTimerCount() > 0);
+
+    await dashboard.stop();
+    dashboard = undefined;
+
+    assert.equal(vi.getTimerCount(), 0);
+    clock.advanceWall(DAY_MS);
+    vi.advanceTimersByTime(DAY_MS);
+  } finally {
+    if (dashboard !== undefined) await dashboard.stop();
+    vi.useRealTimers();
+    await profile.close();
+    await fixture.close();
   }
 });
