@@ -48,6 +48,7 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 | Feature branch | `feature/<feature>`: from `origin/staging`, one PR into `staging` |
 | Ticket branch | `task/<feature>/<lane>`: from its feature branch, merged back with `--no-ff`, no PR |
 | Standalone fix | `fix/<area>-<symptom>`: one ticket, one PR into `staging` |
+| Chore | `chore/<area>-<change>`: tooling, tests or docs with no product change; one PR into `staging` |
 | Design | `design/<area>`: mock with real components for operator approval, never merged |
 | Scratch | `scratch/<lane>-<n>`: focused CI feedback or a red probe, never merged, removed after use |
 | Worktree | `.worktrees/<feature>.<lane>`; the feature's own checkout is `.worktrees/<feature>` |

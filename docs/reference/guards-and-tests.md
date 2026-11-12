@@ -429,8 +429,8 @@ executable enforcement.
 `names-check` (`tests/architecture/tooling/names-check.test.ts`) runs the shipped `names:check`
 command over the shared table in `tests/support/helpers/names-check-cases.ts`. A wrong name was
 reaching CI and spending a full run. Allowed branches are `main`, `staging`, `dependabot/*`,
-`feature/<kebab>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `design/<kebab>`, and
-`scratch/<kebab>-<digits>`. A staging pull request head must be `feature/*` or `fix/*`, except
+`feature/<kebab>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `chore/<kebab>-<kebab>`, `design/<kebab>`, and
+`scratch/<kebab>-<digits>`. A staging pull request head must be `feature/*`, `fix/*` or `chore/*`, except
 `dependabot/*`. A non-dependabot title must be `<Area>: <text>`; a conventional title such as
 `feat(ci): add names check` is rejected. An origin branch that already matches
 `task/<feature>/<lane>` stays valid when its lane is an older name. A worktree folder is
