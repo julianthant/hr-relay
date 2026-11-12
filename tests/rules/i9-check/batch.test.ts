@@ -30,7 +30,7 @@ it("retains both approved section coordinates for one operator-added I-9 person 
     { eid: "10000001", kind: "i9-section2", hireDate: "06/01/2020" }]);
   const [first, second] = f.source.snapshot.records;
   if (first === undefined || second === undefined) throw new Error("Missing paired fixture");
-  const seed = { review: f.source.review, identities: [] }, commandId = "00000000-0000-4000-8000-000000000906";
+  const seed = { review: f.review, identities: [] }, commandId = "00000000-0000-4000-8000-000000000906";
   const pages = OcrOperatorPagesSchema.parse([{ pageKind: "i9-section1", sourcePage: 1 }, { pageKind: "i9-section2", sourcePage: 2 }]);
   const values = SubmittedRecordSchema.parse({ answers: Object.fromEntries(first.fields.answers.map(answer => {
     const held = answer.state === "absent" && answer.reason === "not-on-form" ? second.fields.answers.find(other => other.path === answer.path) : answer;

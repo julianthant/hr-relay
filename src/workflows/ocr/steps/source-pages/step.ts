@@ -4,6 +4,8 @@ import { ApprovedOcrRecordInputSchema } from "../../../../models/workflows/ocr/a
 import type { OcrApprovedSnapshot } from "../../../../models/ocr/review.js";
 import type { WorkflowRef } from "../../../../models/workflow/graph.js";
 import { EidSchema, type BrowserSystemId } from "../../../../rules/identity/ids.js";
+import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { TaskError } from "../../../../workflow-kit/errors.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { ExtractPdfPages } from "../../../../models/processing/extraction/extract-pdf-pages.js";
@@ -11,10 +13,12 @@ import { OcrPageWorkflowInputSchema } from "../../../../models/workflows/ocr-pag
 import { OcrInputSchema } from "../../../../models/workflows/ocr/input.js";
 import { ocrPersonLookupRequests, ocrSignerLookupRequests } from "../../../../models/workflows/ocr/lookup.js";
 import { I9LookupInputSchema, I9SignerOutputSchema } from "../../../../models/systems/i9/read-section2-signer.js";
-import { OcrPageReadingSchema } from "../../../../models/workflows/ocr/page-accounting.js";
+import { OcrPageReadingSchema, type OcrPageOutcome, type OcrPageReading } from "../../../../models/workflows/ocr/page-accounting.js";
 import { ReadOcrResult } from "../../../../models/workflows/ocr/read-result.js";
 import { ReadOcrReviewSeed } from "../../../../models/workflows/ocr/read-review-seed.js";
-import { ReadOcrSourcePages } from "../../../../models/workflows/ocr/read-source-pages.js";
+import { ReadOcrSourcePages, ocrPageWorkInputs } from "../../../../models/workflows/ocr/read-source-pages.js";
+import { buildOcrSourceManifest } from "../../../../models/workflows/ocr/source-manifest.js";
+import { hydrateOcrReviewSeed, type OcrReviewCheckpoint } from "../../../../models/workflows/ocr/review-seed.js";
 import { OcrApprovalReferenceSchema, OcrWorkflowResultSchema } from "../../../../models/workflows/ocr/result.js";
 import { PersonLookupInput } from "../../../../models/workflows/person-lookup/input.js";
 import { PersonLookupResultSchema } from "../../../../models/workflows/person-lookup/result.js";
@@ -26,6 +30,11 @@ const childPolicy = Object.freeze({
   onChildFailed: "allow-partial", cascadeCancel: "cascade",
   afterChildRetry: "resume-parent", visibility: "inline"
 } as const);
+function reviewSeed(input: z.output<typeof OcrInputSchema>,
+  outputs: Readonly<{ "build-review": OcrReviewCheckpoint; "read-pages": readonly OcrPageOutcome[] }>) {
+  const readings = new Map<string, OcrPageReading>(outputs["read-pages"].flatMap(page => page.state === "done" ? [[page.output.extractionId, page.output] as const] : []));
+  return hydrateOcrReviewSeed(outputs["build-review"], extractionId => readings.get(extractionId), input.roster);
+}
 export const OCR_SOURCE_PAGES_STEP = Object.freeze({ ...defineWorkflowStep({ key: "source-pages", label: "Prepare source pages" }), system: "local" as const,
   description: "Render every original PDF page and bind each page's form type and reading method to the source manifest.",
   review: {
@@ -57,41 +66,45 @@ export function buildSourcePages({ task, result }: WorkflowAuthor<typeof OcrInpu
 export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
   const { task, delegate, gate, result } = author;
   const sourcePages = buildSourcePages(author);
-  const { source } = sourcePages;
+  const { rendered, source } = sourcePages;
   const pages = delegate({
     id: "read-pages", label: "Read every original page",
     target: { id: WorkflowIdSchema.parse("ocr-page"), input: OcrPageWorkflowInputSchema, result: OcrPageReadingSchema },
     edgeId: "ocr-pages", cardinality: "many", await: "terminal", join: "all-settled",
     policy: { ...childPolicy, visibility: "hidden-unless-failed" }
-  }, [source], {
-    bind: ({ outputs }) => outputs["read-source-pages"].pages,
+  }, [rendered, source], {
+    bind: ({ input, outputs }) => {
+      const work = ocrPageWorkInputs(input, outputs["render-pages"]);
+      if (work.manifest.fingerprint !== outputs["read-source-pages"].manifest.fingerprint) throw new Error("OCR source pages changed after they were bound.");
+      return work.pages;
+    },
     deriveChildItemId: (_input, context) => context.canonicalItemId,
   });
-  const review = task({ id: "build-review", contract: ReadOcrReviewSeed, replay: "always-rerun" }, [source, pages],
+  const review = task({ id: "build-review", contract: ReadOcrReviewSeed, replay: "always-rerun" }, [rendered, source, pages],
     ({ input, outputs }) => ({
       ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }), roster: input.roster, formType: input.formType,
-      manifest: outputs["read-source-pages"].manifest, readingId: input.readingId, outcomes: [...outputs["read-pages"]]
+      manifest: buildOcrSourceManifest(input.document, outputs["render-pages"]), readingId: input.readingId, outcomes: [...outputs["read-pages"]]
     }));
   const identities = delegate({
     id: "lookup-identities", label: "Verify proposed identities",
     target: { id: WorkflowIdSchema.parse("person-lookup"), input: PersonLookupInput, result: PersonLookupResultSchema },
     edgeId: "ocr-identities", cardinality: "many", await: "terminal", join: "all-settled", policy: childPolicy
-  }, [review], {
-    bind: ({ outputs }) => ocrPersonLookupRequests(outputs["build-review"]).map(request => request.input),
-    sourceRecordIds: ({ outputs }) => ocrPersonLookupRequests(outputs["build-review"]).map(request => request.recordIds),
+  }, [review, pages], {
+    bind: ({ input, outputs }) => ocrPersonLookupRequests(reviewSeed(input, outputs)).map(request => request.input),
+    sourceRecordIds: ({ input, outputs }) => ocrPersonLookupRequests(reviewSeed(input, outputs)).map(request => request.recordIds),
     deriveChildItemId: (_input, context) => context.canonicalItemId,
   });
   const signers = delegate({
     id: "lookup-signers", label: "Look up official signers",
     target: { id: WorkflowIdSchema.parse("i9-lookup"), input: I9LookupInputSchema, result: I9SignerOutputSchema },
     edgeId: "ocr-signers", cardinality: "many", await: "terminal", join: "all-settled", policy: childPolicy
-  }, [review], {
-    bind: ({ outputs }) => ocrSignerLookupRequests(outputs["build-review"]).map(request => request.input),
-    sourceRecordIds: ({ outputs }) => ocrSignerLookupRequests(outputs["build-review"]).map(request => request.recordIds),
+  }, [review, pages], {
+    bind: ({ input, outputs }) => ocrSignerLookupRequests(reviewSeed(input, outputs)).map(request => request.input),
+    sourceRecordIds: ({ input, outputs }) => ocrSignerLookupRequests(reviewSeed(input, outputs)).map(request => request.recordIds),
     deriveChildItemId: (_input, context) => context.canonicalItemId,
   });
-  const completed = task({ id: "read-result", contract: ReadOcrResult, replay: "always-rerun" }, [review, identities, signers],
-    ({ outputs }) => ({ review: outputs["build-review"], outcomes: [...outputs["lookup-identities"], ...outputs["lookup-signers"]] }));
+  const completed = task({ id: "read-result", contract: ReadOcrResult, replay: "always-rerun" }, [review, pages, identities, signers],
+    ({ input, outputs }) => ({ review: reviewSeed(input, outputs), outcomes: [...outputs["lookup-identities"], ...outputs["lookup-signers"]] }));
   const approval = gate({ id: "approve-records", label: "Approve selected records", resolvedBy: "operator",
     result: OcrApprovalReferenceSchema, when: { kind: "equals", of: { from: "input", path: "approval" }, value: "release" } }, [completed]);
   return {
@@ -129,9 +142,13 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
         description: "Require the operator's selection when approval is requested, preserving the bound source evidence before releasing records.",
         review: { pages: [], branchLabels: [] } as const,
       }, [approval]],
-    ] as const, result: result(OcrWorkflowResultSchema, [completed, approval], ({ outputs }) => ({
-      ...outputs["read-result"], approvedSnapshot: outputs["approve-records"] ?? null,
-    }))
+    ] as const, result: result(OcrWorkflowResultSchema, [completed, approval, review], ({ outputs }) => {
+      const seed = outputs["build-review"], { identities } = outputs["read-result"];
+      if (sha256Hex(canonicalJsonStringify(seed)) !== outputs["read-result"].review.digest) {
+        throw new Error("OCR result does not match its review checkpoint.");
+      }
+      return { review: seed, identities, approvedSnapshot: outputs["approve-records"] ?? null };
+    })
   };
 }
 export const ocrSourcePagesDefinition = defineStep({
