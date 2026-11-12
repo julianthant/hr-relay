@@ -1,3 +1,4 @@
+import { deepFreeze } from "../validation/immutability.js";
 import { WriteParkCodeSchema, type WriteParkCode } from "./write-safety-primitives.js";
 import {
   ParkedWriteResolutionBindingSchema,
@@ -15,7 +16,7 @@ type Pair<Intent extends IntentStatus, Attempt extends AttemptState> = `${Intent
  * resolved intent (committed or retryable) whose attempt stays parked: the operator's resolution settles
  * the intent and never rewrites the attempt that parked.
  */
-export const WRITE_STATES = [
+export const WRITE_STATES = deepFreeze([
   "observed-present",
   "attempting/attempting",
   "committed/committed",
@@ -23,7 +24,7 @@ export const WRITE_STATES = [
   "retryable/safe-to-retry",
   "retryable/parked",
   "parked/parked",
-] as const satisfies readonly ("observed-present" | Pair<IntentStatus, AttemptState>)[];
+] as const satisfies readonly ("observed-present" | Pair<IntentStatus, AttemptState>)[]);
 export type WriteStateKey = (typeof WRITE_STATES)[number];
 
 export type WriteEvent =
@@ -35,9 +36,9 @@ export type WriteEvent =
   /** A new generation and a new attempt; the previous attempt keeps its outcome. */
   | { type: "refence" };
 export type WriteEventType = WriteEvent["type"];
-export const WRITE_EVENT_TYPES = [
+export const WRITE_EVENT_TYPES = deepFreeze([
   "commit", "settle-safe-to-retry", "park", "resolve-present", "resolve-absent", "refence",
-] as const satisfies readonly WriteEventType[];
+] as const satisfies readonly WriteEventType[]);
 
 export type WriteRefusal =
   | "write-settled-present"
@@ -47,13 +48,15 @@ export type WriteRefusal =
   | "not-retryable"
   | "resolution-binding-required"
   | "park-code-unknown";
-export type WriteTransition = { state: WriteStateKey } | { refused: WriteRefusal };
+export type WriteTransition = { readonly state: WriteStateKey } | { readonly refused: WriteRefusal };
 
 const SETTLED = { refused: "write-settled-present" } as const;
 const OPERATOR = { refused: "operator-resolution-required" } as const;
 const NOT_ATTEMPTING = { refused: "not-attempting" } as const;
 const NOT_PARKED = { refused: "not-parked" } as const;
 const NOT_RETRYABLE = { refused: "not-retryable" } as const;
+const BINDING_REQUIRED = deepFreeze({ refused: "resolution-binding-required" } as const);
+const PARK_CODE_UNKNOWN = deepFreeze({ refused: "park-code-unknown" } as const);
 const SETTLED_ROW = {
   commit: SETTLED, "settle-safe-to-retry": SETTLED, park: SETTLED, "resolve-present": SETTLED, "resolve-absent": SETTLED, refence: SETTLED,
 } as const;
@@ -63,7 +66,7 @@ const RETRYABLE_ROW = {
 } as const;
 
 /** A write with an unknown outcome (parked) leaves only through the operator's resolution. */
-export const WRITE_TRANSITIONS = {
+export const WRITE_TRANSITIONS = deepFreeze({
   "observed-present": SETTLED_ROW,
   "attempting/attempting": {
     commit: { state: "committed/committed" },
@@ -85,7 +88,7 @@ export const WRITE_TRANSITIONS = {
     "resolve-absent": { state: "retryable/parked" },
     refence: OPERATOR,
   },
-} as const satisfies Record<WriteStateKey, Record<WriteEventType, WriteTransition>>;
+} as const satisfies Record<WriteStateKey, Record<WriteEventType, WriteTransition>>);
 
 export function transitionWrite(state: WriteStateKey, event: WriteEvent): WriteTransition {
   const transition: WriteTransition = WRITE_TRANSITIONS[state][event.type];
@@ -93,9 +96,9 @@ export function transitionWrite(state: WriteStateKey, event: WriteEvent): WriteT
   if (event.type === "resolve-present" || event.type === "resolve-absent") {
     const binding = ParkedWriteResolutionBindingSchema.safeParse(event.resolution);
     if (!binding.success || binding.data.decision !== (event.type === "resolve-present" ? "present" : "absent")) {
-      return { refused: "resolution-binding-required" };
+      return BINDING_REQUIRED;
     }
   }
-  if (event.type === "park" && !WriteParkCodeSchema.safeParse(event.code).success) return { refused: "park-code-unknown" };
+  if (event.type === "park" && !WriteParkCodeSchema.safeParse(event.code).success) return PARK_CODE_UNKNOWN;
   return transition;
 }

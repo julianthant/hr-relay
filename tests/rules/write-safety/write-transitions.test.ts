@@ -100,6 +100,21 @@ describe("write intent and attempt transition table", () => {
     expect(transitionWrite("parked/parked", { type: "resolve-absent", resolution: { ...absent, generation: 0 } })).toEqual({ refused: "resolution-binding-required" });
   });
 
+  it("keeps the registry frozen so a returned result cannot change later answers", () => {
+    for (const registry of [WRITE_STATES, WRITE_EVENT_TYPES, WRITE_TRANSITIONS, WRITE_PARK_CODES]) expect(Object.isFrozen(registry)).toBe(true);
+    for (const state of WRITE_STATES) {
+      expect(Object.isFrozen(WRITE_TRANSITIONS[state])).toBe(true);
+      for (const type of WRITE_EVENT_TYPES) expect(Object.isFrozen(WRITE_TRANSITIONS[state][type])).toBe(true);
+    }
+    const parked = transitionWrite("attempting/attempting", { type: "park", code: "unknown" });
+    expect(Reflect.set(parked, "state", "retryable/parked")).toBe(false);
+    // @ts-expect-error a schema-invalid binding takes the runtime refusal path
+    const refused = transitionWrite("parked/parked", { type: "resolve-absent", resolution: { ...absent, generation: 0 } });
+    expect(Object.isFrozen(refused)).toBe(true);
+    expect(transitionWrite("attempting/attempting", { type: "park", code: "unknown" })).toEqual({ state: "parked/parked" });
+    expect(transitionWrite("parked/parked", { type: "refence" })).toEqual(OPERATOR);
+  });
+
   it("parks only with a declared park code", () => {
     expect(WRITE_PARK_CODES).toEqual(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]);
     const parked = WriteIntentRecordSchema.options.find((option) => option.shape.status.value === "parked");
