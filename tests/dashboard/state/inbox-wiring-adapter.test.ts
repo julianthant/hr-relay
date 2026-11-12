@@ -309,8 +309,8 @@ it("matches recovery and command-result targets by command id and bulk results b
   const request = NotificationCommandRequestSchema.parse({ commandId: parsed, requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read", target: { notificationId: id, actorId: "local-operator", expectedVersion: 1 } });
   const result = CommandResultSchema.parse({ state: "rejected", commandId: parsed, code: "policy-refused", message: "Relay did not do this, so nothing changed." });
   const recovery = { kind: "recovery" as const, commandId: parsed, request };
-  const commandResult = { kind: "command-result" as const, commandId: parsed, request, result };
-  const bulk = (bulkCommandId: typeof parsed) => NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId, type: "retry", requestedCount: 1, results: [], notAttempted: [] });
+  const commandResult = { kind: "command-result" as const, commandId: parsed, day: "2026-08-03", request, result };
+  const bulk = (bulkCommandId: typeof parsed) => NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId, type: "retry", requestedCount: 1, results: [], notAttempted: [], days: {} });
   assert.equal(notificationTargetMatches(commandRow("command-unknown"), recovery), true);
   assert.equal(notificationTargetMatches(commandRow("command-unknown"), { ...recovery, commandId: other }), false);
   assert.equal(notificationTargetMatches(commandRow("command-refused"), commandResult), true);

@@ -1042,7 +1042,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const servedSearchData = useSearchWiring({ client, enabled: workflowComposition.search === "served" && route.view?.search === true,
     query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows, titles: searchTitles });
   const librarySheets = useLibrarySheets(client, workflowComposition.search === "served" && route.view?.search === true);
-  const searchData = useMemo(() => workflowComposition.search === "mock" ? previewSearchData : { ...servedSearchData, sheets: librarySheets }, [workflowComposition.search, previewSearchData, servedSearchData, librarySheets]);
+  const searchData = useMemo(() => workflowComposition.search === "mock" ? previewSearchData : { ...servedSearchData, sheets: librarySheets.sheets, unavailable: servedSearchData.unavailable ?? librarySheets.unavailable }, [workflowComposition.search, previewSearchData, servedSearchData, librarySheets]);
   const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast });
   const [notificationReads, setNotificationReads] = useState<NotificationReads>({});
   const notifications = useWorkspaceNotifications(notificationScenario(), {
@@ -1094,7 +1094,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       const response = BulkRunCommandResponseSchema.safeParse({ state: "vector", bulkCommandId: destination.bulkCommandId, type: destination.type, requestedCount: destination.requestedCount, results: destination.results });
       if (!response.success) { refused(notificationTargetUnavailable()); return; }
       const ids = [...destination.results.map(result => result.runId), ...destination.notAttempted];
-      setOpenedBulk({ plan: { verb: destination.type, label: BULK_VERB_LABEL[destination.type], eligible: [], skipped: destination.notAttempted.map(runId => ({ runId, title: title(runId) })), unavailable: [] },
+      setOpenedBulk({ plan: { verb: destination.type, label: BULK_VERB_LABEL[destination.type], eligible: [], skipped: destination.notAttempted.map(runId => ({ runId, title: title(runId) })), skippedReason: "Not attempted", unavailable: [] },
+        days: new Map(Object.entries(destination.days)),
         subjects: new Map(ids.map(runId => [runId, title(runId)])), response: response.data });
       setBulkReview(true); opened();
       return;
@@ -1102,7 +1103,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     if (destination.kind === "command-result") {
       const request = destination.request;
       if (!("target" in request) || !("runId" in request.target) || typeof request.target.runId !== "string") { refused(notificationTargetUnavailable()); return; }
-      selectRun(request.target.runId); opened();
+      selectRun(request.target.runId, destination.day); opened();
       return;
     }
     if (destination.kind === "settings") {
@@ -1287,7 +1288,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               void executeShell(request, retained.label, plan, true);
             }}
           />
-          <BulkCommandFeedback bulkOutcome={openedBulk ?? bulkOutcome} reviewing={bulkReview} onReviewed={() => { setBulkReview(false); if (openedBulk === null) setBulkOutcome(null); setOpenedBulk(null); }} onSelectRun={selectRun} />
+          <BulkCommandFeedback bulkOutcome={openedBulk ?? bulkOutcome} reviewing={bulkReview} onReviewed={() => { setBulkReview(false); if (openedBulk === null) setBulkOutcome(null); setOpenedBulk(null); }} onSelectRun={runId => selectRun(runId, openedBulk?.days?.get(runId))} />
 
 
           <CommandResultFeed results={commandResults} />

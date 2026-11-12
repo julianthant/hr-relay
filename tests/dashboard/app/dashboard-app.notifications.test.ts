@@ -18,7 +18,7 @@ import type { NotificationDestination } from "../../../src/dashboard/surfaces/no
 import { WorkflowBootstrapPrimitiveSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { QueueSurfaceWireSchema, NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
-import { NotificationCommandRequestSchema } from "../../../src/rules/commands/commands.js";
+import { CommandResultSchema, NotificationCommandRequestSchema, RunCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { CrossDateSearchPageSchema, type CrossDateSearchQueryInput } from "../../../src/models/dashboard/search.js";
 import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
 import { notificationTargetUnavailable } from "../../../src/dashboard/app/navigation/run-navigation.js";
@@ -51,8 +51,11 @@ async function mount(missing = false, mixed = false) {
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
   const reads: string[] = [];
   const dayRows = FIXTURE_DAY_WIRE.queueSurfaces.map(row => mixed && row.runId === FIXTURE_IDS.failedRun ? QueueSurfaceWireSchema.parse({ ...row, workflowId: "separations" }) : row);
-  const target = requested.target; assert(target && (target.kind === "run" || target.kind === "failure"));
-  const notification = NotificationWireSchema.parse({ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title: "Run failed", occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Canonical history", workflow: mixed ? "Separations" : "Person Lookup" }, sourceEvent: { state: "available", kind: "run-failed" }, link: target.kind === "failure" ? { kind: "failure", runId: target.runId, failureId: target.failureId } : { kind: "run", runId: target.runId } });
+  const target = requested.target; assert(target && (target.kind === "run" || target.kind === "failure" || target.kind === "command-result"));
+  const common = { notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), readState: "unread", state: "unread", occurredAt: "2026-08-03T17:00:00Z", revision: 1 };
+  const notification = NotificationWireSchema.parse(target.kind === "command-result"
+    ? { ...common, kind: "command", priority: true, severity: "error", title: "Cancel run: rejected", summary: "The run already finished.", context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "command-refused" }, link: { kind: "command-result", commandId: target.commandId } }
+    : { ...common, kind: "notification", trigger: "failed", severity: "error", title: "Run failed", context: { state: "available", subject: "Canonical history", workflow: mixed ? "Separations" : "Person Lookup" }, sourceEvent: { state: "available", kind: "run-failed" }, link: target.kind === "failure" ? { kind: "failure", runId: target.runId, failureId: target.failureId } : { kind: "run", runId: target.runId } });
   const client = { ...transport,
     notificationSnapshot: async () => [notification], notificationStatus: async () => ({ state: "ready" as const, pending: 0 }), notificationTarget: async () => target,
     bootstrap: async () => { const boot = await transport.bootstrap(); return mixed ? { ...boot, workflows: [...boot.workflows, { ...WorkflowBootstrapPrimitiveSchema.parse(boot.workflows[0]), id: "separations", code: "sep", label: "Separations" }] } : boot; },
@@ -87,6 +90,18 @@ it("opens canonical historical run detail while ordinary workflow sources remain
   assert(section.section === "failure" && section.payload.state === "available");
   assert(host.querySelector(`section[aria-labelledby$="${section.payload.value.failureId}"]`));
   assert.equal(host.textContent?.includes("Source order · cross-source chronology unavailable"), false);
+  assert.equal(host.textContent?.includes("Run unavailable"), false);
+});
+it("opens a stored command result on the run's own day, not the displayed day", async () => {
+  const runId = RunIdSchema.parse(FIXTURE_IDS.failedRun);
+  const commandId = "00000000-0000-4000-8000-000000000777";
+  const request = RunCommandRequestSchema.parse({ commandId, requestedAt: "2026-08-03T17:00:00.000Z", requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel", target: { runId, expectedVersion: 1 } });
+  const result = CommandResultSchema.parse({ state: "rejected", commandId, code: "invalid-state", message: "The run already finished." });
+  requested.target = { kind: "command-result", commandId: request.commandId, day: FIXTURE_DAY_WIRE.day, request, result };
+  const { host } = await mount();
+  const params = new URLSearchParams(location.search);
+  assert.equal(params.get("run"), runId);
+  assert.equal(params.get("day"), FIXTURE_DAY_WIRE.day);
   assert.equal(host.textContent?.includes("Run unavailable"), false);
 });
 it("opens the exact failure step through the existing Logs initial focus input", async () => {

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
-import { paletteSheets, readSearchSnapshot, searchResults, withQueueSubjects, useSearchWiring, searchMessage, workspaceSearchQuery } from "../../../src/dashboard/state/search-wiring-adapter.js";
+import { paletteSheets, readSearchSnapshot, searchResults, withQueueSubjects, useLibrarySheets, useSearchWiring, searchMessage, workspaceSearchQuery } from "../../../src/dashboard/state/search-wiring-adapter.js";
 import { CrossDateSearchPageSchema, type CrossDateSearchQueryInput } from "../../../src/models/dashboard/search.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
@@ -42,10 +42,23 @@ it("keeps unavailable subject explicit without inventing an alias or destination
   assert.deepEqual(row.destination, { kind: "run", runId: missing.results[0].runId, day: "2026-08-03" });
 });
 it("shows the queue's display label for a raw run state", async () => {
-  const states = ["parked-gate", "parked-write", "done", "failed", "queued"] as const;
+  const states = ["parked-gate", "parked-write", "done", "failed", "queued", "interrupted"] as const;
   const labelled = CrossDateSearchPageSchema.parse({ ...zeroMatchSearchPage(), totalMatches: states.length, results: states.map((state, n) => ({ ...result(n), state })) });
   const snapshot = await readSearchSnapshot({ searchRuns: async () => labelled }, { q: "x" }, new AbortController().signal);
-  assert.deepEqual(searchResults(snapshot).map(row => row.state), ["Review", "Write parked", "Done", "Failed", "Queued"]);
+  assert.deepEqual(searchResults(snapshot).map(row => row.state), ["Review", "Write parked", "Done", "Failed", "Queued", "Write parked"]);
+});
+it("tells a rejected library read apart from an empty library", async () => {
+  let reject = true;
+  const client = { workbookList: async () => { if (reject) throw new Error("storage"); return []; } };
+  let seen: ReturnType<typeof useLibrarySheets> | undefined;
+  function Probe({ tick }: { tick: number }) { seen = useLibrarySheets(client, tick >= 0); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(createElement(Probe, { tick: 0 })));
+  assert.equal(seen?.unavailable, searchMessage("SEARCH_LIBRARY_UNAVAILABLE"));
+  reject = false; const next = { workbookList: async () => [] };
+  function Retry() { seen = useLibrarySheets(next, true); return null; }
+  await act(async () => root?.render(createElement(Retry)));
+  assert.equal(seen?.unavailable, undefined); assert.deepEqual(seen?.sheets, []);
 });
 it("does no reads in mock/closed mode and suppresses a stale query result", async () => {
   const requests: { q: string; finish: (page: unknown) => void }[] = [];

@@ -10,7 +10,7 @@ import type { NavbarData, NavbarSearchResult } from "../surfaces/shell/search/na
 import type { PaletteSheet } from "../surfaces/shell/search/search-palette-model.js";
 import type { SavedWorkbook } from "../../models/dashboard/workbooks.js";
 
-export const searchMessage = (code: "SEARCH_LOADING" | "SEARCH_UNAVAILABLE" | "SEARCH_SUBJECT_UNAVAILABLE") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
+export const searchMessage = (code: "SEARCH_LOADING" | "SEARCH_UNAVAILABLE" | "SEARCH_LIBRARY_UNAVAILABLE" | "SEARCH_SUBJECT_UNAVAILABLE") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 export async function readSearchSnapshot(client: Pick<DashboardClient, "searchRuns">, input: CrossDateSearchQueryInput, signal: AbortSignal) {
   const query = CrossDateSearchQuerySchema.parse(input);
@@ -38,7 +38,7 @@ export async function readSearchSnapshot(client: Pick<DashboardClient, "searchRu
 
 const SEARCH_STATE_TO_QUEUE: Readonly<Record<CrossDateSearchPage["results"][number]["state"], QueueStatus>> = {
   queued: "queued", claimed: "running", validating: "running", running: "running", "parked-gate": "awaiting-approval", "parked-write": "blocked",
-  done: "done", failed: "failed", interrupted: "failed", cancelled: "cancelled", discarded: "cancelled", superseded: "cancelled",
+  done: "done", failed: "failed", interrupted: "blocked", cancelled: "cancelled", discarded: "cancelled", superseded: "cancelled",
 };
 
 export function searchResults(snapshot: Awaited<ReturnType<typeof readSearchSnapshot>>): readonly NavbarSearchResult[] {
@@ -72,15 +72,15 @@ export function workspaceSearchQuery(query: string, workflows: readonly Pick<Wor
 }
 
 /** The saved library as palette rows, read while the palette is open. */
-export function useLibrarySheets(client: Pick<DashboardClient, "workbookList">, enabled: boolean): readonly PaletteSheet[] {
-  const [sheets, setSheets] = useState<readonly PaletteSheet[]>([]);
+export function useLibrarySheets(client: Pick<DashboardClient, "workbookList">, enabled: boolean): Readonly<{ sheets: readonly PaletteSheet[]; unavailable?: string }> {
+  const [state, setState] = useState<{ sheets: readonly PaletteSheet[]; failed: boolean }>({ sheets: [], failed: false });
   useEffect(() => {
     if (!enabled) return;
     let live = true;
-    client.workbookList().then(records => { if (live) setSheets(paletteSheets(records)); }, () => { if (live) setSheets([]); });
+    client.workbookList().then(records => { if (live) setState({ sheets: paletteSheets(records), failed: false }); }, () => { if (live) setState(previous => ({ ...previous, failed: true })); });
     return () => { live = false; };
   }, [client, enabled]);
-  return sheets;
+  return state.failed ? { sheets: state.sheets, unavailable: searchMessage("SEARCH_LIBRARY_UNAVAILABLE") } : { sheets: state.sheets };
 }
 
 const NO_TITLES: ReadonlyMap<string, string> = new Map();

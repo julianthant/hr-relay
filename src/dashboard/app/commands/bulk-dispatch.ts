@@ -33,6 +33,8 @@ export interface BulkVerbPlan {
   readonly eligible: readonly BulkTarget[];
   /** selected rows this verb will NOT be sent for, named rather than dropped */
   readonly skipped: readonly { readonly runId: string; readonly title: string }[];
+  /** Why `skipped` rows were left out, when it is not "not offered" (a stored result's unattempted rows were offered). */
+  readonly skippedReason?: string;
   /** Selected ids the current day serves NO row for — a filter changed or the
  * day rolled under an open selection. They are a THIRD bucket on purpose */
   readonly unavailable: readonly string[];
@@ -107,6 +109,8 @@ export interface BulkBatchOutcome {
   /** runId → the row's own name, frozen from the plan that was sent */
   readonly subjects: ReadonlyMap<string, string>;
   readonly response: BulkRunCommandResponse;
+  /** runId → partition day, for a stored result opened from another day */
+  readonly days?: ReadonlyMap<string, string>;
 }
 
 /** Show zero outcome buckets too; aggregate success cannot describe every refusal arm. */
