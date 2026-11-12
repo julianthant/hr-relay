@@ -10,7 +10,7 @@
 - dialog "Start run":
   - banner:
     - heading "Start run" [level=2]
-    - paragraph: New work · Reference fixture
+    - paragraph: Reference fixture · Workflow preview
     - button "Close"
   - complementary:
     - group:
@@ -67,45 +67,21 @@
       - button "2 Options": Options
     - listitem:
       - button "3 Confirm" [disabled]: Confirm
-  - region "Options":
-    - heading "Run" [level=2]
-    - group "Run options":
-      - checkbox "Customize steps"
-      - text: Customize steps Choose optional steps. Screenshots
-      - paragraph: Required by this workflow.
-      - text: Always on Priority
-      - paragraph: Interactive runs go first.
-      - group "Priority":
-        - text: Priority
-        - radio "Interactive" [checked]
-        - text: Interactive
-        - radio "Bulk"
-        - text: Bulk
-      - text: Browser
-      - paragraph: Headless runs in the background.
-      - group "Browser mode":
-        - text: Browser mode
-        - radio "Headed" [checked]
-        - text: Headed
-        - radio "Headless"
-        - text: Headless
-    - heading "Reference data" [level=2]
-    - group "Reference data":
-      - text: Look up people in
-      - paragraph: "Required fields: Employee ID, Legal name"
-      - text: Reference spreadsheet
-      - button "Applicants.xlsx Reference spreadsheet": Applicants.xlsx
-      - text: Reference version
-      - button "Fall hires Reference version": Fall hires
-      - text: Reference worksheet
-      - button "People Reference worksheet": People
+  - region "Run":
+    - heading "Run" [level=4]
+    - text: Customize steps Choose optional steps.
+    - switch "Customize steps"
+    - text: Customize steps Screenshots Required by this workflow. Always on Priority Runs before bulk batches.
+    - switch "Priority" [checked]
+    - text: Priority Browser Headless runs in the background.
+    - group "Browser mode":
+      - text: Browser mode
+      - radio "Headed" [checked]
+      - text: Headed
+      - radio "Headless"
+      - text: Headless
   - contentinfo:
-    - text: 1 runReference fixture
+    - text: Reference fixture1 of 1 stepsPriority Enter to continue
     - button "Back"
     - button "Cancel"
     - button "Preview plan"
-  - menu "People Reference worksheet":
-    - group:
-      - group:
-        - menuitemradio "Choose a worksheet"
-        - menuitemradio "People" [checked]

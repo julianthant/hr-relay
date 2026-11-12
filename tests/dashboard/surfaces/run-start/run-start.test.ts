@@ -56,6 +56,32 @@ it("keeps the current view after a refused start", async () => {
   assert.deepEqual(revealed, []);
 });
 
+it("Enter advances and starts, Shift+Enter keeps its newline, buttons keep their own Enter", async () => {
+  onTestFinished(cleanup);
+  const revealed: string[] = [];
+  const dialog = await openDialog(stubClient({
+    submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
+    executeCommand: async () => APPLIED,
+  }), undefined, (workflowId) => revealed.push(workflowId));
+  assert.ok(!dialog.text().includes("Enter to continue"), "nothing typed: no hint");
+  assert.equal(await dialog.enter(), false, "Enter does nothing while Continue is unavailable");
+  await dialog.type(TYPED);
+  assert.ok(dialog.text().includes("Enter to continue"));
+  assert.equal(await dialog.enter({ shift: true }), false, "Shift+Enter keeps its newline");
+  assert.equal(dialog.stage(), "Input");
+  const back = buttons().find(button => button.textContent?.trim() === "Cancel");
+  assert.ok(back);
+  assert.equal(await dialog.enter({ on: back }), false, "a focused button keeps its Enter");
+  assert.equal(await dialog.enter(), true);
+  assert.notEqual(dialog.stage(), "Input");
+  await dialog.enter({ on: document.body });
+  assert.equal(dialog.stage(), "Confirm");
+  assert.ok(dialog.text().includes("Enter to start"));
+  assert.deepEqual(revealed, []);
+  await dialog.enter({ on: document.body });
+  assert.deepEqual(revealed, [WORKFLOW_ID]);
+});
+
 describe("a settlement that arrives after the request moved is DROPPED", () => {
   afterEach(cleanup);
 
@@ -164,7 +190,7 @@ describe("keeps optional steps and removes only the per-start destination", () =
     assert.ok(dialog.text().includes("Customize steps"));
     assert.ok(!dialog.text().includes("Destination"));
     assert.ok(!dialog.text().includes("Test instance"));
-    assert.equal(document.querySelectorAll('input[type="radio"][name^="Priority-"]').length, 2);
+    assert.ok(dialog.text().includes("Runs before bulk batches."));
     assert.equal(document.querySelectorAll('input[type="radio"][name^="Browser mode-"]').length, 2);
     assert.doesNotMatch(dialog.text(), /Active policy|Workflow version|Fixed by the selected workflow/u);
     const selectedWorkflow = document.body.querySelector('nav[aria-label="Workflow"] button[aria-current="page"]');

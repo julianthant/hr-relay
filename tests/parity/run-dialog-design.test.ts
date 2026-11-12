@@ -28,7 +28,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(dialog.locator(".launch-workflow-rail")).toHaveCount(0);
       expect((await dialog.locator(".launch-stagebar").boundingBox())!.height).toBe(54);
       await expect(dialog.getByRole("list", { name: "Run configuration path" })).toHaveText(/1Steps2Values3Options4Confirm/u);
-      const required = dialog.getByRole("checkbox", { name: "Read employee", exact: true });
+      const required = dialog.getByRole("switch", { name: "Read employee (required)", exact: true });
       await expect(required).toBeChecked(); await expect(required).toBeDisabled();
       await expect(dialog.locator(".launch-step-status").first()).toHaveCSS("height", "18px");
 
@@ -43,9 +43,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(dialog.getByRole("textbox", { name: "Previous transaction", exact: true })).toHaveValue("");
 
       await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-      await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
+      await expect(dialog.getByRole("region", { name: "Run", exact: true })).toBeVisible();
       await expect(dialog.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
-      await setSwitchChecked(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true }), true);
+      await setSwitchChecked(dialog.getByRole("switch", { name: "Dry run", exact: true }), true);
 
       await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
       await expect(dialog.getByRole("button", { name: "Start dry run", exact: true })).toBeVisible();
@@ -78,15 +78,15 @@ test("Rerun waits for the omitted step's required values before Options", async 
     await gotoAppState(page, server.baseUrl, { day: server.day });
     await page.getByRole("button", { name: "Rerun", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Rerun", exact: true });
-    await dialog.getByRole("checkbox", { name: "Check employee", exact: true }).uncheck();
-    await dialog.getByRole("checkbox", { name: "File transaction", exact: true }).uncheck();
+    await setSwitchChecked(dialog.getByRole("switch", { name: "Include Check employee", exact: true }), false);
+    await setSwitchChecked(dialog.getByRole("switch", { name: "Include File transaction", exact: true }), false);
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(dialog.getByRole("region", { name: "Values", exact: true })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
     await dialog.getByRole("button", { name: "Copy Check employee · Checked employee ID", exact: true }).click();
     await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-    await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("region", { name: "Run", exact: true })).toBeVisible();
     expect(server.commands).toHaveLength(0); expect(server.h.queueRoots).toHaveLength(1);
   } catch (error) { parityBodyFailure = { error }; }
     if (parityBodyFailure?.error instanceof AuthoritySourceClosureUnprovedError) {

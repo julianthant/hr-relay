@@ -10,7 +10,7 @@
 - dialog "Start run":
   - banner:
     - heading "Start run" [level=2]
-    - paragraph: New work · Reference fixture
+    - paragraph: Reference fixture · Workflow preview
     - button "Close"
   - complementary:
     - group:
@@ -94,7 +94,7 @@
       - term: Reference report.xlsx
       - definition: 1 person
   - contentinfo:
-    - text: 1 runReference fixture1 to create
+    - text: Reference fixture1 of 1 stepsPriority1 to create Enter to start
     - button "Back"
     - button "Cancel"
     - button "Start 1 run"

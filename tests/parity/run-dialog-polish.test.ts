@@ -47,9 +47,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(run.locator(".launch-stagebar > li").nth(1)).toHaveCSS("padding", "0px");
       await input.fill("10873698");
       await run.getByRole("button", { name: "Continue", exact: true }).click();
-      await expect(run.getByRole("region", { name: "Options", exact: true })).toBeVisible();
-      const flagBounds = await run.locator(".launch-flags .ds-checkbox-row").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().y));
-      expect(new Set(flagBounds).size).toBe(1);
+      await expect(run.getByRole("region", { name: "Run", exact: true })).toBeVisible();
+      await expect(run.locator(".ds-run-row")).toHaveCount(4);
       await expect(run.getByRole("button", { name: "None Workbook · Optional", exact: true })).toHaveCount(0);
       await expect(run.getByRole("group", { name: "Reference data", exact: true })).toHaveCount(0);
       await expect(run.getByRole("button", { name: /Workers$/u })).toHaveCount(0);

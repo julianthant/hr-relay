@@ -7,16 +7,25 @@ import { attachShellA11y } from './helpers/shell-proof.js';
 import { ROW_EMAILS, ROW_IDS, withWorkbookRowsFixture, type WorkbookRowsFixture } from '../support/helpers/dashboard/run-workbook-rows-fixture.js';
 
 type Theme = 'light' | 'dark';
+async function pickVersion(page: Page, dialog: Locator, name: string | RegExp) {
+  await dialog.getByRole('combobox', { name: / version$/u }).click();
+  await page.getByRole('option', { name, ...(typeof name === 'string' ? { exact: true } : {}) }).click();
+}
+async function pickWorksheet(page: Page, dialog: Locator, name: string) {
+  await dialog.getByRole('button', { name: / worksheet, / }).click();
+  await page.getByRole('menuitemradio', { name, exact: true }).click();
+}
 async function openOnboarding(page: Page, fixture: WorkbookRowsFixture, theme: Theme, width: number) {
   await page.addInitScript(value => Reflect.set(window, 'relayParityTheme', value), theme);
   await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 });
   await gotoAppState(page, fixture.server.baseUrl, { day: FIXTURE_DAY, start: true });
   const dialog = page.getByRole('dialog', { name: 'Start run', exact: true });
   await dialog.getByRole('navigation', { name: 'Workflow', exact: true }).getByRole('button', { name: 'Onboarding', exact: true }).click();
-  for (const [picker, option] of [[/Reference spreadsheet$/u, 'Onboarding.xlsx'], [/Reference version$/u, /^Reviewed roster/u], [/Reference worksheet$/u, 'People']] as const) {
-    await dialog.getByRole('button', { name: picker }).click();
-    await page.getByRole('menuitemradio', { name: option, ...(typeof option === 'string' ? { exact: true } : {}) }).click();
-  }
+  await dialog.getByRole('button', { name: 'Add spreadsheet', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Find a spreadsheet' }).fill('Onboarding');
+  await page.getByRole('menuitem', { name: /Onboarding\.xlsx/u }).click();
+  await pickVersion(page, dialog, /^Reviewed roster/u);
+  await pickWorksheet(page, dialog, 'People');
   await expect(dialog.getByRole('table', { name: 'Saved spreadsheet rows', exact: true })).toBeVisible();
   await expect(dialog.getByRole('radio', { name: 'New hire', exact: true })).not.toBeChecked();
   await expect(dialog.getByRole('radio', { name: 'Rehire', exact: true })).not.toBeChecked();
@@ -51,7 +60,7 @@ async function review(page: Page, fixture: WorkbookRowsFixture, dialog: Locator,
   expect(fixture.commands).toHaveLength(0); expect(fixture.rows).toHaveLength(0); expect(fixture.plans).toHaveLength(0);
   if (capture) await evidence(page, info, 'selected-input');
   await dialog.getByRole('button', { name: 'Continue', exact: true }).click();
-  const dryRun = dialog.getByRole('switch', { name: 'Dry run Fill and check every step without submitting.', exact: true });
+  const dryRun = dialog.getByRole('switch', { name: 'Dry run', exact: true });
   await expect(dryRun).toBeEnabled();
   await expect(dryRun).not.toBeChecked();
   if (capture) await evidence(page, info, 'selected-options');
@@ -133,43 +142,35 @@ test(authorityTitle, {
     const dialog = await openOnboarding(page, fixture, 'dark', 1024);
     await chooseRows(page, dialog, 'New hire');
     fixture.delayVersion();
-    await dialog.getByRole('button', { name: /Reference version$/u }).click();
-    await page.getByRole('menuitemradio', { name: 'Delayed roster', exact: true }).click();
+    await pickVersion(page, dialog, 'Delayed roster');
     await expect.poll(() => fixture.pendingVersions).toEqual(['roster-2']);
     await expect(dialog.getByText('The selected rows are from earlier spreadsheet data and cannot be planned.', { exact: true })).toBeVisible();
     await expect(rowCheckbox(dialog, 0)).toBeChecked(); await expect(rowCheckbox(dialog, 0)).toBeDisabled();
     await expect(dialog.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
     await evidence(page, info, 'stale-version');
-    await dialog.getByRole('button', { name: /Reference version$/u }).click();
-    await page.getByRole('menuitemradio', { name: 'New roster', exact: true }).click();
+    await pickVersion(page, dialog, 'New roster');
     await dialog.getByRole('button', { name: 'Clear previous row selection', exact: true }).click();
-    await dialog.getByRole('button', { name: /Reference worksheet$/u }).click();
-    await page.getByRole('menuitemradio', { name: 'New people', exact: true }).click();
+    await pickWorksheet(page, dialog, 'New people');
     await expect(rowCheckbox(dialog, 0, 'New people')).toBeEnabled();
     const lateReply = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/versions/roster-2'));
     fixture.releaseVersion(); await lateReply;
     await expect(rowCheckbox(dialog, 0, 'New people')).toBeEnabled(); await expect(rowCheckbox(dialog, 0)).toHaveCount(0);
-    await dialog.getByRole('button', { name: /Reference version$/u }).click();
-    await page.getByRole('menuitemradio', { name: 'Empty roster', exact: true }).click();
-    await dialog.getByRole('button', { name: /Reference worksheet$/u }).click();
-    await page.getByRole('menuitemradio', { name: 'People', exact: true }).click();
+    await pickVersion(page, dialog, 'Empty roster');
+    await pickWorksheet(page, dialog, 'People');
     await expect(dialog.getByText('No saved data rows', { exact: true })).toBeVisible();
     await expect(dialog.getByRole('table', { name: 'Saved spreadsheet rows', exact: true })).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
     await evidence(page, info, 'empty-version');
-    await dialog.getByRole('button', { name: /Reference version$/u }).click();
-    await page.getByRole('menuitemradio', { name: /^Reviewed roster/u }).click();
-    await dialog.getByRole('button', { name: /Reference worksheet$/u }).click();
-    await page.getByRole('menuitemradio', { name: 'People', exact: true }).click();
+    await pickVersion(page, dialog, /^Reviewed roster/u);
+    await pickWorksheet(page, dialog, 'People');
     await rowCheckbox(dialog, 0).check();
-    await dialog.getByRole('button', { name: /Reference version$/u }).click();
-    await page.getByRole('menuitemradio', { name: 'Unavailable roster', exact: true }).click();
+    await pickVersion(page, dialog, 'Unavailable roster');
     const providerError = dialog.getByRole('alert').filter({ hasText: ERROR_CATALOG.DASHBOARD_READ_FAILED.text });
     await expect(providerError).toHaveCount(1);
     await expect(providerError).not.toContainText('/api/v1/');
     await expect(providerError).not.toContainText('GET ');
     await expect(providerError).not.toContainText('Failed to fetch');
-    await expect(dialog.getByRole('button', { name: /Reference worksheet$/u })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: / worksheet, /u })).toBeDisabled();
     await expect(rowCheckbox(dialog, 0)).toBeChecked(); await expect(rowCheckbox(dialog, 0)).toBeDisabled();
     await expect(dialog.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
     await expect(dialog.getByText('The selected rows are from earlier spreadsheet data and cannot be planned.', { exact: true })).toBeVisible();
