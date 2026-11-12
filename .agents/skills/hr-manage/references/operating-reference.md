@@ -20,7 +20,6 @@ Read this reference for runtime commands and environment behavior. The
 | Backend alone | `npm run backend` |
 | Vite alone, with an existing backend | `npm run web` |
 | Production dashboard | `npm run web:build`, then `npm run dashboard:prod` |
-| Desktop visual contract | `npm run test:parity` |
 | Windows observer preparation | `npm run build:observer-policy` |
 | Roadmap generation and freshness | `npm run roadmap`, then `npm run roadmap:check` |
 

@@ -10,7 +10,7 @@ import { useRunLaunch } from "../../../../src/dashboard/surfaces/run-start/run-l
 import { RunLaunchHost } from "../../../../src/dashboard/surfaces/run-start/run-launch.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
-import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { launchHarness } from "../../fixtures/run-launch-fixtures.js";
 
 

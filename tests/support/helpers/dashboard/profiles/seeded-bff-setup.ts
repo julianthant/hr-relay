@@ -25,7 +25,7 @@ import type { DashboardAppDeps } from "../../../../../src/backend/transports/htt
 import { type DashboardApp } from "../../../../../src/backend/transports/http/routes/api.js";
 import type { Clock } from "../../../../../src/rules/time/clock.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
-import { type ParityBundleProof } from "../served-fixtures/bundle.js";
+import { type MockBundleProof } from "../served-fixtures/bundle.js";
 import { createStaticAssetFixture } from "../static-assets.js";
 import type * as SeededServicesTypes from "../served-fixtures/seeded-services.js";
 import type * as BundleTypes from "../served-fixtures/bundle.js";
@@ -100,7 +100,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
   }
 
   async function startSeededServer(
-    input: Readonly<{ distDir: string; bundle: ParityBundleProof; dateNavigation?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
+    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
   ): Promise<SeededServer> {
     // Ref frontend-backend-integration: the same working-tree proof the fixture adapter demands —
     // asserted before any temp root, database or port exists.
@@ -112,7 +112,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     const root = profile.workspace, stateRoot = profile.stateRoot;
     const clock = manualClock(SEEDED_AT);
     let database: AuthorityDatabase;
-    try { database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 1000, migrationOwner: "parity-seeded-bff" }, clock); }
+    try { database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 1000, migrationOwner: "mock-seeded-bff" }, clock); }
     catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
     held.database = database;
 

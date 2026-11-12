@@ -421,7 +421,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
   });
 
 
-  it("pins the parity fixture's gate descriptors and option labels to this query's", async () => {
+  it("pins the mock fixture's gate descriptors and option labels to this query's", async () => {
     for (const fixture of [FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_NAME_MISMATCH]) {
       const w = await world();
       seed(w, { version: fixture.expectedVersion });

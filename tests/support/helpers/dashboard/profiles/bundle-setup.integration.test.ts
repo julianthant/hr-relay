@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const repoRoot = mkdtempSync(join(tmpdir(), "parity-bundle-setup-"));
+  const repoRoot = mkdtempSync(join(tmpdir(), "mock-bundle-setup-"));
   roots.push(repoRoot);
   const distDir = join(repoRoot, "dist");
   mkdirSync(distDir);
@@ -27,7 +27,7 @@ function fixture() {
   writeFileSync(join(distDir, "index.html"), "<title>fixture</title>");
   const stamp = writeDashboardBuildIdentity({ repoRoot, distDir });
   const setup = createBundleSetup({
-    PARITY_REPO_ROOT: repoRoot, PARITY_DIST_DIR: distDir,
+    MOCK_REPO_ROOT: repoRoot, MOCK_DIST_DIR: distDir,
     bundleBuildInput: () => ({ buildScript: DASHBOARD_BUILD_COMMAND }),
     buildArguments: () => ["run", "web:build"],
     buildCommandLabel: () => DASHBOARD_BUILD_COMMAND,
@@ -37,23 +37,23 @@ function fixture() {
 
 it("returns the verified current identity without launching a build", () => {
   const { stamp, setup } = fixture();
-  assert.deepEqual(setup.ensureParityBundle(), stamp);
-  assert.deepEqual(setup.ensureParityBundle(), stamp);
+  assert.deepEqual(setup.ensureMockBundle(), stamp);
+  assert.deepEqual(setup.ensureMockBundle(), stamp);
   assert.equal(vi.mocked(spawnSync).mock.calls.length, 0);
 });
 
 for (const changed of ["input", "output"] as const) it(`rechecks ${changed} bytes on the next call and verifies the rebuild`, () => {
   const { repoRoot, distDir, setup, stamp } = fixture();
-  assert.deepEqual(setup.ensureParityBundle(), stamp);
+  assert.deepEqual(setup.ensureMockBundle(), stamp);
   writeFileSync(changed === "input" ? join(repoRoot, "src/app.ts") : join(distDir, "index.html"), "changed");
   vi.mocked(spawnSync).mockImplementation(() => {
     writeDashboardBuildIdentity({ repoRoot, distDir });
     return { pid: 1, output: [], stdout: "", stderr: "", status: 0, signal: null };
   });
-  const rebuilt = setup.ensureParityBundle();
+  const rebuilt = setup.ensureMockBundle();
   assert.notEqual(changed === "input" ? rebuilt.inputDigest : rebuilt.outputDigest, changed === "input" ? stamp.inputDigest : stamp.outputDigest);
   assert.deepEqual(vi.mocked(spawnSync).mock.calls[0]?.slice(0, 2), ["npm", ["run", "web:build"]]);
-  assert.deepEqual(setup.ensureParityBundle(), rebuilt);
+  assert.deepEqual(setup.ensureMockBundle(), rebuilt);
   assert.equal(vi.mocked(spawnSync).mock.calls.length, 1);
 });
 
@@ -61,5 +61,5 @@ it("refuses a successful build command that leaves the bundle stale", () => {
   const { repoRoot, setup } = fixture();
   writeFileSync(join(repoRoot, "src/app.ts"), "changed");
   vi.mocked(spawnSync).mockReturnValue({ pid: 1, output: [], stdout: "", stderr: "", status: 0, signal: null });
-  assert.throws(() => setup.ensureParityBundle(), /dashboard bundle refused: bundle inputs changed after build/u);
+  assert.throws(() => setup.ensureMockBundle(), /dashboard bundle refused: bundle inputs changed after build/u);
 });

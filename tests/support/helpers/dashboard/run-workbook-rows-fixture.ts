@@ -1,8 +1,8 @@
 import type { Page, Route } from '@playwright/test';
 import { startFixtureServer } from './fixture-bff.js';
-import { PARITY_DIST_DIR } from '../../../parity/helpers/bundle.js';
-import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_START_PLAN } from '../../../parity/helpers/fixture-start.js';
-import { uuidOf, traceOf, FIXTURE_DAY } from '../../../parity/helpers/fixture-identity.js';
+import { MOCK_DIST_DIR } from '../../../mocks/helpers/bundle.js';
+import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_START_PLAN } from '../../../mocks/helpers/fixture-start.js';
+import { uuidOf, traceOf, FIXTURE_DAY } from '../../../mocks/helpers/fixture-identity.js';
 import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from '../../../../src/models/dashboard/bootstrap.js';
 import { WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema, projectWorkbookCompatibility } from '../../../../src/models/dashboard/workbook-library.js';
 import { WorkbookTypeSchema } from '../../../../src/models/dashboard/workbooks.js';
@@ -17,7 +17,7 @@ import { ONBOARDING_ROSTER_FIELDS } from '../../../../src/models/workflows/onboa
 
 export const ROW_EMAILS = ['alpha@example.test', 'alpha@example.test', 'bravo@example.test'] as const;
 export const ROW_IDS = ['alpha', 'alpha-duplicate', 'bravo'] as const;
-const libraryId = 'parity-onboarding-roster';
+const libraryId = 'mock-onboarding-roster';
 const type = WorkbookTypeSchema.parse({ id: 'onboarding-roster', name: 'Onboarding roster', keyFieldId: 'email', fields: ONBOARDING_ROSTER_FIELDS, defaultWorkbookId: libraryId });
 const versions = ['Reviewed roster', 'Delayed roster', 'New roster', 'Empty roster', 'Unavailable roster'].map((name, index) => ({
   id: `roster-${index + 1}`, name, version: index + 1, snapshotId: `snapshot-${index + 1}`, savedAt: '2026-08-03T09:00:00-07:00', source: 'operator',
@@ -48,7 +48,7 @@ function versionView(id: string) {
 /** Synthetic HTTP authority for rendered launcher checks; never opens an authority store. */
 async function startWorkbookRowsFixture(page: Page) {
   const profile = { bootstrap, descriptorHash: bootstrap.descriptorHash, day: DashboardDayWireSchema.parse({ ...FIXTURE_START_PICKER_DAY_WIRE, queueSurfaces: [], attemptHistory: [], monthCounts: [{ day: FIXTURE_DAY, count: 0 }], workflowCounts: [], statusCounts: [], workerCards: [], workerPools: [], workerAuthority: { state: 'present', members: [] }, notifications: [] }) };
-  const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, profile });
+  const server = await startFixtureServer({ distDir: MOCK_DIST_DIR, bundle: { proof: 'working-tree' }, profile });
   const plans: StartPlanRequest[] = [], commands: ReturnType<typeof StartCommandRequestSchema.parse>[] = [], commandBodies: string[] = [];
   const currentCatalog = structuredClone(catalog); let rows: ReturnType<typeof QueueSurfaceWireSchema.parse>[] = [];
   const compatibility = () => projectWorkbookCompatibility([{ id: workflow.id, label: workflow.label,
