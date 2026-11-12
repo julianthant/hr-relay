@@ -129,7 +129,7 @@ The worker default belongs to the root configuration so CLI limits apply to ever
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
 `ci.yml` triggers only for staging pull requests and admits the portable-only `ci-checks.yml` call.
-Its top parity job is a plain passing omission kept for branch protection, with merge train after the six top summaries and
+Merge train runs after the five top summaries and
 outside admission. `release.yml` triggers only for main pull requests or operator manual releases
 and alone admits `release-checks.yml`, which owns the native and complete release pipeline.
 Staging never references or loads a release/native workflow call. Both callees use shared typed
@@ -293,7 +293,7 @@ Both event entries use per-PR/manual-branch workflow concurrency with cancellati
 pushes supersede older runs for the same workflow/PR-or-ref key. Each entry admits one complete
 reusable check call through the shared job-level `ci-runners` FIFO, `queue: max` and
 `cancel-in-progress: false`. Every mandatory proof, selected batch and timing publisher remains
-inside that callee; no callee reacquires admission. Merge train follows the six top summaries
+inside that callee; no callee reacquires admission. Merge train follows the five top summaries
 outside the admitted call; the standalone staging-push train is unchanged.
 
 Each callee's final `unit` runs unless cancelled and checks all mandatory proofs and timing
@@ -301,8 +301,7 @@ publication, rejecting failed or missing outcomes. Cancellation stops its checko
 In releases it also checks the selected batch, after
 `unit-proofs` allows batch execution without a cycle. The required outer `unit` always validates
 both the complete call result and inner unit output as success. Train is excluded from the inner
-fence because it runs downstream. The required `parity` is a plain successful omission on both
-workflows. Portable selected suites require Ubuntu success. Selected
+fence because it runs downstream. Portable selected suites require Ubuntu success. Selected
 eligible full-release unit/integration require both native platforms to succeed, regardless of
 matrix absence or emptiness; native omission is valid only outside such a selected suite.
 An expected omission must be exactly skipped. Invalid

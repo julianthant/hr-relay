@@ -13,8 +13,6 @@ on:
         value: ${{ jobs.integration.result }}
       architecture:
         value: ${{ jobs.architecture.result }}
-      parity:
-        value: ${{ jobs.parity.result }}
 
 permissions:
   contents: read
@@ -238,15 +236,9 @@ jobs:
             test "$UBUNTU_RESULT" = success
           fi
 
-  parity:
-    name: parity
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "No desktop parity suite; this check name stays required by branch protection."
 
   timings:
-    needs: [changes, static, privacy, ubuntu, integration, architecture, parity]
+    needs: [changes, static, privacy, ubuntu, integration, architecture]
     if: ${{ !cancelled() && needs.changes.result == 'success' && fromJSON(needs.changes.outputs.plan).testJobs > 0 }}
     runs-on: ubuntu-latest
     steps:
@@ -278,7 +270,7 @@ jobs:
 
   unit:
     name: unit
-    needs: [changes, static, privacy, ubuntu, integration, architecture, parity, timings]
+    needs: [changes, static, privacy, ubuntu, integration, architecture, timings]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:

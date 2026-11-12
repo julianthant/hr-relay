@@ -91,18 +91,11 @@ jobs:
           RESULT: ${{ needs.checks.outputs.architecture }}
         run: test "$RESULT" = success
 
-  parity:
-    name: parity
-    needs: [names, checks]
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "No desktop parity suite; this check name stays required by branch protection."
 
   train:
     name: merge train
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.base_ref == 'staging' && github.event.pull_request.head.repo.full_name == github.repository }}
-    needs: [names, static, unit, integration, architecture, parity, privacy]
+    needs: [names, static, unit, integration, architecture, privacy]
     uses: ./.github/workflows/merge-train.yml
     with:
       pr: ${{ github.event.pull_request.number }}

@@ -78,7 +78,7 @@ export function verifyUnitProof(input: unknown, outcomes: unknown): void {
 export function verifyProofs(input: unknown, outcomes: unknown): void {
   const plan = ciPlanSchema.parse(input);
   const results = resultsSchema.parse(outcomes);
-  for (const job of ["changes", "static", "privacy", "integration", "architecture", "parity"]) requireResult(results, job, "success");
+  for (const job of ["changes", "static", "privacy", "integration", "architecture"]) requireResult(results, job, "success");
   requireResult(results, "ubuntu", plan.unit || plan.integration || plan.architecture ? "success" : "skipped");
   if (plan.workflow === "release") {
     requireResult(results, "unit-proofs", "success");

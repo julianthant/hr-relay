@@ -19,7 +19,7 @@ const planFor = (workflow: "portable" | "release", extra: Record<string, unknown
 });
 const portableResults = { changes: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
   ubuntu: { result: "success" }, integration: { result: "success" }, architecture: { result: "success" },
-  parity: { result: "success" }, timings: { result: "success" } };
+  timings: { result: "success" } };
 const releaseResults = { ...portableResults, macos: { result: "success" }, windows: { result: "success" },
   "unit-proofs": { result: "success" }, "release-batch": { result: "success" } };
 
@@ -145,13 +145,12 @@ describe("separate event and admitted proof workflows", () => {
     for (const name of ["ci-pipeline", "ci-release-checks"]) {
       expect(existsSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url))).toBe(false);
     }
-    expect(jobNames(ci)).toEqual(["names", "checks", "static", "privacy", "unit", "integration", "architecture", "parity", "train"]);
-    expect(jobNames(release)).toEqual(["checks", "static", "privacy", "unit", "integration", "architecture", "parity", "release"]);
-    expect(jobNames(portable)).toEqual(["changes", "static", "privacy", "ubuntu", "integration", "architecture", "parity", "timings", "unit"]);
-    expect(jobNames(full)).toEqual(["changes", "static", "privacy", "ubuntu", "macos", "windows", "unit-proofs", "integration", "architecture", "parity", "release-batch", "timings", "unit"]);
+    expect(jobNames(ci)).toEqual(["names", "checks", "static", "privacy", "unit", "integration", "architecture", "train"]);
+    expect(jobNames(release)).toEqual(["checks", "static", "privacy", "unit", "integration", "architecture", "release"]);
+    expect(jobNames(portable)).toEqual(["changes", "static", "privacy", "ubuntu", "integration", "architecture", "timings", "unit"]);
+    expect(jobNames(full)).toEqual(["changes", "static", "privacy", "ubuntu", "macos", "windows", "unit-proofs", "integration", "architecture", "release-batch", "timings", "unit"]);
     for (const name of jobNames(portable)) expect(job(portable, name)).toContain("runs-on: ubuntu-latest");
-    expect(summary(ci, "parity", planFor("portable"), { checks: { result: "success" } })).toBe("success");
-    expect(job(ci, "parity")).not.toContain("RESULT:");
+    expect(jobNames(ci)).not.toContain("parity");
   });
 
   it("executes each entry's actual shared selection adapter", () => {
@@ -180,9 +179,9 @@ describe("separate event and admitted proof workflows", () => {
       expect(job(workflow, "unit")).toContain('test "$RESULT" = success');
       expect(job(workflow, "unit")).toContain("always()");
     }
-    expect(job(ci, "train")).toContain("needs: [names, static, unit, integration, architecture, parity, privacy]");
+    expect(job(ci, "train")).toContain("needs: [names, static, unit, integration, architecture, privacy]");
     expect(job(ci, "train")).toContain("uses: ./.github/workflows/merge-train.yml");
-    expect(job(full, "release-batch")).toContain("needs: [changes, static, privacy, unit-proofs, integration, architecture, parity]");
+    expect(job(full, "release-batch")).toContain("needs: [changes, static, privacy, unit-proofs, integration, architecture]");
     expect(job(full, "unit")).toContain("release-batch, timings]");
     expect(job(release, "release")).toContain("needs: checks");
   });
@@ -241,14 +240,6 @@ describe("separate event and admitted proof workflows", () => {
     expect(summary(source, "unit", plan, { checks: { result: "success", outputs: {} } })).toBe("failure");
   });
 
-  it("requires real release parity output but keeps staging parity a plain passing omission", () => {
-    const plan = planFor("release");
-    for (const result of ["failure", "cancelled", "skipped", ""]) {
-      expect(summary(release, "parity", plan, { checks: { result: "success", outputs: { parity: result } } })).toBe("failure");
-    }
-    expect(summary(release, "parity", plan, { checks: { result: "success", outputs: { parity: "success" } } })).toBe("success");
-    expect(summary(ci, "parity", planFor("portable"), { checks: { result: "failure" } })).toBe("success");
-  });
 
   it("requires both selected native groups and preserves legitimate work omissions", () => {
     const plan = planFor("release");
@@ -263,7 +254,6 @@ describe("separate event and admitted proof workflows", () => {
       "release-batch": { result: "skipped" }, timings: { result: "skipped" } };
     expect(summary(full, "unit", omitted, outcomes)).toBe("success");
     expect(summary(release, "release", omitted, { checks: { result: "success", outputs: { unit: "success" } } })).toBe("success");
-    expect(summary(full, "parity", plan, { ...releaseResults, macos: { result: "cancelled" } })).toBe("success");
   });
 
   it.each([
@@ -329,7 +319,7 @@ describe("per-PR cancellation with complete FIFO pipelines", () => {
     assert.ok(calleeName);
     const callee = load(calleeName);
     const covered = jobNames(callee);
-    for (const name of ["changes", "static", "privacy", "ubuntu", "integration", "architecture", "parity", "timings", "unit"]) expect(covered).toContain(name);
+    for (const name of ["changes", "static", "privacy", "ubuntu", "integration", "architecture", "timings", "unit"]) expect(covered).toContain(name);
     expect(covered).not.toContain("train");
     const closure = (name: string, ancestors: string[] = []): string[] => {
       expect(ancestors).not.toContain(name);
@@ -342,7 +332,7 @@ describe("per-PR cancellation with complete FIFO pipelines", () => {
     if (source === ci) {
       for (const name of covered) expect(job(callee, name)).toContain("runs-on: ubuntu-latest");
       expect(callee).not.toMatch(/uses: \.\/\.github\/workflows\//u);
-      expect(job(source, "train")).toContain("needs: [names, static, unit, integration, architecture, parity, privacy]");
+      expect(job(source, "train")).toContain("needs: [names, static, unit, integration, architecture, privacy]");
     } else {
       for (const name of ["macos", "windows", "unit-proofs", "release-batch"]) expect(covered).toContain(name);
       expect(job(callee, "unit")).toContain("release-batch, timings]");

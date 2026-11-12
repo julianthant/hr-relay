@@ -9,7 +9,7 @@ const context = (workflow = "portable", extra: Record<string, unknown> = {}) => 
   draft: false, filters, ...extra });
 const portableResults = { changes: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
   ubuntu: { result: "success" }, integration: { result: "success" }, architecture: { result: "success" },
-  parity: { result: "success" }, timings: { result: "success" } };
+  timings: { result: "success" } };
 const releaseResults = { ...portableResults, macos: { result: "success" }, windows: { result: "success" },
   "unit-proofs": { result: "success" }, "release-batch": { result: "success" } };
 
@@ -112,7 +112,7 @@ describe("flat CI failure fences", () => {
   it("requires timing input proofs before publication and both selected native platforms", () => {
     const plan = createCiPlan(context("release"));
     expect(() => verifyProofs(plan, releaseResults)).not.toThrow();
-    expect(() => verifyProofs(plan, { ...releaseResults, parity: { result: "failure" } })).toThrow();
+    expect(() => verifyProofs(plan, { ...releaseResults, architecture: { result: "failure" } })).toThrow();
     expect(() => verifyUnitProof(plan, releaseResults)).not.toThrow();
     for (const platform of ["macos", "windows"]) {
       for (const result of ["failure", "cancelled", "skipped"]) {
