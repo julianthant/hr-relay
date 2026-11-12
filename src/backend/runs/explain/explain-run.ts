@@ -9,6 +9,7 @@ import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
 import { projectReceiptForOperator } from "../../../models/trust/evidence.js";
 import {
   projectFailureForOperator,
+  failureCauseNames,
   type FailureRecord,
 } from "../../../models/trust/failure.js";
 import type { RunRecord } from "../../../models/run/record.js";
@@ -33,6 +34,7 @@ const ExplainRunViewSchema = z.strictObject({
   workflowId: z.string().min(1),
   attempt: z.number().int().positive(),
   state: z.string().min(1),
+  pause: z.enum(["requested", "paused"]).optional(),
   outcome: present(z.string().min(1)),
   dryRun: z.boolean(),
   resolvedInstance: z.record(z.string(), z.string()),
@@ -71,6 +73,8 @@ const ExplainRunViewSchema = z.strictObject({
     summary: z.string().min(1),
     writeState: z.string().min(1),
     sameFingerprintSeen: z.number().int().positive(),
+    causeCodes: z.array(z.string().min(1)),
+    causeClasses: z.array(z.string().min(1)),
   })),
   lastSuccessfulAction: present(z.string().min(1)),
   openGate: present(z.string().min(1)),
@@ -120,12 +124,24 @@ export interface ExplainRunEvidence {
 
 type Remediation = z.infer<typeof RemediationActionSchema>;
 
+/** Causes reach an operator as codes and class names only: no stack text, paths, URLs or field values. */
+export function debugRecordForOperator<T extends { readonly payload: { readonly kind: string } }>(record: T): T {
+  if (record.payload.kind !== "debug") return record;
+  const { stack: _stack, message, ...event } = (record.payload as unknown as { event: { stack?: string; message?: string } }).event;
+  return { ...record, payload: { ...record.payload, event: message !== undefined && /^[A-Za-z_$][\w$]*$/u.test(message) ? { ...event, message } : event } };
+}
+
 function nextSafeAction(
   run: RunRecord,
   writes: readonly WriteIntentRecord[],
   failure: readonly Remediation[],
 ): string {
   const { lifecycle } = run;
+  if (run.pause !== undefined && lifecycle.state !== "terminal" && lifecycle.state !== "parked-write") {
+    return run.pause.state === "paused"
+      ? "Paused (a shutdown pauses every unfinished run). It does not resume by itself, not even at the next start; Resume or Cancel it from Logs."
+      : "A pause is requested; the worker stops it after the current step. Then Resume or Cancel it from Logs.";
+  }
   switch (lifecycle.state) {
     case "terminal":
       switch (lifecycle.outcome) {
@@ -166,7 +182,9 @@ function nextSafeAction(
 export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunView {
   const { run } = evidence;
   const { envelope, lifecycle } = run;
-  for (const record of evidence.debugEvents?.records ?? []) {
+  const debugEvents = evidence.debugEvents === undefined ? undefined
+    : { ...evidence.debugEvents, records: evidence.debugEvents.records.map(debugRecordForOperator) };
+  for (const record of debugEvents?.records ?? []) {
     if (record.payload.kind !== "debug" || record.scope.kind !== "run" || record.scope.runId !== envelope.runId
       || record.workflow !== envelope.workflow) throw new Error("explain-debug-scope-mismatch");
   }
@@ -210,6 +228,8 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
     ? undefined
     : projectReceiptForOperator(evidence.receipt);
   const receipt = receiptProjection?.state === "available" ? receiptProjection.value : undefined;
+  // Names come from the stored record: the protected projection drops debug text.
+  const causes = evidence.failure === undefined ? { codes: [], classes: [] } : failureCauseNames(evidence.failure);
   const protectedInput = retainedRunProtectedBindings(evidence.run).length > 0;
   const failure = evidence.failure === undefined
     ? undefined
@@ -227,6 +247,7 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
     workflowId: envelope.workflow,
     attempt: envelope.attempt,
     state: lifecycle.state,
+    ...(run.pause === undefined ? {} : { pause: run.pause.state }),
     outcome: lifecycle.state === "terminal"
       ? { state: "present", value: lifecycle.outcome }
       : { state: "absent", reason: "this run has not settled" },
@@ -234,7 +255,7 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
     resolvedInstance: envelope.resolvedInstance,
     omittedSteps: [...new Set((envelope.stepOmissions ?? []).map((entry) => String(entry.step)))].sort(),
     timeline,
-    ...(evidence.debugEvents === undefined ? {} : { debugEvents: evidence.debugEvents }),
+    ...(debugEvents === undefined ? {} : { debugEvents }),
     reuse: (receipt?.reuse ?? []).map((entry) => ({
 
       nodeId: receipt?.verification
@@ -258,6 +279,8 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
           summary: failure.summary,
           writeState: failure.writeState,
           sameFingerprintSeen: Math.max(1, evidence.sameFingerprintSeen ?? 1),
+          causeCodes: causes.codes,
+          causeClasses: causes.classes,
         },
       },
     lastSuccessfulAction: lastSuccessful === undefined
@@ -350,7 +373,7 @@ export function renderExplainRun(view: ExplainRunView): string {
     `run ${view.runId}  trace ${view.traceId}  workflow ${view.workflowId}  attempt ${String(view.attempt)}`,
     "",
     ...section("state", [
-      `${view.state}${shown(view.outcome, (outcome) => ` → ${outcome}`)}`,
+      `${view.state}${view.pause === undefined ? "" : ` (${view.pause === "paused" ? "paused" : "pause requested"})`}${shown(view.outcome, (outcome) => ` → ${outcome}`)}`,
       `dryRun=${String(view.dryRun)}  instances: ${instances === "" ? "(none resolved)" : instances}`,
     ]),
     ...section("omitted steps", view.omittedSteps.map((step) =>
@@ -365,7 +388,8 @@ export function renderExplainRun(view: ExplainRunView): string {
     ...section("subject bindings", view.subjectBindings.map((entry) => `${entry.verdict}: ${entry.reason}`)),
     ...section("failure", [shown(view.failure, (failure) =>
       `${failure.code} (${failure.writeState}) fingerprint ${failure.fingerprint}\n`
-      + `    seen ${String(failure.sameFingerprintSeen)}× · ${failure.summary}`)]),
+      + `    seen ${String(failure.sameFingerprintSeen)}× · ${failure.summary}\n`
+      + `    causes: ${[...failure.causeCodes, ...failure.causeClasses].join(", ") || "(none)"}`)]),
     ...section("last successful action", [shown(view.lastSuccessfulAction, (value) => value)]),
     ...section("open gate", [shown(view.openGate, (value) => value)]),
     ...section("open dependency", [shown(view.openDependency, (value) => value)]),
