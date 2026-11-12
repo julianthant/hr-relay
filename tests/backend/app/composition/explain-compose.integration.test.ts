@@ -7,6 +7,14 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 
 import assert from "node:assert/strict";
 import { z } from "zod";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { DatabaseSync } from "node:sqlite";
+import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
+import { failureDebugDetails } from "../../../../src/backend/runtime/execution/run-failure.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { randomUUID } from "node:crypto";
+import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
+import { requireTrustRun } from "../../../../src/backend/runs/trust/run-reader.js";
 import { mkdtempSync,lstatSync,readFileSync,readdirSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,7 +24,7 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
 import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
-import { renderExplainRun } from "../../../../src/backend/runs/explain/explain-run.js";
+import { buildExplainRunView, renderExplainRun } from "../../../../src/backend/runs/explain/explain-run.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import type { TimelineAppend } from "../../../../src/models/events/timeline.js";
@@ -102,7 +110,7 @@ describe("explain run", () => {
     const admission = profileFixtureStorageAdmission(path);
     const before = readFileSync(path); const inventory = readdirSync(root, { recursive: true, encoding: "utf8" }).sort();
     // Profile admission's live-binding observer opens state.db read-only, which moves SQLite's WAL read marks in -shm.
-    const sourceBytes = inventory.filter(name => lstatSync(join(root, name)).isFile() && !name.endsWith("state.db-shm")).map(name => [name, readFileSync(join(root, name))] as const);
+    const sourceBytes = inventory.filter(name => !name.endsWith("-shm") && lstatSync(join(root, name)).isFile()).map(name => [name, readFileSync(join(root, name))] as const);
     const output = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] });
     assert.match(output, /nextCursor/u);
     let after = 0; const categories = new Set<string>();
@@ -122,11 +130,52 @@ describe("explain run", () => {
       if (!page.hasMore) break;
     }
     assert.equal(categories.size, 7);
-    assert.deepEqual(readFileSync(path), before); assert.deepEqual(readdirSync(root, { recursive: true, encoding: "utf8" }).sort(), inventory);
-    for (const [name, bytes] of sourceBytes) assert.deepEqual(readFileSync(join(root, name)), bytes);
+    assert.deepEqual(readFileSync(path), before, "state.db"); assert.deepEqual(readdirSync(root, { recursive: true, encoding: "utf8" }).sort(), inventory);
+    for (const [name, bytes] of sourceBytes) assert.deepEqual(readFileSync(join(root, name)), bytes, name);
     assert.throws(() => parseDiagnosticArgs(["--limit", "1001"]));
     assert.throws(() => parseDiagnosticArgs(["--after", "-1"]));
     assert.throws(() => parseDiagnosticArgs(["--boot", "--run", EXIT_RUN_ID]));
+  });
+
+  it("keeps a cause's code and class name and drops its stack, path and free text", async () => {
+    const database = await seeded();
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    const writer = createDebugEventWriter({ repository: database.authority.timelineEvents, clock: manualClock(new Date("2026-08-04T00:11:13.500Z")), build: "fixture" });
+    const runScope: TimelineAppend["scope"] = { kind: "run", runId: RunIdSchema.parse(EXIT_RUN_ID) };
+    writer.emit({ category: "worker", phase: "failed", correlationId: "cause", area: "worker-loop", reason: "step-failed", code: "ECONNRESET",
+      message: "TypeError", stack: "TypeError: boom\n    at run (/Users/someone/Projects/hr-relay/src/x.ts:1:1)" }, runScope, WorkflowIdSchema.parse("person-lookup"));
+    writer.emit({ category: "worker", phase: "failed", correlationId: "free", message: "open https://example.test/p?eid=123" }, runScope, WorkflowIdSchema.parse("person-lookup"));
+    const explained = JSON.stringify(explainRunFrom(database, EXIT_RUN_ID).debugEvents);
+    const diagnostics = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID, "--json"] });
+    for (const text of [explained, diagnostics]) {
+      assert.match(text, /ECONNRESET/u); assert.match(text, /TypeError/u);
+      for (const leaked of ["/Users/", "someone", "boom", "example.test", "eid=123", "stack"]) assert.equal(text.includes(leaked), false, leaked);
+    }
+  });
+
+  it("shows a stored failure's nested causes as codes and class names in explain run and diagnostics", async () => {
+    const database = await seeded();
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    class BrowserLoginError extends Error { constructor(message: string) { super(message); this.name = "BrowserLoginError"; } }
+    const error = new Error("outer https://example.test/p?eid=123", { cause: new BrowserLoginError("at /Users/someone/Projects/x.ts eid 123") });
+    const run = requireTrustRun(createTrustRunReader(database), EXIT_RUN_ID);
+    const failure = FailureRecordSchema.parse({ diagnosticSafetyVersion: 1, failureId: randomUUID(), fingerprint: "f".repeat(64),
+      runId: run.envelope.runId, traceId: run.envelope.traceId, attempt: run.envelope.attempt, workflowId: run.envelope.workflow,
+      code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", transient: false, writeState: "not-attempted",
+      causeChain: [{ code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", role: "primary", transient: false }],
+      debug: failureDebugDetails(error), remediation: [{ kind: "operator-action", message: "fixture" }], occurredAt: run.createdAt });
+    const protectedRun = RunRecordSchema.parse({ ...run, input: { ...run.input, parsed: { ...run.input.parsed, protectedBindings: [{ kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "10000000-0000-4000-8000-000000000099" }] } } });
+    const view = buildExplainRunView({ run: { ...protectedRun, lifecycle: { state: "terminal", outcome: "failed", endedAt: run.createdAt, errorSummary: "fixture", failureId: failure.failureId } },
+      checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure });
+    const raw = new DatabaseSync(join(profile.stateRoot, "state.db"));
+    raw.prepare("INSERT INTO run_failures (id, run_id, fingerprint, code, resolution_json, resolution_version, payload_json, created_at) VALUES (?, ?, ?, ?, '{\"status\":\"unresolved\",\"version\":1}', 1, ?, ?)")
+      .run(failure.failureId, failure.runId, failure.fingerprint, failure.code, canonicalJsonStringify(failure), failure.occurredAt);
+    raw.close();
+    const diagnostics = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID] });
+    for (const text of [renderExplainRun(view), diagnostics]) {
+      assert.match(text, /BrowserLoginError/u); assert.match(text, /RUN_INTERRUPTED_BY_CRASH/u);
+      for (const leaked of ["/Users/", "someone", "example.test", "eid", "at run"]) assert.equal(text.includes(leaked), false, leaked);
+    }
   });
 
   it("reads stopped boot faults without a database and refuses unsafe or incomplete spool bytes", () => {
@@ -300,6 +349,21 @@ describe("explain run", () => {
     assert.equal(reuse.get("searching")?.kind, "checkpoint");
     assert.equal(reuse.get("cross-verify")?.kind, "fresh-live");
     assert.ok((reuse.get("searching")?.ageMs ?? 0) > 0);
+  });
+
+  it("says a paused run needs Resume or Cancel, for a parent and a child alike", async () => {
+    const run = requireTrustRun(createTrustRunReader(await seeded()), EXIT_RUN_ID);
+    for (const shape of ["operation", "operation-member"] as const) {
+      const paused = { ...run, envelope: { ...run.envelope, shape }, lifecycle: { state: "queued" as const },
+        pause: { state: "paused" as const, commandId: randomUUID(), requestedAt: run.createdAt, pausedAt: run.createdAt } };
+      const view = buildExplainRunView({ run: paused, checkpoints: [], writes: [], nodeIds: [], dependencies: [] });
+      assert.equal(view.pause, "paused");
+      assert.match(view.nextSafeAction, /does not resume by itself.*Resume or Cancel it from Logs/u);
+      assert.doesNotMatch(view.nextSafeAction, /A worker will claim/u);
+      assert.match(renderExplainRun(view), /queued \(paused\)/u);
+    }
+    const unpaused = buildExplainRunView({ run: { ...run, lifecycle: { state: "queued" } }, checkpoints: [], writes: [], nodeIds: [], dependencies: [] });
+    assert.match(unpaused.nextSafeAction, /A worker will claim/u);
   });
 
   it("names every absence instead of rendering an empty section", async () => {

@@ -19,6 +19,7 @@ import { requireTrustRun, listLiveTrustRuns, assertTrustEvidenceIdentity } from 
 import { createReceiptService } from "../../runs/trust/receipt-service.js";
 import {
   buildExplainRunView,
+  debugRecordForOperator,
   renderExplainRun,
   type ExplainRunEvidence,
 } from "../../runs/explain/explain-run.js";
@@ -53,8 +54,9 @@ export function parseDiagnosticArgs(args: readonly string[]) {
 }
 
 function debugRecordView<T extends Pick<TimelineAppend, "payload">>(record: T) {
-  return record.payload.kind === "debug" ? { ...record,
-    payload: { ...record.payload, event: { ...record.payload.event, level: debugEventLevel(record.payload.event) } } } : record;
+  const safe = debugRecordForOperator(record);
+  return safe.payload.kind === "debug" ? { ...safe,
+    payload: { ...safe.payload, event: { ...safe.payload.event, level: debugEventLevel(safe.payload.event) } } } : safe;
 }
 
 function renderDebugRecords(records: readonly z.infer<typeof TimelineEventRecordSchema>[]) {
@@ -90,7 +92,7 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
     }
     person.release();
     const page = { ...stored, records: stored.records.map(debugRecordView) };
-    return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
+    return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}${page.failureCauses.map(entry => `\nfailure ${entry.failureId} causes: ${[...entry.codes, ...entry.classes].join(", ") || "(none)"}`).join("")}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
   }
   if (subject !== "run") {
     throw new Error(
