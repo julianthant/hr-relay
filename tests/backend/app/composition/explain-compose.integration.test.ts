@@ -133,7 +133,7 @@ describe("explain run", () => {
     const run = requireTrustRun(createTrustRunReader(database), EXIT_RUN_ID);
     const failure = FailureRecordSchema.parse({ diagnosticSafetyVersion: 1, failureId: randomUUID(), fingerprint: "f".repeat(64),
       runId: run.envelope.runId, traceId: run.envelope.traceId, attempt: run.envelope.attempt, workflowId: run.envelope.workflow,
-      code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", transient: false, writeState: "none",
+      code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", transient: false, writeState: "not-attempted",
       causeChain: [{ code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", role: "primary", transient: false }],
       debug: failureDebugDetails(error), remediation: [{ kind: "operator-action", message: "fixture" }], occurredAt: run.createdAt });
     const view = buildExplainRunView({ run: { ...run, lifecycle: { state: "terminal", outcome: "failed", endedAt: run.createdAt, errorSummary: "fixture", failureId: failure.failureId } },
