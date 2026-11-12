@@ -184,7 +184,7 @@ jobs:
         env:
           SUITE: ${{ matrix.suite }}
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=2
+        run: scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=3
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
