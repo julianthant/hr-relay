@@ -7,6 +7,9 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 
 import assert from "node:assert/strict";
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
+import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
+import { requireTrustRun } from "../../../../src/backend/runs/trust/run-reader.js";
 import { mkdtempSync,lstatSync,readFileSync,readdirSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,7 +19,7 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
 import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
-import { renderExplainRun } from "../../../../src/backend/runs/explain/explain-run.js";
+import { buildExplainRunView, renderExplainRun } from "../../../../src/backend/runs/explain/explain-run.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import type { TimelineAppend } from "../../../../src/models/events/timeline.js";
@@ -58,7 +61,8 @@ async function seeded(): Promise<AuthorityDatabase> {
 describe("explain run", () => {
   it("reads bounded persisted debug categories without attributing global events to a run or changing source inventory", async () => {
     const database = await seeded();
-    const root = heldProfiles.at(-1)?.stateRoot; assert.ok(root);
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    const root = profile.stateRoot;
     const writer = createDebugEventWriter({ repository: database.authority.timelineEvents, clock: manualClock(new Date("2026-08-04T00:11:13.500Z")), build: "fixture" });
     for (const category of ["session", "duo", "worker", "http", "sse", "client", "boot"] as const) {
       writer.emit({ category, phase: "failed", correlationId: category, code: "FIXTURE" }, { kind: "transport", connectionId: "fixture" });
@@ -75,13 +79,13 @@ describe("explain run", () => {
     const admission = profileFixtureStorageAdmission(path);
     const before = readFileSync(path); const inventory = readdirSync(root, { recursive: true, encoding: "utf8" }).sort();
     const sourceBytes = inventory.filter(name => lstatSync(join(root, name)).isFile()).map(name => [name, readFileSync(join(root, name))] as const);
-    const output = composeExplainRuntime({ admission, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] });
+    const output = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] });
     assert.match(output, /nextCursor/u);
     let after = 0; const categories = new Set<string>();
     for (;;) {
       const page = AuthorityDatabase.inspectTimelinePageReadOnly(admission, path, { after, limit: 2 });
       assert.ok(page.records.length <= 2);
-      const rendered = composeExplainRuntime({ admission, isolation: rebuildRuntimeIsolation,
+      const rendered = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation,
         args: ["diagnostics", "--after", String(after), "--limit", "2", "--json"] });
       const view = z.object({ records: z.array(z.object({ eventId: z.string(),
         payload: z.object({ kind: z.literal("debug"), event: z.object({ level: z.literal("error") }) }) })) }).parse(JSON.parse(rendered));
@@ -99,6 +103,22 @@ describe("explain run", () => {
     assert.throws(() => parseDiagnosticArgs(["--limit", "1001"]));
     assert.throws(() => parseDiagnosticArgs(["--after", "-1"]));
     assert.throws(() => parseDiagnosticArgs(["--boot", "--run", EXIT_RUN_ID]));
+  });
+
+  it("keeps a cause's code and class name and drops its stack, path and free text", async () => {
+    const database = await seeded();
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    const writer = createDebugEventWriter({ repository: database.authority.timelineEvents, clock: manualClock(new Date("2026-08-04T00:11:13.500Z")), build: "fixture" });
+    const runScope: TimelineAppend["scope"] = { kind: "run", runId: RunIdSchema.parse(EXIT_RUN_ID) };
+    writer.emit({ category: "worker", phase: "failed", correlationId: "cause", area: "worker-loop", reason: "step-failed", code: "ECONNRESET",
+      message: "TypeError", stack: "TypeError: boom\n    at run (/Users/someone/Projects/hr-relay/src/x.ts:1:1)" }, runScope, WorkflowIdSchema.parse("person-lookup"));
+    writer.emit({ category: "worker", phase: "failed", correlationId: "free", message: "open https://example.test/p?eid=123" }, runScope, WorkflowIdSchema.parse("person-lookup"));
+    const explained = JSON.stringify(explainRunFrom(database, EXIT_RUN_ID).debugEvents);
+    const diagnostics = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID, "--json"] });
+    for (const text of [explained, diagnostics]) {
+      assert.match(text, /ECONNRESET/u); assert.match(text, /TypeError/u);
+      for (const leaked of ["/Users/", "someone", "boom", "example.test", "eid=123", "stack"]) assert.equal(text.includes(leaked), false, leaked);
+    }
   });
 
   it("reads stopped boot faults without a database and refuses unsafe or incomplete spool bytes", () => {
@@ -180,6 +200,21 @@ describe("explain run", () => {
     assert.equal(reuse.get("searching")?.kind, "checkpoint");
     assert.equal(reuse.get("cross-verify")?.kind, "fresh-live");
     assert.ok((reuse.get("searching")?.ageMs ?? 0) > 0);
+  });
+
+  it("says a paused run needs Resume or Cancel, for a parent and a child alike", async () => {
+    const run = requireTrustRun(createTrustRunReader(await seeded()), EXIT_RUN_ID);
+    for (const shape of ["operation", "operation-member"] as const) {
+      const paused = { ...run, envelope: { ...run.envelope, shape }, lifecycle: { state: "queued" as const },
+        pause: { state: "paused" as const, commandId: randomUUID(), requestedAt: run.createdAt, pausedAt: run.createdAt } };
+      const view = buildExplainRunView({ run: paused, checkpoints: [], writes: [], nodeIds: [], dependencies: [] });
+      assert.equal(view.pause, "paused");
+      assert.match(view.nextSafeAction, /does not resume by itself.*Resume or Cancel it from Logs/u);
+      assert.doesNotMatch(view.nextSafeAction, /A worker will claim/u);
+      assert.match(renderExplainRun(view), /queued \(paused\)/u);
+    }
+    const unpaused = buildExplainRunView({ run: { ...run, lifecycle: { state: "queued" } }, checkpoints: [], writes: [], nodeIds: [], dependencies: [] });
+    assert.match(unpaused.nextSafeAction, /A worker will claim/u);
   });
 
   it("names every absence instead of rendering an empty section", async () => {

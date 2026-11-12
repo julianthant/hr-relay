@@ -2,7 +2,6 @@ import { captureSelectedProfileStorage } from "./storage-compose.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
 
-import { join } from "node:path";
 import type { z } from "zod";
 import { TimelinePageRequestSchema, TimelineEventRecordSchema, debugEventLevel, type TimelineAppend } from "../../../models/events/timeline.js";
 import { readLocalDebugLog } from "../../storage/events/local-debug-log.js";
@@ -20,6 +19,7 @@ import { requireTrustRun, listLiveTrustRuns, assertTrustEvidenceIdentity } from 
 import { createReceiptService } from "../../runs/trust/receipt-service.js";
 import {
   buildExplainRunView,
+  debugRecordForOperator,
   renderExplainRun,
   type ExplainRunEvidence,
 } from "../../runs/explain/explain-run.js";
@@ -54,8 +54,9 @@ export function parseDiagnosticArgs(args: readonly string[]) {
 }
 
 function debugRecordView<T extends Pick<TimelineAppend, "payload">>(record: T) {
-  return record.payload.kind === "debug" ? { ...record,
-    payload: { ...record.payload, event: { ...record.payload.event, level: debugEventLevel(record.payload.event) } } } : record;
+  const safe = debugRecordForOperator(record);
+  return safe.payload.kind === "debug" ? { ...safe,
+    payload: { ...safe.payload, event: { ...safe.payload.event, level: debugEventLevel(safe.payload.event) } } } : safe;
 }
 
 function renderDebugRecords(records: readonly z.infer<typeof TimelineEventRecordSchema>[]) {
@@ -74,7 +75,7 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
       return options.json ? JSON.stringify(report, null, 2) : report.state === "absent" ? `boot diagnostics: absent (${report.reason})`
         : report.records.map(record => `${record.occurredAt} ${JSON.stringify(record.payload)}`).join("\n");
     }
-    const stored = AuthorityDatabase.inspectTimelinePageReadOnly(admission, join(admission.stateRoot, "state.db"), options.request);
+    const stored = AuthorityDatabase.inspectTimelinePageReadOnly(admission, captureSelectedProfileStorage(admission).authorityPath, options.request);
     const page = { ...stored, records: stored.records.map(debugRecordView) };
     return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
   }
