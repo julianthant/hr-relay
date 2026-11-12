@@ -1,14 +1,24 @@
 import { getRequestListener, type HttpBindings, type Http2Bindings } from "@hono/node-server";
 import { createServer, ServerResponse } from "node:http";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { DashboardApp } from "./routes/api.js";
 import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
+import type { Clock } from "../../../rules/time/clock.js";
+
+export const SLOW_REQUEST_THRESHOLD_MS = 500;
+
+export interface DashboardHttpObservation {
+  readonly clock: Clock;
+  readonly debugEvents: { emit(input: unknown): unknown };
+}
 
 export interface DashboardHttpServerDeps {
   readonly app: DashboardApp;
 
   readonly port: number;
   readonly hostname?: string;
+  readonly observation?: DashboardHttpObservation;
   /** Structured local observation for transfer/cleanup failures after no wire error remains possible. */
   readonly onTransferError?: (error: Error) => void;
 }
@@ -28,11 +38,11 @@ export interface DashboardHttpServer {
 }
 
 export interface DashboardHttpListener extends DashboardHttpServer {
-  mount(app: DashboardApp, accepts: (request: Request) => boolean): DashboardHttpMount;
+  mount(app: DashboardApp, accepts: (request: Request) => boolean, observation?: DashboardHttpObservation): DashboardHttpMount;
 }
 
 type Mount = { app: DashboardApp; accepts: (request: Request) => boolean; state: "open" | "closing" | "closed" | "failed";
-  failures: unknown[]; closing?: Promise<void> };
+  failures: unknown[]; closing?: Promise<void>; observation?: DashboardHttpObservation };
 type Transfer = { mount?: Mount; response: ServerResponse; done: Promise<void>; reason?: "client" | "shutdown" };
 
 function asError(error: unknown): Error {
@@ -143,10 +153,40 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
     if (!(outgoing instanceof ServerResponse)) throw new Error("the dashboard HTTP server expects HTTP/1 responses");
     if (closing) return new Response(null, { status: 503 });
     const mount = selected?.state === "open" && selected.accepts(request) ? selected : undefined;
+    const app = mount?.app ?? deps.app;
+    const observation = mount === undefined ? deps.observation : mount.observation;
     const finished = Promise.withResolvers<void>();
-    const transfer: Transfer = { ...(mount === undefined ? {} : { mount }), response: outgoing, done: finished.promise };
+    const timing = Promise.withResolvers<void>();
+    const done = observation === undefined ? finished.promise : Promise.all([finished.promise, timing.promise]).then(() => undefined);
+    const transfer: Transfer = { ...(mount === undefined ? {} : { mount }), response: outgoing, done };
+    let isEventStream = false;
     active.add(transfer);
-    void finished.promise.then(() => { active.delete(transfer); });
+    void done.then(() => { active.delete(transfer); });
+    if (observation !== undefined) {
+      const startedAt = observation.clock.monotonicMs();
+      const onClose = (): void => {
+        outgoing.off("finish", onFinish);
+        timing.resolve();
+      };
+      const onFinish = (): void => {
+        try {
+          if (isEventStream) return;
+          const durationMs = observation.clock.monotonicMs() - startedAt;
+          const status = outgoing.statusCode;
+          if (durationMs <= SLOW_REQUEST_THRESHOLD_MS && status < 500) return;
+          const method = request.method === "HEAD" ? "GET" : request.method;
+          const matches = app.router.match(method, app.getPath(request))[0];
+          const matched = matches.find(([[, route]]) => route.method !== "ALL") ?? matches.at(-1);
+          const route = matched?.[0][1].path ?? "(unmatched)";
+          observation.debugEvents.emit({ category: "http", phase: status >= 500 ? "failed" : "settled", area: "request",
+            reason: status >= 500 ? "request-failed" : "slow-request", correlationId: randomUUID(),
+            method: request.method, route, status, durationMs });
+        } catch (error: unknown) { settleFailure(transfer, asError(error), false); }
+        finally { outgoing.off("close", onClose); timing.resolve(); }
+      };
+      outgoing.once("finish", onFinish);
+      outgoing.once("close", onClose);
+    }
     // The adapter aborts with a bare string; the route gets one Error naming where the client left.
     const abort = new AbortController();
     let handedOff = false;
@@ -159,7 +199,8 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
       ...(request.method === "GET" || request.method === "HEAD" ? {} : { body: request.body, duplex: "half" }),
     });
     try {
-      const response = await (mount?.app ?? deps.app).fetch(routed);
+      const response = await app.fetch(routed);
+      isEventStream = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() === "text/event-stream";
       if (abort.signal.aborted) {
         // The client left before handoff: release the body quietly; nobody receives this response.
         try { await response.body?.cancel(abort.signal.reason); } catch (cleanup: unknown) { settleFailure(transfer, asError(cleanup), false); }
@@ -225,9 +266,9 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
 
   return Object.freeze({
     port: boundPort,
-    mount: (app: DashboardApp, accepts: (request: Request) => boolean): DashboardHttpMount => {
+    mount: (app: DashboardApp, accepts: (request: Request) => boolean, observation?: DashboardHttpObservation): DashboardHttpMount => {
       if (closing || selected !== undefined) throw new Error("dashboard HTTP mount unavailable");
-      const mount: Mount = { app, accepts, state: "open", failures: [] };
+      const mount: Mount = { app, accepts, state: "open", failures: [], ...(observation === undefined ? {} : { observation }) };
       selected = mount;
       return Object.freeze({ close(): Promise<void> {
         if (mount.closing !== undefined) return mount.closing;
