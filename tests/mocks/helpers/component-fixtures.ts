@@ -6,7 +6,7 @@ import tailwindcss from "@tailwindcss/vite";
 const fixtures = ["approved-controls"] as const;
 type ComponentFixture = typeof fixtures[number];
 const fixtureRoot = resolve(import.meta.dirname, "../fixtures");
-const outputRoot = resolve(import.meta.dirname, "../../../dist/parity-components");
+const outputRoot = resolve(import.meta.dirname, "../../../dist/mock-components");
 
 export async function buildComponentFixtures(): Promise<void> {
   for (const fixture of fixtures) {

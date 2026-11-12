@@ -75,5 +75,5 @@ running BFF for dashboard data. `npm run web:build` builds dashboard and specime
 `http://localhost:5174/kit.html` shows the primitives.
 
 Read [AGENTS.md](AGENTS.md) before edits, [DESIGN.md](DESIGN.md) for tokens and layout,
-[PARITY.md](PARITY.md) for the mock scene runner, and [dashboard surfaces](../../docs/reference/dashboard-surfaces.md)
+[MOCKS.md](MOCKS.md) for the mock scene runner, and [dashboard surfaces](../../docs/reference/dashboard-surfaces.md)
 for mounted behavior. `tests/perf/frontend/` contains the isolated Queue/Logs performance fixture.

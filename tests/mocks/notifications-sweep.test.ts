@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
-import { PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { MOCK_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
@@ -10,7 +10,7 @@ const THEMES = (process.env.NOTIFICATIONS_MOCK_THEMES ?? "light,dark").split(","
 test.use({ deviceScaleFactor: Number(process.env.NOTIFICATIONS_MOCK_SCALE ?? 1) });
 
 let server: FixtureServer;
-test.beforeAll(async () => { server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } }); });
+test.beforeAll(async () => { server = await startFixtureServer({ distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" } }); });
 test.afterAll(async () => { await server.close(); });
 
 async function open(page: Page, query: string) {
@@ -59,7 +59,7 @@ for (const theme of THEMES) test(`sweep @ ${theme}`, async ({ page }) => {
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
 
   await open(page, "&notificationsPreview=centre");
   await page.getByRole("button", { name: /^Notifications/ }).click();

@@ -150,7 +150,6 @@ describe("separate event and admitted proof workflows", () => {
     expect(jobNames(portable)).toEqual(["changes", "static", "privacy", "ubuntu", "integration", "architecture", "timings", "unit"]);
     expect(jobNames(full)).toEqual(["changes", "static", "privacy", "ubuntu", "macos", "windows", "unit-proofs", "integration", "architecture", "release-batch", "timings", "unit"]);
     for (const name of jobNames(portable)) expect(job(portable, name)).toContain("runs-on: ubuntu-latest");
-    expect(jobNames(ci)).not.toContain("parity");
   });
 
   it("executes each entry's actual shared selection adapter", () => {

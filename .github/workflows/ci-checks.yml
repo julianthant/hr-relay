@@ -90,7 +90,7 @@ jobs:
               - '!tests/**/*.integration.test.ts'
               - '!tests/**/*.local.test.ts'
               - '!tests/architecture/**'
-              - '!tests/parity/**'
+              - '!tests/mocks/**'
               - '!tests/perf/**'
             integration:
               - 'tests/**/*.integration.test.ts'

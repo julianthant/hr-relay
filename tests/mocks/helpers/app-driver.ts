@@ -43,9 +43,9 @@ export function routeUrl(baseUrl: string, route: AppRoute): string {
 // Freeze the browser monotonic clock before navigation so elapsed labels remain deterministic.
 export async function installFrozenMonotonic(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const scope = window as unknown as { __parityMonotonicFrozen?: true };
-    if (scope.__parityMonotonicFrozen === true) return;
-    scope.__parityMonotonicFrozen = true;
+    const scope = window as unknown as { __mockMonotonicFrozen?: true };
+    if (scope.__mockMonotonicFrozen === true) return;
+    scope.__mockMonotonicFrozen = true;
     const frozen = performance.now();
     Object.defineProperty(performance, "now", {
       configurable: true,
@@ -79,8 +79,8 @@ export async function gotoAppState(page: Page, baseUrl: string, route: AppRoute)
   await installFrozenMonotonic(page);
   await page.goto(routeUrl(baseUrl, route), { waitUntil: "domcontentloaded" });
   // Observe readiness each frame before the assertion's retry backoff.
-  await page.waitForFunction(() => document.querySelector("[data-parity-ready='true']") !== null, undefined, { timeout: 30_000 });
-  await expect(page.locator("[data-parity-ready='true']")).toBeVisible({ timeout: 30_000 });
+  await page.waitForFunction(() => document.querySelector("[data-mock-ready='true']") !== null, undefined, { timeout: 30_000 });
+  await expect(page.locator("[data-mock-ready='true']")).toBeVisible({ timeout: 30_000 });
   // Enter transitions are one frame of opacity/translate; settle them so a
   // capture is of the resting state rather than of the animation.
   await page.waitForTimeout(250);
@@ -88,7 +88,7 @@ export async function gotoAppState(page: Page, baseUrl: string, route: AppRoute)
 }
 
 
-/** Later navigations on this page read served surfaces only: the parity entry's mock-surface flag stays off. */
+/** Later navigations on this page read served surfaces only: the mock entry's mock-surface flag stays off. */
 export async function installServedSurfaces(page: Page): Promise<void> {
   await page.addInitScript(() => { Object.defineProperty(window, "relayMockSurfaces", { value: false, writable: false, configurable: false }); });
 }

@@ -1,4 +1,4 @@
-/** Renders /ui-mock scenes from the parity dashboard build against isolated fixture servers. */
+/** Renders /ui-mock scenes from the mock dashboard build against isolated fixture servers. */
 import "./tests/support/helpers/credential-keychain-process-preload.mjs";
 import { availableParallelism } from "node:os";
 import { defineConfig } from "@playwright/test";
@@ -9,9 +9,9 @@ process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ""} --import=${keychai
 process.env.TZ = "America/Los_Angeles";
 
 export default defineConfig({
-  testDir: "tests/parity",
-  outputDir: "tests/parity/.output",
-  globalSetup: "./tests/parity/helpers/global-setup.ts",
+  testDir: "tests/mocks",
+  outputDir: "tests/mocks/.output",
+  globalSetup: "./tests/mocks/helpers/global-setup.ts",
   fullyParallel: true,
   workers: Math.min(4, availableParallelism()),
   retries: 0,
@@ -31,6 +31,6 @@ export default defineConfig({
   },
   reporter: [
     ["list"],
-    ["json", { outputFile: "tests/parity/.output/results.json" }],
+    ["json", { outputFile: "tests/mocks/.output/results.json" }],
   ],
 });

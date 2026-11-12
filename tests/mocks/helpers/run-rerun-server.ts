@@ -23,7 +23,7 @@ import { FrontendBootstrapWireSchema, type FrontendBootstrapWire } from "../../.
 import { DashboardStreamEnvelopeSchema } from "../../../src/models/dashboard/subscription.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
-import { assertServedBundle, PARITY_DIST_DIR } from "./bundle.js";
+import { assertServedBundle, MOCK_DIST_DIR } from "./bundle.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { protectedSecretSource } from "../../support/helpers/protected-secret-source.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "./fixture-start.js";
@@ -31,7 +31,7 @@ import { FIXTURE_START_PICKER_BOOTSTRAP } from "./fixture-start.js";
 const retainedRunRerunFixtureOwners = new Set<object>();
 
 export async function startRunRerunServer() {
-  assertServedBundle(PARITY_DIST_DIR, { proof: "working-tree" });
+  assertServedBundle(MOCK_DIST_DIR, { proof: "working-tree" });
   const h = await launchHarness("reject-active", seedInitialSettingsRuntimeConfig);
   const held: { harness: typeof h; primary?: unknown; server?: ReturnType<typeof createServer> } = { harness: h };
   retainedRunRerunFixtureOwners.add(held);
@@ -40,7 +40,7 @@ export async function startRunRerunServer() {
 }
 
 export async function startSeparationsStartServer() {
-  assertServedBundle(PARITY_DIST_DIR, { proof: "working-tree" });
+  assertServedBundle(MOCK_DIST_DIR, { proof: "working-tree" });
   const h = await launchHarness("reject-active", seedInitialSettingsRuntimeConfig, {
     descriptor: separationsDescriptor, protectedSecrets: protectedSecretSource({ ucpathUserId: "private-marker", ucpathPassword: "private-marker", profileName: "Synthetic Timekeeper" }),
   });
@@ -118,8 +118,8 @@ async function serveLaunchAuthority<Source>(h: Awaited<ReturnType<typeof launchH
         }
         res.writeHead(response.status, Object.fromEntries(response.headers)); res.end(Buffer.from(await response.arrayBuffer())); return;
       }
-      const target = normalize(join(PARITY_DIST_DIR, url.pathname === "/" ? "index.html" : url.pathname));
-      if (!target.startsWith(`${PARITY_DIST_DIR}/`)) throw new Error("static path escaped launch bundle");
+      const target = normalize(join(MOCK_DIST_DIR, url.pathname === "/" ? "index.html" : url.pathname));
+      if (!target.startsWith(`${MOCK_DIST_DIR}/`)) throw new Error("static path escaped launch bundle");
       const types: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".svg": "image/svg+xml" };
       res.writeHead(200, { "content-type": types[extname(target)] ?? "application/octet-stream" }).end(await readFile(target));
     })().catch((error: unknown) => { if (res.headersSent) res.destroy(); else res.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ error: String(error) })); });

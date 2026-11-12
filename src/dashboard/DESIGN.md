@@ -4,7 +4,7 @@
 `ds/theme/tokens.ts` supplies named class strings. `kit.html` renders the real primitives through
 `kit/kit-page.tsx`. Start it with `npm run web` at `http://localhost:5174/kit.html`.
 
-Product mock workflows start with empty queues; the parity composition supplies the sample runs. Automatic backups and repairs stay invisible in the dashboard.
+Product mock workflows start with empty queues; the mock composition supplies the sample runs. Automatic backups and repairs stay invisible in the dashboard.
 
 ## Tokens
 

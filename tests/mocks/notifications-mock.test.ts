@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
-import { PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { MOCK_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
@@ -10,7 +10,7 @@ const THEMES = (process.env.NOTIFICATIONS_MOCK_THEMES ?? "light,dark").split(","
 test.use({ deviceScaleFactor: Number(process.env.NOTIFICATIONS_MOCK_SCALE ?? 1) });
 
 let server: FixtureServer;
-test.beforeAll(async () => { server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } }); });
+test.beforeAll(async () => { server = await startFixtureServer({ distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" } }); });
 test.afterAll(async () => { await server.close(); });
 
 const bell = (page: Page) => page.getByRole("button", { name: /^Notifications/ });
@@ -35,7 +35,7 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
 
   // Workflows with the bell's unread dot; the bell swaps the sidebar body to the list.
   // Any statusMock URL shows the mock Settings pages, so Subscription exists.
@@ -205,7 +205,7 @@ for (const theme of THEMES) test(`search palette @ ${theme}`, async ({ page }) =
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await open(page, "centre");
   const palette = page.getByRole("dialog", { name: "Search Relay" });
   const input = palette.getByRole("combobox", { name: "Search Relay" });
@@ -281,7 +281,7 @@ for (const theme of THEMES) test(`search palette @ ${theme}`, async ({ page }) =
 // Served fixture (no notificationsPreview): items that still need the operator sit in Priority, finished runs in Today.
 for (const theme of THEMES) test(`served notifications priority @ ${theme}`, async ({ page }) => {
   test.setTimeout(120_000);
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
   await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();

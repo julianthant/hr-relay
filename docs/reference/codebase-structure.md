@@ -243,7 +243,7 @@ tests/
 ├── dashboard/{app,client,ds,lib,state,surfaces}/
 ├── fast-duo/src/
 ├── {models,rules,scripts,workflow-kit,workflows}/
-├── parity/
+├── mocks/
 ├── perf/
 ├── support/{fixtures,helpers,processes}/
 ├── types/
@@ -253,11 +253,11 @@ tests/
 ```
 
 `tests/architecture/test-layout.test.ts` checks canonical filenames and mirrors against existing tracked source.
-Architecture, parity (mock scene), performance, type, and support trees are exempt from source mirroring.
+Architecture, mocks, performance, type, and support trees are exempt from source mirroring.
 Architecture fixtures and helpers stay beside their owning guard families.
 Shared fixtures, fresh-authority builders, and child-process entrypoints live under `tests/support/`.
 `tests/support/helpers/dashboard/controls/` owns the UI control preview fixtures, loaded by
-fixture name from `tests/parity/app-entry.tsx`.
+fixture name from `tests/mocks/app-entry.tsx`.
 - `tests/support/duo-ceremony-setup.ts` registers the shared Duo fixture cleanup for every Vitest project; the fixture owner stays process-safe.
 Shared composition setup lives in `tests/support/helpers/backend/{capability-wiring-world,write-recovery-world,dashboard-child-world,worker-loop-world}.ts`
 and `tests/support/helpers/dashboard/mounted-rerun-world.ts`; each test owns its allocation, hooks, and cleanup.
@@ -293,7 +293,7 @@ and persisted-read path.
 `tests/support/processes/failure-resolution-peer.ts` runs the independent annotation writers;
 `tests/support/helpers/failure-resolution/fixtures.ts` owns their launch and closure.
 
-`tests/parity/` holds `/ui-mock` scenes and the parity dashboard build entry.
+`tests/mocks/` holds `/ui-mock` scenes and the mock dashboard build entry.
 `tests/perf/` holds dashboard performance checks. `tests/types/` holds compile-time inputs and their checks.
 `tests/scripts/docs/roadmap.test.ts` tests roadmap parsing.
 The private `config/test-data.local.json` input is ignored. Runtime state and artifact roots are declared

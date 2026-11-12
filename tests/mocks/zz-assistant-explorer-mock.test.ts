@@ -2,7 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "./helpers/fixtures.js";
-import { PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { MOCK_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { ASSISTANT_FRAMES } from "../../src/dashboard/surfaces/assistant/assistant-mock-frames.js";
@@ -71,14 +71,14 @@ const FRAMES: Frame[] = [
 ];
 
 let server: FixtureServer;
-test.beforeAll(async () => { server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } }); });
+test.beforeAll(async () => { server = await startFixtureServer({ distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" } }); });
 test.afterAll(async () => { await server.close(); });
 
 for (const theme of THEMES) test(`assistant explorer mock @ ${theme} ${WIDTH}`, async ({ page }) => {
   test.setTimeout(300_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   for (const frame of FRAMES.filter(item => ONLY === undefined || ONLY.includes(item.id))) {
     await page.setViewportSize({ width: WIDTH, height: 720 });
     const view = frame.view ? `&view=${encodeURIComponent(JSON.stringify(frame.view))}` : "";
@@ -105,7 +105,7 @@ for (const theme of THEMES) test(`assistant panel header, History and composer @
   page.setDefaultTimeout(20_000);
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: 720 });
   await page.goto(url("assistantOpen=1"));
   await expect(page.getByRole("log", { name: "Assistant conversation" })).toContainText("3 failed today");
@@ -205,7 +205,7 @@ for (const theme of THEMES) test(`assistant panel header, History and composer @
 
 for (const theme of THEMES) test(`assistant full access and Ask mark @ ${theme} ${WIDTH}`, async ({ page }) => {
   test.setTimeout(300_000); page.setDefaultTimeout(20_000);
-  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: 720 });
   await page.goto(url("assistantOpen=1&assistantFullAccess=1&assistantMock=01-chat-basics"));
   await page.getByRole("button", { name: "Ask before every action" }).click();
@@ -242,7 +242,7 @@ test("Ask mark states video", async ({ browser }) => {
   test.setTimeout(300_000);
   const context = await browser.newContext({ viewport: { width: 640, height: 360 }, recordVideo: { dir: join(OUT, "mark-video"), size: { width: 640, height: 360 } } });
   const page = await context.newPage();
-  await page.addInitScript(() => { Reflect.set(window, "relayParityTheme", "dark"); });
+  await page.addInitScript(() => { Reflect.set(window, "relayMockTheme", "dark"); });
   const states: [string, number][] = [["", 2500], ["hover", 2500], ["thinking", 2200], ["working", 2200], ["needs", 2200], ["done", 1800], ["error", 1800]];
   for (const [state, hold] of states) {
     const mark = state === "" || state === "hover" ? "" : `&assistantMark=${state === "needs" ? "needs-you" : state}`;

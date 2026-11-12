@@ -38,7 +38,7 @@ for folder owners and the [dashboard contract](../../docs/reference/dashboard-su
 
 Use `/ui`. Keep absent product features absent unless assigned; the dashboard contract owns that scope.
 Read [DESIGN.md](DESIGN.md) and open the specimen page (`npm run web`, then
-`http://localhost:5174/kit.html`) before choosing primitives. Read [PARITY.md](PARITY.md) before
+`http://localhost:5174/kit.html`) before choosing primitives. Read [MOCKS.md](MOCKS.md) before
 judging a visual difference.
 
 ## Data and command rules
@@ -74,7 +74,7 @@ judging a visual difference.
 
 - Follow the [root test path](../../AGENTS.md#checks) for runner placement and slots.
 - Prove dashboard behaviour with Vitest unit/integration tests and `/verify` browser checks; there
-  is no Playwright behaviour suite. `tests/parity/` holds only `/ui-mock` scenes.
+  is no Playwright behaviour suite. `tests/mocks/` holds only `/ui-mock` scenes.
 - Assigned local mock renders and browser verification run serially with one worker under the
   local slot's containment rules. Stop at the first unexpected RED; this authorizes no full suite.
 - A declared workflow scenario ID alone proves no execution.

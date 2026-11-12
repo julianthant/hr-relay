@@ -15,7 +15,7 @@ import frozenPresentationFiles from "./fixtures/dashboard-presentation-file-set.
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 
 const DASHBOARD_ROOT = "src/dashboard";
-const PRESENTATION_FREEZE_BRIEF = "src/dashboard/PARITY.md";
+const PRESENTATION_FREEZE_BRIEF = "src/dashboard/MOCKS.md";
 const COMPONENT_CHANGE_INSTRUCTION =
   "components are fixed; ask the operator before adding or removing one";
 const STYLESHEET_EXTENSIONS = new Set([
