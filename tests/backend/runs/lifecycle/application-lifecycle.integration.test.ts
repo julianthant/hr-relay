@@ -4,6 +4,13 @@ import { DatabaseSync } from "node:sqlite";
 import { createApplicationLifecycle } from "../../../../src/backend/runs/lifecycle/application-lifecycle.js";
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 import { ApplicationAdmissionRefusedError } from "../../../../src/backend/storage/sqlite/run-store-contracts.js";
+import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
+import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); });
@@ -93,4 +100,45 @@ it("defers idle updates while a paused run is retained", async () => {
   await assert.rejects(lifecycle.installIdleUpdate(), /application-update-work-active/u);
   assert.equal(installs, 0);
   assert.equal(f.database.authority.runs.admission().state, "open");
+});
+
+it("ends a Pause all and quit that cannot complete when the operator resumes a paused run", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  cleanups.push(() => { vi.useRealTimers(); });
+  const f = await settingsFixture(); cleanups.push(f.close);
+  const unexpected = (): never => { throw new Error("unexpected kernel effect"); };
+  const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
+  const kernel = createCommandKernel({ lifecycle: f.service, authority: f.database, clock: f.clock, ids: sequentialIdFactory("d"),
+    appVersion: "0.1.0", descriptors: { resolve: () => personLookupDescriptor }, applicationQuitAvailable: true,
+    configIdentity: { configSnapshotId: runtime.configSnapshotId, configFingerprint: runtime.configFingerprint },
+    intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
+    writeResolution: { recheck: unexpected, resolveAbsent: unexpected }, workerRuntime: { pool: unusedWorkerPool(unexpected) } });
+  const waiting = f.create();
+  const { member } = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: workflowProjections(personLookupDescriptor).systems });
+  const stuck = f.create({ matchKey: "settings-proof-stuck" });
+  const claim = f.database.authority.runs.claimNext({ workflow: "person-lookup", workerId: member.workerId, now: f.clock.now().toISOString() });
+  assert.ok(claim.state === "claimed");
+  const claimedId = claim.run.envelope.runId, queuedId = claimedId === stuck.envelope.runId ? waiting.envelope.runId : stuck.envelope.runId;
+  let quits = 0;
+  const lifecycle = createApplicationLifecycle({ database: f.database, requestQuit() { quits += 1; }, onFailure: error => { throw error; } });
+  cleanups.push(lifecycle.dispose);
+  const quit = kernel.execute({ commandId: "a1000000-0000-4000-8000-000000000010", family: "application", type: "pause-all-and-quit",
+    requestedBy: "local-operator", source: "dashboard", requestedAt: f.clock.now().toISOString(), target: { runtimeGeneration: runtime.generation },
+    payload: { confirmed: true, targets: lifecycle.snapshot().targets.map(({ runId, expectedVersion }) => ({ runId, expectedVersion })) } });
+  assert.equal(quit.state, "applied");
+  lifecycle.quitAccepted();
+  await vi.advanceTimersByTimeAsync(200);
+  assert.equal(quits, 0);
+  assert.equal(lifecycle.snapshot().state, "pausing");
+  const paused = f.database.authority.runs.get(queuedId); assert.ok(paused);
+  assert.equal(paused.pause?.state, "paused");
+  assert.equal(f.database.authority.runs.get(claimedId)?.pause?.state, "requested");
+
+  const resumed = f.service.resumePaused({ commandId: "a1000000-0000-4000-8000-000000000011", runId: queuedId, expectedVersion: paused.version });
+  assert.equal(resumed.state, "applied");
+  assert.equal(f.database.authority.runs.admission().state, "open");
+  assert.equal(lifecycle.snapshot().state, "ready");
+  await vi.advanceTimersByTimeAsync(200);
+  assert.equal(quits, 0);
+  f.create({ matchKey: "settings-proof-after-quit" });
 });

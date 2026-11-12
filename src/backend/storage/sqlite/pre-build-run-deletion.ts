@@ -4,7 +4,7 @@ import { z } from "zod";
 import { RunDeleteInputSchema } from "../../../models/run/deleted-run.js";
 import { RunHistoryCommandSchema } from "../../../models/dashboard/run-history.js";
 import { createRunTerminalEvidenceResult, type RunResultRecord } from "../../../models/run/result.js";
-import { PredecessorRunRecordSchema, runClaim, type PredecessorRunRecord } from "../../../models/run/record.js";
+import { PredecessorRunRecordSchema, RunLifecycleSchema, runClaim, type PredecessorRunRecord } from "../../../models/run/record.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -74,8 +74,8 @@ export function settlePreBuildRun(database: DatabaseSync, runId: string, now: st
 
 function settleUnclaimed(database: DatabaseSync, current: PredecessorRunRecord, now: string,
   settleEvidence: SettleEvidence): PredecessorRunRecord {
-  const lifecycle = { state: "terminal" as const, outcome: "cancelled" as const, endedAt: now };
-  const candidate = PredecessorRunRecordSchema.parse({ ...current, lifecycle });
+  const lifecycle = RunLifecycleSchema.parse({ state: "terminal", outcome: "cancelled", endedAt: now });
+  const candidate = { ...current, lifecycle };
   const updated = transitionStoredRun(current, candidate, now, PredecessorRunRecordSchema);
   updateRunRecord(database, updated, PredecessorRunRecordSchema);
   const request = CanonicalTransitionRequestSchema.parse({
@@ -97,9 +97,7 @@ function settleClaimed(database: DatabaseSync, current: PredecessorRunRecord, no
     kind: "cancelled", commandId: randomUUID(), runId: marked.envelope.runId, expectedVersion: marked.version,
     claim: { workerId: held.workerId, claimGeneration: held.claimGeneration }, endedAt: now,
   });
-  const candidate = PredecessorRunRecordSchema.parse({
-    ...marked, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: now },
-  });
+  const candidate = { ...marked, lifecycle: RunLifecycleSchema.parse({ state: "terminal", outcome: "cancelled", endedAt: now }) };
   const updated = transitionStoredRun(marked, candidate, now, PredecessorRunRecordSchema);
   updateRunRecord(database, updated, PredecessorRunRecordSchema);
   const command = lifecycleCommand("terminalize", terminalRequest, {

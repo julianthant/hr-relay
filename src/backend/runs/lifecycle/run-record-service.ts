@@ -12,6 +12,7 @@ import type { RuntimeConfigClaimToken } from "../../../models/config/runtime-gen
 import type { DeletedRunRecord } from "../../../models/run/deleted-run.js";
 import { nextAttemptEnvelope } from "../../../models/run/envelope.js";
 import { runClaim,RunRecordSchema,runTransitionViolation,type RunRecord } from "../../../models/run/record.js";
+import { interruptTransition, pendingInterruptOf } from "../../../rules/runs/run-interrupt.js";
 import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
 import { CanonicalCrashRecoveryRequestSchema } from "../../../models/run/worker.js";
 import type { DelegationPlan } from "../../../models/workflow/delegation.js";
@@ -51,6 +52,7 @@ import { RunDeletionRefusedError } from "../../storage/sqlite/native-run-deletio
 import { continuationDelegationGroups } from "../../storage/sqlite/run-continuation-delegation.js";
 import { captureRunContinuation,RunContinuationRefusedError,validateRunContinuation,continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
 import {
+ApplicationAdmissionRefusedError,
 CanonicalAcknowledgePauseRequestSchema,
 CanonicalCancellationTerminalizeRequestSchema,
 CanonicalClaimNextRequestSchema,
@@ -680,11 +682,13 @@ export class RunRecordService {
       if (source.state !== "present") return source;
       const current = source.run;
       if (current.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: current.version });
-      if (source.disposition !== "live" || current.lifecycle.state === "terminal" || current.lifecycle.state === "parked-write"
-        || current.cancelRequested === true) return refused({ reason: "invalid-state" });
-      if (operation === "resume" && repositories.runs.admission().state !== "open") return refused({ reason: "policy-refused" });
-      if (operation === "resume" && current.pause?.state !== "paused") return refused({ reason: "invalid-state" });
-      if (operation === "pause" && current.pause !== undefined) {
+      const next = interruptTransition(current, { kind: operation });
+      if (source.disposition !== "live" || next.state === "refused" && next.reason !== "not-paused") return refused({ reason: "invalid-state" });
+      const admission = repositories.runs.admission();
+      // A Resume during Pause all and quit ends that quit; any other hold keeps admission closed.
+      if (operation === "resume" && admission.state !== "open" && admission.hold !== "quit") return refused({ reason: "policy-refused" });
+      if (next.state === "refused") return refused({ reason: "invalid-state" });
+      if (next.interrupt === pendingInterruptOf(current)) {
         this.recordJournal(repositories, journal.command, journalRun(current));
         return { state: "applied" as const, run: current };
       }
@@ -699,11 +703,17 @@ export class RunRecordService {
       const accounting = resumeAuthorization === undefined ? undefined : workflowDelegationAccounting(resumeAuthorization, current);
       const accountingResume = accounting !== undefined && repositories.dependencies.groups(request.runId).some(({ group }) =>
         group.invocation.nodeId === accounting.joinNodeId && group.children.some(member => member.attempt === "retry"));
+      if (operation === "resume" && admission.state !== "open") {
+        const runtime = repositories.runtimeConfig.get();
+        if (runtime === undefined) throw new ApplicationAdmissionRefusedError("application-runtime-unavailable");
+        repositories.runs.releaseQuitAdmission({ commandId: lifecycleCommandId("quit-admission-release", request.commandId),
+          runtimeGeneration: runtime.generation, releases: admission.commandId });
+      }
       const result = repositories.runs.setPause({ runId: request.runId, expectedVersion: request.expectedVersion, now,
         ...(operation === "resume" && !accountingResume ? { continuation: captureRunContinuation(repositories, current) } : {}),
-        pause: operation === "resume" ? undefined : runClaim(current) === undefined
-          ? { state: "paused", requestedAt: now, pausedAt: now, commandId: request.commandId }
-          : { state: "requested", requestedAt: now, commandId: request.commandId } }, accountingResume ? resumeAuthorization : undefined);
+        pause: next.interrupt === "paused" ? { state: "paused", requestedAt: now, pausedAt: now, commandId: request.commandId }
+          : next.interrupt === "pause-requested" ? { state: "requested", requestedAt: now, commandId: request.commandId } : undefined },
+        accountingResume ? resumeAuthorization : undefined);
       if (result.state === "conflict") return refused({ reason: "conflict", currentVersion: result.currentVersion });
       this.recordJournal(repositories, journal.command, journalRun(result.run));
       return { state: "applied" as const, run: result.run };
@@ -717,7 +727,8 @@ export class RunRecordService {
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
       if (journal.state === "replay") return this.replayRun(journal.result);
       const source = this.read(request.runId);
-      if (source.state !== "present" || source.run.pause?.state !== "requested") return refused({ reason: "invalid-state" });
+      if (source.state !== "present" || source.run.pause?.state !== "requested"
+        || interruptTransition(source.run, { kind: "acknowledge-pause" }).state === "refused") return refused({ reason: "invalid-state" });
       this.assertCurrentExecution({ runId: request.runId, claim: request.claim });
       if (repositories.writeIntents.listByRun(request.runId).some(intent => intent.status === "attempting")) {
         return refused({ reason: "illegal-transition", from: source.run.lifecycle.state, to: "queued",
