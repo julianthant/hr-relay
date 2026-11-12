@@ -134,16 +134,16 @@ for (const { mode: failure, name } of [
     });
     if (failure === "close" || failure === "close-log") {
       assert.ok(report); assert.equal(report.closure, "unproved"); assert.deepEqual(report.outcomes, []);
-    }
-    if (failure === "close") {
-      // The unproved closure's nested causes reach the debug log as value-free cause rows under the fault's correlation.
-      const fault = emitted.find(event => event.code === "WORKER_SESSION_CLOSURE_UNPROVED" && event.area === "browser-session");
-      assert.ok(fault);
-      const causes = emitted.filter(event => event !== fault && event.correlationId === fault.correlationId);
-      assert.ok(causes.length >= 2, JSON.stringify(causes));
-      for (const cause of causes) {
-        assert.equal(cause.area, "browser-session"); assert.equal(typeof cause.message, "string");
-        assert.doesNotMatch(JSON.stringify(cause), /fixture cleanup failed/u);
+      if (failure === "close") {
+        // The unproved closure's nested causes reach the debug log as value-free cause rows under the fault's correlation.
+        const fault = emitted.find(event => event.code === "WORKER_SESSION_CLOSURE_UNPROVED" && event.area === "browser-session");
+        assert.ok(fault);
+        const causes = emitted.filter(event => event !== fault && event.correlationId === fault.correlationId);
+        assert.ok(causes.length >= 2, JSON.stringify(causes));
+        for (const cause of causes) {
+          assert.equal(cause.area, "browser-session"); assert.equal(typeof cause.message, "string");
+          assert.doesNotMatch(JSON.stringify(cause), /fixture cleanup failed/u);
+        }
       }
     }
     else if (failure === "runtime-log") {
