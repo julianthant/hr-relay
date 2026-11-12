@@ -1,10 +1,14 @@
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
-import { separationsDescriptor } from '../../../support/helpers/registered-workflows.js';
+import { onboardingModule, separationsDescriptor } from '../../../support/helpers/registered-workflows.js';
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
 import { notificationDisplayContext } from "../../../../src/backend/runs/queries/notification-display.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { NotificationRecordSchema, type NotificationRecord } from "../../../../src/models/notifications/notifications.js";
+import { ONBOARDING_INPUT_EXAMPLE } from "../../../../src/models/workflows/onboarding/input.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { HASH_A as HASH_A_INPUT, HASH_B as HASH_B_INPUT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { makeWorld, notificationRecordOf,runRecordOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
@@ -123,4 +127,80 @@ it("resolves command notices that target a run the way that run resolves, and a 
   }
   assert.deepEqual(notificationDisplayContext({ ...row, trigger: "command", links: [{ kind: "bulk-result", bulkCommandId: request.commandId }] }, regular), { state: "not-applicable" });
   assert.deepEqual(notificationDisplayContext({ ...row, trigger: "command", links: [{ kind: "recovery", commandId: request.commandId }] }, regular), { state: "unavailable" });
+});
+
+const onboarding = onboardingModule.descriptor;
+const onboardingRun = (overrides: Record<string, unknown> = {}) => RunRecordSchema.parse({
+  ...runRecordOf({ seed: 4, workflow: onboarding.id, descriptor: onboarding, lifecycle: { state: "terminal", outcome: "failed", failureId: "44444444-4444-4444-8444-444444444444", endedAt: "2026-10-02T17:00:00.000Z" } }),
+  input: { raw: { email: ONBOARDING_INPUT_EXAMPLE.email }, ingressSchemaHash: HASH_A,
+    parsed: { schemaHash: deriveSchemaHash(onboarding.canonicalInput, "output"), protectedBindings: [], value: ONBOARDING_INPUT_EXAMPLE } },
+  ...overrides,
+});
+const onboardingDeps = async (current = onboardingRun()) => ({ ...await deps([]), read: () => ({ state: "present" as const, disposition: "live" as const, run: current }), descriptor: () => onboarding });
+const notice = (trigger: NotificationRecord["trigger"], links: readonly unknown[]) => NotificationRecordSchema.parse({
+  ...notificationRecordOf({ seed: 4, title: "Notice", lastSeenAt: "2026-10-02T17:00:00.000Z" }),
+  trigger, channel: trigger === "verified-done" ? "inbox" : "ping", links,
+});
+const runLink = (current: ReturnType<typeof onboardingRun>) => ({ kind: "run" as const, runId: current.envelope.runId });
+const failureLink = (current: ReturnType<typeof onboardingRun>) => ({ kind: "failure" as const, runId: current.envelope.runId, failureId: "44444444-4444-4444-8444-444444444444" });
+const OWN_TITLE = { state: "available", workflow: "Onboarding", subject: ONBOARDING_INPUT_EXAMPLE.email } as const;
+
+it.each([
+  ["failed", failureLink], ["gate-waiting", runLink], ["write-parked", runLink], ["repeating", failureLink], ["verified-done", runLink],
+] as const)("names the run by its own title on a %s notice for a workflow that declares no subject", async (trigger, link) => {
+  const current = onboardingRun();
+  assert.deepEqual(notificationDisplayContext(notice(trigger, [link(current)]), await onboardingDeps(current)), OWN_TITLE);
+});
+
+it.each(["recovery", "command-result"] as const)("names the target run by its own title on a %s command notice", async kind => {
+  const current = onboardingRun();
+  const request = CommandRequestSchema.parse({
+    commandId: "11111111-1111-4111-8111-111111111111", requestedAt: "2026-10-02T17:00:00.000Z",
+    requestedBy: "local-operator", source: "dashboard", family: "run", type: "retry",
+    target: { runId: current.envelope.runId, expectedVersion: 1 },
+  });
+  const display = notificationDisplayContext(notice("command", [{ kind, commandId: request.commandId }]), { ...await onboardingDeps(current), command: () => request });
+  assert.deepEqual(display, OWN_TITLE);
+});
+
+const TIMEKEEPER = { kind: "profile", inputPath: "timekeeperName", name: "timekeeperName", profileId: "66666666-6666-4666-8666-666666666666", sessionEpoch: 1 };
+const separationRun = (overrides: Record<string, unknown> = {}, bindings: unknown[] = [TIMEKEEPER]) => RunRecordSchema.parse({
+  ...runRecordOf({ seed: 5, workflow: separationsDescriptor.id, descriptor: separationsDescriptor, lifecycle: { state: "terminal", outcome: "failed", failureId: "44444444-4444-4444-8444-444444444444", endedAt: "2026-10-02T17:00:00.000Z" } }),
+  input: { raw: { documentNumber: "4510" }, ingressSchemaHash: HASH_A, parsed: { schemaHash: deriveSchemaHash(separationsDescriptor.canonicalInput, "output"), protectedBindings: bindings,
+    value: { documentNumber: "4510", timekeeperName: "Synthetic Timekeeper", searchTimeoutMs: 30_000 } } },
+  ...overrides,
+});
+const separationDeps = async (current: ReturnType<typeof separationRun>) => ({ ...await deps([]),
+  read: () => ({ state: "present" as const, disposition: "live" as const, run: current }), descriptor: () => separationsDescriptor });
+
+it("names a run whose declared subject checkpoint was never written by the run's own title", async () => {
+  const current = separationRun();
+  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), await separationDeps(current)),
+    { state: "available", workflow: separationsDescriptor.label, subject: "Separation 4510" });
+});
+
+it("prefers the operator's name for the run", async () => {
+  const current = onboardingRun({ displayName: "Spring hire" });
+  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), await onboardingDeps(current)), { ...OWN_TITLE, subject: "Spring hire" });
+});
+
+it("names a protected-subject run only as the run's own title does", async () => {
+  const current = separationRun({ displayName: "Canary separation" }, [TIMEKEEPER,
+    { kind: "test-data-local", inputPath: "documentNumber", name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: "55555555-5555-4555-8555-555555555555" }]);
+  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), await separationDeps(current)),
+    { state: "available", workflow: separationsDescriptor.label, subject: "Protected test subject" });
+});
+
+it("keeps workflow-only when the run's stored input predates the workflow's current input schema", async () => {
+  const current = onboardingRun();
+  const stale = RunRecordSchema.parse({ ...current, input: { ...current.input, parsed: { ...current.input.parsed, schemaHash: HASH_B } } });
+  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(stale)]), await onboardingDeps(stale)), { state: "workflow-only", workflow: "Onboarding" });
+});
+
+it("reads as unavailable when the notice's source is truly gone", async () => {
+  const current = onboardingRun();
+  const regular = await onboardingDeps(current);
+  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), { ...regular, read: () => ({ state: "absent", runId: current.envelope.runId }) }), { state: "unavailable" });
+  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), { ...regular, descriptor: () => undefined }), { state: "unavailable" });
+  assert.deepEqual(notificationDisplayContext(notice("command", [{ kind: "command-result", commandId: "11111111-1111-4111-8111-111111111111" }]), regular), { state: "unavailable" });
 });
