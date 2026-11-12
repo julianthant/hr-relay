@@ -9,7 +9,7 @@ const context = (workflow = "portable", extra: Record<string, unknown> = {}) => 
   draft: false, filters, ...extra });
 const portableResults = { changes: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
   ubuntu: { result: "success" }, integration: { result: "success" }, architecture: { result: "success" } };
-const releaseResults = { ...portableResults, macos: { result: "success" }, windows: { result: "success" },
+const releaseResults = { ...portableResults, macos: { result: "success" },
   "unit-proofs": { result: "success" }, "release-batch": { result: "success" } };
 
 function cli(command: string, input: unknown, results?: unknown) {
@@ -25,14 +25,14 @@ describe("flat CI plan", () => {
     expect(portable.ubuntu.include.filter(row => row.suite === "architecture")).toHaveLength(2);
     expect(portable.ubuntu.include.filter(row => row.suite === "integration")).toHaveLength(14);
     expect(portable.macos.include).toEqual([]);
-    expect(portable.windows.include).toEqual([]);
+    expect(portable).not.toHaveProperty("windows");
     expect(portable.testJobs).toBe(18);
     for (const manual of [false, true]) {
       const plan = createCiPlan(context("release", manual ? { event: "workflow_dispatch", base: "", head: "", filters: {}, draft: true } : {}));
       expect(plan.macos.include).toEqual(Array.from({ length: 5 }, (_, i) => ({ suite: "native", shard: i + 1, shards: 5 })));
-      expect(plan.windows.include).toEqual(Array.from({ length: 5 }, (_, i) => ({ suite: "native", shard: i + 1, shards: 5 })));
+      expect(plan).not.toHaveProperty("windows");
       expect(plan.releaseBatch).toBe(!manual);
-      expect(plan.testJobs).toBe(28);
+      expect(plan.testJobs).toBe(23);
     }
   });
 
@@ -43,7 +43,6 @@ describe("flat CI plan", () => {
   ])("preserves native-only/draft layout $suite/$draft", ({ suite, draft, shards }) => {
     const plan = createCiPlan(context("release", { filters: { ...filters, shared: "false", [suite]: "true" }, draft }));
     expect(plan.macos.include).toEqual(Array.from({ length: shards }, (_, i) => ({ suite: "native", shard: i + 1, shards })));
-    expect(plan.windows.include).toEqual(plan.macos.include);
     expect(plan.releaseBatch).toBe(false);
   });
 
@@ -56,7 +55,6 @@ describe("flat CI plan", () => {
     const invalid = createCiPlan(context("release", { head: "feature/other" }));
     expect(invalid.fullRelease).toBe(false);
     expect(invalid.macos.include).toEqual([]);
-    expect(invalid.windows.include).toEqual([]);
     expect(invalid.releaseBatch).toBe(false);
   });
 
@@ -98,7 +96,7 @@ describe("flat CI failure fences", () => {
     for (const workflow of ["portable", "release"]) {
       const plan = createCiPlan(context(workflow, { filters: { ...filters, shared: "false" } }));
       const omitted = { ...releaseResults, ubuntu: { result: "skipped" }, macos: { result: "skipped" },
-        windows: { result: "skipped" }, "release-batch": { result: "skipped" } };
+        "release-batch": { result: "skipped" } };
       expect(() => verifyCiResults(plan, omitted)).not.toThrow();
       expect(publishTimings(plan, omitted)).toBe(false);
       expect(() => verifyCiResults(plan, { ...omitted, ubuntu: { result: "success" } })).toThrow();
@@ -124,14 +122,14 @@ describe("flat CI failure fences", () => {
     expect(() => verifyProofs(plan, releaseResults)).not.toThrow();
     expect(() => verifyProofs(plan, { ...releaseResults, architecture: { result: "failure" } })).toThrow();
     expect(() => verifyUnitProof(plan, releaseResults)).not.toThrow();
-    for (const platform of ["macos", "windows"]) {
+    for (const platform of ["macos"]) {
       for (const result of ["failure", "cancelled", "skipped"]) {
         expect(() => verifyUnitProof(plan, { ...releaseResults, [platform]: { result } })).toThrow();
       }
     }
-    const empty = { ...plan, macos: { include: [] }, windows: { include: [] }, testJobs: plan.ubuntu.include.length };
-    expect(() => verifyUnitProof(empty, { ...releaseResults, macos: { result: "skipped" }, windows: { result: "skipped" } })).toThrow();
-    const missing = { ...plan, macos: undefined, windows: undefined };
+    const empty = { ...plan, macos: { include: [] }, testJobs: plan.ubuntu.include.length };
+    expect(() => verifyUnitProof(empty, { ...releaseResults, macos: { result: "skipped" } })).toThrow();
+    const missing = { ...plan, macos: undefined };
     expect(() => verifyUnitProof(missing, releaseResults)).toThrow();
   });
 

@@ -61,16 +61,12 @@ deadlines. A full staging run uses two
 Ubuntu unit shards, two architecture shards and fourteen integration shards, plus static and
 privacy, within twenty Ubuntu runners. On operator-started full releases, use all five macOS
 runners for native files. The release runner starts after
-the routine suites finish. Windows native files use five `windows-latest` runners, or one for
-unit-only selection, with the
-same serial/storage separation and native membership. Windows uses explicit Bash with native
-Windows Node/npm, the runner temp directory and Windows Chromium installation. Before checkout,
-it disables Git automatic line-ending conversion to preserve fixture bytes and shell scripts.
+the routine suites finish.
 
-`ci.yml` runs only for staging pull requests and calls portable-only `ci-checks.yml`. Its existing
+`ci.yml` runs only for staging pull requests and calls `checks.yml` with kind `portable`. Its existing
 merge-train call follows the five required summaries. `release.yml` runs only for main pull requests or operator manual releases and
-alone calls `release-checks.yml`, which owns portable, macOS/Windows native and
-release-batch jobs. Staging never references or loads a release/native workflow call.
+calls the same `checks.yml` with kind `release`; the plan adds macOS native and
+release-batch jobs. `checks.yml` is the only file that defines test jobs.
 
 Both event entries use per-PR/manual-branch supersession with a workflow/PR-or-ref concurrency
 group and `cancel-in-progress: true`. New pushes cancel older runs for that same key. Each entry
@@ -85,9 +81,10 @@ inside parent per-PR supersession. The standalone staging-push train remains sep
 repair pushes to avoid redundant CI work.
 
 `scripts/test/ci-plan.ts` owns typed selection, proof, publication and timing-history policy. Both timed callees
-retain explicit test budgets. Portable `ci-checks.yml` jobs are `changes`, `static`, `privacy`, `ubuntu`,
-`integration`, `architecture` and `unit`. `release-checks.yml` adds `macos`, `windows`,
-`unit-proofs` and `release-batch`. Neither callee has a `timings` job. The `unit` job is one checkout
+retain explicit test budgets. `checks.yml` jobs are `changes`, `static`, `privacy`, `ubuntu`, `macos`,
+`unit-proofs`, `integration`, `architecture`, `release-batch` and `unit`; the plan leaves
+`macos` empty outside a full release, and `unit-proofs` and `release-batch` run only for the release kind.
+It has no `timings` job. The `unit` job is one checkout
 and one install: it checks proofs, merges durations, uploads `ci-timings` only when every proof passed,
 then runs final verification. It runs unless cancelled, excludes downstream train to avoid a cycle,
 and rejects failed, cancelled or missing outcomes.
@@ -123,10 +120,8 @@ reports or failed downloads fail CI. The [check rules](../AGENTS.md#checks) own 
 [test reference](reference/guards-and-tests.md#2-vitest-selection-and-commands) owns file
 membership and selection details.
 
-Playwright browser caches use `~/Library/Caches/ms-playwright` on macOS and
-`~/AppData/Local/ms-playwright` on Windows, keyed by runner OS, architecture, browser set and
-`package-lock.json` digest (plus the image on macOS). An exact macOS hit skips installation;
-Windows checks installation on every native integration job. A miss installs the required browsers. There are no partial-key restores. CI never uploads HR evidence.
+Playwright browser caches use `~/Library/Caches/ms-playwright` on macOS, keyed by runner OS, architecture, browser set and
+`package-lock.json` digest (plus the image on macOS). An exact macOS hit skips installation. A miss installs the required browsers. There are no partial-key restores. CI never uploads HR evidence.
 
 ## Privacy check
 

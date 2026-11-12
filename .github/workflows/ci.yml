@@ -36,7 +36,9 @@ jobs:
       group: ci-runners
       queue: max
       cancel-in-progress: false
-    uses: ./.github/workflows/ci-checks.yml
+    uses: ./.github/workflows/checks.yml
+    with:
+      kind: portable
 
   static:
     name: static

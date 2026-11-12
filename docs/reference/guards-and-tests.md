@@ -128,11 +128,11 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-`ci.yml` triggers only for staging pull requests and admits the portable-only `ci-checks.yml` call.
+`ci.yml` triggers only for staging pull requests and admits the `checks.yml` call with kind `portable`.
 Merge train runs after the five top summaries and
 outside admission. `release.yml` triggers only for main pull requests or operator manual releases
-and alone admits `release-checks.yml`, which owns the native and complete release pipeline.
-Staging never references or loads a release/native workflow call. Both callees use shared typed
+admits `checks.yml` with kind `release`, which plans the native and complete release pipeline.
+Both entries call the same file, which uses shared typed
 selection/result/timing policy from `scripts/test/ci-plan.ts` and explicitly retain test budgets.
 The root check rules own platform placement and release authorization.
 `scripts/test/ci-files.ts` names the native
@@ -155,7 +155,6 @@ Other native files count half because two workers share them.
 | architecture | Ubuntu | 2 | architecture files |
 | integration | Ubuntu | 14 | integration files except `NATIVE_FILES` and `SERIAL_FILES` |
 | native | macOS, operator-started full releases only | 5 | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |
-| native | Windows, operator-started full releases only | 5 (1 for unit only) | The same native membership and isolated serial/storage groups |
 
 With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The job-level whole-pipeline FIFO
 admission and draft policy are described in [repository governance](../repository-governance.md).
@@ -215,7 +214,7 @@ Three independent slots under `~/.cache/relay-test-pc/` retain separate `node_mo
 lockfile hash is unchanged. A kernel lock holds the slot through sync and execution; a run takes
 a free slot or waits. After measuring integration load,
 capacity can be set in `~/.config/relay-test-pc/slots` (1..16; change only while idle). Integration
-runs build the dashboard as CI does. Test environment values come from `ci-checks.yml`, temp files
+runs build the dashboard as CI does. Test environment values come from `checks.yml`, temp files
 use `/dev/shm`, and each run uses at most two Vitest workers.
 
 Output streams and is saved with a final `result.json` under the main checkout's ignored
@@ -290,9 +289,9 @@ Every mandatory proof, selected batch and timing publication remains
 inside that callee; no callee reacquires admission. Merge train follows the five top summaries
 outside the admitted call; the standalone staging-push train is unchanged.
 
-Neither callee has a `timings` job. Portable jobs are `changes`, `static`, `privacy`, `ubuntu`,
-`integration`, `architecture` and `unit`. Release adds `macos`, `windows`, `unit-proofs`
-and `release-batch`. Each callee's `unit` runs unless cancelled, with one checkout and one install.
+`checks.yml` is the only file that defines test jobs and has no `timings` job. Its jobs are `changes`, `static`,
+`privacy`, `ubuntu`, `macos`, `unit-proofs`, `integration`, `architecture`, `release-batch` and `unit`; the plan
+empties `macos` outside a full release, and `unit-proofs` and `release-batch` run only for the release kind. Its `unit` runs unless cancelled, with one checkout and one install.
 It checks proofs, merges durations, uploads `ci-timings` only when every proof passed, then runs
 final verification, rejecting failed, cancelled or missing outcomes. Cancellation stops its checkout/install work.
 In releases it also checks the selected batch, after
