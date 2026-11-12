@@ -128,7 +128,7 @@ describe("explain run", () => {
   it("shows a stored failure's nested causes as codes and class names in explain run and diagnostics", async () => {
     const database = await seeded();
     const profile = heldProfiles.at(-1); assert.ok(profile);
-    class BrowserLoginError extends Error {}
+    class BrowserLoginError extends Error { constructor(message: string) { super(message); this.name = "BrowserLoginError"; } }
     const error = new Error("outer https://example.test/p?eid=123", { cause: new BrowserLoginError("at /Users/someone/Projects/x.ts eid 123") });
     const run = requireTrustRun(createTrustRunReader(database), EXIT_RUN_ID);
     const failure = FailureRecordSchema.parse({ diagnosticSafetyVersion: 1, failureId: randomUUID(), fingerprint: "f".repeat(64),
