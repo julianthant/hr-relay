@@ -897,14 +897,12 @@ export function RunStartDialog({
               <Banner tone="danger" title="The request did not complete">{error}</Banner>
             )}
 
-            {currentStage !== "Options" && currentStage !== "Input" && currentStage !== "Values" && <section className="flex flex-col gap-1">
+            {(currentStage === "Steps" || currentStage === "Confirm") && <section className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between gap-3">
-              <h3 className="text-heading font-semibold">{currentStage === "Steps" ? isRerun ? "Choose what to run again" : "Workflow steps" : currentStage === "Values" ? "Values for the new run" : currentStage === "Confirm" ? "Review the plan" : workflow === undefined ? "No workflow" : "Run input"}</h3>
+              <h3 className="text-heading font-semibold">{currentStage === "Steps" ? isRerun ? "Choose what to run again" : "Workflow steps" : "Review the plan"}</h3>
               {currentStage === "Steps" && workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} / {workflow.steps.length} included</span>}
               </div>
-              {currentStage === "Input" && inputRun.state === "present" && <p className="text-body text-ui-secondary">{declaredInput ? typedDeclaration.description : <>Enter {inputRunFieldLabel(inputRun.surface.parser) === "Kuali ID" ? "Kuali IDs" : inputRunValueNoun(inputRun.surface.parser)}. Each entry starts one run.</>}</p>}
               {currentStage === "Steps" && <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : multiSubject && steps.some(step => step.control.state === "omittable") ? multiSubjectOmissionReason : "Required steps stay included. Optional steps may be omitted."}</p>}
-              {currentStage === "Values" && <p className="text-body text-ui-secondary">Review the input and values this rerun will use.</p>}
             </section>}
 
             <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
