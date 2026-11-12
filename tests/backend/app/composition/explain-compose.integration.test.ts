@@ -27,7 +27,8 @@ import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-
 import { buildExplainRunView, renderExplainRun } from "../../../../src/backend/runs/explain/explain-run.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import type { TimelineAppend } from "../../../../src/models/events/timeline.js";
+import { timelineCheckpointReference, type TimelineAppend } from "../../../../src/models/events/timeline.js";
+import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { RunIdSchema,WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import {
@@ -63,7 +64,83 @@ async function seeded(): Promise<AuthorityDatabase> {
   return database;
 }
 
+function failedFollowup(database: AuthorityDatabase, attempt: number, retryOf?: string) {
+  const source = requireTrustRun(createTrustRunReader(database), EXIT_RUN_ID);
+  const runId = randomUUID();
+  const now = source.updatedAt;
+  database.authority.runs.enqueue({
+    envelope: { ...source.envelope, runId, traceId: `pl-001113-${runId.slice(0, 4)}`, attempt,
+      enqueuedAt: now, ...(retryOf === undefined ? {} : { retryOf }) },
+    input: source.input, lifecycle: { state: "queued" }, claimGeneration: 0, version: 1,
+    createdAt: now, updatedAt: now,
+  });
+  const slot = database.authority.workerSlots.list(personLookupDescriptor.id).find(entry => entry.poolIndex === 1);
+  assert.ok(slot);
+  const claimed = database.authority.runs.claimNext({ workflow: personLookupDescriptor.id, workerId: slot.workerId, now });
+  assert.equal(claimed.state, "claimed");
+  if (claimed.state !== "claimed") throw new Error("followup run was not claimed");
+  let run = claimed.run;
+  const claim = { workerId: slot.workerId, claimGeneration: run.claimGeneration };
+  for (const state of ["validating", "running"] as const) {
+    const changed = database.authority.runs.transition({ runId, expectedVersion: run.version, claim, now,
+      lifecycle: { state, workerId: slot.workerId, claimedAt: now, heartbeatAt: now } });
+    assert.equal(changed.state, "applied");
+    if (changed.state !== "applied") throw new Error("followup run did not advance");
+    run = changed.run;
+  }
+  const sourceCheckpoint = database.authority.runCheckpoints.listByItem(source.envelope.workflow, source.envelope.itemId)
+    .find(entry => entry.runId === (retryOf ?? EXIT_RUN_ID) && entry.nodeId === "searching");
+  assert.ok(sourceCheckpoint);
+  if (retryOf === undefined) {
+    database.authority.runCheckpoints.insert(RunCheckpointRecordSchema.parse({ ...sourceCheckpoint,
+      runId, attempt, claimGeneration: run.claimGeneration, writtenAt: now }));
+  } else {
+    const writer = createDebugEventWriter({ repository: database.authority.timelineEvents,
+      clock: manualClock(new Date(now)), build: "fixture" });
+    for (let index = 0; index < 1001; index += 1) {
+      writer.emit({ category: "worker", phase: "started", correlationId: `padding-${String(index)}` },
+        { kind: "run", runId: run.envelope.runId }, run.envelope.workflow);
+    }
+    database.authority.timelineEvents.append({ schemaVersion: 1, eventId: randomUUID(), workflow: run.envelope.workflow,
+      scope: { kind: "run", runId }, occurredAt: now, recordedAt: now, retentionDate: "2026-08-03", source: { kind: "native" },
+      payload: { kind: "checkpoint-replayed", runId, workflow: run.envelope.workflow, attempt,
+        claimGeneration: run.claimGeneration, checkpoint: timelineCheckpointReference(sourceCheckpoint) } });
+  }
+  const failure = FailureRecordSchema.parse({ failureId: randomUUID(), fingerprint: "f".repeat(64),
+    runId, traceId: run.envelope.traceId, attempt, workflowId: run.envelope.workflow,
+    code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", transient: false, writeState: "not-attempted",
+    causeChain: [{ code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", role: "primary", transient: false }],
+    remediation: [{ kind: "operator-action", message: "fixture" }], occurredAt: now });
+  return database.terminalizeFailure(personLookupDescriptor, { failure,
+    authorization: { kind: "failed", runId, workflowId: run.envelope.workflow, attempt,
+      descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint,
+      expectedVersion: run.version, claim, authorizedAt: now, failureId: failure.failureId } }).run;
+}
+
 describe("explain run", () => {
+  it("shows only this failed run's observed steps when an earlier run reached further", async () => {
+    const database = await seeded();
+    const run = failedFollowup(database, 2);
+    const view = explainRunFrom(database, run.envelope.runId);
+    const timeline = new Map(view.timeline.map(entry => [entry.nodeId, entry]));
+
+    assert.deepEqual(view.outcome, { state: "present", value: "failed" });
+    assert.equal(timeline.get("searching")?.disposition, "observed-this-attempt");
+    assert.equal(timeline.get("cross-verify")?.disposition, "no-record");
+    assert.equal(timeline.get("active-status")?.disposition, "no-record");
+  });
+
+  it("attributes a Retry's replay beyond the first event page without borrowing the source's other steps", async () => {
+    const database = await seeded();
+    const source = failedFollowup(database, 2);
+    const retry = failedFollowup(database, 3, source.envelope.runId);
+    const timeline = new Map(explainRunFrom(database, retry.envelope.runId).timeline.map(entry => [entry.nodeId, entry]));
+
+    assert.equal(timeline.get("searching")?.disposition, "replayed-from-checkpoint");
+    assert.match(timeline.get("searching")?.detail ?? "", new RegExp(`run ${source.envelope.runId} attempt 2`, "u"));
+    assert.equal(timeline.get("cross-verify")?.disposition, "no-record");
+  });
+
   it("reads bounded persisted debug categories without attributing global events to a run or changing source inventory", async () => {
     const database = await seeded();
     const profile = heldProfiles.at(-1); assert.ok(profile);
