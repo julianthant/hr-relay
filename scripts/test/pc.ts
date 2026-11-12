@@ -5,13 +5,13 @@ import { dirname, isAbsolute, join, matchesGlob, relative, resolve } from "node:
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./ci-files.js";
+import { LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./ci-files.js";
 import { isDirectExecution } from "./scope-files.js";
 import { buildPcSource } from "./pc-source.js";
 import type { PcSource } from "./pc-source.js";
 
 const projects = ["--project", "unit", "--project", "integration", "--project", "architecture"];
-const nativeFiles = new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES]);
+const nativeFiles = new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES].filter(file => !LINUX_NATIVE_FILES.includes(file)));
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 export const pcDurationScript = "process.stdout.write(String(Number(process.hrtime.bigint() - BigInt(process.argv[1])) / 1e6))";
 

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { ciPlanSchema, createCiPlan, hasTimingArtifact, registeredTimingWorkflows, timingRunIds } from "../../../scripts/test/ci-plan.js";
-import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
+import { LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
 import type { CiPlan } from "../../../scripts/test/ci-plan.js";
 
 const load = (name: string) => readFileSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url), "utf8");
@@ -290,7 +290,7 @@ describe("separate event and admitted proof workflows", () => {
       for (const project of ["unit", "integration"] as const) {
         const pinned = all.filter(file => file.endsWith(".integration.test.ts") === (project === "integration"));
         const listed = [`tests/portable${project === "integration" ? ".integration" : ""}.test.ts`, ...pinned];
-        expect(selectCiFiles(listed, project, "ubuntu", 1, 1, {})).toEqual([listed[0]]);
+        expect(selectCiFiles(listed, project, "ubuntu", 1, 1, {})).toEqual([listed[0], ...pinned.filter(file => LINUX_NATIVE_FILES.includes(file))].sort());
         const selected = native.flatMap(({ shard, shards }) => (["native", "serial", "storage"] as const).flatMap(group =>
           selectCiFiles(listed, project, group, shard, shards, {})));
         expect(selected.sort()).toEqual(pinned.sort());

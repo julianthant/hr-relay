@@ -4,11 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { balance, durationsFromReports, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
+import { balance, durationsFromReports, LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
 
 const portable = ["a", "b", "c", "d", "e"].map(name => `tests/backend/${name}.integration.test.ts`);
 const integration = [...portable, ...NATIVE_FILES, ...SERIAL_FILES].filter(file => file.endsWith(".integration.test.ts"));
 const unit = ["tests/models/portable.test.ts", ...NATIVE_FILES.filter(file => file.endsWith(".test.ts") && !file.endsWith(".integration.test.ts"))];
+const ubuntuIntegration = [...portable, ...LINUX_NATIVE_FILES.filter(file => file.endsWith(".integration.test.ts"))].sort();
 const durations = { [portable[0] ?? ""]: 50, [SERIAL_FILES[0] ?? ""]: 200 };
 
 const run = (listed: readonly string[], project: "unit" | "integration", runner: "ubuntu" | "native" | "serial" | "storage", jobs: number) =>
@@ -16,10 +17,19 @@ const run = (listed: readonly string[], project: "unit" | "integration", runner:
 
 describe("CI file selection", () => {
   it("gives each file to exactly one job", () => {
-    const integrationRuns = [...run(integration, "integration", "ubuntu", 3), ...run(integration, "integration", "native", 5), ...run(integration, "integration", "serial", 5), ...run(integration, "integration", "storage", 5)];
-    expect(integrationRuns.sort()).toEqual([...integration].sort());
-    expect(run(integration, "integration", "ubuntu", 3).sort()).toEqual(portable);
-    expect([...run(unit, "unit", "ubuntu", 2), ...run(unit, "unit", "native", 5)].sort()).toEqual([...unit].sort());
+    expect(run(integration, "integration", "ubuntu", 3).sort()).toEqual(ubuntuIntegration);
+    const macos = [...run(integration, "integration", "native", 5), ...run(integration, "integration", "serial", 5), ...run(integration, "integration", "storage", 5)];
+    expect(macos.sort()).toEqual(integration.filter(file => !portable.includes(file)).sort());
+    const ubuntuUnit = run(unit, "unit", "ubuntu", 2);
+    expect(ubuntuUnit.sort()).toEqual(["tests/models/portable.test.ts", ...LINUX_NATIVE_FILES.filter(file => !file.endsWith(".integration.test.ts"))].sort());
+    expect(run(unit, "unit", "native", 5).sort()).toEqual(unit.filter(file => NATIVE_FILES.includes(file)).sort());
+  });
+
+  it("runs the Linux-passing native files on Ubuntu and keeps serial files off it", () => {
+    expect(LINUX_NATIVE_FILES.every(file => NATIVE_FILES.includes(file))).toBe(true);
+    expect(LINUX_NATIVE_FILES.some(file => SERIAL_FILES.includes(file) || SERIAL_STORAGE_FILES.includes(file))).toBe(false);
+    expect(LINUX_NATIVE_FILES).toHaveLength(25);
+    expect(run(integration, "integration", "native", 5)).toContain("tests/backend/storage/maintenance/protected-settings-upgrade.integration.test.ts");
   });
 
   it("routes the Windows picker dialog proof only through native serial jobs", () => {
@@ -68,7 +78,7 @@ describe("CI file selection", () => {
 
   it("matches Windows relative listing paths to pinned native membership", () => {
     const listed = integration.map(file => file.replaceAll("/", "\\"));
-    expect(run(listed, "integration", "ubuntu", 3).sort()).toEqual(portable);
+    expect(run(listed, "integration", "ubuntu", 3).sort()).toEqual(ubuntuIntegration);
     expect([...run(listed, "integration", "native", 5), ...run(listed, "integration", "serial", 5),
       ...run(listed, "integration", "storage", 5)].sort()).toEqual(integration.filter(file => !portable.includes(file)).sort());
   });
@@ -82,7 +92,7 @@ describe("CI file selection", () => {
   it("gives untimed files work even when the committed timings round to zero", () => {
     const shards = [1, 2, 3].map(job => selectCiFiles(integration, "integration", "ubuntu", job, 3, { [portable[0]]: 0 }));
     expect(shards.every(files => files.length > 0)).toBe(true);
-    expect(shards.flat().sort()).toEqual(portable);
+    expect(shards.flat().sort()).toEqual(ubuntuIntegration);
   });
 
   it("refuses corrupt downloaded weights before changing the timing map", () => {
