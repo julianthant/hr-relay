@@ -158,7 +158,7 @@ describe("separate event and admitted proof workflows", () => {
     expect(pullRequestTypes.split(",").map((item) => item.trim())).toEqual(["opened", "edited", "synchronize", "reopened", "ready_for_review", "converted_to_draft", "auto_merge_enabled"]);
     expect(stagingTrigger).not.toContain("workflow_dispatch:");
     expect(productionTrigger).toContain("run-name: ${{ github.event.pull_request.title || inputs.title }}");
-    expect(productionTrigger).toContain("branches: [main]");
+    expect(productionTrigger).toContain("pull_request:\n    branches: [main]");
     expect(productionTrigger).toMatch(/workflow_dispatch:\n {4}inputs:\n {6}title:\n[^\n]*\n {8}required: true/u);
     expect(productionTrigger).toContain("push:\n    branches: [main]");
     expect(load("merge-train").split("\non:\n")[1]?.split("\npermissions:")[0]).toBe(`  workflow_call:
