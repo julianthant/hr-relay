@@ -127,6 +127,46 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
   read `fast-duo/README.md`. Close only owned sessions; skip unavailable systems and continue
   with the rest.
 
+## Mock variants
+
+`ui-mock` builds the variants; these rules decide where and how in Relay. Read
+[DESIGN.md](src/dashboard/DESIGN.md), the [dashboard instructions](src/dashboard/AGENTS.md) and
+[PARITY.md](src/dashboard/PARITY.md) first, and open the specimen page (`npm run web`, then
+`http://localhost:5174/kit.html`) before choosing primitives.
+
+- Work on a `design/<area>` branch. Never merge it or open a PR.
+- Build every variant in the running dashboard through the parity harness from existing components,
+  primitives, tokens and variants. Never write standalone HTML or rebuild a component by hand. Keep
+  every real element of a component you extend (footers, IDs, timings, icons); give each control
+  one home. When a mock file sits outside the CSS build's scan, use only utility classes that exist
+  in the built stylesheet.
+- Desktop only: 1280×720 and the 1024×720 minimum.
+- Make three directions for a new piece, two when extending a screen. Each set answers one design
+  question and varies layout, hierarchy or interaction, never only order or color; name each
+  direction's benefit and cost. Keep every scenario coherent: queue row, status, header, timeline
+  and Logs tell one story, and only actions valid in that state appear.
+- Product surfaces read a variant or scenario with `mockParam(<name>)` from
+  `src/dashboard/app/mock-surfaces.ts`, which returns `null` unless `tests/parity/app-entry.tsx`
+  set the harness flag. A standalone control goes in
+  `tests/support/helpers/dashboard/controls/<name>-preview.tsx`, exporting `ControlPreview`, opened
+  at `/?fixture=<name>&state=<scenario>`. Fixture data sits beside the surface's existing fixtures.
+- Fixtures are synthetic and fictional; reuse synthetic IDs passing fixtures already use.
+- Missing served data is a backend or projection gap: list it in the hand-over. Never design a
+  control or placeholder around it.
+- Render with a scene spec in `tests/parity/` modelled on `zz-status-mock.test.ts`
+  (`startFixtureServer` from `tests/support/helpers/dashboard/fixture-bff.ts` on
+  `PARITY_DIST_DIR`, `relayParityTheme` per theme, PNGs to a folder from an environment variable).
+  Run it alone: `npm run test:parity -- <spec> -g "<title>"`. Capture every variant and scenario
+  light and dark at 1280, and at 1024 where layout changes, into the task's `.work/` folder, and
+  look at every frame. Frames are evidence, not references: never run
+  `npm run test:parity:update` for a mock.
+- Hand over an index beside the frames: each surface, variant and scenario with benefit and cost,
+  backend gaps, open behavior choices and a recommended pick. Record it on the ticket and wait for
+  the operator's pick. Run typecheck, lint on changed files and `npm run privacy:check` first.
+- After the pick, build only the chosen variant in a UI-only task with mock data and its parity
+  references, before wiring. Remove the mock switch and scene spec once the implementation ships
+  unless the operator keeps them.
+
 ## Read by task
 
 `ref <slug>` means `docs/reference/<slug>.md`. Read relevant sections, not whole catalogs.
@@ -136,7 +176,7 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 | Workflow | `ref task-contract`, `ref workflow-model`, `ref stores`, [authoring guide](docs/guides/workflow-authoring.md) |
 | Backend, CLI composition | [Backend instructions](src/backend/AGENTS.md) |
 | Dashboard, client, CLI | [Dashboard instructions](src/dashboard/AGENTS.md) or the backend's, `ref frontend-backend-integration`, `ref dashboard-surfaces` |
-| Dashboard mock variants | [`ui-mock`](.agents/skills/ui-mock/SKILL.md) |
+| Dashboard mock variants | [Mock variants](#mock-variants), then `ui-mock` |
 | Settings, config, secrets | `ref clock-config-secrets` |
 | Worker, browser, external write | `ref execution-and-sessions`, `ref write-safety`, the system's `AGENTS.md` before its driver |
 | Intake, OCR, Edit Data | `ref data-intake-and-edit-data` |
