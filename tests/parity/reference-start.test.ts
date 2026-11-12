@@ -68,7 +68,7 @@ test.describe("separations start-run continuity", () => {
         await page.goto(`${servers.separationsStartServer.baseUrl}/?day=${FIXTURE_DAY}&start=1&view=${encodeURIComponent(JSON.stringify({ workflow: "separations", launchServed: "separations" }))}`);
         await assertThemeApplied(page, theme satisfies ParityTheme);
 
-        await expect(page.getByRole("dialog", { name: "Start run", exact: true })).toContainText("New work · Separations");
+        await expect(page.getByRole("dialog", { name: "Start run", exact: true })).toContainText("Separations · Workflow preview");
 
         await expect(page.getByRole("tablist", { name: "How to start this run" })).toHaveCount(0);
         const typedDocument = page.getByPlaceholder(

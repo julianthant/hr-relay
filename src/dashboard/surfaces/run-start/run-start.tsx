@@ -856,6 +856,8 @@ export function RunStartDialog({
       onRemove={() => { setReferenceDrafts(current => Object.fromEntries(Object.entries(current).filter(([key]) => key !== typeId))); clearSelection(); }}
       onRefresh={() => void library.adapter.refreshCatalog()} />;
   })}</>;
+  const continueEnabled = !busy && recoveryError === null && recovery === null && currentStage !== "Warning" && nextStage !== null
+    && !(isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (rerunInputBlocked || stepsBlockedReason !== null)))) && !(currentStage === "Input" && blockedReason !== null);
   return (
     <Dialog open={open} onOpenChange={closeAndReset}>
       <DialogContent
@@ -863,7 +865,7 @@ export function RunStartDialog({
         size="xl"
         band
         title={previewSelection?.source || isRerun ? "Rerun" : "Start run"}
-        description={previewFlow ? `${previewFlow.label} · Workflow preview` : isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `New work · ${workflow.label}` : "Choose a workflow to begin"}
+        description={previewFlow ? `${previewFlow.label} · Workflow preview` : isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `${workflow.label} · Workflow preview` : "Choose a workflow to begin"}
         className={cn("launch-design launch-dialog", (previewSelection?.source || isRerun) && "launch-rerun")}
       >
           {!previewSelection?.source && !isRerun && picker}
@@ -1073,8 +1075,10 @@ export function RunStartDialog({
             <MetaLine
               tone="faint"
               items={[
-                isRerun ? "Source run · new run" : `${preview.entries.length} ${preview.entries.length === 1 ? "run" : "runs"}`,
-                isRerun ? undefined : workflow?.label,
+                workflow?.label,
+                workflow === undefined ? undefined : `${selectedStepKeys.length} of ${workflow.steps.length} steps`,
+                pdfSurface === undefined ? undefined : "OCR on",
+                priority === "interactive" ? "Priority" : undefined,
                 currentStage === "Input"
                   ? blockedReason ?? undefined
                   : currentStage === "Steps" && !isRerun
@@ -1086,6 +1090,7 @@ export function RunStartDialog({
             />
           }
         >
+          {continueEnabled && <span className="text-[12px] text-ui-muted">{currentStage === "Confirm" ? "Enter to start" : "Enter to continue"}</span>}
           {currentStage !== "Warning" && previousStage !== null && (
             <Button variant="ghost" icon={<ArrowLeft aria-hidden className="size-3" />} onClick={() => setCurrentStage(previousStage)}>Back</Button>
           )}
