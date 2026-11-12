@@ -6,6 +6,34 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { balance, durationsFromReports, LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
 
+const linuxNativeReport = [
+  "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
+  "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
+  "tests/backend/storage/maintenance/protected-settings-upgrade.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.integration.test.ts",
+  "tests/backend/profiles/profile-session.incomplete-publication.integration.test.ts",
+  "tests/backend/profiles/profile-session.credential-migration.integration.test.ts",
+  "tests/backend/runs/lifecycle/run-record-service.storage-restore-drill.integration.test.ts",
+  "tests/backend/storage/admission/admission.assistant-populated-schema7.integration.test.ts",
+  "tests/backend/storage/admission/admission.profile-upgrade.integration.test.ts",
+  "tests/backend/storage/admission/installation.logical-publication.integration.test.ts",
+  "tests/backend/storage/admission/lifetime-lock.handle-proof.integration.test.ts",
+  "tests/backend/storage/configuration/chatgpt-credential-repository.maintenance.integration.test.ts",
+  "tests/backend/storage/configuration/credential-key-custody.integration.test.ts",
+  "tests/backend/storage/configuration/credential-store.storage-restore-drill.integration.test.ts",
+  "tests/backend/storage/admission/process-identity.integration.test.ts",
+  "tests/backend/storage/maintenance/upgrade.ready-bound.integration.test.ts",
+  "tests/backend/storage/sqlite/authority-database.incomplete-inventory.integration.test.ts",
+  "tests/backend/storage/sqlite/authority-database.storage-restore-drill.integration.test.ts",
+  "tests/backend/storage/sqlite/backup-inspection.integration.test.ts",
+  "tests/backend/storage/sqlite/migrations.native-baseline.integration.test.ts",
+  "tests/backend/storage/sqlite/profile-local-databases.readonly-binding.integration.test.ts",
+  "tests/backend/storage/sqlite/readonly-authority-snapshot.integration.test.ts",
+  "tests/backend/storage/maintenance/fixed-layout.test.ts",
+];
+
 const portable = ["a", "b", "c", "d", "e"].map(name => `tests/backend/${name}.integration.test.ts`);
 const integration = [...portable, ...NATIVE_FILES, ...SERIAL_FILES].filter(file => file.endsWith(".integration.test.ts"));
 const unit = ["tests/models/portable.test.ts", ...NATIVE_FILES.filter(file => file.endsWith(".test.ts") && !file.endsWith(".integration.test.ts"))];
@@ -28,7 +56,7 @@ describe("CI file selection", () => {
   it("runs the Linux-passing native files on Ubuntu and keeps serial files off it", () => {
     expect(LINUX_NATIVE_FILES.every(file => NATIVE_FILES.includes(file))).toBe(true);
     expect(LINUX_NATIVE_FILES.some(file => SERIAL_FILES.includes(file) || SERIAL_STORAGE_FILES.includes(file))).toBe(false);
-    expect(LINUX_NATIVE_FILES).toHaveLength(25);
+    expect([...LINUX_NATIVE_FILES].sort()).toEqual([...linuxNativeReport].sort());
     expect(run(integration, "integration", "native", 5)).toContain("tests/backend/storage/maintenance/protected-settings-upgrade.integration.test.ts");
   });
 
