@@ -21,7 +21,9 @@ jobs:
       group: release-runners
       queue: max
       cancel-in-progress: false
-    uses: ./.github/workflows/release-checks.yml
+    uses: ./.github/workflows/checks.yml
+    with:
+      kind: release
 
   static:
     name: static

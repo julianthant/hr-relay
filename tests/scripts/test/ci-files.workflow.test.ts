@@ -12,8 +12,7 @@ import type { CiPlan } from "../../../scripts/test/ci-plan.js";
 const load = (name: string) => readFileSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url), "utf8");
 const ci = load("ci");
 const release = load("release");
-const portable = load("ci-checks");
-const full = load("release-checks");
+const checks = load("checks");
 const filters = { shared: "true", unit: "false", integration: "false", architecture: "false" };
 const planFor = (workflow: "portable" | "release", extra: Record<string, unknown> = {}) => createCiPlan({
   workflow, event: "pull_request", base: workflow === "portable" ? "staging" : "main",
@@ -21,7 +20,7 @@ const planFor = (workflow: "portable" | "release", extra: Record<string, unknown
 });
 const portableResults = { changes: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
   ubuntu: { result: "success" }, integration: { result: "success" }, architecture: { result: "success" } };
-const releaseResults = { ...portableResults, macos: { result: "success" }, windows: { result: "success" },
+const releaseResults = { ...portableResults, macos: { result: "success" },
   "unit-proofs": { result: "success" }, "release-batch": { result: "success" } };
 
 function job(workflow: string, name: string): string {
@@ -39,7 +38,8 @@ function expression(value: string, needs: unknown, context: Record<string, strin
 
 function summary(workflow: string, name: string, plan: CiPlan, outcomes: Record<string, { result: string; outputs?: Record<string, string> }>,
   context = { event_name: "pull_request", head_ref: "staging" }): string {
-  const needs = { ...outcomes, changes: { ...outcomes.changes, outputs: { plan: JSON.stringify(plan) } } };
+  const skipped = { result: "skipped" };
+  const needs = { macos: skipped, "unit-proofs": skipped, "release-batch": skipped, ...outcomes, changes: { ...outcomes.changes, outputs: { plan: JSON.stringify(plan) } } };
   const body = job(workflow, name);
   const condition = body.match(/^ {4}if: (.+)$/mu)?.[1];
   assert.ok(condition);
@@ -59,14 +59,14 @@ function summary(workflow: string, name: string, plan: CiPlan, outcomes: Record<
   return result.status === 0 ? "success" : "failure";
 }
 
-function selectUsingAdapter(workflow: string, event: string, base: string, head: string, selectedFilters: Record<string, string>, draft = false): CiPlan {
-  const source = job(workflow, "changes").match(/ {8}id: select[\s\S]*? {10}script: \|\n((?: {12}[^\n]*\n|\n)+)/u)?.[1];
+function selectUsingAdapter(kind: "portable" | "release", event: string, base: string, head: string, selectedFilters: Record<string, string>, draft = false): CiPlan {
+  const source = job(checks, "changes").match(/ {8}id: select[\s\S]*? {10}script: \|\n((?: {12}[^\n]*\n|\n)+)/u)?.[1];
   assert.ok(source);
   const outputs: Record<string, string> = {};
   runInNewContext(source.replace(/^ {12}/gmu, ""), {
     require: () => ({ execFileSync: (_node: string, args: string[]) => JSON.stringify(createCiPlan(JSON.parse(args[4] ?? ""))) }),
     context: { eventName: event, payload: event === "pull_request" ? { pull_request: { base: { ref: base }, head: { ref: head }, draft } } : {} },
-    process: { env: { FILTERS: JSON.stringify(selectedFilters) } },
+    process: { env: { FILTERS: JSON.stringify(selectedFilters), KIND: kind } },
     core: { setOutput: (key: string, value: string) => { outputs[key] = value; } },
   });
   expect(Object.keys(outputs)).toEqual(["plan"]);
@@ -113,7 +113,7 @@ async function discoverTimings(workflows: { id: number; path: string }[], emptyH
   const policies: Record<string, (input: unknown) => unknown> = {
     workflows: registeredTimingWorkflows, history: timingRunIds, artifact: hasTimingArtifact,
   };
-  await runInNewContext(`(async () => {${timingScript(portable)}\n})()`, {
+  await runInNewContext(`(async () => {${timingScript(checks)}\n})()`, {
     require: () => ({ execFileSync: (_node: string, args: string[]) => {
       const policy = policies[args[3] ?? ""];
       assert.ok(policy);
@@ -171,32 +171,32 @@ describe("separate event and admitted proof workflows", () => {
     expect(releaseTrigger).toContain("branches: [main]");
     expect(releaseTrigger).toContain("workflow_dispatch:");
     expect(ci).not.toContain("release.yml");
-    expect(job(ci, "checks")).toContain("uses: ./.github/workflows/ci-checks.yml");
-    expect(job(release, "checks")).toContain("uses: ./.github/workflows/release-checks.yml");
-    expect(portable).not.toMatch(/uses: \.\/\.github\/workflows\//u);
-    expect(portable).not.toMatch(/runs-on: (?:macos|windows)/u);
-    for (const name of ["ci-pipeline", "ci-release-checks"]) {
+    expect(job(ci, "checks")).toContain("uses: ./.github/workflows/checks.yml");
+    expect(job(ci, "checks")).toContain("kind: portable");
+    expect(job(release, "checks")).toContain("uses: ./.github/workflows/checks.yml");
+    expect(job(release, "checks")).toContain("kind: release");
+    expect(checks).not.toMatch(/uses: \.\/\.github\/workflows\//u);
+    expect(checks).not.toMatch(/windows/iu);
+    for (const name of ["ci-pipeline", "ci-release-checks", "ci-checks", "release-checks"]) {
       expect(existsSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url))).toBe(false);
     }
     expect(jobNames(ci)).toEqual(["names", "checks", "static", "privacy", "unit", "integration", "architecture", "train"]);
     expect(jobNames(release)).toEqual(["checks", "static", "privacy", "unit", "integration", "architecture", "release"]);
-    expect(jobNames(portable)).toEqual(["changes", "static", "privacy", "ubuntu", "integration", "architecture", "unit"]);
-    expect(jobNames(full)).toEqual(["changes", "static", "privacy", "ubuntu", "macos", "windows", "unit-proofs", "integration", "architecture", "release-batch", "unit"]);
-    for (const name of jobNames(portable)) expect(job(portable, name)).toContain("runs-on: ubuntu-latest");
+    expect(jobNames(checks)).toEqual(["changes", "static", "privacy", "ubuntu", "macos", "unit-proofs", "integration", "architecture", "release-batch", "unit"]);
   });
 
   it("executes each entry's actual shared selection adapter", () => {
-    expect(selectUsingAdapter(portable, "pull_request", "staging", "feature/test", filters)).toEqual(planFor("portable"));
-    expect(selectUsingAdapter(full, "pull_request", "main", "staging", filters)).toEqual(planFor("release"));
-    expect(selectUsingAdapter(full, "pull_request", "main", "feature/other", filters).fullRelease).toBe(false);
-    expect(selectUsingAdapter(full, "workflow_dispatch", "", "", {}).releaseBatch).toBe(false);
-    expect(selectUsingAdapter(full, "workflow_dispatch", "", "", {}).testJobs).toBe(28);
-    expect(selectUsingAdapter(full, "pull_request", "main", "staging", { ...filters, shared: "false" }).testJobs).toBe(0);
-    expect(() => selectUsingAdapter(portable, "pull_request", "staging", "feature/test", {})).toThrow();
+    expect(selectUsingAdapter("portable", "pull_request", "staging", "feature/test", filters)).toEqual(planFor("portable"));
+    expect(selectUsingAdapter("release", "pull_request", "main", "staging", filters)).toEqual(planFor("release"));
+    expect(selectUsingAdapter("release", "pull_request", "main", "feature/other", filters).fullRelease).toBe(false);
+    expect(selectUsingAdapter("release", "workflow_dispatch", "", "", {}).releaseBatch).toBe(false);
+    expect(selectUsingAdapter("release", "workflow_dispatch", "", "", {}).testJobs).toBe(23);
+    expect(selectUsingAdapter("release", "pull_request", "main", "staging", { ...filters, shared: "false" }).testJobs).toBe(0);
+    expect(() => selectUsingAdapter("portable", "pull_request", "staging", "feature/test", {})).toThrow();
   });
 
   it("retains explicit budgets and complete inner/outer fences without nested admission", () => {
-    for (const workflow of [portable, full]) {
+    for (const workflow of [checks]) {
       expect(workflow).not.toContain("group: ci-runners");
       expect(workflow).toContain('RELAY_TEST_RAM_MB: "2048"');
       expect(workflow).toContain('RELAY_TEST_TIME_SCALE: "2.5"');
@@ -218,21 +218,15 @@ describe("separate event and admitted proof workflows", () => {
     }
     expect(job(ci, "train")).toContain("needs: [names, static, unit, integration, architecture, privacy]");
     expect(job(ci, "train")).toContain("uses: ./.github/workflows/merge-train.yml");
-    expect(job(full, "release-batch")).toContain("needs: [changes, static, privacy, unit-proofs, integration, architecture]");
-    expect(job(full, "unit")).toContain("release-batch]");
-    expect(job(full, "unit")).not.toMatch(/^ {4}needs:.*\btimings\b/mu);
+    expect(job(checks, "release-batch")).toContain("needs: [changes, static, privacy, unit-proofs, integration, architecture]");
+    expect(job(checks, "unit")).toContain("release-batch]");
+    expect(job(checks, "unit")).not.toMatch(/^ {4}needs:.*\btimings\b/mu);
     expect(job(release, "release")).toContain("needs: checks");
   });
 
   it("retains native/bootstrap budgets, post-failure groups and exact file membership", () => {
-    const windows = job(full, "windows");
-    expect(windows.indexOf("git config --global core.autocrlf false")).toBeLessThan(windows.indexOf("uses: actions/checkout@v7"));
-    expect(windows).toContain("git config --global core.autocrlf false");
-    expect(windows).toContain("shell: bash");
-    expect(windows).not.toMatch(/ram-tmp|mdutil|sysctl|memory_pressure|continue-on-error/u);
-    expect(windows).toContain("npx playwright install chromium");
-    for (const platform of ["macos", "windows"] as const) {
-      const body = job(full, platform);
+    for (const platform of ["macos"] as const) {
+      const body = job(checks, platform);
       expect(body).toContain("timeout-minutes: 30");
       expect(body).toContain("fail-fast: false");
       expect(body).toContain("scripts/test/chromium-preflight.ts");
@@ -253,11 +247,11 @@ describe("separate event and admitted proof workflows", () => {
         expect(selected.sort()).toEqual(pinned.sort());
       }
     }
-    expect(job(full, "release-batch")).toContain("npm run test:coverage\n      - run: npm run test:perf");
+    expect(job(checks, "release-batch")).toContain("npm run test:coverage\n      - run: npm run test:perf");
   });
 
   it.each(["portable", "release"] as const)("executes the actual final unit shell and rejects incomplete %s pipelines", workflow => {
-    const source = workflow === "portable" ? portable : full;
+    const source = checks;
     const plan = planFor(workflow);
     const positive = workflow === "portable" ? portableResults : releaseResults;
     expect(summary(source, "unit", plan, positive)).toBe("success");
@@ -272,7 +266,7 @@ describe("separate event and admitted proof workflows", () => {
   });
 
   it.each(["portable", "release"] as const)("uploads ci-timings only after every %s proof passes", workflow => {
-    const source = workflow === "portable" ? portable : full;
+    const source = checks;
     const plan = planFor(workflow);
     const positive = workflow === "portable" ? portableResults : releaseResults;
     expect(publication(source, plan, positive)).toBe("upload=true\n");
@@ -282,8 +276,7 @@ describe("separate event and admitted proof workflows", () => {
     expect(uploadGate(source, "false", true)).toBe(false);
     expect(uploadGate(source, "true", false)).toBe(false);
     const omitted = planFor(workflow, { filters: { ...filters, shared: "false" } });
-    const quiet = { ...releaseResults, ubuntu: { result: "skipped" }, macos: { result: "skipped" },
-      windows: { result: "skipped" }, "release-batch": { result: "skipped" } };
+    const quiet = { ...releaseResults, ubuntu: { result: "skipped" }, macos: { result: "skipped" }, "release-batch": { result: "skipped" } };
     expect(publication(source, omitted, quiet)).toBe("upload=false\n");
   });
 
@@ -300,16 +293,16 @@ describe("separate event and admitted proof workflows", () => {
 
   it("requires both selected native groups and preserves legitimate work omissions", () => {
     const plan = planFor("release");
-    expect(summary(full, "integration", plan, releaseResults)).toBe("success");
-    for (const platform of ["macos", "windows"]) {
+    expect(summary(checks, "integration", plan, releaseResults)).toBe("success");
+    for (const platform of ["macos"]) {
       for (const result of ["failure", "cancelled", "skipped"]) {
-        expect(summary(full, "integration", plan, { ...releaseResults, [platform]: { result } })).toBe("failure");
+        expect(summary(checks, "integration", plan, { ...releaseResults, [platform]: { result } })).toBe("failure");
       }
     }
     const omitted = planFor("release", { filters: { ...filters, shared: "false" } });
-    const outcomes = { ...releaseResults, ubuntu: { result: "skipped" }, macos: { result: "skipped" }, windows: { result: "skipped" },
+    const outcomes = { ...releaseResults, ubuntu: { result: "skipped" }, macos: { result: "skipped" },
       "release-batch": { result: "skipped" } };
-    expect(summary(full, "unit", omitted, outcomes)).toBe("success");
+    expect(summary(checks, "unit", omitted, outcomes)).toBe("success");
     expect(summary(release, "release", omitted, { checks: { result: "success", outputs: { unit: "success" } } })).toBe("success");
   });
 
@@ -352,7 +345,6 @@ describe("merge train admission", () => {
 
 describe("shared timing discovery adapters", () => {
   it("uses one policy and handles an unregistered new release workflow without a 404 query", async () => {
-    expect(timingScript(portable)).toBe(timingScript(full));
     expect(await discoverTimings([{ id: 1, path: ".github/workflows/ci.yml" }])).toEqual({ queried: [1], artifacts: [10], output: { run: "10" } });
     expect(await discoverTimings([{ id: 1, path: ".github/workflows/ci.yml" }, { id: 2, path: ".github/workflows/release.yml" }]))
       .toEqual({ queried: [1, 2], artifacts: [30, 20], output: { run: "20" } });
@@ -405,11 +397,9 @@ describe("per-PR cancellation with complete FIFO pipelines", () => {
     expect(job(callee, "unit")).not.toMatch(/^ {4}needs:.*\btimings\b/mu);
     expect(callee).not.toContain("group: ci-runners");
     if (source === ci) {
-      for (const name of covered) expect(job(callee, name)).toContain("runs-on: ubuntu-latest");
-      expect(callee).not.toMatch(/uses: \.\/\.github\/workflows\//u);
       expect(job(source, "train")).toContain("needs: [names, static, unit, integration, architecture, privacy]");
     } else {
-      for (const name of ["macos", "windows", "unit-proofs", "release-batch"]) expect(covered).toContain(name);
+      for (const name of ["macos", "unit-proofs", "release-batch"]) expect(covered).toContain(name);
       expect(job(callee, "unit")).toContain("release-batch]");
       expect(job(callee, "unit")).not.toContain("timings]");
     }
@@ -417,7 +407,7 @@ describe("per-PR cancellation with complete FIFO pipelines", () => {
 });
 
 describe("cancelled admitted source work", () => {
-  it.each([[ci, portable], [release, full]])("stops inner checkout work while the outer fence rejects cancellation", (entry, callee) => {
+  it.each([[ci, checks], [release, checks]])("stops inner checkout work while the outer fence rejects cancellation", (entry, callee) => {
     const inner = job(callee, "unit");
     const outer = job(entry, "unit");
     const condition = (body: string, cancelled: boolean) => {

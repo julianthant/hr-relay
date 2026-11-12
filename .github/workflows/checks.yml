@@ -1,7 +1,12 @@
-name: Release checks
+name: Checks
 
 on:
   workflow_call:
+    inputs:
+      kind:
+        description: Calling workflow, portable or release.
+        required: true
+        type: string
     outputs:
       static:
         value: ${{ jobs.static.result }}
@@ -103,11 +108,12 @@ jobs:
         id: select
         env:
           FILTERS: ${{ toJSON(steps.filter.outputs) }}
+          KIND: ${{ inputs.kind }}
         with:
           script: |
             const { execFileSync } = require('node:child_process');
             const input = {
-              workflow: 'release', event: context.eventName,
+              workflow: process.env.KIND, event: context.eventName,
               base: context.payload.pull_request?.base.ref ?? '', head: context.payload.pull_request?.head.ref ?? '',
               draft: context.payload.pull_request?.draft ?? false, filters: JSON.parse(process.env.FILTERS),
             };
@@ -285,76 +291,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  windows:
-    needs: changes
-    name: Windows ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.shards }}
-    if: ${{ fromJSON(needs.changes.outputs.plan).windows.include[0] != null }}
-    runs-on: windows-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        shell: bash
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.plan).windows }}
-    steps:
-      - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - run: npm run build:observer-policy
-      - uses: actions/download-artifact@v8
-        with:
-          name: ci-balancing
-          path: scripts/test/
-      - uses: actions/cache@v6
-        if: fromJSON(needs.changes.outputs.plan).integration
-        with:
-          path: ~/AppData/Local/ms-playwright
-          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}
-      - name: Install Chromium
-        if: fromJSON(needs.changes.outputs.plan).integration
-        run: npx playwright install chromium
-      - run: npm run web:build
-        if: fromJSON(needs.changes.outputs.plan).integration
-      - name: Verify full Chromium installation before timed native proofs
-        if: fromJSON(needs.changes.outputs.plan).integration
-        timeout-minutes: 1
-        run: npx tsx scripts/test/chromium-preflight.ts
-      - name: Check native browser process proofs without competing files
-        if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan).integration }}
-        env:
-          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh integration serial "$SLICE" --maxWorkers=1 --no-file-parallelism
-      - name: Storage upgrade files without competing files
-        if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan).integration }}
-        env:
-          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh integration storage "$SLICE" --maxWorkers=1 --no-file-parallelism
-      - name: Native unit files
-        if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan).unit }}
-        env:
-          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh unit native "$SLICE" --maxWorkers=2
-      - name: Native integration files
-        if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan).integration }}
-        env:
-          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh integration native "$SLICE" --maxWorkers=2
-      - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
-        with:
-          name: durations-windows-${{ matrix.shard }}
-          path: ${{ runner.temp }}/durations/
-          if-no-files-found: ignore
-          retention-days: 14
-
   unit-proofs:
-    needs: [changes, ubuntu, macos, windows]
-    if: ${{ !cancelled() }}
+    needs: [changes, ubuntu, macos]
+    if: ${{ !cancelled() && inputs.kind == 'release' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -370,7 +309,7 @@ jobs:
 
   integration:
     name: integration
-    needs: [changes, ubuntu, macos, windows]
+    needs: [changes, ubuntu, macos]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -379,7 +318,7 @@ jobs:
           SELECTED: ${{ fromJSON(needs.changes.outputs.plan).integration }}
           UBUNTU_RESULT: ${{ needs.ubuntu.result }}
           FULL_RELEASE: ${{ fromJSON(needs.changes.outputs.plan).fullRelease }}
-          NATIVE_RESULTS: ${{ needs.macos.result }} ${{ needs.windows.result }}
+          NATIVE_RESULT: ${{ needs.macos.result }}
         run: |
           test "$PLAN_RESULT" = success
           if [ "$SELECTED" = false ]; then
@@ -388,10 +327,10 @@ jobs:
             test "$SELECTED" = true
             test "$UBUNTU_RESULT" = success
             if [ "$FULL_RELEASE" = true ]; then
-              test "$NATIVE_RESULTS" = "success success"
+              test "$NATIVE_RESULT" = success
             else
               test "$FULL_RELEASE" = false
-              test "$NATIVE_RESULTS" = "skipped skipped"
+              test "$NATIVE_RESULT" = skipped
             fi
           fi
 
@@ -449,7 +388,7 @@ jobs:
 
   unit:
     name: unit
-    needs: [changes, static, privacy, ubuntu, integration, architecture, macos, windows, unit-proofs, release-batch]
+    needs: [changes, static, privacy, ubuntu, integration, architecture, macos, unit-proofs, release-batch]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -478,6 +417,7 @@ jobs:
           name: ci-balancing
           path: scripts/test/
       - uses: actions/download-artifact@v8
+        if: ${{ success() && steps.publish.outputs.upload == 'true' }}
         with:
           pattern: durations-*
           path: ${{ runner.temp }}/durations

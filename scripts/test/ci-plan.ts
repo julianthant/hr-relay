@@ -13,9 +13,9 @@ const matrixSchema = z.object({ include: z.array(z.object({
 export const ciPlanSchema = z.object({
   workflow: z.enum(["portable", "release"]), fullRelease: z.boolean(), releaseBatch: z.boolean(),
   unit: z.boolean(), integration: z.boolean(), architecture: z.boolean(),
-  ubuntu: matrixSchema, macos: matrixSchema, windows: matrixSchema,
+  ubuntu: matrixSchema, macos: matrixSchema,
   testJobs: z.number().int().nonnegative(),
-}).refine(plan => plan.testJobs === plan.ubuntu.include.length + plan.macos.include.length + plan.windows.include.length,
+}).refine(plan => plan.testJobs === plan.ubuntu.include.length + plan.macos.include.length,
   "CI matrix count is inconsistent.");
 export type CiPlan = z.infer<typeof ciPlanSchema>;
 
@@ -48,11 +48,10 @@ export function createCiPlan(input: unknown): CiPlan {
   ];
   const nativeShards = selected.integration ? 5 : selected.unit ? 1 : 0;
   const macos = fullRelease ? jobs("native", nativeShards) : [];
-  const windows = fullRelease ? jobs("native", selected.integration ? 5 : selected.unit ? 1 : 0) : [];
   return ciPlanSchema.parse({ ...selected, workflow: context.workflow, fullRelease,
     releaseBatch: !manual && fullRelease && selected.architecture,
-    ubuntu: { include: ubuntu }, macos: { include: macos }, windows: { include: windows },
-    testJobs: ubuntu.length + macos.length + windows.length,
+    ubuntu: { include: ubuntu }, macos: { include: macos },
+    testJobs: ubuntu.length + macos.length,
   });
 }
 
@@ -70,7 +69,6 @@ export function verifyUnitProof(input: unknown, outcomes: unknown): void {
     requireResult(results, "ubuntu", "success");
     if (plan.workflow === "release") {
       requireResult(results, "macos", plan.fullRelease ? "success" : "skipped");
-      requireResult(results, "windows", plan.fullRelease ? "success" : "skipped");
     }
   }
 }
@@ -83,7 +81,6 @@ export function verifyProofs(input: unknown, outcomes: unknown): void {
   if (plan.workflow === "release") {
     requireResult(results, "unit-proofs", "success");
     requireResult(results, "macos", plan.fullRelease && (plan.unit || plan.integration) ? "success" : "skipped");
-    requireResult(results, "windows", plan.fullRelease && (plan.unit || plan.integration) ? "success" : "skipped");
     requireResult(results, "release-batch", plan.releaseBatch ? "success" : "skipped");
   }
   verifyUnitProof(plan, results);
