@@ -66,7 +66,7 @@ import { createDiagnosticCaptureService } from "../../logs/diagnostics/diagnosti
 import { createRunBrowserScreenshotCapture, createRunDiagnosticCapture } from "../../logs/diagnostics/run-diagnostic-capture.js";
 import { withCurrentSettings, readAdmittedProfileIdentity, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../../runtime/settings/settings-runtime.js";
 import { createTimelineEmitter } from "../../storage/events/timeline-emitter.js";
-import { createDebugEventWriter } from "../../logs/debug-events.js";
+import { createDebugEventWriter, emitFaultWithCauses } from "../../logs/debug-events.js";
 import { createNoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
 
 
@@ -377,7 +377,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     }
   })();
   const { database, workerId } = bound;
-  let runtimeError: unknown;
+  let runtimeError: unknown, closureFailure: unknown;
   const cleanupErrors: unknown[] = [];
   let runtimeReport: WorkerLoopReport | undefined;
   let bootRefusal: PreflightAdmissionRefusal | undefined;
@@ -633,6 +633,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         browserObservation: observation => { channel?.browser(observation); },
         configFingerprint: resolved.fingerprint,
         onStanding: refusal => { standing = refusal; publish(activityNow()); },
+        onClosureUnproved: error => { closureFailure = error; },
         // The SQLite claim transaction fences settings and runtime tokens; the filesystem check fences its inode.
         claimNext: (request, sessions) => {
           assertCurrent();
@@ -702,7 +703,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       router?.close();
     }
     if (channelFailure !== undefined) throw channelFailure instanceof Error ? channelFailure : new Error("worker-ipc-channel-failed", { cause: channelFailure });
-    if (report.closure === "unproved") debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(),
+    if (report.closure === "unproved") emitFaultWithCauses(debugEvents, undefined, closureFailure, { category: "worker",
       area: "browser-session", code: "WORKER_SESSION_CLOSURE_UNPROVED", reason: "browser-closure-unproved" }, { kind: "worker", workerId });
   } catch (error) {
     const refusal = bootRefusal !== undefined && error === bootRefusal ? workerPreflightRefusal(error) : undefined;
@@ -712,10 +713,10 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         preflightRefusal: refusal });
     } else runtimeError = error;
     try {
-      debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-runtime",
-        code: refusal?.code ?? "WORKER_RUNTIME_FAILED", ...(refusal?.summary === undefined ? {} : { message: refusal.summary }),
-        reason: refusedBeforeEffects ? "operation-refused"
-          : hasUncertainBrowserLaunch(error) ? "browser-closure-unproved" : "worker-failed" }, { kind: "worker", workerId });
+      if (refusal !== undefined) debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-runtime",
+        code: refusal.code, ...(refusal.summary === undefined ? {} : { message: refusal.summary }), reason: "operation-refused" }, { kind: "worker", workerId });
+      else emitFaultWithCauses(debugEvents, undefined, error, { category: "worker", area: "worker-runtime", code: "WORKER_RUNTIME_FAILED",
+        reason: hasUncertainBrowserLaunch(error) ? "browser-closure-unproved" : "worker-failed" }, { kind: "worker", workerId });
     } catch (loggingError) { cleanupErrors.push(loggingError); }
   } finally {
     try { await resources?.stop(); } catch (error) { cleanupErrors.push(error); }
@@ -724,7 +725,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     removeStopListeners?.();
   }
   if (cleanupErrors.length > 0) {
-    try { debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-cleanup",
+    try { emitFaultWithCauses(debugEvents, undefined, new AggregateError(cleanupErrors, "worker cleanup failed"), { category: "worker", area: "worker-cleanup",
       code: "WORKER_CLEANUP_FAILED", reason: "resource-closure-unproved" }, { kind: "worker", workerId }); }
     catch (loggingError) { cleanupErrors.push(loggingError); }
   }
@@ -746,7 +747,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     }
   }
   if (!databaseClosureProven || browserClosureUnproved || cleanupErrors.length > 0) {
-    const errors = runtimeError === undefined ? cleanupErrors : [runtimeError, ...cleanupErrors];
+    const errors = [...(runtimeError === undefined ? [] : [runtimeError]), ...(closureFailure === undefined ? [] : [closureFailure]), ...cleanupErrors];
     if (launchUncertain) throw new WorkerLaunchUncertainError(workerId, workflowId, errors);
     throw new RuntimeCustodyUncertainError(errors);
   }

@@ -9,7 +9,7 @@ import type { ClearRunHistoryRequest } from "../../../../models/dashboard/run-hi
 import { admitOcrExtraction } from "../../../../models/ocr/extraction.js";
 import { buildExtractionInstruction } from "../../../../models/ocr/instruction.js";
 import { WorkerPoolMemberSchema } from "../../../../models/run/worker-slot.js";
-import { requireStoppedPool, type WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
+import { requireStoppedPool, WorkerPoolError, type WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
@@ -101,9 +101,12 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
   const { noteWriter, timelineTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups });
 
-  const reportSupervisorFault = (error: Error): void => {
+  const reportSupervisorFault = (error: Error, origin?: Readonly<{ workerId: string; pid?: number }>): void => {
+    const detail = error instanceof WorkerPoolError ? error.detail : {}, pid = origin?.pid ?? detail.pid;
     emitFaultWithCauses(debugEvents, input.workerProcess?.faultSink, error, { category: "worker", area: "supervisor", code: "WORKER_SUPERVISOR_FAILED",
-      reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "supervisor-failed" });
+      reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "supervisor-failed",
+      ...(origin === undefined ? {} : { message: [`workerId=${origin.workerId}`, ...(pid === undefined ? [] : [`pid=${String(pid)}`]),
+        ...(detail.field === undefined ? [] : [`field=${detail.field}`])].join(" ") }) });
   };
   const reportDashboardTransferFault = (error: Error): void => {
     emitFaultWithCauses(debugEvents, input.workerProcess?.faultSink, error, { category: "http", area: "response-transfer", code: "DASHBOARD_TRANSFER_FAILED",

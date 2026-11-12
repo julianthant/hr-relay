@@ -104,8 +104,12 @@ export function composeApplicationStop(resources: {
   return (): Promise<void> => {
     if (stopping !== undefined) return stopping;
     beginTransition();
+    const phase = (name: "closing transport" | "stopping workers" | "closing store" | "backing up" | "done"): void => {
+      process.stdout.write(`${JSON.stringify({ ts: clock.now().toISOString(), level: "info", message: "dashboard shutdown", phase: name })}\n`);
+    };
     const failures: unknown[] = [];
     try { profileRuntime?.beginClose("shutdown"); } catch (error) { failures.push(error); }
+    phase("closing transport");
     const transportClosure = listener.close();
     stopping = (async () => {
       try { await transportClosure; } catch (error) { failures.push(error); }
@@ -125,17 +129,21 @@ export function composeApplicationStop(resources: {
       }
       const selectedRuntime = readSelectedRuntime();
       if (selectedRuntime !== undefined) {
+        phase("stopping workers");
         try { await selectedRuntime.detach(); } catch (error) { failures.push(error); }
       }
       try { await profileRuntime?.session.closeOnboarding(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
+      phase("closing store");
       try { await profileRuntime?.close("shutdown"); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
       try { machine.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      phase("backing up");
       try { await backupRegisteredPeopleAtCleanShutdown(installation.workspace, input.lifetimeLock, clock); }
       catch (error) {
         if (error instanceof StorageMaintenanceCustodyUnavailableError && error.constructor === StorageMaintenanceCustodyUnavailableError && error.cause === undefined && !hasUnprovedSourceClosure(error)) throw error;
         throw new RuntimeCustodyUncertainError([error]);
       }
+      phase("done");
     })();
     return stopping;
   };

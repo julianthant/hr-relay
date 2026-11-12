@@ -130,6 +130,8 @@ export interface WorkerLoopDependencies {
   readonly configFingerprint?: string;
   /** The standing refusal the parent shows on the worker card. Cleared with `undefined`. */
   readonly onStanding?: (refusal: WorkerRefusalStanding | undefined) => void;
+  /** Receives the closure error behind an unproved report, so the worker exit can name its causes. */
+  readonly onClosureUnproved?: (error: WorkerSessionClosureUnprovedError) => void;
   /** Production claim gate comparing the exact boot/current epochs inside one SQLite transaction. */
   readonly claimNext: (
     input: WorkerClaimRequest,
@@ -455,6 +457,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
   } finally {
     closure = await sessions.closeAll("worker-stop").then(() => "proved" as const, (error: unknown) => {
       if (!(error instanceof WorkerSessionClosureUnprovedError)) throw error;
+      deps.onClosureUnproved?.(error);
       return "unproved" as const;
     });
     emit({ t: "span.ended", kind: "worker", workerId, spanPath: workerPath,
