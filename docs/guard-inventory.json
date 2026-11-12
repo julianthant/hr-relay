@@ -677,6 +677,14 @@
       "owner": "docs/reference/clock-config-secrets.md",
       "invariant": "Reason: opaque profile registration exposed a dependency cycle and an unchecked issuer escape. Only the existing token-protected RuntimeAdmission constructor registers issued identities; consumers use the single identity owner, whose RuntimeAdmission dependency stays type-only; its only runtime dependency is the exact error catalog for the two shared refusal classes. Negative mutations reject unknown names and runtime dependencies as well as foreign, aliased, escaped, dynamic and nonconstructor registration. Credential-store, ChatGPT credential repository and restore-snapshot imports must erase the RuntimeAdmission dependency at declaration level; verbatim emit and mixed-specifier mutations protect against the observed erasure-head initialization cycle.",
       "replacementRequired": true
+    },
+    {
+      "name": "names-check",
+      "file": "tests/architecture/tooling/names-check.test.ts",
+      "status": "active",
+      "owner": "docs/reference/guards-and-tests.md",
+      "invariant": "Reason: a wrong branch, worktree folder, or pull request title was spending a full CI run. The names:check command allows only main, staging, dependabot/*, feature/<kebab>, task/<kebab>/<kebab>, fix/<kebab>-<kebab>, design/<kebab>, and scratch/<kebab>-<digits>. A staging pull request head must be feature/* or fix/*, except dependabot/*. A non-dependabot title must be <Area>: <text>, so a conventional title such as feat(ci): add names check is rejected. An origin branch that already matches task/<feature>/<lane> stays valid when its lane is an older name. Worktree folders are .worktrees/<feature> or .worktrees/<feature>.<lane>. The command is the first job in ci.yml and every other job waits on it.",
+      "replacementRequired": true
     }
   ],
   "rebuildRatchetActivation": {

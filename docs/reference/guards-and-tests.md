@@ -429,6 +429,18 @@ case; a negative control establishes that the actual guard rejects the defect. A
 must resolve a nonempty production file set. A literal name, comment, or unused function is not
 executable enforcement.
 
+`names-check` (`tests/architecture/tooling/names-check.test.ts`) runs the shipped `names:check`
+command over the shared table of branch names, worktree folders, and pull request titles. A wrong
+name was reaching CI and spending a full run. Allowed branches are `main`, `staging`,
+`dependabot/*`, `feature/<kebab>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `design/<kebab>`,
+and `scratch/<kebab>-<digits>`. A staging pull request head must be `feature/*` or `fix/*`, except
+`dependabot/*`. A non-dependabot title must be `<Area>: <text>`; a conventional title such as
+`feat(ci): add names check` is rejected. An origin branch that already matches
+`task/<feature>/<lane>` stays valid when its lane is an older name. A worktree folder is
+`.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. `.github/workflows/ci.yml` runs that
+command as its first job, and every other job waits on it. `--all` only lists off-pattern local
+branches and worktrees.
+
 Removal names where the invariant goes and updates its inventory entry and consumers in the same
 change. The manifest protects against accidental removal or glob orphaning. It cannot prevent a
 coordinated edit to both a guard and its inventory row. Review and operator authorization remain

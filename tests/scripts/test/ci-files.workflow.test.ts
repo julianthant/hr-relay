@@ -143,7 +143,7 @@ describe("separate event and admitted proof workflows", () => {
     for (const name of ["ci-pipeline", "ci-release-checks"]) {
       expect(existsSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url))).toBe(false);
     }
-    expect(jobNames(ci)).toEqual(["checks", "static", "privacy", "unit", "integration", "architecture", "parity", "train"]);
+    expect(jobNames(ci)).toEqual(["names", "checks", "static", "privacy", "unit", "integration", "architecture", "parity", "train"]);
     expect(jobNames(release)).toEqual(["checks", "static", "privacy", "unit", "integration", "architecture", "parity", "release"]);
     expect(jobNames(portable)).toEqual(["changes", "static", "privacy", "ubuntu", "integration", "architecture", "parity", "timings", "unit"]);
     expect(jobNames(full)).toEqual(["changes", "static", "privacy", "ubuntu", "macos", "windows", "unit-proofs", "integration", "architecture", "parity", "release-batch", "timings", "unit"]);
@@ -178,7 +178,7 @@ describe("separate event and admitted proof workflows", () => {
       expect(job(workflow, "unit")).toContain('test "$RESULT" = success');
       expect(job(workflow, "unit")).toContain("always()");
     }
-    expect(job(ci, "train")).toContain("needs: [static, unit, integration, architecture, parity, privacy]");
+    expect(job(ci, "train")).toContain("needs: [names, static, unit, integration, architecture, parity, privacy]");
     expect(job(ci, "train")).toContain("uses: ./.github/workflows/merge-train.yml");
     expect(job(full, "release-batch")).toContain("needs: [changes, static, privacy, unit-proofs, integration, architecture, parity]");
     expect(job(full, "unit")).toContain("release-batch, timings]");
@@ -340,7 +340,7 @@ describe("per-PR cancellation with complete FIFO pipelines", () => {
     if (source === ci) {
       for (const name of covered) expect(job(callee, name)).toContain("runs-on: ubuntu-latest");
       expect(callee).not.toMatch(/uses: \.\/\.github\/workflows\//u);
-      expect(job(source, "train")).toContain("needs: [static, unit, integration, architecture, parity, privacy]");
+      expect(job(source, "train")).toContain("needs: [names, static, unit, integration, architecture, parity, privacy]");
     } else {
       for (const name of ["macos", "windows", "unit-proofs", "release-batch"]) expect(covered).toContain(name);
       expect(job(callee, "unit")).toContain("release-batch, timings]");
