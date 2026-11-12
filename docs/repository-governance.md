@@ -26,10 +26,13 @@ performance. The [release instructions](../AGENTS.md#pr-and-release-flow) own pr
 ## Merge train and automatic fixes
 
 Push roadmap-only commits (`docs/roadmap/**`) straight to `staging` to skip staging CI and the merge train.
-`.github/workflows/merge-train.yml` runs on other pushes to `staging`, and CI calls it as its final job.
+`.github/workflows/merge-train.yml` runs on other pushes to `staging`, when auto-merge is enabled
+on a PR targeting `staging`, and as CI's final job.
 It labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then merges
-`staging` into every open, non-draft, same-repository PR by `julianthant` into `staging` that lacks it, whatever its
-labels or auto-merge state, so every update starts CI on the latest `staging`; per-PR supersession cancels the older run. Auto-merge then lands whichever PR passes first. A PR it cannot update gets
+`staging` into open, non-draft, same-repository PRs by `julianthant` targeting `staging` that have
+auto-merge enabled and lack the latest `staging`. Enabling auto-merge starts a train run without
+waiting for another merge. Each update starts CI on the latest `staging`; per-PR supersession
+cancels the older run. Auto-merge then lands whichever PR passes first. A PR it cannot update gets
 `merge-conflict`. If GitHub's update reports a conflict, the train attempts a merge in a temporary
 worktree. Conflicts exclusively in `scripts/build/generated-outputs.ts`'s registered outputs are
 resolved by running the generators against the combined sources. Catalog conflicts must be wholly
@@ -73,14 +76,19 @@ release-batch jobs. Staging never references or loads a release/native workflow 
 
 Both event entries use per-PR/manual-branch supersession with a workflow/PR-or-ref concurrency
 group and `cancel-in-progress: true`. New pushes cancel older runs for that same key. Each entry
-queues one complete reusable check call in the shared `ci-runners` job-level FIFO with `queue: max`
-and `cancel-in-progress: false`. That admitted call holds all proofs, selected batch and timing
-publication until its callee finishes; the callees never reacquire admission. GitHub orders waiting
+queues one complete reusable check call with `queue: max` and `cancel-in-progress: false`.
+Staging CI uses the `ci-runners` job-level FIFO; Release uses its own `release-runners` FIFO,
+so Release neither waits behind nor blocks staging PR runs. Each admitted call holds all proofs,
+selected batch and timing publication until its callee finishes; the callees never reacquire admission. GitHub orders waiting
 calls by arrival, accepts at most 100 pending calls, and cancels extra arrivals on overflow.
 
 CI-invoked merge train is outside the admitted call, after the six top summaries, while remaining
 inside parent per-PR supersession. The standalone staging-push train remains separate. Batch
 repair pushes to avoid redundant CI work.
+
+A push to `scratch/**` without a `Focused-tests` trailer reports a notice and skips all focused
+test runners successfully. A requested path outside `tests/` or missing from the commit still fails;
+a test request must also name a supported `Focused-os` value.
 
 `scripts/test/ci-plan.ts` owns typed selection/proof/timing-history policy. Both timed callees
 retain explicit test budgets. Their final `unit` runs unless cancelled and validates every mandatory

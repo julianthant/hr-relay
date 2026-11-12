@@ -18,7 +18,7 @@ concurrency:
 jobs:
   checks:
     concurrency:
-      group: ci-runners
+      group: release-runners
       queue: max
       cancel-in-progress: false
     uses: ./.github/workflows/release-checks.yml

@@ -37,8 +37,14 @@ jobs:
         run: |
           fail() { echo "::error::$*"; exit 1; }
           read -ra files <<< "$(git log -1 --format='%(trailers:key=Focused-tests,valueonly,unfold)' | tr '\n' ' ')"
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::notice::The head commit lists no Focused-tests files; skipping focused tests."
+            for output in files ubuntu macos windows web; do
+              echo "$output=false" >> "$GITHUB_OUTPUT"
+            done
+            exit 0
+          fi
           os=$(git log -1 --format='%(trailers:key=Focused-os,valueonly)' | xargs)
-          [ ${#files[@]} -gt 0 ] || fail "The head commit lists no Focused-tests files."
           case "$os" in ubuntu|macos|windows|both|all) ;; *) fail "Focused-os must be ubuntu, macos, windows, both (ubuntu+macos) or all, not '$os'." ;; esac
           web=false
           for file in "${files[@]}"; do
@@ -54,7 +60,9 @@ jobs:
             echo "web=$web"
           } >> "$GITHUB_OUTPUT"
       - run: npm ci
+        if: steps.plan.outputs.files != 'false'
       - run: npm run privacy:check
+        if: steps.plan.outputs.files != 'false'
 
   ubuntu:
     needs: plan
