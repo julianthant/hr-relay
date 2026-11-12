@@ -15,8 +15,6 @@ export type UcpathHireIdentity = z.infer<typeof UcpathHireIdentitySchema>;
 export const UcpathHireQuerySchema = UcpathHireIdentitySchema.extend({
   mode: z.enum(["new-hire", "rehire"]), emplId: EidSchema.nullable(),
 }).refine(value => {
-  // A rehire files under the UCPath record's own name, which its emplId binds; a picked hit may carry another name.
-  if (value.mode === "rehire") return true;
   const { firstName, lastName, middleName } = value.employee;
   const names = [`${firstName} ${lastName}`, `${lastName}, ${firstName}`,
     `${firstName} ${middleName} ${lastName}`, `${lastName}, ${firstName} ${middleName}`];

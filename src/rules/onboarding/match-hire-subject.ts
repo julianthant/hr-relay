@@ -29,14 +29,19 @@ export type HireReviewChoices = Readonly<{
   existing: readonly Readonly<{ emplId: Match["hits"][number]["emplId"]; name: string; confirmedBy: "person-org" | "operator"; reason?: string }>[];
 }>;
 
-/** The hire-review arms an operator may answer: a new hire only when Person Org confirmed nobody (over hits, the operator rules every one out), an existing person among the confirmed hits, or, when none is confirmed, among the dropped hits. */
-export function hireReviewChoices(mode: "new-hire" | "rehire", match: Match): HireReviewChoices {
+/**
+ * The hire-review arms an operator may answer: a new hire only when Person Org confirmed nobody (over hits, the operator rules every one out),
+ * an existing person among the confirmed hits or, when none is confirmed, among the dropped hits that carry the hire's own name.
+ * A hit under another name stays unpickable: the UCPath hire scans and checks identity by the hire's name.
+ */
+export function hireReviewChoices(mode: "new-hire" | "rehire", match: Match, hire: Readonly<{ firstName: string; lastName: string }>): HireReviewChoices {
   assertClassifiedMatch(match);
+  const hireName = normalizedName(`${hire.lastName}, ${hire.firstName}`);
   return {
     newHire: mode === "new-hire" && match.confirmed.length === 0,
     existing: match.confirmed.length > 0
       ? match.confirmed.map(({ emplId, name }) => ({ emplId, name, confirmedBy: "person-org" as const }))
-      : match.dropped.map(({ emplId, name, reason }) => ({ emplId, name, confirmedBy: "operator" as const, reason })),
+      : match.dropped.filter(({ name }) => normalizedName(name) === hireName).map(({ emplId, name, reason }) => ({ emplId, name, confirmedBy: "operator" as const, reason })),
   };
 }
 

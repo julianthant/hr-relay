@@ -35,7 +35,7 @@ export function buildI9Search(author: WorkflowAuthor<typeof OnboardingInput>, cr
     policy: { onChildFailed: "allow-partial", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" },
   }, [crm.plan, ucpath.matches, ucpath.subject], {
     // Look up the I-9 profile whenever the operator may still choose a new hire.
-    bind: ({ input, outputs }) => hireReviewChoices(input.mode, outputs["ucpath-source"]).newHire ? [i9LookupInput(outputs["hire-plan"])] : [],
+    bind: ({ input, outputs }) => hireReviewChoices(input.mode, outputs["ucpath-source"], outputs["hire-plan"].employee).newHire ? [i9LookupInput(outputs["hire-plan"])] : [],
     deriveChildItemId: input => i9LookupItemId(input),
   });
   const lookup = author.task(entries.task("i9-lookup", OnboardingReadI9Lookup, { replay: "checkpoint" }), [crm.plan, ucpath.subject, child], ({ outputs }) => ({

@@ -11,7 +11,7 @@ export function readOnboardingWritePlan(raw: z.input<typeof OnboardingReadWriteP
   const employee = plan.employee;
   const classified = matchHireSubject({ mode, firstName: employee.firstName, lastName: employee.lastName, match });
   if (canonicalJsonStringify(classified) !== canonicalJsonStringify(subject)) throw new Error("hire-subject-source-disagrees");
-  const choices = hireReviewChoices(mode, match);
+  const choices = hireReviewChoices(mode, match, employee);
   if (choices.newHire ? lookup.state !== "checked" : lookup.state !== "not-required" || lookup.subjectState !== subject.state) throw new Error("i9-skip-source-disagrees");
   const sorted = (eids: readonly string[]) => JSON.stringify([...eids].sort());
   if (approval.decision === "new-hire" && (!choices.newHire || sorted(approval.ruledOut) !== sorted(match.hits.map(hit => hit.emplId)))) {

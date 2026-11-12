@@ -145,9 +145,10 @@ function hireReviewFacts(deps: RunDetailQueryDeps, authority: RunRecord) {
 }
 
 /** `hireReviewChoices`, or undefined for a match that fails its structural checks. */
-function safeHireReviewChoices(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>): HireReviewChoices | undefined {
+function safeHireReviewChoices(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>,
+  hire: Readonly<{ firstName: string; lastName: string }>): HireReviewChoices | undefined {
   try {
-    return hireReviewChoices(mode, match);
+    return hireReviewChoices(mode, match, hire);
   } catch {
     return undefined;
   }
@@ -160,9 +161,10 @@ const nameParts = (first: string, middle: string, last: string) => `first ${firs
 /** The split legal and preferred names are served before approval because the hire writes them; an unconfirmed match lists every dropped hit with its reason. No SSN or date of birth is served. */
 export function hireReviewDecision(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>, names: HireNames,
   arms: readonly Readonly<{ value: string; label: string; hint: string }>[], gateId: string, expectedVersion: number): RunDecisionWire | undefined {
-  const choices = safeHireReviewChoices(mode, match);
+  const choices = safeHireReviewChoices(mode, match, names);
   if (choices === undefined) return undefined;
   const unconfirmed = match.hits.length > 0 && match.confirmed.length === 0, count = match.hits.length;
+  const unpickable = unconfirmed ? match.dropped.filter(hit => !choices.existing.some(person => person.emplId === hit.emplId)) : [];
   const send = (arm: string) => ({ via: "gate-arm" as const, gateNodeId: gateId, expectedVersion, arm });
   const served = arms.flatMap(arm => {
     if (arm.value === "new-hire" && choices.newHire) return [unconfirmed
@@ -188,7 +190,9 @@ export function hireReviewDecision(mode: "new-hire" | "rehire", match: z.infer<t
   const context = `Legal name: ${nameParts(names.firstName, names.middleName, names.lastName)}. `
     + `Preferred name: ${nameParts(names.preferredFirstName, names.preferredMiddleName, names.preferredLastName)}.`
     + (unconfirmed ? ` UCPath returned ${String(count)} possible ${count === 1 ? "match" : "matches"} and Relay confirmed none. `
-      + (names.ssn === null ? "Searched by name and date of birth." : "Searched by name, date of birth and SSN.") : "");
+      + (names.ssn === null ? "Searched by name and date of birth." : "Searched by name, date of birth and SSN.") : "")
+    + (unpickable.length === 0 ? "" : ` Under another name: ${unpickable.map(hit => `${hit.name} (${maskedEid(hit.emplId)}): ${hit.reason}`).join("; ")}. `
+      + "Relay cannot file a hire under another name. If one of them is this person, cancel this run and file the rehire by hand in UCPath.");
   return ordered.length === 0 ? undefined : projectDecision("review-before-write", ordered, { context });
 }
 
@@ -208,7 +212,7 @@ export function resolveGateArmAnswer(deps: RunDetailQueryDeps, answer: GateArmAn
   if (authority.lifecycle.state !== "parked-gate" || String(authority.lifecycle.gateId) !== String(answer.target.gateId)
     || String(answer.target.gateId) !== ONBOARDING_WRITE_REVIEW_GATE || authority.version !== answer.target.expectedVersion) return refused("invalid-state", STALE_HIRE_REVIEW);
   const review = hireReviewFacts(deps, authority);
-  const choices = review === undefined ? undefined : safeHireReviewChoices(review.mode, review.match);
+  const choices = review === undefined ? undefined : safeHireReviewChoices(review.mode, review.match, review.plan.employee);
   if (review === undefined || choices === undefined) return refused("invalid-state", STALE_HIRE_REVIEW);
   const { arm, rowId } = answer.payload;
   const person = choices.existing.find(entry => entry.emplId === rowId);
