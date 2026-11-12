@@ -78,7 +78,7 @@ describe("explain run", () => {
     const path = join(root, "state.db");
     const admission = profileFixtureStorageAdmission(path);
     const before = readFileSync(path); const inventory = readdirSync(root, { recursive: true, encoding: "utf8" }).sort();
-    const sourceBytes = inventory.filter(name => lstatSync(join(root, name)).isFile()).map(name => [name, readFileSync(join(root, name))] as const);
+    const sourceBytes = inventory.filter(name => !name.endsWith("-shm") && lstatSync(join(root, name)).isFile()).map(name => [name, readFileSync(join(root, name))] as const);
     const output = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] });
     assert.match(output, /nextCursor/u);
     let after = 0; const categories = new Set<string>();
