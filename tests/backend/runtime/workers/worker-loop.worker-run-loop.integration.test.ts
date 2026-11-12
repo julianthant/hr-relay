@@ -16,6 +16,7 @@ import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { emergencyContactModule, personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { claimWithPreflight } from "../../../../src/backend/app/preflight/worker-admission.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { OcrPublicationRefusedError } from "../../../../src/backend/runs/lifecycle/ocr-checkpoint-publication.js";
 import { requiredPreflightChecks } from "../../../../src/models/preflight/preflight.js";
 import { PREFLIGHT_CHECKS } from "../../../../src/models/runtime/runtime-dependencies.js";
@@ -204,7 +205,7 @@ describe("worker run loop", () => {
 
   it("re-polls on the idle cadence with no refusal standing when every claim attempt loses its race", async () => {
     const h = await loopHarness();
-    const queued = personLookupQueuedRun();
+    const queued = RunRecordSchema.parse(personLookupQueuedRun());
     h.authority.database.authority.runs.enqueue(queued);
     const scope = PreflightAdmissionScopeSchema.parse({ configSnapshotId: queued.envelope.configSnapshotId, configFingerprint: queued.envelope.configFingerprint,
       descriptorFingerprint: queued.envelope.contractFingerprint, requestedCapabilities: ["executor.run"] });
