@@ -107,7 +107,7 @@ import { createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,validateWork
 import { DryRunScenarioResultSchema,type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
 import { RunEvidenceReceiptSchema,type RunEvidenceReceipt } from "../../../models/trust/evidence.js";
-import { FailureRecordSchema,settledWriteState,type FailureRecord } from "../../../models/trust/failure.js";
+import { FailureRecordSchema,failureCauseNames,settledWriteState,type FailureRecord } from "../../../models/trust/failure.js";
 import { RunCheckpointRecordSchema,checkpointLookupKey,checkpointRecordKey,type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
 import { ActorIdSchema,ArtifactIdSchema,BrowserSystemIdSchema,CommandAuditIdSchema,CommandIdSchema,DiagnosticBundleIdSchema,FailureIdSchema,FailureFingerprintSchema,FingerprintSchema,GateIdSchema,IsoInstantSchema,ItemIdSchema,LOCAL_OPERATOR_ACTOR_ID,PositiveIntSchema,RunIdSchema,RunSessionIdSchema,TraceIdSchema,WorkerIdSchema,WorkflowIdSchema,WriteIntentIdSchema } from "../../../rules/identity/ids.js";
@@ -2923,7 +2923,9 @@ export class AuthorityDatabase implements Disposable {
       if (request.after > through) throw new Error("timeline-diagnostic-cursor-out-of-range");
       const scanned = repository.page({ ...request, through });
       for (const record of scanned) assertTimelineOwner(database, record);
-      return { records: scanned.filter(record => record.payload.kind === "debug"),
+      const failureCauses = request.runId === undefined ? [] : database.prepare("SELECT * FROM run_failures WHERE run_id = ? ORDER BY created_at, id").all(request.runId)
+        .map(raw => { const failure = FailureRecordSchema.parse(nativeOrdinaryRecordFromRow("run_failures", raw)); return { failureId: failure.failureId, ...failureCauseNames(failure) }; });
+      return { records: scanned.filter(record => record.payload.kind === "debug"), failureCauses,
         after: request.after, nextCursor: scanned.at(-1)?.cursor ?? through, through, highWaterMark,
         hasMore: (scanned.at(-1)?.cursor ?? through) < through };
     });

@@ -117,6 +117,14 @@ export const FailureRecordSchema = z.strictObject({
 
 export type FailureRecord = z.infer<typeof FailureRecordSchema>;
 
+/** A failure's causes for an operator: catalog codes and class names only; stack text, paths, URLs and values stay in the record. */
+export function failureCauseNames(failure: Pick<FailureRecord, "causeChain" | "debug">) {
+  return {
+    codes: failure.causeChain.map(({ code }) => code),
+    classes: (failure.debug?.causes ?? []).flatMap(text => /^([A-Za-z_$][\w$]*)(?::|\s|$)/u.exec(text)?.[1] ?? []),
+  };
+}
+
 /** What a failure says was written: a write this run settled (committed, or found already present) makes it a failure after that write. */
 export function settledWriteState(intents: readonly Readonly<{ status: string }>[]): "not-attempted" | "committed" | "verified" {
   const settled = intents.filter(({ status }) => status === "committed" || status === "observed-present");
