@@ -674,4 +674,25 @@ describe("refused sign-in bundle", () => {
     assert.equal(allowed("signInReason"), reason);
     assert.equal(allowed("signInPageAddress"), "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app");
   });
+
+  it("drops an uppercase URL query from the reason field the bundle allows", async () => {
+    const database = await openDatabase();
+    const { service } = captureService(database);
+    const login = new BrowserLoginError("ucpath", "verify-landing",
+      "the check saw HTTPS://example.test/read?EMPLID=10456712#frag-canary",
+      "https://example.test/other");
+    const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+      error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: "2026-08-29T08:00:00.000Z" });
+    const bundle = await createRunDiagnosticCapture({ service }).captureForFailure({
+      failure, configFingerprint: HASH_A, descriptorFingerprint: HASH_B,
+    });
+    const stored = JSON.stringify({ failure, bundle });
+    assert.equal(stored.includes("10456712"), false);
+    assert.equal(stored.includes("frag-canary"), false);
+    const reason = bundle.redaction.fields.find(candidate => candidate.key === "signInReason");
+    assert.equal(reason?.state, "allowed");
+    assert.equal(reason?.state === "allowed" ? reason.value : undefined, "the check saw https://example.test/read");
+  });
 });

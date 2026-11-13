@@ -193,14 +193,31 @@ export function buildEntryValidationFailureRecord(input: EntryValidationFailureI
   });
 }
 
+const DEBUG_TEXT_BUDGET = 96 * 1024;
+
+/** Query, fragment and userinfo never stay in diagnostic text. An unreadable URL becomes a fixed token. */
+function withoutPageQuery(text: string): string {
+  return text.replace(/https?:\/\/[^\s<>"']+/giu, (raw) => {
+    const address = pageAddress(raw);
+    return address === "unreadable-address" ? "[invalid-url]" : address;
+  });
+}
+
 function signInRefusalFrom(error: Error) {
   const login = browserLoginFailure(error);
   if (login === undefined) return undefined;
-  const reason = sanitizeDebugText(login.detail);
+  const reason = sanitizeDebugText(withoutPageQuery(login.detail));
   const address = sanitizeDebugText(pageAddress(login.observedUrl));
   if (reason.length === 0) throw new Error("sign-in refusal reason is empty");
   if (address.length === 0) throw new Error("sign-in page address is empty");
   return { system: login.system, step: login.step, reason, pageAddress: address };
+}
+
+function takeDebugText(text: string, remaining: { bytes: number }): string {
+  const encoded = Buffer.from(text);
+  const result = encoded.subarray(0, remaining.bytes).toString("utf8");
+  remaining.bytes = Math.max(0, remaining.bytes - encoded.byteLength);
+  return result;
 }
 
 export function failureDebugDetails(error: Error) {
@@ -211,16 +228,18 @@ export function failureDebugDetails(error: Error) {
     seen.add(cause); texts.push(`${cause.name}: ${cause.stack ?? cause.message}`); cause = cause.cause;
   }
   const safe = texts.map(sanitizeDebugText);
-  const originalBytes = safe.reduce((total, text) => total + Buffer.byteLength(text), 0);
-  let remaining = 96 * 1024;
-  const bounded = safe.map(text => {
-    const bytes = Buffer.from(text);
-    const result = bytes.subarray(0, remaining).toString("utf8");
-    remaining = Math.max(0, remaining - bytes.byteLength);
-    return result;
-  });
-  const signInRefusal = signInRefusalFrom(error);
+  const refusal = signInRefusalFrom(error);
+  const originalBytes = safe.reduce((total, text) => total + Buffer.byteLength(text), 0)
+    + (refusal === undefined ? 0 : Buffer.byteLength(refusal.reason) + Buffer.byteLength(refusal.pageAddress));
+  const remaining = { bytes: DEBUG_TEXT_BUDGET };
+  const bounded = safe.map(text => takeDebugText(text, remaining));
+  // The page is short and is what the record exists to keep, so it is taken before the reason.
+  const pageAddressText = refusal === undefined ? "" : takeDebugText(refusal.pageAddress, remaining);
+  const reasonText = refusal === undefined ? "" : takeDebugText(refusal.reason, remaining);
+  const signInRefusal = refusal === undefined || reasonText.length === 0 || pageAddressText.length === 0
+    ? undefined
+    : { system: refusal.system, step: refusal.step, reason: reasonText, pageAddress: pageAddressText };
   return { stack: bounded[0] ?? "", causes: bounded.slice(1), originalBytes,
-    omittedBytes: Math.max(0, originalBytes - 96 * 1024),
+    omittedBytes: Math.max(0, originalBytes - DEBUG_TEXT_BUDGET),
     ...(signInRefusal === undefined ? {} : { signInRefusal }) };
 }

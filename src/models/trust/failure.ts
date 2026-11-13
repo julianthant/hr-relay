@@ -90,8 +90,8 @@ const SignInStepSchema = z.enum([
 export const SignInRefusalSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   step: SignInStepSchema,
-  reason: z.string().min(1),
-  pageAddress: z.string().min(1),
+  reason: z.string().min(1).max(96 * 1024),
+  pageAddress: z.string().min(1).max(96 * 1024),
 });
 
 export const FailureRecordSchema = z.strictObject({

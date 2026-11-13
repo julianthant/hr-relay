@@ -94,10 +94,11 @@ export class BrowserLandingStallError extends BrowserLoginError {
 
   constructor(system: BrowserSystemId, code: BrowserLandingStallCode,
     page: Readonly<{ host: string; path: string; title: string }>, options?: ErrorOptions) {
-    super(system, "duo-clearance", ERROR_CATALOG[code].text, "", options, code);
+    const url = URL.parse(`https://${page.host}${page.path}`);
+    const observedUrl = url === null || url.origin === "null" ? "" : `${url.origin}${url.pathname}`;
+    super(system, "duo-clearance", ERROR_CATALOG[code].text, observedUrl, options, code);
     this.name = "BrowserLandingStallError";
     this.code = code;
-    const url = URL.parse(`https://${page.host}${page.path}`);
     this.host = url?.hostname ?? "unknown";
     this.path = url?.pathname ?? "unknown";
     this.title = page.title.replace(/https?:\/\/\S+/giu, "[URL]").slice(0, 200);

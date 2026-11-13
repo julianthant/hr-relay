@@ -1,4 +1,4 @@
-import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { BrowserLandingStallError, BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { projectRunLogs } from "../../../../src/dashboard/state/run-wiring-adapter.js";
 import { NotePageSchema, RunDetailSectionResponseSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { FIXTURE_RUN_DETAILS } from "../../../support/fixtures/dashboard/run-detail/timeline.js";
@@ -218,5 +218,40 @@ describe("refused sign-in detail", () => {
     assert.ok(entry?.kind === "decision");
     assert.equal(entry.decision.message, "UCPath sign-in failed.");
     assert.equal(entry.decision.message.includes(FIXTURE_EMPLOYEE_ID), false);
+  });
+
+  it("drops an uppercase URL query from the verifier reason before the record or its byte budget", () => {
+    const detail = `HTTPS://example.test/read?EMPLID=${FIXTURE_EMPLOYEE_ID}#frag-canary ${"x".repeat(200_000)}`;
+    const failure = storedSignInFailure(detail, `HTTPS://example.test/read?EMPLID=${FIXTURE_EMPLOYEE_ID}#frag-canary`);
+    const debug = failure.debug;
+    assert.ok(debug?.signInRefusal);
+    const kept = Buffer.byteLength(debug.stack)
+      + debug.causes.reduce((total, text) => total + Buffer.byteLength(text), 0)
+      + Buffer.byteLength(debug.signInRefusal.reason)
+      + Buffer.byteLength(debug.signInRefusal.pageAddress);
+    assert.ok(kept <= 96 * 1024);
+    assert.ok(debug.originalBytes > 200_000);
+    assert.equal(debug.omittedBytes, debug.originalBytes - 96 * 1024);
+    assert.equal(debug.signInRefusal.pageAddress, "https://example.test/read");
+    assert.match(debug.signInRefusal.reason, /^https:\/\/example\.test\/read /);
+    const stored = JSON.stringify(failure);
+    assert.equal(stored.includes(FIXTURE_EMPLOYEE_ID), false);
+    assert.equal(stored.includes("frag-canary"), false);
+    assert.equal(stored.includes("HTTPS://"), false);
+  });
+
+  it("stores a landing stall's known host and path", () => {
+    const login = new BrowserLandingStallError("ucpath", "DUO_PROMPT_STALLED", {
+      host: "a5.ucsd.edu", path: "/sso", title: "SSO https://example.invalid/private",
+    });
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
+      error: new TaskError(TASK_ID, login.code, login.message, { cause: login }),
+      occurredAt: "2026-08-29T08:00:00.000Z" });
+    assert.equal(failure.debug?.signInRefusal?.step, "duo-clearance");
+    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://a5.ucsd.edu/sso");
+    assert.equal(failure.debug?.signInRefusal?.reason, ERROR_CATALOG.DUO_PROMPT_STALLED.text);
+    assert.equal(projectFailureForOperator(failure).summary, operatorFailureSentence("DUO_PROMPT_STALLED"));
+    assert.equal(JSON.stringify(failure).includes("unreadable-address"), false);
   });
 });
