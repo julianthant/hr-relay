@@ -51,7 +51,7 @@ export function runChecksState(): RunChecksCounts | undefined {
 /** Settings opened from a Fix button: the approved Settings page with a Back to run way out above it. */
 export function RunChecksMockHost() {
   if (runChecksFrame() !== "settings") return null;
-  return <div className="fixed left-0 top-0 z-[60] flex h-[54px] items-center border-b border-r border-ui-stroke bg-[color:var(--ds-surface-page)] px-3">
+  return <div className="fixed left-0 top-0 z-[60] flex h-[54px] items-center bg-[color:var(--ds-surface-page)] px-3">
     <Button variant="ghost" icon={<ArrowLeft aria-hidden className="size-3" />} onClick={() => window.history.back()}>Back to run</Button>
   </div>;
 }
