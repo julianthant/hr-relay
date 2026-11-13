@@ -43,9 +43,9 @@ export function createCiPlan(input: unknown): CiPlan {
   const jobs = (suite: z.infer<typeof matrixSchema>["include"][number]["suite"], shards: number) =>
     Array.from({ length: shards }, (_, i) => ({ suite, shard: i + 1, shards }));
   const ubuntu = [
-    ...(selected.unit ? jobs("unit", selected.integration ? 2 : 3) : []),
+    ...(selected.unit ? jobs("unit", 3) : []),
     ...(selected.architecture ? jobs("architecture", 2) : []),
-    ...(selected.integration ? jobs("integration", 20) : []),
+    ...(selected.integration ? jobs("integration", 30) : []),
   ];
   const nativeShards = selected.integration ? 5 : selected.unit ? 1 : 0;
   const macos = fullRelease ? jobs("native", nativeShards) : [];
@@ -77,7 +77,7 @@ export function verifyUnitProof(input: unknown, outcomes: unknown): void {
 export function verifyProofs(input: unknown, outcomes: unknown): void {
   const plan = ciPlanSchema.parse(input);
   const results = resultsSchema.parse(outcomes);
-  for (const job of ["changes", "static", "privacy", "integration", "architecture"]) requireResult(results, job, "success");
+  for (const job of ["changes", "lint", "static", "privacy", "integration", "architecture"]) requireResult(results, job, "success");
   requireResult(results, "ubuntu", plan.unit || plan.integration || plan.architecture ? "success" : "skipped");
   if (plan.workflow === "release") {
     requireResult(results, "unit-proofs", "success");

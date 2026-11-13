@@ -158,14 +158,14 @@ Other native files count half because two workers share them.
 
 | Job | Runner | Jobs | Contents |
 | --- | --- | --- | --- |
-| unit | Ubuntu | 2 (3 without integration) | unit files except `NATIVE_FILES`, plus `LINUX_NATIVE_FILES` |
+| unit | Ubuntu | 3 | unit files except `NATIVE_FILES`, plus `LINUX_NATIVE_FILES` |
 | architecture | Ubuntu | 2 | architecture files |
-| integration | Ubuntu | 20 | integration files except `NATIVE_FILES` and `SERIAL_FILES`, plus `LINUX_NATIVE_FILES` |
+| integration | Ubuntu | 30 | integration files except `NATIVE_FILES` and `SERIAL_FILES`, plus `LINUX_NATIVE_FILES` |
 | perf | Ubuntu | 1 | `npm run test:perf` on ready pull requests |
 | smoke | Ubuntu | 1 | `npm run test:smoke` on the built dashboard on ready pull requests |
 | native | macOS, operator-started full releases only | 5 | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |
 
-Full staging runs also include `static`, `privacy`, `perf` and `smoke`. The job-level whole-pipeline FIFO
+Full staging runs also include `lint`, `static`, `privacy`, `perf` and `smoke`. The job-level whole-pipeline FIFO
 admission and draft policy are described in [repository governance](../repository-governance.md).
 Each shard downloads the same `ci-balancing` input and uploads Vitest JSON reports as `durations-*`.
 Report basenames include the runner OS and selection group, so merged artifacts preserve both platforms.
@@ -261,14 +261,14 @@ live lease. GitHub CI remains the merge gate.
 
 ### CI scheduling
 
-Ubuntu unit and integration use three workers. macOS native unit and integration use two. Serial and storage use one. Ubuntu jobs put test temp on tmpfs and have 20-minute
+A full staging run uses three Ubuntu unit shards, two architecture shards and thirty integration shards, plus lint, static, privacy, perf and smoke. Ubuntu unit and integration use three workers. macOS native unit and integration use two. Serial and storage use one. Ubuntu jobs put test temp on tmpfs and have 20-minute
 budgets; macOS jobs use a RAM disk with Spotlight indexing off and have 30-minute budgets. Budgets are
 hang guards. CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
 Vitest test and hook limits, test wait helpers and the browser deadlines tests pass to product code by it.
 Local runs use 1. Product defaults are unchanged. Remaining steps run after a failed serial proof
 unless the workflow is cancelled, preserving failure visibility, and any shard failure fails its suite.
 
-PR filtering uses these rules. Static and privacy always run. Every ready pull request also runs
+PR filtering uses these rules. Lint, static and privacy always run, including on a draft pull request. Every ready pull request also runs
 perf and smoke in separate Ubuntu jobs, including Markdown-only changes. Both jobs install Chromium,
 build the dashboard and use tmpfs for test temp, like an Ubuntu integration shard. Drafts and
 manual releases select neither job. Draft PRs select only affected unit files;
@@ -300,7 +300,7 @@ Every mandatory proof, including perf and smoke, and timing publication remains
 inside that callee; no callee reacquires admission. Merge train follows the five top summaries
 outside the admitted call; the standalone staging-push train is unchanged.
 
-`checks.yml` is the only file that defines test jobs and has no `timings` job. Its jobs are `changes`, `static`,
+`checks.yml` is the only file that defines test jobs and has no `timings` job. Its jobs are `changes`, `lint`, `static`,
 `privacy`, `ubuntu`, `macos`, `unit-proofs`, `integration`, `architecture`, `perf`, `smoke` and `unit`; the plan
 empties `macos` outside a full release, and `unit-proofs` runs only for the release kind. Its `unit` runs unless cancelled, with one checkout and one install.
 It checks proofs, merges durations, uploads `ci-timings` only when every proof passed, then runs

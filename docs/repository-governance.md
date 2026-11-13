@@ -58,8 +58,8 @@ upgrade run in separate single-worker invocations, preserving their
 existing deadlines under duration-based assignment. Native integration jobs first verify the
 full-Chromium installation through `scripts/test/chromium-preflight.ts` by opening a blank page
 and observing the owned browser process exit. This one-time setup has no retries; timed proofs still use fresh profiles and their existing
-deadlines. A full staging run uses two
-Ubuntu unit shards, two architecture shards and twenty integration shards, plus static and
+deadlines. A full staging run uses three
+Ubuntu unit shards, two architecture shards and thirty integration shards, plus lint, static and
 privacy and the separate perf and smoke jobs. On operator-started full releases, use all five macOS
 runners for native files.
 
@@ -93,7 +93,7 @@ inside parent per-PR supersession. Enabling auto-merge starts a full `Staging` r
 in progress for the same head), and its own gate decides the `staging` check; a push to `staging` never cancels. Batch repair pushes to avoid redundant CI work.
 
 `scripts/test/ci-plan.ts` owns typed selection, proof, publication and timing-history policy. Both timed callees
-retain explicit test budgets. `checks.yml` jobs are `changes`, `static`, `privacy`, `ubuntu`, `macos`,
+retain explicit test budgets. `checks.yml` jobs are `changes`, `lint`, `static`, `privacy`, `ubuntu`, `macos`,
 `unit-proofs`, `integration`, `architecture`, `perf`, `smoke` and `unit`; the plan leaves
 `macos` empty outside a full release, and `unit-proofs` runs only for the release kind.
 It has no `timings` job. The `unit` job is one checkout
@@ -104,13 +104,13 @@ Cancellation stops that inner checkout/install work. The always-running gate fai
 cancelled needed job, so those results cannot merge. The required names are `staging` on staging and
 `production` on main. The train may stop when cancelled.
 
-Run static, privacy and affected portable unit, integration and architecture suites for ready PRs
+Run lint, static, privacy and affected portable unit, integration and architecture suites for ready PRs
 into `staging`. For PRs from `staging` into `main`, add selected native proofs.
-Path filters select affected suites. Draft pushes run static, privacy and
+Path filters select affected suites. Draft pushes run lint, static, privacy and
 affected unit files; becoming ready starts full applicable validation. Only the operator may start
 a manual full-release dispatch; it selects all routine suites, including native proofs. Other PR heads targeting `main`, except `staging` and `hotfix/*`, omit
 native proofs; their `production` gate fails. Drafts cannot merge. Protected-branch pushes do not
-repeat CI; Markdown-only ready PRs run static, privacy, perf and smoke. A deliberately omitted suite has a successful
+repeat CI; Markdown-only ready PRs run lint, static, privacy, perf and smoke. A deliberately omitted suite has a successful
 summary, while failed change detection or any failed/cancelled selected group fails its summary.
 
 Timing discovery enumerates registered workflow IDs for the exact `staging.yml` and `production.yml` paths,

@@ -18,7 +18,7 @@ const planFor = (workflow: "portable" | "release", extra: Record<string, unknown
   workflow, event: "pull_request", base: workflow === "portable" ? "staging" : "main",
   head: workflow === "portable" ? "feature/test" : "staging", draft: false, filters, ...extra,
 });
-const portableResults = { changes: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
+const portableResults = { changes: { result: "success" }, lint: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
   ubuntu: { result: "success" }, integration: { result: "success" }, architecture: { result: "success" },
   perf: { result: "success" }, smoke: { result: "success" } };
 const releaseResults = { ...portableResults, macos: { result: "success" },
@@ -180,7 +180,12 @@ describe("separate event and admitted proof workflows", () => {
       .toEqual(["checks.yml", "merge-train.yml", "production.yml", "staging.yml"]);
     expect(jobNames(staging)).toEqual(["names", "checks", "staging", "train"]);
     expect(jobNames(production)).toEqual(["checks", "codeql", "dependencies", "production"]);
-    expect(jobNames(checks)).toEqual(["changes", "static", "privacy", "ubuntu", "macos", "unit-proofs", "integration", "architecture", "perf", "smoke", "unit"]);
+    expect(jobNames(checks)).toEqual(["changes", "lint", "static", "privacy", "ubuntu", "macos", "unit-proofs", "integration", "architecture", "perf", "smoke", "unit"]);
+    expect(job(checks, "lint")).toContain("run: npm run lint");
+    expect(job(checks, "lint")).toContain("working-directory: fast-duo");
+    expect(job(checks, "lint")).not.toMatch(/^ {4}if:/mu);
+    expect(job(checks, "static")).toContain("run: npm run typecheck");
+    expect(job(checks, "static")).not.toContain("npm run lint");
   });
 
   it.each(["perf", "smoke"])("runs %s separately on Ubuntu with the integration-shard setup", name => {
@@ -244,7 +249,7 @@ describe("separate event and admitted proof workflows", () => {
     expect(selectUsingAdapter("release", "pull_request", "main", "hotfix/x", filters)).toEqual(planFor("release", { head: "hotfix/x" }));
     expect(planFor("release", { head: "hotfix/x" }).fullRelease).toBe(true);
     expect(selectUsingAdapter("release", "workflow_dispatch", "", "", {})).toMatchObject({ perf: false, smoke: false });
-    expect(selectUsingAdapter("release", "workflow_dispatch", "", "", {}).testJobs).toBe(29);
+    expect(selectUsingAdapter("release", "workflow_dispatch", "", "", {}).testJobs).toBe(40);
     expect(selectUsingAdapter("release", "pull_request", "main", "staging", { ...filters, shared: "false" }).testJobs).toBe(0);
     expect(() => selectUsingAdapter("portable", "pull_request", "staging", "feature/test", {})).toThrow();
   });
@@ -267,7 +272,7 @@ describe("separate event and admitted proof workflows", () => {
     }
     expect(job(staging, "train")).toContain("needs: staging");
     expect(job(staging, "train")).toContain("uses: ./.github/workflows/merge-train.yml");
-    expect(job(checks, "unit")).toContain("needs: [changes, static, privacy, ubuntu, integration, architecture, macos, unit-proofs, perf, smoke]");
+    expect(job(checks, "unit")).toContain("needs: [changes, lint, static, privacy, ubuntu, integration, architecture, macos, unit-proofs, perf, smoke]");
     expect(job(checks, "unit")).not.toMatch(/^ {4}needs:.*\btimings\b/mu);
     expect(job(staging, "staging")).toContain("needs: [names, checks]");
     expect(job(production, "production")).toContain("needs: [checks, codeql, dependencies]");
