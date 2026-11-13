@@ -95,7 +95,6 @@ export function mockDraftInputError(id: string, draft: MockDraft): string | unde
       else if (!["onboarding", "separations", "crm-doc-download"].includes(id) && !/^\d{5,}$/u.test(entry)) return "Employee IDs must contain at least five digits.";
     }
   }
-  if (id === "work-study" && !validDate(draft.effectiveDate)) return "Choose a valid effective date.";
   if (id === "old-kronos-reports" && (!validDate(draft.startDate) || !validDate(draft.endDate) || draft.startDate > draft.endDate)) return "Choose a valid report date range; start must precede end.";
   if (id === "onbase" && !MOCK_ONBASE_TYPES.some(type => type.value === draft.documentType)) return "Choose a supported document type.";
   return undefined;
@@ -318,7 +317,7 @@ function resultFields(run: MockRun): readonly (readonly [string, string])[] {
   if (run.role === "preparation" && run.workflowId !== "oath-upload") return [["Source PDF", run.draft.files.map(file => file.name).join(", ")], ["Completed people", String(run.approvedCount ?? 0)]];
   const record = mockInputRecord(run);
   const edited: Readonly<Record<string, string>> = run.role === "person" ? { "Employee": reviewName(record), "Employee ID": reviewValue(record, "employeeId"), "UCPath ID": reviewValue(record, "employeeId"), "Contact": reviewValue(record, "contactName"), "Relationship": reviewValue(record, "relationship"), "Contact phone": reviewValue(record, "cellPhone"), "Source page": String(record.page) } : {};
-  const fields = mockWorkflow(run.workflowId).result.map(([label, value]) => [label, manualFact(run.workflowId, run.draft, label) ?? (edited[label] || (label === "Document type" && run.workflowId === "onbase" ? run.draft.documentType : label === "Employee ID" ? mockOperationValue(run, "$employeeId") : label === "Kuali ID" || label === "Email" ? run.subject : label === "PDF" ? run.draft.files.map(file => file.name).join(", ") : label === "Signers" ? String(run.approvedCount ?? 0) : label === "Effective date" && run.workflowId === "work-study" ? displayExtractedDate(run.draft.effectiveDate) : value))] as const);
+  const fields = mockWorkflow(run.workflowId).result.map(([label, value]) => [label, manualFact(run.workflowId, run.draft, label) ?? (edited[label] || (label === "Document type" && run.workflowId === "onbase" ? run.draft.documentType : label === "Employee ID" ? mockOperationValue(run, "$employeeId") : label === "Kuali ID" || label === "Email" ? run.subject : label === "PDF" ? run.draft.files.map(file => file.name).join(", ") : label === "Signers" ? String(run.approvedCount ?? 0) : value))] as const);
   if (run.workflowId === "i9-check-start" && run.role === "person") fields.push(["Hire date", "08/03/2026"], ["Separation date", "Not separated"], ["Retention tracker", "Appended"]);
   if (run.workflowId === "old-kronos-reports") fields.push(["Report start", displayExtractedDate(run.draft.startDate)], ["Report end", displayExtractedDate(run.draft.endDate)]);
   if (run.workflowId === "onbase") fields.push(["Combined PDFs", String(run.draft.files.length)]);
@@ -404,7 +403,6 @@ export function mockConfirmationFacts(id: MockWorkflowId, draft: MockDraft): rea
     ...(id === "person-lookup" ? [{ key: "Lookup mode", value: draft.lookupMode }, { key: "CRM check", value: draft.crmCheck ? "On" : "Off" }] : []),
     ...(id === "oath-upload" ? [{ key: "Processing mode", value: uploadOnly ? "Upload-only" : "Full process" }] : []),
     ...(id === "onbase" ? [{ key: "Document type", value: draft.documentType }] : []),
-    ...(id === "work-study" ? [{ key: "Effective date", value: displayExtractedDate(draft.effectiveDate) }] : []),
     ...(id === "old-kronos-reports" ? [{ key: "Report dates", value: `${displayExtractedDate(draft.startDate)} – ${displayExtractedDate(draft.endDate)}` }] : []),
   ];
 }
