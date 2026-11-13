@@ -127,7 +127,7 @@ export const ERROR_CATALOG = Object.freeze({
   CONTACT_SAVE_UNAVAILABLE: catalogEntry("Emergency Contact Save is unavailable. Use Dry Run to review the prepared contact plan.", EmptyParametersSchema),
   CONTACT_APPROVED_PLAN_CONFLICT: catalogEntry("The approved selection contains conflicting primary contact plans for an employee. Select one intended contact per employee or correct the OCR records, then approve again.", EmptyParametersSchema),
   PAYPATH_MULTIPLE_RECORDS: catalogEntry("PayPath Actions found more than one job record for this employee. Nothing was changed; file this person by hand.", EmptyParametersSchema),
-  PAYPATH_ALERT_SHOWN: catalogEntry("UCPath showed an alert on PayPath Actions for this employee. Nothing was changed; read the alert in the run evidence.", EmptyParametersSchema),
+  PAYPATH_ALERT_SHOWN: catalogEntry("UCPath showed an alert on PayPath Actions for this employee. Nothing was changed; open PayPath Actions for this employee and read the alert.", EmptyParametersSchema),
   PAYPATH_IDENTITY_UNREADABLE: catalogEntry("PayPath Actions did not show the employee's name. Nothing was changed; review the employee in UCPath.", EmptyParametersSchema),
   CONTACT_APPROVED_FIELDS_INVALID: catalogEntry("The approved contact fields cannot form a complete UCPath contact plan. Correct and approve the OCR record again.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_BACKUP_FAILED: catalogEntry("The automatic shutdown backup could not be verified. Relay has not completed a clean shutdown.", EmptyParametersSchema),

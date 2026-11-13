@@ -576,6 +576,8 @@ function workStudyPlanLeaves(scope: EvidenceValueScope, prefix: string): unknown
 
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
   ...payPathReadLeaves(taskOutput("ucpath/read-paypath-position"), ""),
+  /* PeopleSoft alert text is free text that can name the employee. */
+  { scope: taskOutput("ucpath/read-paypath-position"), path: "alertText", classification: "direct-identifier", transform: "drop" },
   ...payPathReadLeaves(workflowResult("work-study-ucpath-auth"), ""),
   ...workStudyPlanLeaves(taskOutput("workflow:work-study/read-transaction-plan"), ""),
   ...["work-study", "work-study-transaction"].flatMap(id => [...workStudyPlanLeaves(workflowResult(id), "plan."), ...open(workflowResult(id), "state")]),

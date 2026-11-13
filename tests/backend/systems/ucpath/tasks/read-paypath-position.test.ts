@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { redactObservedDataPoints } from "../../../../../src/backend/logs/observed-data.js";
+import { createTaskProvenanceCollector } from "../../../../../src/backend/runs/provenance/task-provenance.js";
+import type { ObservedDataPoint } from "../../../../../src/backend/logs/span-emitter.js";
+import { manualClock } from "../../../../../src/rules/time/clock.js";
+import { compileWorkflow } from "../../../../../src/workflow-kit/workflow-definition.js";
+import { workStudyWorkflow } from "../../../../../src/workflows/work-study/workflow.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../../src/backend/systems/ucpath/driver/fake.js";
 import { deterministicPayPathOperations } from "../../../../../src/backend/systems/ucpath/driver/paypath-fake.js";
 import { readPayPathPositionTask } from "../../../../../src/backend/systems/ucpath/tasks/read-paypath-position.js";
@@ -53,6 +59,30 @@ describe("UCPath read-paypath-position task", () => {
     const h = harness({ refusal: "paypath-alert-shown", alertText: "Synthetic alert text" });
     await assert.rejects(h.run(), (error: unknown) => error instanceof Failed && error.code === "paypath-alert-shown");
     assert.deepEqual(h.recorded, [{ field: "alertText", value: "Synthetic alert text" }]);
+  });
+
+  it("classifies the recorded alert text through the real collector and still fails paypath-alert-shown", async () => {
+    const descriptor = compileWorkflow(workStudyWorkflow).descriptor;
+    const observed: ObservedDataPoint[] = [];
+    const collector = createTaskProvenanceCollector({
+      descriptor, execution: { runId: "aaaaaaaa-0001-4000-8000-000100000000", traceId: "ws-190000-aaaa", attempt: 1, workflowId: descriptor.id,
+        nodeId: "paypath-position", taskId: UcpathReadPayPathPosition.id },
+      upstreamEvidence: { checkpoints: [] }, clock: manualClock(new Date("2026-11-01T12:01:00Z")),
+      onRecord: batch => { observed.push(...redactObservedDataPoints(UcpathReadPayPathPosition.id, batch.points)); },
+    });
+    let clicked = false;
+    const operations = deterministicPayPathOperations({ refusal: "paypath-alert-shown", alertText: "Synthetic alert for Lee, Jordan" });
+    await assert.rejects(readPayPathPositionTask.impl.run({ input: { emplId: EMPL_ID }, ctx: {
+      captureScreenshot: async () => { clicked = true; }, signal: new AbortController().signal,
+      log: { debug: () => undefined, info: () => undefined, warn: () => undefined },
+      fail: (code: string, message: string): never => { throw new Failed(code, message); }, recordData: collector.recordData,
+      driver: { ...createDeterministicUcpathPersonOrgDriver(), ...operations },
+    } }), (error: unknown) => error instanceof Failed && error.code === "paypath-alert-shown");
+    assert.equal(clicked, false);
+    assert.deepEqual(operations.events, ["read:paypath:10000001"]);
+    assert.equal(observed.length, 1);
+    assert.equal(observed[0]?.field, "alertText");
+    assert.deepEqual(observed[0]?.values.map(value => value.classification), ["direct-identifier"]);
   });
 
   it("refuses a read for another Empl ID", async () => {
