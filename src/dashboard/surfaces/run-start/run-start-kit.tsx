@@ -1,7 +1,7 @@
 import type { RefObject, ReactNode } from "react";
 import { Check, ChevronDown, FlaskConical, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { SurfaceField, InputRunSurface, TypedInputDraft } from "../../../models/workflow/ingress.js";
+import type { SurfaceField, InputRunSurface, TypedDateControl, TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { cn } from "../../lib/utils.js";
 import {
   Badge,
@@ -363,7 +363,7 @@ export function StepOmissionFactsForm({
 }
 
 /** The approved grey lines under the Lookup rows, by the mode label or control field they describe. */
-const INPUT_NOTES: Readonly<Record<string, string>> = { "Lookup mode": "Search by ID or name, or match on details.", crmCheck: "Cross-check each person against CRM." };
+const INPUT_NOTES: Readonly<Record<string, string>> = { "Lookup mode": "Search by ID or name, or match on details.", crmCheck: "Cross-check each person against CRM.", effectiveDate: "The day the change takes effect." };
 
 /** The approved Lookup / Input / Parsed input layout, used by the served Run and Rerun dialogs and the design preview alike. */
 export function TypedInput({
@@ -391,6 +391,9 @@ export function TypedInput({
   const declaration = surface.typedInput;
   const values = declaration === undefined ? draft : { ...typedInputDefaults(declaration), ...draft };
   const mode = declaration === undefined ? undefined : typedInputMode(declaration, values);
+  const inputControls = declaration?.controls.filter(control => control.placement === "input" && control.modes.includes(mode?.value ?? "")) ?? [];
+  const switches = inputControls.filter(control => !("kind" in control));
+  const dates = inputControls.filter((control): control is TypedDateControl => "kind" in control);
   const editableParser = declaration === undefined ? surface.parser : mode?.parser.kind === "entries" ? mode.parser.spec : undefined;
   const separator = editableParser?.split.kind === "delimited"
     ? editableParser.split.delimiters.find(delimiter => declaration?.modes.some(candidate =>
@@ -410,17 +413,26 @@ export function TypedInput({
         }
       }} />;
   return <>
-    {declaration && <RunList title="Lookup">
-      <RunListRow title={declaration.modeLabel} description={INPUT_NOTES[declaration.modeLabel]}>
-        <div className="w-[250px]"><SegmentedChoice hideLabel label={declaration.modeLabel} value={mode?.value ?? ""}
-          options={declaration.modes.map(candidate => ({ value: candidate.value, label: candidate.label }))}
-          onChange={value => onValue?.(declaration.modeField, value)} /></div>
-      </RunListRow>
-      {declaration.controls.filter(control => control.placement === "input" && control.modes.includes(mode?.value ?? "")).map(control =>
-        <RunListRow key={control.field} title={control.label} description={INPUT_NOTES[control.field]}>
-          <Switch hideLabel label={control.label} checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value)} className="!min-h-0 !w-auto !py-0" />
-        </RunListRow>)}
-    </RunList>}
+    {declaration && <>
+      {(declaration.submitsMode !== false || switches.length > 0) && <RunList title="Lookup">
+        {declaration.submitsMode !== false && <RunListRow title={declaration.modeLabel} description={INPUT_NOTES[declaration.modeLabel]}>
+          <div className="w-[250px]"><SegmentedChoice hideLabel label={declaration.modeLabel} value={mode?.value ?? ""}
+            options={declaration.modes.map(candidate => ({ value: candidate.value, label: candidate.label }))}
+            onChange={value => onValue?.(declaration.modeField, value)} /></div>
+        </RunListRow>}
+        {switches.map(control =>
+          <RunListRow key={control.field} title={control.label} description={INPUT_NOTES[control.field]}>
+            <Switch hideLabel label={control.label} checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value)} className="!min-h-0 !w-auto !py-0" />
+          </RunListRow>)}
+      </RunList>}
+      {dates.length > 0 && <RunList title="Dates">
+        {dates.map(control =>
+          <RunListRow key={control.field} title={control.label} description={INPUT_NOTES[control.field]}>
+            <div className="w-[200px]"><DateInput className="w-full" hideLabel label={control.label} required={control.required} textEntry textDateFormat="MM/DD/YYYY"
+              value={typeof values[control.field] === "string" ? String(values[control.field]) : ""} onChange={next => onValue?.(control.field, next)} /></div>
+          </RunListRow>)}
+      </RunList>}
+    </>}
     {rowInput === undefined ? <RunSection title="Input" description={`${inputLabel}. ${hint}`}>{box}{preview.problem !== null && <p role="alert" className="m-0 text-caption text-ui-danger">{preview.problem}</p>}</RunSection>
       : <>{rowInput}{preview.problem !== null && <Banner tone="danger" title="Selected rows need attention">{preview.problem}</Banner>}</>}
     {rowInput === undefined && preview.entries.length > 0 && <RunList title="Parsed input" label="Parsed input" aside={`${preview.entries.length} ${preview.entries.length === 1 ? "run" : "runs"}`}>

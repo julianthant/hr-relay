@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { defaultRerunSteps, initialRerunValueDrafts, plainRerunInputText, partialRerunTypedInput } from "../../../../src/dashboard/surfaces/run-start/run-start-rerun-model.js";
 import { RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
+import { WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-study/input.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 
 const workflow: RunStartWorkflow = {
@@ -66,4 +67,12 @@ it("does not invent a mode when a source partial input has no declared mode", ()
     assert.deepEqual(partialRerunTypedInput(surface, { state: "partial", value, identityCopied: true }), { draft: {}, text: "", input: {} });
   }
   assert.deepEqual(partialRerunTypedInput(surface, { state: "partial", value: { email: "hire@example.test", mode: "rehire" }, identityCopied: true }).draft, { mode: "rehire" });
+});
+
+it("restores a Work Study rerun: the single mode applies, the stored ISO date shows as MM/DD/YYYY and no mode is submitted", () => {
+  const surface = WORK_STUDY_TYPED_INPUT;
+  const restored = partialRerunTypedInput(surface, { state: "partial", value: { emplId: "10000001", effectiveDate: "2026-08-03" }, identityCopied: true });
+  assert.equal(restored.draft.effectiveDate, "08/03/2026");
+  assert.equal(restored.text, "10000001");
+  assert.deepEqual(restored.input, { emplId: "10000001", effectiveDate: "08/03/2026" });
 });

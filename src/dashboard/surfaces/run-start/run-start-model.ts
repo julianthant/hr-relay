@@ -46,7 +46,7 @@ function recordMode(surface: TypedInputSurface, record: Record<string, JsonValue
   return typeof value === "string" ? value : undefined;
 }
 
-const usDateText = (value: string): string | undefined => {
+export const usDateText = (value: string): string | undefined => {
   if (parseTypedDate(value) !== undefined) return value;
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
   return iso === null ? undefined : `${iso[2]}/${iso[3]}/${iso[1]}`;

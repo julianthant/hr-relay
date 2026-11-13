@@ -1,5 +1,5 @@
 import type { InputRunSurface, TypedInputSurface } from "../../../models/workflow/ingress.js";
-import { previewRunInput, typedInputDefaults, typedInputText, typedControlAvailable } from "./run-start-model.js";
+import { previewRunInput, typedInputDefaults, typedInputText, typedControlAvailable, usDateText } from "./run-start-model.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonObject, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
@@ -27,18 +27,21 @@ export function defaultRerunSteps(snapshot: RerunValuesSnapshot, workflow: RunSt
 }
 
 export function partialRerunTypedInput(surface: TypedInputSurface, input: Extract<RerunValuesSnapshot["sourceInput"], { state: "partial" }>) {
-  const mode = surface.modes.find(mode => input.value[surface.modeField] === mode.value)?.value ?? null;
+  const mode = surface.submitsMode === false ? surface.modes[0]?.value ?? null
+    : surface.modes.find(mode => input.value[surface.modeField] === mode.value)?.value ?? null;
   const draft = { ...typedInputDefaults(surface, mode) };
   if (mode === null) return { draft, text: "", input: JsonValueSchema.parse({}) };
   for (const control of surface.controls) {
     const value = input.value[control.field];
-    if (typeof value === typeof draft[control.field] && (typeof value === "boolean" || typeof value === "string")) draft[control.field] = value;
+    const text = "kind" in control && typeof value === "string" ? usDateText(value) : value;
+    if (typeof text === typeof draft[control.field] && (typeof text === "boolean" || typeof text === "string")) draft[control.field] = text;
   }
   for (const control of surface.controls) if (!typedControlAvailable(surface, draft, control.field)) {
     const defaults = typedInputDefaults(surface, mode);
     if (defaults[control.field] !== undefined) draft[control.field] = defaults[control.field];
   }
-  const value = JsonValueSchema.parse({ ...input.value, ...draft });
+  const submitted = surface.submitsMode === false ? Object.fromEntries(Object.entries(draft).filter(([field]) => field !== surface.modeField)) : draft;
+  const value = JsonValueSchema.parse({ ...input.value, ...submitted });
   return { draft, text: input.identityCopied ? typedInputText(surface, value) : "", input: value };
 }
 

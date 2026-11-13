@@ -7,8 +7,11 @@ import {
 LockedFact,
 PlanPreview,
 StartChoiceControl,
+TypedInput,
 } from "../../../../src/dashboard/surfaces/run-start/run-start-kit.js";
 import { fmtClock } from "../../../../src/dashboard/surfaces/shared/status/format.js";
+import { InputRunSurfaceSchema } from "../../../../src/models/workflow/ingress.js";
+import { WORK_STUDY_INPUT_PARSER, WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-study/input.js";
 import { StartPlanWireSchema as StartPlanResponseSchema,type StartPlanWire as StartPlanResponse } from "../../../../src/models/dashboard/start-plan.js";
 
 /** what a sighted operator can read with no pointer: the markup minus its tooltips */
@@ -161,5 +164,21 @@ describe("the plan draws one card per proposed row", () => {
     );
     assert.ok(text.includes(`expires ${fmtClock(EXPIRES_AT)}`), "the expiry is not a clock reading");
     assert.ok(!text.includes(EXPIRES_AT), "the raw ISO instant is on an operator's screen");
+  });
+});
+
+describe("Work Study's typed input", () => {
+  const surface = InputRunSurfaceSchema.parse({ placeholder: "10000001, 10000002", parser: WORK_STUDY_INPUT_PARSER, typedInput: WORK_STUDY_TYPED_INPUT });
+  const render = (draft: Record<string, string>) => renderToStaticMarkup(createElement(TypedInput, {
+    surface, workflowId: "work-study", text: "", onText: () => undefined, preview: { entries: [], submissions: [], problem: null }, draft }));
+
+  it("asks for the Effective date as a typed date, not a switch, and offers no mode choice", () => {
+    const markup = render({ effectiveDate: "08/03/2026" });
+    assert.ok(markup.includes("Effective date"), "no Effective date row");
+    assert.ok(markup.includes("The day the change takes effect."), "the row note is missing");
+    assert.ok(markup.includes('value="08/03/2026"'), "the typed date is not shown");
+    assert.ok(!markup.includes('role="switch"'), "the date is rendered as a switch");
+    assert.ok(markup.includes('aria-label="Employee IDs"'), "the Employee IDs box is missing");
+    assert.ok(!/role="radiogroup"|role="tablist"/u.test(markup), "a mode choice is offered for a single-mode surface");
   });
 });
