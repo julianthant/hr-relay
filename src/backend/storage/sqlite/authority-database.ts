@@ -35,7 +35,7 @@ import { IntakeSessionSchema } from "../../../models/intake/session.js";
 import { NotificationFoldRequestSchema,NotificationRecordOutcomeSchema,NotificationRecordSchema,NotificationStateRequestSchema,notificationCollectionTarget,requireMutableNotification,type NotificationCollectionOperation,type NotificationCollectionTarget,type NotificationRecord,type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
 import { StoredOcrExtractionSchema, type StoredOcrExtraction } from "../../../models/ocr/stored-extraction.js";
 import { OcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
-import { AssistantActionRecordSchema,AssistantChatRecordSchema,AssistantGrantRecordSchema } from "../../../models/profiles/assistant-authorization.js";
+import { AssistantActionRecordSchema,AssistantChatRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { LogoutOperationSchema,ProfileDatabaseBindingSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
 import { completionFromAuthorization } from "../../../models/run/completion.js";
 import { DeletedRunRecordSchema,RunDeleteInputSchema,type DeletedRunRecord } from "../../../models/run/deleted-run.js";
@@ -115,6 +115,7 @@ import { DuoCeremonyLeaseAcquireRequestSchema,DuoCeremonyLeaseRecordSchema,DuoCe
 import { localDatePart,systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { IdempotencyKeySchema,WriteAttemptRecordSchema,WriteIntentRecordSchema,type WriteAttemptRecord,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
+import type { WriteEvent } from "../../../rules/write-safety/write-transitions.js";
 import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeaseToken,type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import { assertWorkflowRunResultAuthorization,workflowDelegationAccounting,descriptorRuntimeNodes,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { assertCredentialCopyResourcesClosed, assertLogoutResourcesClosed } from "../maintenance/profile-custody.js";
@@ -123,12 +124,16 @@ import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegation
 import { newDelegationAuthenticationMemo,type DelegationAuthenticationMemo,currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,memoizedDelegationGroup,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,retainedDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
+import { ASSISTANT_HISTORY_MIGRATION, assistantConversationFromRow, assistantMessageFromRow, createAssistantHistoryRepository } from "./assistant-history.js";
+import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow, migrateAssistantEffortScale } from "./assistant-effort-migration.js";
+import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE, assertNoAssistantGrantHistory } from "./assistant-grant-retirement.js";
+import { assistantAttachmentFromRow, byteAwareRow } from "./assistant-attachments.js";
 import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema,type ArtifactOutboxStorageRecord,type ArtifactSinkHeadRecord,type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
 
-import { AtomicWriteCommitInputSchema,AtomicWriteCommitReportSchema,PermanentWriteResolutionSchema,ResolvedParkedWriteAbsenceInputSchema,ResolvedParkedWriteCommitInputSchema,WriteFenceInputSchema,WriteFenceRecordsSchema,WriteIntentParkRequestSchema,WriteIntentRetrySettlementRequestSchema,WriteRecheckParkRequestSchema,WriteRecheckRequestSchema,WriteRefenceInputSchema,type AtomicWriteCommitReport,type AtomicWriteCommitStorageStep,type PermanentWriteResolution } from "./write-commit-contracts.js";
+import { applyWriteTransition,AtomicWriteCommitInputSchema,AtomicWriteCommitReportSchema,PermanentWriteResolutionSchema,ResolvedParkedWriteAbsenceInputSchema,ResolvedParkedWriteCommitInputSchema,WriteFenceInputSchema,WriteFenceRecordsSchema,WriteIntentParkRequestSchema,WriteIntentRetrySettlementRequestSchema,WriteRecheckParkRequestSchema,WriteRecheckRequestSchema,WriteRefenceInputSchema,type AtomicWriteCommitReport,type AtomicWriteCommitStorageStep,type PermanentWriteResolution } from "./write-commit-contracts.js";
 
 
 export class AuthoritySchemaVersionError extends Error {
@@ -585,6 +590,7 @@ export type DuoCeremonyLeaseRepository = Readonly<{
 export type AuthorityRepositories = Readonly<{
   assistantModelPreference: ReturnType<typeof createAssistantModelPreferenceRepository>;
   assistantAuthorization: ReturnType<typeof createAssistantAuthorizationRepository>;
+  assistantHistory: ReturnType<typeof createAssistantHistoryRepository>;
   timelineEvents: TimelineRepository;
   runs: RunRepository;
   failures: FailureRepository;
@@ -1124,7 +1130,7 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
   }
 
 
-function nativeTableKey(table: AuthorityTableName | "explorer_overrides" | typeof WORKER_CUSTODY_DROPPED_TABLES[number], database: DatabaseSync): string {
+function nativeTableKey(table: AuthorityTableName | "explorer_overrides" | typeof WORKER_CUSTODY_DROPPED_TABLES[number] | typeof RETIRED_ASSISTANT_GRANT_TABLE, database: DatabaseSync): string {
   if (table === "run_results") return readIntPragma(database,"user_version") >= 20 ? "id" : "run_id";
   if (table === "deleted_runs" || table === "run_search") return "run_id";
   if (table === "worker_pools") return "workflow";
@@ -1292,13 +1298,15 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
   const predecessorCustody = expectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
   const read: StoredReaders = { ...(predecessorCustody ? PREDECESSOR_CUSTODY_READERS : CURRENT_READERS), run: inspectionRunReader(expectedSchemaVersion) };
   const convertPreferences = (table: string, row: unknown) => {
-    return expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
+    const person = expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
+    return expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
   };
+  if (expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) assertNoAssistantGrantHistory(database);
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of migrationTableNames(expectedSchemaVersion)) {
     // The custody conversion validates the tables it drops.
-    if (table.startsWith("workbook_") || table === "explorer_overrides" || isWorkerCustodyDroppedTable(table)) continue;
+    if (table.startsWith("workbook_") || table === "explorer_overrides" || table === RETIRED_ASSISTANT_GRANT_TABLE || isWorkerCustodyDroppedTable(table)) continue;
     if (table === "run_search" && (!validateSearch || !searchReady)) continue;
     const retained = expectedSchemaVersion >= 10 ? "" : table === "commands" ? " WHERE family<>'explorer'"
       : table === "command_audits" ? " WHERE command_id NOT IN (SELECT id FROM commands WHERE family='explorer')" : "";
@@ -1324,6 +1332,9 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
         else if (table === "settings") readAppSettings(database, convertPreferences);
         else if (table === "worker_slots") (predecessorCustody ? predecessorWorkerSlotFromRow : workerSlotFromRow)(raw);
         else if (table === "exclusive_session_leases") exclusiveSessionLeaseFromRow(raw);
+        else if (table === "assistant_conversations") assistantConversationFromRow(raw);
+        else if (table === "assistant_messages") assistantMessageFromRow(raw);
+        else if (table === "assistant_attachments") assistantAttachmentFromRow(raw);
         else if (table === "timeline_events") assertTimelineOwner(database,timelineEventFromRow(raw),false,read);
         else if (table === "artifacts") {
           const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
@@ -1348,14 +1359,6 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             inspected = { ...raw, payload_json: canonicalJsonStringify(plan) };
           }
           const record = nativeOrdinaryRecordFromRow(table,inspected,expectedSchemaVersion);
-          if (table === "assistant_grants") {
-            const grant = AssistantGrantRecordSchema.parse(record), owner = readMetaRow(database);
-            if (grant.profileId !== owner.profile_id) throw new Error("assistant-grant-profile-mismatch");
-            const command = CommandRequestSchema.parse(read.command(database.prepare("SELECT * FROM commands WHERE id=?").get(grant.commandId)));
-            if (command.type !== "apply-settings" || command.payload.assistantPermission === undefined
-              || command.payload.assistantPermission.mode !== grant.policy.mode
-              || command.payload.assistantPermission.expectedPolicyRevision !== grant.policy.revision - 1) throw new Error("assistant-grant-command-mismatch");
-          }
           if (table === "assistant_chats") {
             if (AssistantChatRecordSchema.parse(record).profileId !== readMetaRow(database).profile_id) throw new Error("assistant-chat-profile-mismatch");
           }
@@ -1380,22 +1383,21 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
       validated++;
     }
   }
-  if (expectedSchemaVersion >= 8 && database.prepare("SELECT 1 FROM assistant_grants WHERE id='current'").get() === undefined
-    && database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' ORDER BY rowid DESC LIMIT 1) WHERE ?<11 OR mode IS NULL OR mode NOT IN ('before-submits','without-asking')").get(expectedSchemaVersion) !== undefined) throw new Error("assistant-grant-missing-with-history");
   if (workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18);
-  if (expectedSchemaVersion >= 9) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
+  // Below schema 27 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
+  if (expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
   return validated;
 }
 
 function authorityContentFingerprint(database: DatabaseSync, excludedUpgradeRecord?: string): string {
   const hash = createHash("sha256");
-  const rowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null()]));
+  const rowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null(), z.instanceof(Uint8Array)]));
   for (const table of migrationTableNames(readIntPragma(database, "user_version"))) {
     hash.update(canonicalJsonStringify(table));
     for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
       if (table === "database_upgrades" && row.id === excludedUpgradeRecord) continue;
-      hash.update(canonicalJsonStringify(rowSchema.parse(row)));
+      hash.update(canonicalJsonStringify(byteAwareRow(rowSchema.parse(row))));
     }
   }
   return hash.digest("hex");
@@ -1414,7 +1416,7 @@ function fixedLayoutUnchangedAuthorityFingerprint(database: DatabaseSync, intent
       const record = z.record(z.string(), z.unknown()).parse(row);
       if (initialization !== undefined && (table === "commands" && record.id === initialization.commandId
         || table === "command_audits" && record.id === initialization.auditId)) continue;
-      hash.update(canonicalJsonStringify(record));
+      hash.update(canonicalJsonStringify(byteAwareRow(record)));
     }
   }
   return hash.digest("hex");
@@ -1430,7 +1432,7 @@ function fixedLayoutChangedAuthorityTables(before: DatabaseSync, after: Database
     const fingerprint = (database: DatabaseSync): string => {
       const hash = createHash("sha256");
       for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
-        hash.update(canonicalJsonStringify(z.record(z.string(), z.unknown()).parse(row)));
+        hash.update(canonicalJsonStringify(byteAwareRow(z.record(z.string(), z.unknown()).parse(row))));
       }
       return hash.digest("hex");
     };
@@ -1545,15 +1547,26 @@ function nonProjectionFingerprint(database: DatabaseSync): string {
     if (table === "run_search") continue;
     hash.update(canonicalJsonStringify(table));
     for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
-      const record = z.record(z.string(), z.union([z.string(), z.number(), z.null()])).parse(row);
+      const record = z.record(z.string(), z.union([z.string(), z.number(), z.null(), z.instanceof(Uint8Array)])).parse(row);
       if (table === "database_states") { delete record.search_generation; delete record.search_state; }
-      hash.update(canonicalJsonStringify(record));
+      hash.update(canonicalJsonStringify(byteAwareRow(record)));
     }
   }
   return hash.digest("hex");
 }
 
+/** Unpublished assistant builds numbered history 23 to 25, or ran 26-29 without staging's 24 and 25; such a store is never opened. */
+function assertPublishedAssistantNumbering(database: DatabaseSync): void {
+  const version = readIntPragma(database, "user_version");
+  if (version < 23 || version > ASSISTANT_GRANT_RETIREMENT_VERSION) return;
+  const hasTable = (name: string) => database.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(name) !== undefined;
+  if (!hasTable("assistant_conversations")) return;
+  if (version < ASSISTANT_HISTORY_MIGRATION.version || !hasTable("workflow_workbook_selections")) throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_FORMAT_UNSUPPORTED",
+    { cause: new Error("assistant-unpublished-schema-numbering") });
+}
+
 function assertNativeSchema(database: DatabaseSync, version = CURRENT_AUTHORITY_SCHEMA_VERSION, withoutRunSearch = false): void {
+  assertPublishedAssistantNumbering(database);
   if (normalizedNativeSchema(database) !== expectedNativeSchema(version, withoutRunSearch)) throw new Error("authority-native-schema-shape-mismatch");
 }
 
@@ -1564,6 +1577,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
   }
   const schemaVersion = readIntPragma(database, "user_version");
+  assertPublishedAssistantNumbering(database);
   if ((!isSupportedStoppedAuthoritySchemaVersion(expectedSchemaVersion) && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
   assertNativeSchema(database, schemaVersion, missingRunSearch);
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
@@ -1590,11 +1604,12 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   }
   const currentTables = AuthorityCopyInspectionSchema.shape.tables;
   const predecessorTables = [...(expectedSchemaVersion < 10 ? ["explorer_overrides" as const] : []),
+    ...(expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION ? [RETIRED_ASSISTANT_GRANT_TABLE] : []),
     ...(expectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION ? WORKER_CUSTODY_DROPPED_TABLES : [])];
   const tables = predecessorTables.length === 0 ? currentTables : z.array(z.union([currentTables.element,
     z.strictObject({ name: z.enum(predecessorTables), classification: z.literal("authority") }),
   ]));
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -1606,7 +1621,8 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     quickCheck: "ok",
     foreignKeyViolations: 0,
     invariants: { state: "valid", violations: [] },
-    tables: names.map((name) => ({ name, classification: expectedSchemaVersion < 10 && name === "explorer_overrides" || isWorkerCustodyDroppedTable(name)
+    tables: names.map((name) => ({ name, classification: (expectedSchemaVersion < 10 && name === "explorer_overrides")
+      || (expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION && name === RETIRED_ASSISTANT_GRANT_TABLE) || isWorkerCustodyDroppedTable(name)
       ? "authority" : tableClassification(AuthorityTableNameSchema.parse(name)) })),
     counts: pendingCounts(database),
   });
@@ -1630,8 +1646,10 @@ export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: n
       }
       if (migration.version === BUILD_ID_ENVELOPE_SCHEMA_VERSION && index === 0) deletePreBuildRuns(database, input.now, input.captureFile, settleEvidence);
       if (statement === `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`) convertWorkerCustody(database, input.now, input.captureFile, settleEvidence);
+      if (migration.version === ASSISTANT_GRANT_RETIREMENT_VERSION && index === 0) assertNoAssistantGrantHistory(database);
       execMigrationStatement(database, statement);
       if (migration.version === 16 && index === 2) migratePersonPreferences(database);
+      if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);
       if (statement === `SELECT '${WORKER_CUSTODY_SCAN_ID}'`) assertWorkerCustodyConverted(database);
     }
   }
@@ -1973,6 +1991,7 @@ function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly Span
     database.exec("PRAGMA query_only=ON"); database.exec("BEGIN"); transactionOpen = true;
     if (readIntPragma(database,"application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("span-authority-application-mismatch");
     const version = readIntPragma(database,"user_version");
+    assertPublishedAssistantNumbering(database);
     if (!isCurrentAuthoritySchemaVersion(version)) throw new AuthoritySchemaVersionError(version);
     assertNativeSchema(database);
     const meta = readMetaRow(database);
@@ -2221,7 +2240,7 @@ export class AuthorityDatabase implements Disposable {
       catch (closeError) {
         throw retainAuthoritySourceClosure([error, closeError], { database: this.#database, admission: this.#admission });
       }
-      if (error instanceof AuthoritySchemaVersionError) throw error;
+      if (error instanceof AuthoritySchemaVersionError || error instanceof AuthorityFormatUnsupportedError) throw error;
       throw new Error(`failed to open authority database ${options.path}: ${errorMessage(error)}`, { cause: error });
     }
 
@@ -2593,6 +2612,7 @@ export class AuthorityDatabase implements Disposable {
       return withReadonlyAuthoritySnapshot(path, database => {
         const version = readIntPragma(database, "user_version");
         if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("profile-startup-foreign-application");
+        assertPublishedAssistantNumbering(database);
         if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_NEWER_VERSION", { cause: new AuthoritySchemaVersionError(version) });
         if (!OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(version)) {
           throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_FORMAT_UNSUPPORTED", { cause: new AuthoritySchemaVersionError(version) });
@@ -3951,19 +3971,8 @@ export class AuthorityDatabase implements Disposable {
       throw new Error("confirmed-history-checkpoint-outcome-mismatch");
     }
     return this.withAuthorityTransaction(() => {
-      const currentIntent = this.#readRecord("write_intents", parsed.writeIntentId, WriteIntentRecordSchema);
-      if (currentIntent === undefined) throw new Error(`write intent ${parsed.writeIntentId} does not exist`);
-      if (currentIntent.status !== "attempting") {
-        throw new Error(`write intent ${parsed.writeIntentId} is ${currentIntent.status}; only attempting may commit`);
-      }
-      if (currentIntent.generation !== parsed.generation) {
-        throw new Error(`write intent ${parsed.writeIntentId} generation ${String(currentIntent.generation)} does not match commit generation ${String(parsed.generation)}`);
-      }
-      const currentAttempt = this.#readRecord("write_attempts", currentIntent.currentAttemptId, WriteAttemptRecordSchema);
-      if (currentAttempt === undefined) throw new Error(`current write attempt ${currentIntent.currentAttemptId} does not exist`);
-      if (currentAttempt.outcome.state !== "attempting") {
-        throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; only attempting may commit`);
-      }
+      const next = this.#transitionWrite(parsed.writeIntentId, { generation: parsed.generation }, { type: "commit" });
+      const { intent: currentIntent, attempt: currentAttempt } = next;
       WriteFenceRecordsSchema.parse({ intent: currentIntent, attempt: currentAttempt });
       this.#assertAtomicCommitMatchesIntent(parsed, currentIntent);
       const run=this.#readRunRow(currentIntent.runId);
@@ -3976,7 +3985,7 @@ export class AuthorityDatabase implements Disposable {
 
       const committedIntent = WriteIntentRecordSchema.parse({
         ...currentIntent,
-        status: "committed",
+        status: next.status,
         completionProof: parsed.completionProof,
         confirmedAt: parsed.confirmedAt,
         version: currentIntent.version + 1,
@@ -3985,7 +3994,7 @@ export class AuthorityDatabase implements Disposable {
       const committedAttempt = WriteAttemptRecordSchema.parse({
         ...currentAttempt,
         outcome: {
-          state: "committed",
+          state: next.outcome,
           completionProof: parsed.completionProof,
           confirmedAt: parsed.confirmedAt,
         },
@@ -4025,12 +4034,10 @@ export class AuthorityDatabase implements Disposable {
     const request = ResolvedParkedWriteCommitInputSchema.parse(input);
     const {commit,checkpoint,resolution} = request;
     return this.withAuthorityTransaction(()=>{
-      const current = this.#requireAttemptBearingWriteIntent(commit.writeIntentId,commit.generation,request.expectedIntentVersion);
-      if (current.status !== "parked") throw new Error("parked-write-resolution-parked-intent-required");
-      const attempt = this.#requireWriteAttempt(current.currentAttemptId);
-      if (attempt.outcome.state !== "parked") throw new Error("parked-write-resolution-original-attempt-required");
+      const next = this.#transitionWrite(commit.writeIntentId,{generation:commit.generation,version:request.expectedIntentVersion},{type:"resolve-present",resolution});
+      const {intent:current,attempt} = next;
       const run = this.#readRunRow(current.runId);
-      if (run === undefined || run.lifecycle.state !== "running" || current.recheck?.commandId !== resolution.commandId
+      if (current.status !== "parked" || run === undefined || run.lifecycle.state !== "running" || current.recheck?.commandId !== resolution.commandId
         || run.envelope.attempt !== current.runAttempt || commit.outcome.proofSource !== "recovery-probe") throw new Error("parked-write-recheck-run-mismatch");
       this.#assertCurrentExecution(current.runId, request.claim);
       authenticateParkedWriteRecheck(current, attempt, this.authority.commands.get(resolution.commandId), this.authority.commandAudits.get(resolution.auditId));
@@ -4042,7 +4049,7 @@ export class AuthorityDatabase implements Disposable {
         || checkpoint.contractFingerprint !== run.envelope.contractFingerprint || commit.transaction.traceId !== run.envelope.traceId
         || canonicalJsonStringify(checkpoint.output.value) !== canonicalJsonStringify(commit.outcome)) throw new Error("parked-write-resolution-checkpoint-mismatch");
       const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,recheck:_recheck,...base} = current;
-      const intent = WriteIntentRecordSchema.parse({...base,status:"committed",completionProof:commit.completionProof,
+      const intent = WriteIntentRecordSchema.parse({...base,status:next.status,completionProof:commit.completionProof,
         confirmedAt:commit.confirmedAt,version:current.version+1,updatedAt:commit.confirmedAt,resolution});
       authenticateStoredWriteResolution(this.#database,intent);
       const history = confirmedOperationTimeline({ledger:commit.transaction,span:commit.committedSpan,checkpoint,
@@ -4066,15 +4073,14 @@ export class AuthorityDatabase implements Disposable {
   settleResolvedParkedAbsence(input: unknown): WriteIntentRecord {
     const request = ResolvedParkedWriteAbsenceInputSchema.parse(input);
     return this.withAuthorityTransaction(()=>{
-      const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId,request.generation,request.expectedIntentVersion);
-      if (current.status !== "parked") throw new Error("parked-write-resolution-parked-intent-required");
-      const attempt = this.#requireWriteAttempt(current.currentAttemptId);
+      const next = this.#transitionWrite(request.writeIntentId,{generation:request.generation,version:request.expectedIntentVersion},{type:"resolve-absent",resolution:request.resolution});
+      const {intent:current,attempt} = next;
       const run = this.#readRunRow(current.runId);
-      if (attempt.outcome.state !== "parked" || run === undefined || run.version !== request.resolution.expectedRunVersion
+      if (current.status !== "parked" || run === undefined || run.version !== request.resolution.expectedRunVersion
         || run.lifecycle.state !== "parked-write" || run.lifecycle.writeIntentId !== current.writeIntentId
         || run.lifecycle.intentGeneration !== current.generation) throw new Error("parked-write-resolution-run-cas-mismatch");
       const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,recheck:_recheck,...base} = current;
-      const intent = WriteIntentRecordSchema.parse({...base,status:"retryable",settlement:request.settlement,
+      const intent = WriteIntentRecordSchema.parse({...base,status:next.status,settlement:request.settlement,
         resolvedAt:request.resolution.resolvedAt,version:current.version+1,updatedAt:request.resolution.resolvedAt,resolution:request.resolution});
       authenticateStoredWriteResolution(this.#database,intent);
       this.#replaceWriteIntent(intent);
@@ -4404,6 +4410,7 @@ export class AuthorityDatabase implements Disposable {
   #admitExistingSchema(): number {
     if (this.#readIntPragma("application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("authority database is not the HR authority store");
     const version = this.#readIntPragma("user_version");
+    assertPublishedAssistantNumbering(this.#database);
     if (!isCurrentAuthoritySchemaVersion(version)) throw new AuthoritySchemaVersionError(version);
     if (this.#readMetaRow().schema_version !== version) throw new Error("authority schema metadata disagrees with user_version");
     return version;
@@ -4991,6 +4998,8 @@ export class AuthorityDatabase implements Disposable {
     return Object.freeze({
       assistantModelPreference: createAssistantModelPreferenceRepository({ database: this.#database, read: work => this.#withReadSnapshot(work), mutate: (table, work) => this.#authorityWrite(table, work) }),
       assistantAuthorization: createAssistantAuthorizationRepository({ database: this.#database, mutate: (table, work) => this.#authorityWrite(table, work) }),
+      assistantHistory: createAssistantHistoryRepository({ database: this.#database, read: work => this.#withReadSnapshot(work), mutate: (table, work) => this.#authorityWrite(table, work),
+        profileId: () => z.object({ profile_id: z.uuid() }).parse(this.#database.prepare("SELECT profile_id FROM database_states WHERE id=1").get()).profile_id }),
       workbooks: createWorkbookLibraryRepository({ database: this.#database,
         mutate: work => this.#authorityWrite("workbook_library", work),
         read: work => this.#withReadSnapshot(work) }),
@@ -5832,17 +5841,19 @@ export class AuthorityDatabase implements Disposable {
           return this.withAuthorityTransaction(() => {
             const refusal = this.#writeFenceRefusal(intent, claim);
             if (refusal !== undefined) return PermanentWriteResolutionSchema.parse({ state: "refused", refusal });
-            const current = this.#requireWriteIntent(intent.writeIntentId);
-            if (canonicalJsonStringify(current.status === "observed-present" ? null : current.occurrence ?? null)
+            const stored = this.#readWrite(intent.writeIntentId, {});
+            if (canonicalJsonStringify(stored.intent.status === "observed-present" ? null : stored.intent.occurrence ?? null)
               !== canonicalJsonStringify(intent.occurrence ?? null)) {
               throw new Error("re-fence may not change permanent occurrence authorization");
             }
             this.#assertBusinessWriteAdmission(intent);
-            if (current.status !== "retryable") {
-              throw new Error(`write intent ${intent.writeIntentId} is ${current.status}; only a retryable intent may re-fence`);
-            }
+            const next = applyWriteTransition(stored.intent, stored.attempt, { type: "refence" });
+            const current = next.intent;
             if (current.version !== expectedVersion) {
               throw new Error(`write intent ${intent.writeIntentId} is at version ${String(current.version)}, not ${String(expectedVersion)}; the re-fence is stale`);
+            }
+            if (intent.status !== next.status || attempt.outcome.state !== next.outcome) {
+              throw new Error(`re-fence of ${intent.writeIntentId} must present a ${next.status}/${next.outcome} write`);
             }
             if (intent.generation !== current.generation + 1) {
               throw new Error(`re-fence of ${intent.writeIntentId} must advance generation ${String(current.generation)} by exactly one, not to ${String(intent.generation)}`);
@@ -5874,14 +5885,14 @@ export class AuthorityDatabase implements Disposable {
         requestRecheck: (input: unknown) => {
           const request = WriteRecheckRequestSchema.parse(input);
           return this.withAuthorityTransaction(() => {
-            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
+            const { intent: current, attempt } = this.#readWrite(request.writeIntentId, { generation: request.generation, version: request.expectedVersion });
             if (current.status !== "parked" || current.recheck !== undefined) throw new Error("parked-write-recheck-parked-intent-required");
             const run = this.#readRunRow(current.runId);
             if (run?.lifecycle.state !== "parked-write" || run.version !== request.recheck.expectedRunVersion
               || run.lifecycle.writeIntentId !== current.writeIntentId || run.lifecycle.intentGeneration !== current.generation) throw new Error("parked-write-recheck-run-mismatch");
             const intent = WriteIntentRecordSchema.parse({ ...current, recheck: request.recheck,
               version: current.version + 1, updatedAt: request.recheck.requestedAt });
-            authenticateParkedWriteRecheck(intent, this.#requireWriteAttempt(current.currentAttemptId),
+            authenticateParkedWriteRecheck(intent, attempt,
               this.authority.commands.get(request.recheck.commandId), this.authority.commandAudits.get(request.recheck.auditId));
             this.#replaceWriteIntent(intent);
             return intent;
@@ -5890,7 +5901,7 @@ export class AuthorityDatabase implements Disposable {
         parkRecheck: (input: unknown) => {
           const request = WriteRecheckParkRequestSchema.parse(input);
           return this.withAuthorityTransaction(() => {
-            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
+            const { intent: current } = this.#readWrite(request.writeIntentId, { generation: request.generation, version: request.expectedVersion });
             if (current.status !== "parked" || current.recheck?.commandId !== request.commandId) throw new Error("parked-write-recheck-request-mismatch");
             const { recheck: _recheck, ...base } = current;
             const intent = WriteIntentRecordSchema.parse({ ...base, parkedCode: request.code, message: request.message,
@@ -5902,24 +5913,22 @@ export class AuthorityDatabase implements Disposable {
         parkAttempt: (input: unknown) => {
           const request = WriteIntentParkRequestSchema.parse(input);
           return this.withAuthorityTransaction(() => {
-            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
-            if (current.status !== "attempting") {
-              throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only an attempting intent may park`);
-            }
+            const next = this.#transitionWrite(request.writeIntentId, { generation: request.generation, version: request.expectedVersion },
+              { type: "park", code: request.code });
+            const { intent: current, attempt: currentAttempt } = next;
             const parked = WriteIntentRecordSchema.parse({
               ...current,
-              status: "parked",
+              status: next.status,
               parkedCode: request.code,
               message: request.message,
               authorityReason: request.authorityReason,
               version: current.version + 1,
               updatedAt: request.now,
             });
-            const currentAttempt = this.#requireAttemptingWriteAttempt(current.currentAttemptId);
             const parkedAttempt = WriteAttemptRecordSchema.parse({
               ...currentAttempt,
               outcome: {
-                state: "parked",
+                state: next.outcome,
                 code: request.code,
                 message: request.message,
                 authorityReason: request.authorityReason,
@@ -5934,10 +5943,9 @@ export class AuthorityDatabase implements Disposable {
         settleRetryable: (input: unknown) => {
           const request = WriteIntentRetrySettlementRequestSchema.parse(input);
           return this.withAuthorityTransaction(() => {
-            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
-            if (current.status !== "attempting") {
-              throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only attempting may settle retryable`);
-            }
+            const next = this.#transitionWrite(request.writeIntentId, { generation: request.generation, version: request.expectedVersion },
+              { type: "settle-safe-to-retry" });
+            const { intent: current, attempt: currentAttempt } = next;
             const { parkedCode: _parkedCode, message: _message, authorityReason: _authorityReason, ...base } = {
               parkedCode: undefined,
               message: undefined,
@@ -5946,19 +5954,15 @@ export class AuthorityDatabase implements Disposable {
             };
             const retryable = WriteIntentRecordSchema.parse({
               ...base,
-              status: "retryable",
+              status: next.status,
               settlement: request.settlement,
               resolvedAt: request.now,
               version: current.version + 1,
               updatedAt: request.now,
             });
-            const currentAttempt = this.#requireWriteAttempt(current.currentAttemptId);
-            if (currentAttempt.outcome.state !== "attempting") {
-              throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; it cannot settle retryable`);
-            }
             const settledAttempt = WriteAttemptRecordSchema.parse({
               ...currentAttempt,
-              outcome: { state: "safe-to-retry", settlement: request.settlement },
+              outcome: { state: next.outcome, settlement: request.settlement },
               recordedAt: request.now,
             });
             this.#replaceWriteIntent(retryable);
@@ -6925,35 +6929,26 @@ export class AuthorityDatabase implements Disposable {
     return current;
   }
 
-  #requireAttemptBearingWriteIntent(
-    writeIntentId: string,
-    generation: number,
-    expectedVersion: number,
-  ): Exclude<WriteIntentRecord, { status: "observed-present" }> {
+  #readWrite(writeIntentId: string, expected: Readonly<{ generation?: number; version?: number }>) {
     const current = this.#requireWriteIntent(writeIntentId);
-    if (current.status === "observed-present") {
-      throw new Error(`write intent ${writeIntentId} is observed-present; it carries no automation attempt to transition`);
+    if (expected.generation !== undefined && current.generation !== expected.generation) {
+      throw new Error(`write intent ${writeIntentId} is at generation ${String(current.generation)}, not ${String(expected.generation)}; the transition is stale`);
     }
-    if (current.generation !== generation) {
-      throw new Error(`write intent ${writeIntentId} is at generation ${String(current.generation)}, not ${String(generation)}; the transition is stale`);
+    if (expected.version !== undefined && current.version !== expected.version) {
+      throw new Error(`write intent ${writeIntentId} is at version ${String(current.version)}, not ${String(expected.version)}; the transition is stale`);
     }
-    if (current.version !== expectedVersion) {
-      throw new Error(`write intent ${writeIntentId} is at version ${String(current.version)}, not ${String(expectedVersion)}; the transition is stale`);
-    }
-    return current;
+    return Object.freeze({ intent: current,
+      attempt: current.status === "observed-present" ? undefined : this.#requireWriteAttempt(current.currentAttemptId) });
+  }
+
+  #transitionWrite(writeIntentId: string, expected: Readonly<{ generation?: number; version?: number }>, event: WriteEvent) {
+    const { intent, attempt } = this.#readWrite(writeIntentId, expected);
+    return applyWriteTransition(intent, attempt, event);
   }
 
   #requireWriteAttempt(writeAttemptId: string): WriteAttemptRecord {
     const attempt = this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema);
     if (attempt === undefined) throw new Error(`write attempt ${writeAttemptId} does not exist`);
-    return attempt;
-  }
-
-  #requireAttemptingWriteAttempt(writeAttemptId: string): WriteAttemptRecord {
-    const attempt = this.#requireWriteAttempt(writeAttemptId);
-    if (attempt.outcome.state !== "attempting") {
-      throw new Error(`write attempt ${writeAttemptId} is ${attempt.outcome.state}; only an attempting attempt may transition`);
-    }
     return attempt;
   }
 
@@ -7077,7 +7072,7 @@ export class AuthorityDatabase implements Disposable {
 
   #assertAtomicCommitMatchesIntent(
     input: z.infer<typeof AtomicWriteCommitInputSchema>,
-    intent: Extract<WriteIntentRecord, { status: "attempting" | "parked" }>,
+    intent: Exclude<WriteIntentRecord, { status: "observed-present" }>,
   ): void {
     const ledger = { kind: "ledger-entry", entry: input.transaction };
     const span = input.committedSpan;

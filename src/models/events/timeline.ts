@@ -1,3 +1,4 @@
+import { AssistantTurnUsageSchema } from "../dashboard/assistant-usage.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import type { RunCheckpointRecord } from "../workflow/checkpoint.js";
 import { z } from "zod";
@@ -84,6 +85,7 @@ export const DebugEventSchema = z.strictObject({
   route: z.string().max(512).optional(),
   status: z.number().int().min(100).max(599).optional(),
   chatGptInference: ChatGptInferenceDiagnosticSchema.optional(),
+  assistantUsage: AssistantTurnUsageSchema.optional(),
   durationMs: z.number().nonnegative().optional(),
   cursor: z.string().max(256).optional(),
   pending: z.number().int().nonnegative().optional(),

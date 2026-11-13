@@ -23,7 +23,6 @@ it("checks the remote authenticated catalog only on explicit invocation without 
     assert.equal(new Headers(catalog?.init.headers).get("authorization"), "Bearer synthetic-access-1");
     assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
     assert.equal(f.calls.filter(call => call.url.endsWith("/oauth/token")).length, 1);
-    assert.equal(f.service.captureAssistantModelPolicy(), undefined);
   } finally { await f.cleanup(); }
 });
 

@@ -11,7 +11,7 @@ import { gitVisibleFiles,repoRelative,REPO_ROOT } from "../support/helpers/guard
 function isUnitTest(path: string): boolean {
   return path.startsWith("tests/") && /\.test\.(?:ts|js)$/u.test(path)
     && !/\.integration\.test\.(?:ts|js)$/u.test(path)
-    && !/^tests\/(?:architecture|parity|perf)\//u.test(path);
+    && !/^tests\/(?:architecture|mocks|perf)\//u.test(path);
 }
 const ARCHITECTURE_HELPERS_ROOT = /^tests\/architecture\/(?:support|[^/]+)\/helpers\//u;
 const SHARED_RESOURCE_HARNESSES = new Set([
@@ -33,6 +33,8 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/helpers/backend/dashboard-harness.ts",
   "tests/support/helpers/backend/settings-authority-world.ts",
   "tests/support/helpers/backend/http-route-harness.ts",
+  "tests/support/helpers/dashboard/assistant-history-server.ts",
+  "tests/support/helpers/assistant-m1-history-fixture.ts",
   "tests/support/helpers/storage/native-authority/retained-database-fixture.ts",
   "tests/support/fixtures/storage/historical-flat-profile-fixture.ts",
   "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts",
@@ -88,6 +90,8 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/helpers/backend/settings-authority-world.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/fixtures/preflight/corpus.ts", module: "playwright", symbol: "chromium" },
   { importer: "tests/support/helpers/backend/http-route-harness.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/dashboard/assistant-history-server.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/assistant-m1-history-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/storage/native-authority/retained-database-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/storage/historical-run-schema.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/storage/older-build-authority.ts", module: "node:sqlite", symbol: "DatabaseSync" },
@@ -377,7 +381,7 @@ describe("test-data ownership", () => {
     assert.deepEqual(observed, [], "cross-tier code must use shared fixture homes");
     assert.equal(isUnitTest("tests/backend/helper.test.js"), true);
     assert.equal(isUnitTest("tests/support/helpers/helper.test.ts"), true);
-    for (const path of ["tests/backend/helper.integration.test.js", "tests/architecture/guard.test.ts", "tests/parity/reference.test.ts", "tests/perf/benchmark.ts", "tests/support/helpers/helper.ts"]) {
+    for (const path of ["tests/backend/helper.integration.test.js", "tests/architecture/guard.test.ts", "tests/mocks/reference.test.ts", "tests/perf/benchmark.ts", "tests/support/helpers/helper.ts"]) {
       assert.equal(isUnitTest(path), false, path);
     }
     assert.equal(importsFromText("tests/backend/composition.integration.test.ts", 'import "../models/helper.test.js";')[0]?.resolved, "tests/models/helper.test.js");

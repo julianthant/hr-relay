@@ -33,7 +33,7 @@ import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { intakeFixtureDescriptor, intakeFixtureProjection } from "../intake-workflow-fixture.js";
 import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
-import type { ParityBundleProof } from "../../../parity/helpers/bundle.js";
+import type { MockBundleProof } from "../../../mocks/helpers/bundle.js";
 
 export const INTAKE_CSV = "Employee ID#,Effective Date,Dept\n10456712,07/01/2026,Housing\n10-4567,07/01/2026,Housing\n10998801,07/01/2026,Student Affairs\n";
 export async function createIntakeAuthority(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
@@ -111,6 +111,8 @@ export async function createIntakeAuthority(profileFixture: () => Promise<BoundP
     execute: request => runtime.kernel.execute(request),
     submit: async request => runtime.kernel.execute(request),
     executeBulk: forbidden,
+    completeConsumed: forbidden,
+    publish: forbidden,
   };
   registerCommandsRoutes(app, { clock, commands, resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority), commandJournal: { get: id => database.authority.commands.get(id) },
     protectedCommandAcceptedAt: forbidden, bulkCommandAcceptances: { withTransaction: work => database.withAuthorityTransaction(repositories => work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })) },
@@ -135,7 +137,7 @@ export async function createIntakeAuthority(profileFixture: () => Promise<BoundP
   };
 }
 
-export async function startIntakeAuthorityServer(input: { distDir: string; bundle: ParityBundleProof }) {
+export async function startIntakeAuthorityServer(input: { distDir: string; bundle: MockBundleProof }) {
   const [{DEFAULT_DASHBOARD_PROFILE},{startFixtureServer}]=await Promise.all([import("./fixture-profile.js"),
     import("../../helpers/dashboard/fixture-bff.js")]);
   const template = DEFAULT_DASHBOARD_PROFILE.bootstrap.workflows.map(workflow => WorkflowBootstrapPrimitiveSchema.parse(workflow)).find(workflow => workflow.start?.spreadsheetIntake === true);

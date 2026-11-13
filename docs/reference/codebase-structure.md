@@ -12,6 +12,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `config/` | Runtime isolation and test-data configuration. |
 | `docs/reference/` | Current contracts and this map. |
 | `docs/guides/` | Workflow authoring guide. |
+| `docs/guides/windows.md` | Windows launcher steps. |
 | `docs/guard-inventory.json` | Guard owners and reasons. |
 | `docs/roadmap/roadmap.md` | Roadmap content. |
 | `docs/roadmap/index.html` | Generated roadmap site. |
@@ -30,7 +31,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 owns the contract fingerprint and build id.
 `npm run roadmap` generates the roadmap site; `npm run roadmap:check` checks it.
 `npm run web:build` produces the dashboard bundle in `dist/`.
-Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. The [Git instructions](../../AGENTS.md#git) own worktree naming and lifecycle.
+Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. The [Conventions](../../AGENTS.md#conventions) own worktree naming and lifecycle.
 
 `src/backend/runtime/writes/recovery-activity.ts` owns retained-run recovery read activity, action notes and required captures. `src/models/run/recovery-activity.ts` owns its exact operation identity and task-compatible note path.
 
@@ -81,7 +82,7 @@ Paths in this table are relative to `src/backend/`.
 
 | Path | Ownership |
 | --- | --- |
-| `assistant/` | The tool-calling agent turn (`service.ts`), opaque references and operator-text masking (`references.ts`), tool plugins per domain with the registry and hash-pinned workflow facts (`plugins/`), private profile-token authorization and once-consumable canonical actions. Profile SQLite owns grants, chats and actions, and the conversation history the service accepts, replays and settles. |
+| `assistant/` | The tool-calling agent turn (`service.ts`), opaque references and operator-text masking (`references.ts`), structured reply source-contract resolution and server constructors (`replies.ts`), tool plugins per domain with the registry and hash-pinned workflow facts (`plugins/`), private profile-token authorization, once-consumable canonical actions and the session start owner with its claim port. Profile SQLite owns grants, chats and actions, and the conversation history the service accepts, replays and settles. |
 | `accounts/` | ChatGPT OAuth, verified account and usage state, and the shared Responses OCR/assistant transport. Account-specific model catalogs and bounded strict namespaced function turns use the same selected-account owner; production functions require their current canonical availability and authorization gates; absent verified model policy refuses inference. Browser-safe account and sign-in lifecycle schemas live in `models/dashboard/chatgpt-account.ts`; HTTP routes own the latest account attempt. |
 | `app/` | Bootstrap, configuration, host admission, preflight, rehearsal manifest validation, and application composition. |
 | `app/composition/` | Storage, dashboard, and worker dependency assembly. `profile-credential-inventory.ts` composes credential maintenance assessment, including stopped machine-control inventory; `storage/maintenance/profile-inventory.ts` owns canonical copy/resource membership and retained browser-root validation shared with stopped READY-profile upgrade. Its required `ProfileBrowserClosure` port binds browser work to the actual runtime admission or the finite flat-store lease. `storage/maintenance/upgrade.ts` runs profile SQLite upgrade and the separate stopped machine-control upgrade. `storage-compose.ts` coordinates registered READY-person health and backed-up forward migration before dashboard runtime admission; ordinary sign-in remains current-only. `storage/maintenance/existing-data-backup.ts` owns the raw-byte flat native6 archive writer for startup migration and stopped CLI backup; registered-person SQLite backups remain in `upgrade.ts`. `storage/maintenance/existing-data-backup-files.ts` owns strict schema2 flat archive source/receipt membership, private copy and independent verification without opening authority databases. `storage/maintenance/cancel-queued-runs.ts` owns digest-bound offline cancellation of never-claimed flat native6 queues, using the finite `AuthorityDatabase.cancelQueuedRunsNative6` transaction and shared run transition/row-update primitives; `storage/maintenance/process-closure.ts` supplies the current startup and offline process/open-file/cwd absence checks. `storage/admission/bootstrap-admission.ts` runs the verified flat-store start-clean migration before profile composition; `installation.ts` owns its durable deletion intent and empty-registry publication. |
@@ -143,6 +144,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/workflow/dry-run.ts` | Browser-safe preview stage accounting, typed sample provenance and reserved sample detection. |
 | `src/workflow-kit/fingerprints.ts` | Pure, browser-safe workflow contract and task implementation fingerprints, and `WORKFLOW_KIT_VERSION`. `backend/runtime/build-id.ts` owns the worker-scoped app build id. |
 | `src/models/events/` | Timeline, stored confirmed-action, and confirmation-proof schemas. |
+| `src/models/dashboard/assistant-usage.ts` | Pure per-call and turn token accounting shared by assistant replies, account transport and numeric debug events. |
 | `src/models/trust/` | Failure, diagnostic, receipt, and scenario schemas. |
 | `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |
 | `src/rules/identity/stable-uuid.ts` | Browser-safe deterministic UUID derivation shared with the runtime `identifiers.ts` entry; native and browser callers use the same digest and UUID bits. |
@@ -242,7 +244,7 @@ tests/
 ├── dashboard/{app,client,ds,lib,state,surfaces}/
 ├── fast-duo/src/
 ├── {models,rules,scripts,workflow-kit,workflows}/
-├── parity/
+├── mocks/
 ├── perf/
 ├── support/{fixtures,helpers,processes}/
 ├── types/
@@ -252,11 +254,11 @@ tests/
 ```
 
 `tests/architecture/test-layout.test.ts` checks canonical filenames and mirrors against existing tracked source.
-Architecture, parity, performance, type, and support trees are exempt from source mirroring.
+Architecture, mocks, performance, type, and support trees are exempt from source mirroring.
 Architecture fixtures and helpers stay beside their owning guard families.
 Shared fixtures, fresh-authority builders, and child-process entrypoints live under `tests/support/`.
 `tests/support/helpers/dashboard/controls/` owns the UI control preview fixtures, loaded by
-fixture name from `tests/parity/app-entry.tsx`.
+fixture name from `tests/mocks/app-entry.tsx`.
 - `tests/support/duo-ceremony-setup.ts` registers the shared Duo fixture cleanup for every Vitest project; the fixture owner stays process-safe.
 Shared composition setup lives in `tests/support/helpers/backend/{capability-wiring-world,write-recovery-world,dashboard-child-world,worker-loop-world}.ts`
 and `tests/support/helpers/dashboard/mounted-rerun-world.ts`; each test owns its allocation, hooks, and cleanup.
@@ -292,7 +294,7 @@ and persisted-read path.
 `tests/support/processes/failure-resolution-peer.ts` runs the independent annotation writers;
 `tests/support/helpers/failure-resolution/fixtures.ts` owns their launch and closure.
 
-`tests/parity/` holds the desktop presentation contract and its references.
+`tests/mocks/` holds `/ui-mock` scenes and the mock dashboard build entry.
 `tests/perf/` holds dashboard performance checks. `tests/types/` holds compile-time inputs and their checks.
 `tests/scripts/docs/roadmap.test.ts` tests roadmap parsing.
 The private `config/test-data.local.json` input is ignored. Runtime state and artifact roots are declared
@@ -314,6 +316,8 @@ Workflow execution uses the signed-in dashboard Run and its canonical start-plan
 
 ### Assistant model preference
 
+`src/rules/commands/commands.ts` owns assistant action bindings and command attribution alongside canonical command identity. The unregistered M1 codecs/converter in `src/backend/storage/sqlite/command-record-row.ts` validate required attribution outside request identity; `run-search-index.ts` owns authenticated search-copy rebinding. Active native codecs and writers are unchanged.
+
 `src/models/config/assistant-model-preference.ts` owns model slug and preference validation shared by command and assistant schemas. `src/models/dashboard/assistant.ts` owns the profile preference record and served assistant action contract. `src/backend/storage/sqlite/assistant-model-preference.ts` owns its authenticated singleton and command/audit history checks. The existing command kernel and command service own the operator-only asynchronous preparation boundary and compare-and-swap mutation; account/composition preparation is required before that command becomes available.
 
 `src/rules/spreadsheets/workbook-io.ts` owns shared library XLSX/CSV IO, structural admission, retained cell metadata and deterministic intake export through `@shbernal/ts-xlsx`. Its sibling `workbook-size.ts` shares populated-cell and grid limits with saved-workbook validation. Imported formulas or metadata outside the editable model mark the workbook for named master-edit refusal. The dashboard editor owns editing/rendering behavior and consumes this browser-safe boundary.
@@ -329,5 +333,7 @@ Task contract modules follow each task ID suffix: Emergency Contact uses `models
 `src/backend/storage/sqlite/delegation-authority.ts` owns current and retained membership selection, revision/reuse custody and scoped authentication proofs. `src/rules/commands/lifecycle-command-id.ts` owns deterministic initial and revised invocation identities shared by factories and native admission.
 
 `app/composition/dashboard/assistant.ts` adapts the dashboard's query owners into the assistant plugin dependencies. `dashboard-wiring.ts` composes them with the selected profile's currentness check. `src/backend/storage/sqlite/assistant-history.ts` owns the conversation and message tables, their migration, acceptance and settlement, decision captions, imports, startup settlement and expiry. `dashboard/surfaces/assistant/assistant-history-model.ts` is the browser's async client and cache of the served history: chat list, drafts, restored transcripts without action or verification authority, and the one-time import of the old tab history.
+The same SQLite history owner also contains the explicitly inactive M1 factory and row codec for structured payloads, accepted metadata/accounting, immutable settlement and reply correlation. The private factory has no registry binding or schema side effect; coordinated activation replaces the text implementation.
+
 
 `src/backend/runs/queries/run-retry.ts` owns read-only Lookup batch-root Retry eligibility. The Queue composition supplies it through the projection authority port. Native commands retain mutation authority.

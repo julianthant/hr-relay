@@ -19,8 +19,8 @@ for folder owners and the [dashboard contract](../../docs/reference/dashboard-su
   built only from existing components. The Explorer timeline comes from the workflow's registered
   definition, never from a hand-written layout.
 - If real behavior needs a changed or new component, describe it (what, where, why) and ask the
-  operator. Approved components are built first in a UI-only task with mock data and their parity
-  references, then wired.
+  operator. Approved components are built first in a UI-only task with mock data and their unit
+  tests, then wired.
 - `.tsx` files under `app/` and `surfaces/` export components only. Hooks, folds, constants and
   vocabulary go in a sibling `*-model.ts`. The `ds/ui.tsx` barrel is the exception.
 - Use served data for availability, identity, status and write results. Never invent them in the
@@ -38,7 +38,7 @@ for folder owners and the [dashboard contract](../../docs/reference/dashboard-su
 
 Use `/ui`. Keep absent product features absent unless assigned; the dashboard contract owns that scope.
 Read [DESIGN.md](DESIGN.md) and open the specimen page (`npm run web`, then
-`http://localhost:5174/kit.html`) before choosing primitives. Read [PARITY.md](PARITY.md) before
+`http://localhost:5174/kit.html`) before choosing primitives. Read [MOCKS.md](MOCKS.md) before
 judging a visual difference.
 
 ## Data and command rules
@@ -73,12 +73,8 @@ judging a visual difference.
 ## Checks
 
 - Follow the [root test path](../../AGENTS.md#checks) for runner placement and slots.
-  Use filtered parity for one surface and full parity for shared shell, tokens, primitives or
-  models. Complete assigned parity before the last dashboard commit, or record the CI obligation.
-- Update parity, visual and accessibility references only for an assigned operator-approved UI
-  change or signed-off served-workflow switch, in a separate logical commit in the same PR.
-  Never refresh them to hide a defect or make wiring pass. Preserve states, themes, widths,
-  assertions, tolerances, membership and deadlines.
-- Assigned targeted local parity and browser verification run serially with one worker under the
+- Prove dashboard behaviour with Vitest unit/integration tests and `/verify` browser checks; there
+  is no Playwright behaviour suite. `tests/mocks/` holds only `/ui-mock` scenes.
+- Assigned local mock renders and browser verification run serially with one worker under the
   local slot's containment rules. Stop at the first unexpected RED; this authorizes no full suite.
 - A declared workflow scenario ID alone proves no execution.

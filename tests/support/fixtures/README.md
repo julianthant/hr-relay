@@ -1,12 +1,12 @@
 # Shared test support
 
-This catalogue lists every shared non-test module in `tests/support/`. Fixtures contain synthetic data; resource harnesses allocate only when explicitly called. Tests of support modules sit beside them. `tests/parity/` retains the desktop screenshot contract.
+This catalogue lists every shared non-test module in `tests/support/`. Fixtures contain synthetic data; resource harnesses allocate only when explicitly called. Tests of support modules sit beside them. `tests/mocks/` holds only `/ui-mock` scenes.
 
 `config/test-data.json` owns tracked public subjects, named files and synthetic ranges through `src/backend/app/registries/test-data.ts`. Private `config/test-data.local.json` inputs are accessed through the opaque runtime input source and never shared fixtures. Preserve ranges, clocks and dataset sizes.
 
 `tests/architecture/tooling/test-data-ownership.test.ts` owns import-purity and resource capability exceptions. Shared admission helpers bind database and credential fixtures to exact synthetic installation roots; release admission before removing roots. Credential factories stay inside deferred function bodies. `preflight/corpus` uses Chromium only for launch-refusal spies in its explicit executor. Proxy construction does not open databases. Executable process fixtures cannot be imported; their exact consumers are recorded in the ownership guard.
 
-Parity and served dashboard BFFs retain separate corpus and build authority: `tests/parity/helpers/bundle.ts` validates `dist/parity-dashboard`; `helpers/dashboard/served-fixtures/bundle.ts` validates `dist/dashboard`. Their profile data, route closures, build roots and disposal remain separate. Common setup bodies live in `helpers/dashboard/profiles/`; each profile supplies its authored fixture inputs and allocates its own values. Seeded lifecycle functions share `helpers/dashboard/served-fixtures/seeded-lifecycle.ts`.
+Mock and served dashboard BFFs retain separate corpus and build authority: `tests/mocks/helpers/bundle.ts` validates `dist/mock-dashboard`; `helpers/dashboard/served-fixtures/bundle.ts` validates `dist/dashboard`. Their profile data, route closures, build roots and disposal remain separate. Common setup bodies live in `helpers/dashboard/profiles/`; each profile supplies its authored fixture inputs and allocates its own values. Seeded lifecycle functions share `helpers/dashboard/served-fixtures/seeded-lifecycle.ts`.
 
 `../helpers/dashboard/run-start-dialog-harness.ts` supplies per-caller Run Start DOM setup and cleanup for the dialog and omitted-step unit suites; importing it performs no DOM setup.
 
@@ -27,8 +27,11 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/child-execution-workflows.ts` | canonical child workflow definitions for lifecycle and crash tests |
 | `fixtures/child-execution-write-workflow.ts` | child write workflow with durable attempting and UNKNOWN controls |
 | `helpers/assistant-function-fixtures.ts` | synthetic assistant function descriptors and recording call owners |
+| `helpers/assistant-m1-history-fixture.ts` | in-memory SQLite with the prepared M1 history and M2 proposal owners over their candidate statements |
+| `helpers/assistant-session-claims.ts` | in-memory session claims with the durable once-only rules, and the real session owner over fake plan, submit and run ports |
+| `helpers/assistant-typed-proposals.ts` | the typed-proposal owner over the real M2 store with fake plan, submit and run ports |
 | `fixtures/person-lookup-presentation.ts` | fictional served Person Lookup presentation evidence |
-| `fixtures/person-lookup-log-snapshots.ts` | fictional served Person Lookup run-log snapshots (success, multiple matches, no match, CRM off, failed) for log projection tests and the parity log fixture page |
+| `fixtures/person-lookup-log-snapshots.ts` | fictional served Person Lookup run-log snapshots (success, multiple matches, no match, CRM off, failed) for log projection tests |
 | `fixtures/crm-doc-download.ts` | synthetic verified CRM identities and retained worksheet roster rows |
 | `fixtures/i9-check.ts` | synthetic OCR-derived I-9 inputs and UCPath identity/retention evidence |
 | `fixtures/i9-check-start.ts` | admitted synthetic I-9 PDF pages, review snapshots and source coordinates |
@@ -113,9 +116,8 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/backend/trust-authority-fixture.ts` | trust authority fixture |
 | `helpers/browser/fake-login-page.ts` | fake login page |
 | `helpers/canonical-run-reader.ts` | canonical run reader |
+| `helpers/names-check-cases.ts` | Shared branch, worktree, and pull request title cases for the shipped names:check command. |
 | `helpers/ucpath-findings-page.ts` | synthetic Smart HR list/detail navigation, identity, pagination and refusal evidence shared by findings and lifecycle checks |
-| `helpers/assistant-coupled-server.ts` | served synthetic assistant browser proof and owned cleanup |
-| `helpers/assistant-coupled-world.ts` | coupled assistant account transport, canonical authority and pure planner fixtures |
 | `helpers/chatgpt-account-fixtures.ts` | synthetic ChatGPT account fixtures |
 | `helpers/chatgpt-response-stream.ts` | pure synthetic Responses added, delta, done and completion event builders for OCR and assistant transport tests |
 | `helpers/dashboard-model-fixtures.ts` | dashboard run detail, queue, pagination and artifact data |

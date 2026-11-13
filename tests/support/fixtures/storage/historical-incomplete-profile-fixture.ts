@@ -81,7 +81,7 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
     if (options.sourceVersion < 18) removeEmptySchema18WorkbookCatalog(database);
     if (options.sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(database);
     if (options.sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(database);
-    for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
+    for (const table of ["assistant_actions", "assistant_chats"]) assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     if (options.sourceVersion < 10) {
       const editor = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE TABLE explorer_overrides \([\s\S]*?\n\) STRICT;/u)?.[0];
       assert.ok(editor); database.exec(editor);

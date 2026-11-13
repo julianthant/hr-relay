@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { vi } from "vitest";
 // @vitest-environment jsdom
 import { default as assert_m0,default as assert_m1 } from 'node:assert/strict';

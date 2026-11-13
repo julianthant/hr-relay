@@ -62,6 +62,7 @@ export function createDashboardClient(input: Readonly<{
   baseUrl: string;
   fetchImpl?: FetchLike;
   surface?: () => string;
+  runId?: () => DashboardErrorReport["runId"];
 }>): DashboardClient {
   const surface = input.surface;
   const clientId = crypto.randomUUID();
@@ -199,7 +200,8 @@ export function createDashboardClient(input: Readonly<{
     },
     async reportError(report: DashboardErrorReport) {
       if (profileAuthority === undefined) return;
-      await transport.requestJson("/api/v1/debug/errors", { method: "POST", body: JSON.stringify(DashboardErrorReportSchema.parse(report)) });
+      const runId = report.runId ?? input.runId?.();
+      await transport.requestJson("/api/v1/debug/errors", { method: "POST", body: JSON.stringify(DashboardErrorReportSchema.parse({ ...report, ...(runId === undefined ? {} : { runId }) })) });
     },
     ...queries,
     ...commands,

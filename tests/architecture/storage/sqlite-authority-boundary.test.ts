@@ -9,8 +9,13 @@ import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 
 
 const PRIVATE_SQLITE_ADAPTERS = [
+  "src/backend/storage/sqlite/assistant-attachments.ts",
   "src/backend/storage/sqlite/assistant-authorization.ts",
+  "src/backend/storage/sqlite/assistant-effort-migration.ts",
+  "src/backend/storage/sqlite/assistant-grant-retirement.ts",
+  "src/backend/storage/sqlite/assistant-history.ts",
   "src/backend/storage/sqlite/assistant-model-preference.ts",
+  "src/backend/storage/sqlite/assistant-proposals.ts",
   "src/backend/storage/sqlite/authority-database.ts",
   "src/backend/storage/sqlite/backup-inspection.ts",
   "src/backend/storage/sqlite/command-record-row.ts",

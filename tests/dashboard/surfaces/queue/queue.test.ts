@@ -6,8 +6,8 @@ import { act as act_m0,createElement as createElement_m0 } from 'react';
 import { createRoot as createRoot_m0,type Root as Root_m0 } from 'react-dom/client';
 import { it as it_m0 } from 'vitest';
 import { QueuePanel as QueuePanel_m0,type QueueHandlers as QueueHandlers_m0,type QueueViewState as QueueViewState_m0 } from '../../../../src/dashboard/surfaces/queue/queue.js';
-import { FIXTURE_NOW as FIXTURE_NOW_m0 } from '../../../parity/helpers/fixture-identity.js';
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from '../../../parity/helpers/fixture-queue.js';
+import { FIXTURE_NOW as FIXTURE_NOW_m0 } from '../../../mocks/helpers/fixture-identity.js';
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from '../../../mocks/helpers/fixture-queue.js';
 // @vitest-environment jsdom
 import assert_m1 from "node:assert/strict";
 import { createElement as createElement_m1 } from "react";
@@ -16,8 +16,8 @@ import { describe as describe_m1,it as it_m1 } from "vitest";
 import { orderMembers as orderMembers_m1,type QueueSurfaceWire as MemberSurfaceWire_m1 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueueRow as QueueRow_m1 } from "../../../../src/dashboard/surfaces/queue/queue.js";
 import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m1,type QueueSurfaceWire as QueueSurfaceWire_m1 } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_NOW as FIXTURE_NOW_m1 } from "../../../parity/helpers/fixture-identity.js";
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1 } from "../../../parity/helpers/fixture-queue.js";
+import { FIXTURE_NOW as FIXTURE_NOW_m1 } from "../../../mocks/helpers/fixture-identity.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1 } from "../../../mocks/helpers/fixture-queue.js";
 
 import assert_m2 from "node:assert/strict";
 import { createElement as createElement_m2 } from "react";

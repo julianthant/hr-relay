@@ -440,18 +440,13 @@ that read's profile, epoch and expected revision; confirmed readback must match 
 choice. Unknown settlement stays visible without automatic retry. A saved choice invalidates earlier
 verification and in-flight inference; it does not establish account eligibility or permission.
 
-Send `/verify-assistant` explicitly to verify the current choice. The account owner performs its fixed
-public two-turn namespaced probe and a fresh public model-catalog read. It sends no HR subject,
-operator prose, artifact or private context. Sign-in, model selection, catalog reads, OCR and startup
-never run that probe automatically. The account's private proof lasts at most 15 minutes and remains
-bound to current account, selected profile, epoch and saved preference authority.
+The assistant is usable as soon as ChatGPT sign-in works. There is no Test assistant step; a message
+that gets no reply shows the normal failure.
 
 Both setup commands are text-only. Recognized setup forms refuse attachments before file reading,
-registration or sending. A served `CHATGPT_USAGE_UNAVAILABLE` account resource permits composing a
-setup command while showing verification guidance; it does not make `accountAvailable` true. Confirm
-still requires the real signed-in account with available plan use and the existing issued-action,
-permission and currentness checks. After explicit verification settles, the current binding refreshes
-the served account once. Superseded requests cannot publish into another conversation.
+registration or sending. A served `CHATGPT_USAGE_UNAVAILABLE` account resource (unreadable usage meter) counts as signed in.
+Confirm still requires the signed-in account and the issued-action and currentness checks.
+Superseded requests cannot publish into another conversation.
 
 The panel has no Files view. Attached spreadsheets (`.xlsx`, `.csv`) never reach the model as content;
 the model sees only worksheet positions and counts, and they enter the Spreadsheets library through the
@@ -460,13 +455,11 @@ rename, named versions). An attached PDF can start a served workflow whose input
 (Emergency Contact), through a confirmed card only. Sent attachments show as name-only pills on the
 operator message. The model,
 effort, approval and voice controls remain unavailable. The served model and effort labels come from
-the selected person’s preference; setup changes use the existing composer command. Test assistant
-in Settings › Preflight explicitly runs the same public capability verification; its result is bound to
-the current account and clears on account change, disposal or after 15 minutes. Named verification failures remain in the conversation and never enable inference. The explicit parity composition supplies approved mock conversations and sample workflow
+the selected person’s preference; setup changes use the existing composer command. The explicit mock composition supplies approved mock conversations and sample workflow
 scenes; product failures never select those producers. Chat titles, selected chat, text drafts and displayed replies survive refresh in the current browser
 tab’s session storage, scoped only after the server verifies the selected person. Another person’s
 key is never adopted. Saved text confers no command or model authority: restored pending requests
-remain unknown, review proposals expire, and verification proof is never restored. File bodies and
+remain unknown, and review proposals expire. File bodies and
 executable action identities are not saved. Storage failures remain visible without erasing data.
 Deleting a chat retires its controller before removing history. Pending decisions become unknown;
 their late success or failure cannot write history, revive the chat or replay the action.
@@ -514,7 +507,7 @@ live consumers continue to require their evidence.
 
 Every assistant mutation requires an explicit Confirm. Settings grants enable proposals and never authorize automatic changes. Retired permission modes cannot be selected or granted; their terminal history stays inert. A grant alone does not verify
 account capability. Browser dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
-draft validation, autosave, uncertainty and readback. Explicit parity previews keep their local controls.
+draft validation, autosave, uncertainty and readback. Explicit mock previews keep their local controls.
 
 General composes ChatGPT account, appearance, ordinary General fields and annual dates, with Delete account last. The assistant permission row and its search destination are absent; Relay always requires explicit confirmation for its actions. Appearance has a Light/Dark toggle and an Animations switch with no row descriptions or person names. Preference feedback retains loading, saving, failure and uncertain states below the rows.
 Delete account uses the active ready profile's session owner and the typed delete client. Its confirmation
@@ -524,7 +517,7 @@ pending deletion's original epoch. Rendering, navigation and Cancel dispatch not
 dispatches once and disables deletion. Only the delete endpoint's final signed-out acknowledgment exits
 the profile. Refused, nonfinal and lost replies stay visible and locked across Settings navigation,
 without automatic retry or an erasure claim. A missing served profile keeps the control unavailable.
-The isolated `delete-account` parity fixture exercises mock state without reading or erasing data.
+
 Shared date controls display `MM/DD/YYYY` and preserve partial input during unrelated renders.
 Provider budget/model and API-key controls are absent. Browser viewport is developer configuration,
 not an end-user field.
@@ -739,11 +732,11 @@ feature imports or registered workflow IDs as specimen values. It is not an oper
 
 ## Verification and wiring
 
-The mounted component set and current parity references define presentation. Wiring changes producers,
+The mounted component set and the approved mock define presentation. Wiring changes producers,
 view-model inputs, ports, hooks, and callbacks while keeping the rendered mock case identical.
 [The wiring contract](frontend-backend-integration.md#current-frontend-mock-wiring-checklist) names each
 surface's required identity, persistence, transitions, and acceptance checks. Shared
-[design rules](../../src/dashboard/DESIGN.md) and [parity guidance](../../src/dashboard/PARITY.md)
+[design rules](../../src/dashboard/DESIGN.md) and [mock scene runner](../../src/dashboard/MOCKS.md)
 own composition and visual checks.
 
 Command results remain `applied`, `already-applied`, `confirmation-required`, `conflict`, or `rejected`
@@ -801,10 +794,8 @@ for byte with facts rebuilt from the running definitions and refuses with `ASSIS
 mismatch. The facts digest, registered route handoffs, command schema and static served workflow policy feed the
 command manifest identity.
 
-Model entitlement is separate from command permission and the OCR model. Trusted composition may
-supply the existing model policy with synchronous currentness; without it the service returns
-`ASSISTANT_MODEL_UNVERIFIED` without inference. Real per-profile preferences and a completed
-transaction-free capability canary remain required before the assistant is usable. Subject actions,
+Model choice is separate from command permission and the OCR model. Each turn uses the selected
+person's saved model and effort and refuses with `ASSISTANT_MODEL_CHANGED` if either changes mid-turn. Subject actions,
 freeform or protected changes, unsupported owners and remaining served actions require their current
 operator interface until their canonical assistant binding is implemented.
 
@@ -855,8 +846,7 @@ activity. Neither table resolution can grant authority while selectors remain un
 
 Full-preview accounting counts exercised applicable steps, including submit rehearsals where no click occurs.
 The result card shows verified-person, checked-field, and sample-transaction facts; only Not clicked, Unavailable,
-and Skipped exceptions carry chips. Preview values carry a Sample tag with a Dry-run sample accessible name; they confer no real-run authority. The `dry-run` parity fixture demonstrates complete
-and partial exercise without executing workflows. Executor and served projection wiring are separate.
+and Skipped exceptions carry chips. Preview values carry a Sample tag with a Dry-run sample accessible name; they confer no real-run authority. Executor and served projection wiring are separate.
 
 ### Required capture presentation
 

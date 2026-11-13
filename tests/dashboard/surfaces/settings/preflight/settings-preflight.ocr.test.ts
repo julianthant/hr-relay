@@ -10,7 +10,7 @@ import { PreflightReportContent } from "../../../../../src/dashboard/surfaces/se
 import { PreflightOcrContext, createServedPreflightOcrPort, type PreflightOcrPort, type PreflightOcrSnapshot } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-ocr-model.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
-import { FIXTURE_BOOTSTRAP } from "../../../../parity/helpers/fixture-bootstrap.js";
+import { FIXTURE_BOOTSTRAP } from "../../../../mocks/helpers/fixture-bootstrap.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined, host: HTMLElement | undefined;

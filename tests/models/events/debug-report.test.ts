@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { debugFailureOutcome, debugFailureOutcomes, diagnosticRequestRoute } from "../../../src/models/events/debug-report.js";
+import { DashboardErrorReportSchema, debugFailureOutcome, debugFailureOutcomes, diagnosticRequestRoute } from "../../../src/models/events/debug-report.js";
 import { buildPreflightReport, requiredPreflightChecks } from "../../../src/models/preflight/preflight.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 
@@ -46,5 +46,16 @@ describe("metadata-only failure reports", () => {
       assert.deepEqual(debugFailureOutcomes(response, 200), [{ code: "RUN_QUEUED_WORKER_UNAVAILABLE",
         reason: state === "unknown" ? "outcome-unknown" : "operation-refused", correlationId: childId }]);
     }
+  });
+});
+
+describe("dashboard report run identity", () => {
+  const report = { reportId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", clientId: "browser", release: "test",
+    route: "/", surface: "app", code: "DASHBOARD_UNHANDLED_ERROR", message: "Synthetic failure" };
+  it("accepts an optional run UUID and rejects malformed or unknown fields", () => {
+    assert.equal(DashboardErrorReportSchema.safeParse(report).success, true);
+    assert.equal(DashboardErrorReportSchema.parse({ ...report, runId: report.reportId }).runId, report.reportId);
+    assert.equal(DashboardErrorReportSchema.safeParse({ ...report, runId: "invalid" }).success, false);
+    assert.equal(DashboardErrorReportSchema.safeParse({ ...report, unknown: "value" }).success, false);
   });
 });
