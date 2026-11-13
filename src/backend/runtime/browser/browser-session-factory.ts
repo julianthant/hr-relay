@@ -139,10 +139,17 @@ function bindingFor(bindings: BrowserSystemBindings, system: BrowserSystemId): B
   return binding;
 }
 
-// A Playwright message starts "<object>.<method>: [<Class>: ]"; only those closed names leave it, never the text.
+// A Playwright message starts "<object>.<method>: [<Class>: ]", and the page chooses the class text; only these fixed names leave it.
+const PLAYWRIGHT_OBJECTS = new Set(["page", "frame", "locator", "elementHandle", "jsHandle", "browserContext"]);
+const PLAYWRIGHT_METHODS = new Set(["evaluate", "evaluateAll", "evaluateHandle", "screenshot", "setViewportSize", "waitForTimeout", "count",
+  "cookies", "isVisible", "waitFor", "inputValue", "textContent", "frameElement", "goto"]);
+const PAGE_ERROR_CLASSES = new Set(["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "EvalError", "URIError", "AggregateError"]);
 function playwrightCall(error: unknown): string | undefined {
-  const match = error instanceof Error ? /^([a-z][A-Za-z]{0,40})\.([a-z][A-Za-z]{0,40}): (?:([A-Z][A-Za-z]{0,40}Error): )?/u.exec(error.message) : null;
-  return match === null ? undefined : [match[1], match[2], match[3]].filter(part => part !== undefined).join("-").toLowerCase();
+  const match = error instanceof Error ? /^([A-Za-z]+)\.([A-Za-z]+): (?:([A-Za-z]+): )?/u.exec(error.message) : null;
+  if (match === null) return undefined;
+  const [, object, method, errorClass] = match;
+  const call = PLAYWRIGHT_OBJECTS.has(object) && PLAYWRIGHT_METHODS.has(method) ? `${object}-${method}`.toLowerCase() : "unknown-call";
+  return errorClass === undefined ? call : `${call}-${PAGE_ERROR_CLASSES.has(errorClass) ? errorClass.toLowerCase() : "page-error"}`;
 }
 
 export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFactory {
