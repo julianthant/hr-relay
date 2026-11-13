@@ -22,9 +22,9 @@ import { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
 import { ProfileSessionRefusedError } from "./profile-errors.js";
 
 import { operatorFailureSentence,type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
-import { assertFinishedProfileOnboarding,deriveProfileNames,LogoutOperationSchema,ProfileAuthoritySnapshotSchema,ProfileNameValidationError,SignUpOperationSchema,type LogoutOperation,type ProfileRegistryRow,type ProfileAuthoritySnapshot,type ProfileOperation,type SignUpOperation } from "../../models/profiles/profile.js";
+import { assertFinishedProfileOnboarding,deriveProfileNames,LogoutOperationSchema,ProfileAuthoritySnapshotSchema,ProfileNameValidationError,SignUpOperationSchema,profileDetailsPatch,type LogoutOperation,type ProfileDetailsChange,type ProfileRegistryRow,type ProfileAuthoritySnapshot,type ProfileOperation,type SignUpOperation } from "../../models/profiles/profile.js";
 import type { ProfileOnboardingMethod } from "../../models/profiles/public-profile.js";
-import { ProfileOnboardingStateSchema,type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
+import { ProfileOnboardingStateSchema,profileAccount,type ProfileAccount,type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { systemClock,type Clock } from "../../rules/time/clock.js";
 import { noSymlinkAncestry,withOperationProof,type DirectoryIdentity } from "../storage/configuration/credential-safe-file.js";
@@ -848,6 +848,18 @@ export function createProfileSession(input: {
     },
     changeUsername(token: string, fields: { readonly currentPassword: string; readonly newUsername: string; readonly at: string }) {
       return changeLogin(token, { currentPassword: fields.currentPassword, change: { kind: "username", email: fields.newUsername }, at: fields.at });
+    },
+    /** Change the signed-in person's Name, Initials or Timekeeper name; runs already started keep the timekeeper name they captured. */
+    changeDetails(token: string, change: ProfileDetailsChange): { readonly state: "changed"; readonly account: ProfileAccount } | ProfileRefusal {
+      admission.assertWritable();
+      admission.lifetime.assertRuntimeAvailable();
+      const checked = profileDetailsPatch(change);
+      if ("refused" in checked) return refusal(checked.refused);
+      return withProfileLock(machineRoot, () => {
+        const session = requireSession(token);
+        if ("state" in session) return session;
+        return { state: "changed", account: profileAccount(registry.update(session.profileId, checked.patch)) };
+      });
     },
     logOut(token: string, inputFields: { readonly at: string }): { readonly state: "signed-out" } | ProfileLogoutResult | ProfileCancelling {
       const at = IsoInstantSchema.parse(inputFields.at);
