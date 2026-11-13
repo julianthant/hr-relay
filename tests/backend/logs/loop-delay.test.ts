@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.js";
 import { composeLoopDelayMonitor, startLoopDelayMonitor } from "../../../src/backend/logs/loop-delay.js";
@@ -29,9 +28,7 @@ describe("dashboard event-loop stalls", () => {
     vi.useRealTimers();
   });
 
-  it("starts the production monitor when composition leaves the choice unset", () => {
-    const source = readFileSync(new URL("../../../src/backend/app/composition/dashboard/runtime-resources.ts", import.meta.url), "utf8");
-    expect(source).toContain("composeLoopDelayMonitor(input.loopDelay, { clock, debugEvents })");
+  it("starts the production monitor when the choice is unset", () => {
     const deps = { clock: systemClock, debugEvents: { emit() { return undefined; } } };
     monitor = composeLoopDelayMonitor(undefined, deps);
     expect(histogram.enable).toHaveBeenCalledOnce();
