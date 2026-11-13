@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  BrowserSystemIdSchema,
   DiagnosticBundleIdSchema,
   ElementIdSchema,
   ErrorCodeSchema,
@@ -75,6 +76,24 @@ const FailureActionSchema = z.strictObject({
   if (Object.keys(action).length === 0) context.addIssue({ code: "custom", message: "failure action cannot be empty" });
 });
 
+const SignInStepSchema = z.enum([
+  "navigate-login-entry",
+  "campus-discovery",
+  "sso-form",
+  "credential-fill",
+  "sso-submit",
+  "duo-clearance",
+  "verify-landing",
+]);
+
+/** Which check refused a sign-in, and the page origin and path that check saw. */
+export const SignInRefusalSchema = z.strictObject({
+  system: BrowserSystemIdSchema,
+  step: SignInStepSchema,
+  reason: z.string().min(1),
+  pageAddress: z.string().min(1),
+});
+
 export const FailureRecordSchema = z.strictObject({
   diagnosticSafetyVersion: DiagnosticSafetyVersionSchema.optional(),
   failureId: FailureIdSchema,
@@ -97,6 +116,7 @@ export const FailureRecordSchema = z.strictObject({
   debug: z.strictObject({
     stack: z.string(), causes: z.array(z.string()).max(12),
     originalBytes: z.number().int().nonnegative(), omittedBytes: z.number().int().nonnegative(),
+    signInRefusal: SignInRefusalSchema.optional(),
   }).optional(),
   remediation: z.array(RemediationActionSchema).min(1),
   /** Authority-only; every operator projection removes this classified evidence reference. */

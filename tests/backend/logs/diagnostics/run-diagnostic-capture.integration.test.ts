@@ -3,7 +3,9 @@ import { withBrowserActionSession } from "../../../../src/backend/systems/browse
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { taskSpanPath } from "../../../../src/backend/logs/span-emitter.js";
-import { NodeIdSchema } from "../../../../src/rules/identity/ids.js";
+import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { buildNodeFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
+import { NodeIdSchema, TaskIdSchema } from "../../../../src/rules/identity/ids.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
@@ -46,7 +48,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import type { DiagnosticArtifactWriter } from "../../../../src/workflow-kit/artifacts.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
 import { HASH_A,HASH_B,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { RUN_ID,sequentialIdFactory,WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID,sequentialIdFactory,WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import {
 happySessionHarness,
 healthyUcpathDriver,
@@ -642,4 +644,34 @@ describe("Person Lookup per-task capture points", () => {
       } finally { await sessions?.closeAll("worker-stop"); await world.cleanup(); }
     });
   }
+});
+
+describe("refused sign-in bundle", () => {
+  it("carries the check and the page address and leaves the employee id out", async () => {
+    const database = await openDatabase();
+    const { service } = captureService(database);
+    const reason = "the login could not prove the authenticated application: the observed URL is not a UCPath PeopleSoft application route";
+    const login = new BrowserLoginError("ucpath", "verify-landing", reason,
+      "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app?EMPLID=10456712#frag-canary");
+    const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+      error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: "2026-08-29T08:00:00.000Z" });
+    const bundle = await createRunDiagnosticCapture({ service }).captureForFailure({
+      failure, configFingerprint: HASH_A, descriptorFingerprint: HASH_B,
+    });
+    const stored = JSON.stringify({ failure, bundle });
+    assert.equal(stored.includes("10456712"), false);
+    assert.equal(stored.includes("frag-canary"), false);
+    assert.equal(bundle.attachments.length, 0);
+    const allowed = (key: string) => {
+      const field = bundle.redaction.fields.find(candidate => candidate.key === key);
+      assert.equal(field?.state, "allowed");
+      return field?.state === "allowed" ? field.value : undefined;
+    };
+    assert.equal(allowed("signInSystem"), "ucpath");
+    assert.equal(allowed("signInStep"), "verify-landing");
+    assert.equal(allowed("signInReason"), reason);
+    assert.equal(allowed("signInPageAddress"), "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app");
+  });
 });

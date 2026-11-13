@@ -2,7 +2,11 @@ import { createStepOmissionTestWorld } from "../../../support/helpers/backend/st
 import assert from "node:assert/strict";
 
 import { afterEach, describe, it } from "vitest";
+import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { buildNodeFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
 import { buildExplainRunView, renderExplainRun } from "../../../../src/backend/runs/explain/explain-run.js";
+import { NodeIdSchema, TaskIdSchema } from "../../../../src/rules/identity/ids.js";
+import { TaskError } from "../../../../src/workflow-kit/errors.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { timelineCheckpointReference, TimelineCheckpointReferenceSchema } from "../../../../src/models/events/timeline.js";
@@ -107,4 +111,42 @@ describe("explain run under step omission", () => {
     assert.match(rendered, /omitted steps\n\s+crm-read — omitted at start/u);
     assert.equal(rendered.includes(TYPED_FACT), false);
   });
+});
+
+it("explains a refused sign-in with the check and the page, and leaves the query out", () => {
+  const reason = "the login could not prove the authenticated application: the observed URL is not a UCPath PeopleSoft application route";
+  const login = new BrowserLoginError("ucpath", "verify-landing", reason, "https://ucpath.universityofcalifornia.edu/?EMPLID=10456712#frag-canary");
+  const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+  const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+    failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+    error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: QUEUED_RUN.createdAt });
+  const view = buildExplainRunView({ run: RunRecordSchema.parse(QUEUED_RUN), checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure });
+  const rendered = renderExplainRun(view);
+  assert.match(rendered, /UCPath sign-in failed\./);
+  assert.match(rendered, new RegExp(`sign-in check verify-landing: ${reason}`));
+  assert.match(rendered, /page https:\/\/ucpath\.universityofcalifornia\.edu\//);
+  assert.equal(rendered.includes("10456712"), false);
+  assert.equal(rendered.includes("frag-canary"), false);
+});
+
+it("explains a protected run's refused sign-in without the query", () => {
+  const reason = "the login could not prove the authenticated application: UCPath PeopleSoft never issued its PS_TOKEN session cookie for universityofcalifornia.edu";
+  const login = new BrowserLoginError("ucpath", "verify-landing", reason, "https://ucpath.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app?EMPLID=10456712#frag-canary");
+  const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+  const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+    failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+    error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: QUEUED_RUN.createdAt });
+  const run = RunRecordSchema.parse({
+    ...QUEUED_RUN,
+    input: { ...QUEUED_RUN.input, parsed: { ...QUEUED_RUN.input.parsed, protectedBindings: [{
+      kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "00000000-0000-4000-8000-000000000099",
+    }] } },
+  });
+  const rendered = renderExplainRun(buildExplainRunView({ run, checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure }));
+  assert.match(rendered, /UCPath sign-in failed\./);
+  assert.match(rendered, new RegExp(`sign-in check verify-landing: ${reason}`));
+  assert.match(rendered, /page https:\/\/ucpath\.universityofcalifornia\.edu\/psc\/ucphrprd\/EMPLOYEE\/HRMS\/c\/app/);
+  assert.equal(rendered.includes("10456712"), false);
+  assert.equal(rendered.includes("frag-canary"), false);
+  assert.equal(rendered.includes("EMPLID"), false);
 });

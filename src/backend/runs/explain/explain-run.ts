@@ -11,6 +11,7 @@ import { projectReceiptForOperator } from "../../../models/trust/evidence.js";
 import {
   projectFailureForOperator,
   failureCauseNames,
+  SignInRefusalSchema,
   type FailureRecord,
 } from "../../../models/trust/failure.js";
 import type { RunRecord } from "../../../models/run/record.js";
@@ -76,6 +77,7 @@ const ExplainRunViewSchema = z.strictObject({
     sameFingerprintSeen: z.number().int().positive(),
     causeCodes: z.array(z.string().min(1)),
     causeClasses: z.array(z.string().min(1)),
+    signInRefusal: SignInRefusalSchema.optional(),
   })),
   lastSuccessfulAction: present(z.string().min(1)),
   openGate: present(z.string().min(1)),
@@ -287,6 +289,11 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
           sameFingerprintSeen: Math.max(1, evidence.sameFingerprintSeen ?? 1),
           causeCodes: causes.codes,
           causeClasses: causes.classes,
+          // The protected projection drops debug. The refusal is already limited to the
+          // sanitized check and the page origin and path, so explain keeps it.
+          ...(evidence.failure?.debug?.signInRefusal === undefined
+            ? {}
+            : { signInRefusal: evidence.failure.debug.signInRefusal }),
         },
       },
     lastSuccessfulAction: lastSuccessful === undefined
@@ -395,7 +402,9 @@ export function renderExplainRun(view: ExplainRunView): string {
     ...section("failure", [shown(view.failure, (failure) =>
       `${failure.code} (${failure.writeState}) fingerprint ${failure.fingerprint}\n`
       + `    seen ${String(failure.sameFingerprintSeen)}× · ${failure.summary}\n`
-      + `    causes: ${[...failure.causeCodes, ...failure.causeClasses].join(", ") || "(none)"}`)]),
+      + `    causes: ${[...failure.causeCodes, ...failure.causeClasses].join(", ") || "(none)"}`
+      + (failure.signInRefusal === undefined ? ""
+        : `\n    sign-in check ${failure.signInRefusal.step}: ${failure.signInRefusal.reason}\n    page ${failure.signInRefusal.pageAddress}`))]),
     ...section("last successful action", [shown(view.lastSuccessfulAction, (value) => value)]),
     ...section("open gate", [shown(view.openGate, (value) => value)]),
     ...section("open dependency", [shown(view.openDependency, (value) => value)]),

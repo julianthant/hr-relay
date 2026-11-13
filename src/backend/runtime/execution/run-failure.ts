@@ -1,4 +1,5 @@
-import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
+import { pageAddress, sanitizeDebugText } from "../../../rules/redaction/redaction.js";
+import { browserLoginFailure } from "../../systems/browser-shared/login-contract.js";
 import { hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 
 import { TaskError } from "../../../workflow-kit/errors.js";
@@ -192,6 +193,16 @@ export function buildEntryValidationFailureRecord(input: EntryValidationFailureI
   });
 }
 
+function signInRefusalFrom(error: Error) {
+  const login = browserLoginFailure(error);
+  if (login === undefined) return undefined;
+  const reason = sanitizeDebugText(login.detail);
+  const address = sanitizeDebugText(pageAddress(login.observedUrl));
+  if (reason.length === 0) throw new Error("sign-in refusal reason is empty");
+  if (address.length === 0) throw new Error("sign-in page address is empty");
+  return { system: login.system, step: login.step, reason, pageAddress: address };
+}
+
 export function failureDebugDetails(error: Error) {
   const texts = [error.stack ?? error.message];
   const seen = new Set<unknown>([error]);
@@ -208,6 +219,8 @@ export function failureDebugDetails(error: Error) {
     remaining = Math.max(0, remaining - bytes.byteLength);
     return result;
   });
+  const signInRefusal = signInRefusalFrom(error);
   return { stack: bounded[0] ?? "", causes: bounded.slice(1), originalBytes,
-    omittedBytes: Math.max(0, originalBytes - 96 * 1024) };
+    omittedBytes: Math.max(0, originalBytes - 96 * 1024),
+    ...(signInRefusal === undefined ? {} : { signInRefusal }) };
 }

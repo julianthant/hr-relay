@@ -1,6 +1,6 @@
 import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,it as it_m0 } from "vitest";
-import { sanitizeDebugText as sanitizeDebugText_m0 } from "../../../src/rules/redaction/redaction.js";
+import { pageAddress as pageAddress_m0, sanitizeDebugText as sanitizeDebugText_m0 } from "../../../src/rules/redaction/redaction.js";
 
 import { default as assert_m1,default as assert_m2 } from "node:assert/strict";
 import { describe as describe_m1,describe as describe_m2,it as it_m1,it as it_m2 } from "vitest";
@@ -158,6 +158,23 @@ describe_m2("local evidence and external disclosure boundaries", () => {
 });
 }
 
+
+it_m0("keeps a page address to its origin and path", () => {
+  assert_m0.equal(
+    pageAddress_m0("https://user:secret@ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app?EMPLID=10456712#frag-canary"),
+    "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app",
+  );
+  assert_m0.equal(pageAddress_m0("not a url?EMPLID=10456712#frag-canary"), "unreadable-address");
+  assert_m0.equal(pageAddress_m0("about:blank?EMPLID=10456712"), "unreadable-address");
+  for (const stored of [
+    pageAddress_m0("https://user:secret@ucphrprdpub.universityofcalifornia.edu/psc/app?EMPLID=10456712#frag-canary"),
+    pageAddress_m0("not a url?EMPLID=10456712"),
+  ]) {
+    assert_m0.equal(stored.includes("10456712"), false);
+    assert_m0.equal(stored.includes("secret"), false);
+    assert_m0.equal(stored.includes("frag-canary"), false);
+  }
+});
 
 it_m0("masks raw and formatted SSNs in error and nested-cause text", () => {
   for (const value of ["902481357", "902-48-1357", "902 48 1357"]) {
