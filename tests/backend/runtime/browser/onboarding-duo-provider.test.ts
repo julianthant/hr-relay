@@ -706,13 +706,22 @@ describe("draft Duo provider", () => {
   it("offers manual sign-in when the sign-in form is still open at attempt expiry", async () => {
     const w = world();
     const form = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
-    Object.assign(w.attempt, { expiresAt: new Date(w.clock.nowMs() + 800).toISOString() });
+    Object.assign(w.attempt, { expiresAt: new Date(w.clock.nowMs() + 5_000).toISOString() });
     w.landPortal(form);
     try {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
       const started = Date.now();
-      assert.deepEqual(await w.sendBrowser("portal"), { ok: false, portalFailure: "sign-in" });
-      assert.ok(Date.now() - started >= 400);
+      let settled = false;
+      const opening = w.sendBrowser("portal").finally(() => { settled = true; });
+      opening.catch(() => undefined);
+      await new Promise(resolve => setTimeout(resolve, 80));
+      assert.equal(settled, false);
+      assert.equal(w.typed(), 0);
+      assert.equal(w.portalUrl(), form);
+      w.clock.setWall(new Date(w.attempt.expiresAt));
+      assert.deepEqual(await opening, { ok: false, portalFailure: "sign-in" });
+      const elapsed = Date.now() - started;
+      assert.ok(elapsed >= 80 && elapsed < 1_000);
       assert.equal(w.typed(), 0);
       assert.equal(w.portalUrl(), form);
     } finally { await w.cleanup(); }

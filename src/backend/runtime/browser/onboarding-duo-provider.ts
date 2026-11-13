@@ -494,14 +494,13 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
   async function waitForManualUcsdSignIn(page: Page, session: OwnedBrowser): Promise<void> {
     const attempt = active !== undefined && sameOwner(session.owner, active.attempt) ? active : undefined;
     // shortcut: same 10-minute sign-up attempt window as profile-onboarding start, including when the portal opens before a method starts
-    const remaining = attempt === undefined ? 600_000 : Date.parse(attempt.attempt.expiresAt) - options.clock.nowMs();
-    const deadline = Date.now() + Math.max(0, remaining);
-    while (Date.now() < deadline) {
+    const deadline = attempt === undefined ? options.clock.nowMs() + 600_000 : Date.parse(attempt.attempt.expiresAt);
+    while (options.clock.nowMs() < deadline) {
       browserCurrent(session);
       if (duoSignInHost(page.url())) return;
-      await new Promise(resolve => setTimeout(resolve, Math.min(20, Math.max(1, deadline - Date.now()))));
+      const remaining = deadline - options.clock.nowMs();
+      await new Promise(resolve => setTimeout(resolve, Math.min(20, Math.max(1, remaining))));
     }
-    browserCurrent(session);
     if (duoSignInHost(page.url())) return;
     const cause = new Error("sign-in wait");
     cause.name = "TimeoutError";
