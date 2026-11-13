@@ -114,6 +114,7 @@ import { ActorIdSchema,ArtifactIdSchema,BrowserSystemIdSchema,CommandAuditIdSche
 import { DuoCeremonyLeaseAcquireRequestSchema,DuoCeremonyLeaseRecordSchema,DuoCeremonyLeaseReleaseOutcomeSchema,DuoCeremonyLeaseTakeoverSchema,isDuoCeremonyLeaseLive,type DuoCeremonyLeaseAcquireRequest,type DuoCeremonyLeaseRecord,type DuoCeremonyLeaseReleaseOutcome } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { localDatePart,systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { IdempotencyKeySchema,WriteAttemptRecordSchema,WriteIntentRecordSchema,type WriteAttemptRecord,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import type { WriteEvent } from "../../../rules/write-safety/write-transitions.js";
 import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeaseToken,type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
@@ -718,12 +719,15 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
     : "SELECT schema_version,authority_generation,updated_at FROM database_states WHERE id=1").get());
 }
 
-function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { return Object.freeze([
-  { name: "run-owner-exclusivity", sql: "SELECT count(*) AS count FROM runs JOIN deleted_runs ON deleted_runs.run_id=runs.id" },
+/** Each invariant declares the key kind it is grouped by; `scoped` limits it to the rows of the given keys, bound as one JSON array. */
+function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION, scoped = false) {
+  const only = (column: string) => scoped ? `${column} IN (SELECT value FROM json_each(?))` : "1";
+  return Object.freeze([
+  { name: "run-owner-exclusivity", scope: "run", sql: `SELECT count(*) AS count FROM runs JOIN deleted_runs ON deleted_runs.run_id=runs.id WHERE ${only("runs.id")}` },
 {
-    name: "run-completion-revisions",
+    name: "run-completion-revisions", scope: "run",
     sql: `SELECT count(*) AS count FROM runs AS run
-      WHERE json_type(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion') IS 'object'
+      WHERE ${only("run.id")} AND json_type(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion') IS 'object'
         AND run.version - json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.expectedVersion') - 1 <> (
           SELECT count(DISTINCT json_extract(audit.payload_json, '$.result.appliedVersion')) FROM command_audits AS audit
           WHERE json_extract(audit.payload_json, '$.kind') = 'run-lifecycle'
@@ -736,12 +740,12 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
             AND json_extract(audit.payload_json, '$.result.appliedVersion') <= run.version)` ,
   },
 {
-    name: "run-completion-consequences",
+    name: "run-completion-consequences", scope: "run",
     sql: `SELECT count(*) AS count FROM runs AS run
       LEFT JOIN run_results AS result ON result.run_id = run.id AND ${schemaVersion >= 20 ? CURRENT_RUN_SETTLEMENT_SQL.replaceAll("settlement.","result.") : "1"}
       LEFT JOIN run_failures AS failure ON failure.run_id = run.id
         ${schemaVersion >= 21 ? "AND failure.id=json_extract(run.lifecycle_json,'$.completion.failureId')" : ""}
-      WHERE COALESCE(json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') IN ('done','failed'), 0)
+      WHERE ${only("run.id")} AND (COALESCE(json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') IN ('done','failed'), 0)
         IS NOT (json_type(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion') IS 'object')
         OR (json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.kind') = 'done' AND (
           result.run_id IS NULL OR failure.id IS NOT NULL
@@ -750,19 +754,19 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
           failure.id IS NULL OR result.run_id IS NULL
           OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.failureId') IS NOT failure.id
           OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.errorSummary') IS NOT json_extract(failure.payload_json, '$.summary')
-          OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.diagnosticSafetyVersion') IS NOT json_extract(failure.payload_json, '$.diagnosticSafetyVersion')))` ,
+          OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.diagnosticSafetyVersion') IS NOT json_extract(failure.payload_json, '$.diagnosticSafetyVersion'))))` ,
   },
 {
-    name: "final-runs-bind-result-owner",
+    name: "final-runs-bind-result-owner", scope: "run",
     sql: `SELECT count(*) AS count FROM runs AS run
       LEFT JOIN run_results AS result ON result.run_id=run.id AND ${schemaVersion >= 20 ? CURRENT_RUN_SETTLEMENT_SQL.replaceAll("settlement.","result.") : "1"}
-      WHERE run.state='terminal' AND run.outcome<>'interrupted' AND result.run_id IS NULL`,
+      WHERE ${only("run.id")} AND run.state='terminal' AND run.outcome<>'interrupted' AND result.run_id IS NULL`,
   },
 {
-    name: "failed-runs-bind-failure",
+    name: "failed-runs-bind-failure", scope: "run",
     sql: `
       SELECT count(*) AS count FROM runs AS run
-      WHERE json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') = 'failed'
+      WHERE ${only("run.id")} AND json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') = 'failed'
         AND NOT EXISTS (
           SELECT 1 FROM run_failures AS failure
           WHERE failure.id = json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.failureId')
@@ -771,11 +775,11 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
     `,
   },
 {
-    name: "failures-bind-failed-run",
+    name: "failures-bind-failed-run", scope: "run",
     sql: `
       SELECT count(*) AS count FROM run_failures AS failure
       JOIN runs AS run ON run.id = failure.run_id
-      WHERE ${schemaVersion >= 21 ? `NOT EXISTS (
+      WHERE ${only("run.id")} AND (${schemaVersion >= 21 ? `NOT EXISTS (
         SELECT 1 FROM run_results result WHERE result.run_id=run.id
           AND json_extract(result.terminal_run_json,'$.lifecycle.outcome')='failed'
           AND json_extract(result.terminal_run_json,'$.lifecycle.failureId')=failure.id
@@ -784,80 +788,80 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
           AND json_extract(result.payload_json,'$.result.value.authorization.failureId')=failure.id
           AND result.settlement_version=json_extract(result.terminal_run_json,'$.completion.expectedVersion')+1
       )` : `json_extract(run.lifecycle_json, '$.lifecycle.outcome') IS NOT 'failed'
-        OR json_extract(run.lifecycle_json, '$.lifecycle.failureId') IS NOT failure.id`}
+        OR json_extract(run.lifecycle_json, '$.lifecycle.failureId') IS NOT failure.id`})
     `,
   },
 {
-    name: "failure-identity-matches-run",
+    name: "failure-identity-matches-run", scope: "run",
     sql: `
       SELECT count(*) AS count FROM run_failures AS failure
       JOIN runs AS run ON run.id = failure.run_id
-      WHERE json_extract(failure.payload_json, '$.workflowId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.workflow')
+      WHERE ${only("run.id")} AND (json_extract(failure.payload_json, '$.workflowId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.workflow')
         OR json_extract(failure.payload_json, '$.traceId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.traceId')
-        OR json_extract(failure.payload_json, '$.attempt') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.attempt')
+        OR json_extract(failure.payload_json, '$.attempt') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.attempt'))
     `,
   },
 {
-    name: "run-result-identity-matches-run",
+    name: "run-result-identity-matches-run", scope: "run",
     sql: `
       SELECT count(*) AS count FROM run_results AS result
       JOIN runs AS run ON run.id = result.run_id
-      WHERE json_extract(result.payload_json, '$.workflowId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.workflow')
+      WHERE ${only("run.id")} AND (json_extract(result.payload_json, '$.workflowId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.workflow')
         OR json_extract(result.payload_json, '$.attempt') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.attempt')
         OR json_extract(result.payload_json, '$.descriptorVersion') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.descriptorVersion')
         OR json_extract(result.payload_json, '$.contractFingerprint') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.contractFingerprint')
         OR json_extract(result.payload_json, '$.configFingerprint') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.configFingerprint')
-        OR json_extract(result.payload_json, '$.configSnapshotId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.configSnapshotId')
+        OR json_extract(result.payload_json, '$.configSnapshotId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.configSnapshotId'))
     `,
   },
 {
-    name: "results-bind-terminal-run",
+    name: "results-bind-terminal-run", scope: "run",
     sql: `
       SELECT count(*) AS count FROM run_results AS result
       JOIN runs AS run ON run.id = result.run_id
-      WHERE ${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.state')" : "run.state"} IS NOT 'terminal' OR ${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} IS 'interrupted'
+      WHERE ${only("run.id")} AND (${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.state')" : "run.state"} IS NOT 'terminal' OR ${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} IS 'interrupted'
         OR (${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} = 'done' AND json_extract(result.payload_json,'$.result.value.kind') IN ('failed-evidence','lifecycle-evidence'))
         OR (${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} = 'failed' AND json_extract(result.payload_json,'$.result.value.kind') IS NOT 'failed-evidence')
-        OR (${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} IN ('cancelled','discarded','superseded') AND json_extract(result.payload_json,'$.result.value.kind') IS NOT 'lifecycle-evidence')
+        OR (${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} IN ('cancelled','discarded','superseded') AND json_extract(result.payload_json,'$.result.value.kind') IS NOT 'lifecycle-evidence'))
     `,
   },
 {
     // Check one-active-run ownership before claiming; a second active row is a loop defect.
-    name: "worker-owns-at-most-one-active-run",
+    name: "worker-owns-at-most-one-active-run", scope: "worker",
     sql: `
       SELECT count(*) AS count FROM (
         SELECT owner_worker_id FROM runs
-        WHERE state IN ('claimed','validating','running')
+        WHERE ${only("owner_worker_id")} AND state IN ('claimed','validating','running')
         GROUP BY owner_worker_id HAVING count(*) > 1
       )
     `,
   },
 {
-    name: "diagnostic-attachment-binds-its-bundle",
+    name: "diagnostic-attachment-binds-its-bundle", scope: "snapshot",
     sql: `
       SELECT count(*) AS count FROM diagnostic_files AS attachment
       LEFT JOIN diagnostic_snapshots AS bundle ON bundle.id = attachment.snapshot_id
-      WHERE bundle.id IS NULL
+      WHERE ${only("attachment.snapshot_id")} AND (bundle.id IS NULL
         OR attachment.id IS NOT (attachment.snapshot_id || ':' || attachment.artifact_id)
         OR attachment.snapshot_id IS NOT json_extract(attachment.payload_json, '$.bundleId')
         OR attachment.artifact_id IS NOT json_extract(attachment.payload_json, '$.attachment.artifactId')
-        OR attachment.digest IS NOT json_extract(attachment.payload_json, '$.attachment.digest')
+        OR attachment.digest IS NOT json_extract(attachment.payload_json, '$.attachment.digest'))
     `,
   },
 {
-    name: "diagnostic-bundle-attachments-are-indexed",
+    name: "diagnostic-bundle-attachments-are-indexed", scope: "snapshot",
     sql: `
       SELECT count(*) AS count FROM diagnostic_snapshots AS bundle
-      WHERE json_array_length(bundle.payload_json, '$.attachments')
+      WHERE ${only("bundle.id")} AND json_array_length(bundle.payload_json, '$.attachments')
         <> (SELECT count(*) FROM diagnostic_files AS attachment WHERE attachment.snapshot_id = bundle.id)
     `,
   },
 {
-    name: "started-dry-run-scenario-result-binds-run",
+    name: "started-dry-run-scenario-result-binds-run", scope: "run",
     sql: `
       SELECT count(*) AS count FROM dryrun_results AS result
       LEFT JOIN runs AS run ON run.id = result.run_id
-      WHERE result.execution_state = 'started' AND (
+      WHERE ${only("result.run_id")} AND result.execution_state = 'started' AND (
         run.id IS NULL
         OR result.workflow IS NOT run.workflow
         OR result.trace_id IS NOT json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.traceId')
@@ -868,10 +872,10 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
     `,
   },
 {
-    name: "attempting-write-has-current-attempt",
+    name: "attempting-write-has-current-attempt", scope: "intent",
     sql: `
       SELECT count(*) AS count FROM write_intents AS intent
-      WHERE intent.status = 'attempting' AND NOT EXISTS (
+      WHERE ${only("intent.id")} AND intent.status = 'attempting' AND NOT EXISTS (
         SELECT 1 FROM write_attempts AS attempt
         WHERE attempt.id = json_extract(intent.payload_json, '$.currentAttemptId')
           AND attempt.intent_id = intent.id
@@ -881,20 +885,31 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
   }
 ] as const); }
 
-function invariantViolations(database: DatabaseSync): readonly string[] {
-  const violations = invariantQueries(readIntPragma(database,"user_version")).flatMap(({ name, sql }) => {
-    const { count } = CountRowSchema.parse(database.prepare(sql).get());
+/** The keys an invariant check is limited to, by the kind each invariant is grouped by; omitted, every row is checked. */
+type InvariantScope = Readonly<{ run: ReadonlySet<string>; worker: ReadonlySet<string>; snapshot: ReadonlySet<string>; intent: ReadonlySet<string>;
+  /** Commands whose group links are re-derived: changed commands, and the children of changed parents. */
+  command: ReadonlySet<string> }>;
+
+function invariantViolations(database: DatabaseSync, scope?: InvariantScope): readonly string[] {
+  const violations = invariantQueries(readIntPragma(database,"user_version"), scope !== undefined).flatMap(({ name, scope: kind, sql }) => {
+    if (scope !== undefined && scope[kind].size === 0) return [];
+    const statement = database.prepare(sql);
+    const { count } = CountRowSchema.parse(scope === undefined ? statement.get() : statement.get(JSON.stringify([...scope[kind]])));
     return count === 0 ? [] : [`${name} failed for ${String(count)} row(s)`];
   });
-  return [...violations, ...commandGroupLinkViolations(database)];
+  return [...violations, ...commandGroupLinkViolations(database, scope?.command)];
 }
 
-/** Validate both declared links and missing links from each immutable parent selection. */
-function commandGroupLinkViolations(database: DatabaseSync): readonly string[] {
+/** Validate both declared links and missing links from each immutable parent selection; `commands` limits the links checked. */
+function commandGroupLinkViolations(database: DatabaseSync, commands?: ReadonlySet<string>): readonly string[] {
+  if (commands?.size === 0) return [];
   const rowSchema = z.strictObject({ id: z.string(), request_json: z.string(), parent_id: z.string().nullable() });
-  const rows = database.prepare("SELECT id, request_json, parent_id FROM commands ORDER BY id").all()
-    .map((row) => rowSchema.parse(row));
+  const rows = commands === undefined
+    ? database.prepare("SELECT id, request_json, parent_id FROM commands ORDER BY id").all().map((row) => rowSchema.parse(row))
+    : database.prepare("SELECT id, request_json, parent_id FROM commands WHERE id IN (SELECT value FROM json_each(?)) OR parent_id IN (SELECT value FROM json_each(?)) OR family='bulk-parent' ORDER BY id")
+      .all(JSON.stringify([...commands]), JSON.stringify([...commands])).map((row) => rowSchema.parse(row));
   const byId = new Map(rows.map((row) => [row.id, row]));
+  const checked = (id: string) => commands === undefined || commands.has(id) || commands.has(byId.get(id)?.parent_id ?? "");
   const expected = new Map<string, string>();
   for (const row of rows) {
     const raw: unknown = JSON.parse(row.request_json);
@@ -903,13 +918,13 @@ function commandGroupLinkViolations(database: DatabaseSync): readonly string[] {
     for (const target of parent.acceptance.request.targets) {
       const child = deriveBulkChildCommand(parent.acceptance.request, target);
       const saved = byId.get(child.commandId);
-      if (saved === undefined) continue;
+      if (saved === undefined || !(checked(child.commandId) || checked(parent.commandId))) continue;
       if (expected.has(child.commandId) && expected.get(child.commandId) !== parent.commandId) return ["command-group ambiguous child ownership"];
       if (canonicalJsonStringify(JSON.parse(saved.request_json) as unknown) !== canonicalJsonStringify(child)) return ["command-group child request mismatch"];
       expected.set(child.commandId, parent.commandId);
     }
   }
-  return rows.flatMap((row) => row.parent_id === (expected.get(row.id) ?? null)
+  return rows.flatMap((row) => !checked(row.id) || row.parent_id === (expected.get(row.id) ?? null)
     ? [] : ["command-group child linkage mismatch"]);
 }
 
@@ -1294,23 +1309,59 @@ function inspectionRunReader(expectedSchemaVersion: number): (raw: unknown) => P
   };
 }
 
-function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, workbookPayloads = true): number {
+/** What validating one stored row needs: the store, its schema's readers and the preference conversion below schema 27. */
+type StoredRowContext = Readonly<{ database: DatabaseSync; read: StoredReaders; expectedSchemaVersion: number; predecessorCustody: boolean;
+  convertPreferences: (table: string, row: unknown) => unknown }>;
+
+function storedRowContext(database: DatabaseSync, expectedSchemaVersion: number): StoredRowContext {
   const predecessorCustody = expectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
   const read: StoredReaders = { ...(predecessorCustody ? PREDECESSOR_CUSTODY_READERS : CURRENT_READERS), run: inspectionRunReader(expectedSchemaVersion) };
   const convertPreferences = (table: string, row: unknown) => {
     const person = expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
     return expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
   };
+  return { database, read, expectedSchemaVersion, predecessorCustody, convertPreferences };
+}
+
+/** Tables validated as a whole family (workbooks) or by a conversion (retired and custody-dropped tables), never row by row. */
+function validatedRowByRow(table: AuthorityTableName | "explorer_overrides" | typeof WORKER_CUSTODY_DROPPED_TABLES[number] | typeof RETIRED_ASSISTANT_GRANT_TABLE): table is AuthorityTableName {
+  return !(table.startsWith("workbook_") || table === "explorer_overrides" || table === RETIRED_ASSISTANT_GRANT_TABLE || isWorkerCustodyDroppedTable(table));
+}
+
+function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, workbookPayloads = true): number {
+  const context = storedRowContext(database, expectedSchemaVersion);
   if (expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) assertNoAssistantGrantHistory(database);
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of migrationTableNames(expectedSchemaVersion)) {
     // The custody conversion validates the tables it drops.
-    if (table.startsWith("workbook_") || table === "explorer_overrides" || table === RETIRED_ASSISTANT_GRANT_TABLE || isWorkerCustodyDroppedTable(table)) continue;
+    if (!validatedRowByRow(table)) continue;
     if (table === "run_search" && (!validateSearch || !searchReady)) continue;
     const retained = expectedSchemaVersion >= 10 ? "" : table === "commands" ? " WHERE family<>'explorer'"
       : table === "command_audits" ? " WHERE command_id NOT IN (SELECT id FROM commands WHERE family='explorer')" : "";
     for (const raw of database.prepare(`SELECT * FROM ${table}${retained} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
+      validateStoredRow(context, table, raw);
+      validated++;
+    }
+  }
+  validated += validateAuthorityFamilies(context, workbookPayloads);
+  return validated;
+}
+
+/** The library, the assistant preference and settings are each validated as one family; returns the library rows validated. */
+function validateAuthorityFamilies(context: StoredRowContext, workbookPayloads = true, families: ReadonlySet<AuthorityFamily> = ALL_AUTHORITY_FAMILIES): number {
+  const { database, expectedSchemaVersion, convertPreferences } = context;
+  let validated = 0;
+  if (families.has("workbook") && workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18);
+  // Below schema 27 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
+  if (families.has("assistant-preference") && expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
+  if (families.has("settings")) try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
+  return validated;
+}
+
+/** Validates one stored row exactly as the whole-store check does. */
+function validateStoredRow(context: StoredRowContext, table: AuthorityTableName, raw: Record<string, unknown>): void {
+  const { database, read, expectedSchemaVersion, predecessorCustody, convertPreferences } = context;
       try {
         if (table === "database_states") {
           const row = z.strictObject({id:z.literal(1),schema_version:z.literal(expectedSchemaVersion),authority_generation:z.number().int().nonnegative(),updated_at:IsoInstantSchema,
@@ -1380,14 +1431,227 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
           }
         } else throw new Error("native row admission is undefined");
       } catch (error) { throw new Error(`authority table ${table} failed native record validation: ${errorMessage(error)}`,{cause:error}); }
-      validated++;
+}
+
+type AuthorityFamily = "workbook" | "assistant-preference" | "settings";
+const ALL_AUTHORITY_FAMILIES: ReadonlySet<AuthorityFamily> = new Set(["workbook", "assistant-preference", "settings"]);
+type StoredRow = Record<string, unknown>;
+
+/**
+ * A key a stored row image emits. Re-validating every unit keyed by the keys of a change's old and new images gives the
+ * same verdict as the whole-store check: `run`, `worker`, `snapshot` and `intent` scope the invariants and search coverage,
+ * `item` reaches every run of one work item, whose replays read each other's checkpoints; the others find the rows whose
+ * validator reads the changed row.
+ */
+export type DependencyKey = `${"run" | "item" | "worker" | "snapshot" | "intent" | "command" | "chat" | "family"}:${string}` | "profile" | "search-publication";
+
+/** One table's part of the closure: the keys an image emits, and the rows of this table whose validator reads a row emitting a key. */
+type TableChangePolicy = Readonly<{ keys: (row: StoredRow) => readonly DependencyKey[];
+  dependents: (database: DatabaseSync, key: DependencyKey) => readonly StoredRow[] }>;
+
+const RowsSchema = z.array(z.record(z.string(), z.unknown()));
+function selectRows(database: DatabaseSync, sql: string, ...values: string[]): readonly StoredRow[] {
+  return RowsSchema.parse(database.prepare(sql).all(...values));
+}
+
+const COLUMN_KEY_KINDS = ["run", "worker", "snapshot", "intent", "command", "chat"] as const;
+type ColumnKeys = Readonly<Partial<Record<typeof COLUMN_KEY_KINDS[number], string>>>;
+
+/** Keys from columns, e.g. `{ run: "run_id" }`; a null column emits nothing. */
+function columnKeys(row: StoredRow, columns: ColumnKeys): DependencyKey[] {
+  return COLUMN_KEY_KINDS.flatMap(kind => {
+    const value = columns[kind] === undefined ? undefined : row[columns[kind]];
+    return typeof value === "string" ? [`${kind}:${value}` as const] : [];
+  });
+}
+
+/** Every `runId` string anywhere in a JSON column: the journal names runs only inside its payloads. */
+function jsonRunKeys(row: StoredRow, columns: readonly string[]): DependencyKey[] {
+  const keys: DependencyKey[] = [];
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) { for (const entry of value) visit(entry); return; }
+    if (value === null || typeof value !== "object") return;
+    for (const [name, entry] of Object.entries(value)) {
+      if (name === "runId" && typeof entry === "string") keys.push(`run:${entry}`);
+      else visit(entry);
     }
+  };
+  for (const column of columns) { const text = row[column]; if (typeof text === "string") visit(JSON.parse(text)); }
+  return keys;
+}
+
+/** Rows of `table` whose column equals the key's value, for each key kind listed. */
+function byColumn(table: AuthorityTableName, columns: ColumnKeys): TableChangePolicy["dependents"] {
+  return (database, key) => {
+    const kind = COLUMN_KEY_KINDS.find(candidate => key.startsWith(`${candidate}:`));
+    const column = kind === undefined ? undefined : columns[kind];
+    return kind === undefined || column === undefined ? [] : selectRows(database, `SELECT * FROM ${table} WHERE ${column}=?`, key.slice(kind.length + 1));
+  };
+}
+
+/** A superset of the rows whose JSON names the run: the quoted id appears in the text of any JSON string holding it. */
+function byJsonRun(table: AuthorityTableName, columns: readonly string[]): TableChangePolicy["dependents"] {
+  return (database, key) => key.startsWith("run:")
+    ? selectRows(database, `SELECT * FROM ${table} WHERE ${columns.map(column => `instr(${column},?)>0`).join(" OR ")}`, ...columns.map(() => JSON.stringify(key.slice(4))))
+    : [];
+}
+
+function commandFamilies(record: unknown): DependencyKey[] {
+  const parsed = z.object({ family: z.string().optional(), kind: z.string().optional() }).safeParse(record);
+  if (!parsed.success) return [];
+  return [
+    ...(parsed.data.family === "settings" || parsed.data.kind === "settings-initialization" ? ["family:settings" as const] : []),
+    ...(parsed.data.family === "assistant-model-preference" ? ["family:assistant-preference" as const] : []),
+  ];
+}
+
+const NO_DEPENDENTS: TableChangePolicy["dependents"] = () => [];
+const selfOnly = (keys: TableChangePolicy["keys"] = () => []): TableChangePolicy => ({ keys, dependents: NO_DEPENDENTS });
+const workbookFamily = selfOnly(() => ["family:workbook"]);
+
+/**
+ * The closure policy for every registry table. Most validators read only their own row; the rest read rows owned by the
+ * same run, a command's audit, a chat, the published search state or a whole family.
+ */
+const TABLE_CHANGE_POLICIES = deepFreeze<Record<AuthorityTableName, TableChangePolicy>>({
+  assistant_model_preference: selfOnly(() => ["family:assistant-preference"]),
+  // The singleton is special-cased in `changeKeys`: only a changed search publication or profile reaches other rows.
+  database_states: selfOnly(),
+  database_upgrades: selfOnly(),
+  settings_snapshots: selfOnly(() => ["family:settings"]),
+  commands: selfOnly(row => [`command:${String(row.id)}`, ...columnKeys(row, { run: "target_id" }), ...jsonRunKeys(row, ["request_json", "outcome_json"]),
+    ...commandFamilies(JSON.parse(String(row.request_json)))]),
+  command_audits: { keys: row => [...columnKeys(row, { command: "command_id" }), ...jsonRunKeys(row, ["payload_json"]),
+    ...commandFamilies(z.object({ request: z.unknown() }).safeParse(JSON.parse(String(row.payload_json))).data?.request)],
+  dependents: (database, key) => [...byColumn("command_audits", { command: "command_id" })(database, key), ...byJsonRun("command_audits", ["payload_json"])(database, key)] },
+  settings: selfOnly(() => ["family:settings"]),
+  assistant_chats: { keys: row => columnKeys(row, { chat: "id" }), dependents: (database, key) => key === "profile" ? selectRows(database, "SELECT * FROM assistant_chats") : [] },
+  assistant_actions: { keys: row => columnKeys(row, { chat: "chat_id" }), dependents: byColumn("assistant_actions", { chat: "chat_id" }) },
+  assistant_conversations: selfOnly(),
+  assistant_messages: selfOnly(),
+  assistant_attachments: selfOnly(),
+  run_batches: selfOnly(),
+  deleted_runs: selfOnly(row => columnKeys(row, { run: "run_id", command: "command_id" })),
+  runs: selfOnly(row => columnKeys(row, { run: "id", worker: "owner_worker_id" })),
+  run_requests: selfOnly(),
+  run_delegations: selfOnly(row => columnKeys(row, { run: "parent_run_id" })),
+  delegation_dependencies: selfOnly(),
+  run_checkpoints: selfOnly(row => [...columnKeys(row, { run: "run_id" }), `item:${JSON.stringify([row.workflow, row.item_id])}`]),
+  gate_results: selfOnly(row => columnKeys(row, { run: "run_id" })),
+  run_results: { keys: row => columnKeys(row, { run: "run_id" }), dependents: byColumn("run_results", { run: "run_id" }) },
+  run_failures: selfOnly(row => columnKeys(row, { run: "run_id" })),
+  run_receipts: { keys: row => columnKeys(row, { run: "run_id" }), dependents: byColumn("run_receipts", { run: "run_id" }) },
+  write_intents: { keys: row => [...columnKeys(row, { run: "run_id", intent: "id" }), ...jsonRunKeys(row, ["publication_json"])],
+    dependents: (database, key) => [...byColumn("write_intents", { run: "run_id", intent: "id" })(database, key), ...byJsonRun("write_intents", ["publication_json"])(database, key)] },
+  write_attempts: selfOnly(row => columnKeys(row, { run: "run_id", intent: "intent_id" })),
+  worker_pools: selfOnly(),
+  worker_slots: selfOnly(),
+  auth_leases: selfOnly(),
+  exclusive_session_leases: selfOnly(),
+  ocr_review_revisions: selfOnly(row => columnKeys(row, { run: "run_id" })),
+  ocr_source_uploads: selfOnly(),
+  ocr_approved_snapshots: selfOnly(row => columnKeys(row, { run: "run_id" })),
+  notifications: selfOnly(),
+  notification_states: selfOnly(),
+  artifacts: selfOnly(),
+  timeline_events: { keys: row => columnKeys(row, { run: "run_id", intent: "operation_id" }), dependents: byColumn("timeline_events", { run: "run_id" }) },
+  diagnostic_snapshots: selfOnly(row => columnKeys(row, { run: "run_id", snapshot: "id" })),
+  diagnostic_files: selfOnly(row => columnKeys(row, { snapshot: "snapshot_id" })),
+  dryrun_results: selfOnly(row => columnKeys(row, { run: "run_id" })),
+  run_search: { keys: row => columnKeys(row, { run: "run_id" }),
+    dependents: (database, key) => key === "search-publication" ? selectRows(database, "SELECT * FROM run_search") : byColumn("run_search", { run: "run_id" })(database, key) },
+  workflow_workbook_selections: selfOnly(),
+  workbook_creations: workbookFamily,
+  workbook_types: workbookFamily,
+  workbook_operations: selfOnly(row => ["family:workbook", ...jsonRunKeys(row, ["request_json", "receipt_json"])]),
+  workbook_library: workbookFamily,
+  workbook_library_history: workbookFamily,
+  workbook_library_state: workbookFamily,
+  workbook_library_actions: workbookFamily,
+  workbook_library_snapshots: workbookFamily,
+});
+
+const DatabaseStateKeysSchema = z.object({ search_state: z.string(), search_generation: z.number().nullable(), profile_id: z.string() });
+
+/** The keys of one change: both images' keys, with the singleton reaching other rows only through what its readers read. */
+function changeKeys(change: AuthorityRowChange): DependencyKey[] {
+  if (change.table !== "database_states") {
+    const policy = TABLE_CHANGE_POLICIES[change.table];
+    return [...(change.before === undefined ? [] : policy.keys(change.before)), ...(change.after === undefined ? [] : policy.keys(change.after))];
   }
-  if (workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18);
-  // Below schema 27 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
-  if (expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
-  try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
-  return validated;
+  if (change.before === undefined || change.after === undefined) return ["search-publication", "profile", "family:assistant-preference"];
+  const before = DatabaseStateKeysSchema.parse(change.before), after = DatabaseStateKeysSchema.parse(change.after);
+  return [
+    ...(before.search_state !== after.search_state || (after.search_state !== "ready" && before.search_generation !== after.search_generation) ? ["search-publication" as const] : []),
+    ...(before.profile_id !== after.profile_id ? ["profile" as const, "family:assistant-preference" as const] : []),
+  ];
+}
+
+/** One stored row another connection inserted (`after` only), changed (both) or deleted (`before` only). */
+export type AuthorityRowChange = Readonly<{ table: AuthorityTableName; before?: StoredRow; after?: StoredRow }>;
+
+/** Parent runs read their delegated children's settlements, so a run key also reaches every ancestor. */
+function withAncestorRuns(database: DatabaseSync, runs: Set<string>): void {
+  const pending = [...runs];
+  for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
+    const parent = z.object({ parent_id: z.string().nullable() }).optional().parse(database.prepare("SELECT parent_id FROM runs WHERE id=?").get(id))?.parent_id;
+    if (parent != null && !runs.has(parent)) { runs.add(parent); pending.push(parent); }
+  }
+}
+
+/**
+ * Re-validates exactly the units a set of row changes can affect: each changed row's current image, every row whose
+ * validator reads a changed row, the families they belong to, the invariants and search coverage of their keys. Throws
+ * whenever the whole-store check (`validateAuthorityStore`) would throw for the same store.
+ */
+export function validateAuthorityChanges(database: DatabaseSync, changes: readonly AuthorityRowChange[], search: "all" | "progress" | "none" = "all"): void {
+  const context = storedRowContext(database, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  const keys = new Set(changes.flatMap(changeKeys));
+  const ofKind = (kind: string) => new Set([...keys].flatMap(key => key.startsWith(`${kind}:`) ? [key.slice(kind.length + 1)] : []));
+  const runs = ofKind("run");
+  for (const item of ofKind("item")) {
+    const [workflow, itemId] = z.tuple([z.string(), z.string()]).parse(JSON.parse(item));
+    for (const { id } of z.array(z.object({ id: z.string() })).parse(database.prepare("SELECT id FROM runs WHERE workflow=? AND item_id=?").all(workflow, itemId))) runs.add(id);
+  }
+  withAncestorRuns(database, runs);
+  for (const run of runs) keys.add(`run:${run}`);
+  const units = new Map<AuthorityTableName, Map<string, StoredRow>>();
+  const addUnit = (table: AuthorityTableName, row: StoredRow) => {
+    const rows = units.get(table) ?? new Map<string, StoredRow>();
+    units.set(table, rows.set(canonicalJsonStringify(nativeTableKey(table, database).split(",").map(column => row[column])), row));
+  };
+  for (const change of changes) {
+    if (change.after === undefined || !validatedRowByRow(change.table)) continue;
+    const columns = nativeTableKey(change.table, database).split(",");
+    const after = change.after;
+    const current = database.prepare(`SELECT * FROM ${change.table} WHERE ${columns.map(column => `${column}=?`).join(" AND ")}`)
+      .get(...columns.map(column => z.union([z.string(), z.number()]).parse(after[column])));
+    if (current !== undefined) addUnit(change.table, current);
+  }
+  for (const key of keys) for (const table of AuthorityTableNameSchema.options) {
+    if (validatedRowByRow(table)) for (const row of TABLE_CHANGE_POLICIES[table].dependents(database, key)) addUnit(table, row);
+  }
+  const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
+  for (const [table, rows] of units) {
+    if (table === "run_search" && (search !== "all" || !searchReady)) continue;
+    for (const row of rows.values()) validateStoredRow(context, table, row);
+  }
+  validateAuthorityFamilies(context, true, new Set([...ofKind("family")].map(family => z.enum(["workbook", "assistant-preference", "settings"]).parse(family))));
+  const violations = invariantViolations(database, { run: runs, worker: ofKind("worker"), snapshot: ofKind("snapshot"), intent: ofKind("intent"),
+    command: new Set([...ofKind("command"), ...changes.flatMap(change => change.table === "commands" ? [change.before?.id, change.after?.id].filter(id => typeof id === "string") : [])]) });
+  if (violations.length > 0) throw new Error("current composite authority is invalid");
+  if (search === "none") return;
+  const index = createRunSearchIndex(database);
+  if (keys.has("search-publication") || (index.publication().state === "building" && changes.some(change => change.table === "run_search"))) index.validateCoverage();
+  else index.validateCoverageOf(runs);
+}
+
+/** The whole-store check a reader runs after another connection commits. */
+export function validateAuthorityStore(database: DatabaseSync, search: "all" | "progress" | "none" = "all"): void {
+  validateAuthorityRecordSchemas(database, search === "all");
+  const violations = invariantViolations(database);
+  if (violations.length > 0) throw new Error("current composite authority is invalid");
+  if (search !== "none") createRunSearchIndex(database).validateCoverage();
 }
 
 function authorityContentFingerprint(database: DatabaseSync, excludedUpgradeRecord?: string): string {
@@ -4478,10 +4742,7 @@ export class AuthorityDatabase implements Disposable {
     if (observed === this.#validatedExternalDataVersion && observed === this.#snapshotExternalDataVersion) return;
     this.#validatedExternalDataVersion = undefined;
     try {
-      validateAuthorityRecordSchemas(this.#database, searchValidation === "all");
-      const violations = invariantViolations(this.#database);
-      if (violations.length > 0) throw new Error("current composite authority is invalid");
-      if (searchValidation !== "none") createRunSearchIndex(this.#database).validateCoverage();
+      validateAuthorityStore(this.#database, searchValidation);
     } catch (error) {
       if (mode === "mutation") throw error;
       throw new Error("run-search-index-rebuild-required", { cause: error });
