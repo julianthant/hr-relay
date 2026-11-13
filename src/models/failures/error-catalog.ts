@@ -728,11 +728,19 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   PROFILE_CURRENT_PASSWORD_REFUSED: catalogEntry(
-    "That is not your current password. Nothing was changed.",
+    "The current password was not accepted. Nothing was changed.",
     EmptyParametersSchema,
   ),
   PROFILE_USERNAME_TAKEN: catalogEntry(
     "Another profile on this computer already uses that email. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_USERNAME_REFUSED: catalogEntry(
+    "Enter a different plain email address with no spaces around it. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_BUSY: catalogEntry(
+    "Another save was in progress, so your sign-in was not changed. Try again.",
     EmptyParametersSchema,
   ),
   PROFILE_FLAT_STORE_MIGRATION_FAILED: catalogEntry("Relay could not verify the old store backup and start a clean profile installation. Startup is stopped; remaining data is preserved.", EmptyParametersSchema),

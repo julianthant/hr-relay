@@ -383,11 +383,11 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   const loginChanged = (result: { readonly state: "changed" } | { readonly state: "refused"; readonly code: string }) =>
     ProfileLoginChangeResultSchema.parse(result.state === "refused" ? { state: "refused", code: result.code } : result);
   app.post("/api/v1/profile/account/password", async c => {
-    const active = current(c.req.raw), request = ProfilePasswordChangeRequestSchema.parse(await c.req.json());
+    const request = ProfilePasswordChangeRequestSchema.parse(await c.req.json()), active = current(c.req.raw);
     return c.json(loginChanged(profileRuntime.session.changePassword(active.token, { ...request, at: clock.now().toISOString() })));
   });
   app.post("/api/v1/profile/account/username", async c => {
-    const active = current(c.req.raw), request = ProfileUsernameChangeRequestSchema.parse(await c.req.json());
+    const request = ProfileUsernameChangeRequestSchema.parse(await c.req.json()), active = current(c.req.raw);
     return c.json(loginChanged(profileRuntime.session.changeUsername(active.token, { ...request, at: clock.now().toISOString() })));
   });
   app.post("/api/v1/profile/logout", c => endSession(c, false));

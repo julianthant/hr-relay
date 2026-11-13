@@ -28,13 +28,15 @@ it("serves password and username changes to the signed-in session only, and the 
       { status: 409, body: { state: "refused", code: "PROFILE_SESSION_STALE" } });
     const foreign = await fetch(`${base}/api/v1/profile/account/password`, { method: "POST", headers: { origin: "http://foreign.invalid", "content-type": "application/json", cookie },
       body: JSON.stringify({ currentPassword: "disposable-fixture-password", newPassword: "changed-fixture-password" }) });
-    assert.equal(foreign.ok, false);
+    assert.deepEqual([foreign.status, await foreign.json()], [403, { state: "refused", code: "PROFILE_SESSION_STALE" }]);
     assert.equal((await change("password", { currentPassword: "disposable-fixture-password", newPassword: "" }, cookie)).status, 400);
     assert.deepEqual(await change("password", { currentPassword: "not-the-password", newPassword: "changed-fixture-password" }, cookie),
       { status: 200, body: { state: "refused", code: "PROFILE_CURRENT_PASSWORD_REFUSED" } });
 
     const password = await change("password", { currentPassword: "disposable-fixture-password", newPassword: "changed-fixture-password" }, cookie);
     assert.deepEqual(password, { status: 200, body: ProfileLoginChangeResultSchema.parse({ state: "changed" }) });
+    assert.deepEqual(await change("username", { currentPassword: "changed-fixture-password", newUsername: "FIXTURE@ucsd.edu" }, cookie),
+      { status: 200, body: { state: "refused", code: "PROFILE_USERNAME_REFUSED" } });
     const username = await change("username", { currentPassword: "changed-fixture-password", newUsername: "fixture.changed@ucsd.edu" }, cookie);
     assert.deepEqual(username, { status: 200, body: { state: "changed" } });
     assert.equal(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).json()).state, "active");

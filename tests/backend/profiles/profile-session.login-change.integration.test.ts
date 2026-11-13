@@ -10,13 +10,24 @@ async function world() { const created = await createProfileSessionWorld(); worl
 const alexFields = { firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" };
 const samFields = { firstName: "Sam", lastName: "Ortiz", email: "sam@ucsd.edu", password: "secret-sam", createdAt: "2026-09-06T11:00:00.000Z" };
 
-/** Fail the verifier swap. With `stopAfter`, every later credential open fails too, so nothing runs after it, as when the process stops there. */
-function failVerifierSwap(stopAfter: boolean): void {
-  const rename = fs.renameSync, open = fs.openSync;
-  let stopped = false;
+/**
+ * Fail the verifier swap. "before" fails its rename; "stop" also fails every later credential open, as when the process stops there;
+ * "flush" lets the rename land and fails the directory flush after it.
+ */
+function failVerifierSwap(mode: "before" | "stop" | "flush"): void {
+  const rename = fs.renameSync, open = fs.openSync, flush = fs.fsyncSync;
+  let stopped = false, landed = false;
   vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-    if (String(to).endsWith("profile-verifiers.json")) { stopped = stopAfter; throw new Error("injected replacement failure"); }
+    if (String(to).endsWith("profile-verifiers.json")) {
+      if (mode === "flush") { rename(from, to); landed = true; return; }
+      stopped = mode === "stop";
+      throw new Error("injected replacement failure");
+    }
     rename(from, to);
+  });
+  vi.spyOn(fs, "fsyncSync").mockImplementation(descriptor => {
+    if (landed) { landed = false; throw new Error("injected flush failure"); }
+    flush(descriptor);
   });
   vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
     if (stopped && String(path).includes("/credentials/")) throw new Error("injected stop");
@@ -89,7 +100,7 @@ describe("Relay login change", () => {
     const session = machine.open();
     const alex = await machine.signUp(session, alexFields);
     const verifiers = machine.verifierBytes();
-    failVerifierSwap(false);
+    failVerifierSwap("before");
     assert.throws(() => session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:01:00.000Z" }), /injected replacement failure/u);
     restoreFiles();
     assert.equal(machine.verifierBytes(), verifiers);
@@ -107,14 +118,16 @@ describe("Relay login change", () => {
     const machine = await world();
     const session = machine.open();
     const alex = await machine.signUp(session, alexFields);
-    failVerifierSwap(true);
+    failVerifierSwap("stop");
     const at = "2026-09-06T12:01:00.000Z";
     assert.throws(() => "newPassword" in change ? session.changePassword(alex.token, { currentPassword: "secret-one", ...change, at })
-      : session.changeUsername(alex.token, { currentPassword: "secret-one", ...change, at }));
+      : session.changeUsername(alex.token, { currentPassword: "secret-one", ...change, at }), /profile-login-change-unsettled/u);
     restoreFiles();
     assert.deepEqual([machine.savedLogin(alex.profileId).userId, machine.savedLogin(alex.profileId).password], [next.email, next.password], kind);
+    assert.equal(refusalCode(session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-three", at })), "PROFILE_SESSION_STALE");
 
     const restarted = machine.open();
+    assert.equal(refusalCode(restarted.resumeSignedInProfile({ at: "2026-09-06T12:02:00.000Z" })), "PROFILE_AUTHORITY_UNAVAILABLE");
     assert.equal(refusalCode(restarted.signIn({ ...next, at: "2026-09-06T12:02:00.000Z" })), "PROFILE_SIGN_IN_REFUSED");
     const old = restarted.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:03:00.000Z" });
     assert.equal(old.state, "active");
@@ -133,7 +146,7 @@ describe("Relay login change", () => {
     assert.equal(machine.savedLogin(alex.profileId).password, "settings-only");
   });
 
-  it("restores nothing after a completed change when sign-in spells the email differently", async () => {
+  it("keeps the saved email spelling when a sign-in after a completed change types it differently", async () => {
     const machine = await world();
     const session = machine.open();
     const alex = await machine.signUp(session, alexFields);
@@ -141,5 +154,46 @@ describe("Relay login change", () => {
     const restarted = machine.open();
     assert.equal(refusalCode(restarted.signIn({ email: " Alex@ucsd.edu", password: "secret-two", at: "2026-09-06T12:02:00.000Z" })), "PROFILE_AUTHORITY_UNAVAILABLE");
     assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-two" });
+  });
+
+  it("keeps the new login when the verifier swap landed but its flush failed", async () => {
+    const machine = await world();
+    const session = machine.open();
+    const alex = await machine.signUp(session, alexFields);
+    failVerifierSwap("flush");
+    assert.throws(() => session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:01:00.000Z" }), /injected flush failure/u);
+    restoreFiles();
+    assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-two" });
+    const restarted = machine.open();
+    assert.equal(refusalCode(restarted.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:02:00.000Z" })), "PROFILE_SIGN_IN_REFUSED");
+    assert.equal(restarted.signIn({ email: "alex@ucsd.edu", password: "secret-two", at: "2026-09-06T12:03:00.000Z" }).state, "active");
+  });
+
+  it("locks the change after repeated wrong current passwords, sharing the sign-in lockout", async () => {
+    const machine = await world();
+    const session = machine.open();
+    const alex = await machine.signUp(session, alexFields);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      assert.equal(refusalCode(session.changePassword(alex.token, { currentPassword: "wrong", newPassword: "secret-two", at: "2026-09-06T12:01:00.000Z" })), "PROFILE_CURRENT_PASSWORD_REFUSED");
+    }
+    assert.equal(refusalCode(session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:01:30.000Z" })), "PROFILE_CURRENT_PASSWORD_REFUSED");
+    assert.equal(machine.savedLogin(alex.profileId).password, "secret-one");
+    assert.equal(session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:02:01.000Z" }).state, "changed");
+    assert.equal(session.changePassword(alex.token, { currentPassword: "wrong", newPassword: "secret-three", at: "2026-09-06T12:02:02.000Z" }).state, "refused");
+    assert.equal(session.changePassword(alex.token, { currentPassword: "secret-two", newPassword: "secret-three", at: "2026-09-06T12:02:03.000Z" }).state, "changed");
+  });
+
+  it.each([
+    ["the same address in another case", "ALEX@ucsd.edu"],
+    ["spaces around the address", " alex.rivera@ucsd.edu"],
+    ["an address that is not plain", "ａlex.rivera@ucsd.edu"],
+  ])("refuses a new username with %s and changes nothing", async (_name, newUsername) => {
+    const machine = await world();
+    const session = machine.open();
+    const alex = await machine.signUp(session, alexFields);
+    const verifiers = machine.verifierBytes();
+    assert.equal(refusalCode(session.changeUsername(alex.token, { currentPassword: "secret-one", newUsername, at: "2026-09-06T12:01:00.000Z" })), "PROFILE_USERNAME_REFUSED");
+    assert.equal(machine.verifierBytes(), verifiers);
+    assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-one" });
   });
 });

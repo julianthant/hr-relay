@@ -11,13 +11,10 @@ export type ProfileSignUpRequest = z.infer<typeof ProfileSignUpRequestSchema>;
 /** Relay login changes for the signed-in profile; the current password proves the caller. */
 export const ProfilePasswordChangeRequestSchema = z.strictObject({ currentPassword: ProfileLoginRequestSchema.shape.password, newPassword: ProfileLoginRequestSchema.shape.password });
 export const ProfileUsernameChangeRequestSchema = z.strictObject({ currentPassword: ProfileLoginRequestSchema.shape.password, newUsername: ProfileLoginRequestSchema.shape.email });
-export type ProfilePasswordChangeRequest = z.infer<typeof ProfilePasswordChangeRequestSchema>;
-export type ProfileUsernameChangeRequest = z.infer<typeof ProfileUsernameChangeRequestSchema>;
 export const ProfileLoginChangeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("changed") }),
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
 ]);
-export type ProfileLoginChangeResult = z.infer<typeof ProfileLoginChangeResultSchema>;
 export const DeleteProfileAccountRequestSchema = z.strictObject({ confirmed: z.literal(true),
   expectedProfileId: ProfileIdSchema, expectedEpoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) });
 export type DeleteProfileAccountRequest = z.infer<typeof DeleteProfileAccountRequestSchema>;
