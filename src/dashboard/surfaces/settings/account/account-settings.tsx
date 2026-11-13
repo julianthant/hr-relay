@@ -1,9 +1,10 @@
 import { Pencil } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { z } from "zod";
 import { BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, FormGroup, IconButton, Input, PageHeading, ResultRow, SecretField, dsIcon, useToasts } from "../../../ds/ui.js";
 import { operatorFailureSentence } from "../../../../models/failures/error-catalog.js";
-import { isRelayUsername, RELAY_SIGN_IN_FIELD_MAX, type ProfileLoginChangeResultSchema } from "../../../../models/profiles/public-profile.js";
+import { profileInitials } from "../../../../models/profiles/profile-identity.js";
+import { isRelayUsername, RELAY_SIGN_IN_FIELD_MAX, type ProfileDetailsChangeRequestSchema, type ProfileDetailsChangeResultSchema, type ProfileLoginChangeResultSchema } from "../../../../models/profiles/public-profile.js";
 
 export interface AccountValues {
   readonly name: string;
@@ -11,7 +12,7 @@ export interface AccountValues {
   readonly timekeeper: string;
   readonly lastSignedInAt: string;
 }
-export interface AccountPage { readonly values: AccountValues; readonly duo: "ready" | "setup"; readonly onSignOut: () => void; readonly login: Omit<RelayLogin, "username"> }
+export interface AccountPage { readonly values: AccountValues; readonly duo: "ready" | "setup"; readonly onSignOut: () => void; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; readonly login: Omit<RelayLogin, "username"> }
 
 function Group({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   return <BodySection title={label} description={description}><FormGroup label={label}>{children}</FormGroup></BodySection>;
@@ -19,19 +20,30 @@ function Group({ label, description, children }: { label: string; description?: 
 
 /** Account page: read-only profile facts, the changeable Relay username and password, the editable UCPath sign-in, Duo status with Sign out, and Delete account. */
 export function AccountSettings({ page, username, ucpath, deleteAccount }: { page: AccountPage; username: string | undefined; ucpath: ReactNode; deleteAccount: ReactNode }) {
-  const { values, duo, onSignOut, login } = page;
+  const { duo, onSignOut, login } = page;
+  const [values, setValues] = useState(page.values);
+  const { toast } = useToasts();
+  const save = async (request: ProfileDetailsChangeRequest, title: string): Promise<boolean> => {
+    let result: ProfileDetailsChangeResult;
+    try { result = await page.details(request); } catch { result = { state: "refused", code: "PROFILE_LOGIN_CHANGE_UNKNOWN" }; }
+    if (result.state === "changed") { setValues(prev => ({ ...prev, ...result.account })); return true; }
+    toast({ tone: "danger", title: `${title} not changed`, description: operatorFailureSentence(result.code) });
+    return false;
+  };
+  const details = (label: string, shown: string, request: (next: string) => ProfileDetailsChangeRequest) =>
+    <EditableRow label={label} value={shown} onSave={next => save(request(next), label)} />;
   return <section className="settings-compact-page settings-account-page">
     <PageHeading title="Account" />
     <Group label="Relay account" description="How you sign in to Relay.">
-      <ResultRow label="Name" value={values.name} />
+      {details("Name", values.name, next => { const [firstName = "", ...rest] = next.split(/\s+/u); return { name: { firstName, lastName: rest.join(" ") } }; })}
       <RelayLoginRows login={{ ...login, username }} />
-      <ResultRow label="Initials" value={values.initials} />
+      {details("Initials", values.initials, initials => ({ initials }))}
       <ResultRow label="Last signed in" value={new Date(values.lastSignedInAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} />
     </Group>
     {ucpath}
     <Group label="Workflow configuration">
-      <ResultRow label="Timekeeper name" value={values.timekeeper} />
-      <ResultRow label="Timekeeper initials" value={values.initials} />
+      {details("Timekeeper name", values.timekeeper, timekeeperName => ({ timekeeperName }))}
+      <ResultRow label="Timekeeper initials" value={timekeeperInitials(values.timekeeper)} />
     </Group>
     <Group label="Security">
       <ResultRow label="Duo" value={duo === "ready" ? "Ready" : "Needs setup"} />
@@ -39,6 +51,36 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     </Group>
     {deleteAccount}
   </section>;
+}
+
+export type ProfileDetailsChangeRequest = z.infer<typeof ProfileDetailsChangeRequestSchema>;
+export type ProfileDetailsChangeResult = z.infer<typeof ProfileDetailsChangeResultSchema>;
+
+function timekeeperInitials(name: string): string {
+  try { return profileInitials(name); } catch { return ""; }
+}
+
+/** A value row whose pencil swaps the value for an inline field: Enter saves, Escape cancels, and focus returns to the pencil. */
+function EditableRow({ label, value, onSave }: { label: string; value: string; onSave: (next: string) => Promise<boolean> }) {
+  const [draft, setDraft] = useState<string | undefined>();
+  const pencil = useRef<HTMLButtonElement>(null);
+  const editing = draft !== undefined;
+  useEffect(() => { if (!editing) pencil.current?.focus({ preventScroll: true }); }, [editing]);
+  const finish = async (save: boolean): Promise<void> => {
+    const next = draft?.trim();
+    setDraft(undefined);
+    if (save && next !== undefined && next !== value) await onSave(next);
+  };
+  return <ResultRow label={label} value={editing
+    ? <Input aria-label={label} value={draft} autoFocus spellCheck={false} onChange={event => setDraft(event.target.value)}
+        onKeyDown={event => {
+          if (event.key === "Enter") { event.preventDefault(); void finish(true); }
+          else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); void finish(false); }
+        }} />
+    : <span className="inline-flex items-center justify-end gap-3 -mr-0.5">
+        <span className="text-ui-muted">{value}</span>
+        <IconButton ref={pencil} type="button" label={`Edit ${label}`} variant="ghost" size="sm" icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setDraft(value)} />
+      </span>} />;
 }
 
 export type ProfileLoginChangeResult = z.infer<typeof ProfileLoginChangeResultSchema>;
