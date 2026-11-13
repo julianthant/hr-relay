@@ -50,11 +50,6 @@
       "binding": "route:POST /api/v1/workbooks/:libraryId/sync",
       "direction": "served-unconsumed",
       "note": "Queued Spreadsheets manual Sync wiring will dispatch the selected workbook SharePoint refresh through the typed dashboard client; the backend-first API has no mounted Sync consumer yet."
-    },
-    {
-      "binding": "route:POST /api/v1/profile/account/details",
-      "direction": "served-unconsumed",
-      "note": "Backend-first profile details edit (account-profile-edit-01). Ticket account-profile-edit-02 wires the Settings > Account Name, Initials and Timekeeper name pencils to it through the typed dashboard client."
     }
   ]
 }

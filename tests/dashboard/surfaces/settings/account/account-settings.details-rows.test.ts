@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { ToastProvider } from "../../../../../src/dashboard/ds/ui.js";
 import { AccountSettings, type AccountPage, type ProfileDetailsChangeRequest, type ProfileDetailsChangeResult } from "../../../../../src/dashboard/surfaces/settings/account/account-settings.js";
+import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -13,7 +14,7 @@ let host: HTMLElement | undefined;
 beforeEach(() => { vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; vi.unstubAllGlobals(); });
 
-const values = { name: "Jordan Lee", initials: "JL", timekeeper: "Casey Morgan Park", lastSignedInAt: "2026-11-01T10:00:00Z" };
+const values = { name: "Jordan Lee", initials: "JL", timekeeper: "Casey Morgan Park", lastSignedInAt: IsoInstantSchema.parse("2026-11-01T10:00:00.000Z") };
 const account = (over: Partial<typeof values> = {}) => ({ ...values, ...over });
 function page(details: AccountPage["details"]): AccountPage {
   return { values, duo: "ready", onSignOut: () => {}, details,
