@@ -18,7 +18,7 @@ afterEach(async () => {
 });
 
 describe("workflow timekeeper identity after a profile details edit", () => {
-  it("starts new runs with the changed timekeeper name while a run planned before the change keeps the name it captured", async () => {
+  it("starts new runs with the changed timekeeper name, serves the stored timekeeper initials beside it, and keeps what an earlier plan captured", async () => {
     const machine = await createProfileSessionWorld();
     worlds.push(machine);
     const session = machine.open();
@@ -38,8 +38,10 @@ describe("workflow timekeeper identity after a profile details edit", () => {
 
     // The admission captured before the edit stays usable: names are no longer part of its storage claim.
     assert.equal(session.changeDetails(alex.token, { name: { firstName: "Alexis", lastName: "Rivers" }, initials: "AXR", timekeeperName: "Lex Rivers" }).state, "changed");
-    const identity = readAdmittedProfileIdentity(machine.machine, owner);
-    assert.deepEqual([identity.displayName, identity.initials], ["Lex Rivers", "LR"]);
+    const identity = () => { const admitted = readAdmittedProfileIdentity(machine.machine, owner); return [admitted.displayName, admitted.initials]; };
+    assert.deepEqual(identity(), ["Lex Rivers", "AR"]);
+    assert.equal(session.changeDetails(alex.token, { timekeeperInitials: "LXR" }).state, "changed");
+    assert.deepEqual(identity(), ["Lex Rivers", "LXR"]);
     const after = plan();
     assert.equal(timekeeper(after), "Lex Rivers");
     assert.deepEqual(after.planned[0]?.input.protectedBindings, before.planned[0]?.input.protectedBindings);

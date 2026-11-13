@@ -246,9 +246,11 @@ export async function createHistoricalIncompleteProfileFixture(options: { keyFor
     profiles: [{ profileId: draft.profileId, ...deriveProfileNames(fields.firstName, fields.lastName),
       registration: { operationId: operation.operationId, commandId: operation.commandId, writeId: operation.writeId, credentialRevision: original.record.revision },
       createdAt: operation.createdAt, lastSignedInAt: operation.createdAt, credentialState: options.wiped === true ? "wiped" : "saved", duoState: "not-set-up", lifecycle: "ready" }] });
+  // The marker 5 predecessor kept a version 3 registry, whose rows had no timekeeper initials.
+  const priorFormatRegistry = { ...registry, schemaVersion: 3, profiles: registry.profiles.map(({ timekeeperInitials: _seeded, ...row }) => row) };
   const verifier = createSyntheticVerifier(readFileSync(join(machineRoot, "profile-pepper")), fields.email, fields.password);
   fixtureJson(verifierPath, { schemaVersion: 1, profiles: [{ profileId: draft.profileId, ...verifier, consecutiveFailures: 0 }] });
-  fixtureJson(registryPath, registry);
+  fixtureJson(registryPath, priorFormatRegistry);
   assert.equal(SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).operationId, operation.operationId);
   unlinkSync(operationPath);
   // Construct the complete settled predecessor only after the fresh unused fixture is closed.
@@ -272,7 +274,7 @@ export async function createHistoricalIncompleteProfileFixture(options: { keyFor
   rmdirSync(join(machineRoot, "credential-operations"));
   const keyStat = statSync(keyPath), controlPath = join(root, ".tracker", "control", "profile-registry.json");
   const control = JSON.parse(readFileSync(controlPath, "utf8")) as Record<string, unknown>;
-  fixtureJson(controlPath, { ...control, schemaVersion: 4, digest: createHash("sha256").update(canonicalJsonStringify(registry)).digest("hex"),
+  fixtureJson(controlPath, { ...control, schemaVersion: 4, digest: createHash("sha256").update(canonicalJsonStringify(priorFormatRegistry)).digest("hex"),
     revision: registry.revision, generation: registry.sessionGeneration, operations: [], completedRestores: [],
     erasures: [{ profileId: draft.profileId, originOperationId: operation.operationId, head: { state: "never-erased", epoch: 0 },
       credentialKey: { keyId: head.key.keyId, binding: { installationId, profileId: draft.profileId },

@@ -388,11 +388,11 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     const result = change(current(c.req.raw).token, clock.now().toISOString());
     if (result.state === "refused") return c.json(ProfileLoginChangeResultSchema.parse({ state: "refused", code: result.code }));
     // Custody is retained before the fault is written; a fault that cannot be written is reported beside the settled outcome.
-    let recorded = true;
+    let diagnostics: { diagnostics: "unrecorded" } | undefined;
     if (result.failure instanceof Error) {
-      try { publicFailure(result.failure); } catch { recorded = false; }
+      try { publicFailure(result.failure); }
+      catch { diagnostics = { diagnostics: "unrecorded" }; }
     }
-    const diagnostics = recorded ? {} : { diagnostics: "unrecorded" as const };
     if (result.state === "unknown") return c.json(ProfileLoginChangeResultSchema.parse({ state: "unknown", code: "PROFILE_LOGIN_CHANGE_UNKNOWN", ...diagnostics }));
     return c.json(ProfileLoginChangeResultSchema.parse({ state: "changed", ...(result.durability === undefined ? {} : { durability: result.durability }), ...diagnostics }));
   };

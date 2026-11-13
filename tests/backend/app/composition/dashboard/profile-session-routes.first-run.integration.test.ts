@@ -62,7 +62,7 @@ it("serves the original local startup report at Finish and replays it without ch
     const row = f.machine.readProfileRegistry().profiles[0];
     assert.ok(row);
     assert.deepEqual(ordinary, { state: "active", profileId: active.profileId, epoch: active.epoch, duoState: active.duoState,
-      account: { name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName, lastSignedInAt: row.lastSignedInAt } });
+      account: { name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName, timekeeperInitials: row.timekeeperInitials, lastSignedInAt: row.lastSignedInAt } });
     const foreign = await ready.post("/api/v1/profile/onboarding/complete", { operationId: ready.draft.operationId }, "relay-profile-onboarding=foreign");
     assert.deepEqual(await foreign.json(), { state: "refused", code: "PROFILE_SESSION_STALE" });
     assert.equal(reports.length, 1);

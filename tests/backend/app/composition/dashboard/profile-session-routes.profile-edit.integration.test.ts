@@ -4,12 +4,14 @@ import { it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { FrontendBootstrapWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
-import { ProfileDetailsChangeResultSchema, PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
+import { ProfileDetailsChangeResultSchema, PublicProfileStateSchema, type ProfileAccount } from "../../../../../src/models/profiles/public-profile.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
 import { publicProfileShellFixture as fixture, readyPublicSignUp } from "../../../../support/helpers/backend/public-profile-shell.js";
 
-it("serves a details change to the signed-in session only and serves the new values back on every read", async () => {
+/** A served dashboard with one finished sign-up, and the details route, account and actor reads of that session. */
+async function withSignedInDashboard(body: (served: Readonly<{ base: string; cookie: string; change(body: unknown, session?: string): Promise<{ status: number; body: unknown }>;
+  account(): Promise<ProfileAccount | undefined>; actor(): Promise<string> }>) => Promise<void>): Promise<void> {
   const f = await fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
@@ -19,15 +21,21 @@ it("serves a details change to the signed-in session only and serves the new val
     const finished = await finish();
     assert.equal(PublicProfileStateSchema.parse(await finished.json()).state, "active");
     const cookie = finished.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
-    const change = async (body: unknown, session?: string) => {
-      const response = await post("/api/v1/profile/account/details", body, session);
-      return { status: response.status, body: await response.json() as unknown };
-    };
-    const account = async () => {
-      const state = PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).json());
-      return state.state === "active" ? state.account : undefined;
-    };
-    const actor = async () => FrontendBootstrapWireSchema.parse(await (await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie, origin: base } })).json()).actor.label;
+    await body({ base, cookie,
+      async change(request, session) {
+        const response = await post("/api/v1/profile/account/details", request, session);
+        return { status: response.status, body: await response.json() as unknown };
+      },
+      async account() {
+        const state = PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).json());
+        return state.state === "active" ? state.account : undefined;
+      },
+      async actor() { return FrontendBootstrapWireSchema.parse(await (await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie, origin: base } })).json()).actor.label; } });
+  } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
+}
+
+it("serves a details change to the signed-in session only and serves the new values back on every read", async () => {
+  await withSignedInDashboard(async ({ base, cookie, change, account, actor }) => {
     const original = await account();
 
     assert.deepEqual(await change({ initials: "FX" }), { status: 409, body: { state: "refused", code: "PROFILE_SESSION_STALE" } });
@@ -51,5 +59,23 @@ it("serves a details change to the signed-in session only and serves the new val
     assert.deepEqual([result.state === "changed" && result.account.name, result.state === "changed" && result.account.initials,
       result.state === "changed" && result.account.timekeeper], ["Changed Person", "CHP", "Changed Timekeeper"]);
     assert.equal(await actor(), "Changed Person");
-  } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
+  });
+});
+
+it("stores, accepts and serves the timekeeper initials apart from the timekeeper name", async () => {
+  await withSignedInDashboard(async ({ cookie, change, account }) => {
+    const original = await account(); assert.ok(original);
+    assert.equal(original.timekeeperInitials, original.initials);
+    for (const timekeeperInitials of ["", "fx", "F.X", "ABCDEFGHI"]) {
+      assert.deepEqual(await change({ timekeeperInitials }, cookie), { status: 200, body: { state: "refused", code: "PROFILE_INITIALS_REFUSED" } }, timekeeperInitials);
+    }
+    assert.equal((await change({ timekeeperInitials: "F".repeat(65) }, cookie)).status, 400);
+    assert.deepEqual(await account(), original);
+
+    const renamed = ProfileDetailsChangeResultSchema.parse((await change({ timekeeperName: "Changed Timekeeper" }, cookie)).body);
+    assert.deepEqual(renamed, { state: "changed", account: { ...original, timekeeper: "Changed Timekeeper" } });
+    const relettered = ProfileDetailsChangeResultSchema.parse((await change({ timekeeperInitials: "TKX" }, cookie)).body);
+    assert.deepEqual(relettered, { state: "changed", account: { ...original, timekeeper: "Changed Timekeeper", timekeeperInitials: "TKX" } });
+    assert.deepEqual(await account(), { ...original, timekeeper: "Changed Timekeeper", timekeeperInitials: "TKX" });
+  });
 });

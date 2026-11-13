@@ -3,12 +3,13 @@ import { createHash } from "node:crypto";
 import { readFileSync, statSync, writeFileSync, existsSync, readdirSync, rmdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import { ProfileRegistryDocumentSchema } from "../../../../src/models/profiles/profile.js";
+import { ProfileRegistryDocumentSchema, ProfileRegistryRowSchema } from "../../../../src/models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 
 export function writeStoppedProfileControlPredecessor(paths: { registryPath: string; controlPath: string; markerPath: string }, version: 1 | 2 | 3 | 4): Buffer {
   const currentRegistry = readFileSync(paths.registryPath);
-  const registry = ProfileRegistryDocumentSchema.parse(JSON.parse(currentRegistry.toString("utf8")));
+  const registry = ProfileRegistryDocumentSchema.extend({ schemaVersion: z.literal(3), profiles: z.array(ProfileRegistryRowSchema.omit({ timekeeperInitials: true })) })
+    .parse(JSON.parse(currentRegistry.toString("utf8")));
   if (version === 4) return currentRegistry;
   const { installationId: _installation, revision: _revision, ...content } = registry;
   const document = { ...content, schemaVersion: 2 };

@@ -202,7 +202,7 @@ it("converts only stopped machine-control format while keeping an incomplete his
   assert.equal(readFileSync(join(backup, `${upgraded.receiptId}.marker.before.json`)).equals(markerBytes), true);
   assert.equal(readdirSync(backup).filter(name => name.endsWith(".receipt.json")).length, 1);
   assert.equal(z.looseObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.controlPath, "utf8"))).schemaVersion, 7);
-  assert.equal(z.strictObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.markerPath, "utf8"))).schemaVersion, 8);
+  assert.equal(z.strictObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.markerPath, "utf8"))).schemaVersion, 9);
   assertCanonicalCredentialConversion(f, upgraded.receiptId, maintenance);
   maintenance.release();
   maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
@@ -238,7 +238,7 @@ it("converts stopped schema2 only with authenticated empty suspect membership an
     assert.deepEqual(current.operations, []);
     for (const name of ["credentials", "erasures", "duo", "completedRestores"]) assert.equal(Object.hasOwn(current, name), false);
     assert.deepEqual(maintenance.readProfileRegistry().profiles.map(row => row.profileId).sort(), prior.duo.map(row => row.profileId).sort());
-    assert.deepEqual(JSON.parse(readFileSync(f.markerPath, "utf8")), { schemaVersion: 8 });
+    assert.deepEqual(JSON.parse(readFileSync(f.markerPath, "utf8")), { schemaVersion: 9 });
     assertCanonicalCredentialConversion(f, result.receiptId, maintenance);
     for (const source of original) assert.deepEqual(readFileSync(source.path), source.bytes);
   } catch (error) { primary = { error }; }

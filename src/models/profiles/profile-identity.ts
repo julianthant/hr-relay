@@ -15,7 +15,5 @@ export const ProfileIdentitySchema = z.strictObject({
   sessionEpoch: z.number().int().safe().positive(),
   displayName: ProfileDisplayNameSchema,
   initials: z.string().min(1),
-}).superRefine((identity, context) => {
-  if (identity.initials !== profileInitials(identity.displayName)) context.addIssue({ code: "custom", message: "profile-initials-mismatch" });
 });
 export type ProfileIdentity = z.infer<typeof ProfileIdentitySchema>;

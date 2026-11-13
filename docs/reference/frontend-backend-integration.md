@@ -163,7 +163,7 @@ field membership and discriminated states. The client checks identity as well as
 | Run detail, attempts | `queries/detail-queries.ts` | `run-detail.ts`: `GET /api/v1/runs/:runId`, `/attempt-history` |
 | Lazy run sections and rerun values | `queries/detail-queries.ts`, `queries/rerun-queries.ts` | `data.ts`, `trust.ts`: `GET /api/v1/runs/:runId/:section`; `data.ts`: `/rerun-values` |
 | Verified diagnostic bytes | `queries/detail-queries.ts` | `trust.ts`: `GET /api/v1/diagnostic-bundles/:bundleId`, `/manifest`, `/attachments/:artifactId`; verified artifact URL `/artifacts/v1/:artifactId` |
-| ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /sign-in`, `/sign-in/:attemptId/cancel`, `/sign-out` under the account path |
+| ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /sign-in`, `/sign-in/:attemptId/cancel` under the account path |
 | Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/facts`, `/editable`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
 | Preflight | `queries/preflight-queries.ts`, `queries/chatgpt-account-queries.ts` | `settings-preflight.ts`: `GET /api/v1/preflight`, `POST /api/v1/preflight/rerun`; explicit diagnostic through the existing `chatgpt-account.ts`: `POST /api/v1/settings/chatgpt-account/test-ocr` |
 | Storage doctor | `queries/storage-queries.ts` | `storage.ts`: `GET /api/v1/storage/doctor/latest`, `/api/v1/storage/doctor` |
@@ -448,16 +448,19 @@ result whose fault cannot be written still answers its outcome, marked `diagnost
 that cannot prove its write durable fails the sign-in or change that ran it, which may then be
 retried. The epoch, Duo material and other profiles are unchanged.
 
-`POST /api/v1/profile/account/details` `{name?: {firstName, lastName}, initials?, timekeeperName?}`
-changes the current session's Name, Initials or Timekeeper name in its registry row. It needs at
-least one value and returns `{state: "changed", account}` or `{state: "refused", code}`. Every value
-is checked before anything is written, so one refused value changes nothing:
-`PROFILE_DISPLAY_NAME_REFUSED` for a name the sign-up rules refuse, `PROFILE_INITIALS_REFUSED`
-unless the initials are 1 to 8 letters A to Z, and `PROFILE_NAME_REFUSED` for a timekeeper name
-that is padded, has a control character, is longer than 129 characters or has a word that does not
-start with a letter. Timekeeper initials are not stored; they are `profileInitials(timekeeper)`.
-`/profile/state`, bootstrap's actor label and the next run's timekeeper read the new values. A run
-already planned or started keeps the timekeeper name it captured.
+`POST /api/v1/profile/account/details`
+`{name?: {firstName, lastName}, initials?, timekeeperName?, timekeeperInitials?}` changes the current
+session's Name, Initials, Timekeeper name or Timekeeper initials in its registry row. It needs at
+least one value and returns `{state: "changed", account}` or `{state: "refused", code}`; `account`
+carries `timekeeperInitials` beside `timekeeper`. Every value is checked before anything is written,
+so one refused value changes nothing: `PROFILE_DISPLAY_NAME_REFUSED` for a name the sign-up rules
+refuse, `PROFILE_INITIALS_REFUSED` unless the initials or timekeeper initials are 1 to 8 letters A
+to Z, and `PROFILE_NAME_REFUSED` for a timekeeper name that is padded, has a control character, is
+longer than 129 characters or has a word that does not start with a letter. The timekeeper initials
+are a stored value of their own: sign-up writes the letters of the timekeeper name, and changing the
+timekeeper name leaves them as they are. `/profile/state`, bootstrap's actor label, the admitted
+profile identity (`displayName` and `initials`) and the next run's timekeeper name read the new
+values. A run already planned or started keeps the timekeeper name it captured.
 
 ### Profile onboarding boundary
 
