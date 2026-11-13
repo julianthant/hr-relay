@@ -2,7 +2,7 @@ import { OnboardingReadWritePlan } from "../../../src/models/workflows/onboardin
 import { ONBOARDING_ROSTER_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
 import { createOnboardingRunWorld } from "../../support/helpers/backend/onboarding-run-world.js";
 import { buildRunGate } from "../../../src/backend/runs/queries/run-trust.js";
-import { buildRunDetail, resolveGateArmAnswer } from "../../../src/backend/runs/queries/run-detail.js";
+import { buildRunDetail, readRunDetail, resolveGateArmAnswer } from "../../../src/backend/runs/queries/run-detail.js";
 import { GateArmAnswerRequestSchema } from "../../../src/rules/commands/commands.js";
 import { randomUUID } from "node:crypto";
 import type { RunDetailQueryDeps } from "../../../src/backend/runs/queries/run-detail.js";
@@ -389,6 +389,29 @@ describe("onboarding roster names in a real run", () => {
       ["i9-search", "done", [lookupRuns ? ["i9-lookup-child", "done", undefined] : ["i9-lookup-child", "skipped", "condition-false"], ["i9-lookup", "done", undefined]]],
       ["hire-review", "blocked", [["hire-findings", "done", undefined], ["hire-review", "blocked", undefined]]],
     ]);
+  });
+
+  it("serves the run-8 hire review through the run-detail route: every UCPath hit dropped under another name, a new hire with the name parts", async () => {
+    const f = await runWorld.executionFixture(false, { match: "unique", dryRun: true, legalName: "Fixture  Marie Hire", livedName: "Fix Hire", personMatch: allDroppedMatch() }), root = f.start();
+    const parked = await f.rawExecution.execute(root, new AbortController().signal);
+    assert.ok(parked.run?.lifecycle.state === "parked-gate" && parked.run.lifecycle.gateId === "hire-review");
+    const reader = testRunService(f.database, f.clock);
+    const descriptors = { resolve: (id: string) => id === descriptor.id ? descriptor : undefined };
+    const projection = createOperatorProjection({ database: f.database, stateRoot: f.stateRoot, clock: f.clock, reader, appVersion: "0.1.0",
+      descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(f.database.authority), descriptors });
+    projection.ingestFromTimeline();
+    const detail = await readRunDetail(createOperatorRunDetail({ database: f.database, stateRoot: f.stateRoot, projection, runReader: reader,
+      canonical: { database: f.database, reader, descriptors } }), root.envelope.runId);
+    assert.ok(detail.gate.state === "open" && detail.gate.decision !== undefined, "the served gate carries its decision packet");
+    assert.equal(detail.gate.nodeId, "hire-review");
+    assert.deepEqual(detail.gate.decision.options.map(option => [option.id, option.label, option.hint]),
+      [["new-hire", "File as a new hire", "None of the 3 UCPath matches is this person. Relay creates a new person."]]);
+    assert.equal(detail.gate.decision.context, "Legal name: first Fixture, middle Marie, last Hire. Preferred name: first Fix, no middle name, last Hire. "
+      + "UCPath returned 3 possible matches and Relay confirmed none. Searched by name and date of birth. "
+      + "Under another name: Other, Person (••••0001): Last name does not match; Other, Person (••••0002): Last name does not match; Other, Person (••••0003): Last name does not match. "
+      + "Relay cannot file a hire under another name. If one of them is this person, cancel this run and file the rehire by hand in UCPath.");
+    // The dashboard draws the packet on the gate's own blocked timeline line.
+    assert.deepEqual(detail.timeline.events.filter(event => event.native?.nodeId === "hire-review").map(event => [event.label, event.state]), [["gate:hire-review", "blocked"]]);
   });
 
   it("answers the all-dropped hire review through the served arms, composing the gate result from the run's own match", async () => {
