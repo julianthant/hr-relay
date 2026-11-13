@@ -20,7 +20,7 @@ import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-ha
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
 const compiled = compileWorkflow(workStudyWorkflow);
-const INPUT = { emplId: "10000001", effectiveDate: "2026-08-03" };
+const INPUT = { emplId: "10000001", effectiveDate: "08/03/2026" };
 const COMMENTS = "Updated pool id to F per work study award 08/03/2026";
 const read = UcpathPayPathReadSchema.parse({
   pageStateId: "ucpath.paypath.position-data-ready", observedAt: "2026-08-01T12:00:00.000Z", emplId: "10000001", displayedName: "Lee, Jordan",

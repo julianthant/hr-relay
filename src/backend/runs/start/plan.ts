@@ -35,6 +35,7 @@ import type { WorkbookLibraryService } from "../../workbooks/workbook-library-se
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 import { MAX_SELECTED_WORKBOOK_SOURCES } from "../../../rules/spreadsheets/workbook-size.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { parseTypedDate, type TypedDateControl } from "../../../models/workflow/ingress.js";
 import { z } from "zod";
 import { workbookInputBinding } from "../workbooks.js";
 
@@ -116,12 +117,45 @@ export function dryRunRefusalMessage(descriptor: AnyWorkflowDescriptor): string 
     + "start it for real or not at all";
 }
 
+/** Each declared date control is one value for the whole start: any entry without a valid MM/DD/YYYY date, or with a different one, refuses every entry; otherwise the ingress parse receives its ISO date. */
+function applyTypedDates(descriptor: AnyWorkflowDescriptor, submissions: readonly JsonValue[]):
+  Readonly<{ submissions: readonly JsonValue[] }> | Readonly<{ refusal: string }> {
+  const surface = descriptor.surfaces.inputRun?.typedInput;
+  const controls = (surface?.controls ?? []).filter((control): control is TypedDateControl => "kind" in control && control.kind === "date");
+  if (surface === undefined || controls.length === 0) return { submissions };
+  const records = submissions.map(submission => {
+    const fields = z.record(z.string(), JsonValueSchema).safeParse(submission);
+    return fields.success ? { ...fields.data } : undefined;
+  });
+  for (const control of controls) {
+    const dates = new Set<string>();
+    for (const record of records) {
+      if (record === undefined) {
+        if (control.required) return { refusal: control.refusal };
+        continue;
+      }
+      const mode = surface.submitsMode === false ? surface.modes[0].value : record[surface.modeField];
+      if (typeof mode !== "string" || !control.modes.includes(mode) || !control.requires.every(field => record[field] === true)) continue;
+      const typed = record[control.field];
+      if ((typed === undefined || typed === "") && !control.required) {
+        delete record[control.field];
+        continue;
+      }
+      const date = typeof typed === "string" ? parseTypedDate(typed) : undefined;
+      if (date === undefined) return { refusal: control.refusal };
+      dates.add(date);
+      record[control.field] = date;
+    }
+    if (dates.size > 1) return { refusal: `${control.label} must be one date for every entry in this start.` };
+  }
+  return { submissions: submissions.map((submission, index) => records[index] ?? submission) };
+}
+
 export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): StartPlanRecord {
   const { descriptor } = request;
   const selections = WorkbookActiveSelectionSchema.array().parse(request.workbookReferences ?? []);
   if (selections.some(selection => selection.entry > request.submissions.length)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
 
-  const admittedSubmissions = admitProtectedInput(descriptor, request.submissions, deps.protectedSecrets, request.retainedInputs, request.protectedSubmissionBindings);
   const rawSubmissions: JsonValue[] = [];
   for (let index = 0; index < request.submissions.length; index += 1) {
     if (!Object.hasOwn(request.submissions, index)) {
@@ -139,6 +173,9 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       );
     }
   }
+  const typedDates = applyTypedDates(descriptor, rawSubmissions);
+  const admittedSubmissions = admitProtectedInput(descriptor, "submissions" in typedDates ? typedDates.submissions : rawSubmissions,
+    deps.protectedSecrets, request.retainedInputs, request.protectedSubmissionBindings);
   const planning = workflowPlanning(descriptor);
   const inputBinding = workbookInputBinding(descriptor.canonicalInput);
   const now = IsoInstantSchema.parse(deps.clock.now().toISOString());
@@ -159,6 +196,10 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
 
     if (request.dryRun && !supportsDryRun(descriptor)) {
       refuse("dry-run-unsupported", dryRunRefusalMessage(descriptor));
+      continue;
+    }
+    if ("refusal" in typedDates) {
+      refuse("input-invalid", typedDates.refusal);
       continue;
     }
 
