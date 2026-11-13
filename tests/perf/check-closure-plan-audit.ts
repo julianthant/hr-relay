@@ -20,7 +20,9 @@ const BOUNDED = new Set(["database_states", "settings", "worker_pools", "worker_
 const RowSchema = z.record(z.string(), z.unknown());
 
 interface ChangeKind { readonly code: string; readonly kind: string; readonly store: "runs" | "closure"; readonly tables: readonly string[];
-  readonly insert?: boolean; readonly where?: string }
+  readonly insert?: boolean; readonly where?: string;
+  /** The changed image, for a change whose fields matter to the closure's keys; omitted, the update keeps the same image. */
+  readonly after?: (row: Readonly<Record<string, unknown>>) => Record<string, unknown> }
 
 const KINDS: readonly ChangeKind[] = [
   { code: "a", kind: "(a) runs update (heartbeat)", store: "runs", tables: ["runs"] },
@@ -31,6 +33,11 @@ const KINDS: readonly ChangeKind[] = [
   { code: "f", kind: "(f) database_states update (search state unchanged)", store: "runs", tables: ["database_states"] },
   { code: "g", kind: "(g) workbook_operations insert", store: "closure", tables: ["workbook_operations"], insert: true },
   { code: "h", kind: "(h) settings_snapshots update", store: "runs", tables: ["settings_snapshots"] },
+  // The singleton reaches other rows only through changed fields: the search publication and the profile.
+  { code: "i", kind: "(i) database_states search publication ready -> invalid", store: "runs", tables: ["database_states"],
+    after: row => ({ ...row, search_state: "invalid", search_generation: null }) },
+  { code: "j", kind: "(j) database_states profile change", store: "runs", tables: ["database_states"],
+    after: row => ({ ...row, profile_id: "00000000-0000-4000-8000-000000000000" }) },
   // Every policy and invariant scope: one same-image update of each registry table, an active run for `runs` so the worker
   // key is emitted.
   ...AuthorityTableNameSchema.options.map((table): ChangeKind => ({ code: table, kind: `update of one ${table} row`, store: "closure", tables: [table],
@@ -47,7 +54,7 @@ function changeFor(database: DatabaseSync, kind: ChangeKind, table: string): Aut
   if (row === undefined) return undefined;
   const stored = RowSchema.parse(row);
   const name = AuthorityTableNameSchema.parse(table);
-  return kind.insert === true ? { table: name, after: stored } : { table: name, before: stored, after: stored };
+  return kind.insert === true ? { table: name, after: stored } : { table: name, before: stored, after: kind.after?.(stored) ?? stored };
 }
 
 /** The plan names an alias; resolve `<table> AS <alias>` from the statement, and treat virtual tables as input-sized. */
@@ -123,7 +130,7 @@ export async function runCheckClosurePlanAudit(): Promise<void> {
   const lines = [...audit.rows].sort(([a], [b]) => order(a) - order(b)).map(([row, kinds]) => `| ${[...new Set(kinds)].join(", ")} ${row}`);
   process.stdout.write([
     `# Scoped check plan audit (${String(RUNS)}-run store plus the all-tables closure store; ${((systemClock.monotonicMs() - started) / 1000).toFixed(1)} s)`, "",
-    "Change kinds: (a) runs update, (b) timeline_events insert, (c) commands + audits insert, (d) run_search update, (e) write_intents + attempts, (f) database_states, (g) workbook_operations, (h) settings_snapshots; a table name is a same-image update of one row of that table in the closure store (an active run for runs).", "",
+    "Change kinds: (a) runs update, (b) timeline_events insert, (c) commands + audits insert, (d) run_search update, (e) write_intents + attempts, (f) database_states, (g) workbook_operations, (h) settings_snapshots, (i) database_states search publication change, (j) database_states profile change; a table name is a same-image update of one row of that table in the closure store (an active run for runs).", "",
     "| Change kinds | Table scanned | Growth | Plan line | Statement (first 160 chars) |", "|---|---|---|---|---|",
     ...lines, "", "## Timings (one cold run each, not a benchmark)", "", ...audit.timings.map(line => `- ${line}`), "",
   ].join("\n"));
