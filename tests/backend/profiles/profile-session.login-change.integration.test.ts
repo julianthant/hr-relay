@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
+import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { AuthoritySourceClosureUnprovedError, createBrowserSourceRecovery } from "../../../src/backend/storage/source-closure.js";
 import { ProfileVerifierDocumentSchema } from "../../../src/models/profiles/profile.js";
 import { createProfileSessionWorld } from "../../support/helpers/backend/profile-session-world.js";
+import { findProfileFixtureAdmission, findProfileFixtureInWorkspace } from "../../support/helpers/synthetic-database-admission.js";
 
 const worlds: Awaited<ReturnType<typeof createProfileSessionWorld>>[] = [];
 afterEach(async () => { vi.restoreAllMocks(); syncBuiltinESMExports(); for (const world of worlds.splice(0)) await world.close(); });
@@ -101,7 +103,9 @@ describe("Relay login change", () => {
     assert.equal(refusalCode(session.changeUsername(alex.token, { currentPassword: "wrong", newUsername: "alex.rivera@ucsd.edu", at: "2026-09-06T12:02:00.000Z" })), "PROFILE_CURRENT_PASSWORD_REFUSED");
     assert.equal(machine.savedLogin(alex.profileId).userId, "alex@ucsd.edu");
     assert.equal(session.changeUsername(alex.token, { currentPassword: "secret-one", newUsername: "alex.rivera@ucsd.edu", at: "2026-09-06T12:03:00.000Z" }).state, "changed");
-    assert.deepEqual([machine.savedLogin(alex.profileId).userId, machine.savedLogin(alex.profileId).password], ["alex.rivera@ucsd.edu", "secret-one"]);
+    const saved = machine.savedLogin(alex.profileId);
+    assert.equal(saved.userId, "alex.rivera@ucsd.edu");
+    assert.equal(saved.password, alexFields.password);
     assert.deepEqual(machine.credentialBytes(sam.profileId), samLogin);
     assert.deepEqual(samRow(), samBefore);
 
@@ -158,7 +162,9 @@ describe("Relay login change", () => {
     assert.equal(refusalCode(restarted.signIn({ ...next, at: "2026-09-06T12:02:00.000Z" })), "PROFILE_SIGN_IN_REFUSED");
     const old = restarted.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:03:00.000Z" });
     assert.equal(old.state, "active");
-    assert.deepEqual([machine.savedLogin(alex.profileId).userId, machine.savedLogin(alex.profileId).password], ["alex@ucsd.edu", "secret-one"]);
+    const restored = machine.savedLogin(alex.profileId);
+    assert.equal(restored.userId, "alex@ucsd.edu");
+    assert.equal(restored.password, alexFields.password);
     assert.equal(machine.open().resumeSignedInProfile({ at: "2026-09-06T12:04:00.000Z" }).state, "active");
   });
 
@@ -424,5 +430,25 @@ describe("Relay login change", () => {
     restoreFiles();
     assert.equal(restarted.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:03:00.000Z" }).state, "active");
     assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-one" });
+  });
+
+  it("drops each bound-profile registration before its owner is released", async () => {
+    const machine = await world();
+    const session = machine.open();
+    const alex = await machine.signUp(session, alexFields);
+    const root = join(machine.machineRoot, "profiles", alex.profileId);
+    const saved = machine.savedLogin(alex.profileId);
+    assert.equal(saved.userId, alexFields.email);
+    assert.equal(saved.password, alexFields.password);
+    assert.equal(findProfileFixtureAdmission(root), undefined);
+
+    const settingsPassword = "settings-only";
+    machine.saveInSettings(alex.profileId, { ucpathPassword: { set: settingsPassword } });
+    assert.equal(machine.savedLogin(alex.profileId).password, settingsPassword);
+    assert.equal(findProfileFixtureAdmission(root), undefined);
+
+    assert.equal((await machine.logOut(session, alex.token, "2026-09-06T12:10:00.000Z")).state, "signed-out");
+    assert.equal(findProfileFixtureAdmission(root), undefined);
+    assert.equal(findProfileFixtureInWorkspace(machine.machineRoot), undefined);
   });
 });
