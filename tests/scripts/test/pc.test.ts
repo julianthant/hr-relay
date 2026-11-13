@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { buildPcSource, pcSyncFiles, preparePcSource } from "../../../scripts/test/pc-source.js";
 import { runInNewContext } from "node:vm";
 import { LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "../../../scripts/test/ci-files.js";
-import { measurePcPhase, pcDurationScript, pcListingArgs, readPcTiming, selectPcFiles } from "../../../scripts/test/pc.js";
+import { measurePcPhase, pcDurationScript, pcListingArgs, pcVitestEnv, readPcTiming, selectPcFiles } from "../../../scripts/test/pc.js";
 
 describe("PC test selection", () => {
   const portable = ["tests/models/a.test.ts", "tests/backend/a.integration.test.ts", "tests/architecture/a.test.ts"];
@@ -41,6 +41,21 @@ describe("PC test selection", () => {
   it("excludes private inputs, state, dependencies and build output from sync", () => {
     expect(pcSyncFiles(["src/a.ts", ".env", ".env.local", "config/test-data.local.json", ".tracker/x", ".work/evidence", "credentials/x", ".local-private/x", "node_modules/x", "dist/x", ".git/config", ".worktrees/peer/x", "tests/fixtures/a.json"]))
       .toEqual(["src/a.ts", "tests/fixtures/a.json"]);
+  });
+
+  it("sets RELAY_TEST_NATIVE for the PC Vitest listing and the remote run", () => {
+    expect(pcVitestEnv({ PATH: "keep" })).toEqual({ PATH: "keep", RELAY_TEST_NATIVE: "1" });
+    const source = readFileSync(new URL("../../../scripts/test/pc.ts", import.meta.url), "utf8");
+    const carries = (marker: string) => {
+      const at = source.indexOf(marker);
+      const envAt = source.indexOf("pcVitestEnv(process.env)", at);
+      expect(at, marker).toBeGreaterThanOrEqual(0);
+      expect(envAt - at, marker).toBeGreaterThan(0);
+      expect(envAt - at, marker).toBeLessThan(280);
+    };
+    carries('vitest.mjs", "list"');
+    carries('"vitest", "run"');
+    expect(source.match(/pcVitestEnv\(process\.env\)/g)).toHaveLength(2);
   });
 });
 

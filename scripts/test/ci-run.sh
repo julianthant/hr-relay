@@ -2,6 +2,8 @@
 # Runs this CI job's share of a Vitest project and records file durations for scripts/test/ci-durations.json.
 # Usage: ci-run.sh <unit|integration|architecture> <ubuntu|native|serial|storage> <job>/<jobs> [vitest args...]
 set -euo pipefail
+# Selection refuses a native file Vitest did not list, so every slice opts in before listing.
+export RELAY_TEST_NATIVE=1
 project=$1 runner=$2 slice=$3
 shift 3
 runner_temp="${RUNNER_TEMP//\\//}"
