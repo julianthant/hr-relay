@@ -13,8 +13,11 @@ export const ProfilePasswordChangeRequestSchema = z.strictObject({ currentPasswo
 export const ProfileUsernameChangeRequestSchema = z.strictObject({ currentPassword: ProfileLoginRequestSchema.shape.password, newUsername: ProfileLoginRequestSchema.shape.email });
 export const ProfileLoginChangeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("changed"), durability: z.literal("unconfirmed").optional() }),
+  z.strictObject({ state: z.literal("unknown"), code: z.literal("PROFILE_LOGIN_CHANGE_UNKNOWN") }),
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
 ]);
+/** A Relay username the dashboard sign-in form accepts: one UCSD work email with no surrounding spaces. */
+export function isRelayUsername(value: string): boolean { return /^[^\s@]+@ucsd\.edu$/iu.test(value); }
 export const DeleteProfileAccountRequestSchema = z.strictObject({ confirmed: z.literal(true),
   expectedProfileId: ProfileIdSchema, expectedEpoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) });
 export type DeleteProfileAccountRequest = z.infer<typeof DeleteProfileAccountRequestSchema>;

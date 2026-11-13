@@ -380,10 +380,14 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: machine.readProfileRegistry().profiles.length === 0 }));
     } finally { transitioning = false; }
   };
-  // A landed change whose flush or closure failed is reported as changed; its failure is logged and its custody retained here.
+  // A landed change whose flush or closure failed is reported as changed, and an unreadable outcome as unknown; each failure is logged and any custody retained here.
   const changeLogin = (c: Context, change: (token: string, at: string) => ReturnType<typeof profileRuntime.session.changePassword>) => {
     const result = change(current(c.req.raw).token, clock.now().toISOString());
     if (result.state === "refused") return c.json(ProfileLoginChangeResultSchema.parse({ state: "refused", code: result.code }));
+    if (result.state === "unknown") {
+      if (result.failure instanceof Error) publicFailure(result.failure);
+      return c.json(ProfileLoginChangeResultSchema.parse({ state: "unknown", code: "PROFILE_LOGIN_CHANGE_UNKNOWN" }));
+    }
     if (result.failure instanceof Error) publicFailure(result.failure);
     return c.json(ProfileLoginChangeResultSchema.parse({ state: "changed", ...(result.durability === undefined ? {} : { durability: result.durability }) }));
   };

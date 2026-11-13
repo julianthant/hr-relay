@@ -32,7 +32,7 @@ import { createDuoCredentialStore } from "../storage/configuration/duo-credentia
 import { createProfileVerifiers } from "../storage/configuration/verifier-store.js";
 import { type CredentialInventory } from "./credential-inventory.js";
 import type { ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
-import { changeRelayLogin,RelayLoginUnsettledError,restoreInterruptedLogin,type RelayLogin,type RelayLoginChange } from "./login-change.js";
+import { changeRelayLogin,RelayLoginOutcomeUnknownError,RelayLoginUnsettledError,restoreInterruptedLogin,type RelayLogin,type RelayLoginChange } from "./login-change.js";
 import { createProfileOnboarding } from "./profile-onboarding.js";
 import { appendDuoDiagnostic } from "../logs/duo-diagnostics.js";
 import { createDebugEventWriter } from "../logs/debug-events.js";
@@ -563,7 +563,7 @@ export function createProfileSession(input: {
    * memory for this session, and the session's next change writes it back first; after a restart the old-login sign-in does.
    */
   function changeLogin(token: string, fields: { readonly currentPassword: string; readonly change: RelayLoginChange; readonly at: string }):
-    { readonly state: "changed"; readonly durability?: "unconfirmed"; readonly failure?: unknown } | ProfileRefusal {
+    { readonly state: "changed"; readonly durability?: "unconfirmed"; readonly failure?: unknown } | { readonly state: "unknown"; readonly failure: unknown } | ProfileRefusal {
     const at = IsoInstantSchema.parse(fields.at);
     admission.assertWritable();
     admission.lifetime.assertRuntimeAvailable();
@@ -584,11 +584,12 @@ export function createProfileSession(input: {
         if (hasUnprovedSourceClosure(outcome.failure)) admission.retainSourceClosure(outcome.failure);
         return { state: "changed", durability: "unconfirmed", failure: outcome.failure };
       } catch (error) {
-        const unclosed = hasUnprovedSourceClosure(error);
+        const unclosed = hasUnprovedSourceClosure(error), settleable = error instanceof RelayLoginUnsettledError || error instanceof RelayLoginOutcomeUnknownError;
         if (unclosed) admission.retainSourceClosure(error);
-        if (error instanceof RelayLoginUnsettledError && priorEmail !== undefined) unsettledLogins.set(token, { email: priorEmail, password: fields.currentPassword });
-        if (unclosed || !(error instanceof RelayLoginUnsettledError) || priorEmail === undefined) throw error;
-        return refusal("PROFILE_LOGIN_CHANGE_UNSETTLED");
+        // The next change writes the proved old login back only if the swap did not land; a landed swap already proves the new one.
+        if (settleable && priorEmail !== undefined) unsettledLogins.set(token, { email: priorEmail, password: fields.currentPassword });
+        if (unclosed || !settleable || priorEmail === undefined) throw error;
+        return error instanceof RelayLoginOutcomeUnknownError ? { state: "unknown", failure: error } : refusal("PROFILE_LOGIN_CHANGE_UNSETTLED");
       }
     });
   }

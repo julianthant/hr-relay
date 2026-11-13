@@ -736,7 +736,11 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   PROFILE_USERNAME_REFUSED: catalogEntry(
-    "Enter a different plain email address with no spaces around it. Nothing was changed.",
+    "Enter a different @ucsd.edu email with no spaces around it. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_UNKNOWN: catalogEntry(
+    "Relay could not confirm whether your sign-in changed, and nothing will be undone. Try your new username and password first, then your current ones.",
     EmptyParametersSchema,
   ),
   PROFILE_LOGIN_CHANGE_UNSETTLED: catalogEntry(

@@ -3,6 +3,7 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import type { CredentialStore } from "../../models/config/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../models/config/protected-settings.js";
 import type { ErrorCatalogCode } from "../../models/failures/error-catalog.js";
+import { isRelayUsername } from "../../models/profiles/public-profile.js";
 import { CredentialStoreCommitUncertainError } from "../storage/configuration/credential-store.js";
 import { isPlainEmail } from "../storage/configuration/synthetic-verifier.js";
 import { hasUnprovedSourceClosure } from "../storage/source-closure.js";
@@ -38,6 +39,11 @@ type Verifiers = ReturnType<typeof createProfileVerifiers>;
 /** The change wrote the saved entries but neither committed the verifier nor put the entries back; the old login settles it. */
 export class RelayLoginUnsettledError extends Error {
   constructor(options: ErrorOptions) { super("profile-login-change-unsettled", options); this.name = "RelayLoginUnsettledError"; }
+}
+
+/** The verifier could not be read back after a failed swap, so whether the change landed is unknown; nothing is undone. */
+export class RelayLoginOutcomeUnknownError extends Error {
+  constructor(options: ErrorOptions) { super("profile-login-change-outcome-unknown", options); this.name = "RelayLoginOutcomeUnknownError"; }
 }
 
 export type RelayLoginOutcome = { readonly kind: "changed" } | { readonly kind: "unconfirmed"; readonly failure: unknown } | { readonly kind: "refused"; readonly code: ErrorCatalogCode };
@@ -85,8 +91,8 @@ export function changeRelayLogin(verifiers: Verifiers, store: CredentialStore, p
   const prior = { email, password: fields.currentPassword };
   const next = fields.change.kind === "password" ? { email, password: fields.change.password } : { email: fields.change.email, password: fields.currentPassword };
   if (fields.change.kind === "username") {
-    // A new username must change the verifier key, or a stopped change could not be told apart from a finished one.
-    if (next.email !== next.email.trim() || !isPlainEmail(next.email) || verifiers.emailKeyFor(next.email) === verifiers.emailKeyFor(email)) return refused("PROFILE_USERNAME_REFUSED");
+    // A new username must be one the sign-in form accepts and must change the verifier key, or a stopped change could not be told apart from a finished one.
+    if (!isRelayUsername(next.email) || !isPlainEmail(next.email) || verifiers.emailKeyFor(next.email) === verifiers.emailKeyFor(email)) return refused("PROFILE_USERNAME_REFUSED");
     if (verifiers.identify(next.email) !== "unknown") return refused("PROFILE_USERNAME_TAKEN");
   }
   const verifier = verifiers.prepareLoginChange(profileId, next.email, next.password);
@@ -99,7 +105,7 @@ export function changeRelayLogin(verifiers: Verifiers, store: CredentialStore, p
     let landed: boolean;
     // An unreadable verifier leaves the swap unknown: nothing is undone, and the old login settles it if the swap did not land.
     try { landed = verifier.landed(); }
-    catch (readback) { throw new RelayLoginUnsettledError({ cause: new AggregateError([error, readback], "profile login change verifier outcome unknown") }); }
+    catch (readback) { throw new RelayLoginOutcomeUnknownError({ cause: new AggregateError([error, readback], "profile login change verifier outcome unknown") }); }
     // A swap that landed holds the new login on both sides; its failure is reported to the caller, never undone.
     if (landed) return { kind: "unconfirmed", failure: error };
     let restored: ReturnType<typeof saveLogin>;

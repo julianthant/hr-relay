@@ -16,20 +16,20 @@ const samFields = { firstName: "Sam", lastName: "Ortiz", email: "sam@ucsd.edu", 
  * as when the process stops there; "flush" and "close" let the verifier rename land and fail its directory flush or descriptor
  * close; "entries-flush" lets the saved entries' rename land and fails their directory flush.
  */
-function inject(mode: "before" | "stop" | "flush" | "close" | "close-unread" | "entries-flush"): { leaked: number[] } {
+function inject(mode: "before" | "stop" | "flush" | "flush-unread" | "close" | "close-unread" | "entries-flush"): { leaked: number[] } {
   const rename = fs.renameSync, open = fs.openSync, flush = fs.fsyncSync, close = fs.closeSync, read = fs.readFileSync, leaked: number[] = [];
   let stopped = false, failFlush = false, failClose = false, failRead = false;
   vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
     const target = String(to);
     if (target.endsWith("profile-verifiers.json") && mode !== "entries-flush") {
       if (mode === "before" || mode === "stop") { stopped = mode === "stop"; throw new Error("injected replacement failure"); }
-      rename(from, to); failFlush = mode === "flush"; failClose = mode === "close" || mode === "close-unread"; return;
+      rename(from, to); failFlush = mode === "flush" || mode === "flush-unread"; failClose = mode === "close" || mode === "close-unread"; return;
     }
     rename(from, to);
     if (mode === "entries-flush" && target.endsWith("/credentials/protected.json")) failFlush = true;
   });
   vi.spyOn(fs, "fsyncSync").mockImplementation(descriptor => {
-    if (failFlush) { failFlush = false; throw new Error("injected flush failure"); }
+    if (failFlush) { failFlush = false; failRead = mode === "flush-unread"; throw new Error("injected flush failure"); }
     flush(descriptor);
   });
   vi.spyOn(fs, "closeSync").mockImplementation(descriptor => {
@@ -209,6 +209,7 @@ describe("Relay login change", () => {
     ["the same address in another case", "ALEX@ucsd.edu"],
     ["spaces around the address", " alex.rivera@ucsd.edu"],
     ["an address that is not plain", "ａlex.rivera@ucsd.edu"],
+    ["an address the sign-in form refuses", "alex.rivera@example.com"],
   ])("refuses a new username with %s and changes nothing", async (_name, newUsername) => {
     const machine = await world();
     const session = machine.open();
@@ -314,5 +315,20 @@ describe("Relay login change", () => {
     await recovery.prove(() => { for (const descriptor of leaked) fs.closeSync(descriptor); return Promise.resolve(); });
     assert.notEqual(machine.verifierBytes(), verifiers);
     assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-two" });
+  });
+
+  it("reports an unknown outcome when the verifier cannot be read back after a failed flush, guaranteeing neither login and undoing nothing", async () => {
+    const machine = await world();
+    const session = machine.open();
+    const alex = await machine.signUp(session, alexFields);
+    inject("flush-unread");
+    const result = session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:01:00.000Z" });
+    restoreFiles();
+    assert.equal(result.state, "unknown");
+    assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-two" });
+    assert.equal(session.changePassword(alex.token, { currentPassword: "secret-two", newPassword: "secret-three", at: "2026-09-06T12:02:00.000Z" }).state, "changed");
+    const restarted = machine.open();
+    assert.equal(refusalCode(restarted.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:03:00.000Z" })), "PROFILE_SIGN_IN_REFUSED");
+    assert.equal(restarted.signIn({ email: "alex@ucsd.edu", password: "secret-three", at: "2026-09-06T12:04:00.000Z" }).state, "active");
   });
 });

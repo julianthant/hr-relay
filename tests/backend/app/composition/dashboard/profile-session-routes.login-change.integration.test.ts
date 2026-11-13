@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import fs, { rmSync } from "node:fs";
+import fs, { readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { syncBuiltinESMExports } from "node:module";
 import { afterEach, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
@@ -86,6 +87,42 @@ it("keeps the session after an unsettled change and settles it on the same appli
     assert.equal(PublicProfileStateSchema.parse(await (await post("/api/v1/profile/logout", {}, cookie)).json()).state, "signed-out");
     assert.deepEqual(PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-in", { email: "fixture.changed@ucsd.edu", password: "changed-fixture-password" })).json()),
       { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
+    const signedIn = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "changed-fixture-password" });
+    assert.equal(PublicProfileStateSchema.parse(await signedIn.json()).state, "active");
+  } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
+});
+
+it("answers an unknown outcome when a landed swap's flush and read-back both fail, and logs no secret", async () => {
+  const f = await fixture();
+  let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  try {
+    runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+      backendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+    const base = `http://127.0.0.1:${String(runtime.port)}`, { post, finish } = await readyPublicSignUp(base);
+    const finished = await finish();
+    assert.equal(PublicProfileStateSchema.parse(await finished.json()).state, "active");
+    const cookie = finished.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+
+    const rename = fs.renameSync, flush = fs.fsyncSync, read = fs.readFileSync;
+    let failFlush = false, failRead = false;
+    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => { rename(from, to); if (String(to).endsWith("profile-verifiers.json")) failFlush = true; });
+    vi.spyOn(fs, "fsyncSync").mockImplementation(descriptor => {
+      if (failFlush) { failFlush = false; failRead = true; throw new Error("injected flush failure"); }
+      flush(descriptor);
+    });
+    vi.spyOn(fs, "readFileSync").mockImplementation(((path: fs.PathOrFileDescriptor, options?: unknown) => {
+      if (failRead && String(path).endsWith("profile-verifiers.json")) { failRead = false; throw new Error("injected readback failure"); }
+      return Reflect.apply(read, fs, options === undefined ? [path] : [path, options]) as unknown;
+    }) as typeof fs.readFileSync);
+    syncBuiltinESMExports();
+    const unknown = await post("/api/v1/profile/account/password", { currentPassword: "disposable-fixture-password", newPassword: "changed-fixture-password" }, cookie);
+    vi.restoreAllMocks(); syncBuiltinESMExports();
+    assert.deepEqual([unknown.status, await unknown.json()], [200, { state: "unknown", code: "PROFILE_LOGIN_CHANGE_UNKNOWN" }]);
+    for (const name of readdirSync(f.machine.stateRoot, { recursive: true }).map(String)) {
+      const path = join(f.machine.stateRoot, name);
+      if (statSync(path).isFile()) assert.equal(readFileSync(path).includes("changed-fixture-password"), false, name);
+    }
+    assert.equal(PublicProfileStateSchema.parse(await (await post("/api/v1/profile/logout", {}, cookie)).json()).state, "signed-out");
     const signedIn = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "changed-fixture-password" });
     assert.equal(PublicProfileStateSchema.parse(await signedIn.json()).state, "active");
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
