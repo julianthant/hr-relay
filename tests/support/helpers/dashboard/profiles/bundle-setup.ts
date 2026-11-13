@@ -3,31 +3,31 @@ import { DASHBOARD_BUILD_IDENTITY_FILE, DashboardBuildIdentitySchema, assertDash
 import type * as BuildIdentityTypes from "../../../../../src/backend/app/composition/dashboard/build-identity.js";
 
 
-export type ParityBundleStamp = DashboardBuildIdentity;
+export type MockBundleStamp = DashboardBuildIdentity;
 
-export type ParityBundleState =
-  | { readonly state: "current"; readonly stamp: ParityBundleStamp }
+export type MockBundleState =
+  | { readonly state: "current"; readonly stamp: MockBundleStamp }
   | { readonly state: "stale"; readonly reason: string };
 
-export interface ParityBundleInput {
+export interface MockBundleInput {
   readonly distDir?: string;
   readonly repoRoot?: string;
 }
 
-export type ParityBundleProof =
+export type MockBundleProof =
   | { readonly proof: "working-tree" }
   | { readonly proof: "unverified"; readonly reason: string };
 
-export function createBundleSetup({ PARITY_REPO_ROOT, PARITY_DIST_DIR, bundleBuildInput, buildArguments, buildCommandLabel }: {
-  PARITY_REPO_ROOT: string;
-  PARITY_DIST_DIR: string;
+export function createBundleSetup({ MOCK_REPO_ROOT, MOCK_DIST_DIR, bundleBuildInput, buildArguments, buildCommandLabel }: {
+  MOCK_REPO_ROOT: string;
+  MOCK_DIST_DIR: string;
   bundleBuildInput: () => { buildScript?: BuildIdentityTypes.DashboardBuildCommand };
   buildArguments: () => string[];
   buildCommandLabel: () => string;
 }) {
-  const PARITY_BUNDLE_STAMP_FILE = DASHBOARD_BUILD_IDENTITY_FILE;
+  const MOCK_BUNDLE_STAMP_FILE = DASHBOARD_BUILD_IDENTITY_FILE;
 
-  const ParityBundleStampSchema = DashboardBuildIdentitySchema;
+  const MockBundleStampSchema = DashboardBuildIdentitySchema;
 
   const computeBundleOutputDigest = computeDashboardBuildOutputDigest;
 
@@ -37,10 +37,10 @@ export function createBundleSetup({ PARITY_REPO_ROOT, PARITY_DIST_DIR, bundleBui
 
   const writeBundleStamp = writeDashboardBuildIdentity;
 
-  function parityBundleState(input: ParityBundleInput = {}): ParityBundleState {
+  function mockBundleState(input: MockBundleInput = {}): MockBundleState {
     const result = dashboardBuildState({
-      distDir: input.distDir ?? PARITY_DIST_DIR,
-      repoRoot: input.repoRoot ?? PARITY_REPO_ROOT,
+      distDir: input.distDir ?? MOCK_DIST_DIR,
+      repoRoot: input.repoRoot ?? MOCK_REPO_ROOT,
       ...bundleBuildInput(),
     });
     return result.state === "current"
@@ -48,10 +48,10 @@ export function createBundleSetup({ PARITY_REPO_ROOT, PARITY_DIST_DIR, bundleBui
       : result;
   }
 
-  function assertParityBundleIsCurrent(input: ParityBundleInput = {}): ParityBundleStamp {
+  function assertMockBundleIsCurrent(input: MockBundleInput = {}): MockBundleStamp {
     return assertDashboardBuildCurrent({
-      distDir: input.distDir ?? PARITY_DIST_DIR,
-      repoRoot: input.repoRoot ?? PARITY_REPO_ROOT,
+      distDir: input.distDir ?? MOCK_DIST_DIR,
+      repoRoot: input.repoRoot ?? MOCK_REPO_ROOT,
       ...bundleBuildInput(),
     });
   }
@@ -74,24 +74,24 @@ export function createBundleSetup({ PARITY_REPO_ROOT, PARITY_DIST_DIR, bundleBui
     }
   }
 
-  function ensureParityBundle(input: ParityBundleInput = {}): ParityBundleStamp {
-    const distDir = input.distDir ?? PARITY_DIST_DIR;
-    const repoRoot = input.repoRoot ?? PARITY_REPO_ROOT;
-    const result = parityBundleState({ distDir, repoRoot });
+  function ensureMockBundle(input: MockBundleInput = {}): MockBundleStamp {
+    const distDir = input.distDir ?? MOCK_DIST_DIR;
+    const repoRoot = input.repoRoot ?? MOCK_REPO_ROOT;
+    const result = mockBundleState({ distDir, repoRoot });
     if (result.state === "current") return result.stamp;
     runBuildScript(repoRoot);
-    return assertParityBundleIsCurrent({ distDir, repoRoot });
+    return assertMockBundleIsCurrent({ distDir, repoRoot });
   }
 
-  function assertServedBundle(distDir: string, bundle: ParityBundleProof): void {
+  function assertServedBundle(distDir: string, bundle: MockBundleProof): void {
     if (bundle.proof === "unverified") {
       if (bundle.reason.trim().length === 0) {
-        throw new Error("an unverified parity bundle must name why it cannot be proven current");
+        throw new Error("an unverified mock bundle must name why it cannot be proven current");
       }
       return;
     }
-    assertParityBundleIsCurrent({ distDir });
+    assertMockBundleIsCurrent({ distDir });
   }
 
-  return { PARITY_BUNDLE_STAMP_FILE, ParityBundleStampSchema, computeBundleOutputDigest, bundleStampPath, readBundleStamp, writeBundleStamp, parityBundleState, assertParityBundleIsCurrent, ensureParityBundle, assertServedBundle };
+  return { MOCK_BUNDLE_STAMP_FILE, MockBundleStampSchema, computeBundleOutputDigest, bundleStampPath, readBundleStamp, writeBundleStamp, mockBundleState, assertMockBundleIsCurrent, ensureMockBundle, assertServedBundle };
 }

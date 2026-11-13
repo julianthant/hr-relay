@@ -12,6 +12,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `config/` | Runtime isolation and test-data configuration. |
 | `docs/reference/` | Current contracts and this map. |
 | `docs/guides/` | Workflow authoring guide. |
+| `docs/guides/windows.md` | Windows launcher steps. |
 | `docs/guard-inventory.json` | Guard owners and reasons. |
 | `docs/roadmap/roadmap.md` | Roadmap content. |
 | `docs/roadmap/index.html` | Generated roadmap site. |
@@ -30,7 +31,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 owns the contract fingerprint and build id.
 `npm run roadmap` generates the roadmap site; `npm run roadmap:check` checks it.
 `npm run web:build` produces the dashboard bundle in `dist/`.
-Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. The [Git instructions](../../AGENTS.md#git) own worktree naming and lifecycle.
+Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. The [Conventions](../../AGENTS.md#conventions) own worktree naming and lifecycle.
 
 `src/backend/runtime/writes/recovery-activity.ts` owns retained-run recovery read activity, action notes and required captures. `src/models/run/recovery-activity.ts` owns its exact operation identity and task-compatible note path.
 
@@ -242,7 +243,7 @@ tests/
 ├── dashboard/{app,client,ds,lib,state,surfaces}/
 ├── fast-duo/src/
 ├── {models,rules,scripts,workflow-kit,workflows}/
-├── parity/
+├── mocks/
 ├── perf/
 ├── support/{fixtures,helpers,processes}/
 ├── types/
@@ -252,11 +253,11 @@ tests/
 ```
 
 `tests/architecture/test-layout.test.ts` checks canonical filenames and mirrors against existing tracked source.
-Architecture, parity, performance, type, and support trees are exempt from source mirroring.
+Architecture, mocks, performance, type, and support trees are exempt from source mirroring.
 Architecture fixtures and helpers stay beside their owning guard families.
 Shared fixtures, fresh-authority builders, and child-process entrypoints live under `tests/support/`.
 `tests/support/helpers/dashboard/controls/` owns the UI control preview fixtures, loaded by
-fixture name from `tests/parity/app-entry.tsx`.
+fixture name from `tests/mocks/app-entry.tsx`.
 - `tests/support/duo-ceremony-setup.ts` registers the shared Duo fixture cleanup for every Vitest project; the fixture owner stays process-safe.
 Shared composition setup lives in `tests/support/helpers/backend/{capability-wiring-world,write-recovery-world,dashboard-child-world,worker-loop-world}.ts`
 and `tests/support/helpers/dashboard/mounted-rerun-world.ts`; each test owns its allocation, hooks, and cleanup.
@@ -292,7 +293,7 @@ and persisted-read path.
 `tests/support/processes/failure-resolution-peer.ts` runs the independent annotation writers;
 `tests/support/helpers/failure-resolution/fixtures.ts` owns their launch and closure.
 
-`tests/parity/` holds the desktop presentation contract and its references.
+`tests/mocks/` holds `/ui-mock` scenes and the mock dashboard build entry.
 `tests/perf/` holds dashboard performance checks. `tests/types/` holds compile-time inputs and their checks.
 `tests/scripts/docs/roadmap.test.ts` tests roadmap parsing.
 The private `config/test-data.local.json` input is ignored. Runtime state and artifact roots are declared

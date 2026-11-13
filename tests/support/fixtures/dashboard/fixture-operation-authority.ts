@@ -43,7 +43,7 @@ import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { testRunLifecycle, testRunService, testWorkerPorts } from "../run-lifecycle-fixtures.js";
 import { openAuthorityHarness, ManualScheduler, recordingLogger, sessionFactoryHarness } from "../../helpers/phase1f-executor-harness.js";
 import { plan1Parent, plan1Workflows, Plan1Input, Plan1CanonicalInput } from "../plan1-operation-workflows.js";
-import { PARITY_DIST_DIR } from "../../helpers/dashboard/served-fixtures/bundle.js";
+import { MOCK_DIST_DIR } from "../../helpers/dashboard/served-fixtures/bundle.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { startFixtureServer } from "../../helpers/dashboard/served-fixtures/fixture-bff.js";
 
@@ -149,7 +149,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
       serverClock: { now: clock.now().toISOString(), zone: "America/Los_Angeles" }, workflows: modules.map(({ descriptor, role }) => ({
         id: descriptor.id, code: descriptor.code, label: descriptor.label, categoryId: descriptor.category, descriptorFingerprint: descriptor.contractFingerprint,
         availability: { state: "available" }, role, start: { readiness: { scope: "workbook-sources", state: "ready" }, enqueue: descriptor.enqueue, version: descriptor.version, steps: projectStartSteps(descriptor).map((step) => ({ key: step.key, label: step.label, includedByDefault: step.includedByDefault, control: startStepWireControl(step.control) })), inputRun: descriptor.surfaces.inputRun, spreadsheetIntake: false, requiredWorkbookFields: [...descriptor.requiredWorkbookFields] } })) });
-    const shell = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: { bootstrap, descriptorHash: hash, day: projection.buildDashboardDayWire(day) } });
+    const shell = await startFixtureServer({ distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" }, profile: { bootstrap, descriptorHash: hash, day: projection.buildDashboardDayWire(day) } });
     held.shell = shell;
     app.get("/events/v1", (c) => c.body(new ReadableStream<Uint8Array>({ start(controller) {
       for (const value of [{ type: "hello", wireVersion: 1, descriptorHash: hash, projectionGeneration: projection.generation(), cursor: projection.cursor() },

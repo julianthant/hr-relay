@@ -1441,6 +1441,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.value.comparisons[].ucpath", origin: "captured-hr-value" },
 
 
+  { surface: "os/notification-trigger-event", path: "summary", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "appVersion.reason", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "endedAt.reason", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "gateOpenedAt.reason", origin: "repository-authored" },

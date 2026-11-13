@@ -266,7 +266,7 @@ object imported by the definition. A globally registered implementation does not
 module binding.
 
 Declared `scenarios` are contract data. They are not execution evidence. The current test lanes,
-parity contract, and required checks live in [guards and tests](guards-and-tests.md).
+and required checks live in [guards and tests](guards-and-tests.md).
 
 ### 1.5 Labels
 

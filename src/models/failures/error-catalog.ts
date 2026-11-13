@@ -482,6 +482,7 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   SEARCH_LOADING: catalogEntry("Loading runs…", EmptyParametersSchema),
   SEARCH_UNAVAILABLE: catalogEntry("Search is unavailable. Reopen search and try again.", EmptyParametersSchema),
+  SEARCH_LIBRARY_UNAVAILABLE: catalogEntry("Spreadsheets are unavailable. Reopen search and try again.", EmptyParametersSchema),
   SEARCH_SUBJECT_UNAVAILABLE: catalogEntry("Subject unavailable", EmptyParametersSchema),
   NOTIFICATION_SOURCE_UNAVAILABLE: catalogEntry("Notification source evidence is unavailable. Review the inbox before relying on this update.", EmptyParametersSchema),
   NOTIFICATION_HISTORY_INCOMPLETE: catalogEntry("Notification history is incomplete. Reconcile the affected work before relying on it.", EmptyParametersSchema),

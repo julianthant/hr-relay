@@ -45,7 +45,7 @@ export function paletteSections(input: { query: string; filter: PaletteFilter; r
   const trim = <T,>(id: keyof typeof ALL_LIMIT, rows: readonly T[]) => input.filter === "all" ? rows.slice(0, ALL_LIMIT[id]) : rows;
   const sections: PaletteSection[] = [
     { id: "actions", label: "Quick actions", rows: trim("actions", ACTIONS.filter(row => matches(query, row.label))) },
-    { id: "runs", label: "Runs", rows: trim("runs", input.runs.filter(run => input.runsMatched || matches(query, `${run.subject} ${run.workflow} ${run.state} ${run.publicId ?? ""} ${run.id}`)).map((result): PaletteRow => ({ kind: "run", id: result.id, label: result.subject, tag: `${result.workflow} · ${result.state}`, tone: runTone(result.state), result }))) },
+    { id: "runs", label: "Runs", rows: trim("runs", input.runs.filter(run => input.runsMatched || matches(query, `${run.subject} ${run.workflow} ${run.state} ${run.publicId ?? ""} ${run.id}`)).map((result): PaletteRow => ({ kind: "run", id: result.id, label: result.subject, tag: `${result.workflow} · ${result.state.charAt(0).toLocaleUpperCase("en-US")}${result.state.slice(1)}`, tone: runTone(result.state), result }))) },
     { id: "workflows", label: "Workflows", rows: trim("workflows", input.workflows.filter(flow => matches(query, flow.label)).map((flow): PaletteRow => ({ kind: "workflow", id: flow.id, label: flow.label }))) },
     { id: "spreadsheets", label: "Spreadsheets", rows: trim("spreadsheets", input.sheets.filter(sheet => matches(query, sheet.name)).map((sheet): PaletteRow => ({ kind: "sheet", id: sheet.id, label: sheet.name, tag: sheet.detail }))) },
   ];

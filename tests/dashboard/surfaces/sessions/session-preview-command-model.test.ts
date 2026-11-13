@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { vi } from "vitest";
 // @vitest-environment jsdom
