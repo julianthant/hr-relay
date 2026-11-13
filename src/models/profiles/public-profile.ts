@@ -9,8 +9,12 @@ export const ProfileSignUpRequestSchema = ProfileLoginRequestSchema.extend({ fir
 export type ProfileLoginRequest = z.infer<typeof ProfileLoginRequestSchema>;
 export type ProfileSignUpRequest = z.infer<typeof ProfileSignUpRequestSchema>;
 /** Relay login changes for the signed-in profile; the current password proves the caller. */
-export const ProfilePasswordChangeRequestSchema = z.strictObject({ currentPassword: ProfileLoginRequestSchema.shape.password, newPassword: ProfileLoginRequestSchema.shape.password });
-export const ProfileUsernameChangeRequestSchema = z.strictObject({ currentPassword: ProfileLoginRequestSchema.shape.password, newUsername: ProfileLoginRequestSchema.shape.email });
+/** A replacement must fit the sign-in form, whose username and password inputs accept at most this many characters. */
+export const RELAY_SIGN_IN_FIELD_MAX = 160;
+export const ProfilePasswordChangeRequestSchema = z.strictObject({ currentPassword: ProfileLoginRequestSchema.shape.password,
+  newPassword: z.string().min(1).max(RELAY_SIGN_IN_FIELD_MAX) });
+export const ProfileUsernameChangeRequestSchema = z.strictObject({ currentPassword: ProfileLoginRequestSchema.shape.password,
+  newUsername: z.string().min(1).max(RELAY_SIGN_IN_FIELD_MAX) });
 export const ProfileLoginChangeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("changed"), durability: z.literal("unconfirmed").optional() }),
   z.strictObject({ state: z.literal("unknown"), code: z.literal("PROFILE_LOGIN_CHANGE_UNKNOWN") }),

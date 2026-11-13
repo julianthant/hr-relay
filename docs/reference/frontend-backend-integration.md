@@ -428,7 +428,7 @@ The Relay login is the work email and password saved as the profile's UCPath sig
 session cookie only. They return `{state: "changed"}`, `{state: "unknown", code}` or
 `{state: "refused", code}`. A wrong current password counts toward the sign-in lockout. A new
 username must be a plain `@ucsd.edu` address the sign-in form accepts, must change the verifier key
-and must not be taken. Refusals leave the saved login unchanged.
+and must not be taken; a new username or password longer than the form's 160 characters is refused. Refusals leave the saved login unchanged.
 
 The change saves both UCPath entries in one marked write, then swaps that profile's verifier row as
 its commit point, and only once the entries are proved durable. If it stops between them, it
@@ -441,7 +441,10 @@ needs a logout, so parked writes stay held. A swap that landed is never undone: 
 or directory close failed, the result is `{state: "changed", durability: "unconfirmed"}`, the
 failure is logged and an unclosed descriptor stays held by its owner. If the verifier cannot be read
 back after a failed swap, the result is `PROFILE_LOGIN_CHANGE_UNKNOWN`, nothing is undone and
-neither login is promised. The epoch, Duo material and other profiles are unchanged.
+neither login is promised. A change that settled keeps its result when only the profile lock's
+release fails; that failure is logged and any unclosed descriptor stays held. An old-login restore
+that cannot prove its write durable fails the sign-in or change that ran it, which may then be
+retried. The epoch, Duo material and other profiles are unchanged.
 
 ### Profile onboarding boundary
 

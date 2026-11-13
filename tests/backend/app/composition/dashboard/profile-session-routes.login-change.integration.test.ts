@@ -34,6 +34,8 @@ it("serves password and username changes to the signed-in session only, and the 
       body: JSON.stringify({ currentPassword: "disposable-fixture-password", newPassword: "changed-fixture-password" }) });
     assert.deepEqual([foreign.status, await foreign.json()], [403, { state: "refused", code: "PROFILE_SESSION_STALE" }]);
     assert.equal((await change("password", { currentPassword: "disposable-fixture-password", newPassword: "" }, cookie)).status, 400);
+    assert.equal((await change("password", { currentPassword: "disposable-fixture-password", newPassword: "p".repeat(161) }, cookie)).status, 400);
+    assert.equal((await change("username", { currentPassword: "disposable-fixture-password", newUsername: `${"u".repeat(152)}@ucsd.edu` }, cookie)).status, 400);
     assert.deepEqual(await change("password", { currentPassword: "not-the-password", newPassword: "changed-fixture-password" }, cookie),
       { status: 200, body: { state: "refused", code: "PROFILE_CURRENT_PASSWORD_REFUSED" } });
 
@@ -45,10 +47,12 @@ it("serves password and username changes to the signed-in session only, and the 
     assert.deepEqual(username, { status: 200, body: { state: "changed" } });
     assert.equal(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).json()).state, "active");
 
+    const longest = "p".repeat(160);
+    assert.deepEqual(await change("password", { currentPassword: "changed-fixture-password", newPassword: longest }, cookie), { status: 200, body: { state: "changed" } });
     assert.equal(PublicProfileStateSchema.parse(await (await post("/api/v1/profile/logout", {}, cookie)).json()).state, "signed-out");
     const old = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" })).json());
     assert.deepEqual(old, { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
-    const signedIn = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-in", { email: "fixture.changed@ucsd.edu", password: "changed-fixture-password" })).json());
+    const signedIn = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-in", { email: "fixture.changed@ucsd.edu", password: longest })).json());
     assert.equal(signedIn.state, "active");
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });

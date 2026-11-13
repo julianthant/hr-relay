@@ -42,20 +42,29 @@ export class RelayLoginOutcomeUnknownError extends Error {
 
 export type RelayLoginOutcome = { readonly kind: "changed" } | { readonly kind: "unconfirmed"; readonly failure: unknown } | { readonly kind: "refused"; readonly code: ErrorCatalogCode };
 
+type SaveOutcome = { readonly kind: "applied" } | { readonly kind: "refused" } | { readonly kind: "uncertain"; readonly failure: unknown };
+
 /**
- * Save both UCPath entries as `login` in one marked write. "uncertain" means the store owns the write but could not prove it durable;
- * a write whose descriptors could not be proved closed throws for its owner to retain.
+ * Save both UCPath entries as `login` in one marked write. "uncertain" means the write may have landed but is not proved
+ * durable: the store owns it, or its ownership could not be read back. A write whose descriptors could not be proved
+ * closed throws for its owner to retain.
  */
-function saveLogin(store: CredentialStore, login: RelayLogin, purpose: Purpose, at: string): "applied" | "uncertain" | "refused" {
+function saveLogin(store: CredentialStore, login: RelayLogin, purpose: Purpose, at: string): SaveOutcome {
   const saved = store.read(), commandId = randomUUID();
   const entries = { ucpathUserId: { set: login.email }, ucpathPassword: { set: login.password } };
   try {
-    return store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId, commandFingerprint: PURPOSES[purpose], expectedRevision: saved.revision,
-      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), updatedAt: at, entries })).state === "applied" ? "applied" : "refused";
+    return { kind: store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId, commandFingerprint: PURPOSES[purpose], expectedRevision: saved.revision,
+      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), updatedAt: at, entries })).state === "applied" ? "applied" : "refused" };
   } catch (error) {
     if (!(error instanceof CredentialStoreCommitUncertainError) || hasUnprovedSourceClosure(error)) throw error;
-    return store.ownsCommandId(commandId) ? "uncertain" : "refused";
+    try { return store.ownsCommandId(commandId) ? { kind: "uncertain", failure: error } : { kind: "refused" }; }
+    catch (readback) { return { kind: "uncertain", failure: new AggregateError([error, readback], "profile login write ownership unreadable") }; }
   }
+}
+
+/** A login restore wrote the old login back but could not prove it durable; nothing is reported as settled. */
+export class RelayLoginRestoreUncertainError extends Error {
+  constructor(options: ErrorOptions) { super("profile-login-restore-uncertain", options); this.name = "RelayLoginRestoreUncertainError"; }
 }
 
 function proves(verifiers: Verifiers, profileId: string, login: Partial<RelayLogin>): boolean {
@@ -84,9 +93,9 @@ export function changeRelayLogin(verifiers: Verifiers, store: CredentialStore, p
   }
   const verifier = verifiers.prepareLoginChange(profileId, next.email, next.password);
   const written = saveLogin(store, next, "change", fields.at);
-  if (written === "refused") return refused("PROFILE_LOGIN_CHANGE_BUSY");
+  if (written.kind === "refused") return refused("PROFILE_LOGIN_CHANGE_BUSY");
   // The verifier is committed only over durable entries; unproved entries stay marked for the old login to settle.
-  if (written === "uncertain") throw new RelayLoginUnsettledError({ cause: new Error("profile-login-change-entries-unproved") });
+  if (written.kind === "uncertain") throw new RelayLoginUnsettledError({ cause: written.failure });
   try { verifier.commit(); }
   catch (error) {
     let landed: boolean;
@@ -98,7 +107,8 @@ export function changeRelayLogin(verifiers: Verifiers, store: CredentialStore, p
     let restored: ReturnType<typeof saveLogin>;
     try { restored = saveLogin(store, prior, "restore", fields.at); }
     catch (cleanup) { throw new RelayLoginUnsettledError({ cause: new AggregateError([error, cleanup], "profile login change and its restore failed") }); }
-    if (restored === "refused") throw new RelayLoginUnsettledError({ cause: error });
+    if (restored.kind === "refused") throw new RelayLoginUnsettledError({ cause: error });
+    if (restored.kind === "uncertain") throw new RelayLoginUnsettledError({ cause: new AggregateError([error, restored.failure], "profile login change failed and its restore is unproved") });
     throw error;
   }
   return { kind: "changed" };
@@ -113,5 +123,7 @@ export function restoreInterruptedLogin(verifiers: Verifiers, store: CredentialS
   if (email === proved.email && password === proved.password || !loginWritten(store) || proves(verifiers, profileId, { email, password })) return;
   const owner = email === undefined ? "unknown" : verifiers.identify(email);
   const restored = email !== undefined && owner !== "unknown" && owner.profileId === profileId ? email : proved.email;
-  if (saveLogin(store, { email: restored, password: proved.password }, "restore", at) === "refused") throw new ProfileSessionRefusedError("PROFILE_LOGIN_CHANGE_BUSY");
+  const outcome = saveLogin(store, { email: restored, password: proved.password }, "restore", at);
+  if (outcome.kind === "refused") throw new ProfileSessionRefusedError("PROFILE_LOGIN_CHANGE_BUSY");
+  if (outcome.kind === "uncertain") throw new RelayLoginRestoreUncertainError({ cause: outcome.failure });
 }
