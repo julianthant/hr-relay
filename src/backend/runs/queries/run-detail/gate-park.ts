@@ -144,13 +144,30 @@ function hireReviewFacts(deps: RunDetailQueryDeps, authority: RunRecord) {
   return !mode.success || match === undefined || plan === undefined ? undefined : { mode: mode.data.mode, match, plan };
 }
 
+/** Structural failure from `assertClassifiedMatch`: the hit is not a hire-review decision. */
+const UNCLASSIFIED_HIRE_MATCH = { state: "unclassified" } as const;
+const UNCLASSIFIED_MATCH_ERRORS = new Set([
+  "UCPath match confirmation has no originating hit",
+  "UCPath Search/Match returned duplicate person IDs",
+  "UCPath confirmation names a person outside its search hits",
+  "UCPath confirmation did not classify every person exactly once",
+]);
+
 /** `hireReviewChoices`, or undefined for a match that fails its structural checks. */
 function safeHireReviewChoices(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>,
   hire: Readonly<{ firstName: string; middleName: string; lastName: string }>): HireReviewChoices | undefined {
+  const choices = classifyHireReviewChoices(mode, match, hire);
+  if ("state" in choices) return undefined;
+  return choices;
+}
+
+function classifyHireReviewChoices(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>,
+  hire: Readonly<{ firstName: string; middleName: string; lastName: string }>): HireReviewChoices | typeof UNCLASSIFIED_HIRE_MATCH {
   try {
     return hireReviewChoices(mode, match, hire);
-  } catch {
-    return undefined;
+  } catch (error) {
+    if (error instanceof Error && UNCLASSIFIED_MATCH_ERRORS.has(error.message)) return UNCLASSIFIED_HIRE_MATCH;
+    throw error;
   }
 }
 
