@@ -1,8 +1,8 @@
 import { useToasts } from "../../ds/ui.js";
 import { useCallback, type ComponentProps } from "react";
 import { RunStartSurfaces } from "./run-start.js";
-import { RunChecksMockHost } from "./run-checks-mock.js";
 import { runLaunchAppliedToast, type useRunLaunch } from "./run-launch-model.js";
+import { runChecksFrame } from "./run-checks-mock-model.js";
 
 /** Only this host couples launch dismissal to Intake takeover focus. */
 export function RunLaunchHost({ controller, onPreviewClose, workersStopped, ...props }: Omit<ComponentProps<typeof RunStartSurfaces>, "open" | "onOpenChange" | "onCloseAutoFocus"> & {
@@ -12,9 +12,10 @@ export function RunLaunchHost({ controller, onPreviewClose, workersStopped, ...p
   readonly workersStopped?: (workflowId: string) => boolean;
 }) {
   const { toast } = useToasts();
+  runChecksFrame();
   const setOpen = controller.setOpen;
   const changeOpen = useCallback((open: boolean) => { setOpen(open); if (!open) onPreviewClose?.(); }, [setOpen, onPreviewClose]);
-  return <><RunChecksMockHost /><RunStartSurfaces {...props} rerunSource={props.previewLaunch ? undefined : controller.rerunSource} rerunInputText={props.previewLaunch ? undefined : controller.rerunInputText} open={controller.open || props.previewLaunch !== undefined} onOpenChange={changeOpen} onCloseAutoFocus={controller.closeFocus}
+  return <><RunStartSurfaces {...props} rerunSource={props.previewLaunch ? undefined : controller.rerunSource} rerunInputText={props.previewLaunch ? undefined : controller.rerunInputText} open={controller.open || props.previewLaunch !== undefined} onOpenChange={changeOpen} onCloseAutoFocus={controller.closeFocus}
     onApplied={(workflowId, count, workerStartup) => {
       if (workerStartup?.state !== "refused" || workersStopped?.(workflowId) !== true) toast(runLaunchAppliedToast({ label: props.catalog.find(workflow => workflow.id === workflowId)?.label ?? workflowId,
         count, rerun: !props.previewLaunch && controller.rerunSource !== undefined, workerStartup }));
