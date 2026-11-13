@@ -595,36 +595,21 @@ afterEach_m0(_afterEachFixture0);
 
     // Scenario A: target run is still selected when delete settles -> clears selection
     let routeA: { run?: string; section?: string } = { run: targetRunId, section: "timeline" };
-    let bulkIdsA = new Set<string>([targetRunId, otherRunId]);
 
     // Settlement logic matching LoadedApp delete handler
     routeA = routeA.run === targetRunId ? { ...routeA, run: undefined, section: undefined } : routeA;
-    if (bulkIdsA.has(targetRunId)) {
-      const next = new Set(bulkIdsA);
-      next.delete(targetRunId);
-      bulkIdsA = next;
-    }
 
     assert_m0.equal(routeA.run, undefined, "cleared route selection for deleted run");
     assert_m0.equal(routeA.section, undefined);
-    assert_m0.ok(!bulkIdsA.has(targetRunId), "removed deleted run from bulk selection");
-    assert_m0.ok(bulkIdsA.has(otherRunId), "preserved other bulk selections");
 
 
     let routeB: { run?: string; section?: string } = { run: otherRunId, section: "log" };
-    let bulkIdsB = new Set<string>([otherRunId]);
 
     // Late settlement of targetRunId delete lands:
     routeB = routeB.run === targetRunId ? { ...routeB, run: undefined, section: undefined } : routeB;
-    if (bulkIdsB.has(targetRunId)) {
-      const next = new Set(bulkIdsB);
-      next.delete(targetRunId);
-      bulkIdsB = next;
-    }
 
     assert_m0.equal(routeB.run, otherRunId, "did NOT close the different run selected in the meantime");
     assert_m0.equal(routeB.section, "log");
-    assert_m0.ok(bulkIdsB.has(otherRunId), "preserved bulkIds for active selection");
   });
 });
 }

@@ -201,7 +201,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const setOpenWells = useCallback((next: ReadonlySet<string>) => setRoute(current => ({ ...current, view: { ...current.view, queueOpen: [...next] } })), [setRoute]);
   const tab = SHELL_PANEL_TABS.find(candidate => candidate === route.section);
   const setTab = useCallback((next: PanelTab | undefined) => setRoute({ ...route, section: next }), [route, setRoute]);
-  /** the toolbar's ordering control and its select mode — client UI state */
+  /** the toolbar's ordering control — client UI state */
   const sort = route.view?.queueSort ?? "attention";
   const setSort = useCallback((next: QueueSortKey) => setRoute(current => ({ ...current, view: { ...current.view, queueSort: next } })), [setRoute]);
 
