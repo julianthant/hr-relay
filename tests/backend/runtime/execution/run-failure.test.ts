@@ -4,13 +4,14 @@ import { FIXTURE_RUN_DETAILS } from "../../../support/fixtures/dashboard/run-det
 import { FIXTURE_FAILURE_SECTIONS } from "../../../support/fixtures/dashboard/run-detail/receipts-failures.js";
 import { FIXTURE_IDS } from "../../../support/fixtures/dashboard/fixture-queue.js";
 import { DelegationConfigUnavailableError } from "../../../../src/backend/runs/lifecycle/delegation-admission.js";
-import { resolveErrorCatalogFailure } from "../../../../src/models/failures/error-catalog.js";
+import { ERROR_CATALOG, operatorFailureSentence, resolveErrorCatalogFailure } from "../../../../src/models/failures/error-catalog.js";
+import { projectFailureForOperator } from "../../../../src/models/trust/failure.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import {
 buildNodeFailureRecord, buildEntryValidationFailureRecord
 } from "../../../../src/backend/runtime/execution/run-failure.js";
-import { TaskError } from "../../../../src/workflow-kit/errors.js";
+import { TaskError, wrapUnhandledTaskError } from "../../../../src/workflow-kit/errors.js";
 import { NodeIdSchema,TaskIdSchema } from "../../../../src/rules/identity/ids.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 const NODE_ID = NodeIdSchema.parse("searching");
@@ -45,16 +46,37 @@ describe("diagnostic evidence projection", () => {
 
 describe("node failure code selection", () => {
   it.each([
-    { error: new TaskError(TASK_ID, "crm-unavailable", "Synthetic failure"), expected: "CRM_UNAVAILABLE" },
-    { error: Object.assign(new Error("Synthetic failure"), { code: "custom-code" }), expected: "CUSTOM_CODE" },
-    { error: new Error("Synthetic failure"), expected: "UNHANDLED" },
-    { error: "Synthetic non-Error failure", expected: "UNHANDLED" },
-  ])("maps $expected while preserving task and coded-error selection", ({ error, expected }) => {
+    { name: "declared task code", error: new TaskError(TASK_ID, "subject-mismatch", "Synthetic failure"), expected: "SUBJECT_MISMATCH" },
+    { name: "catalogued own code", error: Object.assign(new Error("Synthetic failure"), { code: "browser-profile-still-closing" }), expected: "BROWSER_PROFILE_STILL_CLOSING" },
+    { name: "uncatalogued own code", error: Object.assign(new Error("Synthetic failure"), { code: "ECONNRESET" }), expected: "TASK_UNHANDLED_FAILURE" },
+    { name: "uncaught task error", error: wrapUnhandledTaskError(TASK_ID, new Error("Timeout 30000ms exceeded")), expected: "TASK_UNHANDLED_FAILURE" },
+    { name: "plain Error", error: new Error("Synthetic failure"), expected: "TASK_UNHANDLED_FAILURE" },
+    { name: "non-Error value", error: "Synthetic non-Error failure", expected: "TASK_UNHANDLED_FAILURE" },
+  ])("records $expected for a $name", ({ error, expected }) => {
     const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
       failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
       error, occurredAt: "2026-08-29T08:00:00.000Z" });
     assert.equal(failure.code, expected);
     assert.equal(failure.causeChain[0]?.code, expected);
+    assert.notEqual(operatorFailureSentence(failure.code), ERROR_CATALOG.ERROR_CATALOG_CODE_UNREGISTERED.text);
+  });
+
+  it("serves an uncaught task error with the unclassified-failure sentence", () => {
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
+      error: wrapUnhandledTaskError(TASK_ID, new Error("Timeout 30000ms exceeded")), occurredAt: "2026-08-29T08:00:00.000Z" });
+    assert.equal(projectFailureForOperator(failure).summary, "The task stopped with an unclassified failure. Review local diagnostic evidence.");
+  });
+
+  it("records each named secondary cause after the task's own primary cause", () => {
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
+      error: new TaskError(TASK_ID, "subject-mismatch", "Synthetic failure"), occurredAt: "2026-08-29T08:00:00.000Z",
+      secondaryCauses: [{ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: "Failure screenshot not taken: page-closed" }] });
+    assert.equal(failure.code, "SUBJECT_MISMATCH");
+    assert.deepEqual(failure.causeChain.map(({ code, role }) => [code, role]),
+      [["SUBJECT_MISMATCH", "primary"], ["BROWSER_SCREENSHOT_CAPTURE_FAILED", "secondary"]]);
+    assert.equal(failure.causeChain[1]?.summary, "Failure screenshot not taken: page-closed");
   });
 });
 
