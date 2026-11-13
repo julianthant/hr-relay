@@ -1,4 +1,4 @@
-import { faultAuthoritySnapshot, assertHttpFaultOnly } from "../../../../support/helpers/backend/http-route-harness.js";
+import { faultAuthoritySnapshot, assertHttpFaultOnly, exactHttpFaultLoopDelay } from "../../../../support/helpers/backend/http-route-harness.js";
 import { AssistantModelPreferenceViewSchema } from '../../../../../src/models/dashboard/assistant.js';
 import { withAuthorityDatabaseReadOnly } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import configuredSources from "../../../../../config/dashboard-workflow-sources.json";
@@ -117,7 +117,7 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
     const context = runtime.selectedContext(active.token);
     const authorization = await context.account.signIn({ usePlan: true }); await transport.callback(authorization); await authorization.completion;
     const dashboard = await composeDashboardRuntime({ lifetimeLock: f.lifetime, admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace,
-      clock, isolation: rebuildRuntimeIsolation, env: {}, backendPortOverride: 0, frontendPortOverride: 0, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      clock, isolation: rebuildRuntimeIsolation, env: {}, backendPortOverride: 0, frontendPortOverride: 0, preflightRunnerFactory: healthyRuntimePreflightRunners, loopDelay: exactHttpFaultLoopDelay,
       ...(workerProcess === undefined ? {} : { workerProcess }) });
     owner.dashboard = dashboard;
     const origin = `http://127.0.0.1:${String(dashboard.port)}`;
