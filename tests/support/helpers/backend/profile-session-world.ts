@@ -7,12 +7,12 @@ import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/p
 import { reconcileStoppedLogout } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../../src/models/config/protected-settings.js";
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { createSyntheticProfileSession, finishProfileOnboarding } from "../admission-fixture.js";
+import { createCredentialStore, createSyntheticProfileSession, finishProfileOnboarding } from "../admission-fixture.js";
+import { registerBoundProfile } from "../synthetic-database-admission.js";
 import { runtimeLifetimeLock } from "./runtime-lifetime.js";
 
 type Session = ReturnType<typeof createSyntheticProfileSession>;
@@ -23,6 +23,10 @@ export async function createProfileSessionWorld() {
   const root = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "hr-profiles-")));
   const lifetime = await runtimeLifetimeLock();
   const machine = acquireEntrypointAdmission(root, "shared", lifetime);
+  function credentialsFor(owner: RuntimeAdmission) {
+    registerBoundProfile(owner, machine);
+    return createCredentialStore({ stateRoot: owner.stateRoot });
+  }
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   const machineRoot = machine.stateRoot;
   const sessions = new Set<Session>();
@@ -35,7 +39,7 @@ export async function createProfileSessionWorld() {
         let database = databases.get(profileId);
         if (database === undefined) {
           database = AuthorityDatabase.open(owner, { path: join(owner.stateRoot, "state.db"), busyTimeoutMs: 1000, migrationOwner: "profile-session-world" },
-            input.clock ?? systemClock, undefined, undefined, undefined, createCredentialStore({ admission: owner, stateRoot: owner.stateRoot }));
+            input.clock ?? systemClock, undefined, undefined, undefined, credentialsFor(owner));
           databases.set(profileId, database);
         }
         return { source: database.capturePendingLogoutSource(), intentFailed(error): never { throw error; } };
@@ -77,7 +81,7 @@ export async function createProfileSessionWorld() {
   function savedLogin(profileId: string): { userId: string | undefined; password: string | undefined } {
     const owner: RuntimeAdmission = machine.admitProfile(profileId);
     try {
-      const entries = createCredentialStore({ admission: owner, stateRoot: owner.stateRoot }).read().entries;
+      const entries = credentialsFor(owner).read().entries;
       return { userId: entries.ucpathUserId?.value, password: entries.ucpathPassword?.value };
     } finally { owner.release(); }
   }
@@ -86,7 +90,7 @@ export async function createProfileSessionWorld() {
   function saveInSettings(profileId: string, entries: Partial<Record<"ucpathUserId" | "ucpathPassword" | "sharepointOnboardingRosterUrl", { set: string } | { clear: true }>>): void {
     const owner: RuntimeAdmission = machine.admitProfile(profileId);
     try {
-      const store = createCredentialStore({ admission: owner, stateRoot: owner.stateRoot });
+      const store = credentialsFor(owner);
       const applied = store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "b".repeat(64), expectedRevision: store.read().revision,
         protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), updatedAt: "2026-09-06T12:30:00.000Z", entries }));
       if (applied.state !== "applied") throw new Error(`profile-session-world settings apply ${applied.state}`);

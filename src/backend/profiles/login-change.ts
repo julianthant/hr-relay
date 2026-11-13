@@ -96,7 +96,7 @@ export function changeRelayLogin(verifiers: Verifiers, store: CredentialStore, p
   if (written.kind === "refused") return refused("PROFILE_LOGIN_CHANGE_BUSY");
   // The verifier is committed only over durable entries; unproved entries stay marked for the old login to settle.
   if (written.kind === "uncertain") throw new RelayLoginUnsettledError({ cause: written.failure });
-  try { verifier.commit(); }
+  try { verifier.swap(); }
   catch (error) {
     let landed: boolean;
     // An unreadable verifier leaves the swap unknown: nothing is undone, and the old login settles it if the swap did not land.

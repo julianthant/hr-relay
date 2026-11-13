@@ -101,7 +101,9 @@ describe("Relay login change", () => {
     assert.equal(refusalCode(session.changeUsername(alex.token, { currentPassword: "wrong", newUsername: "alex.rivera@ucsd.edu", at: "2026-09-06T12:02:00.000Z" })), "PROFILE_CURRENT_PASSWORD_REFUSED");
     assert.equal(machine.savedLogin(alex.profileId).userId, "alex@ucsd.edu");
     assert.equal(session.changeUsername(alex.token, { currentPassword: "secret-one", newUsername: "alex.rivera@ucsd.edu", at: "2026-09-06T12:03:00.000Z" }).state, "changed");
-    assert.deepEqual([machine.savedLogin(alex.profileId).userId, machine.savedLogin(alex.profileId).password], ["alex.rivera@ucsd.edu", "secret-one"]);
+    const saved = machine.savedLogin(alex.profileId);
+    assert.equal(saved.userId, "alex.rivera@ucsd.edu");
+    assert.equal(saved.password, alexFields.password);
     assert.deepEqual(machine.credentialBytes(sam.profileId), samLogin);
     assert.deepEqual(samRow(), samBefore);
 
@@ -158,7 +160,9 @@ describe("Relay login change", () => {
     assert.equal(refusalCode(restarted.signIn({ ...next, at: "2026-09-06T12:02:00.000Z" })), "PROFILE_SIGN_IN_REFUSED");
     const old = restarted.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:03:00.000Z" });
     assert.equal(old.state, "active");
-    assert.deepEqual([machine.savedLogin(alex.profileId).userId, machine.savedLogin(alex.profileId).password], ["alex@ucsd.edu", "secret-one"]);
+    const restored = machine.savedLogin(alex.profileId);
+    assert.equal(restored.userId, "alex@ucsd.edu");
+    assert.equal(restored.password, alexFields.password);
     assert.equal(machine.open().resumeSignedInProfile({ at: "2026-09-06T12:04:00.000Z" }).state, "active");
   });
 
