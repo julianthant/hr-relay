@@ -4,6 +4,7 @@ import { UcpathPayPathSubmitRefusedError } from "../../../../models/ui/ucpath-pa
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { defineTask } from "../../../../workflow-kit/task.js";
 import { ucpathDriver } from "../driver-declaration.js";
+import { workStudySavedVerdict } from "../../../../rules/work-study/transaction-verdict.js";
 import { readWorkStudyVerdict } from "../work-study-findings.js";
 
 // Everything here runs after the fence: a refusal or an unproven read-back parks the write as UNKNOWN and is never clicked again.
@@ -15,7 +16,7 @@ export const submitPayPathWorkStudyTask = defineTask(ucpathDriver, UcpathSubmitP
       ctx.recordData({ direction: "read", field: "alertText", value: error.alertText });
       return ctx.fail("paypath-submit-refused", operatorFailureSentence("PAYPATH_SUBMIT_REFUSED"), { subject: input.emplId, cause: error });
     });
-    const verdict = await readWorkStudyVerdict(ctx.driver, input, (_code, message) => {
+    const verdict = await readWorkStudyVerdict(ctx.driver, input, workStudySavedVerdict, (_code, message) => {
       throw new Error(`${message}. The Save already happened, so this parks.`);
     });
     if (verdict.state !== "present") {

@@ -23,7 +23,7 @@ export type FakePayPathSubmit = "files" | "alert" | "answer-lost" | "nothing-fil
 export function deterministicPayPathOperations(options: Readonly<{
   read?: UcpathPayPathRead; refusal?: UcpathPayPathRefusalCode; alertText?: string; now?: string;
   rows?: readonly UcpathTransactionFinding[]; stagedValues?: Partial<UcpathPayPathStagedValues>; observedName?: string;
-  submit?: FakePayPathSubmit; findingsUnreadable?: boolean; stageRefusal?: UcpathPayPathRefusalCode;
+  submit?: FakePayPathSubmit; findingsUnreadable?: boolean; stageRefusal?: UcpathPayPathRefusalCode; filedAction?: string;
 }>) {
   const now = options.now ?? "2026-08-03T18:00:00.000Z";
   const events: string[] = [];
@@ -64,7 +64,7 @@ export function deterministicPayPathOperations(options: Readonly<{
       if (submit === "alert") throw new UcpathPayPathSubmitRefusedError("Synthetic PayPath save error");
       if (submit === "nothing-filed") return;
       rows.push({
-        transactionId: `T${String(9000001 + rows.length).padStart(9, "0")}`, emplId: target.emplId, action: "Data Chg", approvalStatus: "Pending",
+        transactionId: `T${String(9000001 + rows.length).padStart(9, "0")}`, emplId: target.emplId, action: options.filedAction ?? "Data Chg", approvalStatus: "Pending",
         startDate: target.effectiveDate, displayedName: target.expectedName, submittedAt: "08/03/26 11:00:00.000000AM", detailVerified: true,
       });
       if (submit === "answer-lost") throw new Error("fixture-paypath-answer-lost");

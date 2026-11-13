@@ -24,6 +24,7 @@ export const UCPATH_PAYPATH_UI = deepFreeze({
   positionChangeReason: (frame: FrameLocator) => frame.getByRole("textbox", { name: "Position Change Reason:" }),
   positionPool: (frame: FrameLocator) => frame.getByRole("textbox", { name: "Position Pool:" }),
   positionNumber: (frame: FrameLocator) => frame.getByRole("textbox", { name: "Position Number:" }),
+  positionDataTab: (frame: FrameLocator) => frame.getByRole("link", { name: "Position Data", exact: true }),
   jobDataTab: (frame: FrameLocator) => frame.getByRole("link", { name: "Job Data", exact: true }),
   jobDataComments: (frame: FrameLocator) => frame.getByRole("textbox", { name: "Comments", exact: true }),
   additionalPayDataTab: (frame: FrameLocator) => frame.getByRole("link", { name: "Additional Pay Data", exact: true }),

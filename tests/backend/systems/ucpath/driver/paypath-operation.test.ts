@@ -63,10 +63,12 @@ const target = UcpathPayPathWorkStudyTargetSchema.parse({
   emplId: EMPL_ID, expectedName: "Lee, Jordan", effectiveDate: "08/03/2026", positionChangeReason: "JRL", positionPool: "F", comments: COMMENTS,
 });
 const OPEN = ["click:category", "click:actions", "fill:empl-id-input=10000001", "click:search"];
+const filled = (key: string, value: string) => [`fill:${key}=${value}`, `press:${key}=Tab`, "settle"];
+const READ_BACK = ["click:position-data-tab", "settle", "click:job-data-tab", "settle", "click:additional-pay-tab", "settle"];
 const STAGE = [
-  "fill:effective-date=08/03/2026", "press:effective-date=Tab", "fill:position-change-reason=JRL", "press:position-change-reason=Tab",
-  "fill:position-pool=F", "press:position-pool=Tab", "click:job-data-tab", `fill:job-data-comments=${COMMENTS}`, "press:job-data-comments=Tab",
-  "click:additional-pay-tab", `fill:initiator-comments=${COMMENTS}`, "press:initiator-comments=Tab",
+  ...filled("effective-date", "08/03/2026"), ...filled("position-change-reason", "JRL"), ...filled("position-pool", "F"),
+  "click:job-data-tab", "settle", ...filled("job-data-comments", COMMENTS),
+  "click:additional-pay-tab", "settle", ...filled("initiator-comments", COMMENTS), ...READ_BACK,
 ];
 const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
 
@@ -83,6 +85,11 @@ describe("UCPath PayPath work-study staging on a fake page", () => {
       values: { effectiveDate: "08/03/2026", positionChangeReason: "JRL", positionPool: "F", jobDataComments: COMMENTS, initiatorComments: COMMENTS },
     });
     assert.deepEqual(h.actions, [...OPEN, ...STAGE]);
+  });
+
+  it("reports the value a PeopleSoft postback cleared after the field settled, for the task to refuse", async () => {
+    const h = world({ postbackClears: "position-change-reason" });
+    assert.equal((await h.driver.stagePayPathWorkStudy(target)).values.positionChangeReason, "");
   });
 
   it("reports the value the page kept when a fill does not stick, for the task to refuse", async () => {
@@ -118,7 +125,7 @@ describe("UCPath PayPath work-study Save on a fake page", () => {
     const h = world();
     await h.driver.stagePayPathWorkStudy(target);
     await h.driver.submitPayPathWorkStudy(target, capability());
-    assert.deepEqual(h.actions, [...OPEN, ...STAGE, "click:save"]);
+    assert.deepEqual(h.actions, [...OPEN, ...STAGE, ...READ_BACK, "click:save"]);
   });
 
   it("refuses a capability the sequencer did not mint, before any click", async () => {
@@ -152,10 +159,10 @@ describe("UCPath PayPath work-study Save on a fake page", () => {
     assert.deepEqual(h.actions.filter(action => action === "click:save"), ["click:save"]);
   });
 
-  it("refuses to click when the staged Initiator's comments changed", async () => {
+  it.each(["effective-date", "position-change-reason", "position-pool", "job-data-comments", "initiator-comments"])("refuses to click when the staged %s changed", async key => {
     const h = world();
     await h.driver.stagePayPathWorkStudy(target);
-    h.values["initiator-comments"] = "changed";
+    h.values[key] = "changed";
     await assert.rejects(h.driver.submitPayPathWorkStudy(target, capability()), (error: unknown) => error instanceof UcpathPayPathRefusedError && error.code === "staged-value-mismatch");
     assert.equal(h.actions.includes("click:save"), false);
   });

@@ -71,8 +71,8 @@ export type UcpathPayPathRefusalCode = (typeof UCPATH_PAYPATH_REFUSAL_CODES)[num
 
 /** A typed refusal from the PayPath page; `alertText` is set only for `paypath-alert-shown`. */
 export class UcpathPayPathRefusedError extends Error {
-  constructor(readonly code: UcpathPayPathRefusalCode, readonly alertText?: string) {
-    super(code);
+  constructor(readonly code: UcpathPayPathRefusalCode, readonly alertText?: string, options?: ErrorOptions) {
+    super(code, options);
     this.name = "UcpathPayPathRefusedError";
   }
 }

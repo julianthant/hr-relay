@@ -5,13 +5,13 @@ export type FakePayPathOutcome = "record" | "alert" | "no-results" | "grid" | "n
 /** Answers exactly the locators `UCPATH_PAYPATH_UI` builds and records every fill and click; waits reject at once when a control is not shown. Fills stick unless named in `revert`. */
 export function fakeUcpathPayPathPage(options: Readonly<{
   outcome?: FakePayPathOutcome; alertText?: string; name?: string; headerEmplId?: string; ambiguousPositionNumber?: boolean;
-  revert?: string; alertAfterFill?: string; saveButtons?: number; saveDisabled?: boolean; alertAfterSave?: string; saveStays?: boolean;
+  revert?: string; postbackClears?: string; alertAfterFill?: string; saveButtons?: number; saveDisabled?: boolean; alertAfterSave?: string; saveStays?: boolean;
 }> = {}) {
   let outcome = options.outcome ?? "record";
   let alertText = options.alertText;
   const actions: string[] = [];
   const gotos: string[] = [];
-  let searched = false, saved = false;
+  let searched = false, saved = false, pressed: string | undefined;
   const values: Record<string, string> = {
     name: options.name ?? "Lee, Jordan", "empl-id-display": options.headerEmplId ?? "10000001",
     "effective-date": "07/01/2026", "position-change-reason": "", "position-pool": "", "position-number": "40012345",
@@ -21,7 +21,7 @@ export function fakeUcpathPayPathPage(options: Readonly<{
   function control(key: string) {
     const shown = () => {
       if (key === "busy") return false;
-      if (key === "name" || key === "empl-id-display" || key in values || key === "job-data-tab" || key === "additional-pay-tab" || key === "save") {
+      if (key === "name" || key === "empl-id-display" || key in values || key.endsWith("-tab") || key === "save") {
         return searched && (outcome === "record" || outcome === "alert" && key === "save");
       }
       if (key === "alert-ok" || key === "alert-text") return searched && outcome === "alert";
@@ -40,7 +40,7 @@ export function fakeUcpathPayPathPage(options: Readonly<{
         if (wait?.state === "detached") { if (!(key === "save" && saved && options.alertAfterSave === undefined && options.saveStays !== true)) throw new Error(`Timeout waiting for ${key} to detach`); return; }
         if (wait?.state === "hidden" ? shown() : !shown()) throw new Error(`Timeout waiting for ${key}`);
       },
-      press: async (keyName: string) => { actions.push(`press:${key}=${keyName}`); },
+      press: async (keyName: string) => { actions.push(`press:${key}=${keyName}`); pressed = key; },
       innerText: async () => key === "alert-text" ? alertText ?? "" : values[key] ?? "",
       inputValue: async () => values[key] ?? "",
       fill: async (value: string) => {
@@ -62,7 +62,7 @@ export function fakeUcpathPayPathPage(options: Readonly<{
     "Position Pool:": "position-pool", "Position Number:": "position-number",
     Comments: "job-data-comments", "Initiator's Comments": "initiator-comments",
   };
-  const tabs: Record<string, string> = { "Job Data": "job-data-tab", "Additional Pay Data": "additional-pay-tab" };
+  const tabs: Record<string, string> = { "Position Data": "position-data-tab", "Job Data": "job-data-tab", "Additional Pay Data": "additional-pay-tab" };
   const frameSelectors: Record<string, string> = {
     "body > *": "body", "#PTS_CFG_CL_WRK_PTS_SRCH_BTN": "search", 'tr[id^="trPTS_CFG_CL_STD_RSL"]': "rows",
     '[id="UC_E102_PP_WRK_NAME_DISPLAY"]': "name", '[id="UC_E102_PP_WRK_EMPLID"]': "empl-id-display",
@@ -88,6 +88,12 @@ export function fakeUcpathPayPathPage(options: Readonly<{
   const page = {
     url: () => "https://ucphrprdpub.universityofcalifornia.edu/",
     goto: async (destination: string) => { gotos.push(destination); return null; },
+    /** The network-idle settle: a PeopleSoft postback named by `postbackClears` empties that field once the page settles after its Tab. */
+    waitForLoadState: async () => {
+      actions.push("settle");
+      if (pressed !== undefined && pressed === options.postbackClears) values[pressed] = "";
+      pressed = undefined;
+    },
     frameLocator: () => frame,
     getByRole: (role: string, input: { name: string | RegExp }) => {
       if (role === "button" && input.name === "OK") return control("alert-ok");

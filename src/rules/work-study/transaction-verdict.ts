@@ -11,7 +11,9 @@ import { deriveIdempotencyKeyDigest } from "../write-safety/write-safety.js";
 
 /**
  * The SS Smart HR Action a filed PayPath work-study transaction shows.
- * shortcut: unproven; replace or confirm from probe S6 on work-study-workflow-02 before a real Save.
+ * shortcut: unproven, with the three facts this fold also assumes: that PayPath transactions are listed in the SS Smart HR
+ * search at all, that a row's start date is the PayPath effective date, and that the PayPath header name matches the SS
+ * Smart HR detail name. Replace or confirm each from probe S6 on work-study-workflow-02 before a real Save.
  */
 export const WORK_STUDY_SMART_HR_ACTIONS = ["Data Chg"] as const;
 
@@ -23,28 +25,50 @@ function queryDigest(target: UcpathPayPathWorkStudyTarget): string {
   return FingerprintSchema.parse(sha256Hex(["hrauto:ucpath-paypath-work-study-query:v1", target.emplId, target.effectiveDate].join("\0")));
 }
 
+function absent(target: UcpathPayPathWorkStudyTarget, findings: Extract<UcpathTransactionFindings, { state: "read" }>): UcpathWorkStudyVerdict {
+  return UcpathWorkStudyVerdictSchema.parse({ state: "absent", evidence: {
+    idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", ucpathWorkStudyIdempotencyKey(target)),
+    source: UCPATH_SS_SMART_HR_DISPLAYED_NAME, sourceState: SOURCE_STATE, observedAt: findings.observedAt, queryDigest: queryDigest(target),
+    evidenceRef: `observation:${redactedEvidenceId("ucpath-paypath-work-study-absence", [target.emplId, target.effectiveDate, findings.observedAt])}`,
+  } });
+}
+
+function complete(findings: UcpathTransactionFindings): Extract<UcpathTransactionFindings, { state: "read" }> | string {
+  if (findings.state === "unreadable") return findings.reason;
+  if (findings.completeness.state !== "complete") return "the SS Smart HR transaction search reached its row cap";
+  return findings;
+}
+
 /**
- * Folds one SS Smart HR transaction read into the four-state verdict for this person's work-study transaction on the target
- * effective date. Absence needs no transaction of any kind on that date, so an unproven Action label can never hide a filing;
- * the proof is the one filed work-study row and nothing else on that date. The caller owns the subject checks.
+ * Before any Save: absent only when no transaction of any kind carries the effective date. Any row on that date is unknown, so
+ * the run refuses with nothing staged: nothing yet ties a row to reason JRL or pool F, so an existing row is never taken as
+ * this person's filing. The caller owns the subject checks.
  */
-export function workStudyTransactionVerdict(target: UcpathPayPathWorkStudyTarget, findings: UcpathTransactionFindings): UcpathWorkStudyVerdict {
-  const unknown = (reason: string) => UcpathWorkStudyVerdictSchema.parse({ state: "unknown", reason, observedAt: findings.observedAt });
-  if (findings.state === "unreadable") return unknown(findings.reason);
-  if (findings.completeness.state !== "complete") return unknown("the SS Smart HR transaction search reached its row cap");
-  const onDate = findings.rows.filter(row => row.startDate === target.effectiveDate);
-  if (onDate.length === 0) {
-    return UcpathWorkStudyVerdictSchema.parse({ state: "absent", evidence: {
-      idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", ucpathWorkStudyIdempotencyKey(target)),
-      source: UCPATH_SS_SMART_HR_DISPLAYED_NAME, sourceState: SOURCE_STATE, observedAt: findings.observedAt, queryDigest: queryDigest(target),
-      evidenceRef: `observation:${redactedEvidenceId("ucpath-paypath-work-study-absence", [target.emplId, target.effectiveDate, findings.observedAt])}`,
-    } });
+export function workStudyPrewriteVerdict(target: UcpathPayPathWorkStudyTarget, findings: UcpathTransactionFindings): UcpathWorkStudyVerdict {
+  const read = complete(findings);
+  if (typeof read === "string") return UcpathWorkStudyVerdictSchema.parse({ state: "unknown", reason: read, observedAt: findings.observedAt });
+  if (read.rows.some(row => row.startDate === target.effectiveDate)) {
+    return UcpathWorkStudyVerdictSchema.parse({ state: "unknown", reason: "a transaction already shows this effective date; file this person by hand", observedAt: findings.observedAt });
   }
+  return absent(target, read);
+}
+
+/**
+ * After the Save and Submit click: the pre-write probe proved the effective date empty, so the proof is the one filed
+ * work-study row now on that date and nothing else; two are ambiguous, and anything else on the date, a Denied, Error or
+ * Pushed Back row, or a capped or unreadable search is unknown. The caller owns the subject checks.
+ */
+export function workStudySavedVerdict(target: UcpathPayPathWorkStudyTarget, findings: UcpathTransactionFindings): UcpathWorkStudyVerdict {
+  const read = complete(findings);
+  const unknown = (reason: string) => UcpathWorkStudyVerdictSchema.parse({ state: "unknown", reason, observedAt: findings.observedAt });
+  if (typeof read === "string") return unknown(read);
+  const onDate = read.rows.filter(row => row.startDate === target.effectiveDate);
+  if (onDate.length === 0) return absent(target, read);
   const matches = onDate.filter(row => isWorkStudyAction(row.action));
   if (matches.length > 1) {
     return UcpathWorkStudyVerdictSchema.parse({
-      state: "ambiguous", matches: matches.length, observedAt: findings.observedAt, queryDigest: queryDigest(target),
-      evidence: matches.map(row => `observation:${redactedEvidenceId("ucpath-paypath-work-study-match", [target.emplId, target.effectiveDate, row.transactionId, findings.observedAt])}`),
+      state: "ambiguous", matches: matches.length, observedAt: read.observedAt, queryDigest: queryDigest(target),
+      evidence: matches.map(row => `observation:${redactedEvidenceId("ucpath-paypath-work-study-match", [target.emplId, target.effectiveDate, row.transactionId, read.observedAt])}`),
     });
   }
   const [match] = matches;
