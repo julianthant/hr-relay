@@ -1,9 +1,17 @@
-import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
+import { AssistantCallUsageSchema, AssistantTurnUsageSchema } from "./assistant-usage.js";
+import { AssistantCommandAttributionSchema, StartCommandRequestSchema } from "../../rules/commands/commands.js";
+import { ActionDescriptorWireSchema } from "./actions.js";
+import { QueueStatusSchema, TERMINAL_QUEUE_STATUSES } from "./projection.js";
+import { RowRevisionSchema, RunDetailSectionSchema } from "./primitives.js";
+import { CrossDateSearchQuerySchema } from "./search.js";
+import { WorkbookCellChangeSchema, WorkbookIdSchema, WorkbookRevisionSchema } from "./workbooks.js";
+import { canonicalJsonStringify, JsonValueSchema } from "../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../rules/validation/sha256.js";
 import { OcrFormTypeSchema } from "../ocr/form-registry.js";
-import { ERROR_CATALOG } from "../failures/error-catalog.js";
+import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { z } from "zod";
-import { FingerprintSchema } from "../../rules/identity/ids.js";
-import { StartPlanWireSchema } from "./start-plan.js";
+import { CommandIdSchema, FingerprintSchema, IsoInstantSchema, LocalDateSchema, PositiveIntSchema, RunIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
+import { StartPlanRequestSchema, StartPlanWireSchema } from "./start-plan.js";
 import { AssistantModelPreferenceSchema, AssistantModelSlugSchema } from "../config/assistant-model-preference.js";
 
 export const ASSISTANT_DEFAULT_MODEL = "gpt-6.1-sol";
@@ -77,7 +85,7 @@ export function assistantInputMedia(input: readonly AssistantInputItem[]): Reado
   return { base64Chars, bytes };
 }
 export const AssistantInferenceResultSchema = z.strictObject({ responseId: z.string().min(1).max(256), model: AssistantModelSlugSchema,
-  output: z.array(AssistantResponseItemSchema).min(1).max(32),
+  output: z.array(AssistantResponseItemSchema).min(1).max(32), usage: AssistantCallUsageSchema,
 });
 export type AssistantInferenceResult = z.infer<typeof AssistantInferenceResultSchema>;
 export const AssistantFunctionDefinitionSchema = z.strictObject({ type: z.literal("function"), name: FunctionNameSchema,
@@ -180,6 +188,7 @@ export const ASSISTANT_FAILURES = Object.freeze({
   ASSISTANT_SUBJECT_REQUIRED: ERROR_CATALOG.ASSISTANT_SUBJECT_REQUIRED.text,
   ASSISTANT_PROPOSAL_REFUSED: ERROR_CATALOG.ASSISTANT_PROPOSAL_REFUSED.text,
   ASSISTANT_PROPOSAL_EXPIRED: ERROR_CATALOG.ASSISTANT_PROPOSAL_EXPIRED.text,
+  ASSISTANT_PROPOSAL_CHANGED: ERROR_CATALOG.ASSISTANT_PROPOSAL_CHANGED.text,
   ASSISTANT_SPREADSHEET_REFUSED: ERROR_CATALOG.ASSISTANT_SPREADSHEET_REFUSED.text,
   ASSISTANT_AUTHORITY_INVALID: ERROR_CATALOG.ASSISTANT_AUTHORITY_INVALID.text,
   ASSISTANT_MODEL_PROPOSAL_REFUSED: ERROR_CATALOG.ASSISTANT_MODEL_PROPOSAL_REFUSED.text,
@@ -364,3 +373,228 @@ export const AssistantRespondEnvelopeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("delivery"), receipt: AssistantReceiptSchema }),
 ]);
 export type AssistantRespondEnvelope = z.infer<typeof AssistantRespondEnvelopeSchema>;
+
+
+const ReplyTextSchema = z.string().min(1).max(8000);
+const ReplyLabelSchema = z.string().min(1).max(160);
+const WorkbookCellLocationSchema = WorkbookCellChangeSchema.pick({ sheetId: true, rowId: true, fieldId: true });
+export const AssistantWorkbookLocationSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("master") }),
+  z.strictObject({ kind: z.literal("sheet"), sheetId: WorkbookIdSchema }),
+  WorkbookCellLocationSchema.extend({ kind: z.literal("cell") }),
+]);
+const PersonRunIdentitySchema = z.strictObject({ runId: RunIdSchema, inputSchemaHash: FingerprintSchema, inputFingerprint: FingerprintSchema });
+export const AssistantDataTargetSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("run"), runId: RunIdSchema, day: LocalDateSchema, section: RunDetailSectionSchema }),
+  z.strictObject({ kind: z.literal("person"), identityRef: PersonRunIdentitySchema }),
+  z.strictObject({ kind: z.literal("queue"), query: CrossDateSearchQuerySchema.pick({ q: true, scope: true, facets: true }) }),
+  z.strictObject({ kind: z.literal("workbook"), libraryId: WorkbookIdSchema, revision: WorkbookRevisionSchema, location: AssistantWorkbookLocationSchema }),
+  z.strictObject({ kind: z.literal("attachment"), attachmentId: z.uuid(), sha256: FingerprintSchema, page: PositiveIntSchema.optional() }),
+]).refine(target => !/\[\[[A-Za-z][0-9]+\.g[0-9]+\]\]/u.test(JSON.stringify(target)), "reply-target-must-be-stable");
+export type AssistantDataTarget = z.infer<typeof AssistantDataTargetSchema>;
+export const AssistantValueSourceSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("operator"), profileId: z.uuid(), conversationId: z.uuid(), messageId: z.uuid(), at: IsoInstantSchema, valueFingerprint: FingerprintSchema }),
+  z.strictObject({ kind: z.literal("attachment"), attachmentId: z.uuid(), sha256: FingerprintSchema, page: PositiveIntSchema, valueFingerprint: FingerprintSchema }),
+  WorkbookCellLocationSchema.extend({ kind: z.literal("workbook"), libraryId: WorkbookIdSchema, revision: WorkbookRevisionSchema, valueFingerprint: FingerprintSchema }),
+  PersonRunIdentitySchema.extend({ kind: z.literal("run-input"), fieldPath: z.array(z.string().min(1).max(128)).min(1).max(16), valueFingerprint: FingerprintSchema }),
+]);
+export type AssistantValueSource = z.infer<typeof AssistantValueSourceSchema>;
+export const AssistantInlineSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("plain"), text: ReplyTextSchema }),
+  z.strictObject({ kind: z.literal("bold"), text: ReplyTextSchema }),
+  z.strictObject({ kind: z.literal("value"), value: ReplyTextSchema, previous: ReplyTextSchema.optional(), source: AssistantValueSourceSchema.optional() }),
+  z.strictObject({ kind: z.literal("failure"), code: ErrorCatalogCodeSchema, text: z.literal("Failed") }),
+  z.strictObject({ kind: z.literal("link"), label: ReplyLabelSchema, target: AssistantDataTargetSchema }),
+]);
+export type AssistantInline = z.infer<typeof AssistantInlineSchema>;
+export const AssistantAcceptedTurnSchema = z.strictObject({
+  conversationId: z.uuid(), messageId: z.uuid(), ordinal: PositiveIntSchema, acceptedRevision: PositiveIntSchema, acceptedAt: IsoInstantSchema,
+  profileId: z.uuid(), epoch: PositiveIntSchema,
+  proposalAnswer: z.strictObject({ proposalId: z.uuid(), proposalRevision: PositiveIntSchema, renderedMessageId: z.uuid(), renderedDigest: FingerprintSchema }).nullable(),
+});
+export type AssistantAcceptedTurn = z.infer<typeof AssistantAcceptedTurnSchema>;
+export const AssistantSessionPartSchema = z.strictObject({ kind: z.literal("session"), runId: RunIdSchema, label: ReplyLabelSchema, meta: z.string().min(1).max(500) });
+export const AssistantReplyPartSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("text"), runs: z.array(AssistantInlineSchema).min(1).max(500) }),
+  z.strictObject({ kind: z.literal("bullets"), items: z.array(z.array(AssistantInlineSchema).min(1).max(500)).min(1).max(20) }),
+  AssistantSessionPartSchema,
+  z.strictObject({ kind: z.literal("answered"), attribution: AssistantCommandAttributionSchema, at: IsoInstantSchema }),
+]);
+export type AssistantReplyPart = z.infer<typeof AssistantReplyPartSchema>;
+/** Semantic UTF-16 shown text; metadata and model replay are not display units. */
+export function assistantReplyDisplayUnits(parts: readonly AssistantReplyPart[]): number {
+  let display = 0;
+  for (const part of parts) {
+    if (part.kind === "session") display += part.label.length + part.meta.length;
+    if (part.kind === "text" || part.kind === "bullets") for (const run of part.kind === "text" ? part.runs : part.items.flat())
+      display += run.kind === "link" ? run.label.length : run.kind === "value" ? run.value.length + (run.previous?.length ?? 0) : run.text.length;
+  }
+  return display;
+}
+export const AssistantReplyPartsSchema = z.array(AssistantReplyPartSchema).min(1).max(40).superRefine((parts, context) => {
+  if (assistantReplyDisplayUnits(parts) > 8000 || new TextEncoder().encode(JSON.stringify(parts)).byteLength > 80_000) context.addIssue({ code: "custom", message: "assistant-reply-budget-exceeded" });
+});
+export const AssistantReplySchema = z.strictObject({ parts: AssistantReplyPartsSchema, acceptedTurn: AssistantAcceptedTurnSchema, usage: AssistantTurnUsageSchema }).refine(reply => new TextEncoder().encode(JSON.stringify(reply)).byteLength <= 80_000, "assistant-reply-budget-exceeded");
+const AssistantStopDescriptorSchema = ActionDescriptorWireSchema.transform((action, context) => {
+  if (action.kind === "command" && action.command === "cancel") return { ...action, command: "cancel" as const };
+  context.addIssue({ code: "custom", message: "assistant-session-requires-cancel-descriptor" });
+  return z.NEVER;
+});
+export const AssistantSessionViewSchema = AssistantSessionPartSchema.omit({ kind: true }).extend({ rowRevision: RowRevisionSchema, state: QueueStatusSchema,
+  stop: z.strictObject({ runId: RunIdSchema, descriptor: AssistantStopDescriptorSchema }).nullable(),
+}).refine(view => view.stop === null || !TERMINAL_QUEUE_STATUSES.has(view.state) && view.state !== "cancelling"
+  && view.stop.runId === view.runId && view.stop.descriptor.kind === "command" && view.stop.descriptor.expectedVersion === view.rowRevision);
+export type AssistantSessionView = z.infer<typeof AssistantSessionViewSchema>;
+
+/** What an offered tool's dispatch can do; the registry checks it against the tool kind. */
+export const AssistantToolTierSchema = z.enum(["read", "session", "write-local", "leaves-machine"]);
+export type AssistantToolTier = z.infer<typeof AssistantToolTierSchema>;
+/** `full-access` lets a session start a supported dry run without typed yes; live saves always ask. */
+export const AssistantApprovalModeSchema = z.enum(["ask", "full-access"]);
+export type AssistantApprovalMode = z.infer<typeof AssistantApprovalModeSchema>;
+/** The prepared M1 send: the composer's approval pick travels with the message, never through model arguments. */
+export const AssistantM1RequestSchema = AssistantRequestSchema.extend({ approvalMode: AssistantApprovalModeSchema.default("ask") });
+/** One accepted turn's claim on one session start; its command is the only one the claim admits. */
+export const AssistantSessionClaimSchema = z.strictObject({
+  actionId: z.uuid(), acceptedTurn: AssistantAcceptedTurnSchema, approvalMode: AssistantApprovalModeSchema, dryRun: z.boolean(),
+  contractFingerprint: FingerprintSchema, requestDigest: FingerprintSchema, command: StartCommandRequestSchema, claimedAt: IsoInstantSchema,
+}).refine(claim => claim.command.source === "assistant" && (claim.approvalMode === "full-access" || !claim.dryRun)
+  && Date.parse(claim.claimedAt) >= Date.parse(claim.acceptedTurn.acceptedAt) && Date.parse(claim.command.requestedAt) >= Date.parse(claim.acceptedTurn.acceptedAt));
+export type AssistantSessionClaim = z.infer<typeof AssistantSessionClaimSchema>;
+export const AssistantSessionOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("claimed") }),
+  z.strictObject({ state: z.literal("started"), runIds: z.array(RunIdSchema).min(1).max(ASSISTANT_START_ROWS_MAX) }),
+  z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
+  z.strictObject({ state: z.literal("unknown") }),
+]);
+export type AssistantSessionOutcome = z.infer<typeof AssistantSessionOutcomeSchema>;
+/** One reviewed row's closed operation; Relay issues its command only after typed yes. */
+export const AssistantM2ProposalOperationSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("workflow-start"), workflowId: WorkflowIdSchema, submission: JsonValueSchema, reviewed: FingerprintSchema }),
+  z.strictObject({ kind: z.literal("rerun"), runId: RunIdSchema, expectedVersion: PositiveIntSchema, selectedStepKeys: StartPlanRequestSchema.shape.selectedStepKeys.unwrap(), reviewed: FingerprintSchema }),
+  z.strictObject({ kind: z.literal("run-action"), runId: RunIdSchema, expectedVersion: PositiveIntSchema, action: z.enum(["pause", "resume", "cancel"]) }),
+]);
+export const AssistantM2ProposalRowSchema = AssistantProposalRowSchema.safeExtend({ id: z.uuid(), ordinal: PositiveIntSchema, operation: AssistantM2ProposalOperationSchema });
+export type AssistantM2ProposalRow = z.infer<typeof AssistantM2ProposalRowSchema>;
+/** The reviewed start options every row's fresh plan must use and echo. */
+export const AssistantM2ProposalOptionsSchema = StartPlanRequestSchema.pick({ browserMode: true, captureBrowserScreenshots: true })
+  .extend({ priority: StartPlanWireSchema.shape.priority });
+export type AssistantM2ProposalOptions = z.infer<typeof AssistantM2ProposalOptionsSchema>;
+const AssistantM2ProposalShape = z.strictObject({
+  id: z.uuid(), profileId: z.uuid(), conversationId: z.uuid(), revision: PositiveIntSchema, renderedMessageId: z.uuid(), renderedDigest: FingerprintSchema,
+  sourceMessageId: z.uuid(), label: ReplyLabelSchema, dryRun: z.boolean(), options: AssistantM2ProposalOptionsSchema.nullable(), createdAt: IsoInstantSchema,
+  rows: z.array(AssistantM2ProposalRowSchema).min(1).max(ASSISTANT_START_ROWS_MAX),
+});
+/** Digest of everything the operator saw, in order; yes binds to it. */
+export function assistantM2ProposalDigest(snapshot: Omit<z.input<typeof AssistantM2ProposalShape>, "renderedDigest"> & { renderedDigest?: string }): string {
+  const { renderedDigest: _digest, ...rendered } = snapshot;
+  return sha256Hex(canonicalJsonStringify(JsonValueSchema.parse(rendered)));
+}
+/** The exact proposal the operator reviewed; it has no own timeout, only its conversation's retention. */
+export const AssistantM2ProposalSnapshotSchema = AssistantM2ProposalShape.refine(snapshot => snapshot.rows.every((row, index) => row.ordinal === index + 1
+  && row.operation.kind === snapshot.rows[0]?.operation.kind) && (snapshot.options === null) === (snapshot.rows[0]?.operation.kind === "run-action") && new Set(snapshot.rows.map(row => row.id)).size === snapshot.rows.length
+  && snapshot.renderedDigest === assistantM2ProposalDigest(snapshot), "assistant-proposal-snapshot-invalid");
+export type AssistantM2ProposalSnapshot = z.infer<typeof AssistantM2ProposalSnapshotSchema>;
+/** A row's own result; UNKNOWN is terminal and never reclaimed. */
+export const AssistantM2RowResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("not-started") }),
+  z.strictObject({ state: z.literal("claimed"), commandId: CommandIdSchema }),
+  z.strictObject({ state: z.literal("applied"), commandId: CommandIdSchema, runIds: z.array(RunIdSchema).max(ASSISTANT_START_ROWS_MAX) }),
+  z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema, commandId: CommandIdSchema.nullable() }),
+  z.strictObject({ state: z.literal("unknown"), commandId: CommandIdSchema }),
+]);
+export type AssistantM2RowResult = z.infer<typeof AssistantM2RowResultSchema>;
+export const AssistantM2ProposalStateSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("open") }),
+  z.strictObject({ state: z.literal("answered"), answerMessageId: z.uuid() }),
+  z.strictObject({ state: z.literal("superseded") }),
+]);
+export const AssistantM2ProposalRecordSchema = z.strictObject({ snapshot: AssistantM2ProposalSnapshotSchema, lifecycle: AssistantM2ProposalStateSchema,
+  rows: z.array(z.strictObject({ rowId: z.uuid(), result: AssistantM2RowResultSchema })).min(1).max(ASSISTANT_START_ROWS_MAX) });
+export type AssistantM2ProposalRecord = z.infer<typeof AssistantM2ProposalRecordSchema>;
+export function assistantSessionAttribution(claim: AssistantSessionClaim): z.infer<typeof AssistantCommandAttributionSchema> {
+  const { acceptedTurn: turn } = AssistantSessionClaimSchema.parse(claim);
+  return AssistantCommandAttributionSchema.parse({ kind: "assistant", requestedBy: claim.command.requestedBy, profileId: turn.profileId,
+    conversationId: turn.conversationId, acceptedMessageId: turn.messageId, binding: { kind: "session", actionId: claim.actionId } });
+}
+
+
+const AssistantUnrecordedPartsSchema = z.union([
+  z.tuple([]),
+  z.tuple([z.strictObject({ kind: z.literal("text"), runs: z.tuple([z.strictObject({ kind: z.literal("plain"), text: ReplyTextSchema })]) })]),
+]);
+export const AssistantM1MessagePayloadSchema = z.union([
+  z.strictObject({ parts: AssistantUnrecordedPartsSchema, recording: z.strictObject({ kind: z.literal("unrecorded"), usage: z.strictObject({ state: z.literal("unrecorded") }) }) }),
+  z.strictObject({ parts: AssistantReplyPartsSchema, recording: z.strictObject({ kind: z.literal("accepted-turn"), acceptedTurn: AssistantAcceptedTurnSchema,
+    usage: z.union([z.strictObject({ state: z.literal("pending") }), AssistantTurnUsageSchema]),
+  }) }),
+  z.strictObject({ parts: AssistantReplyPartsSchema, recording: z.strictObject({ kind: z.literal("reply"), acceptedMessageId: z.uuid() }) }),
+]).refine(payload => new TextEncoder().encode(JSON.stringify(payload)).byteLength <= 80_000, "assistant-message-payload-budget-exceeded");
+export type AssistantM1MessagePayload = z.infer<typeof AssistantM1MessagePayloadSchema>;
+
+const { text: _m1Text, ...M1MessageFields } = AssistantMessageRecordSchema.shape;
+export const AssistantM1MessageRecordSchema = z.strictObject({ ...M1MessageFields, payload: AssistantM1MessagePayloadSchema }).superRefine((row, context) => {
+  if ((row.kind === "inert") !== (row.modelText === null)
+    || (row.kind === "turn") !== (row.role === "operator" && row.delivery !== "settled") || row.kind !== "turn" && row.delivery !== "settled"
+    || (row.code !== null) !== (row.delivery === "refused") || row.subjectRef !== null && row.kind !== "turn"
+    || (row.actionId !== null) !== (row.kind === "proposal" || row.kind === "decision")) context.addIssue({ code: "custom", message: "assistant-message-kind-mismatch" });
+  const recording = row.payload.recording;
+  if (recording.kind === "accepted-turn") {
+    const turn = recording.acceptedTurn;
+    if (row.kind !== "turn" || row.role !== "operator" || row.id !== turn.messageId || row.conversationId !== turn.conversationId
+      || row.ordinal !== turn.ordinal || row.createdAt !== turn.acceptedAt
+      || row.delivery === "sending" && recording.usage.state !== "pending"
+      || (row.delivery === "answered" || row.delivery === "refused") && recording.usage.state === "pending") context.addIssue({ code: "custom", message: "assistant-accepted-turn-mismatch" });
+  } else if (recording.kind === "reply" && (row.role !== "assistant" || row.kind === "turn" || row.kind === "inert")) {
+    context.addIssue({ code: "custom", message: "assistant-reply-kind-mismatch" });
+  }
+});
+export type AssistantM1MessageRecord = z.infer<typeof AssistantM1MessageRecordSchema>;
+export const AssistantM1ConversationViewSchema = AssistantConversationViewSchema.extend({
+  messages: z.array(AssistantStoredMessageSchema.omit({ text: true }).extend({ payload: AssistantM1MessagePayloadSchema })).max(ASSISTANT_MESSAGES_MAX),
+});
+export type AssistantM1ConversationView = z.infer<typeof AssistantM1ConversationViewSchema>;
+export const AssistantM1SettlementSchema = z.strictObject({ delivery: AssistantDeliverySchema.extract(["answered", "refused", "delivery-unknown"]),
+  code: FailureCode.optional(), usage: AssistantTurnUsageSchema,
+  reply: z.strictObject({ id: z.uuid(), kind: z.enum(["answer", "proposal"]), parts: AssistantReplyPartsSchema, modelText: z.string().max(16_000), actionId: z.uuid().optional() }).optional(),
+}).refine(value => (value.delivery === "refused") === (value.code !== undefined)
+  && (value.reply === undefined || (value.reply.kind === "proposal") === (value.reply.actionId !== undefined)), "assistant-settlement-mismatch");
+export type AssistantM1Settlement = z.infer<typeof AssistantM1SettlementSchema>;
+
+const AssistantM1UsageSnapshotSchema = z.union([z.strictObject({ state: z.literal("pending") }), AssistantTurnUsageSchema]);
+const AssistantM1DiagnosticSchema = z.union([
+  z.strictObject({ code: z.literal("ASSISTANT_USAGE_LOG_UNAVAILABLE") }),
+  z.strictObject({ code: z.literal("CHATGPT_RESOURCE_CLOSURE_UNPROVED") }),
+]);
+export const ASSISTANT_M1_READ_RETRY_FAILURES = Object.freeze(["ASSISTANT_READ_UNAVAILABLE", "ASSISTANT_CONTEXT_UNAVAILABLE", "ASSISTANT_RESPONSE_FAILED",
+  "ASSISTANT_RESPONSE_INCOMPLETE", "ASSISTANT_RESPONSE_REFUSED", "ASSISTANT_USAGE_LIMIT", "CHATGPT_RATE_LIMITED", "ASSISTANT_CANCELLED"] as const);
+export const AssistantM1NoReplySchema = z.strictObject({ state: z.literal("no-reply"), reason: FailureCode, canRetry: z.boolean(),
+  turn: z.strictObject({ acceptedTurn: AssistantAcceptedTurnSchema, usage: AssistantTurnUsageSchema }).nullable(),
+}).refine(value => !value.canRetry || value.turn !== null && value.turn.acceptedTurn.proposalAnswer === null
+  && ASSISTANT_M1_READ_RETRY_FAILURES.some(reason => reason === value.reason), "retry requires a recorded effect-free read refusal");
+export const AssistantM1RespondEnvelopeSchema = z.union([
+  z.strictObject({ kind: z.literal("result"), result: z.union([
+    z.strictObject({ state: z.literal("answered"), reply: AssistantReplySchema }), AssistantM1NoReplySchema,
+  ]), receipt: AssistantReceiptSchema.optional(), diagnostic: AssistantM1DiagnosticSchema.optional() }),
+  z.strictObject({ kind: z.literal("delivery"), receipt: AssistantReceiptSchema, acceptedTurn: AssistantAcceptedTurnSchema,
+    usage: AssistantM1UsageSnapshotSchema, history: z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("observed") }), z.strictObject({ state: z.literal("unavailable"), code: FailureCode }),
+    ]), diagnostic: AssistantM1DiagnosticSchema.optional() }),
+]).superRefine((envelope, context) => {
+  const accepted = envelope.kind === "delivery" ? envelope.acceptedTurn : envelope.result.state === "answered" ? envelope.result.reply.acceptedTurn : envelope.result.turn?.acceptedTurn;
+  const receipt = envelope.receipt;
+  if (accepted === undefined ? receipt !== undefined : receipt === undefined || receipt.conversationId !== accepted.conversationId
+    || receipt.messageId !== accepted.messageId || receipt.ordinal !== accepted.ordinal || receipt.revision < accepted.acceptedRevision) {
+    context.addIssue({ code: "custom", message: "assistant-receipt-identity-mismatch" });
+  }
+  if (envelope.kind === "result") {
+    if (envelope.result.state === "answered" && receipt?.delivery !== "answered"
+      || envelope.result.state === "no-reply" && envelope.result.turn !== null && receipt?.delivery !== "refused"
+      || envelope.diagnostic !== undefined && envelope.result.state === "no-reply" && envelope.result.canRetry) context.addIssue({ code: "custom", message: "assistant-result-delivery-mismatch" });
+  } else if (envelope.history.state === "unavailable" && envelope.receipt.delivery !== "delivery-unknown"
+    || envelope.history.state === "observed" && (envelope.receipt.delivery === "sending" && envelope.usage.state !== "pending"
+      || (envelope.receipt.delivery === "answered" || envelope.receipt.delivery === "refused") && envelope.usage.state === "pending")) {
+    context.addIssue({ code: "custom", message: "assistant-usage-delivery-mismatch" });
+  }
+});
+export type AssistantM1RespondEnvelope = z.infer<typeof AssistantM1RespondEnvelopeSchema>;

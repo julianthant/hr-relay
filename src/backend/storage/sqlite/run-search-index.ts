@@ -1,3 +1,4 @@
+import { AssistantM1NativeCommandAuditSchema, convertAssistantCommandPairToM1 } from "./command-record-row.js";
 import { CURRENT_RUN_SETTLEMENT_SQL } from "./run-settlement-row.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -327,3 +328,32 @@ export function createRunSearchIndex(database: DatabaseSync) {
   };
 }
 
+/** Rebinds a known predecessor snapshot against complete canonical contributing sources supplied by the stopped owner. */
+export function rebindAssistantM1RunSearchRow(input: unknown, run: PredecessorRunRecord, queuedEvents: readonly unknown[], commandPairs: readonly Readonly<{ command: unknown; audit: unknown }>[]) {
+  const row = FullIndexRowSchema.parse(input);
+  runSearchIndexFromRow(row, run);
+  const sources = row.actor_source_json === null ? [] : ActorSourcesSchema.parse(JSON.parse(row.actor_source_json));
+  const canonical: z.infer<typeof ActorSourcesSchema> = queuedEvents.map(event => ({ kind: "queued", event: TimelineEventRecordSchema.parse(event) }));
+  const nextAudits = new Map<string, z.infer<typeof AssistantM1NativeCommandAuditSchema>>();
+  for (const pair of commandPairs) {
+    const converted = convertAssistantCommandPairToM1(pair.command, pair.audit);
+    if (converted.audit === null) throw new Error("run-search-audit-source-missing");
+    const audit = AssistantM1NativeCommandAuditSchema.parse(JSON.parse(converted.audit.payload_json));
+    const { attribution: _attribution, ...before } = audit;
+    canonical.push({ kind: "start-audit", audit: CommandAuditRecordSchema.parse(before) });
+    if (nextAudits.has(audit.auditId)) throw new Error("run-search-audit-source-duplicate");
+    nextAudits.set(audit.auditId, audit);
+  }
+  sourceActors(canonical, run);
+  const key = (source: z.infer<typeof ActorSourcesSchema>[number]) => source.kind === "queued" ? `queued:${source.event.eventId}` : `audit:${source.audit.auditId}`;
+  const expected = new Map(canonical.map(source => [key(source), canonicalJsonStringify(source)]));
+  if (expected.size !== canonical.length || new Set(sources.map(key)).size !== sources.length || sources.length !== canonical.length
+    || sources.some(source => expected.get(key(source)) !== canonicalJsonStringify(source))) throw new Error("run-search-actor-source-mismatch");
+  if (sources.length === 0) return row;
+  return { ...row, actor_source_json: canonicalJsonStringify(sources.map(source => {
+    if (source.kind === "queued") return source;
+    const audit = nextAudits.get(source.audit.auditId);
+    if (audit === undefined) throw new Error("run-search-audit-source-missing");
+    return { kind: "start-audit", audit };
+  })) };
+}

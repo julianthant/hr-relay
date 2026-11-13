@@ -189,7 +189,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
   const notificationParameters = z.strictObject({ action: z.enum(["read", "unread", "snooze", "unsnooze"]), target: z.union([z.literal("all"), referenceSchema("N")]) });
 
   const plugin: AssistantPlugin = { domain: "proposals", tools: [
-    { kind: "proposal", name: "propose_workflow_start",
+    { kind: "proposal", tier: "leaves-machine", name: "propose_workflow_start",
       description: "Prepare a card to start one served workflow for 1 to 20 entries; the operator confirms it. Each entry is one line of that workflow's input format (see describe_workflow), or exactly a run reference to reuse that run's input. Use references for people and IDs exactly as given. List every entry the operator asked for; the card shows every row. "
         + "For emergency-contact each entry is exactly an attached PDF reference; the card reads it through OCR.",
       parameters: startParameters,
@@ -223,7 +223,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
           accepts: planned => planned.length === submissions.length
             && planned.every((run, index) => canonicalJsonStringify(run.rawInput) === canonicalJsonStringify(submissions[index])) });
       } },
-    { kind: "proposal", name: "propose_rerun",
+    { kind: "proposal", tier: "leaves-machine", name: "propose_rerun",
       description: "Prepare a card to rerun one run with its own input and all of its steps; the operator confirms it. Value changes stay in the Rerun dialog.",
       parameters: rerunParameters,
       async propose(value, context) {
@@ -240,7 +240,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
           assertSource: () => { if (requireTrustRun(deps.runs, run.envelope.runId).version !== run.version) refuse(); },
           accepts: planned => planned.length === 1 });
       } },
-    { kind: "proposal", name: "propose_run_action",
+    { kind: "proposal", tier: "write-local", name: "propose_run_action",
       description: "Prepare a card to pause, resume or cancel one run in the queue; the operator confirms it. The existing run command decides whether the action is allowed.",
       parameters: runActionParameters,
       async propose(value, context) {
@@ -258,7 +258,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
           workflowId: run.envelope.workflow, run: target, row }), {
           assertCurrent() { if (requireTrustRun(deps.runs, run.envelope.runId).version !== run.version) refuse(); } });
       } },
-    { kind: "change", name: "change_notifications",
+    { kind: "change", tier: "write-local", name: "change_notifications",
       description: "Mark notifications read or unread, or snooze or unsnooze them: all current ones, or one notification reference. It applies at once, with no card; tell the operator what changed.",
       parameters: notificationParameters, output: ChangeOutput, privacy: [],
       async invoke(value, context) {

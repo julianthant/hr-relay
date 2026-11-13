@@ -2581,6 +2581,7 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/backend/storage/sqlite/assistant-grant-retirement.ts",
       "src/backend/storage/sqlite/assistant-history.ts",
       "src/backend/storage/sqlite/assistant-model-preference.ts",
+      "src/backend/storage/sqlite/assistant-proposals.ts",
       "src/backend/storage/sqlite/authority-database.ts",
       "src/backend/storage/sqlite/backup-inspection.ts",
       "src/backend/storage/sqlite/command-record-row.ts",
