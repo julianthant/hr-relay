@@ -89,7 +89,7 @@ export interface BrowserSessionFactoryOptions {
   readonly onAuthenticationEvidence?: (evidence: AuthenticatedApplicationEvidence) => void;
 
   readonly onNavigation?: (url: string) => void;
-  readonly onDebug?: (workerId: WorkerId, event: Pick<DebugEvent, "phase" | "correlationId"> & Partial<Pick<DebugEvent, "code" | "durationMs" | "pinned" | "message" | "stack" | "reason">>) => void;
+  readonly onDebug?: (workerId: WorkerId, event: Pick<DebugEvent, "phase" | "correlationId"> & Partial<Pick<DebugEvent, "code" | "durationMs" | "pinned" | "message" | "stack" | "reason" | "area">>) => void;
 }
 
 /** Resolved once per authentication; never logged, never interpolated. */
@@ -137,6 +137,19 @@ function bindingFor(bindings: BrowserSystemBindings, system: BrowserSystemId): B
     );
   }
   return binding;
+}
+
+// A Playwright message starts "<object>.<method>: [<Class>: ]", and the page chooses the class text; only these fixed names leave it.
+const PLAYWRIGHT_OBJECTS = new Set(["page", "frame", "locator", "elementHandle", "jsHandle", "browserContext"]);
+const PLAYWRIGHT_METHODS = new Set(["evaluate", "evaluateAll", "evaluateHandle", "screenshot", "setViewportSize", "waitForTimeout", "count",
+  "cookies", "isVisible", "waitFor", "inputValue", "textContent", "frameElement", "goto"]);
+const PAGE_ERROR_CLASSES = new Set(["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "EvalError", "URIError", "AggregateError"]);
+function playwrightCall(error: unknown): string | undefined {
+  const match = error instanceof Error ? /^([A-Za-z]+)\.([A-Za-z]+): (?:([A-Za-z]+): )?/u.exec(error.message) : null;
+  if (match === null) return undefined;
+  const [, object, method, errorClass] = match;
+  const call = PLAYWRIGHT_OBJECTS.has(object) && PLAYWRIGHT_METHODS.has(method) ? `${object}-${method}`.toLowerCase() : "unknown-call";
+  return errorClass === undefined ? call : `${call}-${PAGE_ERROR_CLASSES.has(errorClass) ? errorClass.toLowerCase() : "page-error"}`;
 }
 
 export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFactory {
@@ -377,9 +390,10 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             assertCurrent();
             if (error instanceof FullPageCaptureRefusedError) return unavailable(error.reason);
             if (pageVersion !== version) return unavailable("page-changed");
-            for (const cause of serializeErrorCauses(error)) {
+            const call = playwrightCall(error);
+            for (const [index, cause] of serializeErrorCauses(error).entries()) {
               this.#options.onDebug?.(workerId, { phase: "failed", correlationId: sessionId,
-                reason: "capture-cause", code: cause.code, message: cause.name, stack: cause.stack });
+                reason: "capture-cause", code: cause.code, message: cause.name, stack: cause.stack, ...(index === 0 && call !== undefined ? { area: call } : {}) });
             }
             return unavailable("verification-failed");
           }

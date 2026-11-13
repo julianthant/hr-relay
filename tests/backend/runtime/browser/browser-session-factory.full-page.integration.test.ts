@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import { chromium, type Browser, type Page } from "playwright";
 import { PNG } from "pngjs";
@@ -258,6 +260,23 @@ describe("whole-page factory screenshots", () => {
       const png = await image(resource);
       assert.equal(png.height, 3000);
     });
+  });
+  it("captures through the tsx loader the dashboard runs on", async () => {
+    // Vitest compiles without keepNames; tsx wraps named inner functions in a __name helper the page realm lacks (live run 6).
+    const output = execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+      import { chromium } from "playwright";
+      import { captureFullPage } from "./src/backend/runtime/browser/full-page-capture.ts";
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        await page.setContent(${JSON.stringify(html(`${content}${hiddenPasswordForm}`))});
+        const capture = await captureFullPage(page, { assertCurrent: () => undefined, assertSafe: async () => undefined, mask: () => [],
+          secretControls: 'input[type="password"]', afterCapture: async () => undefined });
+        process.stdout.write(JSON.stringify({ height: capture.height }));
+      } catch (error) { process.stdout.write(JSON.stringify({ failed: error.message.split("\\n")[0] })); }
+      finally { await browser.close(); }
+    `], { cwd: fileURLToPath(new URL("../../../..", import.meta.url)), encoding: "utf8" });
+    assert.deepEqual(JSON.parse(output), { height: 3000 });
   });
   it("refuses an unpainted secret control painted only during a band", async () => {
     await withPage(`${content}${hiddenPasswordForm}`, async (page, resource) => {
