@@ -64,7 +64,7 @@ describe("authority check closure regressions", () => {
     const other = one("SELECT id AS audit_id FROM command_audits WHERE id<>? ORDER BY id LIMIT 1", text(target.audit_id));
     const command = read("commands", "id", text(target.command_id));
     const otherAuditId = text(other.audit_id);
-    
+
     edited(() => {
       const outcome = RowSchema.parse(JSON.parse(text(command.outcome_json)));
       raw.prepare("UPDATE commands SET outcome_json=? WHERE id=?").run(JSON.stringify({ ...outcome, auditId: otherAuditId }), text(command.id));
