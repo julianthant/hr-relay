@@ -1,9 +1,6 @@
 import { z } from "zod";
-import { taskId, EidSchema } from "../../../rules/identity/ids.js";
-import { defineTaskContract } from "../../task/task-contract.js";
-import { SearchPersonMatchOutputSchema } from "../../systems/ucpath/search-person-match.js";
-import { SearchPersonOrgOutputSchema } from "../../systems/ucpath/search-person-org.js";
-import { I9CheckCanonicalInput } from "./input.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
+import { EidSchema } from "../../../rules/identity/ids.js";
 
 export const I9IdentitySchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("found"), eid: EidSchema, name: z.string().min(1) }),
@@ -22,24 +19,9 @@ export const I9CheckRowSchema = z.strictObject({
 export type I9CheckRow = z.output<typeof I9CheckRowSchema>;
 export const I9CheckRowsSchema = z.strictObject({ rows: z.array(I9CheckRowSchema).min(1) });
 
-const policy = {
+export const I9_CHECK_TASK_POLICY = deepFreeze({
   effect: "read", errorCodes: ["I9_CHECK_DATA_INVALID"],
   subject: { kind: "none", reason: "Derives I-9 retention facts from declared observations" },
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" },
   provenance: { default: "derived" }, scenarios: [],
-} as const;
-export const ReadMatchOutcome = defineTaskContract({
-  ...policy, id: taskId("workflow:i9-check/read-match-outcome"), title: "Resolve identifier match",
-  input: z.strictObject({ match: SearchPersonMatchOutputSchema.optional() }),
-  output: z.strictObject({ identity: I9IdentitySchema, shouldLookup: z.boolean() }),
-  example: { identity: { status: "not-found", candidateCount: 0 }, shouldLookup: true },
-});
-export const ReadRetentionRow = defineTaskContract({
-  ...policy, id: taskId("workflow:i9-check/read-retention-row"), title: "Match roster and derive retention",
-  input: z.strictObject({ input: I9CheckCanonicalInput, initial: I9IdentitySchema, search: SearchPersonOrgOutputSchema.optional() }),
-  output: z.strictObject({ identity: I9IdentitySchema, row: I9CheckRowSchema }),
-  example: { identity: { status: "not-found", candidateCount: 0 }, row: {
-    recordId: "record-1", employeeName: "Example, Person", ppsEid: "", ucpathEmplId: "", hireDate: "",
-    separationDate: "", foundInUcpath: "Not found in UCPath", action: "Shred", reviewerName: "Example Reviewer", notes: "",
-  } },
-});
+} as const);

@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { vi } from "vitest";
 // @vitest-environment jsdom
@@ -13,6 +13,7 @@ import { sessionsSample as sessionsSample_m0 } from "../../../../src/dashboard/s
 // @vitest-environment jsdom
 import assert_m1 from 'node:assert/strict';
 import { act as act_m1,createElement as createElement_m1 } from 'react';
+import { TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
 import { createRoot as createRoot_m1,type Root as Root_m1 } from 'react-dom/client';
 import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1 } from 'vitest';
 import { useSessionPreviewCommands as useSessionPreviewCommands_m1,type SessionPreviewCommandPort as SessionPreviewCommandPort_m1,type SessionPreviewRequest as SessionPreviewRequest_m1,type SessionPreviewResult as SessionPreviewResult_m1 } from '../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js';
@@ -107,7 +108,7 @@ describe_m0("Session Panel Stop's rejection arm", () => {
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 let root: Root_m1 | undefined;
 const _afterEachFixture0 = async () => { await act_m1(async () => root?.unmount()); document.body.replaceChildren(); vi.useRealTimers(); vi.unstubAllGlobals(); };
-async function mount(element: ReturnType<typeof createElement_m1>) { const host = document.createElement('div'); document.body.append(host); root = createRoot_m1(host); await act_m1(async () => root?.render(element)); return host; }
+async function mount(element: ReturnType<typeof createElement_m1>) { const host = document.createElement('div'); document.body.append(host); root = createRoot_m1(host); await act_m1(async () => root?.render(createElement_m1(TooltipProvider, null, element))); return host; }
 const button = (name: string) => { const found = [...document.querySelectorAll('button')].find(node => (node.getAttribute('aria-label') ?? node.textContent?.trim()) === name); assert_m1(found, name); return found; };
 const press = async (name: string) => act_m1(async () => button(name).click());
 function SessionsHarness({ port }: { port: SessionPreviewCommandPort_m1 }) {

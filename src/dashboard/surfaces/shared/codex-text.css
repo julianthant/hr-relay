@@ -1,0 +1,5 @@
+/* Logs panel and Explorer: lighter weights. */
+:is(.dashboard-log-column, .codex-text) :is(.font-semibold, .font-bold, strong, h1, h2, h3, h4) { font-weight: 500; }
+:is(.dashboard-log-column, .codex-text) .font-medium { font-weight: 400; }
+/* Nothing under 12px except uppercase caps labels. */
+:is(.dashboard-log-column, .codex-text) :is(.text-caption, .ds-text-meta, .ds-text-micro):not(.uppercase) { font-size: 12px; }

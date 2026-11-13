@@ -1,5 +1,7 @@
 export const MAX_WORKBOOK_POPULATED_CELLS = 250_000;
 export const MAX_WORKBOOK_GRID_CELLS = 500_000;
+/** One Start may capture this many complete Library worksheets, counted once per library and version. */
+export const MAX_SELECTED_WORKBOOK_SOURCES = 32;
 
 export function populatedSpreadsheetValue(value: unknown): boolean {
   return value !== null && value !== '';

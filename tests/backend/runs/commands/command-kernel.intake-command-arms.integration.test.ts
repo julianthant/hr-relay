@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -155,15 +156,7 @@ async function harness(sessionOverrides: Record<string, unknown> = {}, preReserv
       recheck: () => { throw new Error("unused"); },
       resolveAbsent: () => { throw new Error("unused"); },
     },
-    workerRuntime: { pool: {
-      planPoolWorkerCount: async () => { throw new Error("unused worker plan"); },
-      spawnPoolWorker: async () => { throw new Error("unused worker spawn"); },
-      refreshPoolBrowser: async () => { throw new Error("unused browser refresh"); },
-      reopenPoolBrowser: async () => { throw new Error("unused browser reopen"); },
-      stopPoolWorker: async () => { throw new Error("unused worker stop"); },
-      pausePoolWorker: async () => { throw new Error("unused worker pause"); },
-      resumePoolWorker: async () => { throw new Error("unused worker resume"); },
-    } },
+    workerRuntime: { pool: unusedWorkerPool() },
     intakeParser: fixtureParser,
     intakeProjections: {
       resolve: (workflowId) =>
@@ -446,7 +439,9 @@ describe("enqueue-intake-manifest — the readiness gate", () => {
     assert.equal(result.state === "rejected" ? result.code : "", "invalid-state");
     assert.match(result.state === "rejected" ? result.message : "", /rejection review is mandatory/);
     assert.equal(current().state, "mapping");
-    assert.equal(database.getMeta().authorityGeneration, before, "a refused enqueue moves no authority row");
+    assert.equal(database.authority.commands.get(result.commandId)?.commandId, result.commandId);
+    assert.equal(database.authority.commandAudits.findByCommand(result.commandId)?.result.state, "rejected");
+    assert.equal(database.getMeta().authorityGeneration, before + 2, "the refusal is stored and the session does not move");
   });
 
   it("refuses while a row is still rejected, naming the rows that block it", async () => {
@@ -663,6 +658,8 @@ describe("enqueue-intake-manifest — the fan-out", () => {
     assert.equal(survivingRow1.length, 0, "the run inserted before the refusal rolled back with it");
     assert.equal(current().state, "validated");
     assert.equal(current().version, versionBefore);
-    assert.equal(database.getMeta().authorityGeneration, generationBefore);
+    assert.equal(database.authority.commands.get(result.commandId)?.commandId, result.commandId);
+    assert.equal(database.authority.commandAudits.findByCommand(result.commandId)?.result.state, "rejected");
+    assert.equal(database.getMeta().authorityGeneration, generationBefore + 2);
   });
 });

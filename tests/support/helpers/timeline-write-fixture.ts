@@ -57,22 +57,19 @@ export function seedAtomicWriteOwner(database: AuthorityDatabase, input: unknown
 const admitted = currentSlots.find(slot => (preferredPoolIndex === undefined || slot.poolIndex === preferredPoolIndex)
       && !repositories.runs.listByWorker(slot.workerId).some(run =>
       ["claimed", "validating", "running"].includes(run.lifecycle.state)));
-  let poolIndex = admitted?.poolIndex;
+  let poolIndex: number | undefined = admitted?.poolIndex;
   if (admitted === undefined) {
-    const occupied = new Set(currentSlots.map(slot => slot.poolIndex));
+    const occupied = new Set<number>(currentSlots.map(slot => slot.poolIndex));
 poolIndex = (preferredPoolIndex === undefined ? [1, 2, 3] : [preferredPoolIndex]).find(index => !occupied.has(index));
 if (poolIndex === undefined) throw new Error("fixture has no unheld worker slot");
   }
   assert.ok(poolIndex !== undefined);
   const owned = admitted === undefined ? testAdmittedWorker(database, capturedInstantClock(ledger.fencedAt), { path, workflow: ledger.workflowId, poolIndex,
     browserSystems: [ledger.system] }) : undefined;
-  if (owned?.started !== undefined) assert.equal(owned.started.state, "started");
   const slot = owned?.member ?? admitted;
   if (slot === undefined) throw new Error("fixture has no unheld worker slot");
-  const lease = database.authority.workerLeases.get(slot.workerId);
-  if (lease === undefined) throw new Error("fixture claim lifetime unavailable");
   const claim = database.authority.runs.claimNext({ workflow: ledger.workflowId, workerId: slot.workerId,
-    workerLifetime: { leaseGeneration: lease.leaseGeneration, membershipRevision: slot.membershipRevision }, now: ledger.fencedAt });
+    now: ledger.fencedAt });
   assert.equal(claim.state, "claimed");
   if (claim.state !== "claimed") throw new Error("fixture owner could not claim");
   assert.equal(claim.run.envelope.runId, ledger.runId);
@@ -101,11 +98,10 @@ export function releaseSeededWriteOwners(database: AuthorityDatabase, now: strin
       const claim = { workerId: held.workerId, claimGeneration: held.claimGeneration };
       if (parkedIntent !== undefined) {
         if (run.lifecycle.state === "claimed" || run.lifecycle.state === "validating") {
-          const lifetime = "workerLifetime" in run.lifecycle ? run.lifecycle.workerLifetime : undefined;
           const stepping = database.authority.runs.transition({
             runId: run.envelope.runId, expectedVersion: run.version, claim,
             lifecycle: { state: run.lifecycle.state === "claimed" ? "validating" : "running", workerId: claim.workerId,
-              ...(lifetime === undefined ? {} : { workerLifetime: lifetime }), claimedAt: now, heartbeatAt: now },
+              claimedAt: now, heartbeatAt: now },
             now,
           });
           if (stepping.state !== "applied") throw new Error("fixture-worker-claim-release-unproved");
@@ -114,7 +110,7 @@ export function releaseSeededWriteOwners(database: AuthorityDatabase, now: strin
             const running = database.authority.runs.transition({
               runId: run.envelope.runId, expectedVersion: run.version, claim,
               lifecycle: { state: "running", workerId: claim.workerId,
-                ...(lifetime === undefined ? {} : { workerLifetime: lifetime }), claimedAt: now, heartbeatAt: now },
+                claimedAt: now, heartbeatAt: now },
               now,
             });
             if (running.state !== "applied") throw new Error("fixture-worker-claim-release-unproved");

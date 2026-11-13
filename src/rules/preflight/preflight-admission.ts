@@ -16,8 +16,10 @@ export const PreflightAdmissionScopeSchema = z.strictObject({
 export type PreflightAdmissionScope = z.infer<typeof PreflightAdmissionScopeSchema>;
 export type PreflightReport = z.infer<typeof PreflightReportWireSchema>;
 export class PreflightAdmissionRefusal extends Error {
-  constructor(readonly reason: "unavailable" | "stale" | "blocked" | "scope-mismatch" | "observation-changed", message: string, options?: ErrorOptions) {
-    super(message, options); this.name = "PreflightAdmissionRefusal";
+  /** Value-free detector summaries of the failing checks, for diagnostics only. */
+  readonly observationSummary: string | undefined;
+  constructor(readonly reason: "unavailable" | "stale" | "blocked" | "scope-mismatch" | "observation-changed", message: string, options?: ErrorOptions & { observationSummary?: string }) {
+    super(message, options); this.name = "PreflightAdmissionRefusal"; this.observationSummary = options?.observationSummary;
   }
 }
 export class PreflightObservationChangedError extends PreflightAdmissionRefusal {
@@ -93,8 +95,8 @@ export function createPreflightAdmission(input: Readonly<{
     assertReady(scope: PreflightAdmissionScope): void {
       const report = read(scope);
       const blocked = report.results.filter(result => result.status === "fail");
-      // Each check's summary names the failing component (states and codes only, never values) so a worker log shows why.
-      if (blocked.length > 0) throw new PreflightAdmissionRefusal("blocked", `Preflight blocks this scope: ${blocked.map(result => `${result.check} (${result.summary})`).join("; ")}.`);
+      if (blocked.length > 0) throw new PreflightAdmissionRefusal("blocked", `Preflight blocks this scope: ${blocked.map(result => result.check).join(", ")}.`,
+        { observationSummary: blocked.map(result => `${result.check}: ${result.summary}`).join("; ").slice(0, 4096) });
     },
   });
 }

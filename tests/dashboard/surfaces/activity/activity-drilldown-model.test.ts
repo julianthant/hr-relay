@@ -122,7 +122,7 @@ describe('Activity drilldown records and navigation', () => {
     try {
       await act(async () => root.render(createElement(ActivityDrilldown, { report: value, selection: initial, onSelection })));
       const input = host.querySelector<HTMLInputElement>('input[aria-label="Search runs"]'); assert(input);
-      assert(input.closest('.ds-search-field--toolbar'));
+      assert(input.closest('.ds-search-field'));
       assert.equal(host.querySelectorAll('thead button, thead [aria-sort]').length, 0);
       assert.equal(host.querySelector('[role="group"]')?.getAttribute('aria-label'), 'Run filters');
       assert.equal(host.querySelector('[role="combobox"]')?.getAttribute('data-value'), 'name-ascending');

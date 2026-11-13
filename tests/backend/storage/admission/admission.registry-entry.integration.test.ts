@@ -85,7 +85,7 @@ it("keeps logical operation membership and content fences after closed byte-iden
     const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 1000, migrationOwner: "profile-session-test" });
     let source: ReturnType<typeof database.capturePendingLogoutSource>;
     try { source = database.capturePendingLogoutSource(); } finally { database.close(); }
-    const operation = LogoutOperationSchema.parse({ schemaVersion: 2, kind: "logout", operationId,
+    const operation = LogoutOperationSchema.parse({ schemaVersion: 3, kind: "logout", operationId,
       profileId: f.admission.profileBinding.profileId, sessionGeneration: f.machine.readProfileRegistry().sessionGeneration, source, at: "2026-11-01T00:00:00.000Z", phase: "complete" });
     f.machine.publishProfileOperation(operation);
     const path = join(root, "machine", "operations", `${operationId}.json`), bytes = readFileSync(path);

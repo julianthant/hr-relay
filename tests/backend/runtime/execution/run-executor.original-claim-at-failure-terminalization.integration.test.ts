@@ -32,10 +32,9 @@ describe("original claim at failure terminalization", () => {
         assert.ok(current);
         assert.equal(lifecycle.requeue({ commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", runId: RUN_ID,
           expectedVersion: current.version, claim: claimed.claim, cause: "recovery" }).state, "applied");
-        const { workerId, workerLifetime } = testAdmittedWorker(database, clock, { path: h.authority.path,
+        const { workerId } = testAdmittedWorker(database, clock, { path: h.authority.path,
           workflow: WORKFLOW_ID, poolIndex: 2, browserSystems: ["ucpath", "crm"] });
-        const replacement = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, workerLifetime,
-          now: clock.now().toISOString() });
+        const replacement = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: clock.now().toISOString() });
         assert.equal(replacement.state, "claimed");
         return DiagnosticBundleSchema.parse({ bundleId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
           runId: RUN_ID, origin: { kind: "failure", failureId: context.failure.failureId },

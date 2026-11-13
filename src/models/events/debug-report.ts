@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RunIdSchema } from "../../rules/identity/ids.js";
 import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { PreflightReadinessWireSchema } from "../preflight/preflight-contract.js";
 import { clientCauseRowAccepted } from "../failures/error-origins.js";
@@ -7,6 +8,7 @@ export const DashboardErrorReportSchema = z.strictObject({
   reportId: z.uuid(), clientId: z.string().min(1).max(128), release: z.string().min(1).max(128),
   route: z.string().min(1).max(512), surface: z.string().min(1).max(128), code: z.string().min(1).max(128),
   message: z.string().max(32768), stack: z.string().max(32768).optional(),
+  runId: RunIdSchema.optional(),
   reason: z.string().min(1).max(128).regex(/^[a-z0-9-]+$/u).optional(),
 });
 export type DashboardErrorReport = z.infer<typeof DashboardErrorReportSchema>;

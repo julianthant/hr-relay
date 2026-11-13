@@ -308,6 +308,9 @@ describe_m1("nondelegated Lookup batch presentation", () => {
   });
 
   it_m1("retains every served footer action for the explicitly selected person and exact historical attempt", async () => {
+    // The batch footer also carries Pause all / Stop all; the person's own actions are the other buttons.
+    const memberButton = (): HTMLButtonElement | null => [...document.querySelectorAll<HTMLButtonElement>('[data-queue-member-actions] button')]
+      .find(button => !/^(Pause|Stop) all \d+$/u.test(button.getAttribute("aria-label") ?? button.textContent ?? "")) ?? null;
     const actions = [
       { kind: "command", key: "cancel", command: "cancel", label: "Cancel run", expectedVersion: 11, intent: "destructive", placement: ["footer"], icon: "cancel" },
       { kind: "command", key: "pause", command: "pause", label: "Pause after this step", expectedVersion: 12, intent: "neutral", placement: ["footer"], icon: "pause" },
@@ -320,14 +323,14 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     const handlers: QueueHandlers_m1 = { onSelect: id => { selected.push(id); }, onAction: (action, target) => { sent.push([action, target]); } };
     await render(rows, handlers);
     assert_m1.match(document.querySelector('[data-queue-member-actions]')?.textContent ?? "", /Select a person for run actions/u);
-    assert_m1.equal(document.querySelector('[data-queue-member-actions] button'), null);
+    assert_m1.ok(memberButton() === null);
     const identity = document.querySelector('[data-queue-row-footer] > div')?.textContent;
     for (const row of rows) {
       await render(rows, handlers, row.runId);
       const footer = document.querySelector('[data-queue-member-actions]'); assert_m1.ok(footer);
       assert_m1.equal(footer.getAttribute("aria-label"), `Actions for ${row.title}, attempt ${row.attempt}`);
       assert_m1.match(footer.getAttribute("title") ?? "", new RegExp(row.runId, "u"));
-      const button = footer.querySelector<HTMLButtonElement>("button"); assert_m1.ok(button);
+      const button = memberButton(); assert_m1.ok(button);
       await act_m1(async () => button.click());
       assert_m1.deepEqual(sent.at(-1), [row.actions[0], { runId: row.runId, expectedVersion: row.rowRevision }]);
       assert_m1.equal(document.querySelector('[data-queue-row-footer] > div')?.textContent, identity);
@@ -337,13 +340,13 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     assert_m1.deepEqual(selected, []);
     const retry = lookupRow(6, { itemId: rows[0].itemId, attempt: 2, rowRevision: 16, actions: [] });
     await render([...rows, retry], handlers, rows[0].runId);
-    const previous = document.querySelector<HTMLButtonElement>('[data-queue-member-actions] button'); assert_m1.ok(previous);
+    const previous = memberButton(); assert_m1.ok(previous);
     await act_m1(async () => previous.click());
     assert_m1.deepEqual(sent.at(-1), [rows[0].actions[0], { runId: rows[0].runId, expectedVersion: rows[0].rowRevision }]);
     await render([...rows, retry], handlers, retry.runId);
-    assert_m1.equal(document.querySelector('[data-queue-member-actions] button'), null);
+    assert_m1.ok(memberButton() === null);
     await render(rows.map(row => ({ ...row, actions: [] })), handlers, rows[1].runId);
-    assert_m1.equal(document.querySelector('[data-queue-member-actions] button'), null);
+    assert_m1.ok(memberButton() === null);
   });
 
   it_m1("keeps batch and individual selection local with partial-selection state", async () => {

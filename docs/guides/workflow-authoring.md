@@ -7,7 +7,7 @@ Activation order and operator acceptance are in
 Read [workflow-model](../reference/workflow-model.md),
 [task-contract](../reference/task-contract.md), [write-safety](../reference/write-safety.md) and
 [guards-and-tests](../reference/guards-and-tests.md) for their contracts. The internal
-[checklist](../../.agents/skill-library/workflow-authoring/REFERENCE.md) adds no policy.
+[checklist](../../.agents/skills/hr-workflow/references/workflow-authoring-checklist.md) adds no policy.
 
 ## 1 · What you author and what is derived
 
@@ -145,7 +145,7 @@ of `[group, entries[]]`. Tuple order controls presentation. References control e
 | `parallel(identity, branches)` | Explicit branches with task or delegate leaves; see §8. |
 | `delegate(identity, references, { bind, deriveChildItemId })` | Typed child-run target and policy; see §8. |
 | `result(schema, references, derive)` | Terminal result schema, references and pure derivation. |
-| `group(step, { omission, description, system, operatorFields })` | Whole-step omission declaration (see §7), plus the step's description, system and operator fields (see §4.1). |
+| `group(step, { omission, description, system, operatorFields, review })` | Whole-step omission declaration (see §7), plus the step's description, system, operator fields and Explorer review (see §4.4). |
 
 Binds receive `input`, referenced `outputs`, optional `protectedInputBindings` and optional `dryRun`.
 Declare all dependencies. For required nullable facts, use `requireFact(value, nodeId, path)` from
@@ -177,6 +177,31 @@ contract objects. Fix the named owner rather than copying a declaration.
 
 `workflowExplorerDeclaration` projects the definition; the backend checks graph and timeline
 coverage. Keep stable entry/leaf IDs and exact contracts. Branch choices are hypothetical.
+
+Each owning group declares `review` through
+[`WorkflowStepReview`](../../src/models/workflow/review-spec.ts): ordered pages, action/check/read
+lines and fields. A field references a visible `operatorField` by label, or declares its own
+`label` with `transactionFields` pointing to the owning transaction's prepare input or output
+paths. Fixed workflow choices use `constant` with the owning transaction `nodeIds` and value.
+Compilation checks each transaction path against its prepare contract; the backend derives its
+finite options from that contract or the field's display mapping. These review declarations do
+not add transaction sources to Logs operator fields. Use real page names and the modes
+`Fill form` or `Read only`; local or gate-only steps can have no pages. Source drawer prose belongs
+beside the field reference. A source `read` names an exact step key, page title and field label;
+its ordered `chain` can refer to earlier reads in the same workflow. Every declared branch case
+needs a label when the group supplies review metadata. Compilation rejects unknown, ambiguous or
+out-of-step references.
+
+Source paths may name structured values such as a Kuali field's present/absent object. Those
+references remain intact; automatic dropdown options require a complete finite scalar vocabulary
+for every source of the field.
+
+The backend derives `reviewSpec` from these groups, existing run surfaces, omission forms, task
+session declarations, graph policies and declared failure codes. Control kinds and options use only
+the input alternatives admitted by each control's declared modes. Register each normalized failure
+sentence in the error catalog. Session requirements describe preparation and use, never observed
+sign-ins or acquired locks. Explorer serves child-only definitions for inspection without adding
+them to the Run picker.
 
 ## 5 · Person Lookup: reuse and a pure fold
 
@@ -335,9 +360,8 @@ Check `auditImplBindings`
 consumers when their inputs change.
 
 Before proposing integration, run `npm run typecheck`, `npm run lint`, `npm run web:build`,
-`npm run test:parity`, then `npm run test:coverage` alone. Coverage runs unit, integration and
+then `npm run test:coverage` alone. Coverage runs unit, integration and
 architecture suites. Preserve assertions, membership, isolation, coverage floors and timeouts.
-Parity uses the fixed desktop presentation contract; do not update references to make wiring pass.
 Follow the assigned brief's additional checks and resource limits.
 
 Use the signed-in dashboard Run surface for workflow execution. Select Dry Run only where the
@@ -356,7 +380,7 @@ do not substitute a fixture or another subject.
 - `npm run cli -- storage` inspects storage health. `npm run dashboard` starts the local dashboard.
   Diagnostics do not prove a transaction completed.
 - Selector and page-state failures belong to the system driver. Use the internal
-  `.agents/skill-library/hr-debug/REFERENCE.md` and the repository's playwright-cli procedure
+  `.agents/skills/hr-debug/references/debugging.md` and the repository's playwright-cli procedure
   within the authorized scope; snapshot before choosing locators.
 
 Keep actual commands, results and unrun obligations in the brief's evidence. Do not treat a fixture

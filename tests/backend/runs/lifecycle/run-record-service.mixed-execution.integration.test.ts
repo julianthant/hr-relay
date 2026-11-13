@@ -19,7 +19,7 @@ it("current authorization claims old and new queued snapshots and still refuses 
   const claim = (poolIndex: number, runtimeConfig = selectRunRuntime(f.database.authority)) => {
     const worker = f.workers[poolIndex - 1]; assert.ok(worker);
     return f.service.claimNext({ commandId: randomUUID(), workflow: "person-lookup",
-      workerId: worker.workerId, workerLifetime: worker.workerLifetime, runtimeConfig });
+      workerId: worker.workerId, runtimeConfig });
   };
   assert.deepEqual(claim(1, token), { state: "refused", refusal: { reason: "runtime-stale" } });
   const first = requireLifecycleApplied(claim(1));
@@ -30,7 +30,7 @@ it("current authorization claims old and new queued snapshots and still refuses 
   const now = f.clock.now().toISOString();
   const request = { commandId: randomUUID(), runId: first.envelope.runId, expectedVersion: first.version,
     claim: { workerId: f.workers[1].workerId, claimGeneration: first.claimGeneration },
-    lifecycle: { state: "validating", workerId: f.workers[0].workerId, workerLifetime: f.workers[0].workerLifetime, claimedAt: now, heartbeatAt: now } };
+    lifecycle: { state: "validating", workerId: f.workers[0].workerId, claimedAt: now, heartbeatAt: now } };
   assert.equal(f.service.workerTransition(request).state, "refused");
   const validated = requireLifecycleApplied(f.service.workerTransition({ ...request, commandId: randomUUID(),
     claim: { workerId: f.workers[0].workerId, claimGeneration: first.claimGeneration } }));
@@ -39,16 +39,14 @@ it("current authorization claims old and new queued snapshots and still refuses 
 
 it("pause/requeue then resume keeps the same run configuration and rejects the former claim", async () => {
   const f = await fixture(); const original = f.create();
-  const claim = requireLifecycleApplied(f.service.claimNext({ commandId: randomUUID(), workflow: "person-lookup", workerId: f.workers[0].workerId, workerLifetime: f.workers[0].workerLifetime,
-    runtimeConfig: selectRunRuntime(f.database.authority) }));
+  const claim = requireLifecycleApplied(f.service.claimNext({ commandId: randomUUID(), workflow: "person-lookup", workerId: f.workers[0].workerId, runtimeConfig: selectRunRuntime(f.database.authority) }));
   const fence = { workerId: f.workers[0].workerId, claimGeneration: claim.claimGeneration };
   const recovery = f.service.requeue({ commandId: randomUUID(), runId: claim.envelope.runId,
     expectedVersion: claim.version, cause: "recovery", claim: fence });
   assert.ok(recovery.state === "applied" || recovery.state === "applied-already");
   const paused = requireLifecycleApplied(recovery);
   f.save({ "timeouts.taskMs": { set: 90_000 } });
-  const resumed = requireLifecycleApplied(f.service.claimNext({ commandId: randomUUID(), workflow: "person-lookup", workerId: f.workers[1].workerId, workerLifetime: f.workers[1].workerLifetime,
-    runtimeConfig: selectRunRuntime(f.database.authority) }));
+  const resumed = requireLifecycleApplied(f.service.claimNext({ commandId: randomUUID(), workflow: "person-lookup", workerId: f.workers[1].workerId, runtimeConfig: selectRunRuntime(f.database.authority) }));
   assert.deepEqual(resumed.envelope, original.envelope); assert.deepEqual(paused.envelope, original.envelope);
   assert.ok(resumed.claimGeneration > fence.claimGeneration);
   assert.deepEqual(f.service.renewClaim({ commandId: randomUUID(), runId: resumed.envelope.runId, claim: fence }),

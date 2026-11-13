@@ -132,3 +132,6 @@ export function toastAppliedCommandResult(
     description: `${input.subject} · ${input.clock}`,
   });
 }
+
+export const commandResultTitle = (entry: CommandResultFeedEntry) => `${entry.actionLabel}: ${entry.settlement.reason === "conflict" ? "row changed" : "rejected"}`;
+export const commandResultDetail = (entry: CommandResultFeedEntry) => `${entry.subject} · ${entry.settlement.message}`;

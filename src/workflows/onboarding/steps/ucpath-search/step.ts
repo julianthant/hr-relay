@@ -7,7 +7,25 @@ import { defineStep, defineStepEntries, inheritStepProof, reuseTask } from "../.
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { buildCrmData } from "../crm-data/step.js";
 
-const group = defineWorkflowStep({ key: "ucpath-search", label: "Check UCPath duplicates" });
+const group = Object.freeze({
+  ...defineWorkflowStep({ key: "ucpath-search", label: "Check UCPath duplicates" }),
+  review: {
+    pages: [
+      {
+        id: "person-match",
+        title: "Smart HR person search",
+        mode: "Read only",
+        nodeIds: ["ucpath-source", "hire-subject"],
+        lines: [
+          { id: "search-duplicates", kind: "action", text: "Search UCPath for a matching person using the validated hire identity.", nodeIds: ["ucpath-source"] },
+          { id: "classify-match", kind: "check", text: "Resolve a new hire or an existing person from the returned candidates.", nodeIds: ["hire-subject"] }
+        ],
+        fields: []
+      }
+    ],
+    branchLabels: []
+  } as const
+});
 const entries = defineStepEntries(group);
 
 export function buildUcpathSearch(author: WorkflowAuthor<typeof OnboardingInput>, crm: ReturnType<typeof buildCrmData>) {

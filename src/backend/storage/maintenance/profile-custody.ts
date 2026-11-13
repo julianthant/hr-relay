@@ -6,10 +6,11 @@ import type { RuntimeAdmission } from "../admission/admission.js";
 import { privatePathRejects } from "../private-path.js";
 import type { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { runClaim } from "../../../models/run/record.js";
+import { BrowserSystemIdSchema } from "../../../rules/identity/ids.js";
 import type { ProfileBrowserClosure,RetainedBrowserProfile } from "./profile-inventory.js";
 
 type CredentialMembershipCustody = ReturnType<AuthorityDatabase["readProfileResourceCustody"]>;
-export type BrowserProfileCustody = Pick<CredentialMembershipCustody, "slots" | "verificationProfiles" | "browsers" | "configSnapshots" | "controls">;
+export type BrowserProfileCustody = Pick<CredentialMembershipCustody, "slots" | "configSnapshots">;
 
 export function configuredBrowserRoots(root: string, custody: BrowserProfileCustody, savedBrowserRoot: string): string[] {
   // Unreferenced historical snapshots carry paths, not custody of another profile's files.
@@ -24,24 +25,13 @@ export type BrowserRegistryMembership = Readonly<{ machineRoot: string; profileI
 export function retainedBrowserProfiles(root: string, custody: BrowserProfileCustody, savedBrowserRoot: string, browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, registry?: BrowserRegistryMembership) {
   const profiles = new Map<string, RetainedBrowserProfile>();
   for (const path of configuredBrowserRoots(root, custody, savedBrowserRoot)) assertBrowserRoot(root, path);
-  for (const browser of custody.browsers) {
-    const slot = custody.slots.find(value => value.workerId === browser.workerId);
-    if (slot === undefined) throw new Error("profile-inventory-browser-membership-unavailable");
-    const verification = custody.verificationProfiles.find(value => value.workerId === slot.workerId);
-    const selectedRoots = verification === undefined
-      ? custody.configSnapshots.some(snapshot => snapshot.fingerprint === browser.configFingerprint) ? [join(root, "browsers")] : []
-      : [join(root, "scratch", "live-smoke", verification.profileRunId, "browsers")];
-    const profileRoot = selectedRoots[0];
-    if (profileRoot !== undefined && verification === undefined) assertBrowserRoot(root, profileRoot);
-    if (selectedRoots.length !== 1 || profileRoot === undefined || verification !== undefined && verification.system !== browser.system
-      || browser.profileDirectory !== browserClosure.workerDirectory({profileRoot,slotOrdinal:slot.ordinal,system:browser.system})) throw new Error("profile-inventory-browser-membership-unavailable");
-    const control = custody.controls.find(value => value.commandId === slot.retirementCommandId);
-    const acknowledgement = control?.phase.state === "succeeded" && control.auditedAt !== undefined ? control.phase.acknowledgement : undefined;
-    const proof = acknowledgement?.kind === "remove" ? acknowledgement.retirement
-      : acknowledgement?.kind === "plan" ? acknowledgement.retirements.find(value => value.workerId === slot.workerId) : undefined;
-    const cleanupCompleted = slot.retiredAt !== null && (verification !== undefined ? verification.cleanup === "closed"
-      : proof !== undefined && proof.workerId === slot.workerId && proof.membershipRevision + 1 === slot.membershipRevision);
-    profiles.set(browser.profileDirectory, {profileRoot,profileDirectory:browser.profileDirectory,cleanupCompleted});
+  const profileRoot = join(root, "browsers");
+  // Worker profiles are the deterministic w<ordinal>/<system> folders that exist on disk.
+  for (const slot of custody.slots) for (const system of BrowserSystemIdSchema.options) {
+    const profileDirectory = browserClosure.workerDirectory({ profileRoot, slotOrdinal: slot.ordinal, system });
+    if (fileStatus(profileDirectory, true) === undefined) continue;
+    assertBrowserRoot(root, profileRoot);
+    profiles.set(profileDirectory, { profileRoot, profileDirectory, cleanupCompleted: slot.retiredAt !== null });
   }
   if (registry !== undefined) for (const row of registry.roots) {
     if (row.profileId !== registry.profileId || row.owner.kind !== 'command') continue;
@@ -72,12 +62,8 @@ function assertBrowserRoot(root: string, path: string): void {
 }
 
 export function assertStoppedProfileResourcesClosed(facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) {
-  if (facts.reservations.some(reservation => reservation.state === "pending")
-    || facts.slots.some(slot => slot.retiredAt === null && !facts.leases.some(lease => lease.workerId === slot.workerId))
-    || facts.leases.some(lease => !facts.slots.some(slot => slot.workerId === lease.workerId))
-    || facts.leases.some(lease => lease.lifecycle.state !== "stopped") || facts.browsers.some(browser => browser.health !== "closed")
-    || facts.exclusiveSessionLeases.some(lease => lease.releasedAt === null)
-    || facts.duoLeases.some(lease => lease.state === "held") || facts.controls.some(control => control.auditedAt === undefined)) throw new Error("credential-maintenance-custody-unproved");
+  if (facts.exclusiveSessionLeases.some(lease => lease.releasedAt === null)
+    || facts.duoLeases.some(lease => lease.state === "held")) throw new Error("credential-maintenance-custody-unproved");
 }
 
 export function assertCredentialCopyResourcesClosed(facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) {

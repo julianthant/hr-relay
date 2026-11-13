@@ -6,6 +6,7 @@ import { createDeterministicProviderHarness } from "../../../../src/backend/proc
 import { executeClaimedRun,type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { defineServiceStore,defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
+import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { createCapabilityWiringTestWorld } from "../../../support/helpers/backend/capability-wiring-world.js";
 
 {
@@ -73,7 +74,8 @@ afterEach(cleanup);
       try { raw.prepare("DELETE FROM settings_snapshots WHERE id=?").run(claimed.run.envelope.configSnapshotId); }
       finally { raw.exec(trigger.sql); }
       try {
-        await assert.rejects(executeClaimedRun(deps, { ...claimed, signal: SIGNAL }), /settings-snapshot-missing/u);
+        await assert.rejects(executeClaimedRun(deps, { ...claimed, signal: SIGNAL }), /FOREIGN KEY constraint failed/u);
+        assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(harness.authority.path), /foreign-key validation failed/u);
         assert.equal(raw.prepare("SELECT state FROM runs WHERE id=?").get(claimed.run.envelope.runId)?.state, "claimed");
         assert.equal(adapter.calls().length, 0);
       } finally {

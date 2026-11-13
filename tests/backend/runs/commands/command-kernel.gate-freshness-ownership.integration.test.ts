@@ -84,7 +84,7 @@ const finiteGateCanonicalInput = defineCanonicalInput(
 const finiteGateFlow = flow(finiteGateInputSchema)
   .step("job-summary", UcpathReadJobSummary, {
     dependsOn: [],
-    replay: "always-rerun",
+    replay: "checkpoint",
     bind: ({ input }) => ({ emplId: input.emplId }),
   })
   .gate("approval", {
@@ -150,13 +150,14 @@ describe("gate resolution", () => {
     if (result.state === "rejected") assert.equal(result.code, expectedCode);
     assert.deepEqual(harness.database.authority.runs.get(runId), beforeRun);
     assert.equal(harness.database.authority.gateResults.get(`${runId}:${command.target.gateId}`), undefined);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "rejected");
+    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration + 2);
     assert.deepEqual(harness.database.authority.timelineEvents.page({}), beforeEvents);
     return result;
   }
 
-  it("refuses a stale direct gate dependency under its finite declared freshness bound", async () => {
+  it("refuses a stale checkpoint gate dependency under its finite declared freshness bound", async () => {
     const harness = await createHarness(undefined, { descriptors: [...DESCRIPTOR_SET, finiteGateDescriptor] });
     const plan = planStart(
       { authority: harness.database, clock: harness.clock, ids: harness.plannerIds, planTtlMs: 600_000 },
@@ -175,11 +176,11 @@ describe("gate resolution", () => {
     const started = harness.kernel.execute(startCommand(plan));
     assert.equal(started.state, "applied");
     const runId = singleAppliedRunId(started);
-    const { workerId, workerLifetime } = testAdmittedWorker(harness.database, harness.clock, {
+    const { workerId } = testAdmittedWorker(harness.database, harness.clock, {
       path: join(harness.stateRoot, "state.db"), workflow: finiteGateDescriptor.id, poolIndex: 1, browserSystems: ["ucpath"],
     });
     const claimed = harness.database.authority.runs.claimNext({
-      workflow: String(finiteGateDescriptor.id), workerId, workerLifetime, now: NOW,
+      workflow: String(finiteGateDescriptor.id), workerId, now: NOW,
     });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") throw new Error("finite-gate fixture was not claimed");
@@ -215,7 +216,7 @@ describe("gate resolution", () => {
     for (const state of ["validating", "running"] as const) {
       const transitioned = harness.database.authority.runs.transition({
         runId, expectedVersion: version, claim,
-        lifecycle: { state, workerId: claim.workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW }, now: NOW,
+        lifecycle: { state, workerId: claim.workerId, claimedAt: NOW, heartbeatAt: NOW }, now: NOW,
       });
       assert.equal(transitioned.state, "applied");
       if (transitioned.state !== "applied") throw new Error("finite-gate run transition was refused");
@@ -262,11 +263,11 @@ describe("gate resolution", () => {
     const started = harness.kernel.execute(startCommand(plan));
     assert.equal(started.state, "applied");
     const runId = singleAppliedRunId(started);
-    const { workerId, workerLifetime } = testAdmittedWorker(harness.database, harness.clock, {
+    const { workerId } = testAdmittedWorker(harness.database, harness.clock, {
       path: join(harness.stateRoot, "state.db"), workflow: externalGateDescriptor.id, poolIndex: 1, browserSystems: ["ucpath"],
     });
     const claimResult = harness.database.authority.runs.claimNext({
-      workflow: String(externalGateDescriptor.id), workerId, workerLifetime, now: NOW,
+      workflow: String(externalGateDescriptor.id), workerId, now: NOW,
     });
     assert.equal(claimResult.state, "claimed");
     if (claimResult.state !== "claimed") throw new Error("external-gate fixture was not claimed");
@@ -274,7 +275,7 @@ describe("gate resolution", () => {
     let version = claimResult.run.version;
     for (const state of ["validating", "running"] as const) {
       const transitioned = harness.database.authority.runs.transition({
-        runId, expectedVersion: version, claim, lifecycle: { state, workerId: claim.workerId, workerLifetime,
+        runId, expectedVersion: version, claim, lifecycle: { state, workerId: claim.workerId,
           claimedAt: NOW, heartbeatAt: NOW }, now: NOW,
       });
       assert.equal(transitioned.state, "applied");
@@ -304,9 +305,10 @@ describe("gate resolution", () => {
       assert.match(refusal.message, /only its registered source may settle it/);
     }
     assert.equal(harness.database.authority.gateResults.get(`${runId}:approval`), undefined);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "rejected");
     assert.equal(harness.database.authority.runs.get(runId)?.lifecycle.state, "parked-gate");
-    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration);
+    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration + 2);
     assert.deepEqual(harness.database.authority.timelineEvents.page({}), beforeEvents);
   });
 });

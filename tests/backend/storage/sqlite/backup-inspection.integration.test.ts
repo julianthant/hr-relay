@@ -11,7 +11,7 @@ import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/sto
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { default as assert } from "node:assert/strict";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
@@ -183,10 +183,6 @@ for (const state of ["open", "closing"] as const) it(`refuses a registered ${sta
       credentialFingerprint: resolved.fingerprint, owner: { kind: "worker", database, workerId: worker.workerId } });
     mkdirSync(profileDirectory, { recursive: true, mode: 0o700 }); launch.opened();
     if (state === "closing") launch.closing();
-    database.authority.workerControls.observe({ workerId: worker.workerId, leaseGeneration: worker.lease.leaseGeneration,
-      sessionId: randomUUID(), system: "crm", configFingerprint: resolved.fingerprint, signInFingerprint: resolved.fingerprint,
-      browserMode: "headless", profileDirectory, acceptDownloads: false, exclusive: false, health: "closed",
-      observedAt: clock.now().toISOString(), openedAt: clock.now().toISOString(), profileRevision: 1 });
     stopSyntheticDatabaseWorkers({ database, path: f.path }); detachBoundFixtureWorkers(database); database.close();
     const before = readFileSync(f.path), registry = roots.inventory();
     assert.equal(registry.roots.length, 1); assert.equal(registry.roots[0]?.launch.state, state);

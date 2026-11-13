@@ -88,7 +88,7 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
     assert.equal(tombstone.workflow, "kernel-reject");
     assert.deepEqual(tombstone.removed.filter(({ table }) => table === "runs"), [{ table: "runs", rows: 1 }]);
     assert.ok(harness.database.authority.commands.get(command.commandId) !== undefined, "the delete is journaled");
-    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore + 1);
+    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore + 2);
 
     const again = harness.kernel.execute(runCommand("delete", runId, version));
     assert.equal(again.state, "rejected");
@@ -128,8 +128,11 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
     const parentVersion = settle(harness, parentId);
     settle(harness, childId);
     const generation = harness.database.getMeta().authorityGeneration;
-    assert.throws(() => harness.kernel.execute(runCommand("delete", parentId, parentVersion)), /ordinary-tree-child-binding-mismatch/u);
-    assert.equal(harness.database.getMeta().authorityGeneration, generation);
+    const command = runCommand("delete", parentId, parentVersion);
+    assert.throws(() => harness.kernel.execute(command), /ordinary-tree-child-binding-mismatch/u);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.equal(harness.database.getMeta().authorityGeneration, generation + 1);
     for (const runId of [childId, parentId]) {
       assert.ok(harness.database.authority.runs.get(runId));
       assert.equal(harness.database.authority.deletedRuns.get(runId), undefined);

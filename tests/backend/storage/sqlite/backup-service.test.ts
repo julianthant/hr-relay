@@ -21,8 +21,8 @@ import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from
 import { AuthorityBackupService,verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { OfflineAuthorityRestoreService,resumeAutomaticAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
-import { AuthorityBackupManifestSchema,RecoveryRuntimeLockSnapshotSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
-import { acquireRuntimeProcessLock,observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
+import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
@@ -265,26 +265,17 @@ describe("native authority backup", () => {
       expect(report.finalGeneration).toBe(expected.authorityGeneration);
     } finally { source.close(); }
   });
-  it("observes every legacy process role and refuses its old-build artifacts before stopped maintenance", async () => {
+  it("refuses every old-build process record before stopped maintenance", async () => {
     const f = await fixture(), processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot); f.database.close();
-    const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(f.admission.authorityBackupExpectedSource());
     for (const role of ["live-smoke", "workers", "geocode"] as const) {
-      const lock = acquireRuntimeProcessLock(role === "workers" ? { processLockRoot, name: role, pid: process.pid,
-        admission: { kind: "unbound-worker", authorityPath: f.path } } : { processLockRoot, name: role, pid: process.pid }, f.clock);
+      plantOldBuildArtifact(processLockRoot, role);
       const operation = f.admission.acquireOfflineMaintenance(), before = readFileSync(f.path);
       try {
-        const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, f.clock);
-        expect(Object.keys(snapshot.processLocks).sort()).toEqual(["geocode", "live-smoke", "server", "workers"]);
-        expect(snapshot.processLocks[role].state).toBe("active");
         await expect(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, f.clock, processLockRoot, operation))).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
         await expect(upgradeStorage(profileBrowserClosure, f.admission, { stateRoot: f.root, processLockRoot, plan: false }, f.clock, operation)).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
         expect(readFileSync(f.path)).toEqual(before);
-      } finally { operation.release(); lock.release(); }
+      } finally { operation.release(); }
     }
-    const stopped = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, f.clock);
-    const { geocode: _geocode, ...withoutGeocode } = stopped.processLocks;
-    expect(RecoveryRuntimeLockSnapshotSchema.safeParse({ ...stopped, processLocks: withoutGeocode }).success).toBe(false);
-    expect(RecoveryRuntimeLockSnapshotSchema.safeParse({ ...stopped, processLocks: { ...stopped.processLocks, "live-smoke": undefined } }).success).toBe(false);
     const oldOperation = f.admission.acquireOfflineMaintenance();
     try {
       await expect(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, oldOperation, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, f.clock, processLockRoot, oldOperation))).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
@@ -299,21 +290,6 @@ describe("native authority backup", () => {
       await expect(prepareStoppedBackupClosure(profileBrowserClosure, clean.admission, backup, clean.clock, cleanRoot).then(closure => backupStoppedAuthority(closure, clean.admission, clean.root, clean.clock, cleanRoot, backup))).resolves.toMatchObject({ state: "verified" });
       expect(() => clean.admission.beginOfflineMaintenance()).toThrow(/offline-maintenance-busy/u);
     } finally { backup.release(); }
-  });
-
-  it("refuses uncertain immutable geocode claims before stopped maintenance can open or mutate authority",async()=>{
-    const f=await fixture(),processLockRoot=join(f.workspace,rebuildRuntimeIsolation.processLockRoot);f.database.close();
-    acquireRuntimeProcessLock({processLockRoot,name:"geocode",pid:process.pid},f.clock);
-    const claims=join(processLockRoot,"geocode-claims"),claim=readdirSync(claims).find(name=>name.endsWith(".claim.json"));
-    if(claim===undefined)throw new Error("missing genuine geocode claim");
-    writeFileSync(join(claims,claim),"{}");const before=readFileSync(f.path);
-    expect(()=>observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(f.admission.authorityBackupExpectedSource())},f.clock)).toThrow();
-    const operation = f.admission.acquireOfflineMaintenance();
-    try {
-      await expect(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, f.clock, processLockRoot, operation))).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
-      await expect(upgradeStorage(profileBrowserClosure, f.admission,{stateRoot:f.root,processLockRoot,plan:false},f.clock,operation)).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
-    } finally { operation.release(); }
-    expect(readFileSync(f.path)).toEqual(before);
   });
 
 });

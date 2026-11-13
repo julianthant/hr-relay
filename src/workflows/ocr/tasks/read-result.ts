@@ -1,13 +1,14 @@
 import { defineTask } from "../../../workflow-kit/task.js";
 import { ReadOcrResult } from "../../../models/workflows/ocr/read-result.js";
 import { bindOcrLookupOutcomes } from "../../../models/workflows/ocr/lookup.js";
+import { OcrResultSchema, compactOcrResult } from "../../../models/workflows/ocr/result.js";
 
 export const readOcrResultTask = defineTask(ReadOcrResult, {
   sessions: [],
   async run({ input, ctx }) {
     let output;
     try {
-      output = ReadOcrResult.output.parse({ review: input.review, identities: bindOcrLookupOutcomes(input.review, input.outcomes) });
+      output = compactOcrResult(OcrResultSchema.parse({ review: input.review, identities: bindOcrLookupOutcomes(input.review, input.outcomes) }));
     } catch (error) {
       return ctx.fail("INCONSISTENT_INPUTS", "OCR lookup outcomes do not match the reviewed records.", { cause: error });
     }

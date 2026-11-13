@@ -1,6 +1,7 @@
 import type { RunExistence } from "../../../models/config/authority.js";
 import type { NotificationRecord } from "../../../models/notifications/notifications.js";
 import type { NotificationDisplayContext } from "../../../models/dashboard/projection.js";
+import type { CommandRequest } from "../../../rules/commands/commands.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { resolveResultTitle, resolveSubjectTitle, type SubjectCheckpointSource } from "../projections/run-subject-title.js";
 import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "./run-timeline-compatibility.js";
@@ -14,10 +15,13 @@ export function notificationDisplayContext(record: NotificationRecord, deps: {
   receipt(runId: string): RunEvidenceReceipt | undefined;
   checkpoints: { listByAttempt(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[] };
   presentation: RunTimelineEvidenceSource;
+  command(id: string): CommandRequest | undefined;
 }): NotificationDisplayContext {
   const link = record.links[0];
-  if (link === undefined || link.kind === "storage") return { state: "not-applicable" };
-  const current = deps.read(link.runId);
+  if (link === undefined || link.kind === "storage" || link.kind === "bulk-result") return { state: "not-applicable" };
+  const runId = link.kind === "recovery" || link.kind === "command-result" ? commandRunId(deps.command(link.commandId)) : link.runId;
+  if (runId === undefined) return { state: "unavailable" };
+  const current = deps.read(runId);
   if (current.state !== "present") return { state: "unavailable" };
   const { workflow, itemId } = current.run.envelope;
   const descriptor = deps.descriptor(workflow);
@@ -48,4 +52,9 @@ export function notificationDisplayContext(record: NotificationRecord, deps: {
       .at(-1),
   } satisfies SubjectCheckpointSource);
   return subject === undefined ? { state: "workflow-only", workflow: descriptor.label } : { state: "available", workflow: descriptor.label, subject };
+}
+
+function commandRunId(request: CommandRequest | undefined): string | undefined {
+  if (request === undefined || !("target" in request) || !("runId" in request.target)) return undefined;
+  return request.target.runId;
 }

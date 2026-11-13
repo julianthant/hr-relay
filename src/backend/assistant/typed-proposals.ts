@@ -90,16 +90,18 @@ function reviewedBinding(planned: Readonly<{ fingerprints: Record<string, string
 }
 /** The operator's reason for each canonical command rejection: a fixed catalog sentence per category, never the kernel's own message. */
 const ROW_REJECTION: Readonly<Record<z.infer<typeof CommandRejectionCodeSchema>, ErrorCatalogCode>> = {
-  OCR_REVIEW_REFUSED: "OCR_REVIEW_REFUSED", RUN_CONTINUATION_REFUSED: "RUN_CONTINUATION_REFUSED",
+  OCR_REVIEW_REFUSED: "OCR_REVIEW_REFUSED", RUN_CONTINUATION_REFUSED: "RUN_CONTINUATION_REFUSED", WORKER_PAUSE_SETTLING: "WORKER_PAUSE_SETTLING",
+  RUN_START_PLAN_EXPIRED: "RUN_START_PLAN_EXPIRED", RUN_START_READINESS_BLOCKED: "RUN_START_READINESS_BLOCKED", RUN_START_READINESS_UNAVAILABLE: "RUN_START_READINESS_UNAVAILABLE",
+  RUN_START_READINESS_CHANGED: "RUN_START_READINESS_CHANGED", PREFLIGHT_EVIDENCE_EXPIRED: "PREFLIGHT_EVIDENCE_EXPIRED", PREFLIGHT_TIMEOUT: "PREFLIGHT_TIMEOUT",
   "invalid-state": "ASSISTANT_ROW_INVALID_STATE", "target-not-found": "ASSISTANT_ROW_TARGET_GONE", "target-deleted": "ASSISTANT_ROW_TARGET_GONE",
   "policy-refused": "ASSISTANT_ROW_POLICY_REFUSED", "capability-unavailable": "ASSISTANT_ROW_UNAVAILABLE",
   "replan-required": "ASSISTANT_PROPOSAL_CHANGED", "schema-mismatch": "ASSISTANT_PROPOSAL_CHANGED", "patch-fingerprint-mismatch": "ASSISTANT_PROPOSAL_CHANGED",
   "envelope-fingerprint-mismatch": "ASSISTANT_PROPOSAL_CHANGED", "command-divergent": "ASSISTANT_PROPOSAL_CHANGED", "write-id-reused": "ASSISTANT_PROPOSAL_CHANGED",
   "authority-unavailable": "ASSISTANT_ROW_STORAGE_UNAVAILABLE", "authority-unjournaled": "ASSISTANT_ROW_STORAGE_UNAVAILABLE", "authority-uncertain": "ASSISTANT_ROW_STORAGE_UNAVAILABLE",
   "directory-integrity": "ASSISTANT_ROW_STORAGE_UNAVAILABLE", "lock-unavailable": "ASSISTANT_ROW_STORAGE_UNAVAILABLE",
-  // Edit and workbook categories; start and run commands do not produce them.
+  // Edit, workbook and bulk-child categories; a row's own start or run command does not produce them.
   "not-editable": "ASSISTANT_PROPOSAL_REFUSED", "invalid-value": "ASSISTANT_PROPOSAL_REFUSED", "cross-field-invalid": "ASSISTANT_PROPOSAL_REFUSED",
-  "document-too-large": "ASSISTANT_PROPOSAL_REFUSED", "active-version-blockers": "ASSISTANT_PROPOSAL_REFUSED",
+  "document-too-large": "ASSISTANT_PROPOSAL_REFUSED", "active-version-blockers": "ASSISTANT_PROPOSAL_REFUSED", "bulk-child-errored": "ASSISTANT_PROPOSAL_REFUSED",
 };
 /** Workflows whose one input is an attached PDF of a fixed OCR form. */
 const PDF_START_WORKFLOWS = new Set(["emergency-contact"]);
@@ -113,14 +115,14 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
 
   function startable(workflowId: string, dryRun: boolean) {
     const descriptor = ports.descriptors.resolve(workflowId);
-    if (descriptor === undefined || !ports.served(descriptor.id) || (dryRun && workflowDryRunSupport(descriptor).state !== "supported")) refuse();
+    // A reference spreadsheet is the operator's own pick in Run; a proposal carries none, so it refuses before any upload or plan.
+    if (descriptor === undefined || !ports.served(descriptor.id) || descriptor.workbookReference !== undefined
+      || (dryRun && workflowDryRunSupport(descriptor).state !== "supported")) refuse();
     return descriptor;
   }
   /** One row's own plan with the reviewed options; refuses anything beyond exactly that row. */
   async function planOne(descriptor: AnyWorkflowDescriptor, submission: JsonValue, dryRun: boolean, options: StartOptions, signal: AbortSignal, rerun?: Rerun) {
     const request = { workflowId: descriptor.id, submissions: [submission], dryRun, browserMode: options.browserMode, captureBrowserScreenshots: options.captureBrowserScreenshots,
-      // Required workbooks (the OCR roster) use each type's default workbook, as the Run dialog does without a pick.
-      ...(descriptor.requiredWorkbookTypeIds.length === 0 ? {} : { workbookReferences: descriptor.requiredWorkbookTypeIds.map(typeId => ({ entry: 1, typeId })) }),
       ...(rerun === undefined ? {} : { rerunSource: rerun.source, selectedStepKeys: [...rerun.steps] }) };
     await ports.plans.prepare?.(request, signal);
     const planned = ports.plans.plan(request), [row] = planned.planned, inputs = ports.plannedInputs(planned.startPlanId), [stored] = inputs?.runs ?? [];

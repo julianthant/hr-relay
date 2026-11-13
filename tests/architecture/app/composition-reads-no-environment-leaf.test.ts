@@ -15,6 +15,7 @@ import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEY
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../src/models/config/host-display.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
+import { admitFixtureSlot } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { duoCeremonyGatesOver } from "../../support/helpers/duo-ceremony-fixtures.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { composeDashboardRuntime } from "../../../src/backend/app/composition/dashboard/compose.js";
@@ -90,6 +91,7 @@ describe("composition-reads-no-environment-leaf", () => {
           const noisyResolution = resolveConfigWithProvenance(ordinary, hostConfigFacts(hostile.env), profileClock, pair);
           assert.deepEqual(noisyResolution, clean);
           assert.deepEqual(before, clean);
+          if (role === "worker") database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, "person-lookup", 1, profileClock.now().toISOString()));
         } finally { database.close(); }
         if (role === "worker") {
           const worker = await composeWorkerRuntime({ lifetimeLock: f.lifetime, ...common, admission: f.machine, preflightRunnerFactory: healthyRuntimePreflightRunners, args: ["person-lookup", "--pool-index", "1", "--drain"],

@@ -212,7 +212,7 @@ afterEach(_afterEachFixture0);
       repoRoot:f.root,clock:f.clock,env:{},sessionFactory:{ probeProfile: async () => undefined,open:async()=>{effects.browsers+=1;throw new Error("unrequested browser effect");}}})).rejects.toThrow(/config-snapshot-fingerprint-mismatch/u);
     expect(effects).toEqual({credentials:0,browsers:0});
     const read=new DatabaseSync(f.path,{readOnly:true});try {
-      expect(read.prepare("SELECT * FROM worker_slots").all()).toEqual([]);expect(read.prepare("SELECT * FROM worker_leases").all()).toEqual([]);
+      expect(read.prepare("SELECT * FROM worker_slots").all()).toEqual([]);
     }finally{read.close();}
   });
   it("retains the issued admission and native owner when opening validation and close fail before credentials or a browser",async()=>{

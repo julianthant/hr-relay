@@ -1,3 +1,6 @@
+import { WorkflowStepReviewSchema, type WorkflowStepReview } from "../models/workflow/review-spec.js";
+import { assertSchemaOffersCollectionPath } from "../models/validation/contract-boundary.js";
+import { deepFreeze } from "../rules/validation/immutability.js";
 import type { StableRecordId } from "../rules/identity/ids.js";
 import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
@@ -41,7 +44,7 @@ import type {
   WorkflowDescriptor,
   WorkflowDescriptorSpec,
 } from "./workflow.js";
-import { defineWorkflowDescriptor, parseRequiredWorkbookTypeIds } from "./workflow.js";
+import { defineWorkflowDescriptor, descriptorRuntimeNodes, parseWorkbookRequirement } from "./workflow.js";
 
 /** The closed entry algebra. */
 export type WorkflowEntryKind = "task" | "parallel" | "delegate" | "gate" | "transaction" | "branch";
@@ -49,6 +52,7 @@ const GROUP_OWNER = Symbol("workflow-group-owner");
 
 export interface WorkflowTimelineGroup {
   readonly description?: string;
+  readonly review?: WorkflowStepReview;
   readonly operatorFields?: readonly WorkflowOperatorField[];
   readonly system?: z.input<typeof BrowserSystemIdSchema> | "local";
   readonly key: string;
@@ -58,7 +62,7 @@ export interface WorkflowTimelineGroup {
   readonly [GROUP_OWNER]?: WorkflowTimelineGroup;
 }
 
-export type WorkflowGroupOptions = Readonly<Partial<Pick<WorkflowTimelineGroup, "omission" | "description" | "system" | "operatorFields">>>;
+export type WorkflowGroupOptions = Readonly<Partial<Pick<WorkflowTimelineGroup, "omission" | "description" | "system" | "operatorFields" | "review">>>;
 
 /** One timeline-tuple entry: a typed reusable value over an existing contract (or gate/transaction/parallel/delegate declaration), in exactly one tuple. */
 export interface WorkflowEntry<
@@ -800,7 +804,8 @@ export interface WorkflowDefinition<
   Completion extends CompletionProgram | undefined = CompletionProgram | undefined,
 > extends WorkflowDefinitionPresentation<InputSchema, ResultSchema, Completion> {
   readonly kind: "workflow-definition";
-  readonly requiredWorkbookTypeIds: readonly string[];
+  readonly requiredWorkbookFields: readonly string[];
+  readonly workbookReference?: WorkflowDefinitionPresentation<InputSchema, ResultSchema, Completion>["workbookReference"];
   readonly input: InputSchema;
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
@@ -833,8 +838,9 @@ export function defineStep<const Spec extends {
 
 export function inheritStepProof<Input extends z.ZodType>(parent: WorkflowDefinition<Input>) {
   return {
-    requiredWorkbookTypeIds: parent.requiredWorkbookTypeIds,
-    ...(parent.referenceLookups === undefined ? {} : { referenceLookups: parent.referenceLookups }),
+    requiredWorkbookFields: parent.requiredWorkbookFields,
+    ...(parent.workbookReference === undefined ? {} : { workbookReference: parent.workbookReference }),
+    ...(parent.referenceKeys === undefined ? {} : { referenceKeys: parent.referenceKeys }),
     version: 1,
     icon: parent.icon,
     category: parent.category,
@@ -888,7 +894,7 @@ export function defineWorkflow<
 ): WorkflowDefinition<InputSchema, ResultSchema, Completion> {
   const id = WorkflowIdSchema.parse(spec.id);
   WorkflowModuleRoleSchema.parse(spec.role);
-  const requiredWorkbookTypeIds = parseRequiredWorkbookTypeIds(spec.requiredWorkbookTypeIds);
+  const { requiredWorkbookFields, workbookReference } = parseWorkbookRequirement(spec.requiredWorkbookFields, spec.workbookReference);
   const { steps: authorSteps, input, role, intake, ...presentation } = spec;
   const authored = authorSteps(workflowAuthor<InputSchema>(spec.capabilities?.delegationDisplay));
   validateSteps(id, authored.steps, authored.result.references);
@@ -897,13 +903,16 @@ export function defineWorkflow<
   Object.freeze(authored.result.references);
   return Object.freeze({
     ...presentation,
-    requiredWorkbookTypeIds,
+    requiredWorkbookFields,
+    ...(workbookReference === undefined ? {} : { workbookReference }),
     kind: "workflow-definition",
     input,
     role,
     ...(intake === undefined ? {} : { intake }),
     steps: Object.freeze(authored.steps.map(([group, entries]) => Object.freeze([
-      Object.freeze(Object.defineProperty({ ...group }, GROUP_OWNER, {
+      Object.freeze(Object.defineProperty({ ...group,
+        ...(group.review === undefined ? {} : { review: deepFreeze(WorkflowStepReviewSchema.parse(group.review)) }),
+      }, GROUP_OWNER, {
         value: group[GROUP_OWNER] ?? group, enumerable: false,
       })),
       Object.freeze([...entries]),
@@ -1174,10 +1183,91 @@ export function compileWorkflow<
       result: definition.result.schema,
       graph: (flattenEntries(steps) as readonly RuntimeEntry[]).map((entry) => ({ id: entry.id, kind: entry.kind, dependsOn: entry.references.map(({ id }) => id) })),
       contracts,
+      requiredWorkbookFields: definition.requiredWorkbookFields,
+      workbookReference: definition.workbookReference,
     }),
     flow: compileFlow(definition),
     ...(usesDefaultTimeline ? {} : { timeline }),
   });
+  for (const [group] of steps) {
+    if (group.review === undefined) continue;
+    const review = WorkflowStepReviewSchema.parse(group.review);
+    const members = descriptor.timeline.find(candidate => candidate.key === group.key);
+    if (members === undefined) throw new Error(`workflow ${definition.id} review names unknown step ${group.key}`);
+    const ownIds = new Set(members.nodes.map(node => String(node.id)));
+    const ownNodes = descriptorRuntimeNodes(descriptor).filter(node => ownIds.has(String(node.id)));
+    const assertOwnNode = (nodeId: string): void => {
+      if (!ownIds.has(nodeId)) throw new Error(`workflow ${definition.id} review step ${group.key} names unknown or outside node ${nodeId}`);
+    };
+    const assertUnique = (values: readonly string[], subject: string): void => {
+      if (new Set(values).size !== values.length) throw new Error(`workflow ${definition.id} review step ${group.key} repeats ${subject}`);
+    };
+    const assertRead = (read: { stepKey: string; page: string; field: string } | undefined): void => {
+      if (read === undefined) return;
+      const target = steps.find(([candidate]) => candidate.key === read.stepKey)?.[0];
+      if (target === undefined) throw new Error(`workflow ${definition.id} review source names unknown step ${read.stepKey}`);
+      const pages = target.review?.pages.filter(page => page.title === read.page) ?? [];
+      const [page] = pages;
+      if (pages.length !== 1 || page === undefined) throw new Error(`workflow ${definition.id} review source names unknown or ambiguous page ${read.stepKey}/${read.page}`);
+      if (page.fields.filter(field => ("operatorField" in field ? field.operatorField : field.label) === read.field).length !== 1) {
+        throw new Error(`workflow ${definition.id} review source names unknown or ambiguous field ${read.stepKey}/${read.page}/${read.field}`);
+      }
+    };
+    assertUnique(review.pages.map(page => page.id), "page id");
+    assertUnique(review.pages.flatMap(page => page.fields.map(field => field.id)), "field id");
+    for (const page of review.pages) {
+      page.nodeIds.forEach(assertOwnNode);
+      assertUnique(page.lines.map(line => line.id), "line id");
+      for (const line of page.lines) for (const nodeId of line.nodeIds) {
+        assertOwnNode(nodeId);
+        if (!page.nodeIds.includes(nodeId)) throw new Error(`workflow ${definition.id} review line ${line.id} is outside page ${page.id}`);
+      }
+      for (const field of page.fields) {
+        if ("operatorField" in field) {
+          const matches = (group.operatorFields ?? []).filter(candidate => candidate.label === field.operatorField);
+          const [operatorField] = matches;
+          if (matches.length !== 1 || operatorField === undefined || operatorField.visibility === "logs") {
+            throw new Error(`workflow ${definition.id} review field ${field.id} requires one visible operator field ${field.operatorField}`);
+          }
+          if (operatorField.sources.some(source => !page.nodeIds.some(nodeId => nodeId === source.nodeId))) {
+            throw new Error(`workflow ${definition.id} review field ${field.id} reads outside page ${page.id}`);
+          }
+        } else {
+          const transactionSource = (nodeId: string) => {
+            assertOwnNode(nodeId);
+            if (!page.nodeIds.some(id => id === nodeId)) throw new Error(`workflow ${definition.id} review field ${field.id} reads outside page ${page.id}`);
+            const node = ownNodes.find(node => node.id === nodeId);
+            if (node?.kind !== "transaction") throw new Error(`workflow ${definition.id} review field ${field.id} requires a transaction source ${nodeId}`);
+            return node;
+          };
+          if ("transactionFields" in field) {
+            for (const reference of field.transactionFields) assertSchemaOffersCollectionPath(transactionSource(reference.nodeId).prepare.uses[reference.kind], reference.fieldPath,
+              `workflow ${definition.id} review transaction field ${field.id}`);
+          } else {
+            field.constant.nodeIds.forEach(transactionSource);
+          }
+        }
+        assertRead(field.source.read);
+        field.source.chain.forEach(link => assertRead(link.read));
+      }
+    }
+    assertUnique(review.branchLabels.map(label => `${label.nodeId}/${label.outcome}`), "branch outcome");
+    for (const label of review.branchLabels) {
+      assertOwnNode(label.nodeId);
+      const node = ownNodes.find(candidate => candidate.id === label.nodeId);
+      if (node?.kind !== "branch" || !Object.hasOwn(node.cases, label.outcome)) {
+        throw new Error(`workflow ${definition.id} review names unknown branch outcome ${label.nodeId}/${label.outcome}`);
+      }
+    }
+    for (const node of ownNodes) {
+      if (node.kind !== "branch") continue;
+      for (const outcome of Object.keys(node.cases)) {
+        if (!review.branchLabels.some(label => label.nodeId === node.id && label.outcome === outcome)) {
+          throw new Error(`workflow ${definition.id} review omits branch outcome ${node.id}/${outcome}`);
+        }
+      }
+    }
+  }
   const compiled: CompiledWorkflow<InputSchema, ResultSchema, Completion> = Object.freeze({
     kind: "compiled-workflow",
     definition,

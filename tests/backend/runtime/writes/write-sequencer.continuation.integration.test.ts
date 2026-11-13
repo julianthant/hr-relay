@@ -68,12 +68,10 @@ function effects(h: Harness) {
 function claimQueued(h: Harness, lifecycle: RunRecordService, queued: RunRecord) {
   const lifetime = testWorkerLifetime(h.database, WRITE_FIXTURE_WORKFLOW_ID, 1);
   let run = requireLifecycleApplied(lifecycle.claimNext({ commandId: randomUUID(), workflow: WRITE_FIXTURE_WORKFLOW_ID,
-    workerId: lifetime.workerId, workerLifetime: lifetime.workerLifetime,
-    runtimeConfig: selectRunRuntime(h.database.authority) }));
+    workerId: lifetime.workerId, runtimeConfig: selectRunRuntime(h.database.authority) }));
   assert.equal(run.envelope.runId, queued.envelope.runId);
   const claim = { workerId: lifetime.workerId, claimGeneration: run.claimGeneration };
-  const base = { workerId: lifetime.workerId, workerLifetime: lifetime.workerLifetime,
-    claimedAt: h.clock.now().toISOString(), heartbeatAt: h.clock.now().toISOString() };
+  const base = { workerId: lifetime.workerId, claimedAt: h.clock.now().toISOString(), heartbeatAt: h.clock.now().toISOString() };
   for (const state of ["validating", "running"] as const) {
     const moved = h.database.authority.runs.transition({ runId: run.envelope.runId, expectedVersion: run.version, claim,
       now: h.clock.now().toISOString(), lifecycle: { state, ...base, ...(state === "running" ? { currentNodeId: WRITE_FIXTURE_NODE_ID } : {}) } });
@@ -156,7 +154,7 @@ async function completedRepeat() {
 function crashContinuation(f: Awaited<ReturnType<typeof fixture>>) {
   const run = fresh(f.h, f.context.run);
   return f.lifecycle.recoverCrash({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version, claim: f.context.claim,
-    ...f.h.database.crashRunRecoveryIdentity(run.envelope.runId), now: f.h.clock.now().toISOString() }, f.h.lifetime);
+    now: f.h.clock.now().toISOString() }, f.h.lifetime);
 }
 
 function settlement(f: Awaited<ReturnType<typeof fixture>>) {

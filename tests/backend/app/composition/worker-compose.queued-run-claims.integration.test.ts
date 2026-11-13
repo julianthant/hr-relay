@@ -1,3 +1,4 @@
+import { runClaim } from "../../../../src/models/run/record.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import * as privateFiles from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 
@@ -50,6 +51,22 @@ it("returns a typed changed-observation report at boot with no browser or claim 
   assert.equal(observations, 1); assert.equal(sessions.opens("ucpath"), 0); assert.equal(sessions.opens("crm"), 0);
   const database = reopen(stateRoot, clock);
   assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+});
+
+it("returns a blocked preflight refusal at drain boot without claiming or opening browsers", async () => {
+  const { repoRoot, stateRoot } = await repoRootWithState(); const clock = manualClock(new Date(NOW));
+  seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+  const sessions = happySessionHarness();
+  const input = composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 });
+  const report = await composeWorkerRuntime({ ...input,
+    preflightRunnerFactory: selected => healthyRuntimePreflightRunners(selected).map(runner => runner.check !== "authority.health" ? runner : {
+      ...runner, async run() { return { check: runner.check, state: "unhealthy" as const, summary: "Fixture blocked", impact: "Claim blocked" }; },
+    }) });
+  assert.equal(report.stopped, "preflight-refused");
+  assert.equal(report.preflightRefusal?.code, "PREFLIGHT_BLOCKED");
+  assert.equal(report.closure, "proved");
+  assert.equal(sessions.opens("ucpath"), 0); assert.equal(sessions.opens("crm"), 0);
+  assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
 });
 
 function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, patch: unknown) {
@@ -131,10 +148,7 @@ function journalWorkerSettings(
 function assertStoppedWorkerLifetimes(repoRoot: string, clock: TestClock): void {
   const database = reopen(stateRootFor(repoRoot), clock);
   for (const slot of database.authority.workerSlots.list()) {
-    const lease = database.authority.workerLeases.get(slot.workerId); assert.ok(lease);
-    assert.equal(lease.lifecycle.state, "stopped");
-    database.assertWorkerLifecycleRelease(slot.workerId);
-    assert.ok(database.authority.workerControls.browsers(slot.workerId).every(browser => browser.health === "closed"));
+    assert.equal(database.authority.runs.listByWorker(slot.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state)), false);
   }
 }
 
@@ -201,7 +215,7 @@ describe("composed worker runtime", () => {
     assert.equal(existsSync(join(stateRoot, "settings")), false, "boot and polling create no file authority or lock");
   });
 
-  it("keeps a worker live and idle after completion and reuses its exact lifetime for another queued item", async () => {
+  it("keeps a worker idle after completion and claims another queued item in the same process", async () => {
     const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
@@ -220,8 +234,8 @@ describe("composed worker runtime", () => {
         args: [WORKFLOW_ID, "--pool-index", "1"], stopSignal: stop.signal }),
       heartbeatIntervalMs: 10,
       afterClaimAdmissionCheck: () => {
-        const lease = database.authority.workerLeases.listLive(WORKFLOW_ID)[0];
-        if (lease?.lifecycle.state !== "idle") return;
+        const member = database.authority.workerSlots.active(WORKFLOW_ID)[0];
+        if (member === undefined || database.authority.runs.listByWorker(member.workerId).some(run => runClaim(run) !== undefined)) return;
         if (database.authority.runs.get(RUN_ID)?.lifecycle.state === "terminal") firstIdle?.();
         if (database.authority.runs.get(secondId)?.lifecycle.state === "terminal") secondIdle?.();
       },
@@ -231,19 +245,51 @@ describe("composed worker runtime", () => {
       await idleAfterFirst;
       const member = database.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(member);
       const pool = database.authority.workerPools.get(WORKFLOW_ID); assert.ok(pool);
-      const lease = database.authority.workerLeases.get(member.workerId); assert.ok(lease);
       const first = database.authority.runs.get(RUN_ID); assert.ok(first?.lifecycle.state === "terminal");
       assert.equal(first.lifecycle.outcome, "done"); assert.equal(member.retiredAt, null);
-      assert.equal(lease.lifecycle.state, "idle"); assert.equal(lease.control.directive, "run");
+      assert.equal(member.paused, false);
       seedQueuedRun(stateRoot, clock, personLookupQueuedRun({ runId: secondId, itemId: randomUUID() }));
       await idleAfterSecond;
       const second = database.authority.runs.get(secondId); assert.ok(second?.lifecycle.state === "terminal");
       assert.equal(second.lifecycle.outcome, "done");
       assert.deepEqual(database.authority.workerPools.get(WORKFLOW_ID), pool);
       assert.deepEqual(database.authority.workerSlots.get(member.workerId), member);
-      const reused = database.authority.workerLeases.get(member.workerId); assert.ok(reused);
-      assert.equal(reused.leaseGeneration, lease.leaseGeneration); assert.equal(reused.processId, lease.processId);
-      assert.equal(reused.lifecycle.state, "idle"); assert.equal(reused.control.directive, "run");
+      assert.equal(second.lifecycle.state === "terminal" && second.claimGeneration, 1);
+    } finally { stop.abort(); await running; }
+  });
+
+  it("boots a paused member that claims nothing, then claims on its idle repoll once the slot is resumed without any message", async () => {
+    const { repoRoot, stateRoot } = await repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    persistJournaledWorkerSettings(repoRoot, stateRoot, clock, { daemon: { idleRepollMs: 10 } });
+    const stop = new AbortController();
+    const input = composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
+      args: [WORKFLOW_ID, "--pool-index", "1"], stopSignal: stop.signal });
+    const database = reopen(stateRoot, clock);
+    const member = database.authority.workerSlots.active(WORKFLOW_ID)[0]; assert.ok(member);
+    database.authority.workerSlots.setPaused({ workerId: member.workerId, paused: true, now: NOW });
+    let claimAdmissions = 0;
+    const running = composeWorkerRuntime({
+      ...input,
+      heartbeatIntervalMs: 10,
+      afterClaimAdmissionCheck: () => { claimAdmissions += 1; },
+    });
+    let failure: unknown;
+    void running.catch((error: unknown) => { failure = error; });
+    try {
+      // Ten idle repolls while paused: the queued run stays unclaimed.
+      await new Promise(resolve => setTimeout(resolve, 100));
+      assert.equal(failure, undefined);
+      assert.equal(claimAdmissions, 0);
+      assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+      database.authority.workerSlots.setPaused({ workerId: member.workerId, paused: false, now: NOW });
+      await vi.waitFor(() => {
+        assert.equal(failure, undefined);
+        const run = database.authority.runs.get(RUN_ID);
+        assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
+      }, { timeout: 5_000, interval: 10 });
+      assert.equal(claimAdmissions >= 1, true);
     } finally { stop.abort(); await running; }
   });
 
@@ -317,9 +363,8 @@ describe("composed worker runtime", () => {
         assert.equal(typeof row?.payload_json, "string");
         assert.deepEqual(AppSettingsSchema.parse(JSON.parse(String(row?.payload_json))).saved, fixture.record);
         assert.equal(raw.prepare("SELECT state FROM runs WHERE id=?").get(RUN_ID)?.state, "queued");
-        assert.deepEqual(raw.prepare("SELECT id FROM worker_slots").all(), []);
-        assert.deepEqual(raw.prepare("SELECT id FROM worker_leases").all(), []);
-        assert.deepEqual(raw.prepare("SELECT id FROM browser_sessions").all(), []);
+        // The pool admits the launched slot before boot; a refused boot adds or retires none.
+        assert.deepEqual(raw.prepare("SELECT id FROM worker_slots WHERE retired_at IS NULL").all().map(row => row.id), ["person-lookup-worker-1"]);
       } finally { raw.close(); }
       assert.deepEqual(readFileSync(join(stateRoot, "state.db")), before);
       assert.deepEqual(credentialReads, [], "native corruption refuses before credential values are read");
@@ -483,7 +528,7 @@ describe("composed worker runtime", () => {
       (error: unknown) => error === openFailure,
     );
     const database = reopen(stateRootFor(repoRoot), clock);
-    assert.deepEqual(database.authority.workerSlots.list(), []);
+    assert.deepEqual(database.authority.workerSlots.list().map(slot => [slot.workerId, slot.retiredAt]), [["person-lookup-worker-1", null]]);
   });
 
   it("retains controller and database custody when database closure cannot be proven", async () => {

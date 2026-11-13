@@ -41,7 +41,7 @@ async function start(backendSource = BACKEND, options: Pick<DashboardLauncherOpt
   });
   const signals = new EventEmitter();
   const { runDevDashboard } = await import("../../../scripts/dev/dashboard.js");
-  const done = runDevDashboard({ ...options, signals, startupTimeoutMs: 3000, writeError: message => output.push(message) });
+  const done = runDevDashboard({ ...options, signals, writeError: message => output.push(message) });
   return { children, output, signals, done };
 }
 

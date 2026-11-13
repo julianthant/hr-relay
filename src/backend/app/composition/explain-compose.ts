@@ -1,7 +1,9 @@
+import { captureSelectedProfileStorage } from "./storage-compose.js";
+import { createCredentialStore } from "../../storage/configuration/credential-store.js";
+import { hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
 
-import { join } from "node:path";
 import type { z } from "zod";
-import { TimelinePageRequestSchema, TimelineEventRecordSchema, debugEventLevel, type TimelineAppend } from "../../../models/events/timeline.js";
+import { TimelinePageRequestSchema, TimelineEventRecordSchema, debugEventLevel, type TimelineAppend, type TimelineCheckpointReferenceSchema } from "../../../models/events/timeline.js";
 import { readLocalDebugLog } from "../../storage/events/local-debug-log.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { CHILD_ONLY_WORKFLOW_MODULES, DESCRIPTORS } from "../registries/workflow-registry.js";
@@ -17,6 +19,7 @@ import { requireTrustRun, listLiveTrustRuns, assertTrustEvidenceIdentity } from 
 import { createReceiptService } from "../../runs/trust/receipt-service.js";
 import {
   buildExplainRunView,
+  debugRecordForOperator,
   renderExplainRun,
   type ExplainRunEvidence,
 } from "../../runs/explain/explain-run.js";
@@ -51,8 +54,9 @@ export function parseDiagnosticArgs(args: readonly string[]) {
 }
 
 function debugRecordView<T extends Pick<TimelineAppend, "payload">>(record: T) {
-  return record.payload.kind === "debug" ? { ...record,
-    payload: { ...record.payload, event: { ...record.payload.event, level: debugEventLevel(record.payload.event) } } } : record;
+  const safe = debugRecordForOperator(record);
+  return safe.payload.kind === "debug" ? { ...safe,
+    payload: { ...safe.payload, event: { ...safe.payload.event, level: debugEventLevel(safe.payload.event) } } } : safe;
 }
 
 function renderDebugRecords(records: readonly z.infer<typeof TimelineEventRecordSchema>[]) {
@@ -71,9 +75,15 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
       return options.json ? JSON.stringify(report, null, 2) : report.state === "absent" ? `boot diagnostics: absent (${report.reason})`
         : report.records.map(record => `${record.occurredAt} ${JSON.stringify(record.payload)}`).join("\n");
     }
-    const stored = AuthorityDatabase.inspectTimelinePageReadOnly(admission, join(admission.stateRoot, "state.db"), options.request);
+    const selected = captureSelectedProfileStorage(admission);
+    const person = admission.admitProfile(selected.profileId);
+    let stored: ReturnType<typeof AuthorityDatabase.inspectTimelinePageReadOnly>;
+    try {
+      stored = AuthorityDatabase.inspectTimelinePageReadOnly(person, selected.authorityPath, options.request);
+      selected.assertCurrent();
+    } finally { person.release(); }
     const page = { ...stored, records: stored.records.map(debugRecordView) };
-    return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
+    return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}${page.failureCauses.map(entry => `\nfailure ${entry.failureId} causes: ${[...entry.codes, ...entry.classes].join(", ") || "(none)"}`).join("")}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
   }
   if (subject !== "run") {
     throw new Error(
@@ -97,18 +107,40 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
   }
 
   const clock = input.clock ?? systemClock;
-  const stateRoot = admission.stateRoot;
-  const database = AuthorityDatabase.open(
-    admission,
-    { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-explain" },
-    clock,
-  );
+  const selected = captureSelectedProfileStorage(admission);
+  const person = admission.admitProfile(selected.profileId);
+  let database: AuthorityDatabase | undefined;
+  const close = (primary?: { error: unknown }): void => {
+    try { database?.close(); }
+    catch (error) {
+      const failure = retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { database, admission: person });
+      admission.retainSourceClosure(failure); person.retainSourceClosure(failure);
+      throw failure;
+    }
+    person.release();
+  };
+  let output: string;
   try {
+    selected.assertCurrent();
+    person.assertProfileRuntime();
+    const credentials = createCredentialStore({ admission: person, stateRoot: person.stateRoot });
+    database = AuthorityDatabase.open(person,
+      { path: selected.authorityPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-explain" }, clock,
+      undefined, undefined, undefined, credentials);
+    selected.assertCurrent();
     const view = explainRunFrom(database, identity);
-    return json ? JSON.stringify(view, null, 2) : renderExplainRun(view);
-  } finally {
-    database.close();
+    selected.assertCurrent();
+    output = json ? JSON.stringify(view, null, 2) : renderExplainRun(view);
+  } catch (error) {
+    if (hasUnprovedSourceClosure(error)) {
+      admission.retainSourceClosure(error); person.retainSourceClosure(error);
+      retainUnprovedSourceOwners(error, { database, admission: person });
+    }
+    else close({ error });
+    throw error;
   }
+  close();
+  return output;
 }
 
 /** Resolve either identity form, then assemble the view from authority. */
@@ -152,9 +184,26 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
     ? createReceiptService({ database, descriptors: [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...STEP_PROOF_DESCRIPTORS], runReader }).ensureReceipt(run.envelope.runId)
     : undefined;
 
+  const replayedCheckpoints = authority.timelineEvents.withReadSnapshot(() => {
+    const references: z.infer<typeof TimelineCheckpointReferenceSchema>[] = [];
+    const through = authority.timelineEvents.highWaterMark();
+    let after = 0;
+    while (after < through) {
+      const page = authority.timelineEvents.page({ runId, workflow: run.envelope.workflow, after, through, limit: 1000 });
+      for (const record of page) {
+        if (record.payload.kind === "checkpoint-replayed") references.push(record.payload.checkpoint);
+      }
+      const last = page.at(-1);
+      if (last === undefined) break;
+      after = last.cursor;
+    }
+    return references;
+  });
+
   const evidence: ExplainRunEvidence = {
     run,
     checkpoints: authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId),
+    replayedCheckpoints,
     writes: authority.writeIntents.listByRun(run.envelope.runId),
     ...(failure === undefined
       ? {}

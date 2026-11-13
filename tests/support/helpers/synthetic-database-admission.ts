@@ -6,8 +6,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import type { Clock } from "../../../src/rules/time/clock.js";
 
-type FixtureWorker = Readonly<{ database: RealAuthorityDatabase; workerId: string; generation: number | undefined;
-  processId: number; clock: Clock }>;
+type FixtureWorker = Readonly<{ database: RealAuthorityDatabase; workerId: string; clock: Clock }>;
 const boundProfiles = new Map<string, { admission: RuntimeAdmission; machine: RuntimeAdmission; credentials: CredentialStore;
   workers: Set<FixtureWorker> }>();
 const workerDatabases = new WeakSet<RealAuthorityDatabase>();
@@ -29,8 +28,8 @@ export function transferBoundFixtureWorkers(prior: RealAuthorityDatabase, admiss
   const successor = RealAuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "fixture-session-change" }, clock,
     undefined, undefined, undefined, credentials);
   for (const worker of retained) {
-    const member = successor.authority.workerSlots.get(worker.workerId), lease = successor.authority.workerLeases.get(worker.workerId);
-    if (member === undefined || member.retiredAt !== null || lease?.leaseGeneration !== worker.generation || lease?.processId !== worker.processId) {
+    const member = successor.authority.workerSlots.get(worker.workerId);
+    if (member === undefined || member.retiredAt !== null) {
       successor.close(); throw new Error("fixture-worker-lifetime-replaced");
     }
   }
@@ -89,39 +88,25 @@ export function registerBoundFixtureWorker(input: FixtureWorker & Readonly<{ pat
   }
   fixturePaths.set(input.database, input.path);
   if ([...entry.workers].some(worker => worker.workerId === input.workerId)) throw new Error("fixture-worker-owner-already-retained");
-  const worker = Object.freeze({ database: input.database, workerId: input.workerId, generation: input.generation,
-    processId: input.processId, clock: input.clock });
+  const worker = Object.freeze({ database: input.database, workerId: input.workerId, clock: input.clock });
   entry.workers.add(worker);
   if (workerDatabases.has(input.database)) return;
   workerDatabases.add(input.database);
+  // A fixture worker owns no process; releasing it requires that it holds no claimed run in validated current authority.
   syntheticWorkerStops.set(input.database, { path: input.path, stop: () => {
-const retained = [...entry.workers].filter(value => value.database === input.database);
-const failures: unknown[] = [];
-for (const owner of retained) {
-    try {
-      const lease = owner.database.authority.workerLeases.get(owner.workerId);
-      if (owner.generation === undefined && lease !== undefined) throw new Error("fixture-worker-lifetime-replaced");
-      // Closing this connection must not stop a replacement lifetime.
-      if (owner.generation !== undefined && (lease === undefined || lease.leaseGeneration !== owner.generation || lease.processId !== owner.processId)) continue;
-      owner.database.assertWorkerLifecycleRelease(owner.workerId);
-      if (owner.database.authority.workerControls.browsers(owner.workerId).some(browser => browser.health !== "closed")) {
-        throw new Error("fixture-worker-browser-closure-unproved");
-      }
-      if (lease !== undefined && lease.lifecycle.state !== "stopped") {
-        const now = owner.clock.now().toISOString();
-        const stopped = owner.database.authority.workerLeases.reportLifecycle({ workerId: owner.workerId,
-          leaseGeneration: lease.leaseGeneration, now, lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt,
-            stoppedAt: now, reason: "shutdown" } });
-        if (stopped.state !== "applied") throw new Error("fixture-worker-stop-conflict");
-      }
-    } catch (error) { failures.push(error); }
-  }
-if (failures.length !== 0) throw new AggregateError(failures, "fixture-worker-closure-unproved");
+    const owners = [...entry.workers].filter(owner => owner.database === input.database);
+    if (owners.length === 0) return;
+    const claimed = input.database.withAuthorityTransaction(repositories => owners
+      .filter(owner => repositories.runs.listByWorker(owner.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state))));
+    if (claimed.length !== 0) throw new Error("fixture-worker-claim-retained");
   } });
   const close = input.database.close.bind(input.database);
   let databaseClosed = false;
   input.database.close = () => {
-    if (!databaseClosed) stopSyntheticDatabaseWorkers(input);
+    if (!databaseClosed) {
+      try { stopSyntheticDatabaseWorkers(input); }
+      catch (error) { throw new AggregateError([error], "fixture-worker-closure-unproved", { cause: error }); }
+    }
     const retained = [...entry.workers].filter(value => value.database === input.database);
     if (!databaseClosed) { close(); databaseClosed = true; }
     for (const owner of retained) entry.workers.delete(owner);
@@ -133,9 +118,7 @@ export function boundFixtureWorker(database: RealAuthorityDatabase, path: string
   if (entry?.admission !== admission || database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())) return false;
   const owner = [...entry.workers].find(worker => worker.database === database && worker.workerId === workerId);
   if (owner === undefined) return false;
-  const lease = database.authority.workerLeases.get(workerId), slot = database.authority.workerSlots.get(workerId);
-  return slot?.retiredAt === null && lease !== undefined && lease.leaseGeneration === owner.generation && lease.processId === owner.processId
-    && lease.lifecycle.state !== "stopped";
+  return database.authority.workerSlots.get(workerId)?.retiredAt === null;
 }
 
 export function createBoundProfileCredentialStore(admission: RuntimeAdmission, options: Omit<Parameters<typeof productionCredentialStore>[0], "admission">): CredentialStore {

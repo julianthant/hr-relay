@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { admitOcrExtraction } from "../../../../src/models/ocr/extraction.js";
 import { accountOcrPages, bindManualOcrPageReading, bindOcrPageReading, OcrPageOutcomeSchema } from "../../../../src/models/workflows/ocr/page-accounting.js";
-import { buildOcrReviewSeed, OcrReviewSeedSchema, OcrRosterEvidenceSchema } from "../../../../src/models/workflows/ocr/review-seed.js";
+import { buildOcrReviewSeed, compactOcrReviewSeed, hydrateOcrReviewSeed, OcrReviewCheckpointSchema, OcrReviewSeedSchema,
+  OcrRosterEvidenceSchema } from "../../../../src/models/workflows/ocr/review-seed.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { DOCUMENT, donePage, READ_AT, READING_ID, SOURCE_RUN_ID, sourceFixture, submittedPage } from "../../../support/fixtures/ocr/source-pages.js";
 
@@ -104,6 +105,32 @@ describe("OCR explicit review seed", () => {
         answer.path === "employee.employeeId" ? { state: "read", path: answer.path, raw: "bad EID", value: "bad EID", confidence: 1 } : answer) },
     } } };
     assert.equal(OcrReviewSeedSchema.safeParse({ ...seed, accounting: { ...seed.accounting, outcomes: [altered] } }).success, false);
+  });
+
+  it("keeps readings, record fields and roster rows out of the checkpoint and hydrates it only from the same evidence", () => {
+    const { manifest, inputs } = sourceFixture(2);
+    const page = donePage(inputs[0], "Example, Avery"), unread = donePage(inputs[1]);
+    const failed = OcrPageOutcomeSchema.parse({ state: "failed", runId: unread.runId, itemId: unread.itemId, failureId: "00000000-0000-4000-8000-000000000777" });
+    const artifact = { ...DOCUMENT, mediaType: "text/csv" };
+    const rosterOf = (eid: string) => OcrRosterEvidenceSchema.parse({ artifact, readAt: READ_AT, rows: [{ sourceRow: 2, eid, name: "Example, Avery" }] });
+    const roster = rosterOf("10000002");
+    const seed = buildOcrReviewSeed({ sourceRunId: SOURCE_RUN_ID, accounting: accountOcrPages(manifest, READING_ID, [page, failed]), roster });
+    const checkpoint = compactOcrReviewSeed(seed);
+    assert.deepEqual(OcrReviewCheckpointSchema.parse(checkpoint), checkpoint);
+    assert.deepEqual(checkpoint.roster, { artifact, readAt: READ_AT });
+    assert.deepEqual(checkpoint.accounting.outcomes, [{ state: "done", runId: page.runId, itemId: page.itemId, extractionId: page.output.extractionId }, failed]);
+    assert.deepEqual(checkpoint.records.map(record => "fields" in record), [false]);
+    assert.deepEqual({ ...checkpoint, roster: seed.roster, accounting: seed.accounting, records: seed.records }, seed);
+    const reading = (extractionId: string) => extractionId === page.output.extractionId ? page.output : undefined;
+    assert.deepEqual(hydrateOcrReviewSeed(checkpoint, reading, roster), seed);
+    assert.throws(() => hydrateOcrReviewSeed(checkpoint, () => undefined, roster), /page reading that is not retained/u);
+    assert.throws(() => hydrateOcrReviewSeed(checkpoint, reading, null), /does not match/u);
+    assert.throws(() => hydrateOcrReviewSeed(checkpoint, reading, rosterOf("10000003")), /does not match/u);
+    const changed = donePage(inputs[0], "Example, Robin").output;
+    assert.throws(() => hydrateOcrReviewSeed(checkpoint, () => changed, roster), /does not match/u);
+    assert.throws(() => hydrateOcrReviewSeed({ ...checkpoint, records: [] }, reading, roster), /does not match/u);
+    assert.throws(() => hydrateOcrReviewSeed({ ...checkpoint, accounting: { ...checkpoint.accounting,
+      outcomes: checkpoint.accounting.outcomes.toReversed() } }, reading, roster), /original page in manifest order/u);
   });
 
   it("retains all-failed pages without inventing extracted records or classifications", () => {

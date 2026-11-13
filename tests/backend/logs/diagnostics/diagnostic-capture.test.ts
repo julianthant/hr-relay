@@ -131,7 +131,8 @@ it("admits simultaneous native captures in separate processes without duplicate 
       const db=AuthorityDatabase.open(admission,{path:${JSON.stringify(f.path)},busyTimeoutMs:5000,migrationOwner:'concurrent-diagnostic'},clock,undefined,undefined,undefined,credentials);
       const service=createDiagnosticCaptureService({authority:db.authority,artifacts:createContentAddressedArtifactWriter({admission}),clock,ids:{uuid:randomUUID}});
       try {await service.capture({...${JSON.stringify(f.request())},attachments:[{kind:'console-summary',mediaType:'application/json',sensitivity:'redacted',bytes:Buffer.from('shared concurrent bytes')}]});}
-      finally {db.close();admission.release();machine.release();await lifetime.close();process.disconnect();}`;
+      finally {db.close();admission.release();machine.release();}
+      process.exit(0);`;
     const a = child(source), b = child(source);
     await Promise.all([f.profile.lifetime.share(a.process), f.profile.lifetime.share(b.process)]);
     await Promise.all([a.exited, b.exited]);

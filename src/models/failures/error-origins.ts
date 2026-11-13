@@ -80,6 +80,11 @@ function ownCode(error: Error): string {
   return typeof code === "string" && /^[A-Z][A-Z0-9_]{0,127}$/u.test(code) ? code : "INTERNAL_FAILURE";
 }
 
+function sqliteReason(error: Error): { reason?: string } {
+  const errcode: unknown = "errcode" in error ? error.errcode : undefined;
+  return Number.isSafeInteger(errcode) ? { reason: `sqlite-errcode-${String(errcode)}` } : {};
+}
+
 function constructorName(error: Error): string {
   const prototype: unknown = Object.getPrototypeOf(error);
   const constructor: unknown = typeof prototype === "object" && prototype !== null ? Reflect.get(prototype, "constructor") : undefined;
@@ -87,20 +92,40 @@ function constructorName(error: Error): string {
   return CONSTRUCTOR_NAME.test(name) ? name : "Error";
 }
 
+/** A message's leading kebab-case token, at most 128 characters: the only message text a log may carry. */
+export function leadingKebabToken(message: string): string | undefined {
+  const token = /^([a-z0-9]+(?:-[a-z0-9]+)+)(?:[: {]|$)/u.exec(message)?.[1];
+  return token !== undefined && token.length <= 128 ? token : undefined;
+}
+
+/** The first leading kebab-case token along an error's cause chain, the error itself included. */
+export function causeChainToken(error: unknown): string | undefined {
+  for (let cause = error; cause instanceof Error; cause = cause.cause) {
+    const token = leadingKebabToken(cause.message);
+    if (token !== undefined) return token;
+  }
+  return undefined;
+}
+
 /** Serializes a cause chain to closed name/code/reason rows and build-relative frames; no message text passes. */
 export function serializeErrorCauses(error: unknown): readonly ErrorCause[] {
-  if (error === undefined || error === null) return [{ ...row("unknown-cause"), stack: ORIGINS["unknown-cause"].name }];
-  const pending: unknown[] = [error], seen = new Set<unknown>(), causes: ErrorCause[] = [];
+  return serializeTokenedErrorCauses(error).map(({ token: _token, ...cause }) => cause);
+}
+
+/** The rows of `serializeErrorCauses`, each with its own message's leading kebab token for boot-log reasons. */
+export function serializeTokenedErrorCauses(error: unknown): readonly (ErrorCause & { token: string | undefined })[] {
+  if (error === undefined || error === null) return [{ ...row("unknown-cause"), stack: ORIGINS["unknown-cause"].name, token: undefined }];
+  const pending: unknown[] = [error], seen = new Set<unknown>(), causes: (ErrorCause & { token: string | undefined })[] = [];
   while (pending.length > 0) {
     const cause = pending.shift();
     if (cause === undefined || cause === null || seen.has(cause)) continue;
-    if (causes.length === MAX_CAUSES - 1) { causes.push({ ...row("truncated"), stack: ORIGINS.truncated.name }); break; }
+    if (causes.length === MAX_CAUSES - 1) { causes.push({ ...row("truncated"), stack: ORIGINS.truncated.name, token: undefined }); break; }
     seen.add(cause);
-    if (!(cause instanceof Error)) { causes.push({ ...row("unknown-cause"), stack: ORIGINS["unknown-cause"].name }); continue; }
+    if (!(cause instanceof Error)) { causes.push({ ...row("unknown-cause"), stack: ORIGINS["unknown-cause"].name, token: undefined }); continue; }
     const selection = originOf(cause);
-    // An unbound error keeps its constructor name and a well-formed code; its message never passes.
-    const origin = selection === "unknown-error" ? { ...row(selection), name: constructorName(cause), code: ownCode(cause) } : row(selection);
-    causes.push({ ...origin, stack: [origin.name, ...frames(cause)].join("\n") });
+    // An unbound error keeps its constructor name, a well-formed code and an integer SQLite result code; its message never passes.
+    const origin = selection === "unknown-error" ? { ...row(selection), name: constructorName(cause), code: ownCode(cause), ...sqliteReason(cause) } : row(selection);
+    causes.push({ ...origin, stack: [origin.name, ...frames(cause)].join("\n"), token: leadingKebabToken(cause.message) });
     pending.push(cause.cause);
     if (cause instanceof AggregateError) pending.push(...(cause.errors as readonly unknown[]));
   }

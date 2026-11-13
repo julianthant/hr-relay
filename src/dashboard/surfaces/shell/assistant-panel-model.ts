@@ -106,7 +106,7 @@ export function useAssistantPanel({ producer, accountClient, ports, served }: { 
   const servedMode = served !== undefined;
   useEffect(() => {
     let current = true;
-    if (!servedMode) void accountClient.chatGptAccount().then(value => { if (current) setAccount(value); }, () => { if (current) setError('Could not load ChatGPT account. Open Settings to try again.'); });
+    if (!servedMode) void accountClient.chatGptAccount().then(value => { if (current) setAccount(value.account); }, () => { if (current) setError('Could not load ChatGPT account. Open Settings to try again.'); });
     return () => { current = false; generation.current += 1; };
   }, [accountClient, servedMode]);
   async function perform(work: () => Promise<AssistantConversation>): Promise<boolean> {

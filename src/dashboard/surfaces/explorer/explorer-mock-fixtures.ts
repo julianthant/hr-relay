@@ -137,13 +137,12 @@ export function buildEmergencyContactMock(scenario: MockScenario): MockFlow {
       ...(!duplicate ? [
         step(7, "Prepare the contact row", "UCPath", ...(existing === "fuzzy" ? [dry ? action("Dry run: skip demoting the existing primary contact") : action("Demote the existing fuzzy-name primary and read back that row")] : [action("Keep existing saved contacts")]), action("Reuse a blank contact row, or add a row when every existing row is named", "click")),
         step(8, "Fill the approved contact", "UCPath", choice("fixture-contact-address", "Contact address", scenario), form("contact-fill", "Emergency Contacts · contact details", "Fill form", rows("fill", [
-          ["primary", "Primary contact", "Checked", "contact-primary"], ["relationship", "Relationship", "Mapped UCPath relationship option", "contact-relationship"],
-          ["same-address", "Same address as employee", manual ? "Unchecked" : "Checked", "contact-address"],
+          ["relationship", "Relationship", "Mapped UCPath relationship option", "contact-relationship"],
           ...(manual ? [["address", "Street · city · state · postal code · country", "Approved contact address", "contact-address"] as const] : []),
           ["phone", "Cell · home · work phone", "Approved contact phones", "contact-phone"], ["contact", "Contact name", "Approved contact name · entered last", "contact-name"],
         ]))),
         step(9, "Verify the staged contact", "UCPath", action("Read back the contact name after every form postback"), action("Confirm the approved name remains present and every contact row has a name")),
-        ...(!dry ? [step(10, "Save and verify the contact", "UCPath", action("Click Save", "click"), action("Read the saved contact row back from the employee’s record"), action("Verify the contact name, relationship, primary flag and phone values"))] : []),
+        ...(!dry ? [step(10, "Save and verify the contact", "UCPath", action("Click Save", "click"), action("Read the saved contact row back from the employee’s record"), action("Verify the contact name, relationship and phone values"))] : []),
       ] : []),
       step(11, "Roll up the packet", "Local", action(duplicate ? "Report this person as skipped because the exact contact exists" : dry ? "Report the staged rehearsal; no contact save or primary demotion" : "Report each person’s own saved-contact proof", "compute"), action("Close the packet only after every approved person is terminal")),
     ],
@@ -162,6 +161,5 @@ const MOCK_SOURCES: Readonly<Record<string, FieldSource>> = {
   "contact-employee": contact("Employee ID · name", "employee"), "contact-name": contact("Contact name", "contact"), "contact-phone": contact("Cell · home · work phone", "phone"),
   "contact-address": contact("Contact address · employee address", "address"),
   "contact-relationship": { ...contact("Relationship", "relationship"), chain: [{ step: 3, title: "Approve the contact record", detail: "Approve the relationship transcribed from the form." }, { step: 8, title: "Map the relationship", detail: "Resolve the approved relationship to its UCPath dropdown option." }] },
-  "contact-primary": { origin: "Contact form convention", detail: "The single approved emergency contact is marked primary. A fuzzy-name existing primary is demoted only on the filing path." },
 };
 export function mockFieldSource(key: string): FieldSource | undefined { return MOCK_SOURCES[key]; }

@@ -78,7 +78,6 @@ export const BackupHealthWireSchema = z.discriminatedUnion("state", [
 export const StoragePendingCountsWireSchema = z.strictObject({
   pendingCommands: NonNegativeIntSchema,
   unresolvedWriteIntents: NonNegativeIntSchema,
-  leases: NonNegativeIntSchema,
   providerReservations: NonNegativeIntSchema,
   artifactOutbox: NonNegativeIntSchema,
 });

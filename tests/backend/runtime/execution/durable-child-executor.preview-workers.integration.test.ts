@@ -83,9 +83,9 @@ async function fixture(workerCount = 1) {
     target: { runId: target.envelope.runId, expectedVersion: target.version }, ...(type === "cancel" ? { reason: "Synthetic member cancellation" } : {}) });
   const claimNext = (worker: (typeof workers)[number]) => {
     const runtime = database.authority.runtimeConfig.get(); assert.ok(runtime);
-    const slot = database.authority.workerSlots.get(worker.workerId), lease = database.authority.workerLeases.get(worker.workerId); assert.ok(slot && lease);
+    const slot = database.authority.workerSlots.get(worker.workerId); assert.ok(slot);
     return worker.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: root.descriptor.id, workerId: worker.workerId,
-      workerLifetime: { membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration }, runtimeConfig: {
+      runtimeConfig: {
         generation: runtime.generation, settingsRevision: runtime.settingsRevision,
         settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
   };

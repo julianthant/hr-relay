@@ -4,7 +4,8 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase, inspectAuthorityBackupReadOnly } from "../../../support/helpers/synthetic-storage-admission.js";
-import { createWorkbookLibraryService, WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-error.js";
+import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { bindOcrRoster } from "../../../../src/models/workflows/ocr/roster.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
@@ -41,15 +42,15 @@ it("captures all roster data rows at the selected version and leaves keyed-empty
     service.operatorOperation(first.libraryId, "set-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
     const request = { mode: "all" as const, typeId: "ocr-roster", libraryId: first.libraryId, expectedVersion: 2,
       fields: ["eid", "fullName"] };
-    const reference = RunWorkbookAllRowsReferenceSchema.parse({ request, snapshot: service.snapshot(request) });
+    const reference = RunWorkbookAllRowsReferenceSchema.parse({ request, snapshot: repository.snapshot(request) });
     const captured = bindOcrRoster({ schemaHash: deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output"), value: reference }, clock.now().toISOString());
     assert.deepEqual(captured.rows.map(row => row.eid), ["10000001", "10000001", null]);
     assert.deepEqual(reference.snapshot.rows.map(row => row.matches[0].rowId), ["one", "two", "missing"]);
-    assert.deepEqual(service.snapshot({ typeId: "ocr-roster", libraryId: first.libraryId, keys: [], fields: ["eid", "fullName"] }).rows, []);
+    assert.deepEqual(repository.snapshot({ typeId: "ocr-roster", libraryId: first.libraryId, keys: [], fields: ["eid", "fullName"] }).rows, []);
     const current = service.read(first.libraryId);
     const changed = structuredClone(current.workbook); changed.sheets[0].rows[1].cells[1].value = "Example, Changed";
     service.save(first.libraryId, 2, changed);
-    assert.throws(() => service.snapshot(request), { code: "WORKBOOK_VERSION_CONFLICT" });
+    assert.throws(() => repository.snapshot(request), { code: "WORKBOOK_VERSION_CONFLICT" });
     assert.equal(captured.rows[0].name, "Example, Avery");
     assert.equal(captured.workbookVersion, 2);
   } finally { database.close(); }
@@ -102,4 +103,31 @@ it.each(["head", "creation-value", "creation-missing"])("refuses corrupt workboo
   } finally { raw.close(); }
   assert.throws(f.open, error => error instanceof Error && error.cause instanceof WorkbookLibraryError
     && error.cause.code === "WORKBOOK_STORAGE_CORRUPT");
+});
+
+it('accounts for workflow selections once, rolls them back atomically and validates them on normal readback', async () => {
+  const f = await fixture();
+  let database = f.open();
+  try {
+    const value = { workflowId: 'person-lookup', acceptedCommandId: '11111111-1111-4111-8111-111111111111', usedAt: clock.now().toISOString(),
+      sources: [{ libraryId: 'removed-or-stale', sheetId: 'people' }] };
+    const before = database.getMeta().authorityGeneration;
+    assert.equal(database.authority.workbooks.lastUsed(value.workflowId), undefined);
+    assert.equal(database.getMeta().authorityGeneration, before);
+    const first = database.authority.workbooks.rememberLastUsed(value);
+    assert.equal(database.getMeta().authorityGeneration, before + 1);
+    assert.deepEqual(database.authority.workbooks.rememberLastUsed(value), first);
+    assert.equal(database.getMeta().authorityGeneration, before + 1);
+    assert.throws(() => database.withAuthorityTransaction(repositories => {
+      repositories.workbooks.rememberLastUsed({ ...value, acceptedCommandId: '22222222-2222-4222-8222-222222222222' });
+      throw new Error('rollback-selection');
+    }), /rollback-selection/u);
+    assert.deepEqual(database.authority.workbooks.lastUsed(value.workflowId), first);
+    assert.equal(database.getMeta().authorityGeneration, before + 1);
+    database.close(); database = f.open();
+    assert.deepEqual(database.authority.workbooks.lastUsed(value.workflowId), first);
+  } finally { database.close(); }
+  const raw = new DatabaseSync(f.path);
+  try { raw.exec('UPDATE workflow_workbook_selections SET revision=revision+1'); } finally { raw.close(); }
+  assert.throws(f.open, /workflow_workbook_selections/u);
 });

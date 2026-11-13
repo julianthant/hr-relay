@@ -11,7 +11,7 @@ export const I9LookupCanonicalInput = defineCanonicalInput(I9LookupInputSchema, 
 }), [{ lastName: "Example", firstName: "Person" }]);
 export const i9LookupWorkflow = defineWorkflow({
   id: "i9-lookup",
-  requiredWorkbookTypeIds: [],
+  requiredWorkbookFields: [],
   version: 1,
   code: "il",
   label: "I-9 Lookup",

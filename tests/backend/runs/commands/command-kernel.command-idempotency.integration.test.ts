@@ -24,12 +24,12 @@ describe("command idempotency", () => {
     const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
     const command = startCommand(plan);
-    const first = harness.kernel.execute(command);
+    const first = await harness.kernel.executeStart(command);
     assert.equal(first.state, "applied");
     if (first.state !== "applied") return;
 
     const generationBefore = harness.database.getMeta().authorityGeneration;
-    const replayed = harness.kernel.execute(structuredClone(command));
+    const replayed = await harness.kernel.executeStart(structuredClone(command));
     assert.equal(replayed.state, "already-applied");
     if (replayed.state !== "already-applied") return;
     assert.deepEqual(replayed.affectedTargets, first.affectedTargets);

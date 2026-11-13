@@ -9,18 +9,59 @@ import { ASSISTANT_GRANT_RETIREMENT_MIGRATION, RETIRED_ASSISTANT_GRANT_TABLE } f
 import { OCR_REVIEW_MIGRATION } from "./ocr-review.js";
 import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION } from "./workbook-library-repository.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../models/dashboard/workbooks.js";
+import { CapturedWorkbookWriteSourceSchema, RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../models/dashboard/workbooks.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 27;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 29;
 /** Runs stored before this version may omit buildId. Later versions keep the strict envelope. */
 export const BUILD_ID_ENVELOPE_SCHEMA_VERSION = 22;
 /** Migration 22 deletes every run approved before envelopes carried a build id, through the native run deletion. */
 export const PRE_BUILD_RUN_DELETION_ID = "pre-build-run-deletion:v1";
+/** Migration 24 drops durable worker custody; the pool holds it in memory. */
+export const WORKER_CUSTODY_SCHEMA_VERSION = 24;
+/** Tables migration 24 drops; only stopped inspection of an older source still names them. */
+export const WORKER_CUSTODY_DROPPED_TABLES = ["worker_leases", "worker_controls", "browser_sessions"] as const;
+export const isWorkerCustodyDroppedTable = (table: string): table is typeof WORKER_CUSTODY_DROPPED_TABLES[number] => (WORKER_CUSTODY_DROPPED_TABLES as readonly string[]).includes(table);
+export const WORKER_CUSTODY_CONVERSION_ID = "worker-custody-forward-conversion:v1";
+export const WORKER_CUSTODY_SCAN_ID = "worker-custody-grammar-scan:v1";
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26] as const;
+/** Durable worker custody becomes in-memory pool state: leases, controls and browser rows go, slots keep ordinal, pool index and pause. */
+export const WORKER_CUSTODY_MIGRATION_STATEMENTS: readonly string[] = [
+  `CREATE TEMP TABLE worker_pause_capture AS SELECT worker_id, directive='pause' AS paused FROM worker_leases lease
+    WHERE lease_generation=(SELECT MAX(lease_generation) FROM worker_leases WHERE worker_id=lease.worker_id)`,
+  "DROP TABLE worker_controls",
+  "DROP TABLE browser_sessions",
+  "DROP TABLE worker_leases",
+  // Slot children keep their rows and keys; the commit-time foreign key check proves every slot came back.
+  "PRAGMA defer_foreign_keys=ON",
+  `CREATE TEMP TABLE worker_slot_capture AS SELECT slot.id, slot.workflow, slot.ordinal, json_extract(slot.payload_json,'$.poolIndex') AS pool_index,
+    COALESCE(pause.paused,0) AS paused, slot.retired_at, slot.created_at, slot.updated_at
+    FROM worker_slots slot LEFT JOIN worker_pause_capture pause ON pause.worker_id=slot.id`,
+  "DROP TABLE worker_slots",
+  `CREATE TABLE worker_slots (
+ id TEXT PRIMARY KEY, workflow TEXT NOT NULL REFERENCES worker_pools(workflow), ordinal INTEGER NOT NULL UNIQUE CHECK(ordinal>0),
+ pool_index INTEGER NOT NULL CHECK(pool_index>0), paused INTEGER NOT NULL CHECK(paused IN (0,1)),
+ retired_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+) STRICT`,
+  "INSERT INTO worker_slots SELECT * FROM worker_slot_capture",
+  `CREATE TRIGGER worker_slots_retained BEFORE DELETE ON worker_slots
+BEGIN SELECT RAISE(ABORT,'worker-slot-retirement-retained'); END`,
+  `CREATE TRIGGER worker_slots_identity BEFORE UPDATE ON worker_slots
+WHEN NEW.id IS NOT OLD.id OR NEW.workflow IS NOT OLD.workflow OR NEW.ordinal IS NOT OLD.ordinal OR NEW.pool_index IS NOT OLD.pool_index
+ OR NEW.created_at IS NOT OLD.created_at OR (OLD.retired_at IS NOT NULL AND NEW.retired_at IS NOT OLD.retired_at)
+BEGIN SELECT RAISE(ABORT,'worker-slot-identity-immutable'); END`,
+  `CREATE TRIGGER worker_slots_no_replace BEFORE INSERT ON worker_slots
+WHEN EXISTS(SELECT 1 FROM worker_slots WHERE id=NEW.id OR ordinal=NEW.ordinal)
+BEGIN SELECT RAISE(ABORT,'worker-slot-identity-conflict'); END`,
+  "DROP TABLE worker_slot_capture",
+  "DROP TABLE worker_pause_capture",
+  `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`,
+  `SELECT '${WORKER_CUSTODY_SCAN_ID}'`,
+];
+
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
@@ -957,6 +998,19 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   { version: 23, statements: [
     "CREATE INDEX timeline_worker_claim_idx ON timeline_events(json_extract(payload_json,'$.payload.event.workerId'),cursor) WHERE kind='run.claimed'",
   ] },
+  { version: WORKER_CUSTODY_SCHEMA_VERSION, statements: WORKER_CUSTODY_MIGRATION_STATEMENTS },
+  { version: 25, statements: [
+    `SELECT '${deriveSchemaHash(CapturedWorkbookWriteSourceSchema, "output")}'`,
+    `CREATE TABLE workflow_workbook_selection_upgrade_guard (refused INTEGER CONSTRAINT workflow_workbook_selection_pending_library_operation CHECK(refused=0)) STRICT`,
+    `INSERT INTO workflow_workbook_selection_upgrade_guard SELECT 1 FROM workbook_operations
+      WHERE receipt_json IS NULL AND json_extract(request_json,'$.source.kind')='operator' AND substr(operation_id,1,8)='library:' LIMIT 1`,
+    `DROP TABLE workflow_workbook_selection_upgrade_guard`,
+    `CREATE TABLE workflow_workbook_selections (
+      workflow_id TEXT PRIMARY KEY, revision INTEGER NOT NULL CHECK(revision>0),
+      accepted_command_id TEXT NOT NULL, used_at TEXT NOT NULL,
+      payload_json TEXT NOT NULL CHECK(json_valid(payload_json))
+    ) STRICT`,
+  ] },
   ASSISTANT_HISTORY_MIGRATION,
   ASSISTANT_EFFORT_SCALE_MIGRATION,
   ASSISTANT_ATTACHMENTS_MIGRATION,
@@ -964,29 +1018,32 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
-  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
-  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18 && toSchemaVersion !== 19 && toSchemaVersion !== 20 && toSchemaVersion !== 21 && toSchemaVersion !== 22 && toSchemaVersion !== 23 && toSchemaVersion !== 24 && toSchemaVersion !== 25 && toSchemaVersion !== 26)
+  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18 && toSchemaVersion !== 19 && toSchemaVersion !== 20 && toSchemaVersion !== 21 && toSchemaVersion !== 22 && toSchemaVersion !== 23 && toSchemaVersion !== 24 && toSchemaVersion !== 25 && toSchemaVersion !== 26 && toSchemaVersion !== 27 && toSchemaVersion !== 28)
     || !isSupportedStoppedAuthoritySchemaVersion(fromSchemaVersion) || fromSchemaVersion < 7 || fromSchemaVersion >= toSchemaVersion)) throw new Error('authority-upgrade-plan-target-unsupported');
   const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
   return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,
     toSchemaVersion, sourceContentFingerprint, statements })).digest("hex");
 }
 
-export function migrationTableNames(version: number): readonly (AuthorityTableName | "explorer_overrides" | typeof RETIRED_ASSISTANT_GRANT_TABLE)[] {
-  const names = [...(version < 10 ? ["explorer_overrides" as const] : []), ...AuthorityTableNameSchema.options.filter(name => (version >= 4
+export function migrationTableNames(version: number): readonly (AuthorityTableName | "explorer_overrides" | typeof WORKER_CUSTODY_DROPPED_TABLES[number] | typeof RETIRED_ASSISTANT_GRANT_TABLE)[] {
+  // Content fingerprints hash tables in this order, so pre-custody stores keep the dropped tables where their backups hashed them.
+  const names = AuthorityTableNameSchema.options.flatMap(name => name === "worker_slots" && version < WORKER_CUSTODY_SCHEMA_VERSION ? [name, ...WORKER_CUSTODY_DROPPED_TABLES] : [name]);
+  const tables = [...(version < 10 ? ["explorer_overrides" as const] : []), ...names.filter(name => (version >= 4
     || (name !== "workbook_library" && name !== "workbook_library_history"))
     && (version >= 8 || !name.startsWith("assistant_"))
     && (version >= 9 || name !== "assistant_model_preference")
-    && (version >= 24 || (name !== "assistant_conversations" && name !== "assistant_messages"))
-    && (version >= 26 || name !== "assistant_attachments")
+    && (version >= 26 || (name !== "assistant_conversations" && name !== "assistant_messages"))
+    && (version >= 28 || name !== "assistant_attachments")
     && (version >= 14 || name !== "exclusive_session_leases")
     && (version >= 17 || !name.startsWith("ocr_"))
+    && (version >= 25 || name !== "workflow_workbook_selections")
     && (version >= 18 || !["workbook_library_state", "workbook_library_actions", "workbook_library_snapshots"].includes(name))
     && (version >= 13 || !["workbook_creations", "workbook_types", "workbook_operations"].includes(name)))];
   // The retired grant table keeps its registry position (after settings) so predecessor content fingerprints are unchanged.
-  if (version < 8 || version >= 27) return names;
-  const at = names.indexOf("settings") + 1;
-  return [...names.slice(0, at), RETIRED_ASSISTANT_GRANT_TABLE, ...names.slice(at)];
+  if (version < 8 || version >= 29) return tables;
+  const at = tables.indexOf("settings") + 1;
+  return [...tables.slice(0, at), RETIRED_ASSISTANT_GRANT_TABLE, ...tables.slice(at)];
 }
 
 export function auditMigrationTableCoverage(): readonly string[] {

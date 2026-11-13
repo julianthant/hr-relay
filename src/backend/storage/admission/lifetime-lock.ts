@@ -293,6 +293,18 @@ export class RuntimeLifetimeLock {
     this.assertHeld(); assertSourceClosuresProved(this.#sourceFailures);
   }
 
+  /**
+   * Abnormal shutdown only: closes this root's listener copy without waiting on children still alive.
+   * Each survivor keeps its own copy until its real exit, so no new boot can start beside it.
+   */
+  async abandonUnexitedChildren(cause: unknown): Promise<readonly (number | undefined)[]> {
+    const survivors = [...this.#children].map(child => child.pid);
+    this.#sourceFailures.add(cause);
+    this.#closing ??= closeListener(this.#server);
+    await this.#closing;
+    return survivors;
+  }
+
   close(): Promise<void> {
     try { assertSourceClosuresProved(this.#sourceFailures); } catch (error) { return Promise.reject(error instanceof Error ? error : new Error("runtime source closure unproved", { cause: error })); }
     return this.#closing ??= (async () => {
@@ -309,12 +321,11 @@ export class RuntimeLifetimeLock {
 export class WorkerRuntimeLifetimeLock {
   readonly #server: Server;
   readonly #sourceFailures = new Set<unknown>();
-  readonly #disconnected: () => void;
-  #closing: Promise<void> | undefined;
   readonly #port: number;
   readonly #workspace: string;
-  private constructor(server: Server, port: number, workspace: string, disconnected: () => void) {
-    this.#server = server; this.#port = port; this.#workspace = workspace; this.#disconnected = disconnected;
+  /** It has no `close`: the OS releases this copy of the listener at process exit, the worker's last act. */
+  private constructor(server: Server, port: number, workspace: string) {
+    this.#server = server; this.#port = port; this.#workspace = workspace;
   }
   get port(): number { return this.#port; }
   retainSourceClosure(error: unknown): void { rememberUnprovedSourceClosure(this.#sourceFailures, error); }
@@ -352,7 +363,7 @@ export class WorkerRuntimeLifetimeLock {
         try {
           if (resolvePath(parsed.data.workspace) !== parsed.data.workspace || realpathSync(parsed.data.workspace) !== parsed.data.workspace) throw new Error("runtime-lifetime-workspace-invalid");
         } catch { handle.close(); failed(); return; }
-        resolve(new WorkerRuntimeLifetimeLock(handle, port, parsed.data.workspace, disconnected));
+        resolve(new WorkerRuntimeLifetimeLock(handle, port, parsed.data.workspace));
       };
       process.once("disconnect", disconnected);
       process.on("message", received);
@@ -369,7 +380,7 @@ export class WorkerRuntimeLifetimeLock {
 
   assertRuntimeAvailable(): void {
     this.assertHeld(); assertSourceClosuresProved(this.#sourceFailures);
-    if (!process.connected || this.#closing !== undefined) throw new RuntimeLifetimeLockReleasedError();
+    if (!process.connected) throw new RuntimeLifetimeLockReleasedError();
   }
 
   assertWorkspace(workspace: string): void {
@@ -379,15 +390,6 @@ export class WorkerRuntimeLifetimeLock {
 
   get workspace(): string { this.assertHeld(); return this.#workspace; }
 
-  close(): Promise<void> {
-    try { assertSourceClosuresProved(this.#sourceFailures); } catch (error) { return Promise.reject(error instanceof Error ? error : new Error("runtime source closure unproved", { cause: error })); }
-    return this.#closing ??= (async () => {
-      assertSourceClosuresProved(this.#sourceFailures);
-      process.removeListener("disconnect", this.#disconnected);
-      await closeListener(this.#server);
-      assertSourceClosuresProved(this.#sourceFailures);
-    })();
-  }
 }
 
 export const acquireRuntimeLifetimeLock = RuntimeLifetimeLock.acquire;

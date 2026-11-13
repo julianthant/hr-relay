@@ -98,7 +98,8 @@ async function seededOwners() {
   const lifecycle = new RunRecordService({ database, clock, ids: { uuid: randomUUID }, publishQueued: () => undefined });
   const notifications = composeNotificationRoutes({ database, clock, lifecycle, descriptors: { resolve: () => subjectDescriptor }, runDetailDeps: runDetail, assertCurrent() {},
     notificationObserver: { status: () => { throw new Error("observer unused by the snapshot"); } } as never,
-    notificationTarget: createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get }) });
+    notificationTarget: createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
+      command: commandId => database.authority.commands.readForNotice(commandId), bulk: () => undefined }) });
   const facts = assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup"));
   const deps = createAssistantPluginDeps({ database, runs: lifecycle, runDetail, assertCurrent() {}, facts: () => facts,
     search: () => search, notifications: () => notifications, workbooks: () => library,

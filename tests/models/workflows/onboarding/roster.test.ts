@@ -10,7 +10,8 @@ import { DRY_RUN_I9_PROFILE_ID, DRY_RUN_TRANSACTION_NUMBER } from "../../../../s
 const binding = OnboardingReadHirePlan.example.roster;
 const { sheetId: _sheetId, rowId: _rowId, ...referenceBinding } = binding;
 const row = { binding, references: { legalName: { firstName: "Fixture", lastName: "Hire", middleName: "" }, livedName: null } };
-const patch = { kind: "patch-reference", writeId: "onboarding-results", typeId: binding.workbookType, key: binding.rowKey.email,
+const patch = { kind: "patch-reference", writeId: "onboarding-results", typeId: binding.workbookType,
+  referenceDigest: binding.referenceDigest, key: binding.rowKey.email,
   values: [{ fieldId: "i9ProfileId", value: "900001" }] };
 describe("onboarding roster task boundaries", () => {
   it("declares strict run-start reference inputs and resolved or unresolved snapshot outputs", () => {

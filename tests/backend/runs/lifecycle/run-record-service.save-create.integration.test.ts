@@ -32,3 +32,26 @@ it("atomically saves a complete resolution, selects new groups, retains old runs
   assert.deepEqual(requireLifecycleApplied(f.service.create(createdRequest)), created);
   assert.deepEqual(counts(f), before); assert.equal(f.resolutions(), resolved);
 });
+
+it("keeps public create on the active snapshot when a caller supplies an older parent identity", async () => {
+  const f = await fixture();
+  const parentA = f.create({ shape: "operation", matchKey: "public-parent" });
+  const snapshotA = f.database.authority.configSnapshots.get(parentA.envelope.configSnapshotId); assert.ok(snapshotA);
+  assert.equal(f.save({ "timeouts.taskMs": { set: snapshotA.config.timeouts.taskMs + 1000 } }).state, "applied");
+  const snapshotB = selectActiveRunSettings(f.database.authority);
+  assert.notEqual(snapshotB.configSnapshotId, snapshotA.configSnapshotId);
+  assert.notEqual(snapshotB.fingerprint, snapshotA.fingerprint);
+  const request = f.request({ shape: "operation-member", matchKey: "public-child",
+    parent: { runId: parentA.envelope.runId, tracePrefix: parentA.envelope.traceId, edgeId: "members" } });
+  assert.equal(request.configSnapshotId, snapshotA.configSnapshotId);
+  assert.equal(request.configFingerprint, snapshotA.fingerprint);
+  const child = requireLifecycleApplied(f.service.create(request));
+  assert.deepEqual(child.envelope.parent, request.parent);
+  assert.equal(child.envelope.configSnapshotId, snapshotB.configSnapshotId);
+  assert.equal(child.envelope.configFingerprint, snapshotB.fingerprint);
+  assert.deepEqual(f.database.authority.runs.get(parentA.envelope.runId), parentA);
+  const rootB = f.create({ matchKey: "public-root-after-save" });
+  assert.equal(rootB.envelope.parent, undefined);
+  assert.equal(rootB.envelope.configSnapshotId, snapshotB.configSnapshotId);
+  assert.equal(rootB.envelope.configFingerprint, snapshotB.fingerprint);
+});

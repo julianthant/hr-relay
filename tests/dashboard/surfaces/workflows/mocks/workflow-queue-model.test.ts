@@ -12,7 +12,7 @@ describe("canonical workflow mock queue presentations", () => {
     const runs = mockRunSubset(all, run => WORKFLOW_SOURCES[run.workflowId] === "mock");
     const rows = mockQueueSurfaces(runs, anchor);
     expect(runs.some(run => WORKFLOW_SOURCES[run.workflowId] === "served")).toBe(false);
-    for (const id of ["i9-lookup", "sharepoint-download"]) {
+    for (const id of ["i9-lookup"]) {
       const child = runs.find(run => run.workflowId === id)!;
       const parent = runs.find(run => run.id === child.parentId)!;
       expect(parent.workflowId).toBe("onbase");

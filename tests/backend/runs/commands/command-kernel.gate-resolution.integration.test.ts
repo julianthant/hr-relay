@@ -78,10 +78,10 @@ describe("gate resolution", () => {
     const started = harness.kernel.execute(startCommand(plan));
     assert.equal(started.state, "applied");
     const runId = singleAppliedRunId(started);
-    const { workerId, workerLifetime } = testAdmittedWorker(harness.database, harness.clock, {
+    const { workerId } = testAdmittedWorker(harness.database, harness.clock, {
       path: join(harness.stateRoot, "state.db"), workflow: identityCheckDescriptor.id, poolIndex: 1, browserSystems: ["ucpath"],
     });
-    const claimed = harness.database.authority.runs.claimNext({ workflow: identityCheckDescriptor.id, workerId, workerLifetime, now: NOW });
+    const claimed = harness.database.authority.runs.claimNext({ workflow: identityCheckDescriptor.id, workerId, now: NOW });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") throw new Error("unreachable");
     const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
@@ -136,7 +136,7 @@ describe("gate resolution", () => {
     assert.equal(checkpointEvent.payload.workflow, identityCheckDescriptor.id);
     assert.equal(checkpointEvent.payload.attempt, claimed.run.envelope.attempt);
     assert.equal(Number(checkpointEvent.payload.claimGeneration), Number(claimed.run.claimGeneration));
-    const lifecycleBase = { workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW };
+    const lifecycleBase = { workerId, claimedAt: NOW, heartbeatAt: NOW };
     let version: number = claimed.run.version;
     for (const state of ["validating", "running"] as const) {
       const outcome = harness.database.authority.runs.transition({
@@ -195,8 +195,9 @@ describe("gate resolution", () => {
     if (result.state === "rejected") assert.equal(result.code, expectedCode);
     assert.deepEqual(harness.database.authority.runs.get(runId), beforeRun);
     assert.equal(harness.database.authority.gateResults.get(`${runId}:${command.target.gateId}`), undefined);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "rejected");
+    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration + 2);
     assert.deepEqual(harness.database.authority.timelineEvents.page({}), beforeEvents);
     return result;
   }
@@ -275,7 +276,7 @@ describe("gate resolution", () => {
     } finally { await world.dispose(); }
   });
 
-  it("rolls back gate result, resume and command when the required SQLite event cannot persist", async () => {
+  it("rolls back the gate result when its event cannot persist, then applies the admitted command", async () => {
     const harness = await createHarness();
     const staged = stageIdentityGateRun(harness);
     const gate = descriptorRuntimeNodes(identityCheckDescriptor)
@@ -290,8 +291,9 @@ describe("gate resolution", () => {
     assert.throws(() => harness.kernel.execute(command), /injected gate event failure/);
     assert.deepEqual(harness.database.authority.runs.get(staged.runId), before);
     assert.equal(harness.database.authority.gateResults.get(`${staged.runId}:identity-approval`), undefined);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(harness.database.getMeta().authorityGeneration, generation);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.equal(harness.database.getMeta().authorityGeneration, generation + 1);
     assert.deepEqual(harness.database.authority.timelineEvents.page({}), history);
     raw.exec("DROP TRIGGER injected_gate_event_failure");
     assert.equal(harness.kernel.execute(command).state, "applied");

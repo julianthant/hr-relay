@@ -48,21 +48,23 @@ describe("native Logs chronology and exact joins", () => {
   it("enriches the exact gate-open mirror once and refuses a contradictory decision identity", () => {
     const base = snapshot();
     const gate = { ...FIXTURE_IDENTITY_GATE, runId: RUN, expectedVersion: 1,
-      actions: FIXTURE_IDENTITY_GATE.actions.map(action => ({ ...action, expectedVersion: 1 })), native: native(6, "identity-approval") };
+      actions: FIXTURE_IDENTITY_GATE.actions.map(action => ({ ...action, expectedVersion: 1 })), order: 6 };
     const section = RunDetailSectionResponseSchema.parse({ section: "identity-gate", payload: { state: "available", value: gate } });
     const detail = RunDetailWireSchema.parse({ ...base.detail,
       gate: { state: "open", gateId: id(106), nodeId: "identity-approval", label: gate.label, openedAt: AT, revision: 1 },
       timeline: { steps: [...(base.detail.timeline.steps ?? []), { key: "identity", label: gate.label, state: "blocked",
         members: [{ nodeId: "identity-approval", categoryKey: "identity", label: gate.label, state: "blocked" }] }],
       events: [...base.detail.timeline.events, { noteId: id(106), sequence: 6, at: AT, label: gate.label, state: "blocked",
-        native: gate.native, categoryKey: "identity", notRun: { state: "absent", reason: "operator gate" } }] },
+        native: native(6, "identity-approval"), categoryKey: "identity", notRun: { state: "absent", reason: "operator gate" } }] },
     });
     const projected = projectRunLogs({ ...base, detail, sections: [section] }, client);
-    assert.deepEqual(projected.steps.map(step => step.id), [id(101), id(103), id(105), gate.gateId, id(107)]);
-    assert.equal(projected.timeline.find(stage => stage.id === "identity")?.stepId, gate.gateId);
+    assert.deepEqual(projected.steps.map(step => step.id), [id(101), id(103), id(105), gate.gateRef, id(107)]);
+    assert.equal(projected.timeline.find(stage => stage.id === "identity")?.stepId, gate.gateRef);
     const contradictory = RunDetailSectionResponseSchema.parse({ section: "identity-gate", payload: {
-      state: "available", value: { ...gate, native: { ...gate.native, order: 8 } } } });
+      state: "available", value: { ...gate, order: 7 } } });
     assert.throws(() => projectRunLogs({ ...base, detail, sections: [contradictory] }, client), /DECISION_IDENTITY_DUPLICATE/);
+    const wrongNode = RunDetailWireSchema.parse({ ...detail, gate: { ...detail.gate, nodeId: "another-gate" } });
+    assert.throws(() => projectRunLogs({ ...base, detail: wrongNode, sections: [section] }, client), /GATE_IDENTITY_MISMATCH/);
   });
 
   it("places a parked decision by its event and refuses missing native evidence", () => {

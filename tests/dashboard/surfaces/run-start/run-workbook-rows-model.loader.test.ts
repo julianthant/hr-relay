@@ -6,11 +6,9 @@ import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js"
 import { DashboardClientError, networkError, schemaError } from "../../../../src/dashboard/client/errors.js";
 import { SETTINGS_READ_DEADLINE_MS } from "../../../../src/dashboard/client/read-deadline.js";
 import { WorkbookLibraryVersionSchema, WorkbookLibraryVersionViewSchema } from "../../../../src/models/dashboard/workbook-library.js";
-import { WorkbookTypeSchema } from "../../../../src/models/dashboard/workbooks.js";
 import { useWorkbookRows } from "../../../../src/dashboard/surfaces/run-start/run-workbook-rows-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-const type = WorkbookTypeSchema.parse({ id: "row-type", name: "Rows", keyFieldId: "email", fields: ["email"], defaultWorkbookId: "library" });
 const version = (id: string) => WorkbookLibraryVersionSchema.parse({ id, name: id, version: 1, snapshotId: id, savedAt: "2026-11-01T00:00:00Z", source: "operator" });
 const first = version("first"), second = version("second"), authority = {};
 const view = (id: string, rows: string[] = [id]) => WorkbookLibraryVersionViewSchema.parse({ libraryId: "library", version: version(id), workbook: {
@@ -24,7 +22,7 @@ let observed: ReturnType<typeof useWorkbookRows> | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; observed = undefined; document.body.replaceChildren(); vi.useRealTimers(); });
 type Props = { client: Parameters<typeof useWorkbookRows>[0]; identity?: string; authority?: object; ready?: boolean; version?: typeof first };
 function Probe(props: Props) {
-  observed = useWorkbookRows(props.client, props.identity ?? "workflow/catalog-revision-1/library", props.authority ?? authority, true, props.ready ?? true, "library", props.version ?? first, type);
+  observed = useWorkbookRows(props.client, props.identity ?? "workflow/catalog-revision-1/library", props.authority ?? authority, true, props.ready ?? true, "library", props.version ?? first, "email", "sheet");
   return null;
 }
 async function render(props: Props) {

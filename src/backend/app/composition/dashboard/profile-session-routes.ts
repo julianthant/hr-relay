@@ -12,6 +12,7 @@ CancelProfileOnboardingRequestSchema,
 CompleteProfileOnboardingRequestSchema, ReopenProfileOnboardingBrowserRequestSchema,
 ConfirmProfileOnboardingDuoRequestSchema,DeleteProfileAccountRequestSchema,PROFILE_ONBOARDING_STATE,
 ProfileLoginRequestSchema,
+ProfileFirstRunCheckSchema,
 ProfileOnboardingStateSchema,
 ProfileSignUpRequestSchema,
 PublicProfileStateSchema,
@@ -20,8 +21,8 @@ type PublicProfileState
 } from "../../../../models/profiles/public-profile.js";
 import { systemClock } from "../../../../rules/time/clock.js";
 import { appendEmergencyFault } from "../../../logs/emergency-faults.js";
-import { serializeErrorCauses } from "../../../../models/failures/error-origins.js";
-import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
+import { serializeTokenedErrorCauses } from "../../../../models/failures/error-origins.js";
+import { ProfileRuntimeStartFailedError,ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { type ActiveProfileSession } from "../../../profiles/profile-session.js";
 import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
 import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
@@ -37,10 +38,15 @@ import { failureStatus } from "../../../transports/http/routes/failure-status.js
 import { operatorMutationIngressGuard } from "../../../transports/http/routes/operator-mutation-ingress.js";
 import { openStaticBundle,staticBundleHandler } from "../../../transports/http/static-bundle.js";
 import { probePrimaryDisplay } from "../../host/primary-display.js";
+import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
+import { ProfileBrowserRootRefusalError } from "../../../storage/admission/admission-identity.js";
+import { probeOwnedViteServer } from "../../host/local-vite-probe.js";
 import { RuntimeCustodyUncertainError,composeProfileRuntime } from "../storage-compose.js";
 import { DashboardFrontendModeSchema,PackageVersionSchema,type DashboardComposeInput,type DashboardRuntime } from "./runtime-contracts.js";
 import { composeDashboardRuntime } from "./runtime-startup.js";
 import { composeApplicationStop,retainPublicFailureCustody } from "./shutdown-custody.js";
+
+const FRONTEND_PROBE_MS = 2000;
 
 export async function composeDashboardApplication(input: DashboardComposeInput): Promise<Readonly<{ port: number; shutdownRequested: Promise<void>; stop(): Promise<void> }>> {
   let resolveApplicationQuit: () => void = () => undefined;
@@ -85,7 +91,8 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   type Selection = { sessionId: string; token: string; profileId: string; epoch: number; runtime: DashboardRuntime };
   let selection: Selection | undefined;
   let onboardingSelection: { sessionId: string; token: string; operationId: string; profileId: string } | undefined;
-  let completedDraft: { operationId: string; sessionId: string } | undefined;
+  let completedDraft: { operationId: string; sessionId: string; profileId: string; epoch: number;
+    response: { status: ReturnType<typeof publicFailure>["status"] | 200; body: PublicProfileState }; activeSessionId?: string } | undefined;
   let pending: { sessionId: string; operationId: string; profileId: string; epoch: number; runtime: DashboardRuntime; deleting: boolean } | undefined;
   let transitioning = false;
   const retainedCustodyFailures: unknown[] = [];
@@ -126,13 +133,13 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   const publicFailure = (error: Error) => {
     const custodyUnproved = retainPublicFailureCustody(error, retainedCustodyFailures);
     const mapped = failureStatus(error);
-    const causes = mapped.status === 500 || error.cause !== undefined || mapped.body.code === "CREDENTIAL_CONVERSION_REQUIRED" ? serializeErrorCauses(error) : [];
+    const causes = mapped.status === 500 || error.cause !== undefined || mapped.body.code === "CREDENTIAL_CONVERSION_REQUIRED" ? serializeTokenedErrorCauses(error) : [];
     for (const cause of causes) {
       const diagnostic = new Error(cause.name);
       diagnostic.name = cause.name;
       diagnostic.stack = cause.stack;
       appendEmergencyFault({ stateRoot: machine.stateRoot, build: appVersion, code: cause.code, error: diagnostic,
-        area: "profile-request", reason: "profile-request-cause", now: clock.now() });
+        area: "profile-request", reason: cause.token ?? "profile-request-cause", now: clock.now() });
     }
     if (error instanceof ProfileSessionRefusedError) return { status: 409 as const,
       body: PublicProfileStateSchema.parse({ state: "refused", code: error.code }) };
@@ -140,8 +147,16 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       code: custodyUnproved ? "RUNTIME_CUSTODY_UNCERTAIN" : mapped.body.code }) };
   };
   app.onError((error, c) => { const failure = publicFailure(error); return c.json(failure.body, failure.status); });
+  let frontendOwned = false;
   app.use("/api/v1/profile/*", async (c, next) => {
     if (!loopback(c.req.raw)) return c.json(PublicProfileStateSchema.parse({ state: "refused", code: "PROFILE_SESSION_STALE" }), 403);
+    // Vite proxies with the browser's Host, so a dev-frontend request names the frontend port; direct BFF requests are not probed.
+    if (frontend === "vite-dev" && !frontendOwned && new URL(`http://${c.req.header("host") ?? ""}`).port === String(input.isolation.frontendPort)) {
+      const probe = await (input.frontendProbe ?? probeOwnedViteServer)({ port: input.isolation.frontendPort, signal: c.req.raw.signal,
+        deadlineMonotonicMs: clock.monotonicMs() + FRONTEND_PROBE_MS, clock, ownerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] });
+      if (probe.state !== "owned") return c.json(PublicProfileStateSchema.parse({ state: "refused", code: "DASHBOARD_FRONTEND_NOT_OWNED" }), 403);
+      frontendOwned = true;
+    }
     return next();
   });
   app.get("/api/v1/profile/state", c => {
@@ -160,8 +175,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: false, resumable: true }));
     }
     const active = current(c.req.raw);
-    return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: active.profileId, epoch: active.epoch,
-      duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.duoState }));
+    return c.json(PublicProfileStateSchema.parse(activeState(active.profileId, active.epoch)));
   });
   app.use("/api/v1/profile/sign-in", operatorMutationIngressGuard);
   app.use("/api/v1/profile/resume", operatorMutationIngressGuard);
@@ -169,7 +183,15 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.use("/api/v1/profile/logout", operatorMutationIngressGuard);
   app.use("/api/v1/profile/delete-account", operatorMutationIngressGuard);
   app.use("/api/v1/profile/onboarding/*", operatorMutationIngressGuard);
-  const mountActive = async (result: ActiveProfileSession): Promise<PublicProfileState> => {
+  const activeState = (profileId: string, epoch: number) => {
+    const row = machine.readProfileRegistry().profiles.find(value => value.profileId === profileId);
+    if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+    return { state: "active" as const, profileId, epoch, duoState: row.duoState,
+      account: { name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName, lastSignedInAt: row.lastSignedInAt } };
+  };
+  const mountActive = async (result: ActiveProfileSession, onInitialPreflight = input.onInitialPreflight): Promise<PublicProfileState> => {
+    const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
+    if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     const guarded = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
     guarded.use("*", async (c, next) => {
       try { current(c.req.raw); } catch (error) {
@@ -186,12 +208,14 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     });
     let selectedApp: ReturnType<typeof createDashboardApp> | undefined;
     guarded.all("*", c => { if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); return dispatchMountedRequest(selectedApp, c.req.raw); });
-    const runtime = await composeDashboardRuntime({ ...input, requestApplicationQuit: resolveApplicationQuit, profile: { runtime: profileRuntime, token: result.token },
-      applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath } });
+    const runtime = await composeDashboardRuntime({ ...input, onInitialPreflight, requestApplicationQuit: resolveApplicationQuit, profile: { runtime: profileRuntime, token: result.token },
+      applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath } })
+      .catch((error: unknown) => {
+        if (error instanceof RuntimeCustodyUncertainError || error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError) throw error;
+        throw new ProfileRuntimeStartFailedError({ cause: error });
+      });
     selection = { sessionId: randomUUID(), token: result.token, profileId: result.profileId, epoch: result.epoch, runtime };
-    const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
-    if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-    return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
+    return activeState(result.profileId, result.epoch);
   };
   let resumeInFlight: Promise<void> | undefined;
   const activate = async (request: Request, mode: "signup" | "signin" | "resume"): Promise<PublicProfileState> => {
@@ -202,8 +226,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       if (mode !== "resume") throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
       const { token, profileId, epoch } = selection;
       profileRuntime.assertCurrent(token);
-      return PublicProfileStateSchema.parse({ state: "active", profileId, epoch,
-        duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.duoState });
+      return PublicProfileStateSchema.parse(activeState(profileId, epoch));
     }
     transitioning = true;
     let settled: () => void = () => undefined;
@@ -287,22 +310,41 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   });
   app.post("/api/v1/profile/onboarding/complete", async c => {
     const request = CompleteProfileOnboardingRequestSchema.parse(await c.req.json());
-    const completedSelection = selection;
-    if (completedSelection !== undefined && completedDraft?.operationId === request.operationId && cookieOf(c.req.raw, onboardingCookieName) === completedDraft.sessionId) {
-      c.header("set-cookie", `${cookieName}=${completedSelection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
-      return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: completedSelection.profileId, epoch: completedSelection.epoch,
-        duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === completedSelection.profileId)?.duoState }));
+    const completed = completedDraft;
+    if (completed?.operationId === request.operationId && cookieOf(c.req.raw, onboardingCookieName) === completed.sessionId) {
+      const registry = machine.readProfileRegistry();
+      if (transitioning || registry.activeProfileId !== completed.profileId || registry.sessionGeneration !== completed.epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+      if (completed.response.body.state === "active") {
+        if (selection === undefined || selection.sessionId !== completed.activeSessionId || selection.profileId !== completed.profileId || selection.epoch !== completed.epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+        profileRuntime.assertCurrent(selection.token);
+        c.header("set-cookie", `${cookieName}=${selection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+      }
+      return c.json(completed.response.body, completed.response.status);
     }
     const draft = currentOnboarding(c.req.raw, request.operationId);
     transitioning = true;
     try {
       const active = await profileRuntime.session.completeOnboarding(draft.token, request.operationId);
       onboardingSelection = undefined;
-      const result = await mountActive(active);
-      completedDraft = { operationId: request.operationId, sessionId: draft.sessionId };
-      if (selection === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-      c.header("set-cookie", `${cookieName}=${selection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
-      return c.json(result);
+      let initialReport: Parameters<NonNullable<DashboardComposeInput["onInitialPreflight"]>>[0] | undefined;
+      const firstRunCheck = () => ProfileFirstRunCheckSchema.parse({ scope: "local-startup", profileId: active.profileId, epoch: active.epoch,
+        ...(initialReport === undefined ? { state: "unavailable", code: "PROFILE_FIRST_RUN_CHECK_UNAVAILABLE" }
+          : { state: initialReport.results.some(result => result.status === "fail") ? "failed" : "passed", report: initialReport }) });
+      const response = await mountActive(active, report => { initialReport = report; input.onInitialPreflight?.(report); }).then(result =>
+        ({ status: 200 as const, body: PublicProfileStateSchema.parse({ ...result, firstRunCheck: firstRunCheck() }) }), (error: unknown) => {
+        if (!(error instanceof Error)) throw error;
+        const failure = publicFailure(error);
+        return { status: failure.status, body: PublicProfileStateSchema.parse({ ...failure.body, firstRunCheck: firstRunCheck() }) };
+      });
+      let activeSessionId: string | undefined;
+      if (response.body.state === "active") {
+        if (selection === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+        activeSessionId = selection.sessionId;
+        c.header("set-cookie", `${cookieName}=${selection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+      }
+      completedDraft = { operationId: request.operationId, sessionId: draft.sessionId, profileId: active.profileId, epoch: active.epoch,
+        response, ...(activeSessionId === undefined ? {} : { activeSessionId }) };
+      return c.json(response.body, response.status);
     } finally { transitioning = false; }
   });
   const endSession = async (c: Context, deleting: boolean) => {

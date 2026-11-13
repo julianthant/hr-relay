@@ -20,7 +20,7 @@ export function notificationsPlugin(deps: AssistantPluginDeps): AssistantPlugin 
       context.assertCurrent();
       const listed = rows.filter(row => !unreadOnly || row.state === "unread").toSorted((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)).slice(0, MAX_ITEMS);
       return JsonValueSchema.parse({ items: listed.map(row => ({ note: context.references.issue("N", row.notificationId, row.title),
-        trigger: row.kind === "backfill-gap" ? "backfill-gap" : row.trigger, severity: row.severity, state: row.state, at: row.occurredAt })),
+        trigger: row.kind === "notification" ? row.trigger : row.kind, severity: row.severity, state: row.state, at: row.occurredAt })),
       counts: { total: rows.length, unread: rows.filter(row => row.state === "unread").length } });
     },
   }] };

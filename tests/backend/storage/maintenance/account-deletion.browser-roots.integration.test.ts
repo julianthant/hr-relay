@@ -102,7 +102,7 @@ for (const partial of [false, true]) it(`continues a captured predecessor deleti
     assert.equal(existsSync(f.journal), false); assert.equal(existsSync(f.root), false);
     assert.deepEqual(f.machine.readProfileRegistry().profiles.map(row => row.profileId), [f.other.profileId]);
     assert.deepEqual(fixedLayoutEntries(f.otherRoot), other);
-    assert.equal(BrowserRootsSchema.parse(JSON.parse(readFileSync(f.browserPath, "utf8"))).schemaVersion, 2);
+    assert.equal(BrowserRootsSchema.parse(JSON.parse(readFileSync(f.browserPath, "utf8"))).schemaVersion, 3);
   } finally { spy.mockRestore(); syncBuiltinESMExports(); await f.close(); }
 });
 

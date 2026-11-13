@@ -25,7 +25,7 @@ const prepare = WriteFixturePrepare;
 const commit = defineTaskContract({ ...commitDefinition, errorCodes: ["CONTACT_SAVE_UNAVAILABLE"] });
 const compiled = compileWorkflow(defineWorkflow({ id: "fixture-transaction-bind-refusal", version: 1, code: "fbr", label: "Transaction bind refusal",
   icon: "Users", category: "operations", input, canonicalInput: defineCanonicalInput(input, input, [{ eid: WRITE_FIXTURE_EID }]),
-  requiredWorkbookTypeIds: [], inputSubject: "eid", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
+  requiredWorkbookFields: [], inputSubject: "eid", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {}, details: [], scenarios: ["fixture-transaction-bind-refusal/happy"], identity: { matchKey: value => value.eid },
   presentation: { title: value => value.eid }, role: defineWorkflowRole({ kind: "standalone" }),
   steps: author => {

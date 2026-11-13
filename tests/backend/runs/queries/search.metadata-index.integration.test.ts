@@ -7,7 +7,7 @@ import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/w
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
-import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
@@ -147,14 +147,14 @@ it("publishes declared subject names, authentic recorded actors and typed failur
     const { workerId } = testAdmittedWorker(f.db, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: ["ucpath"] });
     const claimMember1 = f.db.authority.workerSlots.get(workerId);
     if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-    const claimed = f.db.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(f.db, "person-lookup", claimMember1.poolIndex).workerLifetime, workflow: "person-lookup", workerId, now: NOW });
+    const claimed = f.db.authority.runs.claimNext({ workflow: "person-lookup", workerId, now: NOW });
     assert.ok(claimed.state === "claimed");
     const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
     const validating = f.db.authority.runs.transition({ runId: queued.envelope.runId, expectedVersion: claimed.run.version, claim, now: NOW,
-      lifecycle: { state: "validating", workerId, workerLifetime: testWorkerLifetime(f.db, "person-lookup", claimMember1.poolIndex).workerLifetime, claimedAt: NOW, heartbeatAt: NOW } });
+      lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW } });
     assert.ok(validating.state === "applied");
     const running = f.db.authority.runs.transition({ runId: queued.envelope.runId, expectedVersion: validating.run.version, claim, now: NOW,
-      lifecycle: { state: "running", workerId, workerLifetime: testWorkerLifetime(f.db, "person-lookup", claimMember1.poolIndex).workerLifetime, claimedAt: NOW, heartbeatAt: NOW, currentNodeId: "searching" } });
+      lifecycle: { state: "running", workerId, claimedAt: NOW, heartbeatAt: NOW, currentNodeId: "searching" } });
     assert.ok(running.state === "applied");
     const run = running.run, e = run.envelope;
     f.db.registerRunSearchDeclarations([{ workflow: e.workflow, version: e.descriptorVersion, contractFingerprint: e.contractFingerprint, subjectProjection: descriptor.subjectProjection }]);
@@ -228,12 +228,12 @@ it("selects each reachable lifecycle, shape, retained version and mode without n
       f.db.authority.runs.enqueue(queued);
       const search=()=>f.service().search({q:"",facets:{workflow:queued.envelope.workflow,state:target,version:7,dryRun:queued.envelope.dryRun,shape:queued.envelope.shape,system:"ucpath"}});
       if(target!=="queued") {
-        const {workerId,workerLifetime}=testAdmittedWorker(f.db,f.clock,{path:f.path,workflow:queued.envelope.workflow,poolIndex:1,browserSystems:["ucpath"]});
-        const claim=f.db.authority.runs.claimNext({workflow:queued.envelope.workflow,workerId,workerLifetime,now:queued.createdAt});
+        const { workerId }=testAdmittedWorker(f.db,f.clock,{path:f.path,workflow:queued.envelope.workflow,poolIndex:1,browserSystems:["ucpath"]});
+        const claim=f.db.authority.runs.claimNext({workflow:queued.envelope.workflow,workerId,now:queued.createdAt});
         assert.equal(claim.state,"claimed");if(claim.state!=="claimed")throw new Error("claim failed");
         let run=claim.run;
         const advance=(lifecycle:unknown)=>{const result=f.db.authority.runs.transition({runId:run.envelope.runId,expectedVersion:run.version,claim:{workerId,claimGeneration:run.claimGeneration},lifecycle,now:queued.createdAt});assert.equal(result.state,"applied");if(result.state!=="applied")throw new Error("transition failed");run=result.run;};
-        const ownership={workerId,workerLifetime,claimedAt:queued.createdAt,heartbeatAt:queued.createdAt};
+        const ownership={workerId,claimedAt:queued.createdAt,heartbeatAt:queued.createdAt};
         if(target!=="claimed") {
           advance({state:"validating",...ownership});
           if(target!=="validating") {

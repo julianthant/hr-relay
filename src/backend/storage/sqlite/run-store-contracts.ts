@@ -1,6 +1,5 @@
 import { ContinuationRetryOwnerSchema } from "./delegation-contracts.js";
 import { RunClaimTokenSchema } from "../../../models/run/worker.js";
-import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
 
 
 
@@ -8,14 +7,12 @@ import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.j
 
 
 
-import { WorkerLifecycleBindingSchema } from "../../../models/run/worker-control.js";
 
 import { ParkedWriteResolutionBindingSchema } from "../../../rules/write-safety/write-safety.js";
 
 import { z } from "zod";
 import {
   ActorIdSchema,
-  BrowserSystemIdSchema,
   CommandIdSchema,
   DiagnosticBundleIdSchema,
   FingerprintSchema,
@@ -32,13 +29,6 @@ import {
   WriteAttemptIdSchema,
 } from "../../../rules/identity/ids.js";
 import { StartPlanRecordSchema } from "../../../models/run/start-plan.js";
-import {
-  WorkerControlSchema,
-  WorkerClaimLifetimeSchema,
-  WorkerBrowserSystemsSchema,
-  WorkerLeaseRecordSchema,
-  WorkerLifecycleSchema,
-} from "../../../models/run/worker.js";
 import { WorkerPoolRecordSchema } from "../../../models/run/worker-pool.js";
 import { RunDisplayNameSchema } from "../../../rules/commands/commands.js";
 import { CheckpointPatchSchema } from "../../../models/workflow/checkpoint.js";
@@ -58,7 +48,6 @@ import {
   SuccessTerminalizationRequestSchema,
 } from "./run-terminal-contracts.js";
 
-export { WorkerClaimLifetimeSchema } from "../../../models/run/worker.js";
 
 export class ApplicationAdmissionRefusedError extends Error {
   readonly code = "APPLICATION_ADMISSION_REFUSED";
@@ -77,7 +66,6 @@ export const CanonicalAcknowledgePauseRequestSchema = z.strictObject({ commandId
   claim: RunClaimTokenSchema });
 
 export const RunClaimRequestSchema = z.strictObject({
-  workerLifetime: WorkerClaimLifetimeSchema.optional(),
   workflow: WorkflowIdSchema,
   workerId: WorkerIdSchema,
   now: IsoInstantSchema,
@@ -233,7 +221,6 @@ export const CanonicalListRunsRequestSchema = z.strictObject({
 });
 
 export const CanonicalClaimNextRequestSchema = z.strictObject({
-  workerLifetime: WorkerClaimLifetimeSchema.optional(),
   commandId: CommandIdSchema,
   workflow: WorkflowIdSchema,
   workerId: WorkerIdSchema,
@@ -261,10 +248,7 @@ export const CanonicalWriteResolutionTransitionRequestSchema = z.strictObject({
   startAt: NodeIdSchema,
 });
 
-export const CancellationSourceSchema = z.union([
-  z.strictObject({ commandId: CommandIdSchema, rootRunId: RunIdSchema }),
-  z.strictObject({ kind: z.literal("worker-reset"), commandId: CommandIdSchema, rootRunId: RunIdSchema }),
-]);
+export const CancellationSourceSchema = z.strictObject({ commandId: CommandIdSchema, rootRunId: RunIdSchema });
 
 export const CanonicalTransitionRequestSchema = z.union([
   z.strictObject({ ...CanonicalVersionIdentityFields, ocrReviewRevision: PositiveIntSchema, sourceCommandId: CommandIdSchema }),
@@ -301,7 +285,6 @@ export const CanonicalSuccessTerminalizeRequestSchema = z.strictObject({
 });
 
 export const CanonicalCancellationTerminalizeRequestSchema = z.strictObject({
-  cancellationSource: CancellationSourceSchema.optional(),
   kind: z.literal("cancelled"),
   commandId: CommandIdSchema,
   runId: RunIdSchema,
@@ -429,58 +412,7 @@ export const StartPlanConsumeOutcomeSchema = z.discriminatedUnion("state", [
 ]);
 export type StartPlanConsumeOutcome = z.infer<typeof StartPlanConsumeOutcomeSchema>;
 
-/* ── worker leases (ref execution-and-sessions ) ───────────────────────────────────────────── */
-
-export const WorkerStandingRecoveryRequestSchema = z.strictObject({
-  commandId: CommandIdSchema, binding: WorkerLifecycleBindingSchema,
-  previous: z.strictObject({ state: z.enum(["idle", "paused"]), directive: z.enum(["run", "pause"]), observedAt: IsoInstantSchema }),
-  now: IsoInstantSchema,
-}).refine(value => value.commandId === value.binding.commandId
-  && value.binding.operation.kind === "retry" && value.binding.operation.mode === "browserless", "worker-standing-recovery-binding-invalid");
-
-export const WorkerStartRequestSchema = z.strictObject({
-  commandId: CommandIdSchema.optional(),
-  workerId: WorkerIdSchema,
-  workflow: WorkflowIdSchema,
-  browserSystems: WorkerBrowserSystemsSchema,
-  processId: PositiveIntSchema,
-  requestedBy: ActorIdSchema,
-  now: IsoInstantSchema,
-});
-
-export const WorkerStartOutcomeSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("started"), lease: WorkerLeaseRecordSchema }),
-
-  z.strictObject({ state: z.literal("conflict"), lease: WorkerLeaseRecordSchema, message: z.string().min(1) }),
-]);
-export type WorkerStartOutcome = z.infer<typeof WorkerStartOutcomeSchema>;
-
-export const WorkerLifecycleRequestSchema = z.strictObject({
-  workerId: WorkerIdSchema,
-  leaseGeneration: PositiveIntSchema,
-  lifecycle: WorkerLifecycleSchema,
-  now: IsoInstantSchema,
-});
-
-export const WorkerControlRequestSchema = z.strictObject({
-  commandId: z.uuid().optional(),
-  workerId: WorkerIdSchema,
-  expectedVersion: PositiveIntSchema,
-  control: WorkerControlSchema,
-  now: IsoInstantSchema,
-});
-
-export const WorkerUpdateOutcomeSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("applied"), lease: WorkerLeaseRecordSchema }),
-  z.strictObject({
-    state: z.literal("conflict"),
-    currentVersion: PositiveIntSchema,
-    message: z.string().min(1),
-  }),
-]);
-export type WorkerUpdateOutcome = z.infer<typeof WorkerUpdateOutcomeSchema>;
-
-
+/* ── worker pools ── */
 
 // Pool version 0 means no declaration row; it is a legitimate CAS basis, not a missing version.
 export const WorkerPoolPlanRequestSchema = z.strictObject({
@@ -510,19 +442,3 @@ export type RunRequeueRequest = z.infer<typeof RunRequeueRequestSchema>;
 export type RunResumeRequest = z.infer<typeof RunResumeRequestSchema>;
 export type RunPresentationRequest = z.infer<typeof RunPresentationRequestSchema>;
 
-export const CanonicalWorkerAdmissionRequestSchema = z.strictObject({
-  commandId: CommandIdSchema, workflow: WorkflowIdSchema, poolIndex: z.number().int().min(1),
-  expectedPoolVersion: NonNegativeIntSchema, processId: PositiveIntSchema, now: IsoInstantSchema,
-});
-
-export const WorkerVerificationAdmissionRequestSchema = ProfileDatabaseBindingSchema.extend({
-  commandId: CommandIdSchema, workflow: WorkflowIdSchema, expectedPoolVersion: NonNegativeIntSchema,
-  lockPort: z.number().int().positive().max(65535), profileRunId: z.uuid(), system: BrowserSystemIdSchema, credentialKey: FingerprintSchema,
-  leaseGeneration: z.literal(1), now: IsoInstantSchema,
-});
-
-export const WorkerVerificationRetirementRequestSchema = ProfileDatabaseBindingSchema.extend({
-  commandId: CommandIdSchema, grantCommandId: CommandIdSchema, workerId: WorkerIdSchema,
-  expectedRevision: PositiveIntSchema, expectedPoolVersion: NonNegativeIntSchema, now: IsoInstantSchema,
-  cleanup: z.enum(["closed", "interrupted"]),
-});

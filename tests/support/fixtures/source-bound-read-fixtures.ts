@@ -29,9 +29,10 @@ const failedReadCalls = new WeakMap<WriteFixtureWorld, readonly number[]>();
 export function failSourceBoundReadCalls(world: WriteFixtureWorld, calls: readonly number[]): void {
   failedReadCalls.set(world, [...calls]);
 }
-export function sourceBoundReadStores(world: WriteFixtureWorld, failOnCall?: number | readonly number[], onRead?: () => void) {
+export function sourceBoundReadStores(world: WriteFixtureWorld, failOnCall?: number | readonly number[], onRead?: () => void,
+  contract: typeof sourceBoundReadContract = sourceBoundReadContract) {
   let calls = 0;
-  const task = defineTask(sourceBoundReadContract, { sessions: [], async run({ input, ctx }) {
+  const task = defineTask(contract, { sessions: [], async run({ input, ctx }) {
     calls += 1;
     if ((typeof failOnCall === "number" ? calls === failOnCall : failOnCall?.includes(calls)) || failedReadCalls.get(world)?.includes(calls)) throw new Error("fixture downstream failure");
     ctx.recordData({ direction: "read", field: "eid", value: input.eid });

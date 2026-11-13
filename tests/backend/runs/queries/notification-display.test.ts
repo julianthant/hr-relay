@@ -3,6 +3,7 @@ import { separationsDescriptor } from '../../../support/helpers/registered-workf
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
 import { notificationDisplayContext } from "../../../../src/backend/runs/queries/notification-display.js";
+import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { HASH_A as HASH_A_INPUT, HASH_B as HASH_B_INPUT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { makeWorld, notificationRecordOf,runRecordOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
@@ -29,6 +30,7 @@ const deps = async (records: ReturnType<typeof checkpoint>[], current = descript
     receipt: () => undefined,
     checkpoints: { listByAttempt: () => records },
     presentation: { timeline: owned.timeline, authority: { listCheckpoints: () => records, listGateResults: () => [] } },
+    command: () => undefined,
   };
 };
 
@@ -105,4 +107,20 @@ it("withholds a version-only older notification with an unmapped checkpoint node
   const current = { ...descriptor, version: descriptor.version + 1,
     timeline: [{ key: "replacement", label: "Replacement", nodes: [{ id: "replacement", label: "Replacement" }] }] };
   assert.deepEqual(notificationDisplayContext(row, { ...regular, descriptor: () => current }), { state: "unavailable" });
+});
+
+it("resolves command notices that target a run the way that run resolves, and a batch as not applicable", async () => {
+  const regular = await deps([checkpoint()]);
+  const request = CommandRequestSchema.parse({
+    commandId: "11111111-1111-4111-8111-111111111111", requestedAt: "2026-10-02T17:00:00.000Z",
+    requestedBy: "local-operator", source: "dashboard", family: "run", type: "retry",
+    target: { runId: run.envelope.runId, expectedVersion: 1 },
+  });
+  const resolved = { ...regular, command: () => request };
+  const runContext = notificationDisplayContext(row, resolved);
+  for (const kind of ["recovery", "command-result"] as const) {
+    assert.deepEqual(notificationDisplayContext({ ...row, trigger: "command", links: [{ kind, commandId: request.commandId }] }, resolved), runContext);
+  }
+  assert.deepEqual(notificationDisplayContext({ ...row, trigger: "command", links: [{ kind: "bulk-result", bulkCommandId: request.commandId }] }, regular), { state: "not-applicable" });
+  assert.deepEqual(notificationDisplayContext({ ...row, trigger: "command", links: [{ kind: "recovery", commandId: request.commandId }] }, regular), { state: "unavailable" });
 });

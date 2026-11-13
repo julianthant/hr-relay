@@ -6,7 +6,22 @@ import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-ki
 import { defineStep, defineStepEntries, inheritStepProof, reuseTask } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 
-const group = defineWorkflowStep({ key: "crm-data", label: "Read and validate hire data" });
+const group = Object.freeze({
+  ...defineWorkflowStep({ key: "crm-data", label: "Read and validate hire data" }),
+  review: {
+    pages: [
+      {
+        id: "crm-hire-record",
+        title: "CRM onboarding record",
+        mode: "Read only",
+        nodeIds: ["crm-source"],
+        lines: [{ id: "read-hire", kind: "read", text: "Read the exact email-bound CRM hire record.", nodeIds: ["crm-source"] }],
+        fields: []
+      }
+    ],
+    branchLabels: []
+  } as const
+});
 const entries = defineStepEntries(group);
 
 export function buildCrmData(author: WorkflowAuthor<typeof OnboardingInput>) {

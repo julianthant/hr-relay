@@ -4,6 +4,10 @@ import { ProviderRequestEnvelopeSchema } from "../../../../src/models/providers/
 import { systemClock } from "../../../../src/rules/time/clock.js";
 
 const adapter = createNominatimWorkerAdapter();
+// This helper's own control words are plain strings, so the reply family is fed from a direct listener instead of a router.
+adapter.attach({ register: (_family, handler) => {
+  process.on("message", message => { if (typeof message === "object" && message !== null && "kind" in message && typeof message.kind === "string") handler({ ...message, kind: message.kind }, undefined); });
+} });
 const controller = new AbortController();
 process.on("message", async message => {
   if (message === "stop") { await adapter.stop(); process.disconnect?.(); return; }

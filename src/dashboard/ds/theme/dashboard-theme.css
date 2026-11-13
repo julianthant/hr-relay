@@ -1,15 +1,15 @@
 /* Canonical semantic palette shared by Tailwind and dashboard DS aliases. */
 :root, [data-demo-theme="light"] {
-  --ui-canvas: #fafafa;
-  --ui-panel: #ffffff;
-  --ui-table: #f4f4f4;
+  --ui-canvas: #f9f9f9;
+  --ui-panel: #fdfdfd;
+  --ui-table: #f6f6f6;
   --ui-field: #ffffff;
-  --ui-hover: #ebebeb;
-  --ui-stroke: #dedede;
-  --ui-stroke-control: #8b8b8b;
-  --ui-primary: #202020;
-  --ui-secondary: #626262;
-  --ui-muted: #6b6b6b;
+  --ui-hover: #efefef;
+  --ui-stroke: #e6e6e6;
+  --ui-stroke-control: #8a8a8a;
+  --ui-primary: #1b1b1b;
+  --ui-secondary: #555555;
+  --ui-muted: #737373;
   --ui-info: #245d9e;
   --ui-positive: #16764a;
   --ui-warning: #865609;
@@ -17,16 +17,16 @@
 }
 
 [data-demo-theme="dark"] {
-  --ui-canvas: #181818;
-  --ui-panel: #222222;
-  --ui-table: #2b2b2b;
-  --ui-field: #2b2b2b;
-  --ui-hover: #323232;
-  --ui-stroke: #3b3b3b;
-  --ui-stroke-control: #747474;
-  --ui-primary: #efefef;
-  --ui-secondary: #b2b2b2;
-  --ui-muted: #a0a0a0;
+  --ui-canvas: #0f0f11;
+  --ui-panel: #18181b;
+  --ui-table: #1f1f23;
+  --ui-field: #1f1f23;
+  --ui-hover: #222226;
+  --ui-stroke: #26262a;
+  --ui-stroke-control: #6e6e76;
+  --ui-primary: #e3e4e6;
+  --ui-secondary: #9d9ea2;
+  --ui-muted: #808085;
   --ui-info: #9dc4ff;
   --ui-positive: #63d9a2;
   --ui-warning: #f0bd61;
@@ -59,7 +59,7 @@
   --text-control--line-height: 1.125rem;
   --text-heading: 0.875rem;
   --text-heading--line-height: 1.25rem;
-  --text-heading--font-weight: 600;
+  --text-heading--font-weight: 500;
   --text-section: 1rem;
   --text-section--line-height: 1.375rem;
   --text-section--font-weight: 600;

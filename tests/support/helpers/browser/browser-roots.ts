@@ -26,7 +26,7 @@ export function mockBrowserRootPort() {
     await options.probe(input.profileRoot, input.profileDirectory);
   };
   const browserRoots: BrowserRoots = {
-    inventory: () => ({ schemaVersion: 2, installationId: randomUUID(), revision: 0, nextHandle, nextGeneration: generation + 1, roots: [] }),
+    inventory: () => ({ schemaVersion: 3, installationId: randomUUID(), revision: 0, nextHandle, nextGeneration: generation + 1, roots: [] }),
     beginLaunch: launch,
     signupRoot: input => allocations.get(key(input)),
     beginSignupLaunch(input) {
@@ -59,9 +59,6 @@ export async function seedRegisteredBrowserProfiles(fixture: Pick<Awaited<Return
       await roots.probe({ profileId: fixture.admission.profileBinding.profileId, profileRoot, profileDirectory, credentialFingerprint: resolved.fingerprint,
         owner: { kind: "worker", database, workerId: worker.workerId } }, createNativeBrowserProbe({ clock, scheduler: { schedule: () => ({ cancel() {} }) },
         closeProofMs: 1000, launchTimeoutMs: 1000, signal: new AbortController().signal, launcher: browser.fakeLauncher().launcher }));
-      database.authority.workerControls.observe({ workerId: worker.workerId, leaseGeneration: worker.lease.leaseGeneration, sessionId: randomUUID(), system,
-        configFingerprint: resolved.fingerprint, signInFingerprint: resolved.fingerprint, browserMode: "headless", profileDirectory, acceptDownloads: false, exclusive: false,
-        health: "closed", observedAt: clock.now().toISOString(), openedAt: clock.now().toISOString(), profileRevision: 1 });
       paths.push(profileDirectory);
     }
     stopSyntheticDatabaseWorkers({ database, path: fixture.path }); detachBoundFixtureWorkers(database);

@@ -10,7 +10,7 @@ import { buildRunDetail,readRunDetail,type RunDetailQueryDeps } from "../../../.
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { seedSyntheticRuntimeConfig } from "../../../support/fixtures/operator-command-fixtures.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { AT,DAY,makeWorld,queuedEventOf,runRecordOf,uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
@@ -123,7 +123,7 @@ it("moves a claimed run back to the queue and preserves its canonical attempt wi
   f.database.authority.runs.enqueue(run);
   const claimMember1 = f.database.authority.workerSlots.get("person-lookup-worker-1");
   if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-  const claim = f.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(f.database, run.envelope.workflow, claimMember1.poolIndex).workerLifetime, workflow: run.envelope.workflow,
+  const claim = f.database.authority.runs.claimNext({ workflow: run.envelope.workflow,
     workerId: "person-lookup-worker-1", now: AT.toISOString() });
   assert.equal(claim.state, "claimed");
   if (claim.state !== "claimed") throw new Error("claim positive control failed");
@@ -152,7 +152,7 @@ it("publishes cancellation and rename without spans, while a pure claim heartbea
   const f = await fixture();
   const run = runRecordOf({ seed: 403 });
   f.database.authority.runs.enqueue(run);
-  assert.equal(f.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(f.database, run.envelope.workflow, 1).workerLifetime, workflow: run.envelope.workflow,
+  assert.equal(f.database.authority.runs.claimNext({ workflow: run.envelope.workflow,
     workerId: "person-lookup-worker-1", now: AT.toISOString(),
   }).state, "claimed");
   const named = runRecordOf({ seed: 408 });
@@ -240,7 +240,9 @@ it("materializes only the requested bounded canonical page", async () => {
   const service = new RunRecordService({ database, clock: f.clock,
     ids: { uuid: () => { throw new Error("read fixture"); } }, publishQueued: () => {} });
   const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  const before = f.database.changeKey();
   const first = service.list({ disposition: "live", limit: 10 });
+  assert.deepEqual(f.database.changeKey(), before, "the page cache rebuild does not count as a store change");
   assert.equal(first.state, "listed");
   assert.equal(first.rows?.length, 10);
   assert.equal(scanned, 0, "a bounded page must not enumerate each workflow corpus");
@@ -248,7 +250,10 @@ it("materializes only the requested bounded canonical page", async () => {
   assert.equal(prepare.mock.calls.filter(([sql]) => sql.includes("INSERT INTO canonical_run_page SELECT")).length, 1,
     "all pages share one complete scalar ordering per source generation");
   f.database.authority.runs.enqueue(runRecordOf({ seed: 2002 }));
+  const written = f.database.changeKey();
+  assert.ok(written.totalChanges > before.totalChanges, "a run write moves the change key");
   assert.equal(listCanonicalRuns(service, "live").length, 1002);
+  assert.deepEqual(f.database.changeKey(), written);
   assert.equal(prepare.mock.calls.filter(([sql]) => sql.includes("INSERT INTO canonical_run_page SELECT")).length, 2);
   prepare.mockRestore();
 });

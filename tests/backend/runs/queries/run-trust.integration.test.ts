@@ -6,7 +6,7 @@ import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { projectFailureResolution } from "../../../../src/backend/runs/queries/failure-resolution.js";
 import { buildRunSection } from "../../../../src/backend/runs/queries/run-detail.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { resolutionCommand, resolutionFixture, resolutionReadDeps } from "../../../support/helpers/failure-resolution/fixtures.js";
 
 import { readGateParks } from "../../../../src/backend/app/composition/dashboard/trust.js";
@@ -69,8 +69,9 @@ describe("D capture identity and served resolution", () => {
       const generation = f.db.getMeta().authorityGeneration;
       const stale = resolutionCommand({ target: { runId: f.record.runId, failureId: f.record.failureId, expectedVersion: 2 }, payload: { action: "reopen" } });
       assert.deepEqual(f.kernel.execute(stale), { state: "rejected", commandId: stale.commandId, code: "target-deleted", message: "The failure's run was deleted." });
-      assert.equal(f.db.getMeta().authorityGeneration, generation);
-      assert.equal(f.db.authority.commands.get(stale.commandId), undefined);
+      assert.equal(f.db.getMeta().authorityGeneration, generation + 2);
+      assert.equal(f.db.authority.commands.get(stale.commandId)?.commandId, stale.commandId);
+      assert.equal(f.db.authority.commandAudits.findByCommand(stale.commandId)?.result.state, "rejected");
     } finally { await f.dispose(); }
   });
 });
@@ -160,12 +161,12 @@ afterEach(_afterEachFixture0);
     const f = await fixture(); const run = f.create(30);
     const claimMember1 = f.database.authority.workerSlots.get(f.workerId);
     if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-    const claimed = f.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(f.database, run.envelope.workflow, claimMember1.poolIndex).workerLifetime, workflow: run.envelope.workflow, workerId: f.workerId, now: f.world.clock.now().toISOString() });
+    const claimed = f.database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId: f.workerId, now: f.world.clock.now().toISOString() });
     assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("not claimed");
     let parked = claimed.run;
     for (const lifecycle of [
-      { state: "validating", workerId: f.workerId, workerLifetime: testWorkerLifetime(f.database, run.envelope.workflow, claimMember1.poolIndex).workerLifetime, claimedAt: parked.lifecycle.state === "claimed" ? parked.lifecycle.claimedAt : "", heartbeatAt: f.world.clock.now().toISOString() },
-      { state: "running", workerId: f.workerId, workerLifetime: testWorkerLifetime(f.database, run.envelope.workflow, claimMember1.poolIndex).workerLifetime, claimedAt: f.world.clock.now().toISOString(), heartbeatAt: f.world.clock.now().toISOString() },
+      { state: "validating", workerId: f.workerId, claimedAt: parked.lifecycle.state === "claimed" ? parked.lifecycle.claimedAt : "", heartbeatAt: f.world.clock.now().toISOString() },
+      { state: "running", workerId: f.workerId, claimedAt: f.world.clock.now().toISOString(), heartbeatAt: f.world.clock.now().toISOString() },
       { state: "parked-gate", gateId: "identity-approval", parkedAt: f.world.clock.now().toISOString(), resumeAt: "identity-approval" },
     ]) {
       const outcome = f.database.authority.runs.transition({ runId: run.envelope.runId, expectedVersion: parked.version,

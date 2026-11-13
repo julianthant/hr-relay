@@ -38,6 +38,98 @@ const KUALI_EXTRACTION_DISPLAY = {
     { label: "Separation date", example: "4/26/2031", sources: [{ nodeId: "plan", kind: "output", fieldPath: "kualiSeparationDate" }] },
     { label: "Termination type", example: "Resignation", sources: [{ nodeId: "termination-type", kind: "output", fieldPath: "terminationType" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "action-list",
+        title: "Kuali Build Action List",
+        mode: "Read only",
+        nodeIds: ["resolve-action"],
+        lines: [{ id: "find-action", kind: "action", text: "Find the exact separation action by document number.", nodeIds: ["resolve-action"] }],
+        fields: [
+          {
+            id: "document-number",
+            operatorField: "Document number",
+            source: {
+              origin: "Kuali",
+              detail: "Exact number of the selected separation action.",
+              chain: [],
+              read: { stepKey: "kuali-extraction", page: "Kuali Build Action List", field: "Document number" }
+            }
+          }
+        ]
+      },
+      {
+        id: "separation-document",
+        title: "Kuali RRSS Separation Request Form",
+        mode: "Read only",
+        nodeIds: ["document", "plan", "termination-type"],
+        lines: [
+          { id: "open-document", kind: "action", text: "Open and verify the separation request document.", nodeIds: ["document"] },
+          { id: "read-form", kind: "read", text: "Read the employee, dates and type of termination.", nodeIds: ["document"] },
+          {
+            id: "derive-plan",
+            kind: "check",
+            text: "Validate the dates and resolve the termination type against the visible options.",
+            nodeIds: ["plan", "termination-type"]
+          }
+        ],
+        fields: [
+          {
+            id: "employee",
+            operatorField: "Employee",
+            source: {
+              origin: "Kuali",
+              detail: "Employee name on the separation document.",
+              chain: [],
+              read: { stepKey: "kuali-extraction", page: "Kuali RRSS Separation Request Form", field: "Employee" }
+            }
+          },
+          {
+            id: "employee-id",
+            operatorField: "Employee ID",
+            source: {
+              origin: "Kuali",
+              detail: "Employee ID on the separation document, when present.",
+              chain: [],
+              read: { stepKey: "kuali-extraction", page: "Kuali RRSS Separation Request Form", field: "Employee ID" }
+            }
+          },
+          {
+            id: "last-day-worked",
+            operatorField: "Last day worked",
+            source: {
+              origin: "Kuali",
+              detail: "Last day worked read from the document and validated in the plan.",
+              chain: [],
+              read: { stepKey: "kuali-extraction", page: "Kuali RRSS Separation Request Form", field: "Last day worked" }
+            }
+          },
+          {
+            id: "separation-date",
+            operatorField: "Separation date",
+            source: {
+              origin: "Kuali",
+              detail: "Separation date read from the document and validated in the plan.",
+              chain: [],
+              read: { stepKey: "kuali-extraction", page: "Kuali RRSS Separation Request Form", field: "Separation date" }
+            }
+          },
+          {
+            id: "termination-type",
+            operatorField: "Termination type",
+            source: {
+              origin: "Kuali",
+              detail: "Selected type of termination matched to its form option.",
+              chain: [],
+              read: { stepKey: "kuali-extraction", page: "Kuali RRSS Separation Request Form", field: "Termination type" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } satisfies WorkflowGroupOptions;
 
 export const ACTION_NODE = "resolve-action";

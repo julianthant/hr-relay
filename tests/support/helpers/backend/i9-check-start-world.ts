@@ -95,8 +95,16 @@ export function createI9CheckStartWorld() {
         expectedVersion: entry.version, change }, new AbortController().signal);
     };
     const named = await referenceChange({ kind: "create-version", name: "Fall review", from: { kind: "version", versionId: "original" }, useNow: true });
-    const selectedReference = WorkbookNamedReferenceSnapshotSchema.parse(library.snapshot({ typeId: I9_CHECK_REFERENCE.typeId, libraryId: saved.libraryId,
-      versionId: named.action.operationId, keys: [], fields: columns }));
+    const referenceDeclaration = root.descriptor.workbookReference;
+    assert.ok(referenceDeclaration);
+    const sourceSheet = saved.workbook.sheets[0]; assert.ok(sourceSheet);
+    const selectedSource = (sourceLibraryId: string, versionId: string, keys: readonly string[]) => library.snapshot({
+      kind: "selected-source", typeId: referenceDeclaration.id, keyFieldId: referenceDeclaration.keyFieldId,
+      fields: [...root.descriptor.requiredWorkbookFields], writableFields: [...referenceDeclaration.writableFields],
+      mode: referenceDeclaration.mode, keys: [...keys], libraryId: sourceLibraryId, versionId, sheetId: sourceSheet.id,
+      expectedVersion: library.read(sourceLibraryId).version,
+    });
+    const selectedReference = WorkbookNamedReferenceSnapshotSchema.parse(selectedSource(saved.libraryId, named.action.operationId, []));
     const runWorkbooks = createRunWorkbookService({ database, clock }), readRefusals = new Set<string>();
     const projector = composeWorkerArtifactProjector({ admission, database, artifacts, clock });
     const resolve = (id: string) => (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
@@ -138,8 +146,9 @@ export function createI9CheckStartWorld() {
       expected.set(upload.artifact.sha256, candidate.emplId);
     }
     const input = I9CheckStartInput.parse({ documents, asOf: "2026-11-01", reviewerName: "Example Reviewer" });
-    const run = canonical.start(root.descriptor, input, { dryRun: false, workbookReferences: [{ entry: 1, typeId: I9_CHECK_REFERENCE.typeId,
-      libraryId: saved.libraryId, versionId: selectedReference.versionId }] });
+    const run = canonical.start(root.descriptor, input, { dryRun: false, workbookReferences: [{ entry: 1,
+      libraryId: saved.libraryId, versionId: selectedReference.versionId, sheetId: "history",
+      expectedVersion: library.read(saved.libraryId).version }] });
     const changeReference = async () => {
       const current = library.read(saved.libraryId), workbook = structuredClone(current.workbook);
       for (const row of workbook.sheets[0].rows.slice(1)) row.cells[1].value = "999999999";
@@ -150,9 +159,12 @@ export function createI9CheckStartWorld() {
         metadata: { typeId: I9_CHECK_REFERENCE.typeId, sharePoint: null } });
       const type = library.types().find(type => type.id === I9_CHECK_REFERENCE.typeId); assert.ok(type);
       database.authority.workbooks.putType({ ...type, defaultWorkbookId: other.libraryId });
-      const request = { typeId: I9_CHECK_REFERENCE.typeId, keys: candidates.map(candidate => candidate.emplId), fields: columns };
-      return { master: library.snapshot({ ...request, libraryId: saved.libraryId }), currentDefault: library.snapshot(request),
-        renamed: WorkbookNamedReferenceSnapshotSchema.parse(library.snapshot({ ...request, libraryId: saved.libraryId, versionId: named.action.operationId })) };
+      const keys = candidates.map(candidate => candidate.emplId);
+      const currentSource = library.catalog().find(entry => entry.libraryId === saved.libraryId); assert.ok(currentSource);
+      const otherSource = library.catalog().find(entry => entry.libraryId === other.libraryId); assert.ok(otherSource);
+      return { master: selectedSource(saved.libraryId, currentSource.state.selectedVersionId, keys),
+        otherSource: selectedSource(other.libraryId, otherSource.state.selectedVersionId, keys),
+        renamed: WorkbookNamedReferenceSnapshotSchema.parse(selectedSource(saved.libraryId, named.action.operationId, keys)) };
     };
     const approveNext = () => {
       const child = database.authority.runs.listChildren(run.envelope.runId).find(child => child.envelope.workflow === "ocr" && child.lifecycle.state === "parked-gate"); assert.ok(child);

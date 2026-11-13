@@ -3,6 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,expect,it } from "vitest";
 import { NativeCommandAuditSchema,AssistantM1NativeCommandAuditSchema,AssistantM1NativeCommandRowSchema,assertAssistantM1CommandIdentity,commandIdentity,convertAssistantCommandPairToM1,commandFromRow,insertNativeCommand,settleNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { SETTINGS_SCHEMA_HASH,derivePersistedSettingsFingerprint } from "../../../../src/models/config/settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { COMMAND_FIXTURES,HASH_A,HASH_B,LATER,NOW,UUID_1,UUID_2,UUID_3,UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -85,7 +86,7 @@ describe("unregistered M1 command attribution conversion", () => {
   it("preserves lifecycle and settings-initialization audit refinements", () => {
     const lifecycle = { kind: "run-lifecycle", auditId: UUID_3, request: command, result: { kind: "deletion", runIds: [UUID_2] }, completedAt: LATER };
     const settings = { kind: "settings-initialization", commandId: UUID_1, revision: 1,
-      settings: { revision: 1, settingsSchemaHash: HASH_A, settingsFingerprint: HASH_B, settings: {} }, configSnapshotId: UUID_2, configFingerprint: HASH_A, initializedAt: LATER };
+      settings: { revision: 1, settingsSchemaHash: SETTINGS_SCHEMA_HASH, settingsFingerprint: derivePersistedSettingsFingerprint({}), settings: {} }, configSnapshotId: UUID_2, configFingerprint: HASH_A, initializedAt: LATER };
     const initialized = { kind: "settings-initialization", auditId: UUID_3, request: settings,
       result: { state: "initialized", revision: 1, snapshotId: UUID_2, fingerprint: HASH_A }, completedAt: LATER };
     for (const [request, audit] of [[command, lifecycle], [settings, initialized]]) {

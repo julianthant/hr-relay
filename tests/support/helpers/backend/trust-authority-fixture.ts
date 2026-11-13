@@ -1,6 +1,6 @@
 import type { BoundProfileStorageFixture } from "../admission-fixture.js";
 import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
-import { testWorkerPorts, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../../src/models/config/runtime-generation.js";
@@ -65,16 +65,13 @@ export async function trustWorld(profileFixture: () => Promise<BoundProfileStora
   };
   const fail = (run: RunRecord, seed: number) => {
     const now = world.clock.now().toISOString();
-    const claimMember1 = database.authority.workerSlots.get(workerId);
-    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-    const workerLifetime = testWorkerLifetime(database, run.envelope.workflow, claimMember1.poolIndex).workerLifetime;
-    const claimed = database.authority.runs.claimNext({ workerLifetime, workflow: run.envelope.workflow, workerId, now });
+    const claimed = database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId, now });
     assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("fixture claim failed");
     assert.equal(claimed.run.envelope.runId, run.envelope.runId);
     const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
     const validating = database.authority.runs.transition({ runId: run.envelope.runId,
       expectedVersion: claimed.run.version, claim, now,
-      lifecycle: { state: "validating", workerId, workerLifetime, claimedAt: now, heartbeatAt: now } });
+      lifecycle: { state: "validating", workerId, claimedAt: now, heartbeatAt: now } });
     assert.equal(validating.state, "applied"); if (validating.state !== "applied") throw new Error("fixture validation failed");
     database.terminalizeFailure(personLookupDescriptor, {
       failure: { failureId: uuidOf(seed), fingerprint: HASH_A, runId: run.envelope.runId,

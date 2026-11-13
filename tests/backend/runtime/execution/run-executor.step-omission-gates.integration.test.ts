@@ -164,9 +164,9 @@ describe("the executor runs no entry of an omitted step and never asks for value
   }
 
   function claim(harnessed: Awaited<ReturnType<typeof harness>>) {
-    const { workerId, workerLifetime } = testWorkerLifetime(harnessed.authority.database, descriptor.id, 1);
+    const { workerId } = testWorkerLifetime(harnessed.authority.database, descriptor.id, 1);
     const claimed = harnessed.authority.database.authority.runs.claimNext({
-      workerLifetime, workflow: descriptor.id,
+      workflow: descriptor.id,
       workerId: workerId,
       now: harnessed.authority.clock.now().toISOString(),
     });

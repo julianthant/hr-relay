@@ -40,6 +40,8 @@ export function workflowContractFingerprint(input: Readonly<{
   result: z.ZodType;
   graph: readonly Readonly<{ id: string; kind: string; dependsOn: readonly string[] }>[];
   contracts: readonly ContractShape[];
+  requiredWorkbookFields?: readonly string[];
+  workbookReference?: Readonly<{ id: string; keyFieldId: string; mode: "keys" | "all"; writableFields: readonly string[] }>;
   kit?: number;
 }>): Fingerprint {
   const tasks = [...new Map(input.contracts.map(contract => [String(contract.id), taskIdentity(contract)])).entries()]
@@ -54,5 +56,10 @@ export function workflowContractFingerprint(input: Readonly<{
     result: deriveSchemaHash(input.result, "output"),
     graph: input.graph.map(node => ({ id: node.id, kind: node.kind, dependsOn: [...node.dependsOn] })),
     tasks,
+    requiredWorkbookFields: [...(input.requiredWorkbookFields ?? [])],
+    workbookReference: input.workbookReference === undefined ? null : {
+      id: input.workbookReference.id, keyFieldId: input.workbookReference.keyFieldId,
+      mode: input.workbookReference.mode, writableFields: [...input.workbookReference.writableFields],
+    },
   })}`));
 }

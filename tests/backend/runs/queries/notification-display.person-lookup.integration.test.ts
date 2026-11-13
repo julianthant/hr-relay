@@ -29,6 +29,7 @@ async function scenario(options: Parameters<typeof seedPersonLookupPresentation>
     receipt: (id: string) => w.authority.getReceipt(id),
     presentation: w,
     checkpoints: { listByAttempt: () => { throw new Error("result-title-must-not-read-subject-checkpoint"); } },
+    command: () => undefined,
   } satisfies Parameters<typeof notificationDisplayContext>[1];
   return { w, run, row, record, deps, context: () => notificationDisplayContext(record, deps) };
 }

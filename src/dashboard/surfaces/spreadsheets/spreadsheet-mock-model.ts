@@ -3,7 +3,9 @@ import { type SpreadsheetSaveResult } from './spreadsheet-editor-model.js';
 import { cellText, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { useSyncExternalStore } from "react";
 import { MOCK_ROSTER_ROWS, ROSTER_FIELDS, ROSTER_SHEETS } from "./spreadsheet-mock-data.js";
-import { fieldForSpreadsheetHeader, spreadsheetField, spreadsheetHeaderKey, type SpreadsheetColumnBinding } from './spreadsheet-fields-model.js';
+import { fieldForSpreadsheetHeader, spreadsheetHeaderKey } from '../../../models/fields/workbook-fields.js';
+import { spreadsheetEditorField } from './spreadsheet-fields-model.js';
+import type { SpreadsheetColumnBinding } from './spreadsheet-fields-model.js';
 import { setSpreadsheetHeaderRow } from './spreadsheet-column-import-model.js';
 import { WorkbookTypeSchema, type WorkbookType } from '../../../models/dashboard/workbooks.js';
 
@@ -86,7 +88,7 @@ export function renameMockSpreadsheetType(id: string, name: string): Spreadsheet
 export function putMockSpreadsheetType(value: WorkbookType): void {
   const definition = WorkbookTypeSchema.parse(value);
   if (state.types.some(type => type.id !== definition.id && normalize(type.name) === normalize(definition.name))) throw new Error('A spreadsheet type with this name already exists.');
-  const next = { id: definition.id, name: definition.name, fields: definition.fields.map(field => definition.fieldLabels?.[field] ?? spreadsheetField(field).label), definition };
+  const next = { id: definition.id, name: definition.name, fields: definition.fields.map(field => spreadsheetEditorField(field, definition.fieldLabels?.[field] ?? 'Field label unavailable').label), definition };
   publish({ ...state, types: state.types.some(type => type.id === next.id) ? state.types.map(type => type.id === next.id ? next : type) : [...state.types, next] });
 }
 export function searchMockSpreadsheet(file: RegisteredSpreadsheet, sheetName: string, query: string): readonly Readonly<Record<string, string>>[] {
@@ -95,7 +97,8 @@ export function searchMockSpreadsheet(file: RegisteredSpreadsheet, sheetName: st
   const fields = sheet.mapping.filter(field => field !== NOT_MAPPED && field !== WORKBOOK_ONLY);
   const needle = query.trim().toLowerCase();
   const local = localWorkbooks.get(file.id)?.sheets.find(entry => entry.name === sheetName);
-  if (local) return local.rows.slice(1).map(row => Object.fromEntries(local.columnBindings?.flatMap((binding, column) => binding.fieldId ? [[spreadsheetField(binding.fieldId).label, cellText(row.cells[column])]] : []) ?? [])).filter(row => !needle || Object.values(row).some(value => value.toLowerCase().includes(needle)));
+  if (local) return local.rows.slice(1).map(row => Object.fromEntries(local.columnBindings?.flatMap((binding, column) => binding.fieldId ? [[spreadsheetEditorField(binding.fieldId,
+    binding.sourceHeader || cellText(local.rows[(local.headerRow ?? 1) - 1].cells[column])).label, cellText(row.cells[column])]] : []) ?? [])).filter(row => !needle || Object.values(row).some(value => value.toLowerCase().includes(needle)));
   return MOCK_ROSTER_ROWS.filter(row => !needle || fields.some(field => (row[field] ?? "").toLowerCase().includes(needle)));
 }
 export function resetSpreadsheetMocks(): void { mockSavedVersions.clear(); localWorkbooks.clear(); publish(initialState()); }
@@ -116,7 +119,8 @@ export function registeredSpreadsheetWorkbook(file: RegisteredSpreadsheet): Edit
 }
 function localSpreadsheetSheets(document: EditableWorkbook): SpreadsheetSheet[] {
   return document.sheets.map(sheet => ({ name: sheet.name, headerRow: sheet.sourceHeaderRow ?? 1, columns: sheet.rows[0].cells.map(cellText),
-    mapping: sheet.columnBindings!.map(binding => binding.fieldId ? spreadsheetField(binding.fieldId).label : NOT_MAPPED), bindings: sheet.columnBindings }));
+    mapping: sheet.columnBindings!.map((binding, column) => binding.fieldId ? spreadsheetEditorField(binding.fieldId,
+      binding.sourceHeader || cellText(sheet.rows[(sheet.headerRow ?? 1) - 1].cells[column])).label : NOT_MAPPED), bindings: sheet.columnBindings }));
 }
 function withColumnBindings(document: EditableWorkbook): EditableWorkbook {
   return { ...document, sheets: document.sheets.map(sheet => sheet.columnBindings ? sheet : setSpreadsheetHeaderRow(sheet, sheet.headerRow ?? 1)) };

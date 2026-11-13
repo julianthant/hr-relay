@@ -124,6 +124,7 @@ export function syntheticOnboardingDuo(): ProfileOnboardingDuoProvider {
   return {
     async showBrowser(owner) { owner.assertCurrent(); },
     async openPortal(owner) { owner.assertCurrent(); },
+    async stop() {},
     async closeBrowser() { return { state: "closed" }; },
     async start(attempt, bind, _reportFailure) {
       const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,

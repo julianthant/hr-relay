@@ -5,7 +5,8 @@ import { DESCRIPTORS, CHILD_ONLY_WORKFLOW_MODULES, workflowModuleOf, childWorkfl
 import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { BROWSER_SYSTEM_BINDINGS } from "../../../src/backend/runtime/browser/system-bindings.js";
 import { onbaseStore } from "../../../src/backend/systems/onbase/task-registry.js";
-import { OnbaseCommitImport, ONBASE_EXAMPLE_INPUT, OnbaseInputSchema, ONBASE_EXAMPLE_TARGET, ONBASE_EXAMPLE_PROOF, validateOnbaseImportVerdict } from "../../../src/models/systems/onbase/import-document.js";
+import { ONBASE_EXAMPLE_INPUT, OnbaseInputSchema, ONBASE_EXAMPLE_TARGET, ONBASE_EXAMPLE_PROOF, validateOnbaseImportVerdict } from "../../../src/models/systems/onbase/import-document.js";
+import { OnbaseCommitImport } from "../../../src/models/systems/onbase/upload-import.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 
 describe("OnBase child-only workflow registration", () => {

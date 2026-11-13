@@ -13,6 +13,7 @@ import { FailureDisplaySchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
 import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } from "../trust/failure-resolution.js";
 import { PublicTransactionKeyDigestSchema } from "../write-safety/protected-input.js";
+import { WriteParkCodeSchema } from "../../rules/write-safety/write-safety-primitives.js";
 import { z } from "zod";
 import { DataObservationOriginSchema } from "../events/data-observation-origin.js";
 import {
@@ -43,8 +44,6 @@ import {
   WriteIntentIdSchema,
 } from "../../rules/identity/ids.js";
 import { UnscopedCommitReasonIdSchema } from "../write-safety/unscoped-commit.js";
-import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
-import { IdentityEvidencePacketSchema } from "../../rules/separations/identity-evidence.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { TimelineCategoryKeySchema } from "../workflow/presentation.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
@@ -755,14 +754,7 @@ export const CaptureListSchema = z.strictObject({
 
 /* ── the parked-write vocabulary, mirrored across the browser boundary ────── */
 
-/** The park codes and subject-binding evidence, RE-DECLARED here rather than imported, and pinned to the durable originals by the wire-connectivity test. */
-const ParkedWriteCodeSchema = z.enum([
-  "unknown",
-  "ambiguous",
-  "present-proof-invalid",
-  "binding-invalid",
-  "operator-required",
-]);
+/** The subject-binding evidence, RE-DECLARED here rather than imported, and pinned to the durable original by the wire-connectivity test. */
 
 export const ParkedWriteSubjectEvidenceSchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -873,7 +865,7 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   idempotencyKeyDigest: PublicTransactionKeyDigestSchema,
   fencedAt: IsoInstantSchema,
   parkedAt: IsoInstantSchema,
-  parkedCode: ParkedWriteCodeSchema,
+  parkedCode: WriteParkCodeSchema,
   /** A repository-authored digest projection; authority retains the original park evidence. */
   parkedMessage: z.string().min(1),
   subject: ParkedWriteSubjectWireSchema,
@@ -922,60 +914,43 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   }
 });
 
-/** The identity-approval gate section: the whole server side of the approval UI — a command arm plus wire state ONLY. */
+/** The identity review: display text and opaque refs only; the evidence packet, digests and node ids stay server-side. */
 export const IdentityGateOptionWireSchema = z.strictObject({
-  eid: z.string().regex(/^\d{8}$/),
-  /** The label a `resolve-gate` payload must carry for this EID. */
-  chosenFrom: z.enum(["checked", "name-search", "manual"]),
-  /** The name UCPath displayed for this EID, when the packet carried one. */
+  /** Opaque; an `answer-identity-gate` command names the candidate by this ref. */
+  ref: z.uuid(),
   displayName: z.string().min(1),
-  /** Why this EID is on the list, in the operator's terms. */
+  maskedEid: z.string().regex(/^••••\d{4}$/u),
+  /** Why this person is on the list, as a closed sentence. */
   origin: z.string().min(1),
 });
 
 export const IdentityGateDetailWireSchema = z.strictObject({
-  native: NativeRunEventWireSchema.optional(),
   runId: RunIdSchema,
-  gateId: NodeIdSchema,
+  /** Opaque; binds an answer to this gate's exact evidence. */
+  gateRef: z.uuid(),
   label: z.string().min(1),
   parkedAt: IsoInstantSchema,
-  /** The node the run resumes at once the gate resolves. */
-  resumeAt: NodeIdSchema,
-  /** The run version a `resolve-gate` command must CAS against. */
+  /** The run version an answer must CAS against. */
   expectedVersion: z.number().int().positive(),
-  /** The descriptor's exact gate-result schema hash the kernel will require. */
-  resultSchemaHash: FingerprintSchema,
-  /** The digest an approval or rejection must carry (ref write-safety ). */
-  evidenceDigest: FingerprintSchema,
-  packet: IdentityEvidencePacketSchema,
+  /** The log position of the gate's opening, when the run recorded it. */
+  order: z.number().int().nonnegative().optional(),
+  /** Why Relay asks, as a closed sentence. */
+  reason: z.string().min(1),
+  /** The Request and UCPath table: display labels and display-safe values. */
+  comparisons: z.array(z.strictObject({ label: z.string().min(1), request: z.string().min(1), ucpath: z.string().min(1), agrees: z.boolean() })).min(1),
   options: z.array(IdentityGateOptionWireSchema).min(1),
     /* The SERVER decides how much ceremony the decision costs, so a surface cannot quietly turn a risky approval into one click. */
   approvalShape: z.enum(["one-click", "choose-a-candidate"]),
   /** Ref frontend-backend-integration: an interactive control exists only because the server said so. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
-  /** The reason a served rejection records; the gate's declared arm owns it. */
-  rejectReason: z.string().min(1).optional(),
   decision: RunDecisionWireSchema.optional(),
 }).superRefine((gate, context) => {
   refineDecisionActions(gate.decision, gate.actions, context, ["decision"]);
-  if ((gate.rejectReason !== undefined) !== gate.actions.some(action => action.kind === "command" && action.resolution === "rejected")) {
-    context.addIssue({ code: "custom", path: ["rejectReason"], message: "a served rejection and its recorded reason come together" });
-  }
   if (gate.approvalShape !== (gate.options.length > 1 ? "choose-a-candidate" : "one-click")) {
     context.addIssue({ code: "custom", path: ["approvalShape"], message: "presentation must match the shown candidate count" });
   }
-  const eids = gate.options.map(({ eid }) => eid);
-  if (new Set(eids).size !== eids.length) {
-    context.addIssue({ code: "custom", path: ["options"], message: "gate options must be unique by EID" });
-  }
-  for (const [index, option] of gate.options.entries()) {
-    if (!gate.packet.approvableEids.map(String).includes(option.eid)) {
-      context.addIssue({
-        code: "custom",
-        path: ["options", index, "eid"],
-        message: `option ${directIdentifierDisplay(option.eid)} is not one the packet showed`,
-      });
-    }
+  if (new Set(gate.options.map(({ ref }) => ref)).size !== gate.options.length) {
+    context.addIssue({ code: "custom", path: ["options"], message: "gate options must be unique by ref" });
   }
   const targeted = gate.actions.filter((action) => action.kind === "command"
     && action.command === "resolve-gate"
@@ -992,9 +967,12 @@ export type IdentityGateDetailWire = z.infer<typeof IdentityGateDetailWireSchema
 
 export const WorkbookReferenceRowCandidateWireSchema = z.strictObject({
   sheetId: z.string().min(1), rowId: z.string().min(1), label: z.string().min(1),
+  referenceDigest: FingerprintSchema.optional(), workbookVersion: PositiveIntSchema.optional(),
   values: z.array(z.strictObject({ fieldId: WorkbookCellValuesSchema.keyType, value: WorkbookCellValuesSchema.valueType })).min(1),
 }).refine(candidate => new Set(candidate.values.map(cell => cell.fieldId)).size === candidate.values.length,
-  "reference candidate fields must be unique");
+  "reference candidate fields must be unique")
+  .refine(candidate => (candidate.referenceDigest === undefined) === (candidate.workbookVersion === undefined),
+    "a cross-source candidate names its captured reference and revision together");
 
 export const RunWorkbookReferenceChoiceWireSchema = z.strictObject({
   native: NativeRunEventWireSchema,
@@ -1016,7 +994,7 @@ export const RunWorkbookReferenceChoiceWireSchema = z.strictObject({
     || target.key !== choice.key || action.kind !== "command" || action.command !== "resolve-workbook-reference-row"
     || action.expectedVersion !== target.expectedVersion || action.referenceTarget === undefined
     || canonicalJsonStringify(action.referenceTarget) !== canonicalJsonStringify(target)
-    || new Set(candidates.map(candidate => JSON.stringify([candidate.sheetId, candidate.rowId]))).size !== candidates.length) {
+    || new Set(candidates.map(candidate => JSON.stringify([candidate.referenceDigest ?? choice.referenceDigest, candidate.sheetId, candidate.rowId]))).size !== candidates.length) {
     ctx.addIssue({ code: "custom", message: "reference choices must preserve exact captured reference, target and candidate membership" });
   }
 });
@@ -1046,7 +1024,7 @@ export const RunWorkbookWritesWireSchema = z.strictObject({ runId: RunIdSchema,
   for (const operation of section.operations) {
     const { receipt, native, resolution } = operation;
     const key = JSON.stringify([receipt.libraryId, receipt.operationId]);
-    if (ids.has(key) || native.runId !== section.runId || receipt.source.kind !== "run" || receipt.source.runId !== section.runId) {
+    if (ids.has(key) || native.runId !== section.runId || (receipt.source.kind !== "run" && receipt.source.kind !== "run-reference") || receipt.source.runId !== section.runId) {
       ctx.addIssue({ code: "custom", message: "workbook writes must preserve exact run and operation membership" });
     }
     ids.add(key);

@@ -7,12 +7,12 @@ import { executeClaimedRun } from "../../../src/backend/runtime/execution/run-ex
 import { planStart } from "../../../src/backend/runs/start/plan.js";
 import { buildQueuedRun } from "../../../src/backend/runs/start/enqueue.js";
 import { I9CheckInput, I9CheckCanonicalInput } from "../../../src/models/workflows/i9-check/input.js";
-import { ReadRetentionRow } from "../../../src/models/workflows/i9-check/check.js";
+import { ReadRetentionRow } from "../../../src/models/workflows/i9-check/read-retention-row.js";
 import { I9CheckRowSchema } from "../../../src/models/workflows/i9-check/check.js";
 import { descriptorRuntimeNodes, workflowProjections } from "../../../src/workflow-kit/workflow.js";
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
-import { testWorkerPorts, testWorkerLifetime } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { i9Candidate, i9CheckInput, i9Search } from "../../support/fixtures/i9-check.js";
@@ -75,8 +75,7 @@ it.each(["match", "name", "ambiguous", "failure"] as const)("executes the regist
   testWorkerPorts(database, clock, { path, descriptor, poolIndex: 1 });
   const slot = database.authority.workerSlots.list(descriptor.id).find(member => member.poolIndex === 1 && member.retiredAt === null); assert.ok(slot);
   database.authority.runs.enqueue(queued);
-  const lifetime = testWorkerLifetime(database, descriptor.id, 1);
-  const claimed = database.authority.runs.claimNext({ workflow: descriptor.id, workerId: slot.workerId, workerLifetime: lifetime.workerLifetime, now: clock.now().toISOString() });
+  const claimed = database.authority.runs.claimNext({ workflow: descriptor.id, workerId: slot.workerId, now: clock.now().toISOString() });
   assert.equal(claimed.state, "claimed");
   if (claimed.state !== "claimed") throw new Error("Fixture claim failed");
   const result = await executeClaimedRun(harness.deps, { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration }, signal: new AbortController().signal });

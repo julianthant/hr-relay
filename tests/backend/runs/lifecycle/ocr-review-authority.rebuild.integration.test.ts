@@ -12,6 +12,8 @@ import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js"
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
+import { compactOcrResult } from "../../../../src/models/workflows/ocr/result.js";
+import { compactOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-seed.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -21,7 +23,7 @@ function candidateCheckpoint(checkpoint: RunCheckpointRecord, seed: RunCheckpoin
   return RunCheckpointRecordSchema.parse({ ...checkpoint, claimGeneration, output: { ...checkpoint.output, value: seed },
     observationOrigins: observationLeafPaths(seed).map(path => ({ path, origin: { runId: checkpoint.runId, attempt: checkpoint.attempt,
       spanPath: taskSpanPath(traceId, checkpoint.nodeId, 1, claimGeneration), nodeId: checkpoint.nodeId,
-      taskId: "workflow:ocr/read-result", field: path[0], path: path.slice(1) } })) });
+      taskId: checkpoint.nodeId === "build-review" ? "workflow:ocr/read-review-seed" : "workflow:ocr/read-result", field: path[0], path: path.slice(1) } })) });
 }
 
 it("refuses a changed review publication whose checkpoint generation does not advance", async () => {
@@ -32,9 +34,13 @@ it("refuses a changed review publication whose checkpoint generation does not ad
   const { sourceRunId: _sourceRunId, ...review } = original.seed.review;
   const seed = { ...original.seed, review: original.seed.review.sourceRunId === undefined ? { ...review, sourceRunId: f.run.envelope.runId } : review };
   assert.notDeepEqual(seed, original.seed);
-  const candidate = candidateCheckpoint(checkpoint, seed, checkpoint.claimGeneration, f.run.envelope.traceId);
+  const candidate = candidateCheckpoint(checkpoint, compactOcrResult(seed), checkpoint.claimGeneration, f.run.envelope.traceId);
+  const reviewed = repositories.runCheckpoints.listByAttempt("ocr", f.run.envelope.itemId, "build-review", 1).at(-1); assert.ok(reviewed);
+  const changed = candidateCheckpoint(reviewed, compactOcrReviewSeed(seed.review), reviewed.claimGeneration, f.run.envelope.traceId);
+  const tampered: AuthorityRepositories = { ...repositories, runCheckpoints: { ...repositories.runCheckpoints, listByAttempt: (...args) =>
+    [...repositories.runCheckpoints.listByAttempt(...args), ...(args[2] === "build-review" ? [changed] : [])] } };
   const generation = f.database.getMeta().authorityGeneration;
-  assert.throws(() => publishOcrReview(repositories, f.canonical.lifecycle, f.run, candidate), OcrReviewRefusedError);
+  assert.throws(() => publishOcrReview(tampered, f.canonical.lifecycle, f.run, candidate), OcrReviewRefusedError);
   assert.equal(f.database.getMeta().authorityGeneration, generation);
   assert.deepEqual(repositories.ocrReviews.latest(f.run.envelope.runId), original);
 });
@@ -49,7 +55,7 @@ it.each(["non-monotonic generation", "duplicate seed"] as const)("refuses a forg
   const seed = fault === "duplicate seed" ? original.seed : { ...original.seed,
     review: original.seed.review.sourceRunId === undefined ? { ...review, sourceRunId: f.run.envelope.runId } : review };
   const claimGeneration = checkpoint.claimGeneration + (fault === "duplicate seed" ? 1 : -1);
-  const candidate = candidateCheckpoint(checkpoint, seed, claimGeneration, f.run.envelope.traceId);
+  const candidate = candidateCheckpoint(checkpoint, compactOcrResult(seed), claimGeneration, f.run.envelope.traceId);
   const forged = OcrReviewRevisionSchema.parse({ ...original, id: `${f.run.envelope.runId}#2`, revision: 2,
     seed, records: initialOcrReviewRecords(seed), origin: { kind: "checkpoint", key: checkpointRecordKey(candidate),
       digest: sha256Hex(canonicalJsonStringify(candidate)), checkpoint: timelineCheckpointReference(candidate) } });

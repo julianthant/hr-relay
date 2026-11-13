@@ -1,6 +1,8 @@
 import { cellText, type SheetCell, type SheetRow, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { displayExtractedDate, formatInstantDate } from "../../lib/date-format.js";
-import { spreadsheetField, spreadsheetValueMatches } from './spreadsheet-fields-model.js';
+import { SPREADSHEET_FIELDS, spreadsheetField } from '../../../models/fields/workbook-fields.js';
+import { CustomRosterFieldIdSchema } from '../../../models/dashboard/workbooks.js';
+import { spreadsheetEditorField, spreadsheetValueMatches } from './spreadsheet-fields-model.js';
 import { populatedSpreadsheetValue, workbookSizeIssue } from '../../../rules/spreadsheets/workbook-size.js';
 
 export function spreadsheetInsertionAvailability(document: EditableWorkbook, sheet: EditableSheet | undefined) {
@@ -25,7 +27,8 @@ export function spreadsheetForeground(background: string | undefined): string | 
 export function cellDisplayText(cell: SheetCell, fieldId?: string | null): string {
   if (cell.value instanceof Date) return formatInstantDate(cell.value, 'UTC');
   const text = cellText(cell);
-  return fieldId && spreadsheetField(fieldId).type === 'date' ? displayExtractedDate(text) : text;
+  return fieldId && (SPREADSHEET_FIELDS.some(field => field.id === fieldId) || !CustomRosterFieldIdSchema.safeParse(fieldId).success)
+    && spreadsheetField(fieldId).type === 'date' ? displayExtractedDate(text) : text;
 }
 
 export function columnName(index: number): string {
@@ -98,7 +101,7 @@ export function downloadSpreadsheet(data: ArrayBuffer | string, name: string, fo
 export function spreadsheetCellProblem(sheet: EditableSheet, column: number, value: string): string | undefined {
   const fieldId = sheet.columnBindings?.[column]?.fieldId;
   if (!fieldId || spreadsheetValueMatches(fieldId, value)) return undefined;
-  const field = spreadsheetField(fieldId);
+  const field = spreadsheetEditorField(fieldId, sheet.columnBindings?.[column]?.sourceHeader || cellText(sheet.rows[(sheet.headerRow ?? 1) - 1].cells[column]));
   return `Does not match ${field.label} (${field.format}).`;
 }
 

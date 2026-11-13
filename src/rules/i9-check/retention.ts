@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { I9CheckInputValue } from "../../models/workflows/i9-check/input.js";
-import type { I9CheckRow, I9Identity, ReadRetentionRow } from "../../models/workflows/i9-check/check.js";
+import type { I9CheckRow, I9Identity } from "../../models/workflows/i9-check/check.js";
+import type { ReadRetentionRow } from "../../models/workflows/i9-check/read-retention-row.js";
 import type { SearchPersonMatchOutputSchema } from "../../models/systems/ucpath/search-person-match.js";
 import { parseUsOrIsoDate } from "../../models/fields/cell-coercion.js";
 

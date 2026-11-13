@@ -2,7 +2,7 @@ import { createRunQueueProjectionTestWorld } from "../../../support/helpers/back
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { declareProjectionWorker, atDayOffset, claimEventOf, DAY, dayOffsetOf, instantOffsetOf, notificationRecordOf, runEndedEventOf, traceOf, uuidOf, workerLeaseOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { declareProjectionWorker, atDayOffset, claimEventOf, DAY, dayOffsetOf, instantOffsetOf, notificationRecordOf, runEndedEventOf, traceOf, uuidOf, workerMemberOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
 const {world, runRecordOf, queuedEventOf, CLAIM, cleanup } = createRunQueueProjectionTestWorld();
 
@@ -14,7 +14,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
 
   function seedWorkerSpans(w: DashboardWorld, workerId = "person-lookup-worker-1"): void {
     declareProjectionWorker(w.authority, workerId, Number(workerId.split("-").at(-1)));
-    w.authority.putWorkerLease(workerLeaseOf({ workerId }));
+    w.authority.putWorkerMember(workerMemberOf(w.authority, { workerId }));
     w.writer.emit({
       t: "span.started", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       workerId, spanPath: `worker/person-lookup/${workerId}`, name: "person-lookup",
@@ -32,8 +32,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     const w = await world();
     seedWorkerSpans(w);
     queuedEventOf(w, { seed: 1 });
-    w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "running", ...CLAIM, workerLifetime: { membershipRevision: 1, leaseGeneration: 1 } }, claimGeneration: 1 }));
-    w.authority.putWorkerLease(workerLeaseOf({ lifecycle: { state: "busy", startedAt: instantOffsetOf(0), heartbeatAt: instantOffsetOf(0), runId: uuidOf(1) } }));
+    w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "running", ...CLAIM }, claimGeneration: 1 }));
+    w.authority.putWorkerMember(workerMemberOf(w.authority, { activity: { state: "busy", runId: uuidOf(1) } }));
     claimEventOf(w, 1);
     assert.equal(w.projection.queueSurface(uuidOf(1))?.status, "running");
     assert.deepEqual(
@@ -42,7 +42,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     );
 
     w.authority.put(runRecordOf({ seed: 1, attempt: 1, claimGeneration: 1, lifecycle: { state: "queued" } }));
-    w.authority.putWorkerLease(workerLeaseOf());
+    w.authority.putWorkerMember(workerMemberOf(w.authority));
     w.writer.emit({
       t: "run.requeued", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1),
@@ -127,7 +127,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.equal(idle.state, "idle");
     assert.deepEqual(idle.currentRun, { state: "absent", reason: "no current claimed run" });
 
-    // Only durable lease settlement closes a worker card; ending a span is an observation.
+    // Only the pool's observed exit closes a worker card; ending a span is an observation.
     w.writer.emit({
       t: "span.ended", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       workerId: "person-lookup-worker-1", spanPath: "worker/person-lookup/person-lookup-worker-1",
@@ -135,19 +135,11 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     });
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0].state, "idle");
 
-    w.authority.putWorkerLease(workerLeaseOf({
-      lifecycle: {
-        state: "stopped",
-        startedAt: instantOffsetOf(0),
-        stoppedAt: instantOffsetOf(0, 9_000),
-        reason: "shutdown",
-      },
-      directive: "stop",
-      version: 3,
-    }));
+    w.authority.putWorkerMember(workerMemberOf(w.authority, { state: "exited", version: 3,
+      exit: { code: 0, signal: null, at: instantOffsetOf(0, 9_000), outcome: "stopped", settlement: "settled" } }));
     const stopped = w.projection.buildDashboardDayWire(DAY).workerCards[0];
     assert.equal(stopped.state, "failed");
-    assert.equal(stopped.stopReason, "shutdown");
+    assert.equal(stopped.stopReason, "operator");
     assert.deepEqual(stopped.currentRun, { state: "absent", reason: "no current claimed run" });
   });
 
@@ -157,7 +149,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     seedWorkerSpans(w, "person-lookup-worker-2");
     seedWorkerSpans(w, "person-lookup-worker-1");
     declareProjectionWorker(w.authority, "person-lookup-worker-3", 3);
-    w.authority.putWorkerLease(workerLeaseOf({ workerId: "person-lookup-worker-3" }));
+    w.authority.putWorkerMember(workerMemberOf(w.authority, { workerId: "person-lookup-worker-3" }));
     w.writer.emit({
       t: "span.started", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       workerId: "person-lookup-worker-4", spanPath: "worker/person-lookup/person-lookup-worker-4",

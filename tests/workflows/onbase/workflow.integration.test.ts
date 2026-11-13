@@ -13,7 +13,7 @@ import { ONBASE_EXAMPLE_INPUT, OnbaseInputSchema } from "../../../src/models/sys
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
 import { fakeOnbasePage } from "../../support/helpers/browser/fake-onbase-page.js";
-import { testWorkerPorts, testWorkerLifetime } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
@@ -38,8 +38,7 @@ async function runOnbase(mode: "dry-run" | "committed" | "lost-acknowledgement")
   testWorkerPorts(database, clock, { path, descriptor, poolIndex: 1 });
   const slot = database.authority.workerSlots.list(descriptor.id).find(member => member.poolIndex === 1 && member.retiredAt === null); assert.ok(slot);
   database.authority.runs.enqueue(queued);
-  const lifetime = testWorkerLifetime(database, descriptor.id, 1);
-  const claimed = database.authority.runs.claimNext({ workflow: descriptor.id, workerId: slot.workerId, workerLifetime: lifetime.workerLifetime, now: clock.now().toISOString() });
+  const claimed = database.authority.runs.claimNext({ workflow: descriptor.id, workerId: slot.workerId, now: clock.now().toISOString() });
   assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("fixture claim failed");
   const sequencer = createWriteSequencer({ lifecycle: harness.deps.lifecycle, stores: harness.deps.stores, authority: database, sessions: harness.manager,
     emitter: harness.emitter.emitter, clock, ids: harness.deps.ids, scheduler: harness.scheduler, taskDeadlineMs: 60000, operator: "local-operator", log: harness.deps.log });

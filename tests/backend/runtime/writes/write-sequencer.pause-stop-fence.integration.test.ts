@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { executeClaimedRun, type RunExecutorDependencies, type WriteSequencerContext } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { requireLifecycleApplied, RunLifecycleRefusedError } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { createWriteSequencer, WriteParkedError, type WriteSequencerHooks } from "../../../../src/backend/runtime/writes/write-sequencer.js";
@@ -13,13 +14,14 @@ import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { type MutationCapability } from "../../../../src/models/ui/driver.js";
 import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/write-sequencer-world.js";
 import { recordingLogger } from "../../../support/helpers/phase1f-executor-harness.js";
+import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { testRunLifecycle, testRunService, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import {
   absentProbeEvidence, buildWriteFixtureRegistry, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID,
   WriteFixtureCommit, writeFixtureDescriptor, writeFixtureDriverDeclaration, writeFixtureQueuedRun,
   WriteFixtureProofSchema, WriteFixtureSaveCommit, writeFixtureSaveDescriptor, writeFixtureTraversalDescriptor, type WriteFixtureDriver,
 } from "../../../support/fixtures/write-sequencer-fixtures.js";
-import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
 
 const { harness, claimRunning, contextFor, intentByKey, attemptingIntentFixture, cleanup } = createWriteSequencerTestWorld();
 afterEach(cleanup);
@@ -112,6 +114,22 @@ function requestCancel(h: Harness): void {
   }));
 }
 
+/** A command kernel over the harness database whose worker pool accepts Stop without running anything. */
+function stopKernel(h: Harness) {
+  const unused = (): never => { throw new Error("unrequested worker effect"); };
+  return createCommandKernel({ authority: h.database, lifecycle: testRunService(h.database, h.clock), clock: h.clock, ids: h.ids,
+    appVersion: "0.1.0", descriptors: { resolve: workflow => workflow === String(WRITE_FIXTURE_WORKFLOW_ID) ? writeFixtureDescriptor : undefined },
+    configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
+    writeResolution: { recheck: unused, resolveAbsent: unused },
+    workerRuntime: { pool: { ...unusedWorkerPool(unused), admit: async () => undefined, assertMember: () => "running", start: async () => undefined, stop: async () => undefined } } });
+}
+
+/** #165's Stop: an ordinary run Cancel on the claimed run, which sets cancelRequested while the worker keeps the claim. */
+function requestStop(h: Harness): void {
+  requestCancel(h);
+  assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.cancelRequested, true);
+}
+
 /** Beat ⑦ rolls back as if a command changed the run version after the settle-time read. */
 function rejectBeatSeven(h: Harness): WriteSequencerHooks {
   return {
@@ -166,6 +184,7 @@ describe("pause and stop never reach a fenced write", () => {
     h.world.verifyResults.push({ state: "present", proof: { transactionId: "T123456" } });
     const parent = new AbortController();
     probe.afterClick = async () => {
+      requestStop(h);
       parent.abort(new Error("worker-reset-current-work"));
       await yieldToEventLoop();
     };
@@ -210,7 +229,7 @@ describe("pause around a transaction node in a whole claimed run", () => {
   function claimOnly(h: Harness) {
     const lifetime = testWorkerLifetime(h.database, WRITE_FIXTURE_WORKFLOW_ID, 1);
     const claimed = h.database.authority.runs.claimNext({
-      workerLifetime: lifetime.workerLifetime, workflow: WRITE_FIXTURE_WORKFLOW_ID,
+      workflow: WRITE_FIXTURE_WORKFLOW_ID,
       workerId: lifetime.workerId, now: h.clock.now().toISOString(),
     });
     assert.equal(claimed.state, "claimed");
@@ -302,27 +321,11 @@ describe("pause around a transaction node in a whole claimed run", () => {
     assert.equal(h.world.events.filter((event) => event.startsWith("commit-click")).length, 1);
   });
 
-  /** Admits worker Stop as the dashboard does; the worker's 250 ms observer then aborts the run's work signal. */
-  async function admitStop(h: Harness, held: ReturnType<typeof claimOnly>, workSignal: AbortController) {
-    const slot = h.database.authority.workerSlots.get(held.claim.workerId), lease = h.database.authority.workerLeases.get(held.claim.workerId);
-    assert.ok(slot && lease);
-    const now = h.clock.now().toISOString();
-    const admitted = h.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
-      commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: now,
-      target: { workerId: slot.workerId, membershipRevision: slot.membershipRevision,
-        controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
-    }, randomUUID(), now));
+  /** Admits worker Stop's run Cancel; the worker's 250 ms observer then aborts the run's work signal. */
+  async function admitStop(h: Harness, workSignal: AbortController): Promise<void> {
+    requestStop(h);
     workSignal.abort(new Error("worker-reset-current-work"));
     await yieldToEventLoop();
-    return admitted;
-  }
-
-  function settleStop(h: Harness, admitted: ReturnType<typeof admitWorkerReset> | undefined): void {
-    const reset = admitted?.reset;
-    assert.ok(admitted && reset?.work.kind === "current");
-    h.database.withAuthorityTransaction(repositories => repositories.workerControls.transition(admitted.commandId, "admitted",
-      { state: "executing", startedAt: h.clock.now().toISOString() }));
-    testRunService(h.database, h.clock).settleResetWork(reset);
   }
 
   it("Stop admitted after the fence settles the save once, then cancels the run before its next step", async () => {
@@ -332,8 +335,7 @@ describe("pause around a transaction node in a whole claimed run", () => {
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
     const held = claimOnly(h);
     const workSignal = new AbortController();
-    let admitted: ReturnType<typeof admitWorkerReset> | undefined;
-    probe.afterClick = async () => { admitted = await admitStop(h, held, workSignal); };
+    probe.afterClick = () => admitStop(h, workSignal);
 
     const outcome = await runWhole(h, probe, held, workSignal.signal, writeFixtureTraversalDescriptor);
 
@@ -343,14 +345,41 @@ describe("pause around a transaction node in a whole claimed run", () => {
     assert.equal(probe.calls, 1);
     assert.equal(attemptsOf(h), 1);
     assert.equal(h.database.authority.writeIntents.listByRun(WRITE_FIXTURE_RUN_ID).length, 1);
-    settleStop(h, admitted);
-
     const settled = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(settled?.lifecycle.state === "terminal" && settled.lifecycle.outcome === "cancelled");
     assert.equal(intentByKey(h.database)?.status, "committed");
     assert.equal(attemptsOf(h), 1);
+    assert.deepEqual(h.sessions.closeReasons(), []);
     const startedNodes = h.emitter.events().flatMap(event => event.t === "span.started" && event.kind === "task" ? [event.spanPath] : []);
     assert.ok(!startedNodes.some(path => path.includes("/second-write") || path.includes("/after-write")), JSON.stringify(startedNodes));
+  });
+
+  it("retains the real fenced sequencer callback through Stop and parent abort, then settles its save committed", async () => {
+    const h = await harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let started: () => void = () => undefined;
+    const starting = new Promise<void>(resolve => { started = resolve; });
+    h.world.afterCommitClickBeforeTaskSettlement = async () => { started(); await held; };
+    const parent = new AbortController();
+    let settled = false;
+    const execution = h.execute({ ...contextFor(run, claim), signal: parent.signal }).then(
+      value => ({ value }), (error: unknown) => ({ error })).finally(() => { settled = true; });
+    await starting;
+    requestStop(h);
+    parent.abort(new Error("controlled exact stop observer"));
+    await yieldToEventLoop();
+    assert.equal(settled, false);
+    assert.equal(intentByKey(h.database)?.status, "attempting");
+    assert.deepEqual(h.sessions.closeReasons(), []);
+    release();
+    const result = await execution;
+    assert.ok("value" in result);
+    assert.equal(intentByKey(h.database)?.status, "committed");
+    assert.equal(h.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "running");
+    assert.equal(h.database.authority.runs.get(run.envelope.runId)?.cancelRequested, true);
   });
 
   function assertParkedUnknown(h: Harness, outcome: Awaited<ReturnType<typeof runWhole>>): void {
@@ -366,7 +395,7 @@ describe("pause around a transaction node in a whole claimed run", () => {
 
   function assertNothingClaimable(h: Harness, poolIndex = 1): void {
     const lifetime = testWorkerLifetime(h.database, WRITE_FIXTURE_WORKFLOW_ID, poolIndex);
-    const next = h.database.authority.runs.claimNext({ workerLifetime: lifetime.workerLifetime,
+    const next = h.database.authority.runs.claimNext({
       workflow: WRITE_FIXTURE_WORKFLOW_ID, workerId: lifetime.workerId, now: h.clock.now().toISOString() });
     assert.notEqual(next.state, "claimed", "no worker can retry the unresolved save");
   }
@@ -427,7 +456,7 @@ describe("pause around a transaction node in a whole claimed run", () => {
     assertNothingClaimable(h);
   });
 
-  it("worker Stop admitted during the save plus a beat-7 rollback parks the save and reset settlement keeps it parked", async () => {
+  it("worker Stop admitted during the save plus a beat-7 rollback parks the save and a later Stop or Cancel keeps it parked", async () => {
     const probe = createCommitProbe();
     const h = await harness();
     h.admitWorker(2); // a second member proves no retry; pool admission is closed once Stop is pending
@@ -435,14 +464,28 @@ describe("pause around a transaction node in a whole claimed run", () => {
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
     const held = claimOnly(h);
     const workSignal = new AbortController();
-    let admitted: ReturnType<typeof admitWorkerReset> | undefined;
-    probe.afterClick = async () => { admitted = await admitStop(h, held, workSignal); };
+    probe.afterClick = () => admitStop(h, workSignal);
 
     const outcome = await runWhole(h, probe, held, workSignal.signal, writeFixtureDescriptor, rejectBeatSeven(h));
 
     assertParkedUnknown(h, outcome);
     assert.equal(probe.signalAbortedAfterHook, false);
-    settleStop(h, admitted);
+    // #165's Stop has no reset settlement: a later Stop leaves the unclaimed parked run alone and a Cancel is refused over its parked save.
+    const run = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(run);
+    assert.equal(run.cancelRequested, true);
+    assert.equal(runClaim(run), undefined);
+    const kernel = stopKernel(h);
+    const request = { requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard" };
+    const stop = await kernel.executeWorkerPool({ ...request, commandId: randomUUID(), family: "worker-browser", type: "stop-worker",
+      target: { workerId: held.claim.workerId, workflowId: WRITE_FIXTURE_WORKFLOW_ID, lifetimeId: randomUUID(), expectedVersion: 1 } });
+    assert.equal(stop.state, "applied", JSON.stringify(stop));
+    assert.deepEqual(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID), run);
+    const cancel = kernel.execute({ ...request, commandId: randomUUID(), family: "run", type: "cancel",
+      target: { runId: WRITE_FIXTURE_RUN_ID, expectedVersion: run.version } });
+    assert.ok(cancel.state === "rejected" && cancel.code === "invalid-state" && cancel.message.includes("which is parked"), JSON.stringify(cancel));
+    assert.deepEqual(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID), run);
+    assert.equal(intentByKey(h.database)?.status, "parked");
     assertParkedUnknown(h, outcome);
     assert.equal(probe.calls, 1);
     assert.equal(attemptsOf(h), 1);

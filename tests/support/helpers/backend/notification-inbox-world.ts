@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "./unused-worker-pool.js";
 import type { BoundProfileStorageFixture } from "../admission-fixture.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -74,7 +75,7 @@ export function createNotificationInboxTestWorld(profileFixture: () => Promise<B
         recheck: () => { throw new Error("unused"); },
         resolveAbsent: () => { throw new Error("unused"); },
       },
-      workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
+      workerRuntime: { pool: unusedWorkerPool() },
     });
     return { database, kernel };
   }

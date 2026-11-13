@@ -20,6 +20,40 @@ export const CRM_DATES_STEP = Object.freeze({
       sources: [{ nodeId: "crm-dates", kind: "output" as const, fieldPath }]
     })),
   ],
+  review: {
+    pages: [
+      {
+        id: "crm-onboarding-record",
+        title: "CRM onboarding record",
+        mode: "Read only",
+        nodeIds: ["crm-dates"],
+        lines: [{ id: "read-dates", kind: "read", text: "Read employment and oath dates for the selected CRM identity.", nodeIds: ["crm-dates"] }],
+        fields: [
+          {
+            id: "employment-date",
+            operatorField: "Employment date",
+            source: {
+              origin: "CRM",
+              detail: "Employment date on the selected onboarding record.",
+              chain: [],
+              read: { stepKey: "crm-dates", page: "CRM onboarding record", field: "Employment date" }
+            }
+          },
+          {
+            id: "oath-date",
+            operatorField: "Oath date",
+            source: {
+              origin: "CRM",
+              detail: "Oath date on the selected onboarding record.",
+              chain: [],
+              read: { stepKey: "crm-dates", page: "CRM onboarding record", field: "Oath date" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } as const);
 
 const crmDatesEntries = defineStepEntries(CRM_DATES_STEP);

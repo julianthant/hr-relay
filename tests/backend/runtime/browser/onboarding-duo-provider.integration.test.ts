@@ -12,7 +12,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect } from "@playwright/test";
-import type { BrowserContext } from "playwright";
+import { chromium, type BrowserContext } from "playwright";
 import { it } from "vitest";
 import { z } from "zod";
 import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
@@ -358,8 +358,14 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
 it("measures, centers and clamps the exact native setup normal window and executes owned app focus", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "duo-popup-bounds-"))), extensionDirectory = join(root, "extension");
   stageFastDuoExtension(realpathSync("fast-duo"), extensionDirectory, PROFILE_ENROLLMENT_EXTENSION_MODE);
-  const focus = createDuoBrowserFocus(5000), relay = await focus.captureRelay(); assert.ok(relay?.workArea);
+  const focus = createDuoBrowserFocus(5000);
+  // Relay's own window is frontmost when it opens setup; a headed stand-in owned by this test plays that window on any desktop.
+  const relayBrowser = await chromium.launch({ headless: false });
   let process: OwnedBrowserProcess | undefined;
+  try {
+  const relayContext = await relayBrowser.newContext(), relayPage = await relayContext.newPage();
+  await focus.show(relayContext, relayPage);
+  const relay = await focus.captureRelay(); assert.ok(relay?.workArea);
   const context = await DEFAULT_BROWSER_LAUNCHER.launch({ profileDirectory: root, extensionDirectory, headless: false, acceptDownloads: false,
     downloadsPath: root, viewport: { width: 640, height: 720 }, timeoutMs: 5000, ownedProcess: owned => { process = owned; } });
   try {
@@ -398,6 +404,7 @@ it("measures, centers and clamps the exact native setup normal window and execut
     await focus.returnToRelay(relay);
     await focus.show(context, page);
   } finally { assert.ok(process); await process.stop(5000, true); assert.equal(process.exited(), true); }
+  } finally { await relayBrowser.close(); }
 });
 
 for (const expire of [false, true]) it(`real public Reopen proves owned stop, native retry and exact request custody (expired=${expire})`, async () => {

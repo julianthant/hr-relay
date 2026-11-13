@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { failedSourceReadDescriptor, sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
-import { readRunCheckpoint, captureRunContinuation, validateRunContinuation, RunContinuationRefusedError } from "../../../../src/backend/storage/sqlite/run-continuation.js";
+import { originalCheckpoint, readRunCheckpoint, captureRunContinuation, validateRunContinuation, RunContinuationRefusedError } from "../../../../src/backend/storage/sqlite/run-continuation.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { mappedReadDescriptor } from "../../../support/fixtures/rerun-values-fixtures.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
+import { PositiveIntSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); });
@@ -116,4 +117,58 @@ it("refreshes exact issuance through repeated pause and resume on the same run",
   }
   assert.equal((await h.execute(current)).state, "done");
   assert.deepEqual(h.world.events, ["read:absent", "read:absent"]);
+});
+
+it("binds original checkpoints to the consumer claim and leaves a fresh run without a row empty", async () => {
+  const h = await sourceBoundHarness(failedSourceReadDescriptor, world => sourceBoundReadStores(world, 2)); cleanups.push(h.dispose);
+  const source = h.start(h.proposal()), authority = h.database.authority;
+  assert.equal(originalCheckpoint(authority, source, "read", 1), undefined);
+  assert.equal((await h.execute(source)).state, "failed");
+  const failed = h.fresh(source), first = readRunCheckpoint(authority, failed.envelope, "read", true); assert.ok(first);
+  const second = RunCheckpointRecordSchema.parse({ ...first, claimGeneration: first.claimGeneration + 1,
+    output: { ...first.output, value: { eid: "10899999" } } });
+  authority.runCheckpoints.insert(second);
+  assert.deepEqual(originalCheckpoint(authority, failed, "read", first.claimGeneration), first);
+  assert.deepEqual(originalCheckpoint(authority, failed, "read", second.claimGeneration), second);
+});
+
+it("binds an inherited original to creation issuance after Resume replaced its reference and authenticates its digest", async () => {
+  const h = await sourceBoundHarness(failedSourceReadDescriptor, world => sourceBoundReadStores(world, 2)); cleanups.push(h.dispose);
+  const source = h.start(h.proposal()); assert.equal((await h.execute(source)).state, "failed");
+  const authority = h.database.authority, failed = h.fresh(source);
+  const first = readRunCheckpoint(authority, failed.envelope, "read", true); assert.ok(first);
+  let next = recover(h, failed);
+  const created = authority.lifecycleJournal.findContinuationIssue(next.envelope.runId, 1);
+  assert.equal(created?.request.operation, "recover");
+  assert.ok(created?.result.kind === "run");
+  assert.equal(created.result.continuation?.checkpoints.find(row => row.nodeId === "read")?.runId, source.envelope.runId);
+  authority.runCheckpoints.insert(RunCheckpointRecordSchema.parse({ ...first, runId: next.envelope.runId,
+    attempt: next.envelope.attempt, claimGeneration: 2, output: { ...first.output, value: { eid: "10899999" } } }));
+  for (let index = 0; index < 2; index += 1) {
+    next = requireLifecycleApplied(h.lifecycle.pause({ commandId: h.ids.uuid(), runId: next.envelope.runId, expectedVersion: next.version }));
+    next = requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: h.ids.uuid(), runId: next.envelope.runId, expectedVersion: next.version }));
+    assert.equal(next.envelope.continuation?.checkpoints.find(row => row.nodeId === "read")?.runId, next.envelope.runId);
+    assert.deepEqual(originalCheckpoint(authority, next, "read", 1), first);
+  }
+  assert.throws(() => originalCheckpoint({ runCheckpoints: authority.runCheckpoints }, next, "read", 1),
+    /run-continuation-authority-unavailable/u);
+  for (const changed of [undefined, RunCheckpointRecordSchema.parse({ ...first, output: { ...first.output, value: { eid: "10899999" } } })]) {
+    assert.throws(() => originalCheckpoint({ ...authority, runCheckpoints: { ...authority.runCheckpoints, get: () => changed } }, next, "read", 1),
+      /run-continuation-checkpoint-unavailable/u);
+  }
+});
+
+it("gives a fresh Start no row of a cancelled run but keeps other runs' latest row, a Retry's and a transaction read's", async () => {
+  const h = await sourceBoundHarness(failedSourceReadDescriptor, world => sourceBoundReadStores(world, 2)); cleanups.push(h.dispose);
+  const source = h.start(h.proposal()), authority = h.database.authority;
+  assert.equal((await h.execute(source)).state, "failed");
+  const failed = h.fresh(source), read = readRunCheckpoint(authority, failed.envelope, "read", true); assert.ok(read);
+  const fresh = { ...failed.envelope, runId: RunIdSchema.parse(randomUUID()), attempt: PositiveIntSchema.parse(failed.envelope.attempt + 1) };
+  assert.deepEqual(readRunCheckpoint(authority, fresh, "read", true), read, "a failed run's row stays a valid ancestor");
+  const { completion: _completion, ...unfinished } = failed;
+  const cancelled = { ...authority, runs: { get: (runId: string) => runId === failed.envelope.runId
+    ? RunRecordSchema.parse({ ...unfinished, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: "2026-07-31T17:00:00.000Z" } }) : authority.runs.get(runId) } };
+  assert.equal(readRunCheckpoint(cancelled, fresh, "read", true), undefined);
+  assert.deepEqual(readRunCheckpoint(cancelled, fresh, "read"), read);
+  assert.deepEqual(readRunCheckpoint(cancelled, { ...fresh, retryOf: failed.envelope.runId }, "read", true), read);
 });

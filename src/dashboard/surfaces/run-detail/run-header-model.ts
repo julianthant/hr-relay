@@ -1,15 +1,5 @@
-import { isTerminalQueueStatus, type QueueSurfaceWire } from '../../../models/dashboard/projection.js';
-import { runTiming } from '../shared/status/format.js';
-import { runDisplayId } from '../shared/status/run-display-model.js';
 import { visualLogSteps, type LogStep } from './logs/log-feed-model.js';
 import type { LogTimelineStage } from './logs/log-timeline-model.js';
-
-export type RunHeaderContext = Readonly<{ workflow: string; displayId: string; attempt: number; reviewPending?: boolean; timing?: { text: string; title?: string } }>;
-
-export function queueRunHeader(row: QueueSurfaceWire, workflow: string, nowIso: string): RunHeaderContext {
-  return { workflow, displayId: runDisplayId(row.runId, row.traceId), attempt: row.attempt, reviewPending: row.status === 'awaiting-approval',
-    timing: runTiming(row, nowIso, isTerminalQueueStatus) };
-}
 
 /** Header controls navigate to evidence; they never execute the decision. */
 export function runHeaderAction(steps: readonly LogStep[], timeline: readonly LogTimelineStage[]): { label: string; stepId: string; entryId?: string } | undefined {

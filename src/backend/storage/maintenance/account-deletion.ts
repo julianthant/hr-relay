@@ -8,7 +8,7 @@ import { lstatSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
 import { z } from "zod";
 import { advanceProfileRegistryDocument, ProfileRegistryDocumentSchema, ProfileVerifierDocumentSchema } from "../../../models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { BrowserRootsSchema, StoppedBrowserRootsV1Schema } from "../browser-root-contract.js";
+import { BrowserRootsSchema, StoppedBrowserRootsV1Schema, StoppedBrowserRootsV2Schema } from "../browser-root-contract.js";
 import { CanonicalCredentialHeadSchema } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
 import { noSymlinkAncestry, numericFileIdentity, readPrivateFile, removeExactPath } from "../configuration/credential-safe-file.js";
@@ -77,7 +77,7 @@ export function assertAccountDeletionRetainedBackups(control: string, location: 
     if (!name.endsWith(".before.json") || !z.uuid().safeParse(name.slice(0, -".before.json".length)).success) {
       throw new Error("account-deletion-retained-installation-backup");
     }
-    const document = StoppedBrowserRootsV1Schema.parse(json(join(directory, name)));
+    const document = z.union([StoppedBrowserRootsV1Schema, StoppedBrowserRootsV2Schema]).parse(json(join(directory, name)));
     if (document.installationId !== location.installationId || document.roots.some(row => row.profileId === profileId)) {
       throw new Error("account-deletion-retained-installation-backup");
     }

@@ -40,15 +40,12 @@ export {
   OfflineRestoreReportSchema,
   OfflineRestoreRequestSchema,
   RestoreCandidateSchema,
-  RecoveryProcessLockStateSchema,
-  RecoveryRuntimeLockSnapshotSchema,
   SpanAuthorityRunRootSchema,
   StorageDoctorReportSchema,
   StorageHealthCauseSchema,
 } from "./recovery-contracts.js";
 export {
   doctorAuthorityStorage,
-  summarizeBackupHealth,
   summarizeSpanAuthorityReconciliation,
   StorageDoctorOptionsSchema,
 } from "./storage-doctor.js";

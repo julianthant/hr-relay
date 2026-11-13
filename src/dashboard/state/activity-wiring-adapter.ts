@@ -10,6 +10,7 @@ import type { ActivitySummary, ActivityViewState } from "../surfaces/activity/ac
 import type { ActivityDateRange } from "../surfaces/activity/activity-model.js";
 import type { WorkflowSourcePolicy } from "../app/workflow-sources.js";
 import { readRunLogs, projectRunLogs } from "./run-wiring-adapter.js";
+import type { AnalyticsData } from "../surfaces/activity/analytics-model.js";
 
 export type ActivityClient = Pick<DashboardClient, "activityPopulation" | "readActivityPopulation" | "exportActivityPopulationCsv" | "dashboardDay" | "runDetail" | "runSection" | "artifactUrl">;
 const outstanding = new Set(["queued", "running", "cancelling", "blocked", "awaiting-approval"]);
@@ -28,6 +29,22 @@ function runRecord(row: ActivityPopulationRun, selection: ActivityPopulationSele
     seconds: row.durationMs === null ? null : row.durationMs / 1000, attempt: row.attempt, readback: row.readback };
 }
 
+function projectAnalytics(selection: ActivityPopulationSelection): AnalyticsData {
+  const { report } = selection;
+  const label = (workflow: { workflowId: string; registration: { state: string; label?: string } }) => workflow.registration.label ?? workflow.workflowId;
+  return {
+    running: report.inFlightRuns,
+    typicalSeconds: report.typicalMedian.medianMs.state === "present" ? report.typicalMedian.medianMs.value / 1000 : null,
+    workflows: report.workflows.map(workflow => ({
+      id: workflow.workflowId, label: label(workflow), ...workflow.outcomes,
+      typicalSeconds: workflow.typicalMedian.medianMs.state === "present" ? workflow.typicalMedian.medianMs.value / 1000 : null,
+      failedAt: workflow.failedAt.map(step => ({ label: step.state === "known" ? step.title : "Step not recorded", runs: step.runs })),
+      days: workflow.days.map(day => ({ date: day.day, ...day.outcomes, seconds: day.typicalTime.medianMs.state === "present" ? day.typicalTime.medianMs.value / 1000 : null })),
+    })),
+    reasons: report.failures.map(failure => ({ label: failure.sentence, workflow: label(failure), runs: failure.runs })),
+  };
+}
+
 export function projectActivityPopulation(selection: ActivityPopulationSelection): ActivitySummary {
   const { report, population } = selection;
   const completed = population.filter(row => row.status === "done");
@@ -41,6 +58,8 @@ export function projectActivityPopulation(selection: ActivityPopulationSelection
       successfulTiming: { totalSeconds: timing.totalMs === null ? null : timing.totalMs / 1000, measured: timing.measured, unmeasured: timing.unmeasured } };
   });
   const knownReadback = completed.every(row => row.readback !== null);
+  const failures = new Map<string, number>();
+  for (const row of report.failures) failures.set(row.code, (failures.get(row.code) ?? 0) + row.runs);
   return { runs: population.map(row => runRecord(row, selection)), range: { from: report.from, to: report.to }, timeZone: report.volume.timeZone,
     total: population.length, completed: completed.length, outstanding: population.filter(row => outstanding.has(row.status)).length,
     running: population.filter(row => row.status === "running" || row.status === "cancelling").length,
@@ -49,11 +68,11 @@ export function projectActivityPopulation(selection: ActivityPopulationSelection
     duration: { medianSeconds: report.durations.medianMs.state === "present" ? report.durations.medianMs.value / 1000 : null,
       longestSeconds: report.durations.longestMs.state === "present" ? report.durations.longestMs.value / 1000 : null,
       totalSeconds: report.durations.measuredRuns === 0 && report.durations.unmeasuredRuns > 0 ? null : report.durations.totalMs / 1000, measured: report.durations.measuredRuns, unmeasured: report.durations.unmeasuredRuns },
-    failures: report.failures.map(row => ({ label: row.code, runs: row.runs })),
+    failures: [...failures].map(([label, runs]) => ({ label, runs })),
     evidence: { verified: knownReadback ? completed.filter(row => row.readback === true).length : null, unread: knownReadback ? completed.filter(row => row.readback === false).length : null },
     workflows, durationWorkflows: workflows.map(row => ({ ...row, completed: row.successfulTiming.measured + row.successfulTiming.unmeasured })),
     transactions: report.ledger.systems.flatMap(row => ([{ id: `${row.system}:prod`, label: row.system, count: row.prod, environment: "production" as const }, { id: `${row.system}:test`, label: row.system, count: row.test, environment: "test" as const }])),
-    volume: report.volume };
+    volume: report.volume, analytics: projectAnalytics(selection) };
 }
 
 export async function projectActivityBrowse(client: ActivityClient, selection: ActivityPopulationSelection, result: ActivityPopulationBrowseResult, sources: WorkflowSourcePolicy, signal: AbortSignal): Promise<ActivityDrilldownData> {

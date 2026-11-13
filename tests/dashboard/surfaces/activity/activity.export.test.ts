@@ -37,7 +37,7 @@ it.each([
   const downloads: string[] = [];
   const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { downloads.push(this.download); });
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  const button = () => { const node = [...host.querySelectorAll("button")].find(node => node.textContent === "Export CSV"); assert(node); return node; };
+  const button = () => { const node = [...host.querySelectorAll("button")].find(node => node.textContent === "Export"); assert(node); return node; };
   try {
     await act(async () => root.render(createElement(ActivityReport, { source: "served", client, range: `${report.from}..${report.to}`, today: report.to, onRange() {} })));
     assert.equal(button().disabled, false);

@@ -22,3 +22,8 @@ if (TEST_TIME_SCALE !== 1) {
   vi.waitFor = ((callback, options) => waitFor(callback, stretched(options)));
   vi.waitUntil = ((callback, options) => waitUntil(callback, stretched(options)));
 }
+
+// jsdom has no ResizeObserver; the Sessions bar and shell publish layout sizes through one.
+if (typeof window !== "undefined" && !("ResizeObserver" in window)) {
+  Object.assign(globalThis, { ResizeObserver: class { observe(): void {} unobserve(): void {} disconnect(): void {} } });
+}

@@ -1,0 +1,24 @@
+/* Analytics charts: one palette and one hover card for every chart. Dark values are the Codex chart levels. */
+.ds-chart {
+  --chart-1: #6c74c6; --chart-2: #cf7a35; --chart-3: #3f9c56; --chart-4: #c85f9e; --chart-5: #7a5fd0; --chart-6: #2f9d95;
+  --chart-done: color-mix(in srgb, var(--ui-positive) 55%, var(--ds-card-bg));
+  --chart-failed: color-mix(in srgb, var(--ui-danger) 55%, var(--ds-card-bg));
+  --chart-attention: color-mix(in srgb, var(--ui-warning) 55%, var(--ds-card-bg));
+  --chart-tip-bg: var(--ui-field);
+  --chart-tip-edge: var(--ui-stroke);
+  --chart-lift: brightness(0.92);
+}
+[data-demo-theme="dark"] .ds-chart {
+  --chart-1: #9fa4db; --chart-2: #e89e63; --chart-3: #8cd392; --chart-4: #e394be; --chart-5: #a692e9; --chart-6: #79c8c1;
+  --chart-done: #8cd392; --chart-failed: #ee8886; --chart-attention: #e4b65c;
+  --chart-tip-bg: color-mix(in srgb, var(--ui-primary) 4.5%, var(--ds-card-bg));
+  --chart-tip-edge: color-mix(in srgb, var(--ui-primary) 7%, var(--chart-tip-bg));
+  --chart-lift: brightness(1.12);
+}
+.ds-chart-guide { position: absolute; top: 0; bottom: 0; width: 1px; margin-left: -0.5px; pointer-events: none; background: var(--chart-tip-edge); }
+.ds-chart-dot { position: absolute; box-sizing: border-box; width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 2px solid var(--ui-canvas); border-radius: 9999px; pointer-events: none; }
+.ds-chart-tip { position: absolute; z-index: 10; box-sizing: border-box; width: 256px; padding: 8px 12px; border-radius: 12px; pointer-events: none; background: var(--chart-tip-bg);
+  box-shadow: 0 0 0 1px var(--chart-tip-edge), 0 8px 24px rgb(0 0 0 / 0.16); }
+[data-demo-theme="dark"] .ds-chart-tip { box-shadow: 0 0 0 1px var(--chart-tip-edge), 0 8px 24px rgb(0 0 0 / 0.45); }
+.ds-chart-tip-rows { margin: 0; padding: 4px 0 0; list-style: none; border-top: 1px solid var(--chart-tip-edge); }
+.ds-chart-tip-rows li { display: flex; height: 20px; align-items: center; gap: 8px; }

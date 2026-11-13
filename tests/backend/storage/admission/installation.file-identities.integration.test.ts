@@ -3,7 +3,11 @@ import { lstatSync } from "node:fs";
 import { it, vi } from "vitest";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
-import { acquireInstallation } from "../../../../src/backend/storage/admission/installation.js";
+import { createHash } from "node:crypto";
+import { join } from "node:path";
+import { acquireInstallation, inspectFlatOfflineRunMaintenance } from "../../../../src/backend/storage/admission/installation.js";
+import * as identities from "../../../../src/backend/storage/file-identity.js";
+import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 import * as privateFiles from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 import * as canonicalJson from "../../../../src/rules/validation/canonical-json.js";
 import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
@@ -89,4 +93,26 @@ it("captures genuine stopped-profile authority with exact bigint reader identiti
       assert.deepEqual(file.identity, { device: String(original.files[index]?.identity.device), inode: String(original.files[index]?.identity.inode) });
     }
   } finally { vi.restoreAllMocks(); lease.release(); await f.close(); }
+});
+
+it("witnesses flat offline maintenance files with their exact bytes and an exact high Windows inode", async () => {
+  const f = await createHistoricalFlatProfileFixture();
+  const target = join(f.workspace, ".tracker", "control", "installation.json");
+  const realInode = fs.lstatSync(target, { bigint: true }).ino, status = identities.fileStatus, descriptor = identities.descriptorStatus;
+  const inode = 21_110_623_253_370_483n;
+  let descriptorDelta = 0n;
+  const exact = (info: fs.BigIntStats, delta: bigint) => { info.ino = inode + delta; return info; };
+  vi.spyOn(identities, "fileStatus").mockImplementation((path: string, missing?: true) =>
+    path === target ? exact(fs.lstatSync(path, { bigint: true }), 0n) : missing ? status(path, true) : status(path));
+  vi.spyOn(identities, "descriptorStatus").mockImplementation(fd => {
+    const info = fs.fstatSync(fd, { bigint: true });
+    return info.ino === realInode ? exact(info, descriptorDelta) : descriptor(fd);
+  });
+  try {
+    const witness = inspectFlatOfflineRunMaintenance(f.workspace).witnesses.find(entry => entry.path === target);
+    assert.equal(witness?.inode, "21110623253370483");
+    assert.equal(witness.digest, createHash("sha256").update(fs.readFileSync(target)).digest("hex"));
+    descriptorDelta = 1n;
+    assert.throws(() => inspectFlatOfflineRunMaintenance(f.workspace), /worker-process-recovery-source-changed/u);
+  } finally { vi.restoreAllMocks(); await f.close(); }
 });

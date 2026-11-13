@@ -18,11 +18,11 @@ it("F accepted start replay keeps its original run after active settings change"
  const h = await createHarness();
  const plan = createPlan(h, rejectActiveDescriptor, ["10800000"]);
  const command = startCommand(plan);
- const first = h.kernel.execute(command);
+ const first = await h.kernel.executeStart(command);
  const runId = singleAppliedRunId(first);
  const original = h.database.authority.runs.get(runId);
  applyCurrentSettings(h);
- const replay = h.kernel.execute(command);
+ const replay = await h.kernel.executeStart(command);
  assert.equal(replay.state, "already-applied");
  assert.equal(singleAppliedRunId(replay), runId);
  assert.deepEqual(h.database.authority.runs.get(runId), original);

@@ -39,7 +39,7 @@ for (const replaced of [false, true]) it(`cold-resumes a captured V1 restore ${r
     try {
       assert.equal(await stopped.upgradeBrowserRoots(createNativeBrowserProbe, systemClock), "upgraded");
       const current = createBrowserRoots(stopped).inventory();
-      assert.equal(current.schemaVersion, 2); assert.equal(current.roots.length, settled.roots.length);
+      assert.equal(current.schemaVersion, 3); assert.equal(current.roots.length, settled.roots.length);
       assert.deepEqual(current.roots.map(row => row.directory), settled.roots.map(row => row.directory));
     } finally { stopped.release(); }
   } finally { await f.close(); }

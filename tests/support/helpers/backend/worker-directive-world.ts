@@ -5,6 +5,7 @@ import { WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { sequentialIdFactory, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { EXECUTOR_WORKER_ID, happySessionHarness, ManualScheduler, openAuthorityHarness, recordingLogger, recordingTimelineEmitter, type SessionFactoryHarness } from "../phase1f-executor-harness.js";
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 
 
@@ -18,8 +19,12 @@ export function createWorkerDirectiveTestWorld() {
     sessions?: SessionFactoryHarness;
     heartbeatIntervalMs?: number;
     exitWhenIdle?: boolean;
+    sharedMachine?: true;
   }> = {}) {
-    const authority = await openAuthorityHarness();
+    const authority = options.sharedMachine === true
+      // Another process writes this store, so the claimer waits on its lock like a production worker (5000 ms).
+      ? await openAuthorityHarness(() => createBoundProfileFixture({ sharedMachine: true }), 5000)
+      : await openAuthorityHarness();
     disposers.push(authority.dispose);
     const sessions = options.sessions ?? happySessionHarness();
     const scheduler = new ManualScheduler(authority.clock, 0);

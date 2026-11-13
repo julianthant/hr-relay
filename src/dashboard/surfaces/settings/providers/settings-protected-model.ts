@@ -22,6 +22,7 @@ export function useProtectedSettings(input: {
   const [draft, setDraft] = useState<ProtectedDraft>({});
   const [errors, setErrors] = useState<Partial<Record<ProtectedSettingsName, string>>>({});
   const [save, setSave] = useState<SettingsSaveState>({ state: "idle" });
+  const [explicitSave, setExplicitSave] = useState(false);
   const pending = useRef<string | undefined>(undefined);
   const busy = useRef(false);
   const recoveryFailure = useRef<CommandOutcome | undefined>(undefined);
@@ -117,12 +118,12 @@ export function useProtectedSettings(input: {
   };
   const autosave = useEffectEvent(submit);
   useEffect(() => {
-    if (!input.readReady || available?.state !== "available" || save.state !== "idle"
+    if (explicitSave || !input.readReady || available?.state !== "available" || save.state !== "idle"
       || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined)) return;
     const timer = window.setTimeout(() => autosave(), 1200);
     return () => window.clearTimeout(timer);
-  }, [available, draft, errors, input.readReady, save.state]);
+  }, [available, draft, errors, explicitSave, input.readReady, save.state]);
   const retry = (): void => { if (pending.current !== undefined) void perform(pending.current); };
   return { draft, errors, save: pending.current !== undefined && attemptScope.current !== binding?.scope ? settingsScopeRecoveryState() : save.state === "idle" && retained?.outcome !== undefined ? commandSaveState(retained.outcome) : save, dirtyCount: Object.keys(draft).length, locked: !input.readReady || save.state === "saving" || pending.current !== undefined,
-    update, clear, reset, discard, submit, retry };
+    explicitSave, setExplicitSave, update, clear, reset, discard, submit, retry };
 }

@@ -1,6 +1,7 @@
+import { successfulActivityTiming } from "./activity-timing.js";
 import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { z } from "zod";
-import { ActivityPopulationRangeSchema, ActivityPopulationRunSchema, ActivitySuccessfulTimingSchema, ActivityPopulationIdentitySchema, ActivityPopulationSelectionSchema, ActivityPopulationBrowseSchema, ActivityPopulationBrowseResultSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema, type ActivityPopulationRun, type ActivityPopulationSelection, type ActivityPopulationBrowseResult, type ActivityPopulationSelectedRead, type ActivityPopulationExport } from "../../../models/dashboard/activity-population.js";
+import { ActivityPopulationRangeSchema, ActivityPopulationRunSchema, ActivityPopulationIdentitySchema, ActivityPopulationSelectionSchema, ActivityPopulationBrowseSchema, ActivityPopulationBrowseResultSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema, type ActivityPopulationRun, type ActivityPopulationSelection, type ActivityPopulationBrowseResult, type ActivityPopulationSelectedRead, type ActivityPopulationExport } from "../../../models/dashboard/activity-population.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { spreadsheetCsvRow } from "../exports/spreadsheet-csv.js";
@@ -72,12 +73,7 @@ export function createActivityPopulationService(input: {
           receiptResult: row.receiptResult, warningCount: row.warningCount, readback: row.receiptResult === null ? null : row.receiptResult === "verified-done" }));
       });
       if (population.length !== report.totalRuns || new Set(population.map(row => row.runId)).size !== population.length) throw new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH");
-      const successfulTiming = report.workflows.map(workflow => {
-        const successful = population.filter(row => row.workflowId === workflow.workflowId && row.status === "done" && row.parentRunId === null);
-        const measured = successful.flatMap(row => row.durationMs === null ? [] : [row.durationMs]);
-        return ActivitySuccessfulTimingSchema.parse({ workflowId: workflow.workflowId, measured: measured.length, unmeasured: successful.length - measured.length,
-          totalMs: measured.length === 0 ? null : measured.reduce((sum, duration) => sum + duration, 0) });
-      });
+      const successfulTiming = report.workflows.map(workflow => successfulActivityTiming(workflow.workflowId, population));
       const populationDigest = sha256Hex(canonicalJsonStringify({ population, successfulTiming }));
       if (selected !== undefined && populationDigest !== selected.populationDigest) throw new ActivityPopulationError("ACTIVITY_POPULATION_CONTENT_MISMATCH");
       const { token: reportToken, ...reportIdentity } = report.snapshot;

@@ -33,7 +33,7 @@ function threeRowDay(): DashboardDayWire {
     ],
     statusCounts: [{ status: "queued", count: surfaces.length }],
     queueSurfaces: surfaces,
-    workerCards: [], workerAuthority: { state: "present", members: [] }, workerOperations: [],
+    workerCards: [], workerAuthority: { state: "present", members: [] },
     workerPools: [],
     notifications: [],
   });

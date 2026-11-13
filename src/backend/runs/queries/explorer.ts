@@ -1,4 +1,5 @@
 
+import { buildExplorerReviewSpec } from "./explorer-review-spec.js";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
@@ -456,6 +457,7 @@ function nodeShape(node: RuntimeFlowNode): ExplorerNodeShapeWire {
       return {
         kind: "gate",
         resolvedBy: node.resolvedBy,
+        ...(node.resolvedBy !== "operator" || node.when === undefined ? {} : { condition: node.when }),
         ...(node.statusKey === undefined ? {} : { statusKey: node.statusKey }),
       };
   }
@@ -597,6 +599,33 @@ function workflowWire(
 
 
 
+  const nodeWires = nodes.map((node): ExplorerNodeWire => ({
+      id: node.id,
+      label: nodeLabel(node),
+      purpose: proseWire(
+        purposeByNode.get(String(node.id)),
+        `${workflowId} node ${String(node.id)}`,
+        `${descriptorPath}'s \`nodePurposes\` or its timeline group's \`description\``,
+      ),
+      dependsOn: [...node.dependsOn],
+      shape: nodeShape(node),
+      tasks: nodeTasks(node, context),
+      details: descriptor.details
+        .flatMap((detail) => "nodeId" in detail.source && detail.source.nodeId === String(node.id) ? [{
+          key: detail.key,
+          label: detail.label,
+          fieldPath: ContractFieldPathSchema.parse(detail.source.fieldPath),
+          display: DetailDisplaySchema.parse(detail.display),
+        }] : []),
+      editableFields: editDataFields
+        .filter((field) => field.nodeId === String(node.id))
+        .map((field) => ({
+          fieldPath: ContractFieldPathSchema.parse(field.fieldPath),
+          label: field.label,
+        })),
+      coveragePoints: coverageByNode.get(String(node.id)) ?? [],
+    }));
+
   return {
     id: descriptor.id,
     label: descriptor.label,
@@ -652,32 +681,8 @@ function workflowWire(
         }
         : { state: "declared", targetCount: module.intake.targets.length },
     },
-    nodes: nodes.map((node): ExplorerNodeWire => ({
-      id: node.id,
-      label: nodeLabel(node),
-      purpose: proseWire(
-        purposeByNode.get(String(node.id)),
-        `${workflowId} node ${String(node.id)}`,
-        `${descriptorPath}'s \`nodePurposes\` or its timeline group's \`description\``,
-      ),
-      dependsOn: [...node.dependsOn],
-      shape: nodeShape(node),
-      tasks: nodeTasks(node, context),
-      details: descriptor.details
-        .flatMap((detail) => "nodeId" in detail.source && detail.source.nodeId === String(node.id) ? [{
-          key: detail.key,
-          label: detail.label,
-          fieldPath: ContractFieldPathSchema.parse(detail.source.fieldPath),
-          display: DetailDisplaySchema.parse(detail.display),
-        }] : []),
-      editableFields: editDataFields
-        .filter((field) => field.nodeId === String(node.id))
-        .map((field) => ({
-          fieldPath: ContractFieldPathSchema.parse(field.fieldPath),
-          label: field.label,
-        })),
-      coveragePoints: coverageByNode.get(String(node.id)) ?? [],
-    })),
+    nodes: nodeWires,
+    reviewSpec: buildExplorerReviewSpec(module, deps.modules, nodeWires),
     timeline: descriptor.timeline.map((group) => ({
       key: group.key,
       label: group.label,

@@ -8,7 +8,7 @@ type Stats,
 type BigIntStats,
 } from "node:fs";
 import { constants as systemConstants } from "node:os";
-import { basename,dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
+import { basename,isAbsolute,join,relative,resolve,sep } from "node:path";
 import { z } from "zod";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import {
@@ -24,7 +24,8 @@ import { observeCredentialPresence } from "../configuration/credential-store.js"
 import { hasUnprovedSourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { AuthorityDatabase } from "./authority-database.js";
-import { parseBackupManifestFile, verifyBackupManifestAtPath } from "./backup-service.js";
+import { verifyBackupManifestAtPath } from "./backup-service.js";
+import { isAuthoritySourceChanged, withActiveAuthorityObservation, type AuthorityImageOwner } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import {
 BackupHealthSchema,ProtectedSettingsInspectionSchema,RestoreCandidateSchema,
@@ -419,8 +420,7 @@ function displacedAuthorityProblems(admission: RuntimeAdmission, current: Return
     const deleted = new Map(currentEvidence.deleted.map((run) => [run.runId, run]));
     const findings = new Map<string, { state: "missing" | "restore-loss"; runId: string; possibleExternalWrite?: true }>();
     for (const name of databases) {
-      const source = AuthorityDatabase.inspectTimelineReadOnly(admission, name, busyTimeoutMs, true).recoveryEvidence;
-      if (source === undefined) throw new SafeSpanCorpusError("preserved recovery evidence was not inspected");
+      const source = AuthorityDatabase.inspectPreservedRecoveryEvidenceReadOnly(admission, name, busyTimeoutMs);
       for (const run of source.runs) {
         const tombstone = deleted.get(run.runId);
         if (tombstone !== undefined) {
@@ -492,6 +492,7 @@ function reconcileSpanAuthority(
       return current;
     });
   } catch (error) {
+    if (isAuthoritySourceChanged(error) || storageHealthCauseFromError(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
@@ -515,6 +516,7 @@ function reconcileSpanAuthority(
       busyTimeoutMs,
     );
   } catch (error) {
+    if (isAuthoritySourceChanged(error) || storageHealthCauseFromError(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
@@ -527,6 +529,9 @@ function reconcileSpanAuthority(
   }
   if (snapshot.authorityGeneration !== corpus.authorityGeneration
     || snapshot.authorityContentFingerprint !== corpus.authorityContentFingerprint) {
+    if (snapshot.authorityGeneration > corpus.authorityGeneration) {
+      throw new StorageDoctorObservationChangedError({ cause: { initial: authorityIdentityOf(corpus), final: authorityIdentityOf(snapshot) } });
+    }
     return { reconciliation: SpanAuthorityReconciliationSchema.parse({ state: "unavailable",
       cause: { code: "span-authority-unavailable", summary: "timeline and run authority changed between read snapshots; inspect again" },
     }) };
@@ -624,6 +629,7 @@ function inspectAuthorityIdentity(
       ),
     };
   } catch (error) {
+    if (isAuthoritySourceChanged(error)) throw new StorageDoctorObservationChangedError({ cause: error });
     return { state: "unavailable", cause: storageHealthCauseFromError(error) };
   }
 }
@@ -634,7 +640,7 @@ function authorityIdentityState(read: AuthorityIdentityRead): string {
 
 export class StorageDoctorObservationChangedError extends Error {
   constructor(options: ErrorOptions) {
-    super("authority changed while the storage doctor awaited external evidence (initial=available; final=available)", options);
+    super("authority changed while the storage doctor awaited external evidence; inspect again", options);
     this.name = "StorageDoctorObservationChangedError";
   }
 }
@@ -644,6 +650,10 @@ function authorityIdentityChanged(
   initial: AuthorityIdentityRead,
   final: AuthorityIdentityRead,
 ): Error {
+  if (initial.state === "unavailable" && initial.cause.code === "authority-locked"
+    || final.state === "unavailable" && final.cause.code === "authority-locked") {
+    return new StorageDoctorObservationChangedError({ cause: { initial, final } });
+  }
   if (initial.state === "available" && final.state === "available"
     && final.identity.authorityGeneration > initial.identity.authorityGeneration) {
     return new StorageDoctorObservationChangedError({ cause: { initial, final } });
@@ -653,11 +663,6 @@ function authorityIdentityChanged(
     { cause: { initial, final } },
   );
 }
-
-export const BackupSummaryOptionsSchema = z.strictObject({
-  backupDirectory: z.string().min(1),
-  maxBackupAgeMs: z.number().int().positive().optional(),
-});
 
 export const SpanAuthorityHealthSummarySchema = z.strictObject({
   state: z.enum(["healthy", "degraded"]),
@@ -688,65 +693,6 @@ export function summarizeSpanAuthorityReconciliation(input: unknown): SpanAuthor
   });
 }
 
-
-export function summarizeBackupHealth(
-  admissionInput: RuntimeAdmission,
-  input: unknown,
-  liveAuthorityGeneration: number | undefined,
-  clock: Clock = systemClock,
-): "current" | "stale" | "missing" | "unavailable" {
-  const options = BackupSummaryOptionsSchema.parse(input);
-  const directory = resolve(options.backupDirectory);
-  if (basename(directory) !== "authority" || basename(dirname(directory)) !== "backups") {
-    throw new Error("backup-summary-directory-shape-mismatch");
-  }
-  const admission = requireRuntimeAdmission(admissionInput);
-  admission.assertStateRoot(directory);
-  const expected = admission.authorityBackupExpectedSource();
-  if (expected.kind !== "profile") throw new Error("profile-backup-binding-required");
-  const activeIdentity = AuthorityDatabase.sourceDatabaseIdentity(expected);
-  let manifests: string[];
-  try {
-    if (!fileStatus(directory).isDirectory()) return "missing";
-    manifests = readdirSync(directory, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".manifest.json"))
-      .map(({ name }) => name);
-  } catch (error) { return errnoCode(error) === "ENOENT" ? "missing" : "unavailable"; }
-  let newest: { createdAtMs: number; authorityGeneration: number } | undefined;
-  for (const name of manifests) {
-    let createdAtMs: number;
-    let authorityGeneration: number;
-    try {
-      const manifest = parseBackupManifestFile(join(directory, name));
-      if (manifest.sourceDatabaseIdentity !== activeIdentity || manifest.installationId !== expected.binding.installationId
-        || manifest.profileId !== expected.binding.profileId) continue;
-      const copy = fileStatus(join(directory, manifest.backupFileName));
-      if (!copy.isFile() || privateFileNumber(copy.size) !== manifest.byteSize) continue;
-      createdAtMs = Date.parse(manifest.createdAt);
-      authorityGeneration = manifest.authorityGeneration;
-    } catch (error) {
-      const code = errnoCode(error);
-      if (/^E[A-Z]+$/u.test(code) && code !== "ENOENT") return "unavailable";
-      // An invalid manifest or missing copy cannot be a usable backup.
-      continue;
-    }
-    // Ties on created-at break by generation: two backups in one clock tick
-    // are ordered by what they actually captured.
-    if (newest === undefined
-      || createdAtMs > newest.createdAtMs
-      || (createdAtMs === newest.createdAtMs && authorityGeneration > newest.authorityGeneration)) {
-      newest = { createdAtMs, authorityGeneration };
-    }
-  }
-  if (newest === undefined) return "missing";
-  const age = clock.nowMs() - newest.createdAtMs;
-  if (options.maxBackupAgeMs !== undefined && age > options.maxBackupAgeMs) return "stale";
-  if (liveAuthorityGeneration !== undefined
-    && liveAuthorityGeneration > newest.authorityGeneration) {
-    return "stale";
-  }
-  return "current";
-}
 
 type CandidateWithMtime = Readonly<{
   candidate: RestoreCandidate;
@@ -839,7 +785,26 @@ function inspectCredentialPresence(admission: RuntimeAdmission, stateRoot: strin
   }
 }
 
-export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore): Promise<StorageDoctorReport> {
+const StorageReadinessReportSchema = StorageDoctorReportSchema.pick({ authority: true, spanAuthority: true, protectedSettings: true, authorityUpgrades: true });
+export type StorageReadinessReport = z.infer<typeof StorageReadinessReportSchema>;
+
+/** A readiness pass skips backup verification and workbook payload decode; it reports only what it inspected. */
+export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock?: Clock, credentials?: CredentialStore, owner?: AuthorityImageOwner, readiness?: false): Promise<StorageDoctorReport>;
+export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock | undefined, credentials: CredentialStore | undefined, owner: AuthorityImageOwner | undefined, readiness: true): Promise<StorageReadinessReport>;
+export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore, owner?: AuthorityImageOwner, readiness = false): Promise<StorageDoctorReport | StorageReadinessReport> {
+  try {
+    const authorityPath = resolve(StorageDoctorOptionsSchema.parse(input).authorityPath);
+    // The process holding the authority open reads one image of it per pass, so concurrent writers such as peer heartbeats cannot invalidate the pass.
+    return await withActiveAuthorityObservation(authorityPath, owner, () => inspectAuthorityStorage(admission, input, clock, credentials, readiness));
+  }
+  catch (error) {
+    // A live write during any snapshot copy or read is a changed observation; real damage still reports unhealthy.
+    if (isAuthoritySourceChanged(error)) throw new StorageDoctorObservationChangedError({ cause: error });
+    throw error;
+  }
+}
+
+async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock, credentials: CredentialStore | undefined, readiness: boolean): Promise<StorageDoctorReport | StorageReadinessReport> {
   return withOperationProof(async () => {
     requireRuntimeAdmission(admission);
     const options = StorageDoctorOptionsSchema.parse(input);
@@ -855,9 +820,10 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
     let authorityInspection: AuthorityCopyInspection | undefined;
     let authorityCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
     try {
-      authorityInspection = AuthorityDatabase.inspectExistingReadOnly(admission, authorityPath, options.busyTimeoutMs);
+      authorityInspection = AuthorityDatabase.inspectExistingReadOnly(admission, authorityPath, options.busyTimeoutMs, !readiness);
     } catch (error) {
       authorityCause = storageHealthCauseFromError(error);
+      if (isAuthoritySourceChanged(error) || authorityCause.code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     }
     const initialAuthorityRead: AuthorityIdentityRead = authorityInspection === undefined
       ? inspectAuthorityIdentity(admission, authorityPath, options.busyTimeoutMs)
@@ -869,7 +835,7 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
     const initialRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
     let candidates: readonly CandidateWithMtime[] = [];
     let candidateInspectionFailed = false;
-    try {
+    if (!readiness) try {
       candidates = await inspectCandidates(admission,backupDirectory, authorityInspection, stateRoot, clock);
     } catch { candidateInspectionFailed = true; }
     const first = candidates[0];
@@ -951,6 +917,10 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
     if (spanAuthorityIdentityMismatch) {
       throw new Error("span authority snapshot does not match the storage doctor's initial authority identity");
     }
+    const authority = authorityInspection === undefined
+      ? { state: "degraded" as const, cause: authorityCause }
+      : { state: "healthy" as const, inspection: authorityInspection };
+    if (readiness) return StorageReadinessReportSchema.parse({ authority, spanAuthority, protectedSettings, authorityUpgrades });
     const finalRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
     const recovery = initialRecovery.identity === finalRecovery.identity ? finalRecovery.report
       : { state: "unavailable", findings: finalRecovery.report.state === "clear" ? [] : finalRecovery.report.findings,
@@ -966,9 +936,7 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
       mode: "read-only",
       checkedAt: clock.now().toISOString(),
       sourceDatabaseIdentity,
-      authority: authorityInspection === undefined
-        ? { state: "degraded", cause: authorityCause }
-        : { state: "healthy", inspection: authorityInspection },
+      authority,
       counts: authorityInspection === undefined
         ? { state: "unavailable", cause: authorityCause }
         : { state: "available", values: authorityInspection.counts },

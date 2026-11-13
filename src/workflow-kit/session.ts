@@ -94,6 +94,8 @@ export interface WorkerBrowserSessionFactory {
     duoCeremony: DuoCeremonyGate;
     acquisitionRemainingMs?: () => number;
     claimStaleRequestRecovery?: () => boolean;
+    /** An idle exclusive Reopen names the retained session it replaces. */
+    replacesSessionId?: string;
   }>) => Promise<WorkerBrowserResource>;
 // Duo refusal burns the profile; recreate it before the single retry.
   readonly discardProfile?: (input: Readonly<{

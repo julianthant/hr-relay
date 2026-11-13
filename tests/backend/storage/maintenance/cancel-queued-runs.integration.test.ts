@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { workerBootstrapEnvironment } from "../../../../src/models/config/secrets.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { runOfflineQueuedRunCancellation } from "../../../../src/backend/storage/maintenance/cancel-queued-runs.js";
 import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { readNative6RunRecord, updateNative6RunFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
@@ -106,9 +106,8 @@ it("refuses a changed native capture and retained old-build runtime evidence bef
     const before = readFileSync(f.databasePath);
     await assert.rejects(() => runOfflineQueuedRunCancellation(profileBrowserClosure, f.workspace, ["--capture", plan.report.captureDigest, "--apply"], f.lifetime), /capture-changed/u);
     assert.deepEqual(readFileSync(f.databasePath), before);
-    const lock = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "server", pid: process.pid });
-    try { await assert.rejects(() => runOfflineQueuedRunCancellation(profileBrowserClosure, f.workspace, ["--plan"], f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" }); }
-    finally { lock.release(); }
+    plantOldBuildArtifact(f.processLockRoot);
+    await assert.rejects(() => runOfflineQueuedRunCancellation(profileBrowserClosure, f.workspace, ["--plan"], f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
     assert.deepEqual(readFileSync(f.databasePath), before);
   } finally { await f.close(); }
 });

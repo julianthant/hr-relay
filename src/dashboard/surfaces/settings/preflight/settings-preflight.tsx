@@ -16,18 +16,7 @@ import type { EditableSettingsWire } from "../../../../models/dashboard/settings
 import "../../shared/run-evidence/diagnostic-presentation.css";
 import { LoadingRegion, SettingsRowsSkeleton, SkeletonText } from "../../shared/loading/loading.js";
 import { fmtClock, fmtInstantDay } from "../../shared/status/format.js";
-
-const CHECK_COPY: Record<string, { name: string; description: string }> = {
-  "runtime.compatibility": { name: "Runtime compatibility", description: "Checks Node.js and installed dependencies for this release." },
-  "browser.assets": { name: "Browser tools", description: "Checks the required browser and extension files." },
-  "config.valid": { name: "Runtime settings", description: "Checks current configuration validity." },
-  "filesystem.health": { name: "Files and disk space", description: "Checks required directories and free space." },
-  "authority.health": { name: "Data store readiness", description: "Checks the data store and run records for this scope." },
-  "ports.available": { name: "Network ports", description: "Checks the dashboard's reserved ports." },
-  "fiscal.current": { name: "Current fiscal year", description: "Checks the workflow's fiscal year configuration." },
-  "secrets.ucpath-sso": { name: "UCPath sign-in", description: "Checks the username and password required for UCPath sign-in." },
-  "secrets.sharepoint-roster": { name: "SharePoint roster", description: "Checks the onboarding roster location used by this workflow." },
-};
+import { CHECK_COPY } from "./preflight-check-copy.js";
 
 function checkCopy(id: string): { name: string; description: string } {
   return CHECK_COPY[id] ?? {
@@ -137,7 +126,7 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
         <Button variant="secondary" onClick={onRerun} disabled={busy || preflight.state === "idle"} aria-busy={busy}>Run preflight</Button>
         <Button variant="secondary" onClick={() => { void testOcr(); }} disabled={ocr.state === "disabled" || ocrBusy || ocr.state === "uncertain"} loading={ocrBusy}>Test OCR</Button>
       </div>
-      {ocr.state === "disabled" && <p className={cn(dsText.meta, "mb-[var(--ds-space-heading-content)]")}><span className="font-semibold">OCR test unavailable</span> <span>{ERROR_CATALOG[ocr.code].text}</span></p>}
+      {ocr.state === "disabled" && <p className={cn(dsText.meta, "mb-[var(--ds-space-heading-content)] font-normal text-[13px] text-[color:var(--ds-fg-secondary)]")}><span>OCR test unavailable</span> <span>{ERROR_CATALOG[ocr.code].text}</span></p>}
       {ocr.state !== "idle" && ocr.state !== "loading" && ocr.state !== "disabled" && <Notice
         tone={ocr.state === "completed" ? "success" : ocr.state === "failed" ? "danger" : "warning"}
         title={ocr.state === "completed" ? "OCR test completed" : ocr.state === "uncertain" ? "OCR test outcome uncertain" : ocr.state === "refused" ? "OCR test refused" : "OCR test failed"}
@@ -193,7 +182,7 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
         {displayed.checks.map(check => <div key={check.id} className="settings-preflight-item">
           <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
             <Badge tone={check.verdict === "fail" ? "danger" : check.verdict === "warning" ? "warning" : "success"}>{check.verdict}</Badge>
-            <span className={cn(dsText.ui, "break-words font-medium")}>{checkCopy(check.id).name}</span>
+            <span className={cn(dsText.ui, "break-words")}>{checkCopy(check.id).name}</span>
           </div>
           <span className={cn(dsText.body, "break-words text-[color:var(--ds-fg-muted)]")}>{checkCopy(check.id).description}</span>
           {check.verdict !== "pass" && <span className={cn(dsText.body, "break-words text-[color:var(--ds-fg-muted)]")}>{check.detail}</span>}

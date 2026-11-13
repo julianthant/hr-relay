@@ -1,10 +1,10 @@
-import { WorkerClaimLifetimeSchema } from "./worker.js";
 import { ProtectedInputBindingsSchema, valueFreeProtectedInput } from "../write-safety/protected-input.js";
 /** The durable run record: lifecycle as one discriminated union, with the claim generation as the ownership fence. */
 import { z } from "zod";
 import { RunCompletionSchema } from "./completion.js";
 import { DiagnosticSafetyVersionSchema } from "../trust/failure.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { WriteParkCodeSchema } from "../../rules/write-safety/write-safety-primitives.js";
 import { RunDisplayNameSchema } from "./display-name.js";
 import {
   CommandIdSchema,
@@ -53,7 +53,6 @@ export const RunStateSchema = z.enum([
 export type RunState = z.infer<typeof RunStateSchema>;
 
 const ClaimFields = {
-  workerLifetime: WorkerClaimLifetimeSchema.optional(),
   workerId: WorkerIdSchema,
   claimedAt: IsoInstantSchema,
   heartbeatAt: IsoInstantSchema,
@@ -96,8 +95,8 @@ export const RunLifecycleSchema = z.discriminatedUnion("state", [
     writeIntentId: WriteIntentIdSchema,
     intentGeneration: PositiveIntSchema,
     parkedAt: IsoInstantSchema,
-    /** Ref write-safety park codes; there is no generic Done/Retry from here. */
-    code: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]),
+    /** There is no generic Done/Retry from here. */
+    code: WriteParkCodeSchema,
     message: z.string().min(1),
   }),
   z.strictObject({

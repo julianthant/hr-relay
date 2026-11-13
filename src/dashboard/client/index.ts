@@ -1,5 +1,6 @@
 import { ReopenProfileOnboardingBrowserRequestSchema, type ReopenProfileOnboardingBrowserRequest, DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
 import { DASHBOARD_REQUEST_REPORT_MESSAGE, debugFailureOutcome, DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
+import { parseOrThrow } from "./queries/query-parse.js";
 import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
 /** The ONE typed dashboard client (ref frontend-backend-integration) */
 import { createDashboardCommands, type DashboardCommands } from "./commands.js";
@@ -9,11 +10,12 @@ import {
   type DashboardDaySubscription,
   type DashboardDaySubscriptionDeps,
 } from "./subscriptions/subscription.js";
-import { WIRE_ERROR_BODY, DashboardClientError, DashboardReportDeliveryError, dashboardErrorReported } from "./errors.js";
+import { WIRE_ERROR_BODY, DashboardClientError, DashboardReportDeliveryError, dashboardErrorReported, schemaError } from "./errors.js";
 import { createDashboardTransport, type FetchLike } from "./transport.js";
 import { OcrSourceUploadSchema } from "../../models/ocr/review.js";
 import { RunIdSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
 import { OcrCommandResultWireSchema } from "../../models/dashboard/run-detail.js";
+import { WorkerCommandResultWireSchema, type WorkerCommandResultWire } from "../../models/dashboard/worker-command-result.js";
 import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
 
 export type { ApplicationLifecycle } from "../../models/dashboard/application-lifecycle.js";
@@ -34,6 +36,7 @@ export interface DashboardClient extends DashboardQueries, DashboardCommands {
   uploadOcrSource(request: Readonly<{ fileName: string; bytes: Uint8Array }>, signal?: AbortSignal): Promise<ReturnType<typeof OcrSourceUploadSchema.parse>>;
   ocrSourcePageUrl(runId: string, revision: number, sourcePage: number): string;
   ocrCommandResult(runId: string, commandId: string, signal?: AbortSignal): Promise<ReturnType<typeof OcrCommandResultWireSchema.parse>>;
+  workerCommandResult(commandId: string, signal?: AbortSignal): Promise<WorkerCommandResultWire>;
   readProfileSession(): Promise<PublicProfileState>;
   subscribeProfileSessionStale(listener: () => void): () => void;
   signInProfile(request: ProfileLoginRequest): Promise<PublicProfileState>;
@@ -59,6 +62,7 @@ export function createDashboardClient(input: Readonly<{
   baseUrl: string;
   fetchImpl?: FetchLike;
   surface?: () => string;
+  runId?: () => DashboardErrorReport["runId"];
 }>): DashboardClient {
   const surface = input.surface;
   const clientId = crypto.randomUUID();
@@ -101,6 +105,12 @@ export function createDashboardClient(input: Readonly<{
       const result = OcrCommandResultWireSchema.parse(await transport.requestJson(`/api/v1/runs/${encodeURIComponent(RunIdSchema.parse(runId))}/ocr/commands/${encodeURIComponent(commandId)}`,
         signal === undefined ? undefined : { signal }));
       if (result.state === "recorded" && (result.request.commandId !== commandId || result.request.target.runId !== runId)) throw new DashboardClientError({ kind: "schema", code: "OCR_REVIEW_REFUSED", message: ERROR_CATALOG.OCR_REVIEW_REFUSED.text });
+      return result;
+    },
+    async workerCommandResult(commandId, signal) {
+      const path = `/api/v1/worker-commands/${encodeURIComponent(commandId)}`;
+      const result = parseOrThrow(WorkerCommandResultWireSchema, `GET ${path}`, await transport.requestJson(path, signal === undefined ? undefined : { signal }));
+      if (result.state === "recorded" && result.request.commandId !== commandId) throw schemaError(`GET ${path}`, "worker command result identity mismatch");
       return result;
     },
     async uploadOcrSource(request, signal) {
@@ -190,7 +200,8 @@ export function createDashboardClient(input: Readonly<{
     },
     async reportError(report: DashboardErrorReport) {
       if (profileAuthority === undefined) return;
-      await transport.requestJson("/api/v1/debug/errors", { method: "POST", body: JSON.stringify(DashboardErrorReportSchema.parse(report)) });
+      const runId = report.runId ?? input.runId?.();
+      await transport.requestJson("/api/v1/debug/errors", { method: "POST", body: JSON.stringify(DashboardErrorReportSchema.parse({ ...report, ...(runId === undefined ? {} : { runId }) })) });
     },
     ...queries,
     ...commands,

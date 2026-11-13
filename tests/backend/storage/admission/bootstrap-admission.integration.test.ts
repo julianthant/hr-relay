@@ -104,7 +104,6 @@ try {
     const { AuthorityBackupService } = await import(${JSON.stringify(url("src/backend/storage/sqlite/backup-service.ts"))});
     const { OfflineAuthorityRestoreService } = await import(${JSON.stringify(url("src/backend/storage/sqlite/offline-restore.ts"))});
     const { profileBrowserClosure } = await import(${JSON.stringify(url("src/backend/runtime/browser/profile-browser-closure.ts"))});
-    const { observeRuntimeLockSnapshot } = await import(${JSON.stringify(url("src/backend/storage/sqlite/runtime-process-locks.ts"))});
 
     const { createCredentialStore } = await import(${JSON.stringify(url("src/backend/storage/configuration/credential-store.ts"))});
     const { RuntimeLifetimeLock } = await import(${JSON.stringify(url("src/backend/storage/admission/lifetime-lock.ts"))});

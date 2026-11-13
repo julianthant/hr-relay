@@ -13,7 +13,8 @@ import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, describe, it } from "vitest";
-import { authenticateOnboardingRosterChoice, buildRunWorkbookSection } from "../../../src/backend/runs/workbooks.js";
+import { authenticateOnboardingRosterChoice, buildRunWorkbookSection, createRunWorkbookService } from "../../../src/backend/runs/workbooks.js";
+import { WorkbookReferenceWriteSchema } from "../../../src/models/processing/workbooks/read-result.js";
 import { OnboardingCanonicalInput, OnboardingCanonicalValueSchema, ONBOARDING_INPUT_EXAMPLE } from "../../../src/models/workflows/onboarding/input.js";
 import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_GATE_ID, OnboardingRosterChoiceSchema } from "../../../src/models/workflows/onboarding/roster.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
@@ -26,7 +27,7 @@ import { CrmReadHireData } from "../../../src/models/systems/crm/read-hire-data.
 import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { onboardingWorkflow } from "../../../src/workflows/onboarding/workflow.js";
 import { appliedRunIds } from "../../support/fixtures/operator-command-fixtures.js";
-import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunService, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
 
 const descriptor = compileWorkflow(onboardingWorkflow).descriptor;
@@ -42,8 +43,180 @@ function foreignNative(record: TimelineEventRecord, runId: string) {
 }
 
 describe("Onboarding captured roster admission and row choice", () => {
+  it("chooses one of two complete sources with the same row identity and never repeats that choice as a write", async () => {
+    const f = await fixture("unique", { second: "same" });
+    assert.equal(f.repository.lastUsed("onboarding"), undefined);
+    const started = f.start();
+    assert.deepEqual(f.repository.lastUsed("onboarding")?.sources, [
+      { libraryId: f.id, sheetId: "people" }, { libraryId: f.secondId, sheetId: "people" },
+    ]);
+    const roster = OnboardingCanonicalValueSchema.parse(started.input.parsed.value).roster;
+    assert.equal(roster.state, "resolve-required");
+    const parked = f.park(started);
+    const available = f.section(parked).referenceChoices?.[0]?.resolution;
+    assert.equal(available?.state, "available");
+    if (available?.state !== "available") throw new Error("expected a source choice");
+    assert.equal(available.candidates.length, 2);
+    assert.deepEqual(available.candidates.map(candidate => [candidate.sheetId, candidate.rowId]), [["people", "people-person"], ["people", "people-person"]]);
+    assert.equal(new Set(available.candidates.map(candidate => candidate.referenceDigest)).size, 2);
+    assert.deepEqual(f.repository.runOperations(parked.envelope.runId), []);
+    const choice = f.choice(parked, 1);
+    const chosen = f.kernel.execute(choice);
+    assert.equal(chosen.state, "applied", JSON.stringify(chosen));
+    assert.equal(f.kernel.execute(choice).state, "already-applied");
+    assert.deepEqual(f.repository.runOperations(parked.envelope.runId), []);
+    const queued = f.database.authority.runs.get(parked.envelope.runId); assert.ok(queued?.lifecycle.state === "queued");
+    const ports = testWorkerPorts(f.database, f.clock, { path: f.profilePath, descriptor, poolIndex: 1 });
+    const worker = f.database.authority.workerSlots.list(descriptor.id).find(slot => slot.poolIndex === 1); assert.ok(worker);
+    const claimed = ports.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: worker.workerId });
+    assert.equal(claimed.state, "applied"); if (claimed.state !== "applied") throw new Error("claim refused");
+    const lifecycle = testRunService(f.database, f.clock), claim = { workerId: worker.workerId,
+      claimGeneration: claimed.run.claimGeneration }, now = f.clock.now().toISOString();
+    for (const state of ["validating", "running"] as const) {
+      assert.equal(lifecycle.workerTransition({ commandId: randomUUID(), runId: queued.envelope.runId, claim,
+        lifecycle: { state, workerId: worker.workerId, claimedAt: now, heartbeatAt: now } }).state, "applied");
+    }
+    const running = f.database.authority.runs.get(queued.envelope.runId); assert.ok(running?.lifecycle.state === "running");
+    const gate = f.database.authority.gateResults.get(`${running.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(gate);
+    const binding = authenticateOnboardingRosterChoice(f.database.authority, running, gate).row.binding;
+    assert.equal(binding.workbookId, f.secondId);
+    assert.equal(binding.sheetId, "people"); assert.equal(binding.rowId, "people-person");
+    const workbooks = createRunWorkbookService({ database: f.database, clock: f.clock,
+      resolveDescriptor: id => id === descriptor.id ? descriptor : undefined });
+    const command = WorkbookReferenceWriteSchema.parse({ kind: "patch-reference", writeId: "result", typeId: "onboarding-roster",
+      referenceDigest: binding.referenceDigest, key: f.key, values: [{ fieldId: "eid", value: "10800000" }] });
+    assert.equal(workbooks.write(running, command).state, "applied");
+    assert.equal(workbooks.write(running, command).state, "applied");
+    assert.equal(f.repository.runOperations(running.envelope.runId).length, 1);
+    const secondRows = f.library.read(f.secondId ?? "").workbook.sheets[0].rows;
+    const firstRows = f.library.read(f.id).workbook.sheets[0].rows;
+    assert.equal(secondRows[1].cells[7].value, "10800000");
+    assert.equal(firstRows[1].cells[7].value, null);
+    const latest = f.database.authority.runs.get(running.envelope.runId); assert.ok(latest);
+    assert.equal(lifecycle.requeue({ commandId: randomUUID(), runId: latest.envelope.runId,
+      expectedVersion: latest.version, claim, cause: "recovery" }).state, "applied");
+  });
+  it("resolves a person found in one of several sources and keeps a dry run from writing", async () => {
+    const unique = await fixture("unique", { second: "other" });
+    const resolved = OnboardingCanonicalValueSchema.parse(unique.start().input.parsed.value).roster;
+    assert.equal(resolved.state, "resolved");
+    if (resolved.state !== "resolved") throw new Error("expected one source match");
+    assert.equal(resolved.row.binding.workbookId, unique.id);
+    const missing = await fixture("missing", { second: "same" });
+    const absent = OnboardingCanonicalValueSchema.parse(missing.start().input.parsed.value).roster;
+    assert.equal(absent.state, "resolve-required");
+    if (absent.state !== "resolve-required") throw new Error("expected a missing person");
+    assert.equal(absent.reason, "row-missing");
+    const dry = await fixture("unique", { second: "same", dryRun: true });
+    const parked = dry.park(dry.start());
+    assert.equal(dry.kernel.execute(dry.choice(parked, 0)).state, "applied");
+    const queued = dry.database.authority.runs.get(parked.envelope.runId); assert.ok(queued);
+    const ports = testWorkerPorts(dry.database, dry.clock, { path: dry.profilePath, descriptor, poolIndex: 1 });
+    const worker = dry.database.authority.workerSlots.list(descriptor.id).find(slot => slot.poolIndex === 1); assert.ok(worker);
+    const claimed = ports.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: worker.workerId });
+    assert.equal(claimed.state, "applied"); if (claimed.state !== "applied") throw new Error("claim refused");
+    const lifecycle = testRunService(dry.database, dry.clock), claim = { workerId: worker.workerId, claimGeneration: claimed.run.claimGeneration };
+    const now = dry.clock.now().toISOString();
+    for (const state of ["validating", "running"] as const) {
+      assert.equal(lifecycle.workerTransition({ commandId: randomUUID(), runId: queued.envelope.runId, claim,
+        lifecycle: { state, workerId: worker.workerId, claimedAt: now, heartbeatAt: now } }).state, "applied");
+    }
+    const running = dry.database.authority.runs.get(queued.envelope.runId); assert.ok(running?.envelope.dryRun === true);
+    const gate = dry.database.authority.gateResults.get(`${running.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(gate);
+    const binding = authenticateOnboardingRosterChoice(dry.database.authority, running, gate).row.binding;
+    const workbooks = createRunWorkbookService({ database: dry.database, clock: dry.clock,
+      resolveDescriptor: id => id === descriptor.id ? descriptor : undefined });
+    assert.throws(() => workbooks.write(running, WorkbookReferenceWriteSchema.parse({ kind: "patch-reference", writeId: "result",
+      typeId: "onboarding-roster", referenceDigest: binding.referenceDigest, key: dry.key, values: [{ fieldId: "eid", value: "10800000" }] })),
+      { code: "WORKBOOK_INVALID" });
+    assert.deepEqual(dry.repository.runOperations(running.envelope.runId), []);
+    assert.equal(dry.library.read(binding.workbookId).workbook.sheets[0].rows[1].cells[7].value, null);
+    const latest = dry.database.authority.runs.get(running.envelope.runId); assert.ok(latest);
+    assert.equal(lifecycle.requeue({ commandId: randomUUID(), runId: latest.envelope.runId,
+      expectedVersion: latest.version, claim, cause: "recovery" }).state, "applied");
+  });
+  it("fills only the authenticated gate-chosen row when the selected worksheet has duplicate emails", async () => {
+    const f = await fixture("duplicate"), parked = f.park(f.start());
+    const choice = f.choice(parked);
+    assert.equal(choice.type, "resolve-workbook-reference-row");
+    if (choice.type !== "resolve-workbook-reference-row") throw new Error("unexpected row command");
+    assert.equal(choice.payload.sheetId, "people"); assert.equal(choice.payload.rowId, "people-person");
+    assert.equal(f.kernel.execute(choice).state, "applied");
+    const queued = f.database.authority.runs.get(parked.envelope.runId); assert.ok(queued?.lifecycle.state === "queued");
+    const ports = testWorkerPorts(f.database, f.clock, { path: f.profilePath, descriptor, poolIndex: 1 });
+    const worker = f.database.authority.workerSlots.list(descriptor.id).find(slot => slot.poolIndex === 1); assert.ok(worker);
+    const claimed = ports.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: worker.workerId });
+    assert.equal(claimed.state, "applied"); if (claimed.state !== "applied") throw new Error("claim refused");
+    const lifecycle = testRunService(f.database, f.clock), claim = { workerId: worker.workerId,
+      claimGeneration: claimed.run.claimGeneration }, now = f.clock.now().toISOString();
+    for (const state of ["validating", "running"] as const) {
+      assert.equal(lifecycle.workerTransition({ commandId: randomUUID(), runId: queued.envelope.runId, claim,
+        lifecycle: { state, workerId: worker.workerId, claimedAt: now, heartbeatAt: now } }).state, "applied");
+    }
+    const running = f.database.authority.runs.get(queued.envelope.runId); assert.ok(running?.lifecycle.state === "running");
+    const gate = f.database.authority.gateResults.get(`${running.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(gate);
+    const binding = authenticateOnboardingRosterChoice(f.database.authority, running, gate).row.binding;
+    const command = WorkbookReferenceWriteSchema.parse({ kind: "patch-reference", writeId: "result", typeId: "onboarding-roster",
+      referenceDigest: binding.referenceDigest, key: f.key, values: [{ fieldId: "eid", value: "10800000" }] });
+    const workbooks = createRunWorkbookService({ database: f.database, clock: f.clock,
+      resolveDescriptor: id => id === descriptor.id ? descriptor : undefined });
+    assert.equal(workbooks.write(running, command).state, "applied");
+    const rows = f.library.read(f.id).workbook.sheets[0].rows;
+    assert.equal(rows[1].cells[7].value, "10800000"); assert.equal(rows[2].cells[7].value, null);
+    assert.throws(() => workbooks.write(running, { ...command, referenceDigest: FingerprintSchema.parse("b".repeat(64)) }), { code: "WORKBOOK_INVALID" });
+    const latest = f.database.authority.runs.get(running.envelope.runId); assert.ok(latest);
+    assert.equal(lifecycle.requeue({ commandId: randomUUID(), runId: latest.envelope.runId,
+      expectedVersion: latest.version, claim, cause: "recovery" }).state, "applied");
+  });
+  it("selects a General spreadsheet row from its captured key, fields and worksheet", async () => {
+    const f = await fixture("duplicate", { general: true });
+    assert.equal(f.library.metadata(f.id).typeId, "general");
+    const parked = f.park(f.start());
+    const choice = f.choice(parked);
+    assert.equal(choice.type, "resolve-workbook-reference-row");
+    if (choice.type !== "resolve-workbook-reference-row") throw new Error("unexpected row command");
+    assert.equal(choice.payload.sheetId, "people"); assert.equal(choice.payload.rowId, "people-person");
+    assert.equal(f.kernel.execute(choice).state, "applied");
+    const queued = f.database.authority.runs.get(parked.envelope.runId); assert.ok(queued);
+    assert.equal(queued.lifecycle.state, "queued");
+    const gate = f.database.authority.gateResults.get(`${queued.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(gate);
+    assert.equal(OnboardingRosterChoiceSchema.parse(gate.result.value).decision, "selected");
+  });
+  it("shows an unavailable row choice after the selected source changes and refuses the stale command", async () => {
+    const f = await fixture("duplicate"), parked = f.park(f.start());
+    const command = f.choice(parked);
+    f.edit(workbook => { workbook.name = "Changed.xlsx"; });
+    assert.deepEqual(f.section(parked).referenceChoices?.[0]?.resolution,
+      { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] });
+    assert.equal(f.kernel.execute(command).state, "rejected");
+  });
+  it("refuses an ambiguous Onboarding result before an authenticated roster gate choice", async () => {
+    const f = await fixture("duplicate"), queued = f.start();
+    const ports = testWorkerPorts(f.database, f.clock, { path: f.profilePath, descriptor, poolIndex: 1 });
+    const worker = f.database.authority.workerSlots.list(descriptor.id).find(slot => slot.poolIndex === 1); assert.ok(worker);
+    const claimed = ports.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: worker.workerId });
+    assert.equal(claimed.state, "applied"); if (claimed.state !== "applied") throw new Error("claim refused");
+    const lifecycle = testRunService(f.database, f.clock), claim = { workerId: worker.workerId,
+      claimGeneration: claimed.run.claimGeneration }, now = f.clock.now().toISOString();
+    for (const state of ["validating", "running"] as const) {
+      assert.equal(lifecycle.workerTransition({ commandId: randomUUID(), runId: queued.envelope.runId, claim,
+        lifecycle: { state, workerId: worker.workerId, claimedAt: now, heartbeatAt: now } }).state, "applied");
+    }
+    const running = f.database.authority.runs.get(queued.envelope.runId); assert.ok(running?.lifecycle.state === "running");
+    const roster = OnboardingCanonicalValueSchema.parse(running.input.parsed.value).roster;
+    assert.equal(roster.state, "resolve-required"); if (roster.state !== "resolve-required") throw new Error("expected unresolved roster");
+    const workbooks = createRunWorkbookService({ database: f.database, clock: f.clock,
+      resolveDescriptor: id => id === descriptor.id ? descriptor : undefined });
+    const command = WorkbookReferenceWriteSchema.parse({ kind: "patch-reference", writeId: "result", typeId: "onboarding-roster",
+      referenceDigest: roster.binding.referenceDigest, key: f.key, values: [{ fieldId: "eid", value: "10800000" }] });
+    assert.throws(() => workbooks.write(running, command), { code: "WORKBOOK_INVALID" });
+    assert.deepEqual(f.repository.runOperations(running.envelope.runId), []);
+    const latest = f.database.authority.runs.get(running.envelope.runId); assert.ok(latest);
+    assert.equal(lifecycle.requeue({ commandId: randomUUID(), runId: latest.envelope.runId,
+      expectedVersion: latest.version, claim, cause: "recovery" }).state, "applied");
+  });
   it("anchors pending, parked and selected states to their own retained native producers", async () => {
-    const f = await fixture("missing"), queued = f.start();
+    const f = await fixture(), queued = f.start();
     const pending = f.section(queued).referenceChoices?.[0]; assert.ok(pending);
     const birth = f.database.authority.timelineEvents.get(pending.native.eventId); assert.ok(birth);
     assert.equal(birth.payload.kind === "span" && birth.payload.event.t, "run.queued");
@@ -74,7 +247,6 @@ describe("Onboarding captured roster admission and row choice", () => {
           get: () => undefined }, timelineEvents }, run));
       }
     }
-    f.edit(workbook => { workbook.sheets[0].rows[1].cells[0].value = f.key; });
     assert.deepEqual(f.section(parked).referenceChoices?.[0]?.native, held.native);
     assert.equal(f.kernel.execute(f.choice(parked)).state, "applied");
     const selected = f.section(parked).referenceChoices?.[0]; assert.ok(selected);
@@ -109,7 +281,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.throws(() => buildRunWorkbookSection({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
       page: input => [...repositories.timelineEvents.page(input), repeated] } }, terminal));
   });
-  it("binds the default or selected workbook exactly once and retains the immutable typed legal/lived row", async () => {
+  it("binds the selected workbook exactly once and retains the immutable typed legal/lived row", async () => {
     const f = await fixture("unique"), run = f.start();
     assert.deepEqual(run.input.parsed.protectedBindings, []);
     const input = OnboardingCanonicalValueSchema.parse(run.input.parsed.value);
@@ -127,7 +299,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(f.snapshots(), 1);
     const selected = f.plan({ ...f.request, submissions: [{ ...f.request.submissions[0], email: "other@example.test" }],
       workbookReferences: [{ ...f.selection, libraryId: f.id }] });
-    assert.equal(selected.planned.length, 1); assert.equal(selected.refused.length, 0);
+    assert.equal(selected.planned.length, 0); assert.equal(selected.refused.length, 1);
     assert.equal(OnboardingCanonicalInput.safeParse(f.request.submissions[0]).success, false);
   });
 
@@ -136,50 +308,44 @@ describe("Onboarding captured roster admission and row choice", () => {
     for (const request of [
       { ...f.request, submissions: [{ ...f.request.submissions[0], roster: ONBOARDING_INPUT_EXAMPLE.roster }] },
       { ...f.request, workbookReferences: [] },
-      { ...f.request, workbookReferences: [{ ...f.selection, typeId: "general" }] },
       { ...f.request, workbookReferences: [{ ...f.selection, versionId: "missing" }] },
     ]) assert.equal(f.plan(request).planned.length, 0);
-    for (const reference of [{ ...f.selection, keys: ["other@example.test"] }, { ...f.selection, fields: ["email", "livedName"] }]) {
+    for (const reference of [{ ...f.selection, typeId: "general" }, { ...f.selection, keys: ["other@example.test"] }, { ...f.selection, fields: ["email", "livedName"] }]) {
       assert.throws(() => f.plan({ ...f.request, workbookReferences: [reference] }));
     }
     for (const values of [["", "Hire", "", null, null, null], ["Fixture", 4, "", null, null, null],
       ["Fixture", "Hire", "", "Lived", null, null], ["Fixture", "Hire", "", "", "", ""]]) {
       f.edit(workbook => { workbook.sheets[0].rows[1].cells = [f.key, ...values, null, null, null, null].map(value => ({ value })); });
-      assert.equal(f.plan().planned.length, 0);
+      assert.equal(f.plan({ ...f.request, workbookReferences: [{ ...f.selection, expectedVersion: f.library.read(f.id).version,
+        versionId: f.library.libraryVersion(f.id).version.id }] }).planned.length, 0);
     }
   });
 
-  it("holds a missing row until its exact key appears in an original worksheet", async () => {
+  it("holds a missing row and requires a new Start after its source changes", async () => {
     const f = await fixture("missing"), run = f.park(f.start());
     assert.deepEqual(f.section(run).referenceChoices?.[0]?.resolution,
       { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] });
     f.edit(workbook => { workbook.sheets[0].rows[1].cells[0].value = f.key.toUpperCase(); });
     assert.equal(f.section(run).referenceChoices?.[0]?.resolution.state, "unavailable");
     f.edit(workbook => { workbook.sheets[0].rows[1].cells[0].value = f.key; });
-    const command = f.choice(run);
-    assert.equal(f.kernel.execute(command).state, "applied");
-    assert.equal(f.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "queued");
-    assert.equal(f.section(run).referenceChoices?.[0]?.resolution.state, "resolved");
+    assert.equal(f.section(run).referenceChoices?.[0]?.resolution.state, "unavailable");
+    assert.equal(f.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "parked-gate");
     assert.deepEqual(f.repository.runOperations(run.envelope.runId), []);
   });
 
-  it("rebuilds the chosen cross-sheet values, resumes once and leaves the original start snapshot unchanged", async () => {
+  it("rebuilds the chosen row in the selected worksheet, resumes once and leaves the original start snapshot unchanged", async () => {
     const f = await fixture(), run = f.park(f.start()), original = canonicalJsonStringify(run.input);
     const available = f.section(run).referenceChoices?.[0]?.resolution;
-    assert.ok(available?.state === "available"); assert.deepEqual(available.candidates.map(row => row.sheetId), ["people", "archive"]);
+    assert.ok(available?.state === "available"); assert.deepEqual(available.candidates.map(row => row.sheetId), ["people", "people"]);
     const pick = available.decision?.options[0];
     assert.equal(available.decision?.type, "pick-row");
     assert.deepEqual([pick?.id, pick?.send, pick?.confirm], ["confirm", { via: "action", actionKey: available.action.key },
       available.action.kind === "command" ? available.action.confirm : undefined]);
     const table = pick?.input?.kind === "candidate" ? pick.input.table : undefined;
     assert.deepEqual(table?.rows.map(({ sheetId, rowId, rowNumber }) => [sheetId, rowId, rowNumber]),
-      available.candidates.map(({ sheetId, rowId }) => [sheetId, rowId, 2]));
-    assert.equal(table?.typed, undefined, "both sheets hold the key on row 2, so a typed row number would be ambiguous");
-    assert.equal(table?.title, "Roster rows", "rows from two sheets are not titled by either sheet");
-    f.edit(workbook => { workbook.sheets[1].rows[1].cells[1].value = "Chosen";
-      for (const [index, value] of ["Lived", "Hire", ""].entries()) workbook.sheets[1].rows[1].cells[index + 4].value = value; });
+      available.candidates.map(({ sheetId, rowId }, index) => [sheetId, rowId, index + 2]));
     const request = f.choice(run); assert.ok(request.type === "resolve-workbook-reference-row");
-    const command = { ...request, payload: { sheetId: "archive", rowId: "archive-person" } };
+    const command = { ...request, payload: { sheetId: "people", rowId: "people-second" } };
     assert.equal(f.kernel.execute(command).state, "applied");
     assert.equal(f.kernel.execute(command).state, "already-applied");
     const current = f.database.authority.runs.get(run.envelope.runId); assert.ok(current);
@@ -187,8 +353,8 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(canonicalJsonStringify(current.input), original);
     const gate = f.database.authority.gateResults.get(`${run.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(gate);
     const { row: chosen } = authenticateOnboardingRosterChoice(f.database.authority, current, gate);
-    assert.equal(chosen.references.legalName.firstName, "Chosen"); assert.equal(chosen.references.livedName?.firstName, "Lived");
-    assert.equal(chosen.binding.sheetId, "archive"); assert.equal(chosen.binding.workbookVersion, command.target.workbookVersion);
+    assert.equal(chosen.references.legalName.firstName, "Second"); assert.equal(chosen.references.livedName, null);
+    assert.equal(chosen.binding.sheetId, "people"); assert.equal(chosen.binding.workbookVersion, command.target.workbookVersion);
     const hirePlan = descriptorRuntimeNodes(descriptor).find(node => node.id === "hire-plan"); assert.ok(hirePlan?.kind === "task");
     const bound = OnboardingReadHirePlan.input.parse(hirePlan.bind({ input: current.input.parsed.value,
       outputs: { "crm-source": CrmReadHireData.example, "roster-choice": { decision: "selected", row: chosen } } }));
@@ -221,16 +387,22 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(f.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "parked-gate");
   });
 
-  it.each(["revision", "key", "sheet", "type", "fields", "names"] as const)("refuses stale %s authority without resuming or writing", async change => {
+  it("keeps the captured row when only the library type label changes", async () => {
     const f = await fixture(), run = f.park(f.start()), command = f.choice(run);
-    if (change === "type") {
-      f.repository.putType({ id: "other-roster", name: "Other roster", keyFieldId: "email",
-        fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
-      const record = f.library.read(f.id); assert.ok(record);
-      const receipt = f.library.operatorOperation(f.id, randomUUID(), { kind: "metadata", expectedVersion: record.version,
-        metadata: { typeId: "other-roster", sharePoint: null } });
-      assert.equal(receipt.state, "applied"); assert.equal(f.repository.metadata(f.id).typeId, "other-roster");
-    } else f.edit(workbook => {
+    f.repository.putType({ id: "other-roster", name: "Other roster", keyFieldId: "email",
+      fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
+    const record = f.library.read(f.id); assert.ok(record);
+    const receipt = f.library.operatorOperation(f.id, randomUUID(), { kind: "metadata", expectedVersion: record.version,
+      metadata: { typeId: "other-roster", sharePoint: null } });
+    assert.equal(receipt.state, "applied"); assert.equal(f.repository.metadata(f.id).typeId, "other-roster");
+    const changed = f.library.read(f.id); assert.ok(changed);
+    assert.ok(command.type === "resolve-workbook-reference-row");
+    assert.equal(f.kernel.execute({ ...command, target: { ...command.target, workbookVersion: changed.version } }).state, "applied");
+    assert.equal(f.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "queued");
+  });
+  it.each(["revision", "key", "sheet", "fields", "names"] as const)("refuses stale %s authority without resuming or writing", async change => {
+    const f = await fixture(), run = f.park(f.start()), command = f.choice(run);
+    f.edit(workbook => {
       if (change === "revision") workbook.name = "Changed.xlsx";
       if (change === "key") workbook.sheets[0].rows[1].cells[0].value = "other@example.test";
       if (change === "sheet") workbook.sheets[0].id = "replacement-sheet";
@@ -250,11 +422,10 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.deepEqual(f.repository.runOperations(run.envelope.runId), []);
   });
 
-  it("never offers newly added worksheets and authenticates retained choice command/audit evidence", async () => {
+  it("never offers another worksheet and authenticates retained choice command/audit evidence", async () => {
     const f = await fixture(), run = f.park(f.start());
-    f.edit(workbook => { const added = structuredClone(workbook.sheets[0]); added.id = "new-sheet"; added.name = "New"; workbook.sheets.push(added); });
     const command = f.choice(run); assert.ok(command.type === "resolve-workbook-reference-row");
-    assert.equal(f.kernel.execute({ ...command, payload: { sheetId: "new-sheet", rowId: "people-person" } }).state, "rejected");
+    assert.equal(f.kernel.execute({ ...command, payload: { sheetId: "archive", rowId: "archive-person" } }).state, "rejected");
     const actual = CommandRequestSchema.parse({ ...command, commandId: runWorld.nextCommandId() });
     assert.ok(actual.type === "resolve-workbook-reference-row");
     assert.equal(f.kernel.execute(actual).state, "applied");
@@ -312,10 +483,7 @@ describe("Onboarding captured roster admission and row choice", () => {
   it("executes the actual resumed hire review and I-9 child with retained chosen values and emits a selected terminal receipt", async () => {
     const f = await executionFixture(), root = f.start();
     assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "parked-gate");
-    f.edit(workbook => { workbook.sheets[0].rows[1].cells[1].value = "Chosen";
-      for (const [index, value] of ["Lived", "Hire", ""].entries()) workbook.sheets[0].rows[1].cells[index + 4].value = value; });
     assert.equal(f.kernel.execute(f.choice(root)).state, "applied");
-    f.edit(workbook => { workbook.sheets[0].rows[1].cells[1].value = "Later"; });
     const executed = await f.execution.execute(root, new AbortController().signal);
     assert.ok(executed.run?.lifecycle.state === "terminal" && executed.run.lifecycle.outcome === "done",
       JSON.stringify({ lifecycle: executed.run?.lifecycle.state, outcomes: executed.outcomes.map(value => value.state),
@@ -325,12 +493,12 @@ describe("Onboarding captured roster admission and row choice", () => {
             frames: debug?.stack.match(/src\/[a-zA-Z0-9/_.-]+:\d+:\d+/g) }))) }));
     const result = f.database.authority.runResults.get(root.envelope.runId); assert.ok(result);
     const output = OnboardingResultSchema.parse(result.result.value);
-    assert.equal(output.plan.employee.firstName, "Chosen"); assert.equal(output.plan.employee.preferredFirstName, "Lived");
+    assert.equal(output.plan.employee.firstName, "Fixture"); assert.equal(output.plan.employee.preferredFirstName, "Fixture");
     assert.equal(output.hireWrite.state, "verified");
-    assert.equal(output.state, "master-review-required");
+    assert.equal(output.state, "filed");
     assert.deepEqual(f.calls.map(call => call.system), ["crm", "ucpath", "i9", "crm", "ucpath", "crm", "ucpath"]);
     const childCall = f.calls.find(call => call.system === "i9"); assert.ok(childCall);
-    assert.equal(Reflect.get(Object(childCall.input), "firstName"), "Chosen");
+    assert.equal(Reflect.get(Object(childCall.input), "firstName"), "Fixture");
     const children = f.database.authority.runs.listChildren(root.envelope.runId);
     assert.equal(children.length, 1); assert.equal(children[0].envelope.workflow, "i9-lookup");
     assert.ok(children[0].lifecycle.state === "terminal" && children[0].lifecycle.outcome === "done");
@@ -351,7 +519,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.ok(receipt.decisions.some(decision => decision.kind === "gate" && decision.outcome === "taken"
       && decision.reason.includes("selected") && decision.reason.includes("row.binding.referenceDigest")));
     const operations = f.repository.runOperations(root.envelope.runId);
-    assert.equal(operations.length, 1); assert.equal(operations[0]?.receipt.state, "resolve-required");
+    assert.equal(operations.length, 1); assert.equal(operations[0]?.receipt.state, "applied");
   });
 
   it.each([false, true])("authenticates the actual transitive I-9 boundary and recovered source choice (tampered source: %s)", async tamper => {

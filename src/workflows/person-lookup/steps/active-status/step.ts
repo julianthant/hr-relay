@@ -33,6 +33,84 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
     })),
     { label: "Status note", visibility: "logs", sources: [{ nodeId: "active-status", kind: "output", fieldPath: "reason" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "person-org-detail",
+        title: "Person Organizational Summary detail",
+        mode: "Read only",
+        nodeIds: ["crm-only-recovery", "active-status"],
+        lines: [
+          { id: "recover-ucpath", kind: "action", text: "When CRM supplies an employee ID, look up that person in UCPath.", nodeIds: ["crm-only-recovery"] },
+          { id: "read-status", kind: "read", text: "Determine employment status and read department and termination details when present.", nodeIds: ["active-status"] }
+        ],
+        fields: [
+          {
+            id: "employment-status",
+            operatorField: "Employment status",
+            source: {
+              origin: "UCPath and CRM",
+              detail: "Status derived from the resolved identity and verified records.",
+              chain: [
+                {
+                  label: "UCPath identity",
+                  detail: "Read and confirm the UCPath person.",
+                  read: { stepKey: "searching", page: "Person Organizational Summary detail", field: "Employee ID" }
+                },
+                {
+                  label: "CRM identity",
+                  detail: "A verified CRM record can supply the employee ID for a recovery search.",
+                  read: { stepKey: "cross-verify", page: "CRM onboarding record", field: "Employee ID" }
+                }
+              ],
+              read: { stepKey: "active-status", page: "Person Organizational Summary detail", field: "Employment status" }
+            }
+          },
+          {
+            id: "hdh-department",
+            operatorField: "HDH department",
+            source: {
+              origin: "UCPath",
+              detail: "Whether the selected department is HDH.",
+              chain: [],
+              read: { stepKey: "active-status", page: "Person Organizational Summary detail", field: "HDH department" }
+            }
+          },
+          {
+            id: "department",
+            operatorField: "Department",
+            source: {
+              origin: "UCPath",
+              detail: "Department from the employment details.",
+              chain: [],
+              read: { stepKey: "active-status", page: "Person Organizational Summary detail", field: "Department" }
+            }
+          },
+          {
+            id: "end-date",
+            operatorField: "End date",
+            source: {
+              origin: "UCPath",
+              detail: "End date from the employment details, when present.",
+              chain: [],
+              read: { stepKey: "active-status", page: "Person Organizational Summary detail", field: "End date" }
+            }
+          },
+          {
+            id: "termination-reason",
+            operatorField: "Termination reason",
+            source: {
+              origin: "UCPath",
+              detail: "Termination reason from the employment details, when present.",
+              chain: [],
+              read: { stepKey: "active-status", page: "Person Organizational Summary detail", field: "Termination reason" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } as const);
 
 const activeStatusEntries = defineStepEntries(ACTIVE_STATUS_STEP);

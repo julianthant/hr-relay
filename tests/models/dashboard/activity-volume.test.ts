@@ -39,6 +39,8 @@ function emptyReport() {
     inFlightRuns: 0,
     people: { state: "present", distinct: 0, evidenceRows: 0 },
     completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
+    outcomeSplit: { done: 0, failed: 0, attention: 0 },
+    typicalMedian: { measuredRuns: 0, medianMs: { state: "absent", reason: "no measured runs" } },
     days: [],
     workflows: [],
     categories: [],

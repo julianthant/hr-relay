@@ -3,35 +3,26 @@ import * as credentialStores from "../../../../src/backend/storage/configuration
 import { RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
 import { createWorkerCompositionTestWorld } from "../../../support/helpers/backend/worker-composition-world.js";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 
 
 import { afterEach, describe, it, vi } from "vitest";
 import { WorkerSessionManager, WorkerSessionClosureUnprovedError } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { composeWorkerRuntime } from "../../../../src/backend/app/composition/worker-compose.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { RUN_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { happySessionHarness, healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness, type SessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
+import { happySessionHarness, healthyCrmDriver, personLookupQueuedRun, sessionFactoryHarness, type SessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, captureSyntheticClosure, workerLifetime, composeInput, cleanup } = createWorkerCompositionTestWorld();
+const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, captureSyntheticClosure, composeInput, cleanup } = createWorkerCompositionTestWorld();
 
 
 afterEach(cleanup);
 const POOL_INDEX_2 = PositiveIntSchema.parse(2);
 
 function admittedWorkerId(stateRoot: string, clock: TestClock, poolIndex = 1) {
-  const database = reopen(stateRoot, clock);
-  const existing = database.authority.workerSlots.list(WORKFLOW_ID)
-    .find(slot => slot.poolIndex === poolIndex && slot.retiredAt === null);
-  if (existing !== undefined) return existing.workerId;
-  return database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-    commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex,
-    expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0,
-    processId: process.pid,
-    now: clock.now().toISOString()
-}, randomUUID())).workerId;
+  const slot = reopen(stateRoot, clock).authority.workerSlots.active(WORKFLOW_ID).find(candidate => candidate.poolIndex === poolIndex);
+  assert.ok(slot, "composeInput admits the pool index's slot");
+  return slot.workerId;
 }
 
 describe("composed worker runtime", () => {
@@ -59,13 +50,6 @@ describe("composed worker runtime", () => {
     // The terminal result authority is the composition's, not a fixture's.
     assert.ok(database.authority.runResults.get(RUN_ID));
 
-    // The durable lease: started by this process, settled honestly at exit.
-    const lease = database.authority.workerLeases.get(report.workerId);
-    assert.ok(lease && lease.lifecycle.state === "stopped");
-    assert.equal(lease.lifecycle.reason, "shutdown");
-    assert.equal(lease.processId, process.pid);
-    assert.equal(lease.workflow, WORKFLOW_ID);
-
     // Composition persists its own cross-process timeline in authority.
     assert.ok(database.authority.timelineEvents.page({ workflow: WORKFLOW_ID }).length > 0);
 
@@ -89,33 +73,8 @@ describe("composed worker runtime", () => {
       admittedWorkerId(stateRoot, clock, POOL_INDEX_1),
       admittedWorkerId(stateRoot, clock, POOL_INDEX_2),
     ];
-    const database = reopen(stateRoot, clock);
-    assert.deepEqual({
-      reports: [first.workerId, second.workerId],
-      authorityLeases: expected.map((workerId) => database.authority.workerLeases.get(workerId)?.workerId),
-    }, {
-      reports: expected,
-      authorityLeases: expected,
-    });
-  });
-
-  it("refuses a second process answering to the same worker id", async () => {
-    const { repoRoot, stateRoot } = await repoRootWithState();
-    const clock = manualClock(new Date(NOW));
-    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const workerId = admittedWorkerId(stateRoot, clock, POOL_INDEX_1);
-    const database = reopen(stateRoot, clock);
-    const lifetime = await workerLifetime(stateRoot, clock, workerId);
-    try {
-      assert.equal(database.authority.workerLeases.get(workerId)?.processId, lifetime.pid);
-      await assert.rejects(
-        composeWorkerRuntime(composeInput({
-          repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
-        })),
-        /a second process may not answer to the same worker id/,
-      );
-    } finally { await lifetime.close(); }
-
+    assert.deepEqual([first.workerId, second.workerId], expected);
+    assert.notEqual(expected[0], expected[1]);
   });
 
   it("stops gracefully mid-run: the run is abandoned, never terminalized over a lost claim", async () => {
@@ -153,45 +112,9 @@ describe("composed worker runtime", () => {
     const database = reopen(stateRoot, clock);
     const run = database.authority.runs.get(RUN_ID);
     assert.ok(run && run.lifecycle.state !== "terminal");
-    const lease = database.authority.workerLeases.get(admittedWorkerId(stateRoot, clock));
-    assert.ok(lease && lease.lifecycle.state === "stopped");
-    assert.equal(lease.lifecycle.reason, "shutdown");
   });
 
-  it.each([
-    ["application-shutdown", "shutdown"],
-    ["profile-logout", "shutdown"],
-    ["shift over", "operator"],
-    [undefined, "operator"],
-  ] as const)("records a stop directive carrying reason %s as lifecycle reason %s", async (directiveReason, expected) => {
-    const { repoRoot, stateRoot } = await repoRootWithState();
-    const clock = manualClock(new Date(NOW));
-    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const workerId = admittedWorkerId(stateRoot, clock);
-    const database = reopen(stateRoot, clock);
-    // The directive lands mid-run, as a drain would; the loop observes it before the next claim.
-    const sessions = sessionFactoryHarness({
-      ucpath: () => {
-        const driver = healthyUcpathDriver();
-        return { ...driver, searchPersonOrg: (...args: Parameters<typeof driver.searchPersonOrg>) => {
-          const lease = database.authority.workerLeases.get(workerId); assert.ok(lease);
-          assert.equal(database.authority.workerLeases.control({ workerId, expectedVersion: lease.version, now: NOW,
-            control: { directive: "stop", requestedAt: NOW, requestedBy: "local-operator", ...(directiveReason === undefined ? {} : { reason: directiveReason }) } }).state, "applied");
-          return driver.searchPersonOrg(...args);
-        } };
-      },
-      crm: () => healthyCrmDriver(),
-    });
-
-    const report = await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 }));
-
-    assert.equal(report.stopped, "stop-directive");
-    const lease = reopen(stateRoot, clock).authority.workerLeases.get(workerId);
-    assert.ok(lease && lease.lifecycle.state === "stopped");
-    assert.equal(lease.lifecycle.reason, expected);
-  });
-
-  it("refuses unproved closure when worker-stop cannot prove closure, and records the lease as crashed", async () => {
+  it("refuses unproved closure when worker-stop cannot prove closure", async () => {
     const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
@@ -234,38 +157,9 @@ describe("composed worker runtime", () => {
       const report = captured.report; assert.ok(report);
       assert.equal(report.closure, "unproved");
       assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
-      const database = reopen(stateRoot, clock);
-      const lease = database.authority.workerLeases.get(report.workerId);
-      assert.ok(lease && lease.lifecycle.state === "stopped");
-      assert.equal(lease.lifecycle.reason, "crashed");
       assert.ok(closes.length > 0);
       captured.assertHeld();
       await captured.closeAfterSyntheticFailure(closes);
     } finally { closeSpy.mockRestore(); captured.restore(); storeSpy.mockRestore(); }
-  });
-
-  it("starts a NEW lease generation over a settled one and drains normally", async () => {
-    const { repoRoot, stateRoot } = await repoRootWithState();
-    const clock = manualClock(new Date(NOW));
-    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const workerId = admittedWorkerId(stateRoot, clock);
-    const seed = reopen(stateRoot, clock);
-    assert.equal(seed.authority.workerLeases.start({
-      workerId, workflow: WORKFLOW_ID, browserSystems: ["crm", "ucpath"], processId: process.pid,
-      requestedBy: "local-operator", now: NOW,
-    }).state, "started");
-    assert.equal(seed.authority.workerLeases.reportLifecycle({
-      workerId,
-      leaseGeneration: 1,
-      lifecycle: { state: "stopped", startedAt: NOW, stoppedAt: NOW, reason: "operator" },
-      now: NOW,
-    }).state, "applied");
-
-    const report = await composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
-    }));
-    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
-    const lease = seed.authority.workerLeases.get(workerId);
-    assert.ok(lease && lease.leaseGeneration === 2 && lease.processId === process.pid);
   });
 });

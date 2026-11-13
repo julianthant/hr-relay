@@ -51,7 +51,6 @@ if (mode === "preview-prepare") {
     const [run] = database.authority.runs.listChildren(parent.envelope.runId);
     assert.ok(run?.lifecycle.state === "running" && run.envelope.dryRun);
     lifetimeLock.assertHeld();
-    assert.equal(database.authority.workerLeases.get(run.lifecycle.workerId)?.processId, process.pid);
     process.send?.({ kind: "preview-prepare", workerId: run.lifecycle.workerId, runId: run.envelope.runId,
       pid: process.pid, events: driver.events });
     await new Promise<never>(() => undefined);
@@ -65,7 +64,6 @@ if (mode === "attempting") {
     const intent = intents[0]; assert.ok(intent);
     const run = database.authority.runs.get(intent.runId); assert.ok(run && "workerId" in run.lifecycle);
     lifetimeLock.assertHeld();
-    assert.equal(database.authority.workerLeases.get(run.lifecycle.workerId)?.processId, process.pid);
     const clicks = driver.events.filter(event => event.startsWith("commit-click:")).length;
     assert.equal(clicks, 1);
     assert.ok(typeof process.send === "function");
@@ -94,7 +92,6 @@ stage = "compose";
           const checkpoints = database.authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId);
           assert.ok(checkpoints.length > 0);
           lifetimeLock.assertHeld();
-          assert.equal(database.authority.workerLeases.get(run.lifecycle.workerId)?.processId, process.pid);
           observed = true;
           assert.ok(typeof process.send === "function");
           process.send({ kind: "checkpoint", workerId: run.lifecycle.workerId, runId: run.envelope.runId, pid: process.pid });
@@ -108,9 +105,9 @@ stage = "compose";
   assert.equal(report.closure, "proved");
   admission.release();
   machine.release();
-  await lifetimeLock.close();
+  // A worker never closes its lifetime listener; exiting releases it.
   process.send?.({ kind: "terminal", closure: report.closure, done: report.outcomes.filter(outcome => outcome.state === "done").length },
-    () => { process.disconnect?.(); });
+    () => { process.exit(); });
 } catch (error) {
   const type = error instanceof z.ZodError ? "ZOD_ERROR" : error instanceof Error ? "ERROR"
     : error === null ? "NULL" : error === undefined ? "UNDEFINED" : "OTHER";

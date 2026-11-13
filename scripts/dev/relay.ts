@@ -9,7 +9,7 @@ import { z } from "zod";
 import { applicationDataWorkspace, rebuildRuntimeIsolation } from "../../src/backend/app/config/runtime-isolation.js";
 import { noSymlinkAncestry, readPrivateFile, removeExactPath, sameDirectory, statDirectory } from "../../src/backend/storage/configuration/credential-safe-file.js";
 import { createPrivateDirectory, writePrivateStage } from "../../src/backend/storage/private-path.js";
-import { observeProcessIdentity, ProcessStartIdentitySchema } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { observeProcessIdentity, ProcessStartIdentitySchema } from "../../src/backend/storage/admission/process-identity.js";
 import { DashboardFailedSchema, DashboardStopSchema, DashboardStoppedSchema } from "../../src/models/runtime/dashboard-control.js";
 import { windowsProgramFilesRoots } from "../../src/models/config/secrets.js";
 import { publishWindowsPrivateFile } from "../../src/backend/storage/windows-private-path.js";

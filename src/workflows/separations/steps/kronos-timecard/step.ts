@@ -51,6 +51,76 @@ const KRONOS_TIMECARD_DISPLAY = {
     { label: "Separation date", example: "4/26/2031", sources: [{ nodeId: "dates", kind: "output", fieldPath: "separationDate" }] },
     { label: "Termination effective date", example: "4/26/2031", sources: [{ nodeId: "dates", kind: "output", fieldPath: "terminationEffectiveDate" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "employee-search",
+        title: "Employee Search",
+        mode: "Read only",
+        nodeIds: ["timecard-search"],
+        lines: [{ id: "find-employee", kind: "action", text: "Find and verify the employee in Kronos.", nodeIds: ["timecard-search"] }],
+        fields: [
+          {
+            id: "kronos-employee",
+            operatorField: "Kronos employee",
+            source: {
+              origin: "Kronos",
+              detail: "Name displayed for the matched employee.",
+              chain: [],
+              read: { stepKey: "kronos-timecard", page: "Employee Search", field: "Kronos employee" }
+            }
+          }
+        ]
+      },
+      {
+        id: "timecard",
+        title: "Timecard",
+        mode: "Read only",
+        nodeIds: ["timecard", "dates"],
+        lines: [
+          { id: "read-period", kind: "action", text: "Open the timecard and apply the separation window.", nodeIds: ["timecard"] },
+          { id: "read-punches", kind: "read", text: "Read punches, leave and pay codes for the applied window.", nodeIds: ["timecard"] },
+          { id: "reconcile-dates", kind: "check", text: "Reconcile last day worked and separation dates with the Kuali plan.", nodeIds: ["dates"] }
+        ],
+        fields: [
+          {
+            id: "last-day-worked",
+            operatorField: "Last day worked",
+            source: {
+              origin: "Kronos and Kuali",
+              detail: "Date reconciled from the timecard and separation document.",
+              chain: [
+                { label: "Kronos timecard", detail: "Last punch and leave evidence in the selected window." },
+                { label: "Kuali request", detail: "Date stated on the separation document." }
+              ],
+              read: { stepKey: "kronos-timecard", page: "Timecard", field: "Last day worked" }
+            }
+          },
+          {
+            id: "separation-date",
+            operatorField: "Separation date",
+            source: {
+              origin: "Kronos and Kuali",
+              detail: "Separation date after timecard reconciliation.",
+              chain: [],
+              read: { stepKey: "kronos-timecard", page: "Timecard", field: "Separation date" }
+            }
+          },
+          {
+            id: "termination-effective-date",
+            operatorField: "Termination effective date",
+            source: {
+              origin: "Reconciled dates",
+              detail: "Effective termination date derived from the reconciled separation date.",
+              chain: [],
+              read: { stepKey: "kronos-timecard", page: "Timecard", field: "Termination effective date" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } satisfies WorkflowGroupOptions;
 
 export const TIMECARD_SEARCH_NODE = "timecard-search";

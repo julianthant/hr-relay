@@ -52,11 +52,11 @@ function isRunLifecycleCommand(input: unknown): boolean {
   return typeof input === "object" && input !== null && "kind" in input && input.kind === "run-lifecycle";
 }
 
-export function commandIdentity(input: unknown) {
+export function commandIdentity(input: unknown, validateLifecycle: (command: unknown) => void = validateNativeLifecycleRequest) {
   const request = isRunLifecycleCommand(input)
     ? RunLifecycleCommandRecordSchema.parse(input)
     : NativeCommandRequestSchema.parse(input);
-  if ("kind" in request && request.kind === "run-lifecycle") validateNativeLifecycleRequest(request);
+  if ("kind" in request && request.kind === "run-lifecycle") validateLifecycle(request);
   const family = "kind" in request ? request.kind : request.family;
   const actor = "requestedBy" in request ? request.requestedBy : "acceptance" in request ? request.acceptance.request.requestedBy : LOCAL_OPERATOR_ACTOR_ID;
   const createdAt = "requestedAt" in request ? request.requestedAt : "recordedAt" in request ? request.recordedAt
@@ -69,9 +69,9 @@ export function commandIdentity(input: unknown) {
   const targetId = typeof target === "string" ? target : null;
   return { request, family, actor, createdAt, targetId, json: canonicalJsonStringify(request) };
 }
-export function commandFromRow(input: unknown) {
+export function commandFromRow(input: unknown, validateLifecycle?: (command: unknown) => void) {
   const row = RowSchema.parse(input);
-  const identity = commandIdentity(JSON.parse(row.request_json));
+  const identity = commandIdentity(JSON.parse(row.request_json), validateLifecycle);
   if (row.id !== identity.request.commandId || row.family !== identity.family || row.actor_id !== identity.actor
     || row.target_id !== identity.targetId || row.request_digest !== sha256Hex(identity.json) || row.created_at !== identity.createdAt) {
     throw new Error("command-row-identity-mismatch");

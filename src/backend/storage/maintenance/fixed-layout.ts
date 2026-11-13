@@ -100,7 +100,6 @@ export const FixedLayoutActivationSchema = z.strictObject({
   priorActive: ActiveRuntimeConfigRecordSchema.nullable(), snapshot: ConfigSnapshotRecordSchema,
   settingsInitialization: z.strictObject({ commandId: z.uuid(), auditId: z.uuid() }).optional(),
   logout: LogoutOperationSchema.optional(),
-  browserSnapshots: z.array(z.strictObject({ sourceConfigSnapshotId: z.uuid(), sourceFingerprint: DigestSchema, snapshot: ConfigSnapshotRecordSchema })),
   settingsUpdate: z.strictObject({ commandId: z.uuid(), auditId: z.uuid(), previousBrowserRoot: z.string().min(1).optional(), outputPaths: OutputPathUpdatesSchema }).optional(),
 }).superRefine((intent, context) => {
   if (intent.snapshot.revision !== intent.settingsRevision + (intent.settingsUpdate === undefined ? 0 : 1)) context.addIssue({ code: "custom", message: "fixed-layout-settings-revision-mismatch" });

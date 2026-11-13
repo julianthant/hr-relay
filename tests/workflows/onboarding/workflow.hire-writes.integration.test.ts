@@ -43,6 +43,40 @@ describe("public onboarding write execution", () => {
     assert.equal(h.repository.list().length, 1);
   });
 
+  it("G-T1 applies a delayed write-review decision and re-reads hire findings before previews", async () => {
+    const h = await world.executionFixture(false, { match: "unique", dryRun: true }), root = h.start();
+    const review = await h.rawExecution.execute(root, signal());
+    assert.ok(review.run?.lifecycle.state === "parked-gate" && review.run.lifecycle.gateId === ONBOARDING_WRITE_REVIEW_GATE,
+      JSON.stringify(review.run?.lifecycle));
+    const findings = () => h.database.authority.runCheckpoints.listByAttempt(
+      root.envelope.workflow, root.envelope.itemId, "hire-findings", root.envelope.attempt,
+    );
+    assert.equal(findings().length, 1);
+
+    h.clock.advanceWall(60_000);
+    const decidedAt = h.clock.now().toISOString();
+    const decision = h.approve(root, { decision: "new-hire" });
+    assert.equal(decision.state, "applied", JSON.stringify(decision));
+    terminal(await h.rawExecution.execute(root, signal()));
+
+    const executions = findings();
+    assert.equal(executions.length, 2);
+    assert.ok(executions[1].claimGeneration > executions[0].claimGeneration);
+    assert.ok(executions[1].writtenAt >= decidedAt);
+    assert.ok(executions[1].provenance.length > 0);
+    assert.ok(executions[1].provenance.every(fact => fact.observedAt >= decidedAt));
+    assert.deepEqual(h.database.authority.failures.listByRun(root.envelope.runId), []);
+    const stored = h.database.authority.runResults.get(root.envelope.runId); assert.ok(stored);
+    const preview = RunDryRunPreviewResultSchema.parse(stored.result.value);
+    assert.deepEqual(preview.steps.filter(step => step.state === "transaction-preview").map(step => step.nodeId),
+      ["i9-profile-save", "i9-remote-create", "hire-create"]);
+    assert.deepEqual(h.database.authority.writeIntents.countDryRunEvidenceByRun(root.envelope.runId),
+      { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
+    assert.equal(h.i9.events.some(event => event.startsWith("commit:")), false);
+    assert.equal(h.hire.events.includes("commit:hire"), false);
+    assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
+  });
+
   it("skips both I-9 transactions for a reviewed independently confirmed existing employee", async () => {
     const person = { emplId: EidSchema.parse("10800000"), name: "Hire, Fixture" };
     const h = await world.executionFixture(false, { match: "unique", selectedRow: true, mode: "rehire", personMatch: { hits: [person], confirmed: [person], dropped: [] } });

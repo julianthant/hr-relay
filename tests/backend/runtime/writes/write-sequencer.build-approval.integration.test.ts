@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, it, vi } from "vitest";
@@ -167,13 +168,10 @@ async function claimQueued(h: WriteHarness) {
   const now = h.clock.now().toISOString();
   const member = h.database.authority.workerSlots.list(WRITE_FIXTURE_WORKFLOW_ID).find(slot => slot.poolIndex === 1 && slot.retiredAt === null);
   assert.ok(member);
-  const lease = h.database.authority.workerLeases.get(member.workerId);
-  if (lease === undefined) throw new Error("fixture claim authority unavailable");
-  const workerLifetime = { leaseGeneration: lease.leaseGeneration, membershipRevision: member.membershipRevision };
-  const claimed = h.database.authority.runs.claimNext({ workerLifetime, workflow: WRITE_FIXTURE_WORKFLOW_ID, workerId: member.workerId, now });
+  const claimed = h.database.authority.runs.claimNext({ workflow: WRITE_FIXTURE_WORKFLOW_ID, workerId: member.workerId, now });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
   const claim = { workerId: member.workerId, claimGeneration: claimed.run.claimGeneration };
-  const base = { workerId: member.workerId, claimedAt: now, heartbeatAt: now, workerLifetime };
+  const base = { workerId: member.workerId, claimedAt: now, heartbeatAt: now };
   assert.equal(h.database.authority.runs.transition({
     runId: claimed.run.envelope.runId, expectedVersion: claimed.run.version, claim,
     lifecycle: { state: "validating", ...base }, now,
@@ -194,7 +192,7 @@ function resolutionKernel(h: WriteHarness, descriptor: AnyWorkflowDescriptor) {
     authority: h.database, lifecycle, clock: h.clock, ids: h.ids, appVersion: "1.0.0", descriptors,
     configIdentity: { configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint },
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-    workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } },
+    workerRuntime: { pool: unusedWorkerPool(unused) },
     writeResolution: createWriteResolutionExecutor({ authority: h.database, continuation: runContinuationPort(lifecycle), descriptors, ids: h.ids }),
   });
 }

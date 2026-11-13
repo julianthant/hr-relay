@@ -142,9 +142,6 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
     const { descriptor, dryRun } = startable(input.workflowId), active = settings();
     const request = { workflowId: descriptor.id, submissions: [...input.submissions], dryRun, browserMode: active.config.browser.headless ? "headless" as const : "headed" as const,
       captureBrowserScreenshots: true, ...(input.rerunSource === undefined ? {} : { rerunSource: input.rerunSource }),
-      // Required workbooks (the OCR roster) use each type's default workbook, as the Run dialog does without a pick.
-      ...(descriptor.requiredWorkbookTypeIds.length === 0 ? {} : { workbookReferences: input.submissions.flatMap((_submission, index) =>
-        descriptor.requiredWorkbookTypeIds.map(typeId => ({ entry: index + 1, typeId }))) }),
       ...(input.selectedStepKeys === undefined ? {} : { selectedStepKeys: [...input.selectedStepKeys] }) };
     await deps.plans.prepare?.(request, context.signal);
     context.assertCurrent(); input.assertSource();

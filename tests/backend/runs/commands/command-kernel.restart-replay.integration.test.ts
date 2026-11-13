@@ -126,7 +126,7 @@ function startTerminalRun(harness: Harness, options: Readonly<{ dryRun: boolean;
     const owner = testAdmittedWorker(harness.database, harness.clock, { path: syntheticDatabasePath(harness.database), workflow: descriptor.id, poolIndex: 1, browserSystems: workflowProjections(descriptor).systems });
     const lifecycle = testRunService(harness.database, harness.clock);
     const claimed = requireLifecycleApplied(lifecycle.claimNext({ commandId: nextCommandId(), workflow: descriptor.id, workerId: owner.workerId,
-      workerLifetime: owner.workerLifetime, runtimeConfig: selectRunRuntime(harness.database.authority) }));
+      runtimeConfig: selectRunRuntime(harness.database.authority) }));
     assert.equal(claimed.envelope.runId, runId);
     const failure = buildEntryValidationFailureRecord({ run: claimed, failureId: nextCommandId(), problems: ["fixture entry refused"], occurredAt: NOW });
     const authorization = buildFailureTerminalAuthorization({ run: claimed, authorizedAt: NOW, consequence: { kind: "failed", failure } });

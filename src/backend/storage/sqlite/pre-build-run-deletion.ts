@@ -13,7 +13,8 @@ import { CanonicalCancellationTerminalizeRequestSchema, CanonicalTransitionReque
 import { insertNativeCommand, settleNativeCommand } from "./command-record-row.js";
 import { BUILD_ID_ENVELOPE_SCHEMA_VERSION } from "./migrations.js";
 import { executeNativeRunDeletion, prepareNativeRunDeletion } from "./native-run-deletion.js";
-import { predecessorRunRecordFromRow, transitionStoredRun, updateRunRecord } from "./run-record-row.js";
+import { transitionStoredRun, updateRunRecord } from "./run-record-row.js";
+import { predecessorCustodyRunFromRow } from "./worker-custody-predecessor.js";
 
 const STORED_SHAPE_VERSION = BUILD_ID_ENVELOPE_SCHEMA_VERSION - 1;
 type CaptureFile = Parameters<typeof prepareNativeRunDeletion>[3];
@@ -40,7 +41,7 @@ export function deletePreBuildRuns(database: DatabaseSync, now: string, captureF
   insertNativeCommand(database, command);
   const cascadeRunIds = childrenFirst(settled).map(run => run.envelope.runId);
   for (const runId of cascadeRunIds) {
-    const run = predecessorRunRecordFromRow(database.prepare("SELECT * FROM runs WHERE id=?").get(runId));
+    const run = predecessorCustodyRunFromRow(database.prepare("SELECT * FROM runs WHERE id=?").get(runId));
     const deletion = RunDeleteInputSchema.parse({ runId, origin: "storage", commandId, now, cascadeRunIds });
     executeNativeRunDeletion(database, prepareNativeRunDeletion(database, run, deletion, captureFile, "execution", STORED_SHAPE_VERSION));
   }
@@ -57,7 +58,7 @@ export function requireSettledPreBuildRun(database: DatabaseSync, runId: string,
 export function settlePreBuildRun(database: DatabaseSync, runId: string, now: string,
   settleEvidence: SettleEvidence):
   { state: "applied"; run: PredecessorRunRecord } | { state: "refused" } {
-  const current = predecessorRunRecordFromRow(database.prepare("SELECT * FROM runs WHERE id=?").get(runId));
+  const current = predecessorCustodyRunFromRow(database.prepare("SELECT * FROM runs WHERE id=?").get(runId));
   if (current.lifecycle.state === "terminal") return { state: "applied", run: current };
   if (current.lifecycle.state === "parked-write") throw new Error("authority-upgrade-unresolved-writes");
   if (childOpen(database, runId)) return { state: "refused" };
@@ -131,7 +132,7 @@ function writeEvidence(run: PredecessorRunRecord, command: z.infer<typeof RunLif
   settleEvidence(result, run);
 }
 
-function lifecycleCommand(operation: string, request: unknown, fence: unknown, now: string) {
+export function lifecycleCommand(operation: string, request: unknown, fence: unknown, now: string) {
   return RunLifecycleCommandRecordSchema.parse({
     kind: "run-lifecycle", commandId: z.object({ commandId: z.string() }).parse(request).commandId, operation,
     requestFingerprint: FingerprintSchema.parse(sha256Hex(`hrauto:run-lifecycle-command:v1\0${operation}\0${canonicalJsonStringify(request)}`)),
@@ -139,7 +140,7 @@ function lifecycleCommand(operation: string, request: unknown, fence: unknown, n
   });
 }
 
-function recordAudit(database: DatabaseSync, command: z.infer<typeof RunLifecycleCommandRecordSchema>, result: z.infer<typeof RunLifecycleCommandAuditRecordSchema>["result"], now: string) {
+export function recordAudit(database: DatabaseSync, command: z.infer<typeof RunLifecycleCommandRecordSchema>, result: z.infer<typeof RunLifecycleCommandAuditRecordSchema>["result"], now: string) {
   insertNativeCommand(database, command);
   const audit = RunLifecycleCommandAuditRecordSchema.parse({
     kind: "run-lifecycle", auditId: command.commandId, request: command, result, completedAt: now,
@@ -160,14 +161,14 @@ function journalRun(run: PredecessorRunRecord) {
 }
 
 function readRuns(database: DatabaseSync): PredecessorRunRecord[] {
-  return database.prepare("SELECT * FROM runs ORDER BY id").all().map(predecessorRunRecordFromRow);
+  return database.prepare("SELECT * FROM runs ORDER BY id").all().map(predecessorCustodyRunFromRow);
 }
 
 function childOpen(database: DatabaseSync, runId: string): boolean {
   return database.prepare("SELECT 1 FROM runs WHERE parent_id=? AND state<>'terminal' LIMIT 1").get(runId) !== undefined;
 }
 
-function childrenFirst(runs: readonly PredecessorRunRecord[]): PredecessorRunRecord[] {
+export function childrenFirst(runs: readonly PredecessorRunRecord[]): PredecessorRunRecord[] {
   const ordered: PredecessorRunRecord[] = [];
   const visiting = new Set<string>();
   const visited = new Set<string>();

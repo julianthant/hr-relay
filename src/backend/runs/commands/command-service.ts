@@ -20,12 +20,14 @@ import type { RunQueueProjection } from "../projections/run-queue-projection.js"
 import { errorText } from "../lifecycle/support.js";
 import { RunWorkerStartupError, type RunWorkerCapacity } from "./run-worker-capacity.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import type { NotificationInbox } from "../notifications/inbox.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
   readonly projection: Pick<RunQueueProjection, "ingestFromTimeline" | "refreshRun">;
   readonly startWorkerCapacity?: RunWorkerCapacity;
   readonly quitAccepted?: () => void;
+  readonly commandNotices?: Pick<NotificationInbox, "record">;
 }
 
 export interface DashboardCommandService {
@@ -111,6 +113,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
     }
   }
   async function completeCapacity(capacity: RunWorkerCapacity, request: CapacityRequest, result: CommandResult): Promise<CommandResult> {
+    if (result.state !== "applied" && result.state !== "already-applied") return result;
     const workerStartup = await ensureCapacity(capacity, request, result);
     return workerStartup === undefined ? result : CommandResultSchema.parse({ ...result, workerStartup });
   }
@@ -130,11 +133,19 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       if (result.state === "applied" && parsed.data.type === "pause-all-and-quit") deps.quitAccepted?.();
       return result;
     }
-    if (!parsed.success || !needsWorkerCapacity(parsed.data) || deps.startWorkerCapacity === undefined) return executeOne(input);
-    const request = parsed.data, capacity = deps.startWorkerCapacity;
+    if (!parsed.success) return executeOne(input);
+    const request = parsed.data;
+    const executeRequest = async (): Promise<CommandResult> => {
+      if (request.family !== "start") return executeOne(request);
+      const result = await deps.kernel.executeStart(request);
+      publish(request, result);
+      return result;
+    };
+    if (!needsWorkerCapacity(request) || deps.startWorkerCapacity === undefined) return executeRequest();
+    const capacity = deps.startWorkerCapacity;
     const key = capacity.workflowOf(request);
-    if (key === undefined) return executeOne(input);
-    return inWorkflowLane(key, () => completeCapacity(capacity, request, executeOne(request)));
+    if (key === undefined) return executeRequest();
+    return inWorkflowLane(key, async () => completeCapacity(capacity, request, await executeRequest()));
   }
 
   return Object.freeze({
@@ -187,6 +198,10 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
           results.push({ outcome: "errored", runId: target.runId, commandId, detail: errorText(error) });
           break;
         }
+        if (result.state === "rejected" && result.code === "bulk-child-errored") {
+          results.push({ outcome: "errored", runId: target.runId, commandId, detail: result.message });
+          break;
+        }
         if (result.state === "pending" || result.state === "confirmation-required") {
           results.push({ outcome: "errored", runId: target.runId, commandId, detail: "Command has no terminal outcome; retain its original identity." });
           break;
@@ -221,6 +236,12 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
         for (const [index, outcome] of results.entries()) {
           if (outcome.outcome === "applied" && workflowOfRun.get(outcome.runId) === workflow) results[index] = { ...outcome, workerStartup };
         }
+      }
+      if (results.length < request.targets.length || results.some(result => result.outcome !== "applied")) {
+        const count = (outcome: string) => results.filter(result => result.outcome === outcome).length;
+        const parts = [[count("applied"), "applied"], [count("conflict"), count("conflict") === 1 ? "conflict" : "conflicts"], [count("refused"), "refused"], [count("errored"), "failed"],
+          [request.targets.length - results.length, "not attempted"]].filter(([n]) => n !== 0).map(([n, label]) => `${n} ${label}`);
+        deps.commandNotices?.record({ kind: "bulk-incomplete", bulkCommandId: request.bulkCommandId, summary: parts.join(" · ") });
       }
       return BulkRunCommandResponseSchema.parse({
         state: "vector",

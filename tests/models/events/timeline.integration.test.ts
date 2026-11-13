@@ -73,14 +73,13 @@ describe("cross-date search authority read", () => {
         if(fault === "erase")raw.prepare("UPDATE run_search SET actor_source_json=NULL,actor_id=NULL,metadata_json=json_set(metadata_json,'$.metadata.actor',json(?)) WHERE run_id=?")
           .run('{"state":"unavailable","reason":"not-recorded"}',e.runId);
         else raw.prepare("UPDATE run_search SET actor_source_json=json_set(actor_source_json,'$[0].event.payload.event.actorId','forged-actor'),actor_id='forged-actor',metadata_json=json_set(metadata_json,'$.metadata.actor.value','forged-actor') WHERE run_id=?").run(e.runId);
-        const generation=database.getMeta().authorityGeneration;
+        const nonmatchingSearch=()=>database.authority.runs.search({q:"NONMATCH",scope:"run",facets:{actor:"nonmatching-actor"},limit:1});
         const unrelatedBefore=database.authority.runs.get(unrelated.envelope.runId);assert.ok(unrelatedBefore);
+        assert.throws(nonmatchingSearch,/run-search-index-rebuild-required/u);
+        assert.equal(database.authority.runs.updatePresentation({runId:unrelated.envelope.runId,expectedVersion:unrelatedBefore.version,displayName:`Unrelated ${fault}`,now:clock.now().toISOString()}).state,"applied");
+        assert.throws(nonmatchingSearch,/run-search-index-rebuild-required/u);
+        const generation=database.getMeta().authorityGeneration;
         const sourceBefore=raw.prepare("SELECT * FROM timeline_events ORDER BY cursor").all();
-        assert.throws(()=>database.authority.runs.search({q:"NONMATCH",scope:"run",facets:{actor:"nonmatching-actor"},limit:1}),/run-search-index-rebuild-required/u);
-        assert.throws(()=>database.authority.runs.updatePresentation({runId:unrelated.envelope.runId,expectedVersion:unrelated.version,displayName:"Must not mutate",now:clock.now().toISOString()}),/run-search-retained-actor-source-mismatch/u);
-        assert.deepEqual(database.authority.runs.get(unrelated.envelope.runId),unrelatedBefore);
-        assert.equal(database.getMeta().authorityGeneration,generation);
-        assert.deepEqual(raw.prepare("SELECT * FROM timeline_events ORDER BY cursor").all(),sourceBefore);
         assert.throws(()=>{
           const unexpected=AuthorityDatabase.open({path,busyTimeoutMs:1000,migrationOwner:"search-post-prune-corrupt-reopen"},clock);
           unexpected.close();
@@ -93,6 +92,7 @@ describe("cross-date search authority read", () => {
         },/run-search-retained-actor-source-mismatch/u);
         assert.deepEqual([readFileSync(path),readFileSync(`${path}-wal`)],corruptBytes);
         assert.equal(database.getMeta().authorityGeneration,generation);
+        assert.deepEqual(raw.prepare("SELECT * FROM timeline_events ORDER BY cursor").all(),sourceBefore);
         raw.prepare("UPDATE run_search SET actor_source_json=?,actor_id=?,metadata_json=? WHERE run_id=?").run(saved.actor_source_json,saved.actor_id,saved.metadata_json,e.runId);
       }
       const reopened=AuthorityDatabase.open({path,busyTimeoutMs:1000,migrationOwner:"search-post-prune-genuine-reopen"},clock);

@@ -3,8 +3,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 
-/** Schema 25: the assistant effort scale becomes light|medium|high|xhigh|max; a stored "low" is "light". */
-export const ASSISTANT_EFFORT_SCALE_VERSION = 25;
+/** Schema 27: the assistant effort scale becomes light|medium|high|xhigh|max; a stored "low" is "light". */
+export const ASSISTANT_EFFORT_SCALE_VERSION = 27;
 const ObjectSchema = z.record(z.string(), z.unknown());
 const FAMILY = "assistant-model-preference";
 
@@ -21,7 +21,7 @@ function audit(input: unknown) {
   return { ...value, request: request(value.request) };
 }
 
-/** Converts one stored row of a predecessor below schema 25; used by stopped inspection and the forward migration. */
+/** Converts one stored row of a predecessor below schema 27; used by stopped inspection and the forward migration. */
 export function convertAssistantEffortRow(table: string, input: unknown): Record<string, unknown> {
   const row = ObjectSchema.parse(input);
   if (table === "assistant_model_preference") {
@@ -44,7 +44,7 @@ export function convertAssistantEffortRow(table: string, input: unknown): Record
   return row;
 }
 
-/** The forward conversion; runs inside migration 25 while the preference and audit triggers are dropped. */
+/** The forward conversion; runs inside migration 27 while the preference and audit triggers are dropped. */
 export function migrateAssistantEffortScale(database: DatabaseSync): void {
   for (const table of ["assistant_model_preference", "commands", "command_audits"]) {
     for (const raw of database.prepare(`SELECT * FROM ${table}`).all()) {

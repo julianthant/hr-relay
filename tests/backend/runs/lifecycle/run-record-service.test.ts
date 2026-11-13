@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { fenceWriteFixture, writeFenceFixtureInput } from "../../../support/helpers/write-fence-fixture.js";
 import assert from "node:assert/strict";
@@ -28,7 +29,7 @@ import { TransactionOutcomeSchema, WriteIntentRecordSchema, deriveIdempotencyKey
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { COMMITTED_OUTCOME, CONFIG_SNAPSHOT, HASH_A, LATER, LATEST, LEDGER_PAYLOAD, NOW, SPAN_OUTBOX_PAYLOAD, UUID_1, UUID_3, UUID_5, UUID_6, UUID_7, UUID_8, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { testAdmittedWorker, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 import { NOW as NOW_m2, foundationFixture as baseFoundationFixture_m2, failure as failure_m2, id as id_m2, terminalizeFixtureFailure } from "../../../support/helpers/database-foundation/fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
@@ -183,24 +184,21 @@ async function fixture(faultStep?:string) {
   bindWorkers=()=>{
     for (const slot of db.authority.workerSlots.list(run.envelope.workflow)) {
       if (slot.retiredAt !== null) continue;
-      const lease = db.authority.workerLeases.get(slot.workerId);
-      if (lease === undefined || lease.lifecycle.state === "stopped") continue;
-      registerBoundFixtureWorker({ database: db, path, workerId: slot.workerId, generation: lease.leaseGeneration, processId: lease.processId, clock: capturedInstantClock(LATEST) });
+      registerBoundFixtureWorker({ database: db, path, workerId: slot.workerId, clock: capturedInstantClock(LATEST) });
     }
   };
   const admitted=testAdmittedWorker(db,capturedInstantClock(NOW),{path,workflow:run.envelope.workflow,poolIndex:1,browserSystems:[]});
   const worker=admitted.workerId;
-  const workerLifetime=admitted.workerLifetime;
   db.authority.runs.enqueue({...run,version:1,claimGeneration:0,lifecycle:{state:"queued"}});
-  const claim=db.authority.runs.claimNext({workflow:run.envelope.workflow,workerId:worker,workerLifetime,now:NOW});
+  const claim=db.authority.runs.claimNext({workflow:run.envelope.workflow,workerId:worker,now:NOW});
   expect(claim.state).toBe("claimed");
   if(claim.state !== "claimed")throw new Error("fixture claim failed");
   const validating=db.authority.runs.transition({runId:run.envelope.runId,expectedVersion:claim.run.version,
-    claim:{workerId:worker,claimGeneration:1},lifecycle:{state:"validating",workerId:worker,workerLifetime,claimedAt:NOW,heartbeatAt:NOW},now:NOW});
+    claim:{workerId:worker,claimGeneration:1},lifecycle:{state:"validating",workerId:worker,claimedAt:NOW,heartbeatAt:NOW},now:NOW});
   expect(validating.state).toBe("applied");
   if(validating.state !== "applied")throw new Error("fixture validation failed");
   const running=db.authority.runs.transition({runId:run.envelope.runId,expectedVersion:validating.run.version,
-    claim:{workerId:worker,claimGeneration:1},lifecycle:{state:"running",workerId:worker,workerLifetime,claimedAt:NOW,heartbeatAt:NOW,currentNodeId:"termination"},now:NOW});
+    claim:{workerId:worker,claimGeneration:1},lifecycle:{state:"running",workerId:worker,claimedAt:NOW,heartbeatAt:NOW,currentNodeId:"termination"},now:NOW});
   expect(running.state).toBe("applied");
   if(running.state !== "applied")throw new Error("fixture run failed");
   fenceWriteFixture(db, {intent:WRITE_INTENT_ATTEMPTING,attempt:WRITE_ATTEMPT});
@@ -309,7 +307,7 @@ function kernel(f:Awaited<ReturnType<typeof fixture>>,fault?:"audit"|"mismatch",
   const instance=createCommandKernel({authority:f.db,lifecycle,clock:capturedInstantClock(LATER),ids:sequentialIdFactory(),appVersion:"1.0.0",
     descriptors:{resolve:()=>undefined},configIdentity:{configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,configFingerprint:CONFIG_SNAPSHOT.fingerprint},
     intakeParser:UNWIRED_INTAKE_PARSER,intakeProjections:NO_INTAKE_PROJECTIONS,
-    workerRuntime:{pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}},
+    workerRuntime:{pool:unusedWorkerPool(unused)},
     writeResolution:{recheck:present ? prepare : unused,resolveAbsent:present ? unused : prepare}});
   return {instance,preparations:()=>preparations};
 }
@@ -319,10 +317,10 @@ afterEach(_afterEachFixture0);
   it.each(["audit","mismatch"] as const)("rolls back the genuine audit and acknowledged effects after %s",async fault=>{
     const f=await fixture();const k=kernel(f,fault);const generation=f.db.getMeta().authorityGeneration;
     expect(()=>k.instance.execute(f.command)).toThrow(fault === "audit" ? "kernel-after-audit-fault" : "acknowledged-effects-mismatch");
-    expect(f.db.authority.commands.get(UUID_5)).toBeUndefined();expect(f.db.authority.commandAudits.findByCommand(UUID_5)).toBeUndefined();
+    expect(f.db.authority.commands.get(UUID_5)).toEqual(f.command);expect(f.db.authority.commandAudits.findByCommand(UUID_5)).toBeUndefined();
     expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)).toEqual(f.parked);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);
-    expect(f.db.authority.runs.get(f.run.envelope.runId)).toEqual(f.run);expect(f.db.getMeta().authorityGeneration).toBe(generation);
+    expect(f.db.authority.runs.get(f.run.envelope.runId)).toEqual(f.run);expect(f.db.getMeta().authorityGeneration).toBe(generation + 1);
   });
   it("replays the immutable complete command outcome after restart without repeating settlement",async ()=>{
     const f=await fixture();let k=kernel(f);
@@ -333,10 +331,10 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.runs.get(f.run.envelope.runId)?.version).toBe(6);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
-  it("refuses a forged original attempt before preparing or inserting any audit",async ()=>{
+  it("refuses a forged original attempt before preparing and stores the rejected audit",async ()=>{
     const f=await fixture();const k=kernel(f);const request=CommandRequestSchema.parse({...f.command,target:{...f.command.target,writeAttemptId:UUID_8}});
     expect(k.instance.execute(request).state).toBe("rejected");expect(k.preparations()).toBe(0);
-    expect(f.db.authority.commands.get(UUID_5)).toBeUndefined();expect(f.db.authority.commandAudits.findByCommand(UUID_5)).toBeUndefined();
+    expect(f.db.authority.commands.get(UUID_5)).toEqual(request);expect(f.db.authority.commandAudits.findByCommand(UUID_5)?.result.state).toBe("rejected");
   });
 });
 describe("native immutable parked positive settlement",()=>{
@@ -412,7 +410,7 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)).toEqual(f.parked);expect(f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)).toBeUndefined();
     expect(f.db.authority.commandAudits.findByCommand(command.commandId)).toBeUndefined();expect(f.db.authority.timelineEvents.page({limit:100})).toEqual([]);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);expect(f.db.authority.runs.get(f.run.envelope.runId)).toEqual(f.run);
-    expect(f.db.getMeta().authorityGeneration).toBe(generation);
+    expect(f.db.authority.commands.get(command.commandId)).toEqual(command);expect(f.db.getMeta().authorityGeneration).toBe(generation + 1);
   });
   it("replays the exact recheck request after restart and run advancement without repeating publication or continuation",async ()=>{
     const f=await fixture();const command=positive(f).command;let k=kernel(f,undefined,true);
@@ -564,7 +562,7 @@ afterEach(_afterEachFixture0);
       const current=f.db.authority.runs.get(f.run.envelope.runId)!;
       expect(f.db.authority.runs.requeue({runId:current.envelope.runId,expectedVersion:current.version,
         cause:"recovery",now:LATEST}).state).toBe("applied");
-      const claim=f.db.authority.runs.claimNext({workflow:f.run.envelope.workflow,workerId:worker,workerLifetime:testWorkerLifetime(f.db,f.run.envelope.workflow,2).workerLifetime,now:LATEST});
+      const claim=f.db.authority.runs.claimNext({workflow:f.run.envelope.workflow,workerId:worker,now:LATEST});
       expect(claim.state).toBe("claimed");
       if(claim.state !== "claimed")throw new Error("later current claim failed");
       expect(claim.run.claimGeneration).toBe(3);f.restart();
@@ -615,7 +613,7 @@ describe("same-attempt native recovery",()=>{
       assert.deepEqual(release.run.envelope,f.run.envelope);assert.deepEqual(release.run.input,f.run.input);
       assert.equal(release.run.version,f.run.version+1);assert.equal(release.run.claimGeneration,f.run.claimGeneration);
       assert.equal(release.run.lifecycle.state,"queued");
-      const next=f.db.authority.runs.claimNext({workflow:f.run.envelope.workflow,workerId:claim.workerId,workerLifetime:testWorkerLifetime(f.db,f.run.envelope.workflow,f.db.authority.workerSlots.get(claim.workerId)!.poolIndex).workerLifetime,now:NOW_m2});assert.equal(next.state,"claimed");
+      const next=f.db.authority.runs.claimNext({workflow:f.run.envelope.workflow,workerId:claim.workerId, now:NOW_m2});assert.equal(next.state,"claimed");
       if(next.state!=="claimed")throw new Error("primitive release not claimable");
       assert.deepEqual(next.run.envelope,f.run.envelope);assert.equal(next.run.claimGeneration,claim.claimGeneration+1);
       const claimedBytes=rawState(f.path);
@@ -642,7 +640,7 @@ describe("same-attempt native recovery",()=>{
       try{
         const replay=new RunRecordService({database:reopened,clock:f.clock,ids:sequentialIdFactory(),publishQueued:()=>{throw new Error("replayed queue publication");}});
         assert.equal(replay.requeue(request).state,"applied-already");assert.equal(rawState(f.path),settled);
-        const claimed=reopened.authority.runs.claimNext({workflow:f.run.envelope.workflow,workerId:claim.workerId,workerLifetime:testWorkerLifetime(reopened,f.run.envelope.workflow,reopened.authority.workerSlots.get(claim.workerId)!.poolIndex).workerLifetime,now:NOW_m2});assert.equal(claimed.state,"claimed");
+        const claimed=reopened.authority.runs.claimNext({workflow:f.run.envelope.workflow,workerId:claim.workerId, now:NOW_m2});assert.equal(claimed.state,"claimed");
         if(claimed.state!=="claimed")throw new Error("not reclaimed");
         assert.deepEqual(claimed.run.envelope,f.run.envelope);assert.equal(claimed.run.claimGeneration,claim.claimGeneration+1);
         const fenced=reopened.authority.runs.requeue({runId:request.runId,expectedVersion:claimed.run.version,claim,cause:"recovery",now:NOW_m2});assert.deepEqual(fenced,{state:"conflict",currentVersion:claimed.run.version,currentState:claimed.run.lifecycle.state,message:`run ${request.runId} is no longer claimed by ${claim.workerId} at generation ${String(claim.claimGeneration)}`});

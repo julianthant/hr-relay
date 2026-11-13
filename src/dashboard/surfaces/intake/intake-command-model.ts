@@ -4,7 +4,7 @@ import type { IntakeSessionWire } from "../../../models/intake/wire.js";
 import { deriveMappingSnapshotHash } from "../../../models/intake/mapping.js";
 import { IntakeSessionWireSchema } from "../../../models/intake/wire.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { IntakeCommandRequestSchema, type CommandRequest, type CommandResult, type BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
+import { IntakeCommandRequestSchema, type CommandRequest, type CommandResult, type BulkRunCommandOutcome, type DashboardCommandRequest } from "../../../rules/commands/commands.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import type { DashboardClient } from "../../client/index.js";
 import type { CommandExecutor, CommandOutcome, CommandReadbackVerification } from "../../app/commands/command-executor.js";
@@ -169,7 +169,7 @@ export function useIntakeCommands(client: DashboardClient, sessionId: string, ad
       }
     };
     setPending(basis.pendingKey); setProblem(null);
-    const options = { scope: binding.scope, readback: async (sent: CommandRequest, reply: CommandResult | BulkRunCommandOutcome) => {
+    const options = { scope: binding.scope, readback: async (sent: DashboardCommandRequest, reply: CommandResult | BulkRunCommandOutcome) => {
       if (sent.family !== "intake" || "outcome" in reply) return { state: "mismatch" as const, evidence: sent };
       return verifyIntakeCommand(client, basis.before, sent, reply, basis.zone);
     }, publish };

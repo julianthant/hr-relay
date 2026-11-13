@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
+import { configureWritableConnection } from '../../../src/backend/storage/sqlite/authority-database.js';
 import { createWorkbookLibraryRepository } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
 const [path, id, request] = process.argv.slice(2);
-const database = new DatabaseSync(path); database.exec('PRAGMA busy_timeout=5000');
+const database = new DatabaseSync(path); configureWritableConnection(database, 5000);
 const tx = <T>(work: () => T): T => {
   database.exec('BEGIN IMMEDIATE');
   try { const result = work(); database.exec('COMMIT'); return result; } catch (error) { database.exec('ROLLBACK'); throw error; }

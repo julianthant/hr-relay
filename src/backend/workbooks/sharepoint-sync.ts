@@ -9,7 +9,8 @@ import type { ProtectedSecretSource } from "../../models/config/secrets.js";
 import type { DuoSigningSource } from "../storage/configuration/duo-signing.js";
 import { downloadSharePointWorkbook, parseSharePointWorkbookLink } from "../systems/sharepoint/driver/interpreter.js";
 import { sharePointBrowserTransport } from "../processing/providers/sharepoint-browser-transport.js";
-import { WorkbookLibraryError, type WorkbookSyncDownload } from "./workbook-library-service.js";
+import { WorkbookLibraryError } from "./workbook-library-error.js";
+import { type WorkbookSyncDownload } from "./workbook-library-service.js";
 
 export function createSharePointWorkbookSync(deps: Readonly<{
   commands: CommandBrowserCommands;

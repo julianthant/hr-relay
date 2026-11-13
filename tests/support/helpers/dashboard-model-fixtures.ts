@@ -90,14 +90,12 @@ export function createDashboardModelFixtures() {
     statusCounts: [{ status: "running", count: 1 }],
     queueSurfaces: [QUEUE],
     workerPools: [],
-    workerOperations: [],
     workerAuthority: { state: "present", members: [{
-      workerId: "onboarding-worker-1", workflow: "onboarding", ordinal: 1, poolIndex: 1, membershipRevision: 1,
-      phase: "running", retiredAt: null, retirementCommandId: null, reservationCommandId: null,
+      workerId: "onboarding-worker-1", workflow: "onboarding", ordinal: 1, poolIndex: 1, paused: false, retiredAt: null,
       createdAt: NOW, updatedAt: NOW,
     }] },
     workerCards: [{
-      member: { workflowId: "onboarding", workerId: "onboarding-worker-1", ordinal: 1, poolIndex: 1, membershipRevision: 1 },
+      member: { workflowId: "onboarding", workerId: "onboarding-worker-1", ordinal: 1, poolIndex: 1 },
       workerId: "onboarding-worker-1",
       workflowId: "onboarding",
       state: "running",
@@ -105,7 +103,7 @@ export function createDashboardModelFixtures() {
       startedAt: NOW,
       currentRun: { state: "present", runId: RUN_1, traceId: "on-120000-1111" },
       browsers: [{ sessionId: SESSION_1, system: "ucpath", openedAt: NOW }],
-      leaseVersion: 3,
+      controls: { basis: { state: "present", value: { lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000", version: 3 } } },
       revision: 1,
     }],
     notifications: [{ kind: "notification", channel: "inbox", count: 1, publicationId: "a".repeat(64), trigger: "verified-done", readState: "unread", notificationId: NOTIFICATION_1, actorId: "local-operator", severity: "info", title: "Run started", state: "unread", occurredAt: NOW, revision: 1, context: { state: "available", workflow: "Onboarding", subject: "Onboard employee" } }],
@@ -171,7 +169,7 @@ export function createDashboardModelFixtures() {
 
       version: 7,
 
-      spreadsheetIntake: true, requiredWorkbookTypeIds: [],
+      readiness: { scope: "workbook-sources", state: "ready" }, spreadsheetIntake: true, requiredWorkbookFields: [],
       inputRun: {
         placeholder: "Enter EIDs or names, semicolon-separated",
         parser: {
@@ -198,6 +196,7 @@ export function createDashboardModelFixtures() {
 
   const BOOTSTRAP = {
     wireVersion: 1,
+    workbookCompatibility: { workflows: [], libraries: [] },
     appVersion: "1.0.0",
     descriptorHash: HASH_A,
     settingsSchemaHash: HASH_B,
@@ -205,7 +204,7 @@ export function createDashboardModelFixtures() {
     projectionGeneration: 1,
     actor: { id: "local-operator", label: "Local operator" },
     serverClock: { now: NOW, zone: "America/Los_Angeles" },
-    storage: { authority: "healthy", backup: "current", checkedAt: NOW },
+    storage: { authority: "healthy" },
     workflows: [WORKFLOW_PRIMITIVE],
     systemInstances: [{ system: "ucpath", prod: "available", test: { state: "unavailable", code: "not-configured", reason: "test URL not configured" } }],
     settingsSections: [{ id: "general", label: "General", revision: 1 }],

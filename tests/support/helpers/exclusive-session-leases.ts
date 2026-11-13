@@ -5,10 +5,10 @@ export function exclusiveLeaseFixture(path = ":memory:", initialize = true) {
   const database = new DatabaseSync(path);
   database.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=1000");
   if (initialize) {
-    database.exec("CREATE TABLE worker_slots(id TEXT PRIMARY KEY,retired_at TEXT); CREATE TABLE worker_leases(worker_id TEXT,lease_generation INTEGER,state TEXT)");
-    for (const worker of ["onbase-worker-1", "onbase-worker-2"]) {
+    database.exec("CREATE TABLE worker_slots(id TEXT PRIMARY KEY,retired_at TEXT); CREATE TABLE runs(id TEXT PRIMARY KEY,owner_worker_id TEXT,claim_generation INTEGER,state TEXT)");
+    for (const [index, worker] of ["onbase-worker-1", "onbase-worker-2"].entries()) {
       database.prepare("INSERT INTO worker_slots VALUES(?,NULL)").run(worker);
-      database.prepare("INSERT INTO worker_leases VALUES(?,1,'idle')").run(worker);
+      database.prepare("INSERT INTO runs VALUES(?,?,?,'running')").run(`run-${String(index + 1)}`, worker, index + 1);
     }
     for (const statement of EXCLUSIVE_SESSION_LEASE_MIGRATION.statements) database.exec(statement);
   }

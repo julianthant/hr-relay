@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { PreflightRerunCommandResultSchema, requiredPreflightChecks } from "../../../../../src/models/preflight/preflight.js";
+import { PreflightObservationChangedError } from "../../../../../src/rules/preflight/preflight-admission.js";
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
@@ -245,7 +246,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(refused)).code, "PREFLIGHT_RERUN_ACTIVE");
     assert.equal(settled, false);
     release.resolve();
-    assert.equal((await first).status, 500, "late healthy returns cannot publish a report");
+    const timedOut = await first;
+    assert.equal(timedOut.status, 409, "late healthy returns cannot publish a report");
+    assert.equal((await json(timedOut)).code, "PREFLIGHT_TIMEOUT");
     assert.equal(deadlines.size, 0);
     assert.equal((await request("42")).status, 200, "actual settlement releases admission");
   });
@@ -277,6 +280,76 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     );
   });
 
+  it("refuses a transient observation change, including a sibling runner failure, and accepts a later rerun", async () => {
+    const checks = requiredPreflightChecks(["dashboard.serve"]);
+    const authoritySlot = checks.findIndex((check) => String(check) === "authority.health");
+    const secondSlot = checks.findIndex((check) => String(check) === "config.valid");
+    assert.notEqual(authoritySlot, -1);
+    assert.notEqual(secondSlot, -1);
+    let mode: "authority" | "mixed" | "healthy" = "authority";
+    let calls = 0;
+    const h = await harness({
+      preflightBeforeRun: async () => {
+        if (mode === "healthy") return;
+        const slot = calls % checks.length;
+        calls += 1;
+        if (slot === authoritySlot) throw new PreflightObservationChangedError();
+        if (mode === "mixed" && slot === secondSlot) throw new Error("config.valid failed during an observation change");
+      },
+    });
+    const request = (commandId: string) => h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId,
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: { expectedConfigFingerprint: HASH_B },
+      }),
+    });
+
+    const authorityOnly = await request("00000000-0000-4000-8000-000000000092");
+    assert.equal(authorityOnly.status, 409);
+    assert.equal((await json(authorityOnly)).code, "PREFLIGHT_OBSERVATION_CHANGED");
+
+    mode = "mixed";
+    const mixed = await request("00000000-0000-4000-8000-000000000093");
+    assert.equal(mixed.status, 409);
+    assert.equal((await json(mixed)).code, "PREFLIGHT_OBSERVATION_CHANGED");
+
+    mode = "healthy";
+    const healthy = await request("00000000-0000-4000-8000-000000000094");
+    assert.equal(healthy.status, 200);
+    const result = PreflightRerunCommandResultSchema.parse(await healthy.json());
+    assert.equal(result.state, "completed");
+    assert.equal(result.commandId, "00000000-0000-4000-8000-000000000094");
+  });
+
+  it("answers 409 when a detector exceeds its registered timeout", async () => {
+    const h = await harness({
+      preflightScheduler: { schedule(_deadline, onDeadline) { onDeadline(); return { cancel() {} }; } },
+    });
+    const response = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000095",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: { expectedConfigFingerprint: HASH_B },
+      }),
+    });
+    assert.equal(response.status, 409);
+    const body = await json(response);
+    assert.equal(body.code, "PREFLIGHT_TIMEOUT");
+    assert.equal(body.retryable, false);
+    const named = /^A readiness check took too long\. Check again\. \((.+)\)$/u.exec(String(body.message));
+    assert.ok(named !== null && requiredPreflightChecks(["dashboard.serve"]).some(check => check === named[1]), String(body.message));
+  });
 
 });
 

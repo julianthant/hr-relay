@@ -47,6 +47,8 @@ try {
   }));
   if (mode === "crash") process.exit(23);
 } finally {
-  admission.release(); machine.release(); await lifetime.close();
+  admission.release(); machine.release();
   if (process.connected) disconnect();
+  // A worker never closes its lifetime listener; exiting releases it.
+  process.exit();
 }

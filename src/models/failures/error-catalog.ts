@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ErrorCodeSchema } from "../../rules/identity/ids.js";
 import { BoundarySourceSchema } from "./boundary-failure.js";
 
-export function failureCodeFromTaskCode(code: string): string {
+export function failureCodeFromTaskCode(code: string) {
   return ErrorCodeSchema.parse(code.toUpperCase().replaceAll("-", "_"));
 }
 
@@ -13,6 +13,76 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  DELEGATION_CONFIG_UNAVAILABLE: catalogEntry("Relay could not verify this run's saved settings, so the child workflow did not start. Review the run evidence before continuing.", EmptyParametersSchema),
+  AMBIGUOUS_ACTION_LIST_MATCH: catalogEntry("More than one Kuali Action List item matched this document. Review the list and confirm the intended item.", EmptyParametersSchema),
+  BLANK_TERMINATION_TYPE: catalogEntry("The separation document does not show a termination type. Review the document before continuing.", EmptyParametersSchema),
+  COMMENTS_CHANGED_SINCE_READ: catalogEntry("The Kuali comments changed after they were read. Review the current document before continuing.", EmptyParametersSchema),
+  CONCURRENT_ACTIVE_EMPLOYMENTS: catalogEntry("More than one active UCPath job matched this employee. Review the job records before continuing.", EmptyParametersSchema),
+  DELETE_REFUSED: catalogEntry("UCPath could not confirm clearing the pending termination. Review the run evidence before making another change.", EmptyParametersSchema),
+  DEPARTMENT_CODE_NOT_OFFERED: catalogEntry("Kuali does not offer an option for the employee’s UCPath department. Check the department code and available options.", EmptyParametersSchema),
+  DEPARTMENT_CODE_UNREADABLE: catalogEntry("The employee’s UCPath department code could not be read. Review the job record.", EmptyParametersSchema),
+  DEPARTMENT_OPTION_AMBIGUOUS: catalogEntry("More than one Kuali department option matched the UCPath department code. Review the options.", EmptyParametersSchema),
+  DEPARTMENT_OPTION_NOT_OFFERED: catalogEntry("The UCPath department has no matching Kuali option. Review the department code and current choices.", EmptyParametersSchema),
+  DEPARTMENT_OPTION_UNUSABLE: catalogEntry("The matching Kuali department option has no usable name. Review the options before continuing.", EmptyParametersSchema),
+  DOCUMENT_NOT_IN_ACTION_LIST: catalogEntry("The Kuali Action List does not contain this separation document. Check the document number and current list.", EmptyParametersSchema),
+  DOCUMENT_NUMBER_MISMATCH: catalogEntry("Kuali opened a different document than the one requested. Check the document number before continuing.", EmptyParametersSchema),
+  EMPLID_NOT_RECOGNIZED: catalogEntry("UCPath did not recognize the employee ID. Check the ID on the separation document and review the person record.", EmptyParametersSchema),
+  EMPLOYEE_NAME_ABSENT: catalogEntry("The separation document does not show an employee name. Review the document before continuing.", EmptyParametersSchema),
+  EMPLOYEE_NOT_FOUND: catalogEntry("The employee could not be found with the supplied search details. Check the name or employee ID.", EmptyParametersSchema),
+  EMPLOYMENT_RECORD_MISMATCH: catalogEntry("The UCPath employment record does not match the record selected for this termination. Review the employee’s job history.", EmptyParametersSchema),
+  EMPTY_DOCUMENT: catalogEntry("The PDF contains no pages to read. Select a complete PDF.", EmptyParametersSchema),
+  FILING_NOT_CURRENT: catalogEntry("UCPath could not verify that the termination filing is current. Review the employee’s termination record.", EmptyParametersSchema),
+  IDENTITY_APPROVAL_CHOICE_MISMATCH: catalogEntry("The approved identity choice does not match the identity evidence. Review the name and employee ID.", EmptyParametersSchema),
+  IDENTITY_APPROVAL_EID_NOT_SHOWN: catalogEntry("The employee ID for this identity choice is not shown in the evidence. Review the UCPath search results.", EmptyParametersSchema),
+  IDENTITY_APPROVAL_EVIDENCE_MOVED: catalogEntry("The identity evidence changed after it was reviewed. Review the current evidence before continuing.", EmptyParametersSchema),
+  IDENTITY_APPROVAL_REJECTED: catalogEntry("The identity review was rejected. Correct the person or document details before continuing.", EmptyParametersSchema),
+  IDENTITY_APPROVAL_REQUIRED: catalogEntry("Identity approval is required before this separation can continue.", EmptyParametersSchema),
+  IDENTITY_SOURCE_INCONSISTENT: catalogEntry("The employee ID on the separation document does not agree with the identity source. Review the identity evidence.", EmptyParametersSchema),
+  IDENTITY_SUBJECT_MISMATCH: catalogEntry("The UCPath job summary is for a different employee from the one selected for this run. Stop and review the identity.", EmptyParametersSchema),
+  IDENTITY_SUPPLIED_EID_UNPROVED: catalogEntry("The employee ID supplied on the separation document was not confirmed in UCPath. Review the identity evidence.", EmptyParametersSchema),
+  INCOMPLETE_EXTRACTION: catalogEntry("The page reading is missing required form information. Review the page and correct the reading.", EmptyParametersSchema),
+  INDETERMINATE_EMPLOYMENT_STATUS: catalogEntry("UCPath returned an employment status that could not be classified. Review the employee’s job record.", EmptyParametersSchema),
+  KUALI_UNAVAILABLE: catalogEntry("Kuali could not be reached. Check the connection and review the run evidence.", EmptyParametersSchema),
+  LAST_DATE_WORKED_NOT_VERIFIED: catalogEntry("UCPath did not confirm the last day worked on the staged termination. Review the transaction before continuing.", EmptyParametersSchema),
+  LAST_DAY_WORKED_ABSENT: catalogEntry("The separation document does not show a last day worked. Review the document before continuing.", EmptyParametersSchema),
+  LEAVE_DATE_OUTSIDE_WINDOW: catalogEntry("A leave date falls outside the timecard range being reviewed. Check the date range and leave record.", EmptyParametersSchema),
+  NEW_KRONOS_UNAVAILABLE: catalogEntry("Kronos could not be reached. Check the connection and review the run evidence.", EmptyParametersSchema),
+  NO_ACTIVE_EMPLOYMENT: catalogEntry("No active UCPath employment record is available for this employee. Review the job status before continuing.", EmptyParametersSchema),
+  NO_PUNCH_IN_WINDOW: catalogEntry("No timecard punch was found in the selected date range. Review the range and timecard.", EmptyParametersSchema),
+  NOT_A_SEPARATION_DOCUMENT: catalogEntry("The selected Kuali document is not a separation document. Check the document number.", EmptyParametersSchema),
+  PAGE_OUT_OF_RANGE: catalogEntry("The requested page number is outside the PDF. Check the page range and select a valid page.", EmptyParametersSchema),
+  PAYROLL_TITLE_CODE_UNREADABLE: catalogEntry("The employee’s UCPath job code could not be read. Review the job record.", EmptyParametersSchema),
+  PAYROLL_TITLE_UNREADABLE: catalogEntry("The employee’s UCPath job title could not be read. Review the job record.", EmptyParametersSchema),
+  PROVIDER_UNAVAILABLE: catalogEntry("The page reading service is unavailable. Check the connection and the connected OCR account.", EmptyParametersSchema),
+  REASON_CODE_NOT_OFFERED: catalogEntry("UCPath does not offer the selected termination reason. Review the reason and current options.", EmptyParametersSchema),
+  SAVE_REFUSED: catalogEntry("Kuali did not confirm saving the termination receipt. Review the document and UCPath receipt before continuing.", EmptyParametersSchema),
+  SEARCH_NO_SIGNAL: catalogEntry("The Kronos employee search did not return a usable result. Check the search details and try again.", EmptyParametersSchema),
+  SEARCH_RETURNED_NO_MATCH: catalogEntry("Kronos found no employee matching the search details. Check the name or employee ID.", EmptyParametersSchema),
+  SELECTION_NOT_PERSISTED: catalogEntry("UCPath did not retain the pending termination selection. Review the pending terminations before continuing.", EmptyParametersSchema),
+  SEPARATION_DATE_ABSENT: catalogEntry("The separation document does not show a separation date. Review the document before continuing.", EmptyParametersSchema),
+  SEPARATION_DATE_IN_FUTURE: catalogEntry("The separation date is after the document’s reference date. Review the dates before continuing.", EmptyParametersSchema),
+  STAGE_NOT_PERSISTED: catalogEntry("The system did not retain the staged changes. Review the current record before continuing.", EmptyParametersSchema),
+  SUBJECT_AMBIGUOUS: catalogEntry("More than one UCPath person matched the name on the separation document. Review the matches before continuing.", EmptyParametersSchema),
+  SUBJECT_MISMATCH: catalogEntry("The system displayed a different employee from the one this run expects. Stop and review the employee identity.", EmptyParametersSchema),
+  SUBJECT_NOT_RESOLVABLE: catalogEntry("No UCPath person matched the name on the separation document. Check the name and employee ID.", EmptyParametersSchema),
+  SUBMIT_REFUSED: catalogEntry("UCPath did not confirm the termination submission. Review the transaction status before taking further action.", EmptyParametersSchema),
+  TERMINATION_NOT_IN_EFFECT: catalogEntry("UCPath’s termination receipt does not show an effective status. Review the transaction before finalizing the Kuali document.", EmptyParametersSchema),
+  TERMINATION_RECEIPT_DATE_MISMATCH: catalogEntry("The effective date on UCPath’s receipt differs from the date this run filed. Review both records before finalizing.", EmptyParametersSchema),
+  TERMINATION_RECEIPT_SUBJECT_MISMATCH: catalogEntry("UCPath’s receipt names a different employee from the one verified for this run. Review the employee identity.", EmptyParametersSchema),
+  TERMINATION_RECEIPT_UNUSABLE: catalogEntry("UCPath returned a transaction number that Kuali cannot store. Review the receipt before continuing.", EmptyParametersSchema),
+  TERMINATION_TYPE_OPTIONS_DRIFTED: catalogEntry("The available termination types changed during this run. Review the current options and choose again.", EmptyParametersSchema),
+  TIMECARD_NAVIGATION_FAILED: catalogEntry("Kronos could not open the employee’s timecard. Review the search result.", EmptyParametersSchema),
+  TIMECARD_RANGE_NOT_APPLIED: catalogEntry("Kronos did not apply the requested timecard date range. Check the displayed dates before continuing.", EmptyParametersSchema),
+  TIMECARD_UNREADABLE: catalogEntry("The employee’s timecard could not be read. Review the timecard and date range.", EmptyParametersSchema),
+  UCPATH_UNAVAILABLE: catalogEntry("UCPath could not be reached. Check the connection and review the run evidence.", EmptyParametersSchema),
+  UNEXPECTED_PAGE_STATE: catalogEntry("The system did not show the expected page. Review the current page before continuing.", EmptyParametersSchema),
+  UNKNOWN_TERMINATION_TYPE: catalogEntry("The termination type was not recognized. Review the separation document and available options.", EmptyParametersSchema),
+  UNMAPPED_TERMINATION_TYPE: catalogEntry("The termination type on the separation document does not map to a supported UCPath reason. Review the termination type.", EmptyParametersSchema),
+  UNPARSEABLE_DATE: catalogEntry("A date on the Kuali separation document could not be read. Review the document’s dates.", EmptyParametersSchema),
+  UNREADABLE_ACTION_LINK: catalogEntry("Kuali’s Action List did not provide a readable link for the matching document. Review the list and document number.", EmptyParametersSchema),
+  UNREADABLE_EID: catalogEntry("The employee ID on the Kuali separation document could not be read. Review the document before continuing.", EmptyParametersSchema),
+  UNREADABLE_PAGE: catalogEntry("The page could not be read clearly. Review it and correct the reading.", EmptyParametersSchema),
+  UNREADABLE_PDF: catalogEntry("The PDF could not be read. Select a valid PDF and try again.", EmptyParametersSchema),
   PROFILE_BROWSER_CLEANUP_UNPROVED: catalogEntry("Browser profile cleanup could not be verified.", EmptyParametersSchema),
   PROFILE_BROWSER_MEMBERSHIP_MISMATCH: catalogEntry("Retained browser profiles do not match the browser registry.", EmptyParametersSchema),
   PROFILE_BROWSER_LAUNCH_UNCLOSED: catalogEntry("Browser launch closure could not be verified.", EmptyParametersSchema),
@@ -25,6 +95,7 @@ export const ERROR_CATALOG = Object.freeze({
   CRM_DOCUMENT_REFERENCE_UNAVAILABLE: catalogEntry("CRM identities could not be bound to the selected spreadsheet version and its legal/lived names. Review the retained reference and row choices.", EmptyParametersSchema),
   CRM_DOCUMENT_DOWNLOAD_FAILED: catalogEntry("CRM documents could not be downloaded and verified. No document collection was published.", EmptyParametersSchema),
   CRM_DOCUMENT_PACKAGE_FAILED: catalogEntry("CRM documents could not be verified and packaged. No document collection was published.", EmptyParametersSchema),
+  TOO_MANY_PAGES: catalogEntry("This PDF has more than 120 pages. Split the scan into files of at most 120 pages.", EmptyParametersSchema),
   OCR_SOURCE_REFUSED: catalogEntry("This PDF or source page could not be admitted for the current person and review. Reload the saved review or choose a valid PDF up to 25 MB.", EmptyParametersSchema),
   OCR_REVIEW_REFUSED: catalogEntry("The saved OCR review or selection changed or could not be authenticated. Reload the review before continuing.", EmptyParametersSchema),
   OCR_APPROVAL_UNAVAILABLE: catalogEntry("The approved OCR record authority is unavailable. Reload the run before continuing.", EmptyParametersSchema),
@@ -66,6 +137,7 @@ export const ERROR_CATALOG = Object.freeze({
   RUNTIME_LIFETIME_LOCK_RELEASED: catalogEntry("Relay runtime authority has closed. Restart Relay before continuing.", EmptyParametersSchema),
   RUNTIME_ALREADY_RUNNING: catalogEntry("Relay is already running. Close it before starting another runtime or storage command.", EmptyParametersSchema),
   PRIVATE_FILE_LOCK_UNAVAILABLE: catalogEntry("Local storage is busy with another operation. Wait for that operation to finish before trying again.", EmptyParametersSchema),
+  DATABASE_WRITER_UNAVAILABLE: catalogEntry("Relay’s saved data was busy for too long. Nothing was written. Try again.", EmptyParametersSchema),
   RUN_CRASH_RESOURCES_RELEASED: catalogEntry("Resources held by an interrupted worker were released.", EmptyParametersSchema),
   BROWSER_CLOSURE_UNPROVED: catalogEntry("Browser closure could not be verified. No file replacement or credential erasure has started.", EmptyParametersSchema),
   DUO_SETUP_OPEN_FAILED: catalogEntry("Relay could not start the setup browser. Select Reopen to try again.", EmptyParametersSchema),
@@ -73,7 +145,6 @@ export const ERROR_CATALOG = Object.freeze({
   DUO_SETUP_FILES_BUSY: catalogEntry("The setup browser’s files are still in use. Select Reopen to check again.", EmptyParametersSchema),
   BROWSER_ROOT_UNAVAILABLE: catalogEntry("Browser ownership could not be verified. The browser and its files remain unavailable until stopped recovery succeeds.", EmptyParametersSchema),
   BROWSER_PROFILE_STILL_CLOSING: catalogEntry("The browser profile is still in use or closing. Wait for it to close before continuing.", EmptyParametersSchema),
-  LIVE_SMOKE_VERIFICATION_REFUSED: catalogEntry("Browser verification could not finish safely. Preserve its saved state and resolve the refusal before trying again.", EmptyParametersSchema),
   STARTUP_CRASH_RECOVERY_REFUSED: catalogEntry("Saved runs and writes could not be reconciled after interruption. Preserve their state and resolve the refusal before starting work.", EmptyParametersSchema),
   RUN_INTERRUPTED_BY_CRASH: catalogEntry("The run was interrupted by a crash and ended as failed. Review the result before starting another run.", EmptyParametersSchema),
   RUN_CRASH_WRITE_UNRESOLVED: catalogEntry("The run was interrupted by a crash with an unresolved write. The write remains held for operator resolution and will not be retried.", EmptyParametersSchema),
@@ -174,6 +245,10 @@ export const ERROR_CATALOG = Object.freeze({
     "Preflight report could not be read or verified. Re-check readiness.",
     EmptyParametersSchema,
   ),
+  PROFILE_FIRST_RUN_CHECK_UNAVAILABLE: catalogEntry(
+    "The initial local startup check did not complete. Resume sign-in to retry startup.",
+    EmptyParametersSchema,
+  ),
   PREFLIGHT_RERUN_UNAVAILABLE: catalogEntry(
     "Preflight re-check could not be completed or verified. Read current readiness before retrying.",
     EmptyParametersSchema,
@@ -184,6 +259,22 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   PREFLIGHT_REPORT_INVALID: catalogEntry(
     "Preflight report is stale or empty. Re-check readiness.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_PLAN_EXPIRED: catalogEntry(
+    "This plan expired. Review a fresh plan before starting again.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_READINESS_BLOCKED: catalogEntry(
+    "Readiness checks failed. Review Settings before starting again.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_READINESS_UNAVAILABLE: catalogEntry(
+    "Readiness could not be checked. Try Start again.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_READINESS_CHANGED: catalogEntry(
+    "Readiness changed during the check. Review the plan and try Start again.",
     EmptyParametersSchema,
   ),
   PREFLIGHT_EVIDENCE_EXPIRED: catalogEntry(
@@ -410,6 +501,7 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   SEARCH_LOADING: catalogEntry("Loading runs…", EmptyParametersSchema),
   SEARCH_UNAVAILABLE: catalogEntry("Search is unavailable. Reopen search and try again.", EmptyParametersSchema),
+  SEARCH_LIBRARY_UNAVAILABLE: catalogEntry("Spreadsheets are unavailable. Reopen search and try again.", EmptyParametersSchema),
   SEARCH_SUBJECT_UNAVAILABLE: catalogEntry("Subject unavailable", EmptyParametersSchema),
   NOTIFICATION_SOURCE_UNAVAILABLE: catalogEntry("Notification source evidence is unavailable. Review the inbox before relying on this update.", EmptyParametersSchema),
   NOTIFICATION_HISTORY_INCOMPLETE: catalogEntry("Notification history is incomplete. Reconcile the affected work before relying on it.", EmptyParametersSchema),
@@ -473,6 +565,62 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   WORKER_CRASHED: catalogEntry(
     "crashed",
+    EmptyParametersSchema,
+  ),
+  WORKER_START_FAILED: catalogEntry(
+    "The worker process could not be started.",
+    EmptyParametersSchema,
+  ),
+  WORKER_START_TIMED_OUT: catalogEntry(
+    "The worker did not report ready in time and was stopped. Retry the worker.",
+    EmptyParametersSchema,
+  ),
+  WORKER_REQUEST_TIMED_OUT: catalogEntry(
+    "The worker did not answer in time. Nothing was retried; try again.",
+    EmptyParametersSchema,
+  ),
+  WORKER_EXITED: catalogEntry(
+    "The worker stopped before it answered. Nothing was retried.",
+    EmptyParametersSchema,
+  ),
+  WORKER_EXIT_SETTLEMENT_FAILED: catalogEntry(
+    "Relay could not settle the runs of a worker that stopped. That worker cannot start until its runs are settled.",
+    EmptyParametersSchema,
+  ),
+  WORKER_EXIT_UNOBSERVED: catalogEntry(
+    "A worker process did not exit after it was stopped. Relay will not start beside it; quit Relay and wait for the process to end.",
+    EmptyParametersSchema,
+  ),
+  WORKER_ALREADY_RUNNING: catalogEntry(
+    "This worker is already running.",
+    EmptyParametersSchema,
+  ),
+  WORKER_TARGET_STALE: catalogEntry(
+    "The worker changed since this view was loaded. Refresh and try again.",
+    EmptyParametersSchema,
+  ),
+  WORKER_PAUSE_SETTLING: catalogEntry(
+    "This worker is still pausing its run. Resolve any unknown write in Logs before resuming the worker.",
+    EmptyParametersSchema,
+  ),
+  WORKER_BUSY: catalogEntry(
+    "The worker is busy with a run or another control. Try again when it is idle.",
+    EmptyParametersSchema,
+  ),
+  WORKER_REMOVAL_CHILD_CLOSE_UNPROVED: catalogEntry(
+    "Relay could not verify that the worker process closed. The worker and its browser profiles were kept.",
+    EmptyParametersSchema,
+  ),
+  WORKER_REQUEST_EXPIRED: catalogEntry(
+    "The worker request expired before it started. Nothing was done.",
+    EmptyParametersSchema,
+  ),
+  WORKER_IPC_PROTOCOL_INVALID: catalogEntry(
+    "A worker sent an invalid message and was stopped.",
+    EmptyParametersSchema,
+  ),
+  WORKER_IDENTITY_MISMATCH: catalogEntry(
+    "A worker reported a different person or sign-in and was stopped.",
     EmptyParametersSchema,
   ),
   COMMAND_OUTCOME_UNCERTAIN: catalogEntry(
@@ -583,6 +731,14 @@ export const ERROR_CATALOG = Object.freeze({
   PROFILE_AUTHORITY_UNAVAILABLE: catalogEntry("Current profile authority is unavailable.", EmptyParametersSchema),
   PROFILE_SESSION_LOG_UNAVAILABLE: catalogEntry("Relay could not record session transition evidence. The transition could not finish.", EmptyParametersSchema),
   PROFILE_AUTHORITY_CHANGED: catalogEntry("Profile authority changed. Capture it again before continuing.", EmptyParametersSchema),
+  DASHBOARD_FRONTEND_NOT_OWNED: catalogEntry(
+    "This Relay page was not started by the running Relay. Close it and start Relay again with npm run dashboard.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_RUNTIME_START_FAILED: catalogEntry(
+    "You are signed in, but Relay could not open the dashboard. Nothing was changed. Close Relay and start it again.",
+    EmptyParametersSchema,
+  ),
   PROFILE_SESSION_STALE: catalogEntry(
     "This sign-in is no longer active. Sign in again.",
     EmptyParametersSchema,
@@ -679,6 +835,14 @@ export const ERROR_CATALOG = Object.freeze({
     "Relay could not read the models available to this ChatGPT connection. Keep the connection and try again; details are in the local diagnostics.",
     EmptyParametersSchema,
   ),
+  CHATGPT_CONNECTION_FAILED: catalogEntry(
+    "Relay could not verify the ChatGPT connection. Keep the connection and try again; details are in the local diagnostics.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_CONNECTION_CANCELLED: catalogEntry(
+    "The ChatGPT connection check was cancelled. Check again when the account and profile are current.",
+    EmptyParametersSchema,
+  ),
   CHATGPT_REQUEST_REJECTED: catalogEntry(
     "ChatGPT rejected the request Relay sent. Relay's integration needs correction; review the local diagnostics before retrying.",
     EmptyParametersSchema,
@@ -756,11 +920,18 @@ export const ERROR_CATALOG = Object.freeze({
   WORKBOOK_VERSION_IN_USE: catalogEntry("This version is in use. Choose another version and finish runs using it before deleting it.", EmptyParametersSchema),
   WORKBOOK_LIBRARY_IN_USE: catalogEntry("This spreadsheet is in use by a run or pending change. Finish that work before removing it.", EmptyParametersSchema),
   WORKBOOK_MERGE_INVALID: catalogEntry("These spreadsheets cannot be merged with that duplicate policy. Check their types, worksheet layouts, and matching keys, or keep both rows.", EmptyParametersSchema),
+  WORKBOOK_ACTION_RETIRED: catalogEntry("This library action has been retired. Its retained evidence is unavailable here.", EmptyParametersSchema),
   WORKBOOK_ROW_CHOICE_UNAVAILABLE: catalogEntry("No matching row is available in this run's captured worksheets. Review the workbook before choosing again.", EmptyParametersSchema),
   WORKBOOK_REVISION_UNAVAILABLE: catalogEntry("This saved workbook revision cannot be reconstructed from its retained evidence.", EmptyParametersSchema),
   WORKBOOK_SYNC_LINK_REQUIRED: catalogEntry("Link a SharePoint workbook before syncing.", EmptyParametersSchema),
   WORKBOOK_SYNC_CONTEXT_CHANGED: catalogEntry("The profile, settings or credentials changed during Sync. Start a new Sync command.", EmptyParametersSchema),
   WORKBOOK_SYNC_IMPORT_FAILED: catalogEntry("The downloaded file cannot be imported as a supported workbook.", EmptyParametersSchema),
+  WORKBOOK_TYPE_UNAVAILABLE: catalogEntry("This workflow's spreadsheet type is unavailable. Restore its reference definition before importing a file for it.", EmptyParametersSchema),
+  WORKBOOK_LIBRARY_EMPTY: catalogEntry("Import a Library spreadsheet before selecting a workflow source.", EmptyParametersSchema),
+  WORKBOOK_FIELDS_MISSING: catalogEntry("A Library worksheet is missing fields required by this workflow. Review its column mappings.", EmptyParametersSchema),
+  WORKBOOK_FIELDS_DUPLICATE: catalogEntry("A Library worksheet maps a required field more than once. Review its column mappings.", EmptyParametersSchema),
+  WORKBOOK_REFERENCE_MISSING: catalogEntry("No spreadsheet is bound to this workflow reference.", EmptyParametersSchema),
+  WORKBOOK_BINDING_UNAVAILABLE: catalogEntry("This workflow's selected spreadsheet is unavailable or has a different type. Import a replacement for this reference.", EmptyParametersSchema),
   WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE: catalogEntry("The workbook's workflow source was not retained. Its saved data remains available, but its run cannot be confirmed.", EmptyParametersSchema),
   WORKBOOK_SYNC_LAYOUT_CHANGED: catalogEntry("The SharePoint worksheets or columns no longer match this spreadsheet type. Review the source before creating a version.", EmptyParametersSchema),
   SHAREPOINT_LINK_UNSUPPORTED: catalogEntry("Use a direct workbook file URL from the configured SharePoint tenant.", EmptyParametersSchema),
@@ -771,6 +942,7 @@ export const ERROR_CATALOG = Object.freeze({
   COMMAND_BROWSER_UNAVAILABLE: catalogEntry("The browser command could not acquire its current profile and session.", EmptyParametersSchema),
   COMMAND_BROWSER_CLOSURE_UNPROVED: catalogEntry("The command's browser or authentication resources could not be proven closed. Profile custody is retained.", EmptyParametersSchema),
   WORKBOOK_METADATA_UNSUPPORTED: catalogEntry("This workbook has formulas, Excel error cells or metadata Relay cannot preserve during master edits.", EmptyParametersSchema),
+  WORKBOOK_CAPTURE_LIMIT_EXCEEDED: catalogEntry("The selected worksheets exceed the capture limit of 32 sources, 250,000 populated cells or 500,000 cell positions. Select fewer or smaller worksheets.", EmptyParametersSchema),
   WORKBOOK_INVALID: catalogEntry(
     "The workbook is malformed and cannot be saved.",
     EmptyParametersSchema,
@@ -871,8 +1043,20 @@ export const ERROR_CATALOG = Object.freeze({
     "This command does more than its assistant classification says. No action was taken.",
     EmptyParametersSchema,
   ),
+  PREFLIGHT_BLOCKED: catalogEntry(
+    "Readiness checks blocked this worker. Check Settings readiness; the queued run will wait until its prerequisites are available.",
+    EmptyParametersSchema,
+  ),
   PREFLIGHT_OBSERVATION_CHANGED: catalogEntry(
     "Storage changed before the next run could be claimed. Re-check readiness; use Sessions for any queued run instead of starting it again.",
+    EmptyParametersSchema,
+  ),
+  PREFLIGHT_TIMEOUT: catalogEntry(
+    "A readiness check took too long. Check again.",
+    EmptyParametersSchema,
+  ),
+  BULK_CHILD_ERRORED: catalogEntry(
+    "Relay hit an error on this item and stopped the batch here. Nothing changed for this item.",
     EmptyParametersSchema,
   ),
   RUN_QUEUED_WORKER_UNAVAILABLE: catalogEntry(

@@ -89,3 +89,7 @@ export function commandFailureToast(failure: CommandDispatchFailure): CommandFai
         : "The command may already have been recorded: open the run and check its logs before sending it again."),
   };
 }
+
+export function runStartRefusalToast(description: string) {
+  return { tone: "danger" as const, title: "Run not started", description, duration: 6000 };
+}

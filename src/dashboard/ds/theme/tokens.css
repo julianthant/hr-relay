@@ -4,6 +4,11 @@
    The single source of every color, size, radius, shadow, focus ring and */
 
 :root {
+  --ds-sidebar-width: 312px; /* Settings sidebar and workflow rail: one width, never shrinks */
+  --ds-layer-bar: 20; /* Sessions bar < floating assistant < drawer 30 < dialog and scrim 40 < menu 45 < toast 50 < tooltip 60 */
+  --ds-layer-assistant: 25;
+  --ds-layer-menu: 45;
+  --ds-layer-tooltip: 60;
   --ds-layer-skip-focus: 1000;
   --ds-layer-toast-viewport: 100;
   --ds-layer-toast-card: 1000;
@@ -14,6 +19,13 @@
   --ds-h-desktop-min: 720px;
   /* SURFACE — the elevation ladder, darkest (page) to lightest (raised).
    Depth in this product comes from surface + hairline border, never from */
+  /* Pickers, soft buttons and fields: Codex steps measured on a card (dark: fill +6, edge +22, hover one step up), as foreground overlays so they hold on any surface. */
+  --ds-soft-bg: color-mix(in srgb, var(--ds-fg) 5%, transparent); /* borderless soft buttons: +10 on a dark panel, hover +16 */
+  --ds-soft-bg-hover: color-mix(in srgb, var(--ds-fg) 8%, transparent);
+  --ds-soft-border: color-mix(in srgb, var(--ds-fg) 9%, transparent);
+  --ds-picker-bg: color-mix(in srgb, var(--ds-fg) 3%, transparent); /* pickers and bordered buttons: the Codex +6 */
+  --ds-picker-bg-hover: color-mix(in srgb, var(--ds-fg) 6%, transparent);
+  --ds-field-focus-edge: color-mix(in srgb, var(--ds-fg) 55%, transparent); /* text fields: no ring, the edge steps up */
   --ds-surface-page: var(--background); /* app background, behind everything */
   --ds-surface-1: var(--card); /* panels, cards, bars — the default plane */
   --ds-surface-2: var(--muted); /* inset wells, table headers, code blocks */
@@ -201,31 +213,54 @@
   --ds-lh-section: 22px;
   --ds-text-display: 20px; /* the one big number on a summary surface */
   --ds-lh-display: 26px;
-  --ds-text-body-page: 27px;
-  --ds-lh-body-page: 33px;
-  --ds-text-body-section: 16.2px;
-  --ds-lh-body-section: 21px;
-  --ds-text-body-row: 13.5px;
-  --ds-lh-body-row: 18px;
-  --ds-text-body-description: 11.7px;
-  --ds-lh-body-description: 16.2px;
-  --ds-text-body-value: 13.5px;
-  --ds-lh-body-value: 18px;
-  --ds-h-body-control: 32.4px;
+  --ds-text-body-page: 28px;
+  --ds-lh-body-page: 34px;
+  --ds-text-body-section: 16px;
+  --ds-lh-body-section: 22px;
+  --ds-text-body-row: var(--ds-row-title);
+  --ds-lh-body-row: var(--ds-row-title-lh);
+  --ds-text-body-description: 13px;
+  --ds-lh-body-description: 18px;
+  --ds-text-body-value: 14px;
+  --ds-lh-body-value: 20px;
+  --ds-h-body-control: 28px;
   --ds-h-body-row: 62.5px;
   --ds-h-body-ranked-row: 48.6px;
   --ds-size-body-choice: 14.4px;
-  --ds-space-body-copy-gap: 2.7px;
+  --ds-space-body-copy-gap: var(--ds-row-gap);
   --ds-radius-body-control: 8.1px;
-  --ds-radius-body-group: 12.6px;
+  /* ROWS — the one default size for card rows and data-table rows. Two-line row 60px, one-line 52px, table head 32px. */
+  --ds-row-pad-x: 16px;
+  --ds-row-pad-y: 11px; /* a row with a grey line */
+  --ds-row-pad-y-1: 8px; /* a one-line row */
+  --ds-row-h-1: 44px;
+  --ds-row-h-2: 60px;
+  --ds-menu-fg: color-mix(in srgb, var(--ui-primary) 90%, #fff); /* menu item text: a touch dimmer than primary */
+  --ds-fg-list: color-mix(in srgb, var(--ui-primary) 85%, var(--ui-canvas)); /* sidebar and list text, a step under primary (Codex rows 196 on 19) */
+  --ds-sidebar-fg: color-mix(in srgb, var(--ui-primary) 85%, var(--ui-canvas)); /* sidebar text: workflow rail rows, notification titles (Codex 197) */
+  --ds-sidebar-grey: #6e6e6e; /* sidebar grey: group headings, previews, tags, row icons; AA on the light rail */
+  --ds-card-bg: var(--ui-panel); /* light: the page fill, the card is drawn by its border */
+  --ds-menu-item-h: 28px; /* one-line menu item; a two-line item grows to fit */
+  --ds-row-head-h: 32px;
+  --ds-row-heading: 15px;
+  --ds-row-heading-lh: 22px;
+  --ds-row-title: 13px;
+  --ds-row-title-lh: 18px;
+  --ds-row-desc: 12px;
+  --ds-row-desc-lh: 18px;
+  --ds-row-gap: 2px;
+  --ds-row-radius: 16px;
+  --ds-row-control-h: 28px;
+  --ds-toolbar-control-h: 32px; /* a search field; the filter dropdowns beside it stay 28px */
+  --ds-radius-body-group: var(--ds-row-radius);
   --ds-radius-body-dialog: 14.4px;
-  --ds-w-body-switch: 35.1px;
-  --ds-h-body-switch: 21.6px;
-  --ds-size-body-switch-thumb: 16.2px;
-  --ds-body-switch-thumb-off-x: 1.8px;
-  --ds-body-switch-thumb-on-x: 16.2px;
+  --ds-w-body-switch: 36px;
+  --ds-h-body-switch: 20px;
+  --ds-size-body-switch-thumb: 14px;
+  --ds-body-switch-thumb-off-x: 2px;
+  --ds-body-switch-thumb-on-x: 18px;
   --ds-body-switch-thumb-bg: #ffffff;
-  --ds-body-switch-checked-bg: #3b82f6;
+  --ds-body-switch-checked-bg: var(--ds-switch-on);
 
   --ds-tracking-caps: 0.14em; /* uppercase micro labels only */
   --ds-tracking-tight: -0.006em; /* section/display sizes only */
@@ -253,7 +288,7 @@
   --ds-space-page: 32px;
   --ds-space-heading-description: 4px;
   --ds-space-heading-content: 12px;
-  --ds-space-page-heading-content: 16px;
+  --ds-space-page-heading-content: 24px;
   --ds-w-body-content: 828px;
   --ds-w-body-performance: 1090px;
   --ds-w-body-control-standard: 237px;
@@ -278,13 +313,13 @@
   --ds-space-body-catalog-title-bottom: 6.3px;
   --ds-space-body-catalog-section-gap: 25.2px;
   --ds-text-body-catalog-small: 10.8px;
-  --ds-space-body-group-inline: 18px;
+  --ds-space-body-group-inline: var(--ds-row-pad-x);
   --ds-space-body-section-gap: 32.4px;
   --ds-space-body-section-heading-gap: 9.9px;
   --ds-space-body-caption-gap: 10px;
   --ds-space-body-toolbar-inline: 9.9px;
-  --ds-text-body-caption: 12.6px;
-  --ds-lh-body-caption: 19px;
+  --ds-text-body-caption: 13px;
+  --ds-lh-body-caption: 18px;
   --ds-text-body-section: 16.2px;
   --ds-lh-body-section: 21px;
   /* THE SHELL'S LEFT AND RIGHT EDGE — Top Bar, Queue Toolbar, and the panel
@@ -372,6 +407,7 @@
   /* The queue and the run's CONTEXT RAIL are equal resting side panels. 376px
    leaves the centre log panel as the largest column at every three-panel */
   --ds-w-side-panel: 376px;
+  --ds-w-queue-column: 360px; /* the smallest width where a running card's footer (clock, #n, run id, 1h 59m 59s, pause, cancel) fits one line; 336px below 1100px */
   --ds-w-context-rail: var(--ds-w-side-panel);
   /* The rail while the Data surface is being EDITED in it. 376px reads a
    ledger fine but is tight to type a date into once the row carries a label, */
@@ -388,6 +424,8 @@
   /* A context menu's FLOOR. It holds verbs, so it is narrow — but it must not
    be narrower than its own longest verb or the menu re-flows around whichever */
   --ds-w-menu: 216px;
+  --ds-worker-card-bg: color-mix(in srgb, var(--ds-fg) 3%, var(--ui-panel)); /* a worker card is its own surface one step above the Sessions panel, with no edge */
+  --ds-worker-chip-bg: color-mix(in srgb, var(--ds-fg) 6%, var(--ui-panel)); /* its system chips sit one step further */
   --ds-w-session-card: 290px; /* one worker card in the Session Panel drawer */
   /* One cell of a wrapping CHIP ROW. Chips carry facts of wildly different
    lengths, so a plain `flex-wrap` leaves every line ending somewhere else and */
@@ -487,24 +525,24 @@ body[data-demo-theme="dark"] {
   color-scheme: dark;
 
   /* --- the product's own semantic tokens ------------------------------- */
-  --background: #09090b;
-  --foreground: #fafafa;
+  --background: #0f0f11;
+  --foreground: #e3e4e6;
   --card: #18181b;
-  --card-foreground: #fafafa;
+  --card-foreground: #e3e4e6;
   /* a hair above the card so an overlay reads as floating even before its
      shadow lands — the scrim alone cannot separate a drawer from a panel */
-  --popover: #1c1c1f;
-  --popover-foreground: #fafafa;
+  --popover: #18181b;
+  --popover-foreground: #e3e4e6;
   /* THE ACCENT IS NOT THE ACTION. Graphite Warm's accent is amber (#f5a623),
    which is the SAME hue family as `warning` — so filling every primary button */
   --primary: #fafafa;
   --primary-foreground: #09090b;
-  --secondary: #202024;
-  --secondary-foreground: #d4d4d8;
-  --muted: #121215;
-  --muted-foreground: #a1a1aa;
-  --accent: #27272a;
-  --accent-foreground: #fafafa;
+  --secondary: #1f1f23;
+  --secondary-foreground: #9d9ea2;
+  --muted: #131316;
+  --muted-foreground: #808085;
+  --accent: #222226;
+  --accent-foreground: #e3e4e6;
   /* #f04438 is the swatch; as TEXT it drops to 3.96:1 on the raised surface,
    so the token every `text-destructive` reads is the lifted red and the */
   --destructive: #f97066;
@@ -519,29 +557,29 @@ body[data-demo-theme="dark"] {
   --input: rgba(255, 255, 255, 0.16);
   --ring: #a1a1aa;
 
-  --ds-settings-canvas: #1c1e20;
-  --ds-settings-sidebar: #222426;
-  --ds-settings-card: #282a2c;
-  --ds-settings-control: #2e3032;
-  --ds-settings-hover: #35383a;
-  --ds-settings-border: #3c4145;
-  --ds-settings-control-border: #747b80;
-  --ds-settings-fg: #eceeef;
-  --ds-settings-fg-secondary: #c7cbce;
-  --ds-settings-fg-muted: #b1b8bd;
+  --ds-settings-canvas: #0f0f11;
+  --ds-settings-sidebar: #0f0f11;
+  --ds-settings-card: #18181b;
+  --ds-settings-control: #1f1f23;
+  --ds-settings-hover: #222226;
+  --ds-settings-border: #26262a;
+  --ds-settings-control-border: #52525a;
+  --ds-settings-fg: #e3e4e6;
+  --ds-settings-fg-secondary: #b5b6bb;
+  --ds-settings-fg-muted: #9d9ea4;
 
   /* Shared content-body surfaces. The app shell keeps its own palette. */
-  --ds-body-surface-page: #181818;
-  --ds-body-surface-group: #222222;
-  --ds-body-surface-control: #2b2b2b;
-  --ds-body-surface-hover: #303030;
-  --ds-body-surface-selected: #323232;
-  --ds-body-border: #363636;
-  --ds-body-border-subtle: #303030;
-  --ds-body-control-border: #515151;
-  --ds-body-fg: #efefef;
-  --ds-body-fg-secondary: #b2b2b2;
-  --ds-body-fg-muted: #a0a0a0;
+  --ds-body-surface-page: #0f0f11;
+  --ds-body-surface-group: #18181b;
+  --ds-body-surface-control: #1f1f23;
+  --ds-body-surface-hover: #222226;
+  --ds-body-surface-selected: #25252a;
+  --ds-body-border: #26262a;
+  --ds-body-border-subtle: #202024;
+  --ds-body-control-border: #4a4a52;
+  --ds-body-fg: #e3e4e6;
+  --ds-body-fg-secondary: #b0b1b6;
+  --ds-body-fg-muted: #9a9ba1;
 
   /* The categorical log accents sit at a neutral ramp: hue-per-category painted
    on top of four status hues made the noisiest surface in the product. Reads */
@@ -705,22 +743,22 @@ body[data-demo-theme="light"] {
   color-scheme: light;
 
   /* --- the product's own semantic tokens ------------------------------- */
-  --background: #f6f8fa;
-  --foreground: #0b0f19;
-  --card: #ffffff;
-  --card-foreground: #0b0f19;
+  --background: #f9f9f9;
+  --foreground: #1b1b1b;
+  --card: #f9f9f9;
+  --card-foreground: #1b1b1b;
   --popover: #ffffff;
-  --popover-foreground: #0b0f19;
+  --popover-foreground: #1b1b1b;
   /* the swatch is #4f46e5; text uses the step down so it clears 4.5:1 on the
      accent tint as well as on paper (`--ds-accent-mark` keeps the swatch) */
   --primary: #4338ca;
   --primary-foreground: #ffffff;
-  --secondary: #eff2f6;
-  --secondary-foreground: #334155;
-  --muted: #f1f4f8;
-  --muted-foreground: #475569;
-  --accent: #e8ecf2;
-  --accent-foreground: #0b0f19;
+  --secondary: #ffffff;
+  --secondary-foreground: #555555;
+  --muted: #f3f3f3;
+  --muted-foreground: #737373;
+  --accent: #efefef;
+  --accent-foreground: #1b1b1b;
   --destructive: #b42318;
   --destructive-foreground: #ffffff;
   --info: #0369a1; /* swatch #0ba5ec — 2.8:1 as text, so text steps down */
@@ -729,32 +767,32 @@ body[data-demo-theme="light"] {
   --success-foreground: #ffffff;
   --warning: #b54708;
   --warning-foreground: #ffffff;
-  --border: #e4e7ec;
-  --input: #d0d5dd;
+  --border: #e6e6e6;
+  --input: #d4d4d4;
   --ring: #667085;
 
-  --ds-settings-canvas: #f5f6f7;
-  --ds-settings-sidebar: #edf0f2;
-  --ds-settings-card: #ffffff;
-  --ds-settings-control: #f8f9fa;
-  --ds-settings-hover: #e9edf0;
-  --ds-settings-border: #dce1e5;
-  --ds-settings-control-border: #78838c;
-  --ds-settings-fg: #252b30;
-  --ds-settings-fg-secondary: #4f5a64;
-  --ds-settings-fg-muted: #606c76;
+  --ds-settings-canvas: #f9f9f9;
+  --ds-settings-sidebar: #f9f9f9;
+  --ds-settings-card: #f9f9f9;
+  --ds-settings-control: #ffffff;
+  --ds-settings-hover: #efefef;
+  --ds-settings-border: #e6e6e6;
+  --ds-settings-control-border: #8a8a8a;
+  --ds-settings-fg: #1b1b1b;
+  --ds-settings-fg-secondary: #4d4d4d;
+  --ds-settings-fg-muted: #666666;
 
-  --ds-body-surface-page: #fafafa;
-  --ds-body-surface-group: #ffffff;
-  --ds-body-surface-control: #f7f7f7;
-  --ds-body-surface-hover: #ededed;
-  --ds-body-surface-selected: #e4e4e4;
-  --ds-body-border: #dedede;
-  --ds-body-border-subtle: #e8e8e8;
-  --ds-body-control-border: #a0a0a0;
-  --ds-body-fg: #202020;
-  --ds-body-fg-secondary: #626262;
-  --ds-body-fg-muted: #6b6b6b;
+  --ds-body-surface-page: #f9f9f9;
+  --ds-body-surface-group: #f9f9f9;
+  --ds-body-surface-control: #ffffff;
+  --ds-body-surface-hover: #efefef;
+  --ds-body-surface-selected: #e9e9e9;
+  --ds-body-border: #e6e6e6;
+  --ds-body-border-subtle: #eeeeee;
+  --ds-body-control-border: #8a8a8a;
+  --ds-body-fg: #1b1b1b;
+  --ds-body-fg-secondary: #4d4d4d;
+  --ds-body-fg-muted: #666666;
 
   --log-teal: #0b0f19; /* a WRITE */
   --log-cyan: #334155; /* a READ */
@@ -778,11 +816,12 @@ body[data-demo-theme="light"] {
   --ds-surface-disabled: color-mix(in srgb, var(--muted) 70%, transparent);
 
   /* --- border ----------------------------------------------------------- */
-  --ds-border-subtle: #edeff2;
-  --ds-border: #e4e7ec;
-  --ds-border-strong: #d0d5dd;
-  --ds-border-loud: #b4bcc8;
-  --ds-control-border: #7e8899; /* 3.6:1 on white, 3.4:1 on the page */
+  --ds-border-subtle: #eeeeee;
+  --ds-border: #e6e6e6;
+  --ds-border-strong: #d4d4d4;
+  --ds-border-loud: #b8b8b8;
+  --ds-field-focus-edge: color-mix(in srgb, var(--ds-fg) 72%, transparent);
+  --ds-control-border: #8a8a8a; /* 3.6:1 on white, 3.4:1 on the page */
 
   /* --- foreground ------------------------------------------------------- */
   --ds-fg: var(--foreground);
@@ -951,6 +990,7 @@ body[data-demo-theme="light"] {
   font-size: var(--ds-text-body-page);
   line-height: var(--ds-lh-body-page);
   letter-spacing: var(--ds-tracking-tight);
+  font-weight: 400;
 }
 /* Uppercase micro label — group headers, table column heads, tile captions. */
 .ds-text-caps {
@@ -959,6 +999,81 @@ body[data-demo-theme="light"] {
   text-transform: uppercase;
   letter-spacing: var(--ds-tracking-caps);
   font-weight: 600;
+}
+/* Two-way switch: the selected side is white in light and lighter than the track in dark. */
+
+/* MENUS AND POPOVERS — one Codex-style container and item for DropdownMenu, Select and Popover. */
+.ds-menu-surface {
+  min-width: var(--anchor-width, var(--radix-popover-trigger-width, 0px));
+  padding: 4px; border: 1px solid var(--ui-stroke); border-radius: 16px; outline: none;
+  background: var(--ui-field); color: var(--ui-primary);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.14), 0 1px 3px rgb(0 0 0 / 0.08);
+}
+[data-demo-theme="dark"] .ds-menu-surface { box-shadow: 0 10px 32px rgb(0 0 0 / 0.5), 0 1px 3px rgb(0 0 0 / 0.4); }
+/* Tooltip (Codex): 28px, 14px text, one step above the menu surface, a faint inset edge instead of a border, 14px corner, key chip after the text. */
+.ds-tooltip { display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box; height: 28px; max-width: 280px; padding: 0 5px 0 12px; border-radius: 8px; font-size: 14px; line-height: 20px; white-space: nowrap; color: var(--ui-primary);
+  background: color-mix(in srgb, var(--ds-fg) 6%, var(--ui-field)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-fg) 5%, transparent), 0 6px 20px rgb(0 0 0 / 0.14); }
+[data-demo-theme="dark"] .ds-tooltip { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-fg) 5%, transparent), 0 8px 24px rgb(0 0 0 / 0.45); }
+.ds-tooltip:not(:has(.ds-tooltip-key)) { padding-right: 12px; }
+/* Card variant: the Analytics chart card (256px, 12px corners, faint edge, soft shadow) for rich content such as the timeline step hover. */
+.ds-tooltip.ds-tooltip--card { display: block; height: auto; width: 256px; max-width: calc(100vw - 16px); padding: 0; border-radius: 12px; white-space: normal;
+  background: var(--ui-field); box-shadow: 0 0 0 1px var(--ui-stroke), 0 8px 24px rgb(0 0 0 / 0.16); }
+[data-demo-theme="dark"] .ds-tooltip--card { background: color-mix(in srgb, var(--ui-primary) 4.5%, var(--ds-card-bg, var(--ui-panel)));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-primary) 7%, color-mix(in srgb, var(--ui-primary) 4.5%, var(--ds-card-bg, var(--ui-panel)))), 0 8px 24px rgb(0 0 0 / 0.45); }
+.ds-tooltip-key { display: inline-flex; align-items: center; height: 20px; min-width: 20px; justify-content: center; padding: 0 6px; border-radius: 6px; font: inherit; font-size: 13px; color: var(--ui-primary); background: color-mix(in srgb, var(--ds-fg) 20%, transparent); }
+.ds-menu-item {
+  position: relative; display: flex; min-height: var(--ds-menu-item-h); align-items: center; gap: 8px; box-sizing: border-box;
+  padding: 4px 8px; border-radius: 8px; outline: none; cursor: default; user-select: none;
+  font-size: 14px; font-weight: 400; line-height: 20px; color: var(--ds-menu-fg);
+}
+.ds-menu-item[data-highlighted], .ds-menu-item[data-popup-open], .ds-menu-item[data-open] { background: color-mix(in srgb, var(--ds-fg) 8%, transparent); color: var(--ds-menu-fg); }
+.ds-menu-item[data-disabled], .ds-menu-item[aria-disabled="true"] { pointer-events: none; opacity: 0.5; }
+.ds-menu-item > svg:not(.ds-menu-check) { width: 16px; height: 16px; flex: none; color: var(--ui-muted); }
+.ds-menu-item[data-selected] , .ds-menu-item[data-checked] { padding-right: 34px; }
+/* The check sits 12px from the menu's outer edge (1px border + 4px menu padding + 7px), centred on the item. */
+.ds-menu-indicator { position: absolute; top: 50%; right: 7px; display: flex; width: 16px; height: 16px; transform: translateY(-50%); pointer-events: none; }
+.ds-menu-check { width: 16px; height: 16px; stroke-width: 1.5; color: var(--ds-menu-fg); }
+.ds-menu-item:has(.ds-menu-copy) { padding-block: 5px; }
+.ds-menu-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+.ds-menu-copy > span:first-child { font-size: 14px; line-height: 20px; color: var(--ds-menu-fg); }
+.ds-menu-copy > span + span { font-size: 13px; line-height: 20px; color: var(--ui-secondary); }
+.ds-menu-label { padding: 6px 8px 4px; font-size: 12px; font-weight: 400; line-height: 16px; color: var(--ui-muted); }
+.ds-menu-separator { height: 1px; margin: 4px 8px; background: var(--ui-stroke); }
+/* Fields and pickers inside a row: 28px, subtle fill, faint edge. */
+.ds-body-row .input, .ds-body-row .ds-secret-input, .hub-settings-row .input, .settings-compact-control .input { height: var(--ds-row-control-h); border-color: var(--ds-soft-border); border-radius: 8px; background: var(--ds-picker-bg); font-size: 13px; }
+.ds-body-row .ds-secret-input input, .ds-body-row .input::placeholder, .ds-secret-input input::placeholder { font-size: 13px; }
+.ds-body-row .ds-select-control, .ds-body-row .ds-menu-trigger, .ds-run-row .ds-select-control, .ds-run-row .ds-menu-trigger, .hub-settings-row .ds-select-control { padding-inline: 12px; }
+/* Controls inside a row are 28px. */
+.ds-body-row .ds-select-control, .ds-body-row .ds-menu-trigger, .ds-run-row .ds-select-control, .ds-run-row .ds-menu-trigger { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); }
+/* A menu's trigger: soft bordered, 32px, 10px radius, 14px label, grey 14px chevron. */
+.ds-menu-trigger, .ds-select-control { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); border: 1px solid var(--ds-soft-border); border-radius: 8px; background: var(--ds-picker-bg); font-size: 13px; font-weight: 400; line-height: 18px; color: var(--ui-primary); }
+/* Toolbar filter dropdowns (beside a 32px search): 28px rounded rectangle, not a pill. */
+.ds-filter-trigger, .ds-toolbar-row .ds-menu-trigger, .ds-toolbar-row .ds-select-control, :has(> .ds-search-field) > :is(.ds-menu-trigger, .ds-select-control) { height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); border-radius: 8px; align-self: center; }
+.ds-menu-trigger:hover, .ds-select-control:hover { background: var(--ds-picker-bg-hover); }
+.ds-menu-trigger > svg, .ds-select-control [data-slot="select-trigger"] > svg, .ds-select-control > svg { width: 14px; height: 14px; color: var(--ui-muted); }
+
+/* Two-way switch: track a clear step above the card, thumb a step above the track, unselected label in the secondary text colour (AA on the track). */
+/* On-state fill of the toggle switch. */
+:root, [data-demo-theme="light"] {
+  --ds-switch-on: var(--ui-info);
+  --ds-settings-section-gap: 48px;
+  --ds-settings-card-gap: 40px;
+}
+[data-demo-theme="dark"] {
+  --ds-switch-on: #3b82f6;
+}
+.ds-segment {
+  --ds-segment-track: color-mix(in srgb, var(--ds-fg) 8%, var(--ui-canvas));
+  --ds-segment-thumb: #fff;
+}
+[data-demo-theme="dark"] .ds-segment {
+  --ds-segment-track: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-panel));
+  --ds-segment-thumb: color-mix(in srgb, var(--ds-fg) 26%, var(--ui-panel));
+}
+/* Small table headings are 11px. */
+th.ds-text-caps {
+  font-size: var(--ds-text-meta);
+  line-height: var(--ds-lh-meta);
 }
 /* Collapse the line box to the em. Compose AFTER a `ds-text-*` size class on a
    single-line label that shares a flex/grid row with an icon or a taller */
@@ -1042,7 +1157,7 @@ body[data-demo-theme="light"] {
 
 .ds-page-heading-title {
   margin: 0;
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .ds-page-heading--title-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; row-gap: var(--ds-space-heading-description); }
@@ -1061,14 +1176,25 @@ body[data-demo-theme="light"] {
 .ds-tab-indicator { position: absolute; left: 0; bottom: -1px; width: 1px; height: 2px; background: var(--ds-accent); transform-origin: left; pointer-events: none; }
 .ds-tab-list[data-indicator-ready="true"] > .ds-tab-indicator { transition: transform var(--ds-dur-move) var(--ds-ease-standard); }
 .ds-tab-list[data-indicator-motion="instant"] > .ds-tab-indicator { transition-duration: 0ms; }
-.ds-table-list-frame { border-radius: var(--radius); border: 1px solid var(--ui-stroke); background: var(--ui-panel); min-width: 0; max-width: 100%; overflow: auto; }
+.ds-table-list-frame { border-radius: var(--ds-row-radius); border: 1px solid var(--ui-stroke); background: var(--ds-card-bg); min-width: 0; max-width: 100%; overflow: auto; }
 .ds-table-list-frame table { font-size: var(--text-body); line-height: var(--text-body--line-height); width: 100%; border-collapse: collapse; }
 .ds-table-list-frame thead { background: var(--ui-table); font-size: var(--text-caption); line-height: var(--text-caption--line-height); color: var(--ui-muted); }
-.ds-table-list-frame th { border-bottom: 1px solid var(--ui-stroke); padding: 9px 14px; text-align: left; font-weight: 400; }
-.ds-table-list-frame td { padding: 15px 14px; }
+.ds-table-list-frame th { height: var(--ds-row-head-h); border-bottom: 1px solid var(--ui-stroke); padding: 0 var(--ds-row-pad-x); font-size: 12px; line-height: 16px; text-align: left; font-weight: 400; }
+.ds-table-list-frame td { height: var(--ds-row-h-1); padding: var(--ds-row-pad-y-1) var(--ds-row-pad-x); font-size: var(--ds-row-title); line-height: var(--ds-row-title-lh); }
 .ds-table-list-frame tbody tr { border-bottom: 1px solid var(--ui-stroke); }
 .ds-table-list-frame tbody tr:hover, .ds-table-list-frame tbody tr:focus-within { background: var(--ui-hover); }
 .ds-table-list-frame tbody tr:last-child { border-bottom: 0; }
+.ds-usage-table { --ds-row-head-h: 36px; --ds-row-h-1: 41px; border-color: var(--ds-soft-border); font-weight: 400; }
+.ds-usage-table thead { background: transparent; color: var(--ui-secondary); }
+.ds-usage-table th { border-bottom-color: var(--ds-soft-border); color: var(--ui-secondary); }
+.ds-usage-table td { font-weight: 400; }
+.ds-usage-table tbody tr { border-bottom-color: var(--ds-soft-border); }
+.ds-usage-table tbody tr[data-open] { background: var(--ds-picker-bg); }
+.ds-usage-table .ds-usage-chevron { width: 40px; padding: 0 0 0 12px; }
+.ds-usage-table dl { display: grid; grid-template-columns: repeat(var(--usage-cols), max-content); column-gap: 24px; row-gap: 8px; margin: 0; font-size: 13px; line-height: 18px; }
+.ds-usage-table dt { color: var(--ui-secondary); }
+.ds-usage-table dd { margin: 0; white-space: nowrap; }
+.ds-usage-table dd span { margin-left: 4px; color: var(--ui-secondary); }
 
 .ds-page-heading-description {
   max-width: 65ch;
@@ -1077,6 +1203,9 @@ body[data-demo-theme="light"] {
 }
 
 .ds-body-scope .ds-page-heading-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   margin-top: var(--ds-space-heading-description);
   font-size: var(--ds-text-body-caption);
   line-height: var(--ds-lh-body-caption);
@@ -1096,7 +1225,8 @@ body[data-demo-theme="light"] {
   margin: 0 0 var(--ds-space-heading-content);
   font-size: var(--ds-text-body-section);
   line-height: var(--ds-lh-body-section);
-  font-weight: 550;
+  font-weight: 400;
+  color: var(--ds-fg);
 }
 
 .ds-body-section-heading:has(+ .ds-body-section-description) { margin-bottom: var(--ds-space-heading-description); }
@@ -1128,9 +1258,12 @@ body[data-demo-theme="light"] {
   align-items: center;
   gap: var(--ds-space-loose);
   min-width: 0;
-  min-height: var(--ds-h-body-row);
-  padding-block: var(--ds-space-base);
+  min-height: var(--ds-row-h-1);
+  padding-block: var(--ds-row-pad-y-1);
 }
+
+/* A row with a grey line is the two-line row. */
+.ds-body-scope .ds-body-row:has(.ds-field-description) { min-height: var(--ds-row-h-2); padding-block: var(--ds-row-pad-y); }
 
 .ds-body-scope .ds-body-row[data-control-width="wide"] {
   grid-template-columns: minmax(0, 1fr) minmax(0, var(--ds-w-body-control-wide));
@@ -1158,14 +1291,15 @@ body[data-demo-theme="light"] {
   color: var(--ds-fg);
   font-size: var(--ds-text-body-row);
   line-height: var(--ds-lh-body-row);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .ds-body-scope .ds-field-description {
-  margin: var(--ds-space-tight) 0 0;
+  max-width: 520px;
+  margin: var(--ds-space-body-copy-gap) 0 0;
   color: var(--ds-fg-secondary);
-  font-size: var(--ds-text-body-description);
-  line-height: var(--ds-lh-body-description);
+  font-size: var(--ds-row-desc);
+  line-height: var(--ds-row-desc-lh);
 }
 
 .ds-body-scope .ds-field-error {
@@ -1289,35 +1423,50 @@ body[data-demo-theme="light"] {
 
 .ds-search-field {
   min-width: 0;
-  --field: var(--ds-control-bg);
-  --field-hover: var(--ds-control-bg-hover);
-  --field-focus: var(--ds-control-bg);
-  --field-foreground: var(--ds-control-fg);
+  --field: var(--ui-table);
+  --field-hover: var(--ui-table);
+  --field-focus: var(--ui-table);
+  --field-foreground: var(--ds-fg);
   --field-placeholder: var(--ds-fg-muted);
-  --field-border: var(--ds-control-border);
-  --field-border-hover: var(--ds-control-border);
+  --field-border: var(--ui-stroke);
+  --field-border-hover: var(--ui-stroke);
   --field-border-focus: var(--ds-fg-muted);
   --border-width-field: 1px;
   --field-shadow: none;
 }
-.ds-search-field [data-slot="search-field-group"] { width: 100%; height: 100%; min-height: 36px; border-radius: var(--ds-radius-search); background: var(--field); color: var(--field-foreground); }
-.ds-search-field [data-slot="search-field-search-icon"] { color: var(--field-placeholder); }
-.ds-search-field [data-slot="search-field-input"] { min-width: 0; width: 100%; font-size: var(--ds-text-ui); }
-.ds-search-field--toolbar [data-slot="search-field-group"] { height: var(--ds-h-toolbar); min-height: var(--ds-h-toolbar); }
-.ds-search-field--toolbar [data-slot="search-field-input"] { height: 100%; padding-block: 0; }
-.ds-search-field--toolbar [data-slot="search-field-input"]::placeholder { color: var(--field-placeholder); opacity: 1; }
+/* Toolbar search edge: a step stronger than the faint field border (Codex). */
+.ds-search-field:not(.ds-search-field--menu) { --field-border: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-canvas)); }
+[data-demo-theme="dark"] .ds-search-field:not(.ds-search-field--menu) { --field-border: color-mix(in srgb, var(--ds-fg) 23%, var(--ui-canvas)); }
+/* The one search field: a pill, 32px, a faint border, filled one step above its surface, a 16px magnifier inset on the left, 14px text. */
+.ds-search-field [data-slot="search-field-group"] { width: 100%; height: var(--ds-toolbar-control-h); min-height: var(--ds-toolbar-control-h); box-sizing: border-box; gap: 8px; padding-inline: 12px 6px; border-radius: 9999px; background: var(--field); color: var(--field-foreground); }
+.ds-search-field [data-slot="search-field-search-icon"] { width: 16px; height: 16px; flex-shrink: 0; color: var(--field-placeholder); }
+.ds-search-field [data-slot="search-field-input"] { min-width: 0; width: 100%; height: 100%; padding-block: 0; padding-inline: 0; background: transparent; font-size: 14px; font-weight: 400; line-height: 20px; }
+.ds-search-field [data-slot="search-field-input"]::placeholder { color: var(--field-placeholder); opacity: 1; }
+/* Inside a dropdown menu the same look at 28px. */
+.ds-search-field--menu { --field-border: var(--ds-soft-border); --field-border-hover: var(--ds-soft-border); --field-border-focus: var(--ds-soft-border); }
+.ds-search-field--menu [data-slot="search-field-group"] { height: 28px; min-height: 28px; max-height: 28px; box-sizing: border-box; padding-inline: 10px 4px; }
+.ds-search-field--menu [data-slot="search-field-search-icon"] { width: 14px; height: 14px; }
+.ds-search-field--menu [data-slot="search-field-input"] { font-size: 13px; line-height: 18px; }
+/* A menu's flat search row (search palette look): 36px, a 16px magnifier, 13px text, a hairline under it, no field fill or focus edge. */
+.ds-menu-search-row { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; height: 36px; margin: -4px -4px 4px; padding: 0 12px; border-bottom: 1px solid var(--ui-stroke); border-radius: 16px 16px 0 0; background: var(--ui-field); color: var(--ui-muted); }
+.ds-menu-search-row svg { width: 16px; height: 16px; flex: none; }
+.ds-menu-search-row input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; box-shadow: none; background: transparent; color: var(--ui-primary); font: inherit; font-size: 13px; line-height: 18px; }
+.ds-menu-search-row input::placeholder { color: var(--ui-muted); opacity: 1; }
+/* Sidebar search (Codex): 36px, no border, a 15px corner, a fill one step above the sidebar; icon and text sit on the row icon and text x. */
+.ds-search-field--sidebar { --field: color-mix(in srgb, var(--ds-fg) 7%, transparent); --field-hover: var(--field); --field-focus: var(--field); --field-border: transparent; --field-border-hover: transparent; --field-border-focus: transparent; --border-width-field: 0px; }
+[data-demo-theme="dark"] .ds-search-field--sidebar { --field-border: transparent; }
+.ds-search-field--sidebar [data-slot="search-field-group"] { height: 36px; min-height: 36px; max-height: 36px; padding-inline: 12px 6px; border-radius: 9999px; border: 0; }
+.ds-search-field--sidebar [data-slot="search-field-search-icon"] { width: 16px; height: 16px; margin: 0; }
 .ds-search-shortcut { margin-right: var(--ds-space-base); color: var(--ds-fg-muted); }
 
-.navbar-search-command [cmdk-list] { max-height: 360px; padding-inline: var(--ds-space-base); }
-.navbar-search-command [cmdk-item] { border-radius: var(--ds-radius-lg); padding: var(--ds-space-base); }
 
 
 .ds-body-scope .ds-date-picker--inline {
   display: flex;
   width: 100%;
-  min-height: var(--ds-h-body-row);
+  min-height: 0;
   justify-content: space-between;
-  padding-block: var(--ds-space-base);
+  padding-block: var(--ds-row-pad-y);
 }
 
 .ds-body-scope .ds-date-picker--inline .date-picker__trigger-indicator {
@@ -1347,7 +1496,8 @@ body[data-demo-theme="light"] {
 }
 
 .ds-body-scope .ds-disclosure-body .ds-disclosure-trigger {
-  min-height: var(--ds-h-body-row);
+  min-height: 0;
+  padding-block: var(--ds-row-pad-y);
   padding-inline: 0;
 }
 .ds-disclosure-body .ds-disclosure-trigger > svg:first-child { order: 3; }
@@ -1383,10 +1533,10 @@ body[data-demo-theme="light"] {
 }
 
 .ds-body-scope .ds-result-row-value {
-  color: var(--ds-fg);
-  font-size: var(--ds-text-body-value);
-  line-height: var(--ds-lh-body-value);
-  font-weight: 500;
+  color: var(--ds-fg-secondary);
+  font-size: var(--ds-row-title);
+  line-height: var(--ds-row-title-lh);
+  font-weight: 400;
 }
 
 .ds-body-scope .ds-result-row-copy .ds-field-label {
@@ -1491,9 +1641,10 @@ body[data-demo-theme="light"] {
   flex-direction: row-reverse;
   align-items: center;
   justify-content: space-between;
-  min-height: var(--ds-h-body-row);
-  padding-block: var(--ds-space-base);
+  min-height: 0;
+  padding-block: 13px;
 }
+.ds-body-scope .ds-switch-row:has(.ds-text-meta) { padding-block: 11px; }
 
 .ds-body-scope .ds-switch-content {
   flex: 1;
@@ -1504,6 +1655,7 @@ body[data-demo-theme="light"] {
 }
 
 .ds-body-scope .ds-switch-copy {
+  max-width: 520px;
   gap: var(--ds-space-tight);
 }
 
@@ -1541,7 +1693,7 @@ body[data-demo-theme="light"] {
 }
 
 .ds-body-scope .ds-switch-row:not([data-selected="true"]) .ds-switch-control {
-  background-color: var(--ds-surface-2);
+  background-color: var(--ui-stroke-control);
 }
 
 .ds-body-scope .ds-switch-row[data-selected="true"] .ds-switch-thumb {
@@ -1729,16 +1881,16 @@ body[data-demo-theme="light"] {
 .ds-date-picker {
   --foreground: var(--ds-control-fg);
   --muted: var(--ds-fg-muted);
-  --field: var(--ds-control-bg);
+  --field: var(--ds-picker-bg);
   --field-foreground: var(--ds-control-fg);
   --field-placeholder: var(--ds-fg-muted);
-  --field-hover: var(--ds-control-bg-hover);
+  --field-hover: var(--ds-picker-bg-hover);
   --field-focus: var(--ds-control-bg);
   --field-shadow: none;
   --field-border-width: 1px;
-  --field-border: var(--ds-border-strong);
-  --field-border-hover: var(--ds-border-strong);
-  --field-border-focus: var(--ds-focus-ring);
+  --field-border: var(--ds-soft-border);
+  --field-border-hover: var(--ds-soft-border);
+  --field-border-focus: var(--ds-field-focus-edge);
   --focus: var(--ds-focus-ring);
   --accent: var(--ui-info);
   --accent-foreground: var(--ds-accent-fg);
@@ -1749,7 +1901,7 @@ body[data-demo-theme="light"] {
   background: var(--field);
   color: var(--field-foreground);
   border-width: var(--field-border-width);
-  border-radius: var(--ds-radius-md);
+  border-radius: 8px;
   --tw-shadow: 0 0 #0000;
 }
 
@@ -1759,8 +1911,11 @@ body[data-demo-theme="light"] {
   }
 }
 
+/* The calendar button inside a date field is an icon button: rounded square, the row hover fill. */
+.ds-date-picker .date-picker__trigger { border-radius: 6px; }
+.ds-date-picker .date-picker__trigger:hover { background: var(--ds-surface-3); }
 .ds-date-picker--toolbar .date-input-group {
-  height: var(--ds-h-toolbar);
+  height: var(--ds-h-md);
 }
 
 .ds-date-navigation {
@@ -1790,12 +1945,35 @@ body[data-demo-theme="light"] {
 }
 
 .ds-calendar-popover {
-  background: var(--ui-panel);
-  color: var(--ui-primary);
-  border: 0;
-  border-radius: min(32px, calc(var(--radius) * 2.5));
-  box-shadow: var(--overlay-shadow);
+  padding: 8px;
   font-family: var(--ds-font-body);
+}
+
+/* Codex calendar: 32px day cells, regular 14px month heading, plain chevrons, ring for today, accent fill for the pick. */
+.ds-calendar:not(.ds-range-calendar) {
+  width: 224px;
+  max-width: 224px;
+}
+.ds-calendar .calendar__header,
+.ds-calendar .range-calendar__header { padding: 0 0 8px 4px; }
+.ds-calendar .calendar-year-picker__trigger-heading,
+.ds-calendar .calendar__heading,
+.ds-calendar .range-calendar__heading { font-size: 14px; line-height: 20px; font-weight: 400; color: var(--ui-primary); }
+.ds-calendar .calendar-year-picker__trigger-indicator { width: 12px; height: 12px; color: var(--ui-muted); }
+.ds-calendar .calendar__nav-button,
+.ds-calendar .range-calendar__nav-button { width: 28px; height: 28px; border-radius: 8px; color: var(--ui-muted); }
+.ds-calendar .calendar__nav-button-icon,
+.ds-calendar .range-calendar__nav-button-icon { width: 16px; height: 16px; }
+.ds-calendar .calendar__header-cell,
+.ds-calendar .range-calendar__header-cell { height: 24px; padding: 0; font-size: 11px; line-height: 16px; font-weight: 400; color: var(--ui-muted); }
+.ds-calendar .calendar__cell { width: 32px; height: 32px; aspect-ratio: auto; border-radius: 8px; font-size: 13px; line-height: 20px; font-weight: 400; }
+.ds-calendar .calendar__cell[data-today="true"]:not([data-selected="true"]) { background: transparent; box-shadow: inset 0 0 0 1px var(--ui-stroke-control); color: var(--ui-primary); }
+.ds-calendar .calendar__cell[data-selected="true"] { font-weight: 500; }
+.ds-calendar .calendar__cell[data-outside-month="true"] { opacity: 0.4; }
+@media (hover: hover) {
+  .ds-calendar .calendar__cell:hover:not([data-selected="true"]) { background: color-mix(in srgb, var(--ds-fg) 8%, transparent); }
+  .ds-calendar .calendar__nav-button:hover,
+  .ds-calendar .range-calendar__nav-button:hover { background: color-mix(in srgb, var(--ds-fg) 8%, transparent); }
 }
 
 .ds-range-calendar {
@@ -1944,7 +2122,6 @@ body[data-demo-theme],
   --ds-settings-fg-secondary: var(--ui-secondary);
   --ds-settings-fg-muted: var(--ui-muted);
 }
-
 .ds-search-field [data-slot="search-field-group"]:focus-within,
 .ds-search-field [data-slot="search-field-group"][data-focus-within="true"] {
   box-shadow: none;
@@ -1957,6 +2134,14 @@ body[data-demo-theme],
 .ds-search-field[data-empty="true"] .ds-search-clear { display: none; }
 .ds-search-field .ds-search-clear:hover { background: var(--ds-surface-3); color: var(--ds-fg); }
 
+.ds-layer-menu { z-index: var(--ds-layer-menu); }
+.ds-layer-assistant { z-index: var(--ds-layer-assistant); }
+.ds-layer-tooltip { z-index: var(--ds-layer-tooltip); }
 .ds-layer-skip-focus:focus { z-index: var(--ds-layer-skip-focus); }
 .ds-layer-toast-viewport { z-index: var(--ds-layer-toast-viewport); }
 .ds-layer-toast-card { z-index: calc(var(--ds-layer-toast-card) - var(--toast-index)); }
+
+[data-demo-theme="light"] { --ds-card-bg: var(--ui-canvas); }
+[data-demo-theme="dark"] { --ds-menu-fg: #dcdcde; --ds-fg-list: #c4c4c6; --ds-sidebar-fg: #c5c5c7; --ds-sidebar-grey: #7c7c80; }
+
+@media (max-width: 1099px) { :root { --ds-w-queue-column: 336px; } }

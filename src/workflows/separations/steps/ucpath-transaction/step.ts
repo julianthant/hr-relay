@@ -80,6 +80,207 @@ const UCPATH_TRANSACTION_DISPLAY = {
     { label: "Approval status", example: "Submitted", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "approvalStatus" }] },
     { label: "Effective date", example: "4/26/2031", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "effectiveDate" }] },
   ],
+  review: {
+    pages: [
+      {
+        id: "smart-hr-search",
+        title: "SS Smart HR transaction search",
+        mode: "Fill form",
+        nodeIds: ["pending-set", "clear-pending"],
+        lines: [
+          { id: "read-pending", kind: "read", text: "Read the exact pending termination set.", nodeIds: ["pending-set"] },
+          { id: "select-pending", kind: "check", text: "Select and verify the conflicting pending terminations.", nodeIds: ["clear-pending"] },
+          { id: "clear-pending", kind: "action", text: "In a live run, clear the verified pending terminations.", nodeIds: ["clear-pending"] }
+        ],
+        fields: [
+          {
+            id: "smart-hr-search-employee-id",
+            label: "Employee ID",
+            transactionFields: [{ nodeId: "clear-pending", kind: "input", fieldPath: "emplId" }],
+            source: { origin: "Approved identity", detail: "The employee ID verified or approved for this separation.", chain: [] }
+          },
+          {
+            id: "smart-hr-search-employee-name",
+            label: "Employee name",
+            transactionFields: [{ nodeId: "clear-pending", kind: "input", fieldPath: "expectedName" }],
+            source: { origin: "Approved identity", detail: "The verified name used to check the displayed UCPath person.", chain: [] }
+          },
+          {
+            id: "smart-hr-search-pending-transaction-ids",
+            label: "Pending transaction IDs",
+            transactionFields: [{ nodeId: "clear-pending", kind: "input", fieldPath: "observedSet.eligible.transactionId" }],
+            source: { origin: "UCPath pending terminations", detail: "Only the exact eligible transactions read before this cleanup may be selected.", chain: [] }
+          }
+        ]
+      },
+      {
+        id: "termination-setup",
+        title: "Smart HR transaction setup",
+        mode: "Fill form",
+        nodeIds: ["file-termination"],
+        lines: [{ id: "setup", kind: "action", text: "Enter the termination template and effective date.", nodeIds: ["file-termination"] }],
+        fields: [
+          {
+            id: "termination-setup-template",
+            label: "Template",
+            transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "template" }],
+            source: {
+              origin: "Resolved termination type",
+              detail: "The UCPath template selected by the declared termination-type mapping.",
+              chain: [],
+              read: { stepKey: "kuali-extraction", page: "Kuali RRSS Separation Request Form", field: "Termination type" }
+            }
+          },
+          {
+            id: "termination-setup-transaction-date",
+            label: "Transaction date",
+            transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "effectiveDate" }],
+            source: {
+              origin: "Reconciled separation dates",
+              detail: "The termination effective date reconciled with the Kuali request and timecard.",
+              chain: [],
+              read: { stepKey: "kronos-timecard", page: "Timecard", field: "Termination effective date" }
+            }
+          }
+        ]
+      },
+      {
+        id: "termination-details",
+        title: "Smart HR transaction details",
+        mode: "Fill form",
+        nodeIds: ["file-termination"],
+        lines: [
+          { id: "details", kind: "action", text: "Fill the employee ID and termination reason.", nodeIds: ["file-termination"] },
+          { id: "verify-details", kind: "check", text: "Check the displayed person and dates before continuing.", nodeIds: ["file-termination"] }
+        ],
+        fields: [
+          {
+            id: "termination-details-employee-id",
+            label: "Employee ID",
+            transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "emplId" }],
+            source: {
+              origin: "Approved identity",
+              detail: "Use the employee ID from the completed identity check.",
+              chain: [],
+              read: { stepKey: "identity-check", page: "Person Organizational Summary search", field: "Employee ID" }
+            }
+          },
+          {
+            id: "termination-details-employee-name",
+            label: "Employee name",
+            transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "expectedName" }],
+            source: { origin: "Approved identity", detail: "Check the displayed person against the verified or approved name.", chain: [] }
+          },
+          {
+            id: "termination-details-employee-record",
+            label: "Employee record",
+            transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "emplRecord" }],
+            source: { origin: "UCPath employment", detail: "Check the employee record selected from the active job.", chain: [] }
+          },
+          {
+            id: "termination-details-action-reason",
+            label: "Action reason",
+            transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "reasonCode" }],
+            source: { origin: "Resolved termination type", detail: "Resolve this mapped reason against the options UCPath currently offers.", chain: [] }
+          }
+        ]
+      },
+      {
+        id: "termination-information",
+        title: "Smart HR transaction information",
+        mode: "Fill form",
+        nodeIds: ["file-termination"],
+        lines: [
+          { id: "comments", kind: "action", text: "Fill the reviewed comments and verify the prepared termination.", nodeIds: ["file-termination"] },
+          { id: "save", kind: "action", text: "In a live run, submit the prepared termination.", nodeIds: ["file-termination"] }
+        ],
+        fields: [
+          {
+            id: "termination-information-override-last-date-worked",
+            label: "Override last date worked",
+            transactionFields: [{ nodeId: "file-termination", kind: "output", fieldPath: "lastDateWorkedOverridden" }],
+            example: "Checked",
+            source: { origin: "Workflow rule", detail: "The preparation verifies that the override is checked before entering the reconciled last date worked.", chain: [] }
+          },
+          {
+            id: "termination-information-last-date-worked",
+            label: "Last date worked",
+            transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "lastDateWorked" }],
+            source: {
+              origin: "Reconciled separation dates",
+              detail: "Use the last day worked after comparing the Kuali request with the timecard.",
+              chain: [],
+              read: { stepKey: "kronos-timecard", page: "Timecard", field: "Last day worked" }
+            }
+          },
+          {
+            id: "termination-information-initiator-comments",
+            label: "Initiator comments",
+            transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "initiatorComments" }],
+            source: {
+              origin: "Reconciled date explanation",
+              detail: "The explanation includes the effective date, last day worked and Kuali document number, plus applicable reviewed leave clauses.",
+              chain: [
+                { label: "Reconciled dates", detail: "Use the checked dates and sick or holiday evidence from the timecard." },
+                { label: "Kuali request", detail: "Include the document number that identifies this separation." }
+              ]
+            }
+          },
+          {
+            id: "termination-information-transaction-comments",
+            label: "Transaction comments",
+            transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "initiatorComments" }],
+            source: {
+              origin: "Same reconciled date explanation",
+              detail: "Both UCPath comment fields receive the identical reconciled explanation.",
+              chain: [],
+              read: { stepKey: "ucpath-transaction", page: "Smart HR transaction information", field: "Initiator comments" }
+            }
+          }
+        ]
+      },
+      {
+        id: "transaction-detail",
+        title: "SS Smart HR transaction detail",
+        mode: "Read only",
+        nodeIds: ["receipt"],
+        lines: [{ id: "verify-receipt", kind: "check", text: "Read the exact transaction number, approval status and effective date.", nodeIds: ["receipt"] }],
+        fields: [
+          {
+            id: "transaction-number",
+            operatorField: "Transaction number",
+            source: {
+              origin: "UCPath",
+              detail: "Number on the filed termination receipt.",
+              chain: [],
+              read: { stepKey: "ucpath-transaction", page: "SS Smart HR transaction detail", field: "Transaction number" }
+            }
+          },
+          {
+            id: "approval-status",
+            operatorField: "Approval status",
+            source: {
+              origin: "UCPath",
+              detail: "Current status on the transaction receipt.",
+              chain: [],
+              read: { stepKey: "ucpath-transaction", page: "SS Smart HR transaction detail", field: "Approval status" }
+            }
+          },
+          {
+            id: "effective-date",
+            operatorField: "Effective date",
+            source: {
+              origin: "UCPath",
+              detail: "Effective date verified against the filed termination.",
+              chain: [],
+              read: { stepKey: "ucpath-transaction", page: "SS Smart HR transaction detail", field: "Effective date" }
+            }
+          }
+        ]
+      }
+    ],
+    branchLabels: []
+  } as const,
 } satisfies WorkflowGroupOptions;
 
 export const PENDING_SET_NODE = "pending-set";

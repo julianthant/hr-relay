@@ -9,7 +9,7 @@ import { closeSync, constants, fsyncSync, lstatSync, openSync, readFileSync, unl
 import { join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
-import { ProcessStartIdentitySchema } from "../sqlite/runtime-process-locks.js";
+import { ProcessStartIdentitySchema } from "../admission/process-identity.js";
 
 export const CREDENTIAL_DIRECTORY_MODE = 0o700;
 const CREDENTIAL_FILE_MODE = 0o600;

@@ -2,10 +2,82 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
-import { assertBooleanSelectionField, assertSchemaOwnsPath, assertSchemaOffersPath, contractSchemaLeaves } from "../../../src/models/validation/contract-boundary.js";
+import { assertBooleanSelectionField, assertSchemaOwnsPath, assertSchemaOffersPath, contractCollectionFieldLeaves, contractCollectionFieldOptions, contractSchemaLeaves, contractSchemaLeavesForModes } from "../../../src/models/validation/contract-boundary.js";
 
 const paths = (schema: z.core.$ZodType): readonly string[] =>
   contractSchemaLeaves(schema).map((leaf) => leaf.path);
+
+it("accepts composite source paths without inventing scalar options or accepting missing fields", () => {
+  const cell = z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: z.string() }),
+    z.strictObject({ state: z.literal("absent"), reason: z.enum(["blank", "unreadable"]) }),
+  ]);
+  const schema = z.strictObject({ employee: z.strictObject({ name: cell }), rows: z.array(z.strictObject({ cell })),
+    choice: z.union([z.enum(["active", "inactive"]), z.literal("pending")]), open: z.union([z.string(), z.literal("")]) });
+  for (const path of ["employee", "employee.name", "employee.name.value", "rows", "rows.cell", "open"]) {
+    assert.equal(contractCollectionFieldOptions(schema, path, "review source"), undefined, path);
+  }
+  assert.deepEqual(contractCollectionFieldOptions(schema, "employee.name.state", "review source"), ["absent", "present"]);
+  assert.deepEqual(contractCollectionFieldOptions(schema, "rows.cell.reason", "review source"), ["blank", "unreadable"]);
+  assert.deepEqual(contractCollectionFieldOptions(schema, "choice", "review source"), ["active", "inactive", "pending"]);
+  assert.throws(() => contractCollectionFieldOptions(schema, "employee.missing", "review source"), /review source references unknown schema field employee\.missing/u);
+});
+
+it("derives collection field vocabularies without expanding the ordinary boundary census", () => {
+  const schema = z.strictObject({ rows: z.array(z.strictObject({ cells: z.array(z.union([
+    z.strictObject({ state: z.literal("found"), value: z.enum(["", "active"]) }),
+    z.strictObject({ state: z.literal("missing"), value: z.literal("unavailable") }),
+  ])) })) });
+  assert.deepEqual(contractSchemaLeaves(schema), [{ path: "rows", kind: "list", presence: "always" }]);
+  const leaves = contractCollectionFieldLeaves(schema);
+  assert.deepEqual(leaves.find(leaf => leaf.path === "rows.cells.state")?.options, ["found", "missing"]);
+  assert.deepEqual(leaves.find(leaf => leaf.path === "rows.cells.value")?.options, ["", "active", "unavailable"]);
+  assert.equal(Object.isFrozen(leaves), true);
+});
+
+it("does not turn a literal in an open union into an operator dropdown", () => {
+  const schema = z.discriminatedUnion("status", [
+    z.strictObject({ status: z.literal("signed"), signer: z.string().min(1) }),
+    z.strictObject({ status: z.literal("unsigned"), signer: z.literal("") }),
+  ]);
+  assert.deepEqual(contractSchemaLeaves(schema).find(leaf => leaf.path === "signer")?.options, [""]);
+  assert.equal(contractCollectionFieldLeaves(schema).find(leaf => leaf.path === "signer")?.options, undefined);
+  assert.deepEqual(contractCollectionFieldLeaves(schema).find(leaf => leaf.path === "status")?.options, ["signed", "unsigned"]);
+});
+
+it("derives control kinds and complete vocabularies from only their declared modes", () => {
+  const schema = z.union([
+    z.strictObject({ mode: z.literal("search").default("search"), enabled: z.boolean().default(false), choice: z.enum(["active", "paused"]),
+      nested: z.union([z.strictObject({ mode: z.literal("search"), value: z.literal("local") }), z.strictObject({ mode: z.literal("match"), value: z.literal("remote") })]) }),
+    z.strictObject({ mode: z.literal("match"), enabled: z.literal(false), choice: z.string() }),
+  ]);
+  const search = contractSchemaLeavesForModes(schema, "mode", ["search"]);
+  assert.deepEqual(search.find(leaf => leaf.path === "enabled"), { path: "enabled", kind: "boolean", presence: "sometimes" });
+  assert.deepEqual(search.find(leaf => leaf.path === "choice")?.options, ["active", "paused"]);
+  assert.deepEqual(search.find(leaf => leaf.path === "nested.value")?.options, ["local", "remote"]);
+  assert.deepEqual(contractSchemaLeavesForModes(schema, "mode", ["match"]).find(leaf => leaf.path === "enabled")?.options, ["false"]);
+  assert.equal(contractSchemaLeavesForModes(schema, "mode", ["search", "match"]).find(leaf => leaf.path === "enabled")?.options, undefined);
+  assert.equal(contractSchemaLeavesForModes(schema, "mode", ["search", "match"]).find(leaf => leaf.path === "choice")?.options, undefined);
+  assert.equal(Object.isFrozen(search), true);
+  assert.throws(() => contractSchemaLeavesForModes(schema, "mode", ["missing"]), /unknown.*mode.*missing/u);
+  assert.throws(() => contractSchemaLeavesForModes(schema, "mode", []), /at least one mode/u);
+  assert.throws(() => contractSchemaLeavesForModes(z.strictObject({ mode: z.string(), enabled: z.boolean() }), "mode", ["search"]), /closed.*mode/u);
+  assert.throws(() => contractSchemaLeavesForModes(z.strictObject({ mode: z.union([z.string(), z.literal("search")]) }), "mode", ["search"]), /closed.*mode/u);
+  assert.equal(contractSchemaLeavesForModes(z.strictObject({ mode: z.literal("search"), choice: z.union([z.string(), z.literal("")]) }), "mode", ["search"])
+    .find(leaf => leaf.path === "choice")?.options, undefined);
+});
+
+it("retains every root union arm in a requested mode and excludes other mode vocabularies", () => {
+  const schema = z.union([
+    z.union([
+      z.strictObject({ mode: z.literal("search"), choice: z.enum(["name", "email"]) }),
+      z.strictObject({ mode: z.literal("search"), choice: z.literal("employee-id") }),
+    ]),
+    z.strictObject({ mode: z.literal("match"), choice: z.literal("date-of-birth") }),
+  ]);
+  assert.deepEqual(contractSchemaLeavesForModes(schema, "mode", ["search"]).find(leaf => leaf.path === "choice")?.options, ["email", "employee-id", "name"]);
+  assert.deepEqual(contractSchemaLeavesForModes(schema, "mode", ["match"]).find(leaf => leaf.path === "choice")?.options, ["date-of-birth"]);
+});
 
 describe("contractSchemaLeaves", () => {
   it("names every nested field by its dotted path, sorted", () => {

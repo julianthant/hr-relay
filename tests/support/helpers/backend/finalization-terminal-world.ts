@@ -1,4 +1,5 @@
-import { testRunService, testRunLifecycle, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
+import { unusedWorkerPool } from "./unused-worker-pool.js";
+import { testRunService, testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
@@ -59,7 +60,6 @@ export function createFinalizationTerminalTestWorld(retainedBinding?: import("..
     const member = value.database.authority.workerSlots.get(FINALIZATION_WORKER_ID);
     if (member === undefined) throw new Error("fixture-claim-member-required");
     const claimed = value.database.authority.runs.claimNext({
-      workerLifetime: testWorkerLifetime(value.database, separationsKualiFinalizationDescriptor.id, member.poolIndex).workerLifetime,
       workflow: separationsKualiFinalizationDescriptor.id,
       workerId: FINALIZATION_WORKER_ID,
       now: value.clock.now().toISOString(),
@@ -224,8 +224,7 @@ export function createFinalizationTerminalTestWorld(retainedBinding?: import("..
       configIdentity: { configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint },
       intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
       writeResolution: { recheck: unrelated, resolveAbsent: unrelated },
-      workerRuntime: { pool: { planPoolWorkerCount: unrelated, spawnPoolWorker: unrelated, refreshPoolBrowser: unrelated,
-        reopenPoolBrowser: unrelated, stopPoolWorker: unrelated, pausePoolWorker: unrelated, resumePoolWorker: unrelated } } });
+      workerRuntime: { pool: unusedWorkerPool(unrelated) } });
     const resolved = kernel.execute({ commandId: UUID_7, requestedAt: value.clock.now().toISOString(),
       requestedBy: "local-operator", source: "dashboard", family: "gate", type: "resolve-gate",
       target: { runId: FINALIZATION_RUN_ID, gateId: GATE_NODE, expectedVersion: parkedRun.version }, payload: { result } });

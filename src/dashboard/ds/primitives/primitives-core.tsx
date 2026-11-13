@@ -22,10 +22,15 @@ import { dsClip, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "../theme/to
 
 /** Button variants, and the choice is semantic, not decorative
  * primary — the ONE affirmative action on a surface (Approve, Run, Save) */
+const BUTTON_TEXT = "text-[13px]";
+const SOFT = cn(
+  "rounded-[8px] bg-[var(--ds-soft-bg)] text-[color:var(--ds-fg)] border-transparent",
+  "hover:bg-[var(--ds-soft-bg-hover)]",
+);
 const buttonVariants = cva(
   cn(
     "inline-flex shrink-0 cursor-pointer select-none items-center justify-center border",
-    "whitespace-nowrap font-medium",
+    "whitespace-nowrap font-normal",
     dsRadius.md,
     dsFocus,
     dsMotion.fast,
@@ -40,33 +45,26 @@ const buttonVariants = cva(
           "hover:bg-[var(--ds-accent-hover)]",
         ),
         brand: cn(
-                    // Same edge weight as the Workflow Panel toggle beside it.
-          // (`--ds-border-strong`): a hairline edge reads as a toolbar peer.
-          "bg-[var(--ds-brand-solid-bg)] text-[color:var(--ds-brand-solid-fg)] font-semibold",
-          "border-[color:var(--ds-border-strong)]",
+          "bg-[var(--ds-brand-solid-bg)] text-[color:var(--ds-brand-solid-fg)] border-transparent",
           "hover:bg-[var(--ds-brand-solid-hover)]",
         ),
-        secondary: cn(
-          "bg-[var(--ds-control-bg)] text-[color:var(--ds-control-fg)]",
-          "border-[color:var(--ds-border-strong)]",
-          "hover:bg-[var(--ds-control-bg-hover)]",
-        ),
-        muted: cn(
-          "bg-[var(--ds-surface-3)] text-[color:var(--ds-fg-secondary)] border-transparent",
-          "hover:bg-[var(--ds-surface-selected)] hover:text-[color:var(--ds-fg)]",
-        ),
+        /** Soft: grey fill, no border. Most actions. */
+        secondary: SOFT,
+        muted: SOFT,
+        /** Soft bordered: faint thin border, no fill. Pickers, dropdowns, a second action beside a soft one. */
         outline: cn(
-          "bg-transparent text-[color:var(--ds-fg-secondary)]",
-          "border-[color:var(--ds-border-strong)]",
-          "hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
+          "bg-transparent text-[color:var(--ds-fg)]",
+          "border-[color:var(--ds-border)]",
+          "hover:bg-[var(--ds-surface-3)]",
         ),
         ghost: cn(
           "bg-transparent border-transparent text-[color:var(--ds-fg-muted)]",
           "hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
         ),
+        /** Soft red: a red-tinted fill with red text; never solid red. */
         danger: cn(
-          "bg-[var(--ds-danger-solid)] text-[color:var(--ds-danger-fg)] border-transparent font-semibold",
-          "hover:brightness-110",
+          "bg-[color-mix(in_srgb,var(--ds-danger)_14%,transparent)] text-[color:var(--ds-danger)] border-transparent",
+          "hover:bg-[color-mix(in_srgb,var(--ds-danger)_22%,transparent)]",
         ),
         dangerGhost: cn(
           "bg-transparent text-[color:var(--ds-danger)]",
@@ -75,15 +73,15 @@ const buttonVariants = cva(
         ),
       },
       size: {
-                // `flush` on every size
-        sm: cn("h-[var(--ds-h-sm)] px-[var(--ds-space-snug)] gap-[var(--ds-space-tight)]", dsText.meta, dsText.flush),
-        md: cn("h-[var(--ds-h-md)] px-[var(--ds-space-cozy)] gap-[var(--ds-space-snug)]", dsText.ui, dsText.flush),
-        lg: cn("h-[var(--ds-h-lg)] px-[var(--ds-space-loose)] gap-[var(--ds-space-snug)]", dsText.ui, dsText.flush),
+        // Every button label is 13px; md, lg and toolbar share the 28px height.
+        sm: cn("h-[var(--ds-h-sm)] px-[var(--ds-space-snug)] gap-[var(--ds-space-tight)]", BUTTON_TEXT, dsText.flush),
+        md: cn("h-[var(--ds-h-md)] rounded-[8px] px-[var(--ds-space-cozy)] gap-[var(--ds-space-snug)]", BUTTON_TEXT, dsText.flush),
+        lg: cn("h-[var(--ds-h-md)] rounded-[8px] px-[var(--ds-space-loose)] gap-[var(--ds-space-snug)]", BUTTON_TEXT, dsText.flush),
         /** A control in an ACTION BAR. The same box as `toolbarControl` — same
  * height token, same inset, same gap, same type — because the one */
         toolbar: cn(
-          "h-[var(--ds-h-toolbar)] px-[var(--ds-space-base)] gap-[var(--ds-space-snug)]",
-          dsText.meta,
+          "h-[var(--ds-h-md)] rounded-[8px] px-[var(--ds-space-base)] gap-[var(--ds-space-snug)]",
+          BUTTON_TEXT,
           dsText.flush,
         ),
       },
@@ -205,10 +203,10 @@ const iconButtonVariants = cva(
         ),
       },
       size: {
-        xs: "size-6",
-        sm: "size-[var(--ds-h-sm)]",
-        md: "size-[var(--ds-h-md)]",
-        lg: "size-[var(--ds-h-lg)]",
+        xs: "size-6 rounded-[6px]",
+        sm: "size-[var(--ds-h-sm)] rounded-[6px]",
+        md: "size-[var(--ds-h-md)] rounded-[8px]",
+        lg: "size-[var(--ds-h-lg)] rounded-[8px]",
       },
     },
     defaultVariants: { variant: "ghost", size: "md" },

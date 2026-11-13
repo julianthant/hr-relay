@@ -27,6 +27,7 @@ const profile = composeProfileRuntime({ admission: machine, hostFacts: { primary
       mkdirSync(launch.input.profileDirectory, { mode: 0o700 }); launch.opened();
       launch.uncertain(new Error("synthetic browser gone, closure unproved"));
     },
+    async stop() {},
     async closeBrowser() { return { state: "uncertain" }; },
     async openPortal() { throw new Error("unexpected portal"); },
     async start() { throw new Error("unexpected enrollment"); },

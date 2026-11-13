@@ -140,9 +140,7 @@ it("keeps an inherited worker listener held after a private source failure", asy
     process.emit("message", { kind: "runtime-lifetime-lock", port: 12345, workspace: held.workspace }, server);
     const worker = await receiving, failure = new AuthoritySourceClosureUnprovedError([new Error("worker native source close")]);
     worker.retainSourceClosure(failure);
-    await assert.rejects(worker.close(), error => error === failure);
     Object.defineProperty(process, "connected", { value: false, configurable: true });
-    await assert.rejects(worker.close(), error => error === failure);
     worker.assertHeld(); assert.throws(() => worker.assertRuntimeAvailable(), error => error === failure);
     assert.equal(held.closes(), 0);
   } finally {

@@ -34,7 +34,11 @@ it("labels every observed candidate by exact declared container paths while omit
   for (const label of ["Employee ID", "Name", "Job title", "HR status"]) assert.equal(fields.filter(field => field.label === label).length, 2);
   assert.deepEqual(fields.filter(field => field.label === "Department").map(field => "value" in field ? field.value : "unread"), ["CAMPUS DINING OPERATIONS"]);
   assert.deepEqual(fields.filter(field => field.label === "Name").map(field => "value" in field ? field.value : "unread"), ["Quillan, Petra A.", "Fable, Rowan B."]);
-  assert.doesNotMatch(JSON.stringify(fields), /results|selection\.|internalKey|null|input ·|output ·/u);
+  const visible = fields.map(field => ({ label: field.label, ...("value" in field ? { value: field.value } : {}) }));
+  assert.doesNotMatch(JSON.stringify(visible), /results|selection\.|internalKey|null|input ·|output ·/u);
+  const names = fields.filter(field => field.label === "Name");
+  assert.deepEqual(names.map(field => "causal" in field ? field.causal?.origin.field : undefined), ["results", "results"]);
+  assert.deepEqual(names.map(field => "causal" in field ? field.causal?.origin.path : undefined), [[0, "name"], [1, "name"]]);
   assert.equal(row.points.length, 9);
   assert.doesNotMatch(JSON.stringify(row.points), /internalKey/u);
   assert.match(JSON.stringify(runDataObservationsForRun(deps, run, run.envelope.runId)[0].points), /internalKey/u);

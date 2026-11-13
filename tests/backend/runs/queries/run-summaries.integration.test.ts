@@ -72,22 +72,19 @@ try {
   const pool = f.db.authority.workerPools.get("person-lookup"); assert.ok(pool);
   const worker = testAdmittedWorker(f.db, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 2,
     browserSystems: workflowProjections(personLookupDescriptor).systems });
-  assert.equal(worker.started?.state, "started");
-  const { workerId, workerLifetime } = worker;
-  const claimMember1 = f.db.authority.workerSlots.get(workerId);
-  if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-  const claim = f.db.authority.runs.claimNext({ workerLifetime, workflow: 'person-lookup', workerId, now: NOW });
+  const { workerId } = worker;
+  const claim = f.db.authority.runs.claimNext({ workflow: 'person-lookup', workerId, now: NOW });
   assert.equal(claim.state, 'claimed');
   if (claim.state !== 'claimed') throw new Error('fixture-not-claimed');
   assert.equal(claim.run.envelope.runId, runId);
   const validating = f.db.authority.runs.transition({ runId, expectedVersion: claim.run.version,
     claim: { workerId, claimGeneration: 1 },
-    lifecycle: { state: 'validating', workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW }, now: NOW });
+    lifecycle: { state: 'validating', workerId, claimedAt: NOW, heartbeatAt: NOW }, now: NOW });
   assert.equal(validating.state, 'applied');
   if (validating.state !== 'applied') throw new Error('fixture-not-validating');
   const running = f.db.authority.runs.transition({ runId, expectedVersion: validating.run.version,
     claim: { workerId, claimGeneration: 1 },
-    lifecycle: { state: 'running', workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW, currentNodeId: 'searching' }, now: NOW });
+    lifecycle: { state: 'running', workerId, claimedAt: NOW, heartbeatAt: NOW, currentNodeId: 'searching' }, now: NOW });
   assert.equal(running.state, 'applied');
   if (running.state !== 'applied') throw new Error('fixture-not-running');
   const e = running.run.envelope;
@@ -421,8 +418,8 @@ it("bins the enqueue instant and refuses a timezone mismatch before an indexed d
       lifecycle:{state:"queued"},version:1,claimGeneration:0,createdAt:enqueuedAt,updatedAt:enqueuedAt});
     f.db.authority.runs.enqueue(queued);
     const claimTime="2026-09-09T08:20:00.000Z";
-    const {workerId,workerLifetime}=testAdmittedWorker(f.db,f.clock,{path:f.path,workflow:"person-lookup",poolIndex:2,browserSystems:["ucpath","crm"]});
-    const claim=f.db.authority.runs.claimNext({workflow:"person-lookup",workerId,workerLifetime,now:claimTime});
+    const { workerId }=testAdmittedWorker(f.db,f.clock,{path:f.path,workflow:"person-lookup",poolIndex:2,browserSystems:["ucpath","crm"]});
+    const claim=f.db.authority.runs.claimNext({workflow:"person-lookup",workerId,now:claimTime});
     assert.equal(claim.state,"claimed");
 
     const timeZone=runtimeTimeZone(),day=activityDatePartAtInstant(enqueuedAt,timeZone);

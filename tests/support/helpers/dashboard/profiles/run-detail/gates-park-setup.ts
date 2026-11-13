@@ -1,3 +1,4 @@
+import { publicWriteTarget } from "../../../../../../src/backend/runs/commands/write-command-target.js";
 import { parkedWriteDecision } from "../../../../../../src/backend/runs/queries/run-detail/gate-park.js";
 import { ActionDescriptorWireSchema } from "../../../../../../src/models/dashboard/actions.js";
 import { traceOf } from "../../../../fixtures/dashboard/fixture-identity.js";
@@ -16,31 +17,25 @@ at: typeof FixtureIdentityTypes.at;
 uuidOf: typeof FixtureIdentityTypes.uuidOf;
 FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
 }) {
-  const GATE_NODE_ID = "identity-approval";
-
   const FIXTURE_IDENTITY_GATE = { ...buildFixtureIdentityGate({
     runId: FIXTURE_IDS.openGateRun,
-    gateId: GATE_NODE_ID,
     label: "Identity Approval",
     parkedAt: at(49),
-    resumeAt: "approval",
+    order: 4,
     expectedVersion: 5,
     observedAt: at(48),
     documentName: "Morrow, Bea",
-  }), native: { eventId: uuidOf(9501), order: 4, runId: FIXTURE_IDS.openGateRun, attempt: 1,
-    traceId: traceOf(5), spanPath: `${traceOf(5)}/${GATE_NODE_ID}`, nodeId: GATE_NODE_ID } };
+  }) };
 
   const FIXTURE_IDENTITY_GATE_NAME_MISMATCH = { ...buildFixtureIdentityGate({
     runId: FIXTURE_IDS.gateNameMismatchRun,
-    gateId: GATE_NODE_ID,
     label: "Identity Approval",
     parkedAt: at(24),
-    resumeAt: "approval",
+    order: 4,
     expectedVersion: 44,
     observedAt: at(23),
     documentName: "Okonkwo, Adaeze",
-  }), native: { eventId: uuidOf(13401), order: 4, runId: FIXTURE_IDS.gateNameMismatchRun, attempt: 1,
-    traceId: traceOf(44), spanPath: `${traceOf(44)}/${GATE_NODE_ID}`, nodeId: GATE_NODE_ID } };
+  }) };
 
   const PARKED_WRITE_INTENT_ID = uuidOf(906);
 
@@ -77,9 +72,9 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
     parkedCode: "unknown", message: "Fixture verification unknown", authorityReason: PARKED_WRITE_REASON,
   });
 
-  const PARKED_WRITE_TARGET = { writeIntentId: PARKED_WRITE_INTENT.writeIntentId,
+  const PARKED_WRITE_TARGET = publicWriteTarget({ writeIntentId: PARKED_WRITE_INTENT.writeIntentId,
     intentGeneration: PARKED_WRITE_INTENT.generation, writeAttemptId: PARKED_WRITE_ATTEMPT.writeAttemptId,
-    bindingProofDigest: PARKED_WRITE_BINDING_DIGEST, occurrenceKeyDigest: PARKED_WRITE_INTENT.idempotencyKeyDigest };
+    bindingProofDigest: PARKED_WRITE_BINDING_DIGEST, occurrenceKeyDigest: PARKED_WRITE_INTENT.idempotencyKeyDigest });
 
   const PARKED_WRITE_SYSTEM = "ucpath";
 

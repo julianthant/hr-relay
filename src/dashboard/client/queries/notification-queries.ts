@@ -1,7 +1,8 @@
 import { NotificationWireSchema, type NotificationWire } from "../../../models/dashboard/projection.js";
 import { z } from "zod";
 import { NotificationIdSchema } from "../../../rules/identity/ids.js";
-import { NotificationCollectionOperationSchema, NotificationCollectionTargetSchema, type NotificationCollectionOperation, type NotificationCollectionTarget, NotificationObservationStatusSchema, NotificationTargetSchema, type NotificationTarget } from "../../../models/notifications/notifications.js";
+import { NotificationCollectionOperationSchema, NotificationCollectionTargetSchema, type NotificationCollectionOperation, type NotificationCollectionTarget, NotificationObservationStatusSchema } from "../../../models/notifications/notifications.js";
+import { NotificationTargetSchema, type NotificationTarget } from "../../../models/notifications/notification-target.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "../transport.js";
 export interface NotificationQueries {

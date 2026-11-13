@@ -1,6 +1,5 @@
 // The served shape determines the ceremony; unsupported shapes must never downgrade to one-click approval.
 import type { RunDetailSectionResponse } from "../../../../models/dashboard/run-detail.js";
-import { directIdentifierDigestReference } from "../../../../rules/redaction/redaction.js";
 
 /** The served `identity-gate` section, in every state the wire admits. */
 export type IdentityGatePayload =
@@ -10,7 +9,7 @@ export type IdentityGatePayload =
 export type IdentityGateAvailable = Extract<IdentityGatePayload, { state: "available" }>;
 export type IdentityGateDetail = IdentityGateAvailable["value"];
 
-/** chosenFrom is served evidence provenance; never infer it from the selected EID. */
+/** A served candidate: display text and the opaque ref an answer names it by. */
 export type IdentityGateOption = IdentityGateDetail["options"][number];
 
 // Unsupported ceremonies show a blocked refusal beside the evidence rather than throwing during render.
@@ -22,8 +21,10 @@ export type IdentityCeremony =
   /** this build cannot describe the ceremony the server asked */
   | { readonly kind: "unsupported"; readonly reason: string };
 
-/** The operator's ANSWER — the part of an `IdentityApprovalResult` that only a human knows. */
-export type IdentityGateAnswer = { readonly decision: "approved"; readonly eid: string };
+/** The operator's ANSWER: a served candidate's ref, or a typed Employee ID the server matches to one. */
+export type IdentityGateAnswer =
+  | { readonly decision: "approved"; readonly optionRef: string }
+  | { readonly decision: "approved"; readonly typedEid: string };
 
 // Exhaustive at compile time; newer server shapes still receive a named runtime refusal.
 function unsupportedShape(shape: never): IdentityCeremony {
@@ -67,26 +68,25 @@ export function identityCeremonyFor(gate: IdentityGateDetail): IdentityCeremony 
   }
 }
 
-/** Match kernel answer bounds; extra client limits would refuse legitimate operator decisions. */
-export function identityDraftProblem(ceremony: IdentityCeremony, eid: string): string | undefined {
+/** Match kernel answer bounds; a typed Employee ID is matched by the server, which alone holds the full IDs. */
+export function identityDraftProblem(ceremony: IdentityCeremony, answer: IdentityGateAnswer): string | undefined {
   switch (ceremony.kind) {
     case "unsupported":
       return ceremony.reason;
     case "confirm":
       return undefined;
     case "choose":
-      return eid.length === 0
+      if ("typedEid" in answer) return /^\d{8}$/u.test(answer.typedEid) ? undefined : "Enter the 8-digit Employee ID.";
+      return optionFor(ceremony.options, answer.optionRef) === undefined
         ? "Pick which candidate the separation document means."
-        : optionFor(ceremony.options, eid) === undefined
-          ? `EID ${directIdentifierDigestReference(eid)} is not one of the candidates this packet showed.`
-          : undefined;
+        : undefined;
   }
 }
 
-/** The served option for an EID, or `undefined` when the packet never showed it. */
+/** The served option for a ref, or `undefined` when the review never served it. */
 export function optionFor(
   options: readonly IdentityGateOption[],
-  eid: string,
+  ref: string,
 ): IdentityGateOption | undefined {
-  return options.find((option) => option.eid === eid);
+  return options.find((option) => option.ref === ref);
 }

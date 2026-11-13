@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
-import { act, createElement } from 'react';
+import { act, createElement, type ComponentProps } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach,beforeEach,describe,it,vi } from 'vitest';
+import { TooltipProvider } from '../../../../../src/dashboard/ds/ui.js';
 import { LogSample } from '../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js';
 import { initialMockDraft,type MockRun } from '../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js';
 import { mockQueueSurface } from '../../../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js';
@@ -16,7 +17,10 @@ vi.mock('../../../../../src/dashboard/state/client-context.js', () => ({ useDash
 vi.mock('../../../../../src/dashboard/state/run-wiring-adapter.js', () => ({ projectRunLogs, useRunWiring }));
 vi.mock('../../../../../src/dashboard/surfaces/run-detail/review/review.js', () => ({ RunReview: () => null }));
 
+const sample = (props: ComponentProps<typeof LogSample>) => createElement(TooltipProvider, null, createElement(LogSample, props));
+
 beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0));
   vi.stubGlobal('cancelAnimationFrame', (id: ReturnType<typeof setTimeout>) => clearTimeout(id));
@@ -32,10 +36,10 @@ describe('compact run headers', () => {
     const locationBefore = window.location.href;
     try {
       window.history.replaceState(null, '', '/?logPreview=separation');
-      const unrelated = renderToStaticMarkup(createElement(LogSample, { source: 'mock', selection: { row, workflowLabel: 'Person lookup' } }));
+      const unrelated = renderToStaticMarkup(sample({ source: 'mock', selection: { row, workflowLabel: 'Person lookup' } }));
       assert.doesNotMatch(unrelated, /aria-label="Run context"/);
       window.history.replaceState(null, '', '/?logPreview=selected');
-      const selected = renderToStaticMarkup(createElement(LogSample, { source: 'mock', selection: { row, workflowLabel: 'Person lookup' } }));
+      const selected = renderToStaticMarkup(sample({ source: 'mock', selection: { row, workflowLabel: 'Person lookup' } }));
       assert.doesNotMatch(selected, /aria-label="Run context"/); assert.match(selected, /aria-label="Selected run logs"/);
     } finally { window.history.replaceState(null, '', locationBefore); }
   });
@@ -47,7 +51,7 @@ describe('compact run headers', () => {
     const locationBefore = window.location.href;
     try {
       window.history.replaceState(null, '', '/?logPreview=selected');
-      const markup = renderToStaticMarkup(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } }));
+      const markup = renderToStaticMarkup(sample({ source: 'served', selection: { row, workflowLabel: 'Person lookup' } }));
       assert.match(markup, /served logs unavailable/);
       assert.equal(useRunWiring.mock.calls.length, 1);
     } finally { window.history.replaceState(null, '', locationBefore); }
@@ -59,7 +63,7 @@ describe('compact run headers', () => {
     useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Failed lookup' }, availableSections: ['logs'], childRetry: { label: 'Retry' } },
       logs: {}, unavailableEvidence: [] }, ...(available ? { onChildRetry: vi.fn() } : {}) });
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
-    const markup = renderToStaticMarkup(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } }));
+    const markup = renderToStaticMarkup(sample({ source: 'served', selection: { row, workflowLabel: 'Person lookup' } }));
     const header = markup.slice(markup.indexOf('<header'), markup.indexOf('</header>'));
     assert.match(header, /aria-label="Retry"/);
     assert.equal(/disabled=""/.test(header), !available);
@@ -78,13 +82,13 @@ describe('compact run headers', () => {
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
     try {
-      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' }, onAction })));
+      act(() => root.render(sample({ source: 'served', selection: { row, workflowLabel: 'Person lookup' }, onAction })));
       const button = host.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert.ok(button);
       assert.equal(host.querySelectorAll('button[aria-label="Retry"]').length, 1);
       act(() => button.click());
       assert.deepEqual(effects, available ? ['retry'] : []);
       useRunWiring.mockReturnValue({ state: 'loaded', snapshot, onChildRetry: () => effects.push('updated') });
-      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' }, onAction })));
+      act(() => root.render(sample({ source: 'served', selection: { row, workflowLabel: 'Person lookup' }, onAction })));
       const refreshed = host.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert.ok(refreshed);
       act(() => refreshed.click());
       assert.deepEqual(effects, available ? ['retry', 'updated'] : ['updated']);
@@ -104,7 +108,7 @@ describe('compact run headers', () => {
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
     try {
-      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' }, onAction })));
+      act(() => root.render(sample({ source: 'served', selection: { row, workflowLabel: 'Person lookup' }, onAction })));
       const buttons = host.querySelectorAll<HTMLButtonElement>('header button[aria-label="Retry"]'); assert.equal(buttons.length, 1);
       assert.equal(buttons[0].disabled, !available); act(() => buttons[0].click());
       assert.equal(onBatchMemberRetry.mock.calls.length, Number(available)); assert.equal(onAction.mock.calls.length, 0);
@@ -119,7 +123,7 @@ describe('compact run headers', () => {
     useRunWiring.mockReturnValue({ state: 'loaded', snapshot });
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
-    const draw = () => createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } });
+    const draw = () => sample({ source: 'served', selection: { row, workflowLabel: 'Person lookup' } });
     try {
       act(() => root.render(draw()));
       assert.equal(host.querySelector('h2')?.textContent, 'April contacts');
@@ -140,26 +144,31 @@ describe('compact run headers', () => {
     useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'OCR' }, availableSections: ['logs'], ocrReviewChanges: [{ sourcePage: 2, revision: 4 }] },
       logs: {}, unavailableEvidence: [] } });
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
-    const markup = renderToStaticMarkup(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'OCR' } }));
+    const markup = renderToStaticMarkup(sample({ source: 'served', selection: { row, workflowLabel: 'OCR' } }));
     assert.match(markup, /Earlier review changes no longer apply/);
     assert.match(markup, /Review the new values/);
   });
 
-  it('opens native Records from its served count and returns to Logs with the same toggle', () => {
+  it('opens Review records as a dialog over the Logs panel and closes back to Logs', () => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
     useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Native OCR' }, availableSections: ['logs', 'review'], ocrRecordCount: 2 }, logs: {}, unavailableEvidence: [] } });
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
     const onReview = vi.fn(), onLogs = vi.fn();
+    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+    const sample = (open?: boolean) => createElement(TooltipProvider, null, createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'OCR' }, reviewOpen: open, onReview, onLogs }));
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+    const records = () => host.querySelector<HTMLButtonElement>('button[aria-label="Records 2"]');
     try {
-      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'OCR' }, onReview, onLogs })));
-      const toggle = [...host.querySelectorAll('button')].find(button => button.textContent === 'Records 2'); assert.ok(toggle);
-      assert.equal(toggle.getAttribute('aria-pressed'), 'false');
-      act(() => toggle.click()); assert.equal(onReview.mock.calls.length, 1);
-      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'OCR' }, reviewOpen: true, onReview, onLogs })));
-      const selected = host.querySelector<HTMLButtonElement>('button[aria-pressed="true"]'); assert.ok(selected);
-      act(() => selected.click()); assert.equal(onLogs.mock.calls.length, 1);
+      act(() => root.render(sample()));
+      assert.equal(document.querySelector('[role="dialog"]'), null);
+      act(() => records()!.click()); assert.equal(onReview.mock.calls.length, 1);
+      act(() => root.render(sample(true)));
+      const dialog = document.querySelector('[role="dialog"]'); assert.ok(dialog);
+      assert.match(dialog.textContent ?? '', /Review records/);
+      assert.ok(records(), 'the Logs panel stays behind the dialog');
+      act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+      assert.equal(onLogs.mock.calls.length, 1);
     } finally { act(() => root.unmount()); host.remove(); }
   });
 
@@ -185,7 +194,7 @@ describe('compact run headers', () => {
       ucpathFindings: { stepId: 'parked-submit', attemptLabel: 'Attempt 1', presentation: { state: 'found', complete: true, authoritative: false,
         rows: [{ transactionNumber: 'T123456', person: 'Fixture, Jordan', employeeId: '10800000', transactionType: 'Terminatn',
           effectiveDate: '11/01/2026', submittedAt: '11/01/26 1:02:03.123456PM', detailVerified: true, match: 'exact' }] } } });
-    const markup = renderToStaticMarkup(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } }));
+    const markup = renderToStaticMarkup(sample({ source: 'served', selection: { row, workflowLabel: 'Person lookup' } }));
     const container = document.createElement('div'); container.innerHTML = markup;
     const table = container.querySelector('[aria-label="UCPath found transactions"]'); assert.ok(table);
     assert.equal(container.querySelectorAll('[aria-label="UCPath found transactions"]').length, 1);

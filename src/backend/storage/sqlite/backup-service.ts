@@ -159,7 +159,7 @@ function assertBackupInspection(manifest: StoppedAuthorityBackupManifest, inspec
   assertExpectedBackupSource(expected, inspection);
   for (const field of ["applicationId", "schemaVersion", "installationId", "profileId", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
     if (inspection[field] !== manifest[field]) {
-      throw new Error(`backup file ${manifest.backupFileName} ${field} does not match its manifest`);
+      throw new Error(`backup-manifest-field-mismatch: ${manifest.backupFileName} ${field}`);
     }
   }
 }

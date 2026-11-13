@@ -9,7 +9,7 @@ import { describe, it, vi } from "vitest";
 import { z } from "zod";
 import { openRelayWindow } from "../../../scripts/dev/relay.js";
 import { windowsSystemRoot } from "../../../src/models/config/secrets.js";
-import { observePid } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { observePid } from "../../../src/backend/storage/admission/process-identity.js";
 import { createPrivateDirectory } from "../../../src/backend/storage/private-path.js";
 import { testProcessImport } from "../../support/compiled-process.js";
 import { scaledMs } from "../../support/time-scale.js";

@@ -21,7 +21,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { manualClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1, UUID_6, HASH_C, LATER, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
-import { testWorkerLifetime, testWorkerPorts, testRunService } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts, testRunService } from "../../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { AuthorityDatabase, type AuthorityLifecycleHooks, type AuthorityTerminalizationHooks } from "../synthetic-storage-admission.js";
 import { on, once } from "node:events";
@@ -40,7 +40,7 @@ export function recoverInterruptedTestRun(database: AuthorityDatabase, clock: Cl
   assert.ok(claim);
   return requireLifecycleApplied(testRunService(database, clock).recoverCrash({ commandId: randomUUID(), runId,
     expectedVersion: run.version, claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
-    ...database.crashRunRecoveryIdentity(runId), now: clock.now().toISOString() }, lifetime));
+    now: clock.now().toISOString() }, lifetime));
 }
 
 export function createRunRecordServiceTestWorld() {
@@ -113,11 +113,9 @@ export function createRunRecordServiceTestWorld() {
     const f = await fixture(undefined, undefined, { interrupted: true, ...options });
     const lock = f.lifetime;
     const run = runningRun(f.service, dryRun === undefined ? f.request : { ...f.request, dryRun }, f.runtimeConfig);
-    const claim = RunRecordSchema.parse(run).lifecycle;
-    if (!("workerLifetime" in claim) || claim.workerLifetime === undefined) throw new Error("fixture-worker-lifetime-required");
     return { ...f, lock, run, recoveryRequest: { commandId: randomUUID(), runId: run.envelope.runId,
       expectedVersion: run.version, claim: { workerId: WORKER_ID, claimGeneration: run.claimGeneration },
-      workerLifetime: claim.workerLifetime, now: f.clock.now().toISOString() } };
+      now: f.clock.now().toISOString() } };
   }
 
   function created(service: RunRecordService, request: CreateRunRequest) {
@@ -130,7 +128,6 @@ export function createRunRecordServiceTestWorld() {
   function runningRun(service: RunRecordService, request: CreateRunRequest, runtimeConfig: unknown) {
     const database = serviceDatabases.get(service);
     if (database === undefined) throw new Error("run-service-fixture-owner-missing");
-    const lifetime = testWorkerLifetime(database, WORKFLOW_ID, 1);
     const run = created(service, {
       ...request,
       descriptorVersion: personLookupDescriptor.version,
@@ -140,7 +137,6 @@ export function createRunRecordServiceTestWorld() {
       commandId: "82000000-0000-4000-8000-000000000001",
       workflow: WORKFLOW_ID,
       workerId: WORKER_ID,
-      workerLifetime: lifetime.workerLifetime,
       runtimeConfig,
     });
     if (claim.state !== "applied") throw new Error("claim refused");

@@ -4,7 +4,9 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFi
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { composeProfileRuntime, initializeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
+import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -98,7 +100,7 @@ for (const state of ["damaged", "projection-missing", "projection-missing-attach
         const version = state === "future" ? CURRENT_AUTHORITY_SCHEMA_VERSION + 1 : 7;
         native.exec(`BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=${version} WHERE id=1; PRAGMA user_version=${version}; COMMIT`);
       } else if (state === "unpublished-assistant26" || state === "unpublished-assistant26-projection-missing") {
-        native.exec("DROP INDEX timeline_worker_claim_idx; UPDATE database_states SET schema_version=26; PRAGMA user_version=26");
+        native.exec("DROP TABLE workflow_workbook_selections; UPDATE database_states SET schema_version=26; PRAGMA user_version=26");
         if (state === "unpublished-assistant26-projection-missing") native.exec("DROP TABLE run_search");
       } else if (state === "unknown-record-field") {
         assert.equal(native.prepare("UPDATE settings SET payload_json=json_set(payload_json,'$.fieldFromANewerBuild',true) WHERE id='current'").run().changes, 1);
@@ -143,7 +145,9 @@ for (const state of ["damaged", "projection-missing", "projection-missing-attach
       assert.equal(readdirSync(join(f.stateRoot, "backups", "suspects")).filter(name => name.endsWith(".sqlite")).length, 1);
     } else {
       assert.equal(restore.mock.calls.length, 0);
-      assert.equal(after.activeProfileId, registry.activeProfileId); assert.equal(after.sessionGeneration, registry.sessionGeneration);
+      assert.equal(registry.activeProfileId, profileId);
+      if (projectionMissing) { assert.equal(after.activeProfileId, profileId); assert.equal(after.sessionGeneration, registry.sessionGeneration); }
+      else { assert.equal(after.activeProfileId, null); assert.equal(after.sessionGeneration, registry.sessionGeneration + 1); }
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", `automatic-repair-${profileId}.json`)), false);
       assert.equal(existsSync(join(f.stateRoot, "backups", "suspects")), false);
     }
@@ -162,6 +166,10 @@ for (const state of ["damaged", "projection-missing", "projection-missing-attach
     } else {
       if (state !== "recovery-refusal") assert.deepEqual(readFileSync(f.path), startBytes);
       await assertHeld(f.workspace, f.lifetime, clock, "fixture@ucsd.edu", held[state]);
+      const boot = readLocalDebugLog(join(f.workspace, rebuildRuntimeIsolation.stateRoot));
+      assert.equal(boot.state, "present");
+      const areas = boot.records.flatMap(record => record.payload.kind === "debug" ? [record.payload.event.area] : []);
+      assert.equal(areas.includes(state === "recovery-refusal" ? "profile-startup-crash-recovery" : "profile-startup-repair"), true);
     }
     assert.deepEqual(readFileSync(protectedPath), protectedBytes); assert.equal(transport.mock.calls.length, 0);
   } finally { transport.mockRestore(); restore.mockRestore(); database.close(); await f.close(); }
@@ -186,14 +194,18 @@ it("classifies a non-SQLite or malformed person file as damaged and never as ver
   } finally { await f.close(); }
 });
 
-it("holds one person's version-skewed database while the other person upgrades, recovers and signs in", async () => {
+for (const selected of ["held", "none", "healthy"] as const) it(`holds one person's version-skewed database while the other person upgrades, recovers and signs in (selected: ${selected})`, async () => {
   const first = await createBoundProfileFixture(), clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
+  const firstProfileId = first.admission.profileBinding.profileId;
   createProfileRegistry(first.machine).advanceSession(null);
   first.admission.release(); first.machine.release();
   const second = await createBoundProfileFixture({ workspace: first.workspace, lifetime: first.lifetime, email: "second@ucsd.edu" });
+  const registryPath = join(second.machine.stateRoot, "machine", "profiles.json"), secondProfileId = second.admission.profileBinding.profileId;
   try {
-    createProfileRegistry(second.machine).advanceSession(null);
+    if (selected !== "held") createProfileRegistry(second.machine).advanceSession(selected === "healthy" ? firstProfileId : null);
     await second.closeController();
+    const before = JSON.parse(readFileSync(registryPath, "utf8")) as { activeProfileId: string | null; sessionGeneration: number };
+    assert.equal(before.activeProfileId, { held: secondProfileId, none: null, healthy: firstProfileId }[selected]);
     const native = new DatabaseSync(second.path);
     try { native.exec("DROP TABLE write_attempts"); } finally { native.close(); }
     const skewed = readFileSync(second.path);
@@ -203,7 +215,15 @@ it("holds one person's version-skewed database while the other person upgrades, 
       assert.equal(restore.mock.calls.length, 0);
     } finally { restore.mockRestore(); }
     assert.deepEqual(readFileSync(second.path), skewed);
-    await assertHeld(first.workspace, first.lifetime, clock, "second@ucsd.edu", "STORAGE_PROFILE_FORMAT_UNSUPPORTED");
+    const after = JSON.parse(readFileSync(registryPath, "utf8")) as { activeProfileId: string | null; sessionGeneration: number };
+    assert.equal(after.activeProfileId, selected === "healthy" ? firstProfileId : null);
+    assert.equal(after.sessionGeneration, before.sessionGeneration + (selected === "held" ? 1 : 0));
+    if (selected === "healthy") {
+      const other = signIn(first.workspace, first.lifetime, clock, "second@ucsd.edu");
+      try { const result = other.attempt(); assert.ok(result.state === "refused" && result.code === "PROFILE_TRANSITION_BLOCKED", JSON.stringify(result)); }
+      finally { await other.close(); }
+      assert.deepEqual(JSON.parse(readFileSync(registryPath, "utf8")), after);
+    } else await assertHeld(first.workspace, first.lifetime, clock, "second@ucsd.edu", "STORAGE_PROFILE_FORMAT_UNSUPPORTED");
     const session = signIn(first.workspace, first.lifetime, clock, "fixture@ucsd.edu");
     try { const result = session.attempt(); assert.equal(result.state, "active", JSON.stringify(result)); } finally { await session.close(); }
   } finally { await first.close(); }

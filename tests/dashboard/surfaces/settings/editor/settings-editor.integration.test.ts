@@ -33,6 +33,13 @@ function settingsWithDistinctRuntimeValues() {
   assert.ok(actor); assert.equal(actor.settingsValue, "Saved operator"); assert.equal(actor.activeValue, "Running operator"); assert.equal(actor.defaultValue, defaultValue);
   return document;
 }
+async function chooseBrowserWindow(trigger: HTMLElement, value: string): Promise<void> {
+  await settingsAction(() => trigger.click());
+  const option = document.querySelector<HTMLElement>(`[role="option"][data-value="${value}"]`);
+  assert.ok(option);
+  await settingsAction(() => option.click());
+}
+
 describe("typed Settings catalog controls", () => {
   it("omits the actor label control while retaining the General settings", async () => {
     const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
@@ -51,99 +58,42 @@ describe("typed Settings catalog controls", () => {
   it("shows the approved General browser controls without observed host details", async () => {
     const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "general"); cleanups.push(mounted.close);
-    assert.ok(mounted.host.querySelector('[data-settings-path="browser.headless"] [role="switch"]'));
-    assert.equal(mounted.host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 2);
+    assert.equal(mounted.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Hidden");
+    assert.equal(mounted.host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 0);
     assert.doesNotMatch(mounted.host.textContent ?? "", /Observed host/u);
   });
-  it("saves Browser window dimensions through canonical Settings authority and matching readback", async () => {
+  it("saves Browser window size through canonical Settings authority and matching readback", async () => {
     const h = await setup("general");
-    const width = h.host.querySelector<HTMLInputElement>('input[name="display.screenWidth"]');
-    const height = h.host.querySelector<HTMLInputElement>('input[name="display.screenHeight"]');
-    assert.ok(width); assert.ok(height); assert.equal(width.disabled, false);
-    assert.equal(width.value, "1920"); assert.equal(height.value, "1080");
-    await settingsAction(() => { width.focus(); width.stepDown(120); width.dispatchEvent(new Event("input", { bubbles: true })); });
-    await settingsAction(() => { height.focus(); height.stepDown(80); height.dispatchEvent(new Event("input", { bubbles: true })); });
-    assert.deepEqual(h.controller().draft["display.screenWidth"], { kind: "set", raw: "1800" });
+    const select = h.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
+    assert.ok(select); assert.equal(select.hasAttribute("disabled"), false);
+    await chooseBrowserWindow(select, "Medium");
+    assert.deepEqual(h.controller().draft["browser.headless"], { kind: "set", raw: "false" });
+    assert.deepEqual(h.controller().draft["display.screenWidth"], { kind: "set", raw: "1440" });
     assert.deepEqual(h.controller().draft["display.screenHeight"], { kind: "set", raw: "1000" });
-    assert.equal(h.commands.length, 0, "moving within the dimensions field must not flush a partial pair");
-    await settingsAction(() => height.blur());
-    assert.equal(h.controller().save.state, "applied"); assert.equal(h.commands.length, 1);
+    await settingsAction(() => h.controller().submit());
+    assert.equal(h.controller().save.state, "applied");
     const leaves = h.authority.read().sections.flatMap(section => section.leaves);
-    assert.equal(leaves.find(leaf => leaf.path === "display.screenWidth")?.effectiveValue, 1800);
+    assert.equal(leaves.find(leaf => leaf.path === "display.screenWidth")?.effectiveValue, 1440);
     assert.equal(leaves.find(leaf => leaf.path === "display.screenHeight")?.effectiveValue, 1000);
-    assert.equal(width.value, "1800"); assert.equal(height.value, "1000");
+    assert.equal(select.dataset.value, "Medium");
   });
-  it("autosaves the approved General browser switch and omits retired controls", async () => {
+  it("autosaves the approved General browser window choice and omits retired controls", async () => {
     const h = await setup("general");
-    for (const path of ["browser.headless"] as const) {
-      const row = h.host.querySelector(`[data-settings-path="${path}"]`);
-      assert.ok(row);
-      const control = row.querySelector<HTMLInputElement>('[role="switch"]');
-      assert.ok(control);
-      const before = control.checked;
-      const pill = row.querySelector<HTMLElement>(".ds-switch-control");
-      assert.ok(pill);
-      await settingsAction(() => pill.click());
-      assert.equal(row.querySelector<HTMLInputElement>('[role="switch"]')?.checked, !before);
-      assert.deepEqual(h.controller().draft[path], { kind: "set", raw: String(!before) });
-      assert.equal(row.querySelector("button"), null);
-      await settingsAction(() => h.controller().submit());
-      assert.equal(h.controller().save.state, "applied");
-    }
+    const row = h.host.querySelector('[data-settings-path="browser.headless"]');
+    assert.ok(row);
+    const select = row.querySelector<HTMLElement>('button[aria-label="Browser window"]');
+    assert.ok(select);
+    assert.equal(select.dataset.value, "Hidden");
+    await chooseBrowserWindow(select, "Small");
+    assert.equal(select.dataset.value, "Small");
+    assert.deepEqual(h.controller().draft["browser.headless"], { kind: "set", raw: "false" });
+    assert.deepEqual(h.controller().draft["display.screenWidth"], { kind: "set", raw: "1280" });
+    assert.deepEqual(h.controller().draft["display.screenHeight"], { kind: "set", raw: "800" });
+    await settingsAction(() => h.controller().submit());
+    assert.equal(h.controller().save.state, "applied");
     assert.equal(h.commands.length, 1);
     assert.equal(h.host.querySelector('[data-settings-path="features.debugScreenshots"]'), null);
     assert.equal(h.host.querySelector('[data-settings-path="features.duoWebAuthn"]'), null);
-  });
-  it("shows managed app-data locations and ordinary workflow pickers", async () => {
-    const { host } = await setup("paths");
-    assert.deepEqual([...host.querySelectorAll("h1")].map(node => node.textContent), ["Paths"]);
-    assert.deepEqual([...host.querySelectorAll("h2")].map(node => node.textContent), ["Folders", "App dataManaged by Relay", "Workflow locations"]);
-    assert.equal(host.querySelectorAll(".hub-settings-row input[readonly]").length, 2);
-    assert.equal(host.querySelectorAll(".settings-compact-row .ds-path-control button").length, 5);
-    assert.equal(host.querySelector('[data-settings-path="paths.duoCredential"]'), null);
-    assert.equal(host.querySelector('[data-settings-path="paths.browserProfileRoot"]'), null);
-    for (const path of ["paths.duoExtensionDir",
-      "paths.reportsDir", "paths.downloadsDir", "paths.onboardingDocsDir", "paths.i9CheckTrackerPath"]) {
-      const row = host.querySelector(`[data-settings-path="${path}"]`);
-      if (row === null) throw new Error(`missing ${path} row`);
-      assert.ok(row.querySelector(".ds-path-value[aria-label]"));
-      const label = row.querySelector("label");
-      const change = row.querySelector(".ds-path-control button");
-      assert.equal(label?.htmlFor, change?.id);
-    }
-    assert.doesNotMatch(host.textContent ?? "", /Code-owned paths for this process|Local operator ID/u);
-  });
-  it("groups each system's visible URL rows in one card with associated labels and descriptions", async () => {
-    const { host } = await setup("routes");
-    const systems = [...host.querySelectorAll(".routes-page-system")];
-    assert.equal(systems.length, 9);
-    assert.equal(host.querySelectorAll(".ds-disclosure, button[aria-expanded]").length, 0);
-    for (const system of systems) {
-      assert.equal(system.querySelectorAll(".ds-form-group").length, 1);
-      assert.equal(system.querySelectorAll(".ds-form-group .ds-form-group").length, 0);
-      assert.equal(system.querySelectorAll('[hidden], [data-state="closed"]').length, 0);
-      const name = system.querySelector("h2 span span")?.textContent;
-      assert.equal(system.querySelector('[role="group"]')?.getAttribute("aria-label"), name);
-    }
-    const crm = host.querySelector('[data-settings-path="urls.crm.prod"]'); assert.ok(crm);
-    assert.equal(crm.closest(".routes-page-system")?.querySelector("h2")?.textContent, "CRM5 URLs");
-    assert.equal(crm.querySelectorAll("button").length, 0);
-    const rows = [...crm.querySelectorAll(".routes-page-field")];
-    assert.equal(rows.length, 5);
-    assert.deepEqual(rows.map(row => row.querySelector("label")?.textContent), ["Entry* (required)", "Onboarding search* (required)", "UCPath entry sheet* (required)", "Onboarding history* (required)", "iDocs viewer* (required)"]);
-    for (const row of rows) {
-      const label = row.querySelector("label");
-      const input = row.querySelector("input");
-      assert.ok(label); assert.ok(input);
-      assert.equal(row.querySelectorAll("input").length, 1);
-      assert.equal(label.htmlFor, input.id);
-      assert.notEqual(input.id, "");
-      assert.ok(input.getAttribute("aria-describedby")?.includes("description"));
-      assert.equal(input.required, true);
-      assert.equal(input.type, "url");
-    }
-    assert.equal(crm.closest(".ds-form-group")?.getAttribute("aria-label"), "CRM");
-    assert.equal(host.querySelectorAll('.routes-page-field input[type="url"]').length, 18);
   });
   it("renders Performance timeouts as grouped, described controls with visible units", async () => {
     const { host } = await setup("performance");
@@ -172,7 +122,6 @@ describe("typed Settings catalog controls", () => {
     const mounted = await mountSettingsHarness(authority, "performance", () => fixtureSettingsDocument({ timeouts: { navigationMs: 22_000 } }, 2)); cleanups.push(mounted.close);
     const row = mounted.host.querySelector('[data-settings-path="timeouts.navigationMs"]'); assert.ok(row);
     assert.equal(row.querySelector("input")?.value, "22");
-    assert.equal(row.querySelector("button"), null);
     assert.equal(row.querySelectorAll(".ds-body-row").length, 1);
     assert.equal(row.querySelectorAll(".settings-row-actions").length, 0);
     await settingsAction(() => mounted.controller().clear("timeouts.navigationMs"));

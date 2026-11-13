@@ -21,6 +21,21 @@ export const DataObservationAliasSchema = z.strictObject({
 export type DataObservationOrigin = z.infer<typeof DataObservationOriginSchema>;
 export type DataObservationOrigins = z.infer<typeof DataObservationOriginsSchema>;
 
+type ObservationIdentity = Readonly<Pick<z.input<typeof DataObservationOriginSchema>, "runId" | "attempt" | "spanPath" | "nodeId" | "taskId">>;
+
+/** Resolve a sparse point against its caller-authenticated event identity. */
+export function resolveObservationOrigin(
+  identity: ObservationIdentity,
+  point: Readonly<{ field: string; origins?: readonly z.input<typeof DataObservationOriginsSchema>[number][] }>,
+  path: readonly (string | number)[],
+): DataObservationOrigin {
+  const stored = point.origins?.find(entry => JSON.stringify(entry.path) === JSON.stringify(path))?.origin;
+  return DataObservationOriginSchema.parse(stored ?? {
+    runId: identity.runId, attempt: identity.attempt, spanPath: identity.spanPath, nodeId: identity.nodeId, taskId: identity.taskId,
+    field: point.field, path: [...path],
+  });
+}
+
 function isArray(value: JsonValue): value is readonly JsonValue[] {
   return Array.isArray(value);
 }

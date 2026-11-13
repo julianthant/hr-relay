@@ -33,33 +33,23 @@ it("retains an explicitly paused previous-day queue through startup", async () =
   const run = world.created(f.service, f.request);
   const paused = f.service.pause({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version });
   assert.ok(paused.state === "applied");
-  const leases = f.database.authority.workerLeases.listLive();
-  assert.equal(leases.length, 1);
-  const lease = leases[0]; assert.ok(lease);
-  assert.notEqual(lease.lifecycle.state, "stopped");
   f.clock.advanceWall(24 * 60 * 60 * 1000);
   const reconcile = () => reconcileStartupCrash({ ...f, lifecycle: f.service, lock: f.lifetime });
   reconcile();
   assert.deepEqual(f.database.authority.runs.get(run.envelope.runId), paused.run);
-  const stopped = f.database.authority.workerLeases.get(lease.workerId);
-  assert.equal(stopped?.lifecycle.state, "stopped");
   const notifications = f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID);
-  assert.deepEqual(notifications.map(note => note.title), ["RUN_CRASH_RESOURCES_RELEASED"]);
+  assert.deepEqual(notifications, []);
   reconcile();
   assert.deepEqual(f.database.authority.runs.get(run.envelope.runId), paused.run);
-  assert.deepEqual(f.database.authority.workerLeases.get(lease.workerId), stopped);
   assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), notifications);
 });
 
 for (const mode of ["none", "attempting", "parked"] as const) it(`recovers an interrupted run with ${mode} write state and releases its resources once`, async () => {
   const f = await world.interruptedFixture(), now = f.clock.now().toISOString();
-  const workerId = f.recoveryRequest.claim.workerId, leaseGeneration = f.recoveryRequest.workerLifetime.leaseGeneration;
+  const workerId = f.recoveryRequest.claim.workerId;
   const intent = mode === "none" ? undefined : mode === "parked"
     ? world.parkedWriteIntent(f.database, f.run, { writeIntentId: randomUUID(), code: "unknown", message: "Synthetic unresolved write" })
     : await attemptingOwnedWrite({ database: f.database, fence: async input => f.database.authority.writeIntents.fenceAttempt(input) }, f.run);
-  f.database.authority.workerControls.observe({ workerId, leaseGeneration, sessionId: randomUUID(), system: "ucpath",
-    configFingerprint: "a".repeat(64), signInFingerprint: "b".repeat(64), browserMode: "headless",
-    acceptDownloads: false, exclusive: true, health: "unknown", observedAt: now, openedAt: now, profileRevision: 1 });
   const credentialKey = "ab".repeat(32);
   assert.equal(f.database.authority.duoCeremonyLeases.acquire({ credentialKey, workerId, system: "ucpath", now, ttlMs: 60000 }).state, "acquired");
   const reconcile = () => reconcileStartupCrash({ ...f, lifecycle: f.service });
@@ -73,11 +63,9 @@ for (const mode of ["none", "attempting", "parked"] as const) it(`recovers an in
     assert.deepEqual(f.database.authority.writeIntents.get(intent.writeIntentId), intent);
     assert.equal(f.database.authority.runResults.get(f.run.envelope.runId), undefined);
   }
-  assert.equal(f.database.authority.workerLeases.get(workerId)?.lifecycle.state, "stopped");
-  assert.ok(f.database.authority.workerControls.browsers(workerId).every(browser => browser.health === "closed"));
   assert.equal(f.database.authority.duoCeremonyLeases.get(credentialKey)?.state, "released");
   const notifications = f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID);
-  assert.equal(notifications.filter(note => note.title === "RUN_CRASH_RESOURCES_RELEASED").length, 3);
+  assert.equal(notifications.filter(note => note.title === "RUN_CRASH_RESOURCES_RELEASED").length, 1);
   assert.ok(notifications.some(note => note.title === (intent === undefined ? "RUN_INTERRUPTED_BY_CRASH" : "RUN_CRASH_WRITE_UNRESOLVED")));
   reconcile();
   assert.deepEqual(f.database.authority.runs.get(f.run.envelope.runId), recovered);

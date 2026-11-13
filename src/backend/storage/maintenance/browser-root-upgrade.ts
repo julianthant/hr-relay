@@ -4,7 +4,7 @@ import { readdirSync } from "node:fs";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { BrowserRootSchema, BrowserRootsSchema, StoppedBrowserRootsV1Schema as PriorDocument } from "../browser-root-contract.js";
+import { BrowserRootSchema, BrowserRootsSchema, StoppedBrowserRootsV1Schema, StoppedBrowserRootsV2Schema } from "../browser-root-contract.js";
 import { BrowserRootUnavailableError, assertPrivateProfilePath, profileReservations, type BrowserProfileProbeFactory } from "../browser-roots.js";
 import { assertStoppedMachineMaintenance, type InstallationLease } from "../admission/installation.js";
 import type { OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
@@ -17,6 +17,7 @@ import { proveProfileRootsUnused } from "./process-closure.js";
 import { resolveConfigWithProvenance } from "../../app/config/resolve.js";
 
 const Integer = z.number().int().safe().nonnegative();
+const PriorDocument = z.union([StoppedBrowserRootsV1Schema, StoppedBrowserRootsV2Schema]);
 const Identity = z.strictObject({ device: z.union([Integer, z.string().regex(/^(0|[1-9]\d*)$/u)]),
   inode: z.union([Integer, z.string().regex(/^(0|[1-9]\d*)$/u)]) });
 const Digest = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -34,10 +35,17 @@ const hash = (bytes: Uint8Array): string => createHash("sha256").update(bytes).d
 const same = (left: unknown, right: unknown): boolean => canonicalJsonStringify(left) === canonicalJsonStringify(right);
 const refuse = (message: string): never => { throw new BrowserRootUnavailableError({ cause: new Error(`browser-root-upgrade-${message}`) }); };
 
+type PriorRow = z.infer<typeof PriorDocument>["roots"][number];
+// A v3 worker owner is its identity only; nothing durable produces the lease or membership fields any more.
+const currentOwner = (owner: PriorRow["owner"]) => owner.kind === "worker"
+  ? { kind: owner.kind, workerId: owner.workerId, workflowId: owner.workflowId, ordinal: owner.ordinal } : owner;
+
 function upgraded(prior: z.infer<typeof PriorDocument>) {
-  return BrowserRootsSchema.parse({ schemaVersion: 2, installationId: prior.installationId, revision: prior.revision + 1,
+  if (prior.schemaVersion === 2) return BrowserRootsSchema.parse({ ...prior, schemaVersion: 3, revision: prior.revision + 1,
+    roots: prior.roots.map(row => ({ ...row, owner: currentOwner(row.owner) })) });
+  return BrowserRootsSchema.parse({ schemaVersion: 3, installationId: prior.installationId, revision: prior.revision + 1,
     nextHandle: prior.roots.length + 1, nextGeneration: prior.nextGeneration,
-    roots: prior.roots.map((row, index) => ({ ...row, handle: index + 1,
+    roots: prior.roots.map((row, index) => ({ ...row, owner: currentOwner(row.owner), handle: index + 1,
       directory: row.owner.kind === "signup" ? `${row.profileRoot}/r${(index + 1).toString(36)}` : row.directory })) });
 }
 

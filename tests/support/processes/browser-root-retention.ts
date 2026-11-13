@@ -191,7 +191,7 @@ async function runUnknownHandoff(input: Readonly<{ scenario: string; workspace: 
   const seedPath = join(input.workspace, `.browser-root-unknown-${input.nonce}.seed.json`);
   const closedPath = join(input.workspace, `.browser-root-unknown-${input.nonce}.closed.json`);
   const seedSchema = z.strictObject({ nonce: z.uuid(), processId: z.number().int().positive(), lifetimePort: z.number().int().positive(),
-    profileId: z.uuid(), workerId: z.string(), leaseGeneration: z.number().int().positive(), registryHash: z.string().regex(/^[a-f0-9]{64}$/u) });
+    profileId: z.uuid(), workerId: z.string(), registryHash: z.string().regex(/^[a-f0-9]{64}$/u) });
   const registryPath = join(workspace, rebuildRuntimeIsolation.stateRoot, "machine", "browser-roots.json");
   const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
   const scheduler = { schedule(deadline: number, expire: () => void) {
@@ -216,7 +216,7 @@ async function runUnknownHandoff(input: Readonly<{ scenario: string; workspace: 
     assert.equal(row.owner.kind, "worker"); assert.equal(row.profileId, owner.profileId);
     assert.throws(() => f.admission.release(), hasUnprovedSourceClosure); await assert.rejects(f.lifetime.close(), hasUnprovedSourceClosure); f.lifetime.assertHeld();
     const receipt = seedSchema.parse({ nonce: input.nonce, processId: process.pid, lifetimePort: f.lifetime.port,
-      profileId: owner.profileId, workerId: worker.workerId, leaseGeneration: worker.lease.leaseGeneration, registryHash: hash(fs.readFileSync(registryPath)) });
+      profileId: owner.profileId, workerId: worker.workerId, registryHash: hash(fs.readFileSync(registryPath)) });
     fs.writeFileSync(seedPath, JSON.stringify(receipt), { mode: 0o600, flag: "wx", flush: true }); return;
   }
   const seedBytes = fs.readFileSync(seedPath), seed = seedSchema.parse(JSON.parse(seedBytes.toString("utf8")));
@@ -233,23 +233,12 @@ async function runUnknownHandoff(input: Readonly<{ scenario: string; workspace: 
   const before = fs.readFileSync(registryPath), inventory = roots.inventory();
   assert.equal(hash(before), seed.registryHash); const row = inventory.roots[0]; assert.ok(row && row.owner.kind === "worker");
   assert.equal(row.launch.state, "unknown"); assert.equal(row.profileId, seed.profileId);
-  assert.equal(row.owner.workerId, seed.workerId); assert.equal(row.owner.leaseGeneration, seed.leaseGeneration);
-  const slot = database.authority.workerSlots.get(seed.workerId), prior = database.authority.workerLeases.get(seed.workerId);
-  assert.ok(slot && prior); assert.equal(slot.retiredAt, null); assert.equal(slot.workerId, seed.workerId);
-  assert.equal(prior.processId, seed.processId); assert.equal(prior.leaseGeneration, seed.leaseGeneration);
-  assert.equal(prior.lifecycle.state, "starting");
-  const now = systemClock.now().toISOString();
-  const stopped = database.authority.workerLeases.reportLifecycle({ workerId: seed.workerId, leaseGeneration: prior.leaseGeneration, now,
-    lifecycle: { state: "stopped", startedAt: prior.lifecycle.startedAt, stoppedAt: now, reason: "crashed" } });
-  assert.equal(stopped.state, "applied");
-  const started = database.authority.workerLeases.start({ workerId: seed.workerId, workflow: slot.workflow, browserSystems: ["crm"],
-    processId: process.pid, requestedBy: "local-operator", now });
-  assert.equal(started.state, "started");
-  const successor = database.authority.workerLeases.get(seed.workerId); assert.ok(successor);
-  assert.ok(successor.leaseGeneration > prior.leaseGeneration); assert.equal(successor.processId, process.pid);
+  assert.equal(row.owner.workerId, seed.workerId);
+  const slot = database.authority.workerSlots.get(seed.workerId);
+  assert.ok(slot); assert.equal(slot.retiredAt, null); assert.equal(slot.workerId, seed.workerId);
   const profileRoot = join(machine.stateRoot, row.profileRoot), profileDirectory = join(machine.stateRoot, row.directory);
-  const current = database.browserWorkerOwner(admission, seed.workerId, profileDirectory);
-  assert.equal(current.leaseGeneration, successor.leaseGeneration); assert.equal(current.ordinal, row.owner.ordinal);
+  const current = database.browserWorkerOwner(admission, seed.workerId);
+  assert.equal(current.ordinal, row.owner.ordinal);
   const owner: BrowserRootLaunchInput = { profileId: seed.profileId, profileRoot, profileDirectory,
     credentialFingerprint: row.credentialFingerprint, owner: { kind: "worker", database, workerId: seed.workerId } };
   let launches = 0, effects = 0;

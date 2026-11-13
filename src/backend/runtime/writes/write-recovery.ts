@@ -6,7 +6,8 @@ import { WorkerSessionClosureUnprovedError } from "../workers/worker-sessions.js
 import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { DuoCeremonyReleaseFailedError } from "../gates/duo-ceremony-gate.js";
 import { ParkedWriteCheckResultSchema, type ParkedWriteCheckTarget, type ParkedWriteCheckResult } from "../../../rules/commands/commands.js";
-import { WorkerControlRefusal, type WorkerEffectAcknowledgement } from "../../../models/run/worker-control.js";
+import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
+import type { ParkedWriteCheckAcknowledgement } from "../../../rules/commands/commands.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { valueFreeProtectedData, retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 import { isFreshOccurrenceProof } from "../gates/repeat-proof.js";
@@ -27,7 +28,6 @@ import {
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { idempotencyKeyDigestReference } from "../../../rules/redaction/redaction.js";
 import {
-  ParkedWriteResolutionBindingSchema,
   WriteIntentRecordSchema,
   evaluateNegativeSettlement,
   deriveWriteAuthorityReason,
@@ -61,7 +61,8 @@ import {
   type WriteSequencerHooks,
 } from "./write-sequencer.js";
 import type { RunConfigFingerprintBinding } from "../workers/worker-sessions.js";
-import type { WriteIntentParkCode } from "../../storage/sqlite/write-commit-contracts.js";
+import { applyWriteTransition, ResolvedParkedWriteAbsenceInputSchema, type WriteIntentParkCode } from "../../storage/sqlite/write-commit-contracts.js";
+import { WriteParkCodeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
@@ -93,7 +94,7 @@ export async function checkParkedWrite(input: Readonly<{
   probe: Omit<ProbeReadDeps, "sessions" | "retainCallback">;
   sessions: Pick<TransactionSessionHost, "withDriver" | "closeAll"> & RunConfigFingerprintBinding;
   configureRun: (run: RunRecord) => Readonly<{ taskDeadlineMs: number }>;
-}>): Promise<Extract<WorkerEffectAcknowledgement, { kind: "parked-write-check" }>> {
+}>): Promise<ParkedWriteCheckAcknowledgement> {
   input.signal.throwIfAborted();
   if (input.requestedBy !== "local-operator") throw new WorkerControlRefusal("PARKED_CHECK_UNAVAILABLE");
   const { run, intent, node, commitInput } = requireParkedWriteCheckTarget(input.repositories, input.target, input.descriptor);
@@ -106,8 +107,8 @@ export async function checkParkedWrite(input: Readonly<{
   const readInput = findingsTarget === undefined ? commitInput : { emplId: findingsTarget.emplId, expectedName: findingsTarget.expectedName };
   const task = input.probe.stores.stores.flatMap(store => Object.values(store.tasks)).find(value => value.contract.id === readTaskId);
   const instance = run.envelope.resolvedInstance[intent.system];
-  let evidence: Extract<WorkerEffectAcknowledgement, { kind: "parked-write-check" }>["evidence"];
-  let findingsIdentity: Extract<WorkerEffectAcknowledgement, { kind: "parked-write-check" }>["findingsIdentity"];
+  let evidence: ParkedWriteCheckAcknowledgement["evidence"];
+  let findingsIdentity: ParkedWriteCheckAcknowledgement["findingsIdentity"];
   let observedTaskId = probeId;
   let state: ParkedWriteCheckResult["state"] = "unavailable";
   let code: ParkedWriteCheckResult["code"] = "PARKED_CHECK_UNAVAILABLE";
@@ -151,7 +152,7 @@ export async function checkParkedWrite(input: Readonly<{
     ...(evidence === undefined ? {} : { probeTaskId: observedTaskId }),
     evidenceDigest: sha256Hex(canonicalJsonStringify({ target: input.target, state, code, evidence: evidence ?? null,
       ...(findingsIdentity === undefined ? {} : { findingsIdentity }) })) });
-  return { kind: "parked-write-check", result, ...(evidence === undefined ? {} : { evidence }),
+  return { result, ...(evidence === undefined ? {} : { evidence }),
     ...(findingsIdentity === undefined ? {} : { findingsIdentity }) };
 }
 
@@ -179,7 +180,7 @@ export const WriteRecoveryDecisionSchema = z.discriminatedUnion("state", [
     state: z.literal("parked"),
     writeIntentId: WriteIntentIdSchema,
     generation: z.number().int().positive(),
-    code: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]),
+    code: WriteParkCodeSchema,
     message: z.string().min(1),
   }),
 ]);
@@ -536,7 +537,7 @@ function requireResolvableIntent(context: WriteResolutionContext): void {
 function resolutionBinding(context: WriteResolutionContext) {
   const intent=context.intent;
   if(intent.status !== "parked") throw new Error("parked-write-resolution-required");
-  return ParkedWriteResolutionBindingSchema.parse({commandId:context.command.commandId,auditId:context.auditId,
+  return ResolvedParkedWriteAbsenceInputSchema.shape.resolution.parse({commandId:context.command.commandId,auditId:context.auditId,
     writeIntentId:intent.writeIntentId,writeAttemptId:intent.currentAttemptId,generation:intent.generation,
     bindingProofDigest:intent.bindingProofDigest,idempotencyKeyDigest:intent.idempotencyKeyDigest,
     runId:intent.runId,runAttempt:intent.runAttempt,expectedRunVersion:context.run.version,decision:"absent",resolvedAt:context.now});
@@ -589,10 +590,11 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
       const intent=context.intent;
       if(intent.status !== "parked") throw new Error("parked-write-resolution-required");
       const resolution=resolutionBinding(context);
+      const next=applyWriteTransition(intent,repositories.writeAttempts.get(intent.currentAttemptId),{type:"resolve-absent",resolution});
       const settlement={state:"operator-confirmed-absent" as const,writeIntentId:intent.writeIntentId,generation:intent.generation,
         operator:ActorIdSchema.parse(context.command.requestedBy),confirmedAt:context.now};
       const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,recheck:_recheck,...base}=intent;
-      const settled=WriteIntentRecordSchema.parse({...base,status:"retryable",settlement,resolvedAt:context.now,
+      const settled=WriteIntentRecordSchema.parse({...base,status:next.status,settlement,resolvedAt:context.now,
         updatedAt:context.now,version:intent.version+1,resolution});
       const run=plannedResolutionRun(context,String(node.id));
       return {outcome:{run,intent:settled},applyAfterAudit:()=>{

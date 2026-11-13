@@ -12,7 +12,10 @@ import { i9LookupWorkflow } from "../../../i9-lookup/workflow.js";
 import { buildCrmData } from "../crm-data/step.js";
 import { buildUcpathSearch } from "../ucpath-search/step.js";
 
-const group = defineWorkflowStep({ key: "i9-search", label: "Search I-9 profiles" });
+const group = Object.freeze({
+  ...defineWorkflowStep({ key: "i9-search", label: "Search I-9 profiles" }),
+  review: { pages: [], branchLabels: [] } as const
+});
 const entries = defineStepEntries(group);
 const target = Object.freeze({ id: WorkflowIdSchema.parse(i9LookupWorkflow.id), input: I9LookupInputSchema, result: I9SignerOutputSchema });
 

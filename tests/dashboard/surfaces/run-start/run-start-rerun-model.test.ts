@@ -7,7 +7,7 @@ import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-st
 
 const workflow: RunStartWorkflow = {
   workflowId: "rerun-proof", version: 1, label: "Rerun proof", categoryId: "operations", role: { kind: "standalone" },
-  enqueue: "reject-active", spreadsheetIntake: false, requiredWorkbookTypeIds: [],
+  enqueue: "reject-active", spreadsheetIntake: false, requiredWorkbookFields: [], referenceSources: [],
   inputRun: { state: "present", surface: { placeholder: "Employee ID", parser: {
     split: { kind: "whole-text" }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "eid" }],
   } } },

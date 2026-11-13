@@ -46,7 +46,7 @@ for (const [inode, expected] of [[17n, 17], [high, "21110623253370482"]] as cons
       const path = join(f.machine.stateRoot, "machine", "operations", `${result.operationId}.json`), journal = readFileSync(path);
       const operation = LogoutOperationSchema.parse(JSON.parse(journal.toString("utf8")));
       assert.deepEqual(operation.source, { database: { device: 4, inode: expected } });
-      assert.equal(operation.schemaVersion, 2);
+      assert.equal(operation.schemaVersion, 3);
       assert.ok(databaseBytes); assert.deepEqual(readFileSync(f.path), databaseBytes);
       database?.close(); database = undefined; session.close(); await f.closeController();
       lifetime = await RuntimeLifetimeLock.acquire(f.lifetime.port);

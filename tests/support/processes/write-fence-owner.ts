@@ -13,7 +13,8 @@ lines.on("line", line => { void fence(line); });
 const keepAlive = setInterval(() => undefined, 1000);
 parentStop.signal.addEventListener("abort", () => {
   process.exitCode = 1; lines.close(); clearInterval(keepAlive);
-  void lifetime.close().catch(error => { setImmediate(() => { throw error; }); });
+  // A worker never closes its lifetime listener; exiting releases it.
+  process.exit();
 }, { once: true });
 
 async function fence(line: string): Promise<void> {

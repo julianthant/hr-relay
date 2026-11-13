@@ -12,7 +12,7 @@ const UNNAMED_PDF_TITLE = "Emergency Contact PDF";
 export const emergencyContactWorkflow = defineWorkflow({
   id: "emergency-contact", version: 1, code: "ec", label: "Emergency Contact", icon: "Users", category: "documents",
   summary: "Reads and releases a PDF, then delegates exactly its approved records for primary contact previews.",
-  requiredWorkbookTypeIds: [OCR_ROSTER_TYPE_ID], referenceLookups: () => [{ mode: "all", typeId: OCR_ROSTER_TYPE_ID, fields: [...OCR_ROSTER_FIELDS] }], input: EmergencyContactInputSchema, canonicalInput: EmergencyContactCanonicalInput,
+  requiredWorkbookFields: [...OCR_ROSTER_FIELDS], workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] }, input: EmergencyContactInputSchema, canonicalInput: EmergencyContactCanonicalInput,
   inputSubject: "document", surface: { shape: "operation" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {}, details: [], role: defineWorkflowRole({ kind: "composition" }),
   identity: { matchKey: input => `${input.document.sha256}:${input.readingId}` },

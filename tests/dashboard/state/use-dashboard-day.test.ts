@@ -25,7 +25,7 @@ const EMPTY_DAY: DashboardDayWire = DashboardDayWireSchema.parse({
   workflowCounts: [],
   statusCounts: [],
   queueSurfaces: [],
-  workerCards: [], workerAuthority: { state: "present", members: [] }, workerOperations: [],
+  workerCards: [], workerAuthority: { state: "present", members: [] },
   workerPools: [],
   notifications: [],
 });

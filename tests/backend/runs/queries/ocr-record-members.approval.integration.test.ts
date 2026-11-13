@@ -27,6 +27,7 @@ import { boundProfileCredentials } from "../../../support/helpers/admission-fixt
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 import contactPage from "../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
+import { assertMemberLogsServed } from "../../../support/helpers/backend/member-log-targets.js";
 import { scaledMs } from "../../../support/time-scale.js";
 
 const world = createOcrReviewWorld();
@@ -69,8 +70,10 @@ function served(f: Fixture, database = f.database, reader = f.canonical.lifecycl
   const review = buildOcrReviewSection(deps, ocr.runId); assert.equal(review.section, "review");
   if (review.section !== "review") assert.fail("Missing OCR review");
   assert.ok(review.payload.ocr);
+  const logsChecked: number[] = [];
   if (verifyMemberTargets) {
     for (const row of [parent, ocr]) {
+      logsChecked.push(assertMemberLogsServed(deps, row.recordMembers?.members ?? []));
       for (const member of row.recordMembers?.members ?? []) {
         const detail = buildRunDetail(deps, member.target.runId);
         assert.equal(detail.runId, member.target.runId);
@@ -86,7 +89,7 @@ function served(f: Fixture, database = f.database, reader = f.canonical.lifecycl
   }
   assert.deepEqual(projection.buildDashboardDayWire(f.clock.todayLocal()).queueSurfaces, wire.queueSurfaces);
   assert.deepEqual(authorityState(f, database), before);
-  return { projection, wire, parent, ocr, parentDetail, ocrDetail, review: review.payload };
+  return { projection, wire, parent, ocr, parentDetail, ocrDetail, review: review.payload, logsChecked };
 }
 
 function displayIdentity(row: QueueSurfaceWire) {
@@ -230,6 +233,7 @@ for (const dryRun of [true, false]) {
     assert.deepEqual(members.map(member => EmergencyContactMemberInputSchema.parse(member.child.input.parsed.value).record),
       [review.records[0], review.records[3]]);
     const admitted = served(f, f.database, f.canonical.lifecycle, true); assertPhase(admitted, [running, "Not approved", "Not approved", running]);
+    assert.ok(admitted.logsChecked[0] === 2, "both approved-record members open a served member log");
     for (const [index, recordId] of selected.entries()) {
       const member = members[index]; assert.ok(member);
       const row = admitted.parent.recordMembers?.members.find(row => row.kind === "record" && row.record.recordId === recordId); assert.ok(row);
@@ -289,7 +293,8 @@ for (const dryRun of [true, false]) {
 
 it("keeps failed OCR pages on their own Logs while hiding successful reads under the hosted review", async () => {
   const f = await world.fixture({ coordinator: true, record: true, pageCount: 3, failManualPageOnce: 2 });
-  const view = served(f);
+  const view = served(f, f.database, f.canonical.lifecycle, true);
+  assert.equal(view.logsChecked[1], 1, "the failed page's row opens its own served log");
   assert.equal(view.parent.status, "running");
   assert.equal(view.parentDetail.gate.state, "absent");
   assert.equal(view.ocrDetail.gate.state, "open");

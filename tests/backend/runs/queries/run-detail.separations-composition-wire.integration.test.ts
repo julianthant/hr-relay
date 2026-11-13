@@ -7,20 +7,19 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { checkpointLookupKey } from "../../../../src/models/workflow/checkpoint.js";
 import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
 import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
-import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { buildRunSection, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
+import { buildRunSection, resolveIdentityGateAnswer, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
 
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { MatchIdentityOutputSchema, SeparationsMatchIdentity } from "../../../../src/models/workflows/separations/match-identity.js";
-import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { IdentityGateAnswerRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
 import type { IdentityEvidencePacket } from "../../../../src/rules/separations/identity-evidence.js";
 import { deriveIdentityEvidenceDigest } from "../../../../src/rules/separations/identity-evidence.js";
-import { SeparationWritePlanSchema } from "../../../../src/rules/separations/write-plan.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../../src/workflow-kit/workflow.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -144,17 +143,14 @@ function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
   assert.ok(slot);
   const workerId = slot.workerId;
   world.database.authority.runs.enqueue(seeded);
-  const claimMember1 = world.database.authority.workerSlots.get(workerId);
-  if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-  const claimed = world.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(world.database, separationsDescriptor.id, claimMember1.poolIndex).workerLifetime, workflow: separationsDescriptor.id,
+  const claimed = world.database.authority.runs.claimNext({ workflow: separationsDescriptor.id,
     workerId, now: GATE_NOW });
   assert.equal(claimed.state, "claimed");
   if (claimed.state !== "claimed") throw new Error("identity fixture claim refused");
-  const workerLifetime = testWorkerLifetime(world.database, separationsDescriptor.id, slot.poolIndex).workerLifetime;
   let current = claimed.run;
   for (const lifecycle of [
-    { state: "validating", workerLifetime, workerId, claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
-    { state: "running", workerLifetime, workerId, claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
+    { state: "validating", workerId, claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
+    { state: "running", workerId, claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
     PARKED_GATE_LIFECYCLE,
   ]) {
     const result = world.database.authority.runs.transition({ runId: RUN_ID, expectedVersion: current.version,
@@ -198,7 +194,7 @@ function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
 }
 
 describe("separations — the identity-gate wire", () => {
-  it("serves the whole packet INCLUDING the write plan, and the actions that resolve it", async () => {
+  it("keeps the write plan server-side, and resolves the served refs to the command with the planned packet's digest", async () => {
     try {
     const world = await makeWorld();
     worlds.push(world);
@@ -214,84 +210,49 @@ describe("separations — the identity-gate wire", () => {
       descriptors: { resolve: () => ({ details: [], gateNodes: gateNodeViews() as never }) },
     };
     const response = buildRunSection(deps, RUN_ID, "identity-gate");
-    const payload = Reflect.get(response, "payload") as {
-      state: string;
-      value: {
-        gateId: string;
-        resultSchemaHash: string;
-        evidenceDigest: string;
-        approvalShape: string;
-        runId: string;
-        expectedVersion: number;
-        options: readonly { eid: string; chosenFrom: string }[];
-        packet: { plan: { state: string } };
-        actions: readonly { key: string; command: string }[];
-      };
-    };
-    assert.equal(payload.state, "available", JSON.stringify(payload));
+    assert.equal(response.section, "identity-gate");
+    const payload = response.section === "identity-gate" ? response.payload : undefined;
+    assert.equal(payload?.state, "available", JSON.stringify(payload));
+    if (payload?.state !== "available") throw new Error("identity gate unavailable");
+    const { value } = payload;
 
-    // The composition's ONE new gate fact, on the wire an approver reads.
-    assert.equal(payload.value.packet.plan.state, "planned");
-    const served = SeparationWritePlanSchema.parse(payload.value.packet.plan);
-    assert.equal(served.state, "planned");
-    if (served.state === "planned") {
-      assert.equal(served.termination.template, "UC_INVOL_TERM");
-      assert.equal(served.document.department, "000412 - Housing/Dining/Hospitality");
-      assert.equal(served.dates.separationDate, "06/19/2026");
-      // §9.1's answer, visible where the human is looking.
-      assert.deepEqual(served.dates.unclassifiedPayCodes, [
-        "Independence Day Observed",
-        "Juneteenth Observed",
-      ]);
+    // The write plan stays server-side: the wire carries display text and refs only.
+    const wire = JSON.stringify(value);
+    for (const planned of ["UC_INVOL_TERM", "000412 - Housing/Dining/Hospitality", "06/19/2026", "Juneteenth Observed"]) {
+      assert.ok(!wire.includes(planned), `${planned} is served`);
     }
-
-    // The schema hash the surface echoes back is byte for byte the value
-    // `executeResolveGate` compares an incoming payload against.
-    assert.equal(
-      payload.value.resultSchemaHash,
-      deriveSchemaHash(IdentityApprovalResultSchema, "output"),
-    );
-    assert.equal(payload.value.evidenceDigest, deriveIdentityEvidenceDigest(packet));
-
-    assert.equal(payload.value.approvalShape, "one-click");
-
+    assert.equal(value.approvalShape, "one-click");
     assert.deepEqual(
-      payload.value.actions.map(({ key, command }) => ({ key, command })),
+      value.actions.map((action) => action.kind === "command" ? { key: action.key, command: action.command } : undefined),
       [
         { key: "resolve-gate-approved", command: "resolve-gate" },
         { key: "resolve-gate-rejected", command: "resolve-gate" },
       ],
     );
-    const command = CommandRequestSchema.parse({
-      commandId: uuidOf(31),
+
+    // The ref answer composes the command `executeResolveGate` compares against:
+    // the planned packet's digest and the gate-result schema hash, byte for byte.
+    const shape = IdentityGateAnswerRequestSchema.shape;
+    const optionRef = value.options[0]?.ref;
+    assert.ok(optionRef);
+    const resolution = resolveIdentityGateAnswer(deps, {
+      commandId: shape.commandId.parse(uuidOf(31)),
       family: "gate",
-      type: "resolve-gate",
-      requestedBy: "local-operator",
-      requestedAt: GATE_NOW,
-      source: "run-detail",
-      target: {
-        runId: payload.value.runId,
-        gateId: payload.value.gateId,
-        expectedVersion: payload.value.expectedVersion,
-      },
-      payload: {
-        result: {
-          schemaHash: payload.value.resultSchemaHash,
-          value: {
-            decision: "approved",
-            eid: payload.value.options[0]?.eid,
-            chosenFrom: payload.value.options[0]?.chosenFrom,
-            evidenceDigest: payload.value.evidenceDigest,
-          },
-        },
-      },
-    });
-    assert.equal(
-      IdentityApprovalResultSchema.parse(
-        command.family === "gate" ? command.payload.result.value : undefined,
-      ).decision,
-      "approved",
-    );
+      type: "answer-identity-gate",
+      requestedBy: shape.requestedBy.parse("local-operator"),
+      requestedAt: shape.requestedAt.parse(GATE_NOW),
+      source: shape.source.parse("run-detail"),
+      target: shape.target.parse({ runId: value.runId, gateId: "identity-approval", expectedVersion: value.expectedVersion }),
+      payload: { decision: "approved", gateRef: value.gateRef, optionRef },
+    }, undefined);
+    assert.equal(resolution.state, "accepted");
+    if (resolution.state !== "accepted") throw new Error("identity answer refused");
+    const { request } = resolution;
+    assert.ok(request.family === "gate" && request.type === "resolve-gate");
+    assert.equal(request.payload.result.schemaHash, deriveSchemaHash(IdentityApprovalResultSchema, "output"));
+    const result = IdentityApprovalResultSchema.parse(request.payload.result.value);
+    assert.equal(result.decision, "approved");
+    assert.equal(result.evidenceDigest, deriveIdentityEvidenceDigest(packet));
   } catch (error) { throw retainWireFailure(error); }
   });
 

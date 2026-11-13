@@ -181,8 +181,8 @@ function queuedRun() {
 }
 
 function claim(database: AuthorityDatabase, now: string) {
-  const { workerId, workerLifetime } = testWorkerLifetime(database, WORKFLOW_ID, 1);
-  const claimed = database.authority.runs.claimNext({ workerLifetime, workflow: WORKFLOW_ID, workerId, now });
+  const { workerId } = testWorkerLifetime(database, WORKFLOW_ID, 1);
+  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
   return {
     run: claimed.run,

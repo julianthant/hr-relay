@@ -2,7 +2,7 @@ import { z } from "zod";
 import { defineTaskContract } from "../../task/task-contract.js";
 import { taskId, FingerprintSchema } from "../../../rules/identity/ids.js";
 import { childRunOutcomeSchema } from "../../workflow/graph.js";
-import { ReadRetentionRow } from "../i9-check/check.js";
+import { ReadRetentionRow } from "../i9-check/read-retention-row.js";
 import { ReadI9CheckRequests } from "./read-requests.js";
 import { I9_CHECK_BATCH_TASK_POLICY, I9_CHECK_BATCH_ROWS_EXAMPLE, I9CheckBatchRowsSchema } from "../i9-check/batch.js";
 

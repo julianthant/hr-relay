@@ -8,12 +8,12 @@ import { i9CheckStartRosterReferenceDefinition } from "./steps/roster-reference/
 import { i9CheckStartRetentionDefinition } from "./steps/retention/step.js";
 
 export const i9CheckStartWorkflow = defineWorkflow({
-  id: "i9-check-start", requiredWorkbookTypeIds: [I9_CHECK_REFERENCE.typeId], version: 1, code: "ip",
+  id: "i9-check-start", requiredWorkbookFields: [...I9_CHECK_REFERENCE.fields], workbookReference: { id: I9_CHECK_REFERENCE.typeId, keyFieldId: "eid", mode: "keys", writableFields: [] }, version: 1, code: "ip",
   label: "I-9 Check", icon: "ClipboardCheck", category: "separation",
   summary: "Reads attached I-9 PDFs, reviews their people, checks retention in UCPath and saves one results workbook with a row per approved person.",
   input: I9CheckStartInput, canonicalInput: I9CheckStartCanonicalInput, inputSubject: "document",
   identity: { matchKey: i9CheckStartMatchKey },
-  referenceLookups: () => [{ typeId: I9_CHECK_REFERENCE.typeId, keys: [], fields: [...I9_CHECK_REFERENCE.fields] }],
+  referenceKeys: () => [],
   plannedOutputs: () => [{ kind: "workbook", name: "I-9 Check results", rowSubject: "person", rows: { state: "after-review" } }],
   presentation: { title: ({ documents }) => documents.length === 1 && documents[0] !== undefined ? documents[0].fileName : `I-9 Check · ${documents.length} PDFs`, subtitle: () => "One results workbook" },
   surface: { shape: "single" }, surfaces: {

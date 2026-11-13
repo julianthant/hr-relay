@@ -6,7 +6,25 @@ import { defineStep, defineStepEntries, inheritStepProof } from "../../../../wor
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { buildDocuments } from "../documents/step.js";
 
-const step = defineWorkflowStep({ key: "roster-reference", label: "Look up in roster" });
+const step = Object.freeze({
+  ...defineWorkflowStep({ key: "roster-reference", label: "Look up in roster" }),
+  review: {
+    pages: [
+      {
+        id: "retention-roster",
+        title: "Retention roster",
+        mode: "Read only",
+        nodeIds: ["read-reference", "read-requests"],
+        lines: [
+          { id: "reference", kind: "read", text: "Read the captured roster version for the approved people.", nodeIds: ["read-reference"] },
+          { id: "bind", kind: "check", text: "Check the selected worksheet rows and retention evidence before checking each person.", nodeIds: ["read-requests"] }
+        ],
+        fields: []
+      }
+    ],
+    branchLabels: []
+  } as const
+});
 const entries = defineStepEntries(step);
 type Author = WorkflowAuthor<typeof I9CheckStartInput>;
 export function buildRosterReference(author: Author, documents: ReturnType<typeof buildDocuments>) {

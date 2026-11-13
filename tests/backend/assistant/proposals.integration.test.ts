@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../support/helpers/backend/unused-worker-pool.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, it, vi } from "vitest";
@@ -65,7 +66,7 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
   let factsSha = "a".repeat(64);
   const kernel = createCommandKernel({ lifecycle: h.lifecycle, appVersion: "0.1.0", authority: database, clock, ids: { uuid: randomUUID }, descriptors: { resolve: () => h.descriptor },
     configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { recheck: unused, resolveAbsent: unused },
-    workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } },
+    workerRuntime: { pool: unusedWorkerPool(unused) },
     assistantFactsSha256: () => factsSha, workflowSources: { [h.descriptor.id]: "served" },
     assistantRevalidate: command => { if (database.authority.assistantAuthorization.actionByCommand(command.commandId) !== undefined) owner.authorization?.assertEffect(command.commandId, command); } });
   const authorization = owner.authorization = createAssistantAuthorization({ database, kernel, clock, current: () => ({ profileId, epoch: 1 }) });

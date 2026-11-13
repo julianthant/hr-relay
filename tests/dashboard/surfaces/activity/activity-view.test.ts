@@ -16,7 +16,7 @@ async function render(report: ActivityViewState = data, onExport?: (format: 'csv
   if (!root) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); }
   await act(async () => root?.render(createElement(ActivityView, { data: report, range: ACTIVITY_SAMPLE_RANGE, today: ACTIVITY_SAMPLE_TODAY, period: 'custom', onPreset() {}, onRange() {}, onExport })));
 }
-const button = () => { const found = [...document.querySelectorAll('button')].find(button => button.textContent === 'Export CSV'); assert(found); return found; };
+const button = () => { const found = [...document.querySelectorAll('button')].find(button => button.textContent === 'Export'); assert(found); return found; };
 it('exports CSV exactly once while pending and retains refusal feedback', async () => {
   let reject!: () => void;
   const onExport = vi.fn(() => new Promise<void>((_, fail) => { reject = () => fail(new Error('refused')); }));
@@ -43,4 +43,27 @@ it('the mock report refuses export visibly without starting a download', async (
   await act(async () => button().click());
   assert.match(document.body.textContent, /CSV export is unavailable in this preview./);
   assert.equal(document.querySelectorAll('a[download]').length, 0);
+});
+
+it('resets the workflow filter to All when the selected workflow leaves the period', async () => {
+  const loaded = (report: typeof data) => report;
+  if (data.state !== 'loaded') throw new Error('sample not loaded');
+  const [first, second] = data.report.analytics.workflows;
+  assert(first && second);
+  await render(data);
+  const trigger = [...document.querySelectorAll('button')].find(item => item.textContent === 'By workflow'); assert(trigger);
+  await act(async () => { trigger.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' })); });
+  const option = [...document.querySelectorAll('[role="menuitemradio"]')].find(item => item.textContent === first.label) as HTMLElement | undefined; assert(option);
+  await act(async () => option.click());
+  assert(![...document.querySelectorAll('button')].some(item => item.textContent === 'By workflow'));
+  await render(loaded({ ...data, report: { ...data.report, analytics: { ...data.report.analytics, workflows: [second] } } }));
+  assert([...document.querySelectorAll('button')].some(item => item.textContent === 'By workflow'));
+  assert.doesNotMatch(document.body.textContent, /No workflow activity in this period/);
+});
+
+it('counts a parked run as open, not as finished', async () => {
+  if (data.state !== 'loaded') throw new Error('sample not loaded');
+  const [first] = data.report.analytics.workflows; assert(first);
+  await render({ ...data, report: { ...data.report, analytics: { ...data.report.analytics, running: 1, workflows: [{ ...first, done: 0, failed: 0, attention: 1 }] } } });
+  assert.match(document.body.textContent, /0 finished runs · 1 still open/);
 });

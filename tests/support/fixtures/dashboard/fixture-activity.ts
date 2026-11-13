@@ -1,3 +1,4 @@
+import { operatorFailureSentence } from "../../../../src/models/failures/error-catalog.js";
 import { ActivityReportWireSchema, type ActivityReportWire } from "../../../../src/models/dashboard/activity.js";
 import { ActivityVolumeSchema, buildActivityVolumeBoundarySkeleton, createActivityDatePartReader } from "../../../../src/models/dashboard/activity-volume.js";
 import { FIXTURE_DAY, uuidOf } from "./fixture-identity.js";
@@ -13,6 +14,12 @@ const FIXTURE_ACTIVITY_DAYS = [
   { day: "2026-07-30", runs: 4 },
   { day: FIXTURE_DAY, runs: 5 },
 ] as const;
+const NO_FAILED_STEP = "the failed run has no task span that records the step where it failed";
+const outcomeSplit = (done: number, failed: number, attention = 0) => ({ done, failed, attention });
+const median = (measuredRuns: number, value: number) => ({ measuredRuns, medianMs: { state: "present" as const, value } });
+const activityDay = (day: string, runs: number, done: number, failed: number, measuredRuns: number, value: number) => ({
+  day, runs, outcomes: outcomeSplit(done, failed), typicalTime: median(measuredRuns, value),
+});
 
 function fixtureActivityVolume(range: { from: string; to: string }, days: readonly { day: string; runs: number }[]) {
   const boundary = buildActivityVolumeBoundarySkeleton(range, FIXTURE_ACTIVITY_TIME_ZONE);
@@ -43,16 +50,31 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
   inFlightRuns: 2,
 
   people: { state: "present", distinct: 8, evidenceRows: 12 },
-  days: FIXTURE_ACTIVITY_DAYS,
+  days: [
+    activityDay("2026-07-29", 3, 2, 0, 3, 100_000),
+    activityDay("2026-07-30", 4, 4, 0, 3, 200_000),
+    activityDay(FIXTURE_DAY, 5, 1, 2, 3, 874_000),
+  ],
   volume: fixtureActivityVolume(FIXTURE_ACTIVITY_RANGE, FIXTURE_ACTIVITY_DAYS),
 
   completion: { readBack: 5, warnings: 1, warningsUnknown: 1 },
+  outcomeSplit: outcomeSplit(7, 2),
+  typicalMedian: median(9, 874_000),
   workflows: [
     {
       workflowId: "person-lookup",
       registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "people" },
       runs: 9,
       completion: { readBack: 5, warnings: 1, warningsUnknown: 0 },
+      needsAttention: 1, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
+      typicalMedian: median(6, 800_000),
+      outcomes: outcomeSplit(6, 1),
+      days: [
+        activityDay("2026-07-29", 2, 2, 0, 2, 100_000),
+        activityDay("2026-07-30", 3, 3, 0, 2, 200_000),
+        activityDay(FIXTURE_DAY, 4, 1, 1, 2, 300_000),
+      ],
+      failedAt: [{ state: "unavailable", reason: NO_FAILED_STEP, runs: 1 }],
       failed: 1, cancelled: 0, partial: 0, open: 2,
     },
 
@@ -64,6 +86,15 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
       },
       runs: 3,
       completion: { readBack: 0, warnings: 0, warningsUnknown: 1 },
+      needsAttention: 1, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
+      typicalMedian: median(3, 500_000),
+      outcomes: outcomeSplit(1, 1),
+      days: [
+        activityDay("2026-07-29", 1, 0, 0, 1, 400_000),
+        activityDay("2026-07-30", 1, 1, 0, 1, 500_000),
+        activityDay(FIXTURE_DAY, 1, 0, 1, 1, 600_000),
+      ],
+      failedAt: [{ state: "unavailable", reason: NO_FAILED_STEP, runs: 1 }],
       failed: 1, cancelled: 1, partial: 0, open: 0,
     },
   ],
@@ -87,8 +118,8 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
     { outcome: "cancelled", runs: 1 },
   ],
   failures: [
-    { code: "SESSION_LOST", runs: 1, transient: 1, sample: [ACTIVITY_SAMPLE_RUN_ID] },
-    { code: "SUBJECT_MISMATCH", runs: 1, transient: 0, sample: [ACTIVITY_BLOCKED_RUN_ID] },
+    { code: "SESSION_LOST", sentence: operatorFailureSentence("SESSION_LOST"), workflowId: "person-lookup", registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "people" }, runs: 1, transient: 1, sample: [ACTIVITY_SAMPLE_RUN_ID] },
+    { code: "SUBJECT_MISMATCH", sentence: operatorFailureSentence("SUBJECT_MISMATCH"), workflowId: "retired-workflow", registration: { state: "unregistered", reason: "workflow retired-workflow is no longer registered; its label and category are unavailable" }, runs: 1, transient: 0, sample: [ACTIVITY_BLOCKED_RUN_ID] },
   ],
   durations: {
     measuredRuns: 9,

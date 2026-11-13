@@ -3,7 +3,7 @@ import { WorkflowWorkbookCommandSchema, WorkflowWorkbookResultSchema } from "../
 import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadResponseSchema } from "../../../models/processing/workbooks/read-reference.js";
 import { deriveSchemaHash, schemaBoundValueSchema } from "../../../models/validation/schema-bound-value.js";
 import { createWorkflowWorkbookService } from "../../workbooks/workflow-workbook-service.js";
-import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 
 export function createWorkbookLibraryAdapter(deps: Parameters<typeof createWorkflowWorkbookService>[0] & Readonly<{ runId: string }>): ProviderAdapter<"workbooks.library"> {

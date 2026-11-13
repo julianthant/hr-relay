@@ -62,6 +62,6 @@ try {
   process.exitCode = 1;
 } finally {
   if (!entered) { database?.close(); child?.release(); machine.release(); }
-  if (proved || !entered) await lifetimeLock.close();
-  if (proved || process.exitCode === 1) process.disconnect?.();
+  // A worker never closes its lifetime listener; exiting after the channel drains releases it.
+  if (proved || process.exitCode === 1) { process.once("disconnect", () => process.exit()); process.disconnect?.(); }
 }

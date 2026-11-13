@@ -1,10 +1,20 @@
 import assert from 'node:assert/strict';
 import { afterEach,describe,it } from 'vitest';
-import { SPREADSHEET_FIELDS,fieldForSpreadsheetHeader,spreadsheetValueMatches,suggestSpreadsheetField } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js';
+import { spreadsheetEditorField,spreadsheetValueMatches,suggestSpreadsheetField } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js';
+import { SPREADSHEET_FIELDS,fieldForSpreadsheetHeader } from '../../../../src/models/fields/workbook-fields.js';
 import { resetSpreadsheetMocks } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js';
 import { CANONICAL_FIELD_IDS } from '../../../../src/models/fields/registry.js';
 afterEach(resetSpreadsheetMocks);
 describe('typed spreadsheet field contract', () => {
+  it('presents validated saved custom roster fields from their actual header without making them workflow fields', () => {
+    assert.equal(spreadsheetEditorField('roster.customTracker', 'Tracker status').label, 'Tracker status');
+    assert.equal(spreadsheetValueMatches('roster.customTracker', 'any tracker value'), true);
+    assert.throws(() => spreadsheetEditorField('roster.customTracker', ''), /SPREADSHEET_FIELD_LABEL_MISSING/u);
+    assert.throws(() => spreadsheetEditorField('roster.bad-id', 'Tracker status'), /SPREADSHEET_FIELD_NOT_FOUND/u);
+    assert.equal(spreadsheetEditorField('roster.backgroundEntered', 'Wrong label').type, 'date');
+    assert.equal(spreadsheetEditorField('roster.backgroundEntered', 'Wrong label').label, 'Background entered');
+    assert.equal(spreadsheetEditorField('roster.offerAccepted', 'Wrong label').type, 'status');
+  });
   it('shares every canonical field ID and recognizes roster header aliases', () => {
     assert.equal(new Set(SPREADSHEET_FIELDS.map(field => field.id)).size, SPREADSHEET_FIELDS.length);
     for (const id of CANONICAL_FIELD_IDS) assert(SPREADSHEET_FIELDS.some(field => field.id === id), id);

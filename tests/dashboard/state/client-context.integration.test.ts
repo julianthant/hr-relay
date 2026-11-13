@@ -46,7 +46,7 @@ it("retains an unknown envelope across loaded-tree unmount and client replacemen
     const request = CommandRequestSchema.parse({ family: "settings", type: "apply-settings", commandId: "11111111-1111-4111-8111-111111111111",
       requestedAt: FIXTURE_BOOTSTRAP.serverClock.now, requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: 1 },
       payload: { settingsSchemaHash: "d".repeat(64), patchFingerprint: "d".repeat(64), patch: { "actor.label": { set: "fixture" } } } });
-    const options = { scope: original.scope, publish: original.feedback, readback: async (command: import("../../../src/rules/commands/commands.js").CommandRequest, reply: import("../../../src/rules/commands/commands.js").CommandResult | import("../../../src/rules/commands/commands.js").BulkRunCommandOutcome, scope: import("../../../src/dashboard/app/commands/command-executor.js").CommandExecutionScope) => {
+    const options = { scope: original.scope, publish: original.feedback, readback: async (command: import("../../../src/rules/commands/commands.js").DashboardCommandRequest, reply: import("../../../src/rules/commands/commands.js").CommandResult | import("../../../src/rules/commands/commands.js").BulkRunCommandOutcome, scope: import("../../../src/dashboard/app/commands/command-executor.js").CommandExecutionScope) => {
       const currentClient = scope.client === first ? first : second;
       const document = await currentClient.editableSettings();
       return { state: command.family === "settings" && command.type === "apply-settings" && !("outcome" in reply) && ordinaryReadbackState(command, reply, document) === "confirmed" ? "matched" as const : "mismatch" as const, evidence: document };

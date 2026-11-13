@@ -1,4 +1,5 @@
-import { OnbaseCommitImport, validateOnbaseImportVerdict } from "../../../../models/systems/onbase/import-document.js";
+import { validateOnbaseImportVerdict } from "../../../../models/systems/onbase/import-document.js";
+import { OnbaseCommitImport } from "../../../../models/systems/onbase/upload-import.js";
 import { defineTask } from "../../../../workflow-kit/task.js";
 import { onbaseDriver } from "../driver-declaration.js";
 

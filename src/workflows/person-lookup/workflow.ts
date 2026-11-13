@@ -20,7 +20,7 @@ const SEARCH_ENTRIES = { split: { kind: "delimited", delimiters: [";", "\n"] }, 
 
 export const personLookupWorkflow = defineWorkflow({
   id: "person-lookup",
-  requiredWorkbookTypeIds: [],
+  requiredWorkbookFields: [],
   version: 3,
   code: "pl",
   label: "Person Lookup",

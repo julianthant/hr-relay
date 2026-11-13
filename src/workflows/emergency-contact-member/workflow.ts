@@ -9,7 +9,7 @@ export const EMERGENCY_CONTACT_SCENARIOS = ["emergency-contact/unambiguous-addit
   "emergency-contact/conflict-refused", "emergency-contact/dry-run", "emergency-contact/unknown", "emergency-contact/verified-save"] as const;
 export const emergencyContactMemberWorkflow = defineWorkflow({
   id: "emergency-contact-member", version: 1, code: "em", label: "Emergency Contact member", icon: "Users", category: "documents",
-  summary: "Authenticates one approved OCR record and saves its ordered primary contact changes in UCPath.", requiredWorkbookTypeIds: [],
+  summary: "Authenticates one approved OCR record and saves its ordered primary contact changes in UCPath.", requiredWorkbookFields: [],
   input: EmergencyContactMemberInputSchema, canonicalInput: EmergencyContactMemberCanonicalInput, inputSubject: "eid",
   surface: { shape: "operation-member" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {},
   role: defineWorkflowRole({ kind: "composition" }), identity: { matchKey: input => `${input.approval.sourceRunId}:${input.record.recordId}` },

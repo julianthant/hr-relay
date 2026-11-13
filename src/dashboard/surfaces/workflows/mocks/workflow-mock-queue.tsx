@@ -1,19 +1,19 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, GitBranch, ListChecks, RotateCcw } from "lucide-react";
-import { Button, Dialog, DialogContent, DialogBody, DialogFooter, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../../../ds/ui.js";
+import { ArrowUpRight, GitBranch, ListChecks, RotateCcw, RotateCw } from "lucide-react";
+import { LogFooterButton } from "../../run-detail/logs/log-action-button.js";
+import { ConfirmDialog, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { LogPanel } from "../../run-detail/log-panel.js";
-import { queueRunHeader } from "../../run-detail/run-header-model.js";
-import { mockApprovalError, mockFailedStepKey, mockNeedsReview, mockQueueStatus, mockReviewRun, mockRunLog, mockRunStatus, type MockRun } from "./workflow-mock-model.js";
+import { mockApprovalError, mockFailedStepKey, mockNeedsReview, mockReviewRun, mockRunLog, mockRunStatus, type MockRun } from "./workflow-mock-model.js";
 import { mockWorkflow } from "./workflow-mock-catalog.js";
-import { mockQueueId, mockQueueOutcomes, mockQueueSurface, mockQueueSurfaces } from "./workflow-queue-model.js";
+import { mockQueueId, mockQueueOutcomes, mockQueueSurfaces } from "./workflow-queue-model.js";
+import { renameMockRun, useMockRunNames } from "./mock-run-names.js";
 import { QueuePanel, type QueueFilterScope } from "../../queue/queue.js";
-import type { QueueSortKey, QueueSurfaceWire } from "../../queue/queue-model.js";
-import { StatusBadge } from "../../shared/status/status.js";
-import { dsStatusOf } from "../../shared/status/status-model.js";
+import { queueItemKey, type QueueSortKey, type QueueSurfaceWire } from "../../queue/queue-model.js";
 import { mockReviewProps, reviewRecords, seedReviewRecords, type ReviewRecord } from "./workflow-review-model.js";
 import { reviewSourcePages } from "./workflow-review-source-model.js";
 import { RecordReview } from "../../run-detail/review/review.js";
+import { ReviewDialog } from "../../run-detail/review/review-dialog.js";
 import { documentSourcePages } from "./workflow-document-model.js";
 import { mockDeletionCopy, mockDeletionIds } from "./workflow-mock-model.js";
 
@@ -28,16 +28,21 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   const queueRoot = useRef<HTMLDivElement>(null);
   const deleted = useRef(false);
   const deleteLauncher = useRef<HTMLElement | null>(null);
-  const surfaces = useMemo(() => mockQueueSurfaces(runs, anchorIso, allRuns), [runs, anchorIso, allRuns]);
+  const names = useMockRunNames();
+  const surfaces = useMemo(() => mockQueueSurfaces(runs, anchorIso, allRuns).map(surface => {
+    const name = names.get(surface.runId);
+    return name === undefined ? surface : { ...surface, displayName: { state: "present" as const, value: name } };
+  }), [runs, anchorIso, allRuns, names]);
   const outcomes = useMemo(() => mockQueueOutcomes(runs), [runs]);
   const ids = useMemo(() => new Map(runs.map(run => [mockQueueId(run.id), run.id])), [runs]);
   const queueState = useMemo(() => ({
     selectedRunId: selected ? mockQueueId(selected) : undefined,
-    openWells: new Set<string>(),
+    openWells: new Set(surfaces.filter(surface => surface.surfaceKind === "operation").map(queueItemKey)),
     panelWorkflowId: runs[0]?.workflowId,
     nowIso,
-  }), [selected, runs, nowIso]);
+  }), [selected, runs, nowIso, surfaces]);
   const queueHandlers = useMemo(() => ({
+    onRenameTitle: renameMockRun,
     onSelect: (id: string) => {
       const target = ids.get(id);
       if (!target) throw new Error(`MOCK_QUEUE_RUN_UNKNOWN: ${id}`);
@@ -63,25 +68,22 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   return <div ref={queueRoot} className="flex min-h-0 min-w-0 flex-1 flex-col [&>section]:flex-1"><QueuePanel outcomes={outcomes} surfaces={surfaces} panelLabel={label} header={false} day={day} sort={sort} filter={filter}
     state={queueState}
     handlers={queueHandlers} workflowLabelOf={mockWorkflowLabelOf} />
-    <Dialog open={!!pendingDelete} onOpenChange={open => { if (!open) setPendingDelete(undefined); }}>
-      <DialogContent title={`Delete ${pendingDelete?.subject ?? "run"}?`} size="sm" onCloseAutoFocus={event => {
+    <ConfirmDialog open={!!pendingDelete} onOpenChange={open => { if (!open) setPendingDelete(undefined); }} destructive title={`Delete ${pendingDelete?.subject ?? "run"}?`}
+      description={pendingDelete ? mockDeletionCopy(mockDeletionIds(allRuns, pendingDelete.id).length - 1) : undefined} confirmLabel="Delete run"
+      onConfirm={() => { if (!pendingDelete) return; deleted.current = true; onDelete(mockDeletionIds(allRuns, pendingDelete.id)); setPendingDelete(undefined); }}
+      onCloseAutoFocus={event => {
         event.preventDefault();
         if (!deleted.current) { deleteLauncher.current?.focus(); return; }
         deleted.current = false;
         focusRemainingRow();
-      }}>
-        <DialogBody>{pendingDelete && <p className="m-0 text-body text-ui-secondary">{mockDeletionCopy(mockDeletionIds(allRuns, pendingDelete.id).length - 1)}</p>}</DialogBody>
-        <DialogFooter><Button variant="muted" onClick={() => setPendingDelete(undefined)}>Cancel</Button><Button variant="danger" onClick={() => { if (!pendingDelete) return; deleted.current = true; onDelete(mockDeletionIds(allRuns, pendingDelete.id)); setPendingDelete(undefined); }}>Delete</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
+      }} />
   </div>;
 }
 
-export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChange, onDiscard, onRestore, onSelect, reviewOpen, onReviewOpenChange, nowIso, anchorIso }: {
+export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChange, onDiscard, onRestore, onSelect, reviewOpen, onReviewOpenChange }: {
   run: MockRun; runs: readonly MockRun[]; onRerun: () => void; onRetry: () => void; onApprove: () => void;
   onChange: (records: readonly ReviewRecord[]) => void; onDiscard: () => void; onRestore: () => void; onSelect: (id: string) => void;
   reviewOpen?: boolean; onReviewOpenChange?: (open: boolean) => void;
-  nowIso: string; anchorIso: string;
 }) {
   const [localReviewOpen, setLocalReviewOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
@@ -98,7 +100,6 @@ export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChan
     return () => { if (frame !== undefined) cancelAnimationFrame(frame); };
   }, [recordsVisible]);
   const { workflowId, draft } = reviewRun;
-  const surface = useMemo(() => mockQueueSurface(run, anchorIso, run.parentId === undefined ? undefined : runs.find(parent => parent.id === run.parentId)), [run, runs, anchorIso]);
   const sourcePages = useMemo(() => {
     if (!hasRecords) return {};
     const originals = seedReviewRecords({ workflowId, draft });
@@ -108,16 +109,14 @@ export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChan
       return [record.id, documentSourcePages(draft, original) ?? reviewSourcePages(original)];
     }));
   }, [hasRecords, workflowId, draft, reviewRun]);
-  const { steps, timeline } = recordsVisible ? { steps: [], timeline: [] } : mockRunLog(reviewRun === run ? run : { ...run, records: reviewRun.records });
+  const { steps, timeline } = mockRunLog(reviewRun === run ? run : { ...run, records: reviewRun.records });
   const linked = useMemo(() => runs.filter(item => item.id !== run.ocrRunId && (item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.ocrRunId === run.id)), [runs, run]);
   const openRecords = useCallback(() => setRecordsVisible(true), [setRecordsVisible]);
   const decide = useCallback((_id: string, option: { id: string }) => { if (option.id === "retry-step") onRetry(); }, [onRetry]);
   const toolbar = useMemo(() => <span className="flex items-center gap-2">
-        {hasRecords && <Button ref={recordsButton} size="sm" variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)}>Records {reviewRecords(reviewRun).length}</Button>}
-        {run.role === "person" && mockFailedStepKey(run) !== undefined && <IconButton size="sm" variant="outline" label="Retry" icon={<RotateCcw aria-hidden className="size-4" />} onClick={onRetry} />}
-        {mockWorkflow(run.workflowId).runnable && !(run.workflowId === "ocr" && run.parentId) && run.role !== "person" && <Button size="sm" onClick={onRerun}>Rerun</Button>}
+        {run.role === "person" && mockFailedStepKey(run) !== undefined && <IconButton size="md" variant="outline" label="Retry" icon={<RotateCcw aria-hidden className="size-4" />} onClick={onRetry} />}
         {linked.length > 0 && <Popover open={linksOpen} onOpenChange={setLinksOpen}>
-          <PopoverTrigger asChild><IconButton size="sm" variant="outline" label={`Linked runs (${linked.length})`} icon={<GitBranch aria-hidden className="size-4" />} /></PopoverTrigger>
+          <PopoverTrigger asChild><IconButton size="md" variant="outline" label={`Linked runs (${linked.length})`} icon={<GitBranch aria-hidden className="size-4" />} /></PopoverTrigger>
           <PopoverContent title="Linked runs" align="end" width="md">
             <ul className="m-0 list-none space-y-1 p-0">{linked.map(item => <li key={item.id}>
               <button type="button" onClick={() => { setLinksOpen(false); onSelect(item.id); }} className={cn("flex min-h-10 w-full items-center gap-3 rounded-md px-2 py-2 text-left text-body hover:bg-ui-hover", dsFocus)}>
@@ -127,13 +126,15 @@ export function WorkflowMockLog({ run, runs, onRerun, onRetry, onApprove, onChan
             </li>)}</ul>
           </PopoverContent>
         </Popover>}
-      </span>, [hasRecords, recordsVisible, recordsButton, run, reviewRun, linked, linksOpen, setLinksOpen, setRecordsVisible, onSelect, onRerun, onRetry]);
-  const reviewContent = useMemo(() => recordsVisible ? <div id={`records-${mockQueueId(run.id)}`} className="flex min-h-0 min-w-0 flex-1">
+      </span>, [run, linked, linksOpen, setLinksOpen, onSelect, onRetry]);
+  const footerActions = useMemo(() => <>
+        {hasRecords && <LogFooterButton ref={recordsButton} label={`Records ${reviewRecords(reviewRun).length}`} count={reviewRecords(reviewRun).length} pressed={recordsVisible} icon={<ListChecks aria-hidden className="size-4" />} onClick={openRecords} />}
+        {mockWorkflow(run.workflowId).runnable && !(run.workflowId === "ocr" && run.parentId) && run.role !== "person" && <LogFooterButton label="Rerun" icon={<RotateCw aria-hidden className="size-4" />} onClick={onRerun} />}
+      </>, [hasRecords, recordsVisible, recordsButton, run, reviewRun, openRecords, onRerun]);
+  const reviewContent = useMemo(() => recordsVisible ? <ReviewDialog open onOpenChange={setRecordsVisible} subject={run.subject}>
     <RecordReview key={reviewRun.id} {...mockReviewProps({ approvalError: mockApprovalError(reviewRun), run: reviewRun, sourcePages, onChange, onApprove: mockNeedsReview(reviewRun) ? onApprove : undefined, onDiscard: mockNeedsReview(reviewRun) || reviewRun.workflowId === "ocr" && !reviewRun.parentId && !reviewRun.discarded ? onDiscard : undefined, onRestore })} />
-  </div> : undefined, [recordsVisible, run, reviewRun, sourcePages, onChange, onApprove, onDiscard, onRestore]);
-  return <LogPanel title={run.subject} steps={steps} timeline={timeline} context={queueRunHeader(surface, mockWorkflow(run.workflowId).label, nowIso)}
+  </ReviewDialog> : undefined, [recordsVisible, run, reviewRun, sourcePages, onChange, onApprove, onDiscard, onRestore, setRecordsVisible]);
+  return <><LogPanel title={run.subject} steps={steps} timeline={timeline}
       onReview={hasRecords ? openRecords : undefined} onDecision={decide}
-      status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
-      toolbar={toolbar}
-      content={reviewContent} />;
+      toolbar={toolbar} footerActions={footerActions} />{reviewContent}</>;
 }

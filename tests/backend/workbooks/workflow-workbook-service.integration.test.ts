@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, expect, it } from "vitest";
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkflowWorkbookService } from "../../../src/backend/workbooks/workflow-workbook-service.js";
-import { WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-error.js";
 import { WorkflowWorkbookCommandSchema, type WorkflowWorkbookCommand } from "../../../src/models/processing/workbooks/read-result.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { i9CheckWorkbookTable } from "../../../src/rules/i9-check/workbook.js";

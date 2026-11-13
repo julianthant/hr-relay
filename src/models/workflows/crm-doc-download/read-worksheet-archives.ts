@@ -4,7 +4,7 @@ import { defineTaskContract } from "../../task/task-contract.js";
 import { taskId } from "../../../rules/identity/ids.js";
 import { CrmDocumentArchivesSchema, CrmWorksheetArchiveSchema, CrmWorksheetPersonSchema } from "./documents.js";
 
-const worksheet = CrmWorksheetArchiveSchema.parse({ relativePath: "July 6/July 6.zip", worksheetId: "fixture-sheet", worksheetName: "July 6",
+const worksheet = CrmWorksheetArchiveSchema.parse({ relativePath: "July 6/July 6.zip", referenceDigest: "a".repeat(64), worksheetId: "fixture-sheet", worksheetName: "July 6",
   artifact: { id: "11111111-1111-4111-8111-111111111111", sha256: "a".repeat(64), bytes: 100, mediaType: "application/zip" },
   people: [{ identity: { recordId: "fixture-record", eid: null, workEmail: "fixture@example.test", personalEmail: null },
     rowId: "fixture-row", folderName: "Person, Fixture EID", documentCount: 1 }] });

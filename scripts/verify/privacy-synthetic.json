@@ -15,8 +15,12 @@
     "src/backend/assistant/plugins/workflows/facts.json",
     "src/dashboard/assets/ocr/documents.json",
     "src/dashboard/kit/kit-page.tsx",
+    "src/dashboard/surfaces/assistant/assistant-mock-frames.ts",
+    "src/dashboard/surfaces/explorer/explorer-spec-fixtures.ts",
     "src/dashboard/surfaces/notifications/notifications-fixture.ts",
     "src/dashboard/surfaces/run-detail/logs/log-decision-fixture.ts",
+    "src/dashboard/surfaces/settings/status-mock/status-mock-model.ts",
+    "src/dashboard/surfaces/spreadsheets/design/sheets-v2-model.ts",
     "src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.ts",
     "src/dashboard/surfaces/workflows/mocks/workflow-operation-catalog.ts",
     "src/dashboard/surfaces/workflows/mocks/workflow-result-model.ts",
@@ -177,7 +181,7 @@
   "publicConfigFiles": [
     {
       "path": ".npmrc",
-      "sha256": "d4454eb72fdf5706d03d2d002058622c498e649a5c5faa35a133e9a817a6d79a"
+      "sha256": "d929102a7fc1ba7239ce079f12e8c9c764d83c026280ebd826d1bb5410693b2b"
     }
   ],
   "credentialCanaries": [

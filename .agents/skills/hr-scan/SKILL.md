@@ -1,6 +1,8 @@
 ---
 name: hr-scan
 description: Scan HR documents into structured data — scanner PDFs (Xerox Scan_*.pdf), rosters, I-9 stacks, onboarding packets, Kuali/UCPath printouts — by recognizing the document SHAPE first (a remembered catalog in references/document-shapes.md that this skill extends every time it meets a new type), then extracting only the fields that shape carries, in parallel transcribe-only readers, deduping, resolving people to EIDs through person-lookup when asked, flagging ambiguity BY PAGE NUMBER, and emitting the requested artifact (spreadsheet, worklist for hr-manage, intake bundle for the rebuild's OCR/intake gate). Never copies SSNs into transcripts or artifacts. Invoke on `/hr-scan PATH`, "read this scan", "make me a spreadsheet of these people", "what documents are in this stack", "add the EIDs".
+metadata:
+  exposed: "true"
 ---
 
 # /hr-scan — documents in, structured data out, faster every time

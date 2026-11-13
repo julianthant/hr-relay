@@ -7,6 +7,8 @@ import { afterEach, describe, it, vi } from "vitest";
 import { readTimelineRecords } from "../../../../../src/backend/storage/events/timeline-reader.js";
 import { RequestIdentityRefusedError } from "../../../../../src/backend/runs/commands/refusals.js";
 import { DashboardClientDisconnectedError } from "../../../../../src/backend/transports/http/http-server.js";
+import { PreflightRunnerTimeoutError } from "../../../../../src/models/preflight/preflight.js";
+import { PreflightCheckIdSchema } from "../../../../../src/models/preflight/preflight-contract.js";
 import { UUID_4 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 
@@ -27,6 +29,23 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(diagnostics[0]?.stack, "TypeError\n    at src/backend/runs/queries/run-detail.ts:42:7");
     assert.equal(diagnostics[0]?.status, 500);
     assert.equal(/Quillan|Petra|private record/u.test(JSON.stringify(diagnostics)), false);
+  });
+
+  it("logs one preflight-timeout row naming the check that missed its budget", async () => {
+    const h = await harness();
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_4 }));
+    vi.spyOn(h.projection, "runFold").mockImplementation(() => {
+      throw new Error("prepare refused", { cause: new PreflightRunnerTimeoutError(PreflightCheckIdSchema.parse("authority.health"), 10_000) });
+    });
+    const response = await h.app.request(`/api/v1/runs/${UUID_4}`);
+    assert.equal(response.status, 409);
+    assert.equal((await json(response)).code, "PREFLIGHT_TIMEOUT");
+    const rows = readTimelineRecords(h.database.authority.timelineEvents).records
+      .flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "preflight-timeout" ? [record.payload.event] : []);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.code, "PREFLIGHT_TIMEOUT");
+    assert.equal(rows[0]?.status, 409);
+    assert.match(rows[0]?.message ?? "", /authority\.health/u);
   });
 
   it("records a client disconnect as cancellation without claiming a delivered 500", async () => {

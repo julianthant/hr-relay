@@ -2,7 +2,7 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
 import { CONFIG_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory, QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
-import { testWorkerLifetime, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { openBoundDatabaseFixture, createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -34,15 +34,13 @@ export function createNotificationCompositionTestWorld(profileFixture: () => Pro
     f.db.authority.runs.enqueue(queued);
     if (desired.lifecycle.state === "queued") return f.db.authority.runs.get(queued.envelope.runId)!;
     const slot = f.db.authority.workerSlots.list("person-lookup")[0];
-    const claimMember1 = f.db.authority.workerSlots.get(slot.workerId);
-    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-    const claim = f.db.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(f.db, "person-lookup", claimMember1.poolIndex).workerLifetime, workflow: "person-lookup", workerId: slot.workerId, now: f.clock.now().toISOString() });
+    const claim = f.db.authority.runs.claimNext({ workflow: "person-lookup", workerId: slot.workerId, now: f.clock.now().toISOString() });
     if (claim.state !== "claimed") throw new Error("fixture claim refused");
     let run = claim.run;
     for (const state of ["validating", "running"] as const) {
       const result = f.db.authority.runs.transition({ runId: run.envelope.runId, expectedVersion: run.version,
         claim: { workerId: slot.workerId, claimGeneration: run.claimGeneration }, now: f.clock.now().toISOString(),
-        lifecycle: { state, ...(state === "running" ? { currentNodeId: "searching" } : {}), workerId: slot.workerId, workerLifetime: testWorkerLifetime(f.db, "person-lookup", claimMember1.poolIndex).workerLifetime, claimedAt: run.lifecycle.state === "claimed" ? run.lifecycle.claimedAt : f.clock.now().toISOString(), heartbeatAt: f.clock.now().toISOString() } });
+        lifecycle: { state, ...(state === "running" ? { currentNodeId: "searching" } : {}), workerId: slot.workerId, claimedAt: run.lifecycle.state === "claimed" ? run.lifecycle.claimedAt : f.clock.now().toISOString(), heartbeatAt: f.clock.now().toISOString() } });
       if (result.state !== "applied") throw new Error("fixture transition refused");
       run = result.run;
     }

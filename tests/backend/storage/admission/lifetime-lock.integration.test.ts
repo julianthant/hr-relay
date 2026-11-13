@@ -31,7 +31,7 @@ import { spawn } from 'node:child_process';
 import { acquireRuntimeLifetimeLock, receiveRuntimeLifetimeLock, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from ${JSON.stringify(source)};
 if (process.argv[2] === 'worker') {
   const lock = await receiveRuntimeLifetimeLock(Number(process.argv[3]), () => {
-    void lock.close().then(() => process.exit(0));
+    process.exit(0);
   });
   if (lock instanceof RuntimeLifetimeLock || !(lock instanceof WorkerRuntimeLifetimeLock)) throw new Error('worker lock type is not distinct');
   process.send({ kind: 'held' });
@@ -140,9 +140,7 @@ it("uses the configured singleton port for production parents and refuses busy r
       }), RuntimeAlreadyRunningError);
     }
     const bootstrap = await readFile(new URL("../../../../src/backend/app/bootstrap/secure-env-bootstrap.ts", import.meta.url), "utf8");
-    assert.match(bootstrap, /receiveRuntimeLifetimeLock\(rebuildRuntimeIsolation\.lockPort,/u);
-    const verification = await readFile(new URL("../../../../scripts/verify/browser-login.ts", import.meta.url), "utf8");
-    assert.match(verification, /acquireRuntimeLifetimeLock\(rebuildRuntimeIsolation\.lockPort\)/u);
+    assert.match(bootstrap, /receiveRuntimeLifetimeLock\)\(rebuildRuntimeIsolation\.lockPort,/u);
   } finally {
     await lock.close();
   }
@@ -177,8 +175,8 @@ it("keeps machine publication with the controller and creates no PID lease or ad
       const worker = RuntimeAdmission.acquireWorker(process.argv[2], lock);
       assert.deepEqual(worker.readProfileRegistry().profiles, []);
       assert.throws(() => worker.publishProfileOperation("00000000-0000-4000-8000-000000000001"), /worker-machine-control-read-only/);
-      process.send({ kind: "verified", profiles: 0, publication: "refused" });
-      worker.release(); await lock.close(); process.disconnect();
+      worker.release();
+      process.send({ kind: "verified", profiles: 0, publication: "refused" }, () => process.exit(0));
     `, String(lock.port), directory], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
     worker.stderr?.resume();
     closed = once(worker, "close");
@@ -240,7 +238,7 @@ it("retains the controller listener until the inherited worker actually closes",
       const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
       process.on("message", async input => {
         if (input !== "close") throw new Error("unexpected fixture command");
-        await lifetime.close(); process.disconnect();
+        process.exit(0);
       });
       process.send("held");
     `, String(lock.port)], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
@@ -293,7 +291,7 @@ it("refuses handle sharing during exclusive admission and exclusive admission un
       const document = admission.readProfileRegistry();
       process.on("message", async input => {
         if (input !== "close") throw new Error("unexpected fixture command");
-        admission.release(); await lifetime.close(); process.disconnect();
+        admission.release(); process.exit(0);
       });
       process.send({ kind: "admitted", profiles: document.profiles.length });
     `, String(lock.port), directory], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
@@ -490,7 +488,7 @@ for (const capability of ["foreign-workspace", "retained-child"] as const) it(`r
       child = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", `
         import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(source)};
         const lock = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
-        process.once("message", () => { void lock.close().then(() => process.disconnect()); });
+        process.once("message", () => { process.exit(0); });
         process.send({ state: "ready" });
       `, String(lock.port)], { stdio: ["ignore", "ignore", "inherit", "ipc"] });
       closed = once(child, "close");

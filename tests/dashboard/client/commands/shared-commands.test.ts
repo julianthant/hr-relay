@@ -10,7 +10,7 @@ it("binds a parked check receipt to both its exact worker and held run", () => {
   const request = CommandRequestSchema.parse({ commandId: UUID_1, requestedAt: NOW, requestedBy: "local-operator", source: "run-detail",
     family: "worker-browser", type: "check-parked-write", target: {
       workerId: "separations-worker-1", workflowId: "separations", expectedVersion: 2,
-      controlBasis: { leaseGeneration: 1, controlRevision: 1 }, membershipRevision: 1, processId: 42, startedAt: NOW,
+      lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000",
       installationId: UUID_1, profileId: UUID_2, itemId: UUID_1, runId: UUID_2, runVersion: 3, runAttempt: 1,
       traceId: "sep-120000-0001", nodeId: "submit", writeIntentId: UUID_1, intentVersion: 1, intentGeneration: 1,
       writeAttemptId: UUID_2, bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64),

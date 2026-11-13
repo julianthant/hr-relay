@@ -30,7 +30,7 @@ async function fixture() {
   for (const [index, worksheetName, firstName] of [[1, "July 6", "One"], [2, "August 2", "Two"]] as const) {
     const artifact = await artifacts.put(Buffer.from(`%PDF-1.7 fixture ${index}`), { mediaType: "application/pdf" });
     people.push(CrmWorksheetPersonSchema.parse({ identity: { recordId: `record-${index}`, eid: `1000000${index}`, workEmail: `person${index}@example.test`, personalEmail: null },
-      reference: { worksheetId: `sheet-${index}`, worksheetName, rowId: `row-${index}`,
+      reference: { referenceDigest: "a".repeat(64), worksheetId: `sheet-${index}`, worksheetName, rowId: `row-${index}`,
         names: { legalName: { firstName, lastName: "Fixture", middleName: "" }, livedName: null } },
       documents: [{ index: 0, fileName: "Signed Offer Letter.pdf", artifact }] }));
   }
@@ -55,6 +55,29 @@ it("packages only each worksheet's people at both approved archive destinations 
   }
   const replay = await packageCrmWorksheetArchives(f.artifacts, f.people, f.controller.signal);
   assert.deepEqual(replay.map(output => output.artifact.sha256), outputs.map(output => output.artifact.sha256));
+});
+
+it("publishes one archive per source when two worksheets share a local id and row", async () => {
+  const f = await fixture(), one = f.people[0], two = f.people[1]; assert.ok(one && two);
+  const left = "a".repeat(64), right = "b".repeat(64);
+  const shared = { worksheetId: "csv", worksheetName: "Sheet 1", rowId: "row-1" };
+  const people = [one, two].map((person, index) => CrmWorksheetPersonSchema.parse({ ...person, reference: { ...person.reference, ...shared, referenceDigest: index === 0 ? left : right } }));
+  const outputs = await packageCrmWorksheetArchives(f.artifacts, people, f.controller.signal);
+  assert.deepEqual(outputs.map(output => [output.referenceDigest, output.worksheetId, output.people[0]?.rowId, output.relativePath]), [
+    [left, "csv", "row-1", `${left}/Sheet 1/Sheet 1.zip`],
+    [right, "csv", "row-1", `${right}/Sheet 1/Sheet 1.zip`],
+  ]);
+  for (const output of outputs) {
+    const bytes = f.stored.get(output.artifact.sha256)?.bytes; assert.ok(bytes);
+    const zip = await JSZip.loadAsync(bytes);
+    assert.deepEqual(Object.keys(zip.files), [`${output.people[0]?.folderName}/Signed Offer Letter.pdf`]);
+  }
+  const first = people[0], second = people[1]; assert.ok(first && second);
+  await assert.rejects(packageCrmWorksheetArchives(f.artifacts, [first, first], f.controller.signal), /repeats a reference row/u);
+  await assert.rejects(packageCrmWorksheetArchives(f.artifacts, [
+    first,
+    CrmWorksheetPersonSchema.parse({ ...second, reference: { ...second.reference, referenceDigest: left, worksheetId: "other-csv" } }),
+  ], f.controller.signal), /destinations collide/u);
 });
 
 it("refuses duplicate rows, colliding person folders and worksheet destinations before producing archives", async () => {

@@ -14,6 +14,8 @@ import { childRunOutcomeSchema } from "../../../../src/models/workflow/graph.js"
 import { bindOcrLookupOutcomes } from "../../../../src/models/workflows/ocr/lookup.js";
 import { OcrReviewRefusedError } from "../../../../src/backend/processing/ocr/review-authority.js";
 import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
+import { compactOcrResult } from "../../../../src/models/workflows/ocr/result.js";
+import { compactOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-seed.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -23,7 +25,8 @@ function publicationCheckpoint(checkpoint: RunCheckpointRecord, value: RunCheckp
   return RunCheckpointRecordSchema.parse({ ...checkpoint, claimGeneration, output: { ...checkpoint.output, value },
     observationOrigins: observationLeafPaths(value).map(path => ({ path, origin: {
       runId: checkpoint.runId, attempt: checkpoint.attempt, spanPath: taskSpanPath(traceId, checkpoint.nodeId, 1, claimGeneration),
-      nodeId: checkpoint.nodeId, taskId: "workflow:ocr/read-result", field: path[0], path: path.slice(1),
+      nodeId: checkpoint.nodeId, taskId: checkpoint.nodeId === "build-review" ? "workflow:ocr/read-review-seed" : "workflow:ocr/read-result",
+      field: path[0], path: path.slice(1),
     } })),
   });
 }
@@ -55,7 +58,7 @@ for (const release of [true, false]) it(`retries one failed signer child from a 
   assert.equal(completed.run.envelope.runId, replacement.envelope.runId);
   assert.equal(completed.outcome.state, "done");
   assert.deepEqual(f.signerReads, [...firstNames, firstNames[1]]);
-  const stale = publicationCheckpoint(checkpoint, original.seed, f.run.envelope.traceId);
+  const stale = publicationCheckpoint(checkpoint, compactOcrResult(original.seed), f.run.envelope.traceId);
   const generation = f.database.getMeta().authorityGeneration;
   assert.throws(() => f.database.withAuthorityTransaction(authority => {
     authority.runCheckpoints.insert(stale);
@@ -139,8 +142,12 @@ it("keeps operator corrections when the same child evidence is published again",
   assert.equal(f.canonical.kernel.execute(approval).state, "applied");
   const snapshots = repositories.ocrReviews.snapshots(f.run.envelope.runId);
   const approvedGeneration = f.database.getMeta().authorityGeneration;
-  const rebuilt = publicationCheckpoint(checkpoint, { ...current.seed, review: { ...current.seed.review, sourceRunId: f.run.envelope.runId } }, f.run.envelope.traceId);
+  const reviewed = repositories.runCheckpoints.listByAttempt("ocr", f.run.envelope.itemId, "build-review", 1).at(-1); assert.ok(reviewed);
+  const changed = { ...current.seed, review: { ...current.seed.review, sourceRunId: f.run.envelope.runId } };
+  const rebuilt = publicationCheckpoint(checkpoint, compactOcrResult(changed), f.run.envelope.traceId);
+  const rebuiltReview = publicationCheckpoint(reviewed, compactOcrReviewSeed(changed.review), f.run.envelope.traceId);
   assert.throws(() => f.database.withAuthorityTransaction(authority => {
+    authority.runCheckpoints.insert(rebuiltReview);
     authority.runCheckpoints.insert(rebuilt);
     publishOcrReview(authority, f.canonical.lifecycle, f.run, rebuilt);
   }), /OCR_REVIEW_REFUSED/u);

@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
@@ -20,7 +21,7 @@ import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/int
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_KEY, WRITE_FIXTURE_NOW, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessions, type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
-import { ManualScheduler, recordingEmitter, recordingLogger } from "../phase1f-executor-harness.js";
+import { ManualScheduler, recordingEmitter, recordingLogger, type RecordingEmitter } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 
 interface RoundTrip {
@@ -31,6 +32,7 @@ interface RoundTrip {
   readonly kernel: CommandKernel;
   readonly park: (failCommit?: boolean) => Promise<WorkerLoopReport>;
   readonly resume: () => Promise<WorkerLoopReport>;
+  readonly spans: RecordingEmitter["events"];
 }
 
 
@@ -68,7 +70,7 @@ export function createParkedWriteRoundTripTestWorld() {
     const scheduler = new ManualScheduler(clock);
     const ids = sequentialIdFactory("c");
     const log = recordingLogger().log;
-    const emitter = recordingEmitter().emitter;
+    const recorded = recordingEmitter(), emitter = recorded.emitter;
 
     const kernel = createCommandKernel({
       lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
@@ -93,7 +95,7 @@ export function createParkedWriteRoundTripTestWorld() {
         authority: database,
         ids
       }),
-      workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
+      workerRuntime: { pool: unusedWorkerPool() },
     });
 
     const park = async (failCommit = true) => {
@@ -144,7 +146,7 @@ export function createParkedWriteRoundTripTestWorld() {
         }),
       });
 
-    return { profile, database, clock, world, kernel, park, resume };
+    return { profile, database, clock, world, kernel, park, resume, spans: recorded.events };
   }
 
   function parkedIntent(database: AuthorityDatabase) {

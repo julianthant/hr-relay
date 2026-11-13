@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import assert from "node:assert/strict";
 
@@ -71,8 +72,6 @@ export function createWriteRecoveryTestWorld(profileFixture: () => Promise<Bound
     assert.equal(slot.workflow, WRITE_FIXTURE_WORKFLOW_ID);
     assert.equal(slot.poolIndex, 1);
     assert.equal(slot.ordinal, 1);
-    assert.ok(admitted.started);
-    assert.equal(admitted.started.state, "started");
     const world = createWriteFixtureWorld(); held.world = world;
     const registry = buildWriteFixtureRegistry(world);
     const inner = writeFixtureSessions(world);
@@ -149,10 +148,10 @@ export function createWriteRecoveryTestWorld(profileFixture: () => Promise<Bound
     const claimed = h.database.authority.runs.claimNext({
       workflow: WRITE_FIXTURE_WORKFLOW_ID,
       workerId: h.workerId,
-      now, workerLifetime: lifetime.workerLifetime });
+      now });
     if (claimed.state !== "claimed") throw new Error("claim failed");
     const claim = { workerId: h.workerId, claimGeneration: claimed.run.claimGeneration };
-    const base = { workerLifetime: lifetime.workerLifetime,  workerId: h.workerId, claimedAt: now, heartbeatAt: now };
+    const base = { workerId: h.workerId, claimedAt: now, heartbeatAt: now };
     assert.equal(h.database.authority.runs.transition({
       runId: WRITE_FIXTURE_RUN_ID, expectedVersion: claimed.run.version, claim,
       lifecycle: { state: "validating", ...base }, now,
@@ -234,8 +233,7 @@ export function createWriteRecoveryTestWorld(profileFixture: () => Promise<Bound
       descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},
       configIdentity:{configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,configFingerprint:CONFIG_SNAPSHOT.fingerprint},
       intakeParser:UNWIRED_INTAKE_PARSER,intakeProjections:NO_INTAKE_PROJECTIONS,
-      workerRuntime:{pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,
-        stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}},
+      workerRuntime:{pool:unusedWorkerPool(unused)},
       writeResolution:createWriteResolutionExecutor({authority:h.database,continuation:runContinuationPort(lifecycle),
         descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},ids:h.ids })});
     return kernel;

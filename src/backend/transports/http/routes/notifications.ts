@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { NotificationWireSchema } from "../../../../models/dashboard/projection.js";
-import { NotificationCollectionOperationSchema, NotificationCollectionTargetSchema, NotificationObservationStatusSchema, NotificationTargetSchema } from "../../../../models/notifications/notifications.js";
+import { NotificationCollectionOperationSchema, NotificationCollectionTargetSchema, NotificationObservationStatusSchema } from "../../../../models/notifications/notifications.js";
+import { NotificationTargetSchema } from "../../../../models/notifications/notification-target.js";
 import { SectionUnavailableError } from "../../../runs/commands/refusals.js";
 import type { DashboardApp, DashboardAppDeps } from "./api-types.js";
 export function registerNotificationRoutes(app: DashboardApp, deps: Pick<DashboardAppDeps, "notifications">): void {

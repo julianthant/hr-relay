@@ -149,12 +149,9 @@ describe("bounded task deadline", () => {
     const member = database.authority.workerSlots.list(WORKFLOW_ID).find((slot) => slot.poolIndex === 1);
     assert.ok(member);
     const workerId = member.workerId;
-    const lease = database.authority.workerLeases.get(workerId);
-    assert.ok(lease);
     const claimed = database.authority.runs.claimNext({
       workflow: WORKFLOW_ID,
       workerId,
-      workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration },
       now: clock.now().toISOString(),
     });
     assert.equal(claimed.state, "claimed");

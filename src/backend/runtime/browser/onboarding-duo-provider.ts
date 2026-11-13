@@ -146,8 +146,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
   }
   const closedWindow = () => { if (windowState.state !== "reopening") windowState = { state: "closed", generation: windowState.generation }; };
   let active: ProviderSession | undefined;
+  let stopping: Promise<void> | undefined;
   function browserCurrent(session: OwnedBrowser): void {
-    if (browser !== session || session.revoked) throw new ProfileOnboardingDuoProviderError("refused", "revoked");
+    if (stopping !== undefined || browser !== session || session.revoked) throw new ProfileOnboardingDuoProviderError("refused", "revoked");
     session.owner.assertCurrent();
   }
   const sameOwner = (a: DraftDuoBrowserOwner, b: Pick<DraftDuoBrowserOwner, "operationId" | "profileId" | "accountId" | "generation">): boolean =>
@@ -424,6 +425,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     await selectPage(session, session.setup);
   }
   async function recoverBrowser(owner: DraftDuoBrowserOwner, generation: number): Promise<void> {
+    if (stopping !== undefined) throw new ProfileOnboardingDuoProviderError("refused", "revoked");
     if (reopening) {
       if (reopeningGeneration !== generation || reopeningOwner === undefined || !sameOwner(reopeningOwner, owner)) throw new ProfileOnboardingDuoProviderError("refused", "scope");
       return reopening;
@@ -544,6 +546,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     browserCurrent(session);
   }
   async function showBrowser(owner: DraftDuoBrowserOwner): Promise<void> {
+    if (stopping !== undefined) throw new ProfileOnboardingDuoProviderError("refused", "revoked");
     owner.assertCurrent();
     if (browser) {
       if (!sameOwner(browser.owner, owner)) throw new ProfileOnboardingDuoProviderError("refused", "busy");
@@ -577,7 +580,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       if (!root.isDirectory() || root.isSymbolicLink() || privatePathRejects(options.browserRoot, root, "private")) throw new Error("root");
     } catch { throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root"); }
     const ownerIdentity={operationId:owner.operationId,profileId:owner.profileId,accountId:owner.accountId,generation:owner.generation};
-    const assertOwner=()=>{owner.assertCurrent();if(!sameOwner(owner,ownerIdentity))throw new ProfileOnboardingDuoProviderError("refused","scope");};
+    const assertOwner=()=>{if(stopping!==undefined)throw new ProfileOnboardingDuoProviderError("refused","revoked");owner.assertCurrent();if(!sameOwner(owner,ownerIdentity))throw new ProfileOnboardingDuoProviderError("refused","scope");};
     const request: SignupBrowserRootInput = { profileId: owner.profileId, profileRoot: options.browserRoot,
       credentialFingerprint: null, owner: { kind: "signup", operationId: owner.operationId, accountId: owner.accountId, providerGeneration: owner.generation } };
     const prior = options.browserRoots.signupRoot(request);
@@ -768,6 +771,15 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
   }
 
   return Object.freeze({
+    stop(): Promise<void> {
+      stopping ??= (async () => {
+        const owned = browser;
+        if (owned !== undefined) {
+          if ((await closeBrowser(owned)).state !== "closed") throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime", owned.closureFailure);
+        } else if (active !== undefined) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
+      })();
+      return stopping;
+    },
     browserState,
     recoverBrowser,
     async showBrowser(owner: DraftDuoBrowserOwner) {

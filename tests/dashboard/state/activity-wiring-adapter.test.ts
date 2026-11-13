@@ -25,16 +25,21 @@ function selection(rowsInput: readonly Partial<ActivityPopulationRun>[] = [{ sta
   const count = (status: string) => population.filter(row => row.status === status).length;
   const terminal = population.filter(row => row.terminal);
   const measured = terminal.flatMap(row => row.durationMs === null ? [] : [row.durationMs]).sort((a, b) => a - b);
+  const medianMs = measured.length ? { state: "present" as const, value: measured[Math.floor(measured.length / 2)] } : { state: "absent" as const, reason: "No measurement" };
+  const typicalMedian = { measuredRuns: measured.length, medianMs };
+  const outcomes = { done: count("done"), failed: count("failed"), attention: count("partial") + count("awaiting-approval") + count("blocked") };
+  const failedAt = count("failed") === 0 ? [] : [{ state: "unavailable" as const, reason: "the failed run has no task span that records the step where it failed", runs: count("failed") }];
+  const dayTotal = population.length === 0 ? [] : [{ day: "2026-08-03", runs: population.length, outcomes, typicalTime: typicalMedian }];
   const timing = population.filter(row => row.status === "done" && row.parentRunId === null);
   const timed = timing.flatMap(row => row.durationMs === null ? [] : [row.durationMs]);
   const skeleton = buildActivityVolumeBoundarySkeleton(empty, "UTC");
   const report = { ...empty, totalRuns: population.length, terminalRuns: terminal.length, inFlightRuns: population.length - terminal.length,
-    completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, days: population.length ? [{ day: "2026-08-03", runs: population.length }] : [],
-    workflows: population.length ? [{ workflowId: "fixture", registration: { state: "unregistered", reason: "Synthetic registration unavailable" }, runs: population.length, completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, failed: count("failed"), cancelled: count("cancelled"), partial: count("partial"), open: population.length - terminal.length }] : [],
+    completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, outcomeSplit: outcomes, typicalMedian, days: dayTotal,
+    workflows: population.length ? [{ workflowId: "fixture", registration: { state: "unregistered", reason: "Synthetic registration unavailable" }, runs: population.length, completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, failed: count("failed"), needsAttention: count("failed"), typicalTime: { measure: "successful-root-run-mean", measuredRuns: timed.length, unmeasuredRuns: timing.length - timed.length, meanMs: timed.length ? { state: "present", value: timed.reduce((sum, n) => sum + n, 0) / timed.length } : { state: "absent", reason: "No successful root measurement" } }, typicalMedian, outcomes, days: dayTotal, failedAt, cancelled: count("cancelled"), partial: count("partial"), open: population.length - terminal.length }] : [],
     categories: population.length ? [{ category: { state: "unregistered", reason: "Synthetic registration unavailable" }, runs: population.length }] : [],
     statuses: [...new Set(population.map(row => row.status))].map(status => ({ status, runs: count(status), sample: ["done", "failed", "cancelled", "partial"].includes(status) ? [] : population.filter(row => row.status === status).slice(0, 5).map(row => row.runId) })),
     outcomes: [...new Set(terminal.map(row => row.status))].map(outcome => ({ outcome, runs: count(outcome) })),
-    durations: { measuredRuns: measured.length, unmeasuredRuns: terminal.length - measured.length, medianMs: measured.length ? { state: "present", value: measured[Math.floor(measured.length / 2)] } : { state: "absent", reason: "No measurement" }, longestMs: measured.length ? { state: "present", value: measured.at(-1), runId: terminal.find(row => row.durationMs === measured.at(-1))!.runId } : { state: "absent", reason: "No measurement" }, totalMs: measured.reduce((sum, n) => sum + n, 0) },
+    durations: { measuredRuns: measured.length, unmeasuredRuns: terminal.length - measured.length, medianMs, longestMs: measured.length ? { state: "present", value: measured.at(-1), runId: terminal.find(row => row.durationMs === measured.at(-1))!.runId } : { state: "absent", reason: "No measurement" }, totalMs: measured.reduce((sum, n) => sum + n, 0) },
     ledger: { systems: [{ system: "ucpath", entries: 3, prod: 2, test: 1 }] },
     volume: { state: "complete", ...skeleton, coveredRuns: population.length, buckets: skeleton.buckets.map(bucket => ({ ...bucket, runs: bucket.start.slice(0, 10) === "2026-08-03" ? population.length : 0 })) } };
   const identity = { from: report.from, to: report.to, generatedAt: report.generatedAt, expiresAt: "2026-08-07T12:15:00.000Z", sourceIdentity: "a".repeat(64), authorityGeneration: 1, reportDigest: sha256Hex(canonicalJsonStringify(report)) };
@@ -68,6 +73,35 @@ it("preserves full populations, successful root timing, all-terminal duration, n
   assert.equal(empty.total, 0); assert.equal(empty.duration.totalSeconds, 0); assert.equal(empty.duration.measured, 0); assert.equal(empty.duration.unmeasured, 0);
   assert.equal(missing.duration.unmeasured, 1);
   assert.equal(projected.runs?.[0]?.readback, null);
+});
+it("combines failure codes across workflows for the global most common failure", async () => {
+  const buckets = [{ workflowId: "one", code: "A", runs: 3 }, { workflowId: "two", code: "A", runs: 2 }, { workflowId: "three", code: "B", runs: 4 }];
+  const base = selection(buckets.flatMap(bucket => Array.from({ length: bucket.runs }, () => ({ workflowId: bucket.workflowId, status: "failed" as const }))));
+  const workflow = base.report.workflows[0]; assert.ok(workflow);
+  const { snapshot: reportSnapshot, ...baseReport } = base.report;
+  const report = { ...baseReport,
+    workflows: buckets.map(bucket => ({ ...workflow, workflowId: bucket.workflowId, runs: bucket.runs, failed: bucket.runs, needsAttention: bucket.runs,
+      outcomes: { done: 0, failed: bucket.runs, attention: 0 },
+      days: [{ day: "2026-08-03", runs: bucket.runs, outcomes: { done: 0, failed: bucket.runs, attention: 0 }, typicalTime: workflow.typicalMedian }],
+      failedAt: [{ state: "unavailable" as const, reason: "the failed run has no task span that records the step where it failed", runs: bucket.runs }],
+    })),
+    failures: buckets.map(bucket => ({ ...bucket, sentence: `Synthetic failure ${bucket.code}`, registration: workflow.registration, transient: 0, sample: base.population.filter(row => row.workflowId === bucket.workflowId).map(row => row.runId) })) };
+  const successfulTiming = buckets.map(bucket => ({ workflowId: bucket.workflowId, totalMs: null, measured: 0, unmeasured: 0 }));
+  const reportDigest = sha256Hex(canonicalJsonStringify(report));
+  const selected = ActivityPopulationSelectionSchema.parse({ ...base, report: { ...report, snapshot: { ...reportSnapshot, reportDigest } }, successfulTiming,
+    snapshot: { ...base.snapshot, reportDigest, populationDigest: sha256Hex(canonicalJsonStringify({ population: base.population, successfulTiming })) } });
+
+  const projected = projectActivityPopulation(selected);
+
+  assert.deepEqual(projected.failures, [{ label: "A", runs: 5 }, { label: "B", runs: 4 }]);
+  assert.deepEqual(selected.report.failures.map(row => [row.workflowId, row.code, row.runs]), [["one", "A", 3], ["two", "A", 2], ["three", "B", 4]]);
+  const host = document.createElement("div"); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(ActivityView, { data: { state: "loaded", report: projected }, range: projected.range, today: selected.report.to, period: "custom", onPreset: () => {}, onRange: () => {} })));
+    assert.deepEqual(projected.analytics.reasons.map(row => [row.label, row.runs]), [["Synthetic failure A", 3], ["Synthetic failure A", 2], ["Synthetic failure B", 4]]);
+    assert.equal(projected.analytics.typicalSeconds, selected.report.typicalMedian.medianMs.state === "present" ? selected.report.typicalMedian.medianMs.value / 1000 : null);
+    assert.match(host.textContent ?? "", /Why runs failed/); assert.match(host.textContent ?? "", /Synthetic failure B/);
+  } finally { await act(async () => root.unmount()); }
 });
 it("uses authoritative page rows once and refuses fixture logs for served identities", async () => {
   const selected = selection(Array.from({ length: 21 }, () => ({ status: "done" as const, durationMs: 1000 })));
@@ -150,9 +184,11 @@ it("uses the served calendar for the product producer and never substitutes work
   try {
     await act(async () => root.render(createElement(ActivityReport, { client, today: "2026-08-07", range: "", onRange: () => {}, workflowSources: sources })));
     assert.deepEqual(vi.mocked(client.activityPopulation).mock.calls[0]?.slice(0, 2), ["2026-08-01", "2026-08-07"]);
-    assert.match(host.textContent ?? "", /1 runs in this period/);
-    const completed = host.querySelector<HTMLButtonElement>('button[aria-label="View completed runs (1)"]'); assert.ok(completed);
-    await act(async () => completed.click());
+    assert.match(host.textContent ?? "", /1 finished runs/);
+    const details = host.querySelector<HTMLButtonElement>('button[aria-label^="Show "]'); assert.ok(details);
+    await act(async () => details.click());
+    const openRuns = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Open runs"); assert.ok(openRuns);
+    await act(async () => openRuns.click());
     const run = host.querySelector<HTMLButtonElement>('button[aria-label^="Open logs for"]'); assert.ok(run);
     await act(async () => run.click());
     assert.match(host.textContent ?? "", /Logs unavailable/);

@@ -63,7 +63,7 @@ describe("terminal failures remain observable", () => {
       ["src/backend/app/composition/dashboard/dashboard-wiring.ts", /const reportSupervisorFault[\s\S]*?emitFaultWithCauses\(debugEvents,/u],
       ["src/backend/app/composition/dashboard/dashboard-wiring.ts", /const reportDashboardTransferFault[\s\S]*?emitFaultWithCauses\(debugEvents,/u],
       ["src/backend/logs/debug-events.ts", /export function emitFaultWithCauses[\s\S]*?debugEvents\.emit\(event\)/u],
-      ["src/backend/app/composition/worker-compose.ts", /catch \(error\) \{\s*const refusedBeforeEffects = bootRefusal !== undefined && error === bootRefusal;[\s\S]*?else runtimeError = error;\s*try \{\s*debugEvents.emit\([\s\S]*?code: refusedBeforeEffects \? "PREFLIGHT_OBSERVATION_CHANGED" : "WORKER_RUNTIME_FAILED"/u],
+      ["src/backend/app/composition/worker-compose.ts", /catch \(error\) \{\s*const refusal = bootRefusal !== undefined && error === bootRefusal \? workerPreflightRefusal\(error\) : undefined;\s*const refusedBeforeEffects = refusal !== undefined;[\s\S]*?else runtimeError = error;\s*try \{\s*debugEvents.emit\([\s\S]*?code: refusal\?\.code \?\? "WORKER_RUNTIME_FAILED"/u],
       ["src/backend/app/composition/worker-compose.ts", /debugEvents,\s*taskNotes/u],
       ["src/backend/runtime/workers/worker-loop.ts", /debugEvents: deps.debugEvents/u],
       ["src/backend/runtime/workers/worker-loop.ts", /onFailure: failure => deps.debugEvents\?\.emit/u],

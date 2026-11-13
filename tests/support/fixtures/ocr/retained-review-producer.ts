@@ -1,18 +1,19 @@
 import { z } from "zod";
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
 import { OcrInputSchema, OCR_INPUT_EXAMPLE } from "../../../../src/models/workflows/ocr/input.js";
-import { OcrReviewSeedSchema } from "../../../../src/models/workflows/ocr/review-seed.js";
+import { OcrReviewSeedSchema, buildOcrReviewSeed, hydrateOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-seed.js";
 import { RosterRowFactsSchema } from "../../../../src/rules/matching/roster-match.js";
-import { IsoInstantSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { IsoInstantSchema, WorkflowIdSchema, type TaskId } from "../../../../src/rules/identity/ids.js";
 import { OcrPersonLookupRequestSchema, ocrPersonLookupRequests, bindOcrLookupOutcomes } from "../../../../src/models/workflows/ocr/lookup.js";
 import { childRunOutcomeSchema } from "../../../../src/models/workflow/graph.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
 import { PersonLookupResultSchema } from "../../../../src/models/workflows/person-lookup/result.js";
 import { ReadOcrResult } from "../../../../src/models/workflows/ocr/read-result.js";
 import { ReadOcrReviewSeed } from "../../../../src/models/workflows/ocr/read-review-seed.js";
-import { ReadOcrSourcePages } from "../../../../src/models/workflows/ocr/read-source-pages.js";
+import { ReadOcrSourcePages, ocrPageWorkInputs } from "../../../../src/models/workflows/ocr/read-source-pages.js";
+import { buildOcrSourceManifest } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { OcrPageWorkflowInputSchema } from "../../../../src/models/workflows/ocr-page/input.js";
-import { OcrPageReadingSchema } from "../../../../src/models/workflows/ocr/page-accounting.js";
+import { OcrPageReadingSchema, accountOcrPages } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { OcrApprovalReferenceSchema } from "../../../../src/models/workflows/ocr/result.js";
 import { ExtractPdfPages } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { OcrReviewRevisionSchema, initialOcrReviewRecords } from "../../../../src/models/ocr/review.js";
@@ -23,7 +24,6 @@ import { defineWorkflow, compileWorkflow } from "../../../../src/workflow-kit/wo
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { defineWorkflowStore } from "../../../../src/workflow-kit/task-registry.js";
-import { readOcrReviewSeedTask } from "../../../../src/workflows/ocr/tasks/read-review-seed.js";
 import { readOcrSourcePagesTask } from "../../../../src/workflows/ocr/tasks/read-source-pages.js";
 import { checkpointRecordKey } from "../../../../src/models/workflow/checkpoint.js";
 import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
@@ -36,6 +36,11 @@ import type { RunRecordService } from "../../../../src/backend/runs/lifecycle/ru
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { delegationEvidenceOutput } from "../../../../src/models/run/result.js";
+import { RecordedDataPointSchema, type RecordedDataPoint } from "../../../../src/rules/workflow/task-provenance.js";
+import { evidenceLeaves, redactEvidenceLeaf, type EvidenceValueScope } from "../../../../src/models/trust/evidence-classification.js";
+import { redactValue } from "../../../../src/rules/redaction/redaction.js";
+import { ObservedDataPointSchema } from "../../../../src/backend/logs/span-emitter.js";
+
 
 const retainedRoster = z.strictObject({ artifact: ArtifactRefSchema, readAt: IsoInstantSchema, rows: z.array(RosterRowFactsSchema) });
 const retainedInput = OcrInputSchema.extend({ roster: retainedRoster.nullable() });
@@ -45,12 +50,12 @@ export const RetainedOcrResultSchema = z.strictObject({ review: retainedSeed,
 const { __sealed: _resultSeal, ...resultSpec } = ReadOcrResult;
 const { __sealed: _reviewSeal, ...reviewSpec } = ReadOcrReviewSeed;
 const { __sealed: _sourceSeal, ...sourceSpec } = ReadOcrSourcePages;
+const reviewExample = retainedSeed.parse(hydrateOcrReviewSeed(ReadOcrReviewSeed.example, () => undefined, null));
 const resultContract = defineTaskContract({ ...resultSpec, input: z.strictObject({ review: retainedSeed,
   outcomes: z.array(childRunOutcomeSchema(PersonLookupResultSchema)) }), output: RetainedOcrResultSchema,
-  example: RetainedOcrResultSchema.parse(ReadOcrResult.example) });
+  example: RetainedOcrResultSchema.parse({ review: reviewExample, identities: [] }) });
 const reviewContract = defineTaskContract({ ...reviewSpec,
-  input: ReadOcrReviewSeed.input.extend({ roster: retainedRoster.nullable() }), output: retainedSeed,
-  example: retainedSeed.parse(ReadOcrReviewSeed.example) });
+  input: ReadOcrReviewSeed.input.extend({ roster: retainedRoster.nullable() }), output: retainedSeed, example: reviewExample });
 const sourceContract = defineTaskContract({ ...sourceSpec,
   input: ReadOcrSourcePages.input.extend({ request: retainedInput }) });
 
@@ -59,7 +64,10 @@ export const retainedOcrStore = defineWorkflowStore("ocr", {
     return readOcrSourcePagesTask.impl.run({ input: ReadOcrSourcePages.input.parse(input), ctx });
   } }),
   readReviewSeed: defineTask(reviewContract, { sessions: [], async run({ input, ctx }) {
-    return retainedSeed.parse(await readOcrReviewSeedTask.impl.run({ input, ctx }));
+    const output = retainedSeed.parse(buildOcrReviewSeed({ ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }),
+      roster: input.roster, accounting: accountOcrPages(input.manifest, input.readingId, input.outcomes, input.formType) }));
+    ctx.recordData(Object.entries(output).map(([field, value]) => ({ direction: "read" as const, field, value })));
+    return output;
   } }),
   readResult: defineTask(resultContract, { sessions: [], async run({ input, ctx }) {
     const output = RetainedOcrResultSchema.parse({ review: input.review, identities: bindOcrLookupOutcomes(input.review, input.outcomes) });
@@ -67,9 +75,29 @@ export const retainedOcrStore = defineWorkflowStore("ocr", {
     return output;
   } }),
 });
+export function redactRetainedOcrObservedDataPoints(taskId: TaskId, points: readonly RecordedDataPoint[]) {
+  const task = taskId === retainedOcrStore.tasks.readResult.contract.id ? retainedOcrStore.tasks.readResult
+    : taskId === retainedOcrStore.tasks.readReviewSeed.contract.id ? retainedOcrStore.tasks.readReviewSeed : undefined;
+  if (task === undefined) throw new Error(`Unsupported historical OCR observation task ${taskId}`);
+  const recorded = RecordedDataPointSchema.array().min(1).parse(points);
+  if (new Set(recorded.map(point => point.field)).size !== recorded.length) throw new Error("Historical OCR observation contains duplicate fields");
+  if (recorded.some(point => point.direction !== "read" || point.execution.taskId !== taskId || point.execution.workflowId !== "ocr")) {
+    throw new Error("Historical OCR observation does not match its read task");
+  }
+  task.contract.output.parse(Object.fromEntries(recorded.map(point => [point.field, point.value])));
+  const result = task === retainedOcrStore.tasks.readResult;
+  const scope: EvidenceValueScope = result ? { kind: "workflow-result", workflowId: WorkflowIdSchema.parse("ocr") }
+    : { kind: "task-output", taskId };
+  return Object.freeze(recorded.map(point => ObservedDataPointSchema.parse({ direction: point.direction, field: point.field,
+    ...(point.origins === undefined ? {} : { origins: point.origins }),
+    values: evidenceLeaves(point.value, point.field).map(leaf => leaf.path === (result ? "review.roster.rows" : "roster.rows")
+      ? { key: leaf.path, ...redactValue("sensitive-hr", "drop", leaf.value) } : redactEvidenceLeaf(scope, leaf)),
+  })));
+}
+
 const policy = { onChildFailed: "allow-partial", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" } as const;
 const definition = defineWorkflow({
-  id: "ocr", requiredWorkbookTypeIds: [], version: 1, code: "oc", label: "OCR", icon: "FileScan", category: "documents",
+  id: "ocr", requiredWorkbookFields: [], version: 1, code: "oc", label: "OCR", icon: "FileScan", category: "documents",
   summary: "Reads every original page, groups records and retains identity lookup outcomes for review.",
   input: retainedInput, canonicalInput: defineCanonicalInput(retainedInput,
     retainedInput.extend({ approval: retainedInput.shape.approval.removeDefault() }), [retainedInput.parse({ ...OCR_INPUT_EXAMPLE, roster: null })]),
@@ -85,12 +113,12 @@ const definition = defineWorkflow({
       ({ input, outputs }) => ({ request: input, rendered: outputs["render-pages"] }));
     const pages = delegate({ id: "read-pages", label: "Read every original page",
       target: { id: WorkflowIdSchema.parse("ocr-page"), input: OcrPageWorkflowInputSchema, result: OcrPageReadingSchema },
-      edgeId: "ocr-pages", cardinality: "many", await: "terminal", join: "all-settled", policy }, [source], {
-      bind: ({ outputs }) => outputs["read-source-pages"].pages, deriveChildItemId: (_input, context) => context.canonicalItemId,
+      edgeId: "ocr-pages", cardinality: "many", await: "terminal", join: "all-settled", policy }, [rendered, source], {
+      bind: ({ input, outputs }) => ocrPageWorkInputs(input, outputs["render-pages"]).pages, deriveChildItemId: (_input, context) => context.canonicalItemId,
     });
-    const review = task({ id: "build-review", contract: reviewContract, replay: "checkpoint" }, [source, pages],
+    const review = task({ id: "build-review", contract: reviewContract, replay: "checkpoint" }, [rendered, source, pages],
       ({ input, outputs }) => ({ ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }), roster: input.roster,
-        formType: input.formType, manifest: outputs["read-source-pages"].manifest, readingId: input.readingId, outcomes: [...outputs["read-pages"]] }));
+        formType: input.formType, manifest: buildOcrSourceManifest(input.document, outputs["render-pages"]), readingId: input.readingId, outcomes: [...outputs["read-pages"]] }));
     const identities = delegate({ id: "lookup-identities", label: "Verify proposed identities",
       target: { id: WorkflowIdSchema.parse("person-lookup"), input: PersonLookupInput, result: PersonLookupResultSchema },
       edgeId: "ocr-identities", cardinality: "many", await: "terminal", join: "all-settled", policy }, [review], {

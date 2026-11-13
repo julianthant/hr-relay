@@ -15,6 +15,7 @@ import { type AuthorityTableName } from "../../../models/config/authority.js";
 
 const RowSchema = z.record(z.string(), z.union([z.string(),z.number(),z.null()]));
 const fields = {
+  workflow_workbook_selections: {workflow_id:"workflowId",revision:"revision",accepted_command_id:"acceptedCommandId",used_at:"usedAt"},
   ocr_source_uploads: {id:"artifact.id",created_at:"uploadedAt"},
   ocr_review_revisions: {id:"id",run_id:"sourceRunId",revision:"revision",command_id:"origin.commandId",created_at:"createdAt"},
   ocr_approved_snapshots: {id:"snapshotId",run_id:"sourceRunId",revision:"revision",created_at:"approvedAt"},
@@ -36,7 +37,6 @@ const fields = {
   write_intents: {id:"writeIntentId",system:"system",idempotency_key:"idempotencyKey",idempotency_key_digest:"idempotencyKeyDigest",status:"status",generation:"generation",run_id:"runId",created_at:"createdAt",updated_at:"updatedAt"},
   write_attempts: {id:"writeAttemptId",intent_id:"writeIntentId",generation:"generation",run_id:"runId",created_at:"recordedAt"},
   worker_pools: {workflow:"workflow",desired_workers:"desiredWorkers",version:"version",created_at:"createdAt",updated_at:"updatedAt"},
-  worker_leases: {id:"workerId",worker_id:"workerId",workflow:"workflow",lease_generation:"leaseGeneration",control_revision:"controlRevision",state:"lifecycle.state",directive:"control.directive",heartbeat_at:"lifecycle.heartbeatAt",version:"version",created_at:"createdAt",updated_at:"updatedAt"},
   auth_leases: {credential_key:"credentialKey",generation:"generation",holder_worker_id:"holder.workerId",holder_system:"holder.system",state:"state",expires_at:"expiresAt",version:"version",updated_at:"updatedAt"},
   notifications: {id:"notificationId",actor_id:"actorId",dedupe_fingerprint:"dedupeFingerprint",status:"status",seen_count:"count",version:"version",created_at:"createdAt",updated_at:"updatedAt"},
   notification_states: {id:"concern",updated_at:"observedAt"},

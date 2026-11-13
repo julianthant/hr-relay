@@ -8,7 +8,7 @@ import { ocrPageReadingDefinition } from "./steps/read-page/step.js";
 
 export const ocrPageWorkflow = defineWorkflow({
   id: "ocr-page",
-  requiredWorkbookTypeIds: [],
+  requiredWorkbookFields: [],
   version: 1,
   code: "op",
   label: "OCR Page",

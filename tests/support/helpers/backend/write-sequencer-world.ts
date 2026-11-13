@@ -98,7 +98,7 @@ export function createWriteSequencerTestWorld() {
         const throwOnVerifyStart = options.emitterThrowsOn === "verify-start"
           && event.t === "span.started"
           && event.kind === "task"
-          && event.spanPath.endsWith("/verify");
+          && event.spanPath.includes("/verify#");
         const throwOnEventArm = options.emitterThrowsOn !== undefined
           && options.emitterThrowsOn !== "failed-task-span"
           && options.emitterThrowsOn !== "verify-start"
@@ -169,18 +169,15 @@ export function createWriteSequencerTestWorld() {
     assert.ok(member && member.workflow === WRITE_FIXTURE_WORKFLOW_ID && member.retiredAt === null);
     const workerId = member.workerId;
     if (requestedWorkerId !== undefined) assert.equal(workerId, requestedWorkerId);
-    const lease = database.authority.workerLeases.get(workerId);
-    if (lease === undefined || member === undefined || member.retiredAt !== null) throw new Error("fixture claim authority unavailable");
-    const workerLifetime = { leaseGeneration: lease.leaseGeneration, membershipRevision: member.membershipRevision };
+    if (member === undefined || member.retiredAt !== null) throw new Error("fixture claim authority unavailable");
     const claimed = database.authority.runs.claimNext({
-      workerLifetime,
       workflow: WRITE_FIXTURE_WORKFLOW_ID,
       workerId,
       now,
     });
     if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
     const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-    const base = { workerId, claimedAt: now, heartbeatAt: now, workerLifetime };
+    const base = { workerId, claimedAt: now, heartbeatAt: now };
     const validating = database.authority.runs.transition({
       runId: claimed.run.envelope.runId,
       expectedVersion: claimed.run.version,

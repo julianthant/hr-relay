@@ -6,7 +6,8 @@ import { RunIdSchema, WorkflowIdSchema, DateOnlySchema } from "../../rules/ident
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import type { Clock } from "../../rules/time/clock.js";
-import { WorkbookLibraryError, type WorkbookLibraryRepository } from "./workbook-library-service.js";
+import { WorkbookLibraryError } from "./workbook-library-error.js";
+import { type WorkbookLibraryRepository } from "./workbook-library-service.js";
 
 export function createWorkflowWorkbookService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock;
   publicationSource?: () => Readonly<{ workflowId: string; workflowLabel: string; partitionDay: string }>;

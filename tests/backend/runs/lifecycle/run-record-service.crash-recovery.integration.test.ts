@@ -27,12 +27,10 @@ it("requires a held controller and terminalizes the exact interrupted claim with
   assert.throws(() => f.service.recoverCrash(request, f.lock), RuntimeLifetimeLockReleasedError);
 });
 
-it("refuses stale claim, version, membership and lease generation before any recovery effect", async () => {
+it("refuses a stale claim or version before any recovery effect", async () => {
   const f = await world.interruptedFixture(), request = f.recoveryRequest;
   for (const changed of [{ ...request, expectedVersion: request.expectedVersion + 1 },
-    { ...request, claim: { ...request.claim, claimGeneration: request.claim.claimGeneration + 1 } },
-    { ...request, workerLifetime: { ...request.workerLifetime, leaseGeneration: request.workerLifetime.leaseGeneration + 1 } },
-    { ...request, workerLifetime: { ...request.workerLifetime, membershipRevision: request.workerLifetime.membershipRevision + 1 } }]) {
+    { ...request, claim: { ...request.claim, claimGeneration: request.claim.claimGeneration + 1 } }]) {
     assert.throws(() => f.service.recoverCrash(changed, f.lock));
   }
   assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.version, f.run.version);

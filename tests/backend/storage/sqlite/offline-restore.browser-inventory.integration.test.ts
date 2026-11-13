@@ -27,7 +27,7 @@ function fileIdentity(path: string) {
   return { device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid, size: stat.size, modifiedAt: stat.mtimeMs };
 }
 
-for (const malformed of ["browser", "config", "control"] as const) it(`refuses malformed current ${malformed} custody before restore or native browser effects`, async () => {
+for (const malformed of ["slot", "config"] as const) it(`refuses malformed current ${malformed} custody before restore or native browser effects`, async () => {
   const fixture = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot);
   const directory = join(fixture.stateRoot, "backups", "authority"), now = clock.now().toISOString();
@@ -46,14 +46,11 @@ for (const malformed of ["browser", "config", "control"] as const) it(`refuses m
     } finally { database.close(); }
     const raw = new DatabaseSync(fixture.path, { enableForeignKeyConstraints: false });
     try {
-      if (malformed === "browser") raw.prepare(`INSERT INTO browser_sessions
-        (id,worker_id,lease_generation,system,state,auth_fingerprint,presentation,profile_revision,payload_json,opened_at,observed_at)
-        VALUES(?,?,1,'ucpath','unknown',?,'headless',1,'{}',?,?)`).run("malformed-browser", "missing-worker", "a".repeat(64), now, now);
+      if (malformed === "slot") raw.prepare(`INSERT INTO worker_slots
+        (id,workflow,ordinal,pool_index,paused,retired_at,created_at,updated_at)
+        VALUES(?,'person-lookup',1,1,0,NULL,?,?)`).run("malformed-slot", now, now);
       if (malformed === "config") raw.prepare(`INSERT INTO settings_snapshots
         (id,revision,fingerprint,payload_json,captured_at) VALUES(?,1,?,'{}',?)`).run("malformed-config", "a".repeat(64), now);
-      if (malformed === "control") raw.prepare(`INSERT INTO worker_controls
-        (command_id,scope,worker_id,phase,audited_at,payload_json,created_at)
-        VALUES(?,'worker',NULL,'admitted',NULL,'{}',?)`).run("malformed-control", now);
     } finally { raw.close(); }
 
 

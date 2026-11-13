@@ -1,3 +1,4 @@
+import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { InputRunSurfaceSchema } from "../../../src/models/workflow/ingress.js";
 import { StepOmissionFormSchema } from "../../../src/models/workflow/step-omission.js";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
@@ -77,20 +78,20 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", curre
     : defineWorkflowDescriptor({ ...descriptor, flow: graphWithoutGate });
 }
 export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2], selection?: Readonly<{ descriptor: AnyWorkflowDescriptor; protectedSecrets: ProtectedSecretSource }>,
-  profileFixture?: Parameters<typeof sourceBoundHarness>[4]) {
+  profileFixture?: Parameters<typeof sourceBoundHarness>[4], createPreflight?: Parameters<typeof sourceBoundHarness>[8]) {
   const h = await sourceBoundHarness(selection?.descriptor ?? launchDescriptor(enqueue), (world) => {
     const reads = sourceBoundReadStores(world); const writes = buildWriteFixtureRegistry(world);
     return defineTaskStoreRegistry([...reads.stores, ...writes.stores], {
       scenarioIds: [...reads.corpus.scenarioIds, ...writes.corpus.scenarioIds], tasks: [...reads.corpus.tasks, ...writes.corpus.tasks],
     });
-  }, initializeRuntime, selection?.protectedSecrets, profileFixture);
+  }, initializeRuntime, selection?.protectedSecrets, profileFixture, [], undefined, false, createPreflight);
   const descriptor = h.descriptor;
   if (descriptor.surfaces.inputRun === undefined) throw new Error("launch fixture requires typed input");
   function currentWorkflow(): RunStartWorkflow {
     const descriptor = h.descriptor;
     if (descriptor.surfaces.inputRun === undefined) throw new Error("launch fixture requires typed input");
     return { workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category,
-    role: { kind: "standalone" }, enqueue: descriptor.enqueue, version: descriptor.version, spreadsheetIntake: false, requiredWorkbookTypeIds: [...descriptor.requiredWorkbookTypeIds],
+    role: { kind: "standalone" }, enqueue: descriptor.enqueue, version: descriptor.version, spreadsheetIntake: false, requiredWorkbookFields: [...descriptor.requiredWorkbookFields], referenceSources: [],
     inputRun: { state: "present", surface: descriptor.surfaces.inputRun },
     steps: projectStartSteps(descriptor).map((step) => ({ ...step, control: startStepWireControl(step.control) })) };
   }
@@ -117,7 +118,10 @@ export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", in
       ...(limit === undefined ? {} : { limit: Number(limit) }), ...(cursor === undefined ? {} : { cursor }),
     })));
   });
-  app.post("/api/v1/commands", async (c) => c.json(h.kernel.execute(await c.req.json())));
+  app.post("/api/v1/commands", async (c) => {
+    const request = CommandRequestSchema.parse(await c.req.json());
+    return c.json(request.family === "start" ? await h.kernel.executeStart(request) : h.kernel.execute(request));
+  });
   const submissions: unknown[] = []; const finalCommands: unknown[] = [];
   let loseResponse = false;
   const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async (url, init) => {
@@ -142,7 +146,9 @@ export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", in
     selection: { route: { start: false }, workflowId: descriptor.id } };
   const binding: DashboardCommandBinding = { authority, executor, scope, feedback: () => undefined };
   return { ...h, get queueRoots() { return h.queueRoots; }, get descriptor() { return h.descriptor; }, get workflow() { return currentWorkflow(); }, app, client, launch, binding, submissions, finalCommands, loseResponse: () => { loseResponse = true; },
-    async completeSource() { const run = h.start(h.proposal()); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+    async completeSource() {
+      await h.planner.prepare?.({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: false }, new AbortController().signal);
+      const run = h.start(h.proposal()); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
       const result = await h.execute(run); if (result.state !== "done") throw new Error(`source did not complete: ${result.state}`); return h.fresh(run); },
     authoritySnapshot() { return JSON.stringify({ generation: h.database.getMeta(), roots: h.queueRoots,
       plans: h.planIds.minted(), ids: h.ids.minted(), lifecycleIds: h.lifecycleIds.minted() }); },

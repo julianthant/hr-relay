@@ -142,7 +142,7 @@ it("records the exact saved default-browser rewrite with its ordinary command an
   const intent = FixedLayoutActivationSchema.parse({ profileId, sourceRoot, authorityPath: join(targetRoot, "state.db"),
     backupFileName: `authority-g3-1-${randomUUID()}.sqlite`, backupSha256: "a".repeat(64), backupManifestSha256: "b".repeat(64),
     preAuthorityGeneration: 3, preAuthorityContentFingerprint: "c".repeat(64), settingsRevision: 2, settingsFingerprint: derivePersistedSettingsFingerprint(settings),
-    browserSnapshots: [], priorActive: { generation: 2, settingsRevision: 2, settingsFingerprint: derivePersistedSettingsFingerprint(settings), configSnapshotId: randomUUID(), configFingerprint: before.fingerprint, activatedAt: capturedAt },
+    priorActive: { generation: 2, settingsRevision: 2, settingsFingerprint: derivePersistedSettingsFingerprint(settings), configSnapshotId: randomUUID(), configFingerprint: before.fingerprint, activatedAt: capturedAt },
     settingsUpdate: { commandId: randomUUID(), auditId: randomUUID(), previousBrowserRoot: settings.paths.browserProfileRoot, outputPaths: { downloadsDir } },
     snapshot: { ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: 3, fingerprint: after.fingerprint, config: after.config, provenance: after.provenance, capturedAt, capturedBy: "local-operator" } });
   const update = fixedLayoutSettingsUpdate(intent, settings);

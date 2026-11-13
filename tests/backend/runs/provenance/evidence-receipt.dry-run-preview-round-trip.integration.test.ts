@@ -34,7 +34,7 @@ describe("a dry run retains transaction preview accounting", () => {
       { node: WRITE_FIXTURE_NODE_ID, subject: "match", externalCommit: "none" },
     );
     assert.equal(
-      events.some((event) => String(event.spanPath).endsWith("/commit")),
+      events.some((event) => String(event.spanPath).includes("/commit#")),
       false,
       "zero commit spans",
     );

@@ -6,6 +6,7 @@ import {
   type BackupServiceStateWire,
   type StorageDoctorWire,
 } from "../../../models/dashboard/storage.js";
+import type { StorageDoctorReport } from "../../storage/sqlite/recovery-contracts.js";
 import { doctorAuthorityStorage } from "../../storage/sqlite/index.js";
 import type { RuntimeAdmission } from "../../storage/admission/admission.js";
 
@@ -27,6 +28,10 @@ export interface StorageQueryDeps {
 
 export async function buildStorageDoctor(deps: StorageQueryDeps): Promise<StorageDoctorWire> {
   const report = await doctorAuthorityStorage(deps.admission, deps.doctorOptions, deps.clock, deps.credentials);
+  return projectStorageDoctor(report, deps.serviceState());
+}
+
+export function projectStorageDoctor(report: StorageDoctorReport, service: BackupServiceStateWire): StorageDoctorWire {
   return StorageDoctorWireSchema.parse({
     mode: report.mode,
     recovery: report.recovery,
@@ -46,6 +51,6 @@ export async function buildStorageDoctor(deps: StorageQueryDeps): Promise<Storag
     backup: report.backup,
     restoreCandidates: report.restoreCandidates,
     ...(report.previousLocationBackups === undefined ? {} : { previousLocationBackups: report.previousLocationBackups }),
-    service: deps.serviceState(),
+    service,
   });
 }

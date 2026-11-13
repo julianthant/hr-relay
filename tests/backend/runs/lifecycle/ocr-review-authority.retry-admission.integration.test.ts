@@ -14,7 +14,7 @@ function claimParent(f: Awaited<ReturnType<typeof world.fixture>>, activeState: 
   const owner = testWorkerLifetime(f.database, "ocr", 1);
   const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
   const claimed = f.canonical.lifecycle.claimNext({ commandId: randomUUID(), workflow: "ocr", workerId: owner.workerId,
-    workerLifetime: owner.workerLifetime, runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
+    runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
       settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
   assert.ok(claimed.state === "applied" && "run" in claimed);
   assert.equal(claimed.run.envelope.runId, f.run.envelope.runId);

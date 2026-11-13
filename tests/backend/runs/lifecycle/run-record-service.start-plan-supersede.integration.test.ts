@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { runClaim } from '../../../../src/models/run/record.js';
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -60,14 +61,17 @@ describe("start-specific supersede review is atomic", () => {
         source: "dashboard", family: "run", type: "rename", target: { runId: source.envelope.runId, expectedVersion: source.version }, payload: { displayName: "Changed" } });
       else if (source !== undefined) {
         const active = h.database.authority.runtimeConfig.get(); assert.ok(active);
-        const { workerId, workerLifetime } = testWorkerLifetime(h.database, h.descriptor.id, 1);
-        const claimed = h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id, workerId, workerLifetime, runtimeConfig: {
+        const { workerId } = testWorkerLifetime(h.database, h.descriptor.id, 1);
+        const claimed = h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id, workerId, runtimeConfig: {
           generation: active.generation, settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } });
         assert.ok(claimed.state === "applied" || claimed.state === "applied-already");
       }
       const roots = h.queueRoots; const generation = h.database.getMeta().authorityGeneration;
-      const result = h.kernel.execute(h.command(plan)); assert.ok(result.state === "rejected"); assert.equal(result.code, "replan-required");
-      assert.deepEqual(h.queueRoots, roots); assert.equal(h.database.getMeta().authorityGeneration, generation);
+      const command = h.command(plan);
+      const result = h.kernel.execute(command); assert.ok(result.state === "rejected"); assert.equal(result.code, "replan-required");
+      assert.deepEqual(h.queueRoots, roots); assert.equal(h.database.getMeta().authorityGeneration, generation + 2);
+      assert.deepEqual(h.database.authority.commands.get(command.commandId), command);
+      assert.deepEqual(h.database.authority.commandAudits.findByCommand(command.commandId)?.result, result);
       assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
       if (source !== undefined && change === "claimed") {
         const current = h.fresh(source), claim = runClaim(current);
@@ -115,7 +119,7 @@ describe("start-specific supersede review is atomic", () => {
       const kernel = createCommandKernel({ lifecycle, authority: reopened, clock: h.clock, ids: h.ids, appVersion: "0.1.0",
         descriptors: { resolve: () => descriptor }, configIdentity: UNSTORED_CONFIG_IDENTITY,
         intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-        workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } }, writeResolution: h.resolution });
+        workerRuntime: { pool: unusedWorkerPool() }, writeResolution: h.resolution });
       const before = JSON.stringify({ meta: reopened.getMeta(), runs: reopened.authority.runs.listByWorkflow(descriptor.id), plan: reopened.authority.startPlans.get(plan.startPlanId) });
       assert.deepEqual(kernel.execute(command), { ...accepted, state: "already-applied" });
       assert.equal(JSON.stringify({ meta: reopened.getMeta(), runs: reopened.authority.runs.listByWorkflow(descriptor.id), plan: reopened.authority.startPlans.get(plan.startPlanId) }), before);

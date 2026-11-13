@@ -201,8 +201,11 @@ describe("redaction surface scan — the declaration audit", () => {
       clock: manualClock(new Date(NOW)), onRecord: batch => points.push(...batch.points) });
     const key = REDACTION_CANARIES.personName;
     collector.recordData({ direction: "read", field: "results", value: [{ [key]: "captured" }] });
-    assert.equal(points.length, 1);
-    assert.ok(points[0]?.origins?.some(entry => entry.path.includes(key) && entry.origin.path.includes(key)));
+    collector.recordData({ direction: "read", field: "selection", value: [{ [key]: "captured" }],
+      aliases: [{ path: [], source: { kind: "local", field: "results", path: [] } }] });
+    assert.equal(points.length, 2);
+    assert.equal(points[0]?.origins, undefined);
+    assert.ok(points[1]?.origins?.some(entry => entry.path.includes(key) && entry.origin.path.includes(key)));
   });
 
   it("covers the actual assistant and OCR loopback boundaries and rejects each missing origin", () => {
@@ -481,7 +484,7 @@ describe("redaction surface scan — the declaration audit", () => {
       const path = `${surface.startsWith("request/") ? "workbook." : ""}libraryId`;
       assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "captured-hr-value");
     }
-    for (const [surface, path] of [["wire/intake-session", "exclusions[].reason"], ["wire/workbook-intake", "session.exclusions[].reason"], ["wire/intake-command-result", "request.payload.reason"], ["wire/intake-command-result", "request.reason"]]) {
+    for (const [surface, path] of [["wire/intake-session", "exclusions[].reason"], ["wire/workbook-intake", "session.exclusions[].reason"], ["wire/intake-command-result", "request.payload.reason"], ["wire/intake-command-result", "request.reason"], ["wire/worker-command-result", "request.reason"]]) {
       assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "operator-authored", `${surface}|${path}`);
     }
     for (const surface of ["durable/saved-workbook", "wire/saved-workbook", "wire/workbook-list", "wire/workbook-history"]) {

@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { CanonicalWorkerTransitionRequestSchema } from "../../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -70,8 +71,7 @@ async function fixture(descriptor: AnyWorkflowDescriptor = fixtureDescriptor, dr
     appVersion: "0.1.0", descriptors, configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { recheck: unused, resolveAbsent: unused },
-    workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused,
-      reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
+    workerRuntime: { pool: unusedWorkerPool(unused) } });
   const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors, clock,
     ids: sequentialIdFactory("b"), planTtlMs: 600_000, configFingerprint: active.configFingerprint,
     configSnapshotId: active.configSnapshotId, plannedBy: "local-operator" });
@@ -107,7 +107,6 @@ async function resumedRoot() {
       assert.equal(f.lifecycle.workerTransition({ commandId: lifecycleCommandId("executor-transition", { runId: current.envelope.runId,
         generation: claim.claimGeneration, version: current.version }), runId: current.envelope.runId, claim, lifecycle }).state, "applied");
     }
-    f.database.assertWorkerLifecycleRelease(workerId);
     let parked = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(parked);
     if (rename) {
       assert.equal(f.kernel.execute({ commandId: randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "run", type: "rename",

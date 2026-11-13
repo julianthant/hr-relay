@@ -24,7 +24,6 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
 import { WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
-import { WorkerControlRecordSchema } from "../../../../src/models/run/worker-control.js";
 import { DiagnosticBundleSchema } from "../../../../src/models/trust/diagnostic.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
@@ -93,7 +92,7 @@ it("keeps initialization counts visible and uses the same eligibility for stoppe
       try {
         const inventory = AuthorityDatabase.readIncompleteOnboardingInventory(child);
         assert.equal(inventory.empty, true);
-        assert.equal(inventory.counts.length, 51);
+        assert.equal(inventory.counts.length, 49);
         for (const [table, count] of [["commands", 1], ["command_audits", 1], ["settings", 1], ["settings_snapshots", 2], ["workbook_types", 1], ["exclusive_session_leases", 0]] as const) {
           assert.equal(inventory.counts.find(row => row.table === table)?.count, count);
         }
@@ -166,7 +165,7 @@ for (const problem of ["operator-command", "operator-audit", "extra-audit", "com
   });
 }
 
-for (const activity of ["business", "deleted-history", "artifact-reference", "workbook-history", "unknown-write", "uncertain-control", "diagnostic"] as const) {
+for (const activity of ["business", "deleted-history", "artifact-reference", "workbook-history", "unknown-write", "diagnostic"] as const) {
   it(`refuses valid ${activity} alongside initialization at the activity guard`, async () => {
     const f = await createHistoricalIncompleteProfileFixture();
     try {
@@ -192,19 +191,6 @@ for (const activity of ["business", "deleted-history", "artifact-reference", "wo
           assert.ok(row.status === "parked");
           database.prepare("INSERT INTO write_intents(id,system,idempotency_key,idempotency_key_digest,status,generation,run_id,payload_json,publication_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,NULL,?,?)")
             .run(row.writeIntentId, row.system, row.idempotencyKey, row.idempotencyKeyDigest, row.status, row.generation, row.runId, JSON.stringify(row), row.createdAt, row.updatedAt);
-        }
-        if (activity === "uncertain-control") {
-          const request = CommandRequestSchema.parse(COMMAND_FIXTURES.find(raw => CommandRequestSchema.safeParse(raw).success && z.object({ type: z.string() }).parse(raw).type === "plan-worker-count"));
-          insertNativeCommand(database, request);
-          assert.equal(request.family, "worker-browser");
-          if (request.family !== "worker-browser" || request.type !== "plan-worker-count") throw new Error("fixture worker plan required");
-          const selected = Array.from({ length: request.payload.desiredWorkers }, (_, index) => ({ workerId: `${request.target.workflowId}-worker-${index + 1}`,
-            workflow: request.target.workflowId, ordinal: index + 1, poolIndex: index + 1, membershipRevision: 1, phase: "starting", retiredAt: null,
-            retirementCommandId: null, reservationCommandId: null, createdAt: initial.capturedAt, updatedAt: initial.capturedAt }));
-          const row = WorkerControlRecordSchema.parse({ commandId: request.commandId, request, scope: "worker-pool:onboarding", executorId: randomUUID(), admittedAt: initial.capturedAt,
-            expiresAt: active.capturedAt, basisVersion: 1, roster: { selected, excess: [], beforeVersion: 1, admittedVersion: 1, afterVersion: 2 }, phase: { state: "uncertain", startedAt: initial.capturedAt, observedAt: active.capturedAt, message: "fixture unresolved owner" } });
-          database.prepare("INSERT INTO worker_controls(command_id,scope,worker_id,phase,audited_at,payload_json,created_at) VALUES(?,?,NULL,'uncertain',NULL,?,?)")
-            .run(row.commandId, row.scope, JSON.stringify(row), row.admittedAt);
         }
         if (activity === "diagnostic") {
           const run = RunRecordSchema.parse({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, configSnapshotId: active.configSnapshotId, configFingerprint: active.fingerprint } });

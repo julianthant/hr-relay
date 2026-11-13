@@ -24,6 +24,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import type { z } from "zod";
 import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
+import { observationLeafPaths, resolveObservationOrigin } from "../../../../src/models/events/data-observation-origin.js";
 
 const NOW = "2026-08-02T18:00:00.000Z";
 const RUN_ID = "aaaaaaaa-0001-4000-8000-000100000000";
@@ -44,7 +45,9 @@ function collector(nodeId: string, taskId: string, checkpoints: readonly RunChec
 function checkpoint(nodeId: string, schema: z.ZodType, output: unknown, evidence: ReturnType<ReturnType<typeof collector>["finalizeRead"]>) {
   return RunCheckpointRecordSchema.parse({ workflowId: personLookupDescriptor.id, itemId: "33333333-3333-4333-8333-333333333333", runId: RUN_ID, nodeId, attempt: 1, claimGeneration: 1,
     output: { schemaHash: deriveSchemaHash(schema, "output"), value: output }, descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
-    implFingerprint: "b".repeat(64), provenance: evidence.provenance, observationOrigins: evidence.points.flatMap(point => (point.origins ?? []).map(entry => ({path:[...point.field.split("."),...entry.path],origin:entry.origin}))), writtenAt: NOW });
+    implFingerprint: "b".repeat(64), provenance: evidence.provenance, observationOrigins: evidence.points.flatMap(point => observationLeafPaths(point.value).map(path => ({
+      path: [...point.field.split("."), ...path], origin: resolveObservationOrigin({ ...point.execution, spanPath: `pl-180000-aaaa/${nodeId}#2.3` }, point, path),
+    }))), writtenAt: NOW });
 }
 async function readChain() {
   const searchCollector = collector("searching", SearchPersonOrg.id, []);
@@ -134,20 +137,24 @@ it.each(["ambiguous","not-found"] as const)("does not alias a %s selection",asyn
   const result=await searchPersonOrgTask.impl.run({input:{kind:"by-eid",emplId:candidate.emplId},ctx:{...commonCtx,recordData:c.recordData,driver:createDeterministicUcpathPersonOrgDriver(output)}});
   const selection=c.finalizeRead(result).points.find(point=>point.field==="selection");
   assert.equal(selection?.aliases,undefined);
-  assert.ok(selection?.origins?.every(entry=>entry.origin.field==="selection"));
+  assert.equal(selection?.origins,undefined);
 });
 
-it.each([true,false])("preserves original-run replay origins only when retained (lineage=%s)",async retained=>{
+it.each([true,false])("preserves retained original-run replay origins and refuses unavailable source origins (lineage=%s)",async retained=>{
   const search=collector("searching",SearchPersonOrg.id,[]);
   search.recordData([{direction:"read",field:"results",value:person.results},{direction:"read",field:"selection",value:person.selection,aliases:[{path:["selected"],source:{kind:"local",field:"results",path:[0]}}]}]);
   const cp=checkpoint("searching",SearchPersonOrg.output,person,search.finalizeRead(person));
   const replay=RunCheckpointRecordSchema.parse({...cp,runId:"bbbbbbbb-0001-4000-8000-000100000000",observationOrigins:retained?cp.observationOrigins:undefined});
   const c=collector("search-identity",ReadResolvedIdentity.id,[replay],["matching"],String(replay.runId));
+  if (!retained) {
+    await assert.rejects(readResolvedIdentityTask.impl.run({input:{input,person},ctx:{...commonCtx,recordData:c.recordData}}),/observation alias source checkpoint searching origin unavailable/u);
+    return;
+  }
   const output=await readResolvedIdentityTask.impl.run({input:{input,person},ctx:{...commonCtx,recordData:c.recordData}});
   const origin=c.finalizeRead(output).points.find(point=>point.field==="selected")?.origins?.find(entry=>JSON.stringify(entry.path)==='["name"]')?.origin;
-  assert.equal(origin?.nodeId,retained?"searching":"search-identity");
-  assert.equal(origin?.runId,retained?RUN_ID:replay.runId);
-  assert.deepEqual(origin?.path,retained?[0,"name"]:["name"]);
+  assert.equal(origin?.nodeId,"searching");
+  assert.equal(origin?.runId,RUN_ID);
+  assert.deepEqual(origin?.path,[0,"name"]);
 });
 
 it("annotates preferred and filtered candidate branches, unique CRM forwarding, and leaves multi-record unanimity derived",async()=>{

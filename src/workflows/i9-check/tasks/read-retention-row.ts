@@ -1,5 +1,5 @@
 import { defineTask } from "../../../workflow-kit/task.js";
-import { ReadRetentionRow } from "../../../models/workflows/i9-check/check.js";
+import { ReadRetentionRow } from "../../../models/workflows/i9-check/read-retention-row.js";
 import { i9RetentionRow } from "../../../rules/i9-check/retention.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 

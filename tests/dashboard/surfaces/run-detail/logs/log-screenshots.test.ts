@@ -31,6 +31,12 @@ function button(name: string): HTMLButtonElement {
   assert.ok(match, `missing button: ${name}`);
   return match;
 }
+function choice(name: string): HTMLInputElement {
+  const match = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(node => node.closest("label")?.textContent === name);
+  assert.ok(match, `missing choice: ${name}`);
+  return match;
+}
+async function pick(name: string) { await act(async () => choice(name).click()); }
 async function click(name: string) { await act(async () => button(name).click()); }
 
 describe("classified log screenshot viewer", () => {
@@ -40,16 +46,16 @@ describe("classified log screenshot viewer", () => {
     assert.equal(button("Previous screenshot").disabled, true);
     assert.equal(button("Next screenshot").disabled, false);
     assert.equal(document.querySelector('[role="dialog"] .log-viewer-image')?.getAttribute("alt"), "First form");
-    await click("100%");
+    await pick("100%");
     assert.equal((document.querySelector('[role="dialog"] .log-viewer-image') as HTMLImageElement).style.width, "850px");
     await click("Next screenshot");
     assert.equal(document.querySelector('[role="dialog"] .log-viewer-image')?.getAttribute("alt"), "Second form");
-    assert.equal(button("Fit width").getAttribute("aria-pressed"), "true");
+    assert.equal(choice("Fit width").checked, true);
     assert.equal(button("Next screenshot").disabled, true);
     await click("Previous screenshot");
     assert.equal(document.querySelector('[role="dialog"] .log-viewer-image')?.getAttribute("alt"), "First form");
-    await click("Whole image");
-    assert.equal(button("Whole image").getAttribute("aria-pressed"), "true");
+    await pick("Whole image");
+    assert.equal(choice("Whole image").checked, true);
   });
   it("shows a distinct missing-image alert without treating it as an empty group", async () => {
     await mount([captures[0]]);

@@ -16,7 +16,7 @@ import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../source
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
 import { AuthorityBackupService,verifyBackupManifestAtPath,verifyStoppedBackupManifestAtPath,type VerifiedBackup } from "../sqlite/backup-service.js";
-import { BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,deriveAuthorityUpgradePlanDigest,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS } from "../sqlite/migrations.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,deriveAuthorityUpgradePlanDigest,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,WORKER_CUSTODY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
 import { assertStoppedBackupClosure,prepareStoppedBackupClosure,readStoppedProfileUpgradeInventory,StorageBackupClosureUnprovedError,type ProfileBrowserClosure,type StoppedBackupClosure } from "./profile-inventory.js";
 
@@ -24,7 +24,7 @@ import { assertStoppedBackupClosure,prepareStoppedBackupClosure,readStoppedProfi
 
 export const StorageUpgradeReportSchema = z.strictObject({
   state: z.enum(["planned", "initialized", "upgraded", "already-upgraded"]),
-  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   toSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   credentials: z.literal("unchanged"),
   diagnostics: z.strictObject({ reclaimedStages: z.number().int().nonnegative(), retainedStages: z.number().int().nonnegative(), capacityWarning: z.boolean() }).optional(),
@@ -154,7 +154,11 @@ function assertReadyUpgradeInventory(before: ReadyUpgradeInventory, after: Ready
   // The upgrade that crosses the build-id schema deletes every run; all other facts stay identical.
   const runsDeleted = publication.kind === "upgraded" && publication.sourceSchemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION;
   if (runsDeleted && nextFacts.runs.length !== 0) throw new Error("profile-stopped-upgrade-resources-changed");
-  const comparable = (facts: typeof priorFacts) => runsDeleted ? { ...facts, runs: [] } : facts;
+  // Crossing the custody schema deletes the worker-lifetime closure, which the conversion itself proves; every other run stays identical.
+  const custodyConverted = publication.kind === "upgraded" && publication.sourceSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
+  const kept = new Set(nextFacts.runs.map(run => run.envelope.runId));
+  const comparable = (facts: typeof priorFacts) => runsDeleted ? { ...facts, runs: [] }
+    : custodyConverted ? { ...facts, runs: facts.runs.filter(run => kept.has(run.envelope.runId)) } : facts;
   if (canonicalJsonStringify(comparable(priorFacts)) !== canonicalJsonStringify(comparable(nextFacts))) throw new Error("profile-stopped-upgrade-resources-changed");
   if (publication.kind === "unchanged") {
     if (canonicalJsonStringify(priorUpgrades) !== canonicalJsonStringify(nextUpgrades)) throw new Error("profile-stopped-upgrade-journal-changed");

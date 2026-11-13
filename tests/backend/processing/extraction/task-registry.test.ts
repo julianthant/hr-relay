@@ -6,7 +6,8 @@ import { describe,it } from "vitest";
 import { extractPdfPagesTask,extractSpreadsheetTask } from "../../../../src/backend/processing/extraction/task-registry.js";
 import { redactObservedDataPoints } from "../../../../src/backend/logs/observed-data.js";
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
-import { ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
+import { ExtractPdfPagesOutputSchema, PDF_PAGE_LIMIT } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
+import { ERROR_CATALOG, failureCodeFromTaskCode } from "../../../../src/models/failures/error-catalog.js";
 import {
 ExtractSpreadsheetOutputSchema,
 type ExtractSpreadsheetOutput,
@@ -69,16 +70,19 @@ async function runSpreadsheet(
   }
 }
 
-function buildOnePagePdf(): Buffer {
+function buildPdf(pageCount = 1): Buffer {
   const objects: string[] = [];
+  const pageObjects = Array.from({ length: pageCount }, (_, index) => index + 5);
   objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
-  objects[2] = "<< /Type /Pages /Kids [4 0 R] /Count 1 >>";
+  objects[2] = "<< /Type /Pages /Kids [" + pageObjects.map(number => `${String(number)} 0 R`).join(" ") + "] /Count " + String(pageCount) + " >>";
   objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
   const stream = "BT /F1 24 Tf 72 700 Td (Fixture Page) Tj ET";
-  objects[4] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]"
-    + " /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>";
-  objects[5] = "<< /Length " + String(stream.length) + " >>\nstream\n"
+  objects[4] = "<< /Length " + String(stream.length) + " >>\nstream\n"
     + stream + "\nendstream";
+  for (const number of pageObjects) {
+    objects[number] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]"
+      + " /Resources << /Font << /F1 3 0 R >> >> /Contents 4 0 R >>";
+  }
 
   let pdf = "%PDF-1.4\n";
   const offsets: number[] = [];
@@ -191,7 +195,7 @@ describe("extraction task wrappers", () => {
   });
 
   it("returns the selected PDF page and its rendered PNG bytes", async () => {
-    const rendered = await runPdf(buildOnePagePdf());
+    const rendered = await runPdf(buildPdf());
     if (rendered.outcome !== "success") throw new Error(`expected rendered output, received ${rendered.failure.code}`);
 
     assert.equal(rendered.output.pageCount, 1);
@@ -210,10 +214,19 @@ describe("extraction task wrappers", () => {
   });
 
   it("refuses a page range past the PDF without writing bytes or recording facts", async () => {
-    const refused = await runPdf(buildOnePagePdf(), 2);
+    const refused = await runPdf(buildPdf(), 2);
     if (refused.outcome !== "failure") throw new Error("expected page-out-of-range refusal");
     assert.equal(refused.failure.code, "page-out-of-range");
     assert.match(refused.failure.message, /pages 1–2 were requested but the document has 1/u);
+    assert.equal(refused.writes.length, 0);
+    assert.deepEqual(refused.facts, []);
+  });
+
+  it("refuses a PDF over the page limit before rendering or recording facts", async () => {
+    const refused = await runPdf(buildPdf(PDF_PAGE_LIMIT + 1));
+    if (refused.outcome !== "failure") throw new Error("expected too-many-pages refusal");
+    assert.equal(refused.failure.code, "too-many-pages");
+    assert.equal(failureCodeFromTaskCode(refused.failure.code) in ERROR_CATALOG, true);
     assert.equal(refused.writes.length, 0);
     assert.deepEqual(refused.facts, []);
   });

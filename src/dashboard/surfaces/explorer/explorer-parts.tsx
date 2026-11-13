@@ -38,7 +38,7 @@ export function ExplorerParts(props: PartProps) {
       return <section key={key} className="my-3 overflow-hidden rounded-lg border border-ui-stroke bg-ui-table">
         <details className="group" data-disclosure={id} open={open[id] ?? true} onToggle={(event) => { if (event.currentTarget.open !== (open[id] ?? true)) onToggle(id, event.currentTarget.open); }}>
           <summary className={`group flex min-h-11 cursor-pointer list-none items-center gap-2.5 px-4 py-2.5 text-control [&::-webkit-details-marker]:hidden ${dsFocus}`}>
-            <PanelsTopLeft aria-hidden className="size-4 shrink-0 text-ui-muted" /><strong className="font-semibold">{part.title}</strong>
+            <PanelsTopLeft aria-hidden className="size-4 shrink-0 text-ui-muted" /><strong className="font-medium">{part.title}</strong>
             <span className="ml-auto text-caption text-ui-muted">{part.mode}</span><ChevronDown aria-hidden className="ml-2 size-3.5 shrink-0 text-ui-muted group-open:rotate-180" />
           </summary>
           <div className="border-t border-ui-stroke"><ExplorerParts {...props} parts={part.parts} formTitle={part.title} /></div>
@@ -58,8 +58,8 @@ export function ExplorerParts(props: PartProps) {
       const templateId = `${step.number}-${field.id}-template`;
       const Icon = field.mode === "fill" ? PencilLine : field.mode === "compute" ? Cpu : Eye;
       const style = `grid w-full grid-cols-[1rem_minmax(9rem,1fr)_minmax(11rem,1fr)] items-start gap-2.5 ${field.mode === "fill" ? "py-1.5" : "py-2"} text-left text-body ${selected === id ? "rounded-md ring-2 ring-ui-info" : ""}`;
-      const body = <><Icon aria-hidden className={`mt-0.5 size-3.5 shrink-0 ${field.mode === "fill" ? "text-ui-info" : "text-ui-muted"}`} /><span className="self-center text-ui-primary">{field.label}</span>
-        <span className={field.mode === "fill" ? "flex min-h-7 min-w-0 items-center justify-between gap-2 self-center rounded-md border border-ui-stroke-control bg-ui-field px-2.5 py-1 text-ui-info" : "self-center text-right text-ui-secondary"}>
+      const body = <><Icon aria-hidden className={`mt-0.5 size-3.5 shrink-0 ${field.mode === "fill" ? "text-ui-info" : "text-ui-muted"}`} /><span className="self-center font-medium text-ui-primary">{field.label}</span>
+        <span className={field.mode === "fill" ? "flex min-h-7 min-w-0 items-center justify-between gap-2 self-center rounded-md border border-ui-stroke-control bg-ui-field px-2.5 py-1 font-medium text-ui-info" : "self-center text-right text-ui-secondary"}>
           {field.value}{field.mode === "fill" && <ArrowUpRight aria-hidden className="size-3.5 shrink-0" />}
         </span></>;
       return <div key={field.id} className="border-b border-ui-stroke last:border-b-0">

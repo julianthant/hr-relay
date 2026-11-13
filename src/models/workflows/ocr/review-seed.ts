@@ -7,7 +7,7 @@ import { EidSchema, FingerprintSchema, IsoInstantSchema, RunIdSchema, StableReco
 import { matchRosterSubjects, RosterRowFactsSchema, RosterSubjectMatchSchema } from "../../../rules/matching/roster-match.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { OcrPageAccountingSchema } from "./page-accounting.js";
+import { OcrPageAccountingSchema, OcrPageOutcomeSchema, type OcrPageReading } from "./page-accounting.js";
 import { OcrWorkbookRosterEvidenceSchema } from "./roster.js";
 
 const OcrArtifactRosterEvidenceSchema = z.strictObject({
@@ -121,4 +121,41 @@ export type OcrReviewSeed = z.infer<typeof OcrReviewSeedSchema>;
 export function buildOcrReviewSeed(candidate: OcrReviewSeedInput): OcrReviewSeed {
   const input = OcrReviewSeedInputSchema.parse(candidate);
   return deepFreeze(OcrReviewSeedSchema.parse({ ...input, formType: input.accounting.formType, ...deriveReview(input) }));
+}
+
+const [donePage, ...unreadPages] = OcrPageOutcomeSchema.options;
+const { output: _reading, ...doneRef } = donePage.shape;
+const { rows: _workbookRows, ...workbookRosterRef } = OcrWorkbookRosterEvidenceSchema.shape;
+const { rows: _artifactRows, ...artifactRosterRef } = OcrArtifactRosterEvidenceSchema.shape;
+const { fields: _fields, ...recordRef } = OcrReviewRecordSeedSchema.shape;
+export const OcrReviewCheckpointSchema = z.strictObject({ ...OcrReviewSeedSchema.shape,
+  accounting: z.strictObject({ ...OcrPageAccountingSchema.shape,
+    outcomes: z.array(z.discriminatedUnion("state", [z.strictObject({ ...doneRef, extractionId: FingerprintSchema }), ...unreadPages])).min(1) }),
+  roster: z.union([z.strictObject(workbookRosterRef), z.strictObject(artifactRosterRef)]).nullable(),
+  records: z.array(z.strictObject(recordRef)),
+});
+export type OcrReviewCheckpoint = z.infer<typeof OcrReviewCheckpointSchema>;
+
+export function compactOcrReviewSeed({ roster, accounting, records, ...seed }: OcrReviewSeed): OcrReviewCheckpoint {
+  const { rows: _rows, ...rosterRef } = roster ?? { rows: [] };
+  return OcrReviewCheckpointSchema.parse({ ...seed, roster: roster === null ? null : rosterRef,
+    accounting: { ...accounting, outcomes: accounting.outcomes.map(outcome => outcome.state !== "done" ? outcome
+      : { state: outcome.state, runId: outcome.runId, itemId: outcome.itemId, extractionId: outcome.output.extractionId }) },
+    records: records.map(({ fields: _recordFields, ...record }) => record) });
+}
+
+export function hydrateOcrReviewSeed(checkpoint: OcrReviewCheckpoint, reading: (extractionId: string) => OcrPageReading | undefined,
+  roster: OcrReviewSeed["roster"]): OcrReviewSeed {
+  const { sourceRunId, accounting } = checkpoint;
+  const seed = buildOcrReviewSeed({ ...(sourceRunId === undefined ? {} : { sourceRunId }), roster, accounting: { ...accounting,
+    outcomes: accounting.outcomes.map(outcome => {
+      if (outcome.state !== "done") return outcome;
+      const output = reading(outcome.extractionId);
+      if (output === undefined) throw new Error("OCR review checkpoint names a page reading that is not retained.");
+      return { state: outcome.state, runId: outcome.runId, itemId: outcome.itemId, output };
+    }) } });
+  if (canonicalJsonStringify(compactOcrReviewSeed(seed)) !== canonicalJsonStringify(checkpoint)) {
+    throw new Error("OCR review checkpoint does not match its retained page readings and roster.");
+  }
+  return seed;
 }

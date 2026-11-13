@@ -2,7 +2,7 @@ import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
 import { OnboardingInput, OnboardingCanonicalInput } from "../../models/workflows/onboarding/input.js";
-import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_TYPE_ID } from "../../models/workflows/onboarding/roster.js";
+import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_OUTPUT_FIELDS, ONBOARDING_ROSTER_TYPE_ID } from "../../models/workflows/onboarding/roster.js";
 import { onboardingCrmDataDefinition } from "./steps/crm-data/step.js";
 import { onboardingUcpathSearchDefinition } from "./steps/ucpath-search/step.js";
 import { onboardingI9SearchDefinition } from "./steps/i9-search/step.js";
@@ -10,8 +10,9 @@ import { onboardingHireWritesDefinition, buildHireReview } from "./steps/hire-re
 
 export const onboardingWorkflow = defineWorkflow({
   id: "onboarding", version: 2, code: "on", label: "Onboarding", icon: "UserPlus", category: "onboarding",
-  requiredWorkbookTypeIds: ["onboarding-roster"],
-  referenceLookups: input => [{ typeId: ONBOARDING_ROSTER_TYPE_ID, keys: [input.email], fields: [...ONBOARDING_ROSTER_FIELDS] }],
+  requiredWorkbookFields: [...ONBOARDING_ROSTER_FIELDS],
+  workbookReference: { id: ONBOARDING_ROSTER_TYPE_ID, keyFieldId: "email", mode: "keys", writableFields: [...ONBOARDING_ROSTER_OUTPUT_FIELDS] },
+  referenceKeys: input => [input.email],
   summary: "Review CRM hire data, independently confirmed UCPath identities and complete transaction findings. Create or reuse the I-9 record, verify the filed hire and fill result cells through the captured master reference.",
   input: OnboardingInput, canonicalInput: OnboardingCanonicalInput, inputSubject: "email",
   surface: { shape: "single" }, surfaces: { inputRun: {

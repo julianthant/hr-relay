@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { buildWorkflowCatalog as buildWorkflowCatalog_m0 } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 // @vitest-environment jsdom
 import assert_m0 from "node:assert/strict";
@@ -15,8 +15,8 @@ import { parseWorkflows as parseWorkflows_m1 } from "../../../../src/dashboard/s
 import { WorkflowRail as WorkflowRail_m1 } from "../../../../src/dashboard/surfaces/shell/workflow-rail.js";
 import { MOCK_WORKFLOW_CATALOG as MOCK_WORKFLOW_CATALOG_m1 } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { buildWorkflowCatalog as buildWorkflowCatalog_m1,servedLaunchWorkflows as servedLaunchWorkflows_m1 } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP as FIXTURE_START_PICKER_BOOTSTRAP_m1 } from "../../../parity/helpers/fixture-start.js";
-import { PARITY_WORKFLOW_COMPOSITION, servedFixtureSources as servedFixtureSources_m1 } from "../../../parity/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as FIXTURE_START_PICKER_BOOTSTRAP_m1 } from "../../../mocks/helpers/fixture-start.js";
+import { MOCK_WORKFLOW_COMPOSITION, servedFixtureSources as servedFixtureSources_m1 } from "../../../mocks/helpers/workflow-composition.js";
 
 
 {
@@ -86,7 +86,7 @@ afterEach_m0(_afterEachFixture2);
     assert_m0.ok(document.querySelector('[aria-label="Read result preview"]'));
   });
   it_m0("opens served Separations on the registered definition instead of the mock timeline", async () => {
-    const registered = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows));
+    const registered = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows), FIXTURE_START_PICKER_BOOTSTRAP_m1.workbookCompatibility);
     const catalog = buildWorkflowCatalog_m0(registered, true, WORKFLOW_SOURCES_m1);
     const host = document.createElement("div");
     document.body.append(host);
@@ -104,7 +104,7 @@ afterEach_m0(_afterEachFixture2);
 {
 
 
-const served = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows));
+const served = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows), FIXTURE_START_PICKER_BOOTSTRAP_m1.workbookCompatibility);
 const catalog = buildWorkflowCatalog_m1(served, true, servedFixtureSources_m1([]));
 const noop = () => {};
 
@@ -128,7 +128,7 @@ describe_m1("frontend workflow catalog", () => {
   it_m1("retains custom served bootstrap workflows in Explorer and Logs preview catalogs", () => {
     const custom = { ...served[0], workflowId: "launch-proof", label: "Launch proof" };
     const bootstrap = [...served, custom];
-    const composition = PARITY_WORKFLOW_COMPOSITION(bootstrap);
+    const composition = MOCK_WORKFLOW_COMPOSITION(bootstrap);
     for (const policy of [composition.explorerSources, composition.logsSources]) {
       expect_m1(() => buildWorkflowCatalog_m1(bootstrap, true, policy)).not.toThrow();
       const entries = buildWorkflowCatalog_m1(bootstrap, true, policy);
@@ -172,7 +172,7 @@ describe_m1("frontend workflow catalog", () => {
     const future = { ...served[0], workflowId: "new-workflow", label: "New workflow", categoryId: "Payroll", code: "NW" };
     const renamed = { ...served[0], label: "Registered name" };
     const entries = buildWorkflowCatalog_m1([renamed, served[1], future], true, servedFixtureSources_m1([renamed, served[1], future]));
-    expect_m1(entries).toHaveLength(15);
+    expect_m1(entries).toHaveLength(14);
     expect_m1(new Set(entries.map(entry => entry.id)).size).toBe(entries.length);
     expect_m1(entries.find(entry => entry.id === renamed.workflowId)).toMatchObject({ label: "Registered name", source: "served", launch: { state: "served" }, served: renamed });
     expect_m1(entries.find(entry => entry.id === future.workflowId)).toMatchObject({ label: future.label, code: "NW", launch: { state: "served" }, served: future });
@@ -197,7 +197,7 @@ describe_m1("frontend workflow catalog", () => {
     expect_m1(catalog.find(entry => entry.id === "ocr")).toBeUndefined();
     const hiddenOcr = { ...served[0], workflowId: "ocr", label: "OCR" };
     expect_m1(buildWorkflowCatalog_m1([hiddenOcr, ...served], true, { ...servedFixtureSources_m1(served), ocr: "hidden" }).some(entry => entry.id === "ocr")).toBe(false);
-    expect_m1(catalog.filter(entry => entry.launch.state === "unavailable").map(entry => entry.id).sort()).toEqual(["i9-lookup", "sharepoint-download"]);
+    expect_m1(catalog.filter(entry => entry.launch.state === "unavailable").map(entry => entry.id).sort()).toEqual(["i9-lookup"]);
   });
 });
 }

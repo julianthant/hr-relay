@@ -174,7 +174,7 @@ export function failureDebugDetails(error: Error) {
   const seen = new Set<unknown>([error]);
   let cause: unknown = error.cause;
   while (cause instanceof Error && !seen.has(cause) && texts.length < 13) {
-    seen.add(cause); texts.push(cause.stack ?? cause.message); cause = cause.cause;
+    seen.add(cause); texts.push(`${cause.name}: ${cause.stack ?? cause.message}`); cause = cause.cause;
   }
   const safe = texts.map(sanitizeDebugText);
   const originalBytes = safe.reduce((total, text) => total + Buffer.byteLength(text), 0);

@@ -12,6 +12,7 @@ import {
 } from "../../src/backend/transports/http/frontend-owner.js";
 
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
+const STARTUP_PROGRESS_MS = 30_000;
 
 interface Managed {
   readonly name: string;
@@ -22,7 +23,6 @@ interface Managed {
 export interface DashboardLauncherOptions {
   readonly mode?: "dashboard" | "backend" | "web";
   readonly frontendOwnerFile?: string;
-  readonly startupTimeoutMs?: number;
   readonly signals?: EventEmitter;
   readonly writeError?: (message: string) => void;
 }
@@ -47,8 +47,15 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
   let result = 0;
   let forwardedSignal: NodeJS.Signals | undefined;
   let ready = false;
+  let progress: ReturnType<typeof setInterval> | undefined;
   let finish: (code: number) => void = () => undefined;
   const done = new Promise<number>(resolve => { finish = resolve; });
+
+  function stopProgress(): void {
+    if (progress === undefined) return;
+    clearInterval(progress);
+    progress = undefined;
+  }
 
   function completeIfClosed(): void {
     if (!stopping || !managed.every(item => item.closed)) return;
@@ -70,7 +77,7 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
     stopping = true;
     result = code;
     forwardedSignal = signal;
-    clearTimeout(startupTimer);
+    stopProgress();
     for (const { child, closed } of managed) {
       if (!closed && child.exitCode === null && child.signalCode === null) child.kill(signal);
     }
@@ -108,24 +115,23 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
   function onTerminate(): void { stop("SIGTERM", 0); }
   signals.on("SIGINT", onInterrupt);
   signals.on("SIGTERM", onTerminate);
-  const startupTimer = setTimeout(() => {
-    writeError("[dashboard] BFF readiness timed out; stopping the backend.\n");
-    stop("SIGTERM", 1);
-  }, options.startupTimeoutMs ?? 30_000);
 
   const launchWeb = () => launch("web", [fileURLToPath(new URL("../../node_modules/vite/bin/vite.js", import.meta.url)), "--config", "vite.dashboard.config.ts"]);
   if (mode === "web") {
     ready = true;
-    clearTimeout(startupTimer);
     launchWeb();
     return done;
   }
   const backend = launch("bff", ["--conditions=development", "--import", "tsx", fileURLToPath(new URL("./secure-env-bootstrap.ts", import.meta.url)), "cli", "dashboard"], true);
+  progress = setInterval(() => {
+    if (stopping || ready) return;
+    writeError("[dashboard] still starting (preparing saved data)...\n");
+  }, STARTUP_PROGRESS_MS);
   backend.on("message", (message: unknown) => {
     if (stopping || ready || message === null || typeof message !== "object"
       || !("type" in message) || message.type !== "hrauto-dashboard-ready") return;
     ready = true;
-    clearTimeout(startupTimer);
+    stopProgress();
     if (mode === "dashboard") launchWeb();
     else {
       try {

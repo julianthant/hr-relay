@@ -361,8 +361,10 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const acceptedParent = h.database.authority.commands.getBulk(envelope.bulkCommandId);
     assert.notEqual(acceptedParent, undefined);
     assert.equal(h.database.authority.commands.parentId(String(results[0].commandId)), envelope.bulkCommandId);
-    assert.equal(h.database.authority.commands.parentId(String(results[1].commandId)), undefined);
-    assert.equal(h.database.authority.commands.parentId(String(results[2].commandId)), undefined);
+    for (const [index, state] of [[1, "conflict"], [2, "rejected"]] as const) {
+      assert.equal(h.database.authority.commands.parentId(String(results[index].commandId)), envelope.bulkCommandId);
+      assert.equal(h.database.authority.commandAudits.findByCommand(String(results[index].commandId))?.result.state, state);
+    }
     assert.equal(h.database.authority.commandAudits.findByCommand(envelope.bulkCommandId), undefined);
 
     assert.deepEqual(acceptedParent?.request.targets, bulkBody.targets);
@@ -479,7 +481,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       const failure = await postBulk(failureBody);
       assert.equal(failure.payload.requestedCount, 3);
       assert.deepEqual((failure.payload.results as Record<string, unknown>[]).map(({ outcome }) => outcome), ["applied", "errored"]);
-      assert.equal(h.database.authority.commands.get(failId), undefined);
+      // The trigger also blocks the errored-child audit, so the child stays admitted and the resumed bulk applies it.
+      assert.equal(h.database.authority.commands.get(failId)?.commandId, failId);
+      assert.equal(h.database.authority.commandAudits.findByCommand(failId), undefined);
       assert.equal(h.database.authority.commands.get(deriveBulkChildCommandId(failureBody.bulkCommandId, runF)), undefined);
       assert.equal(versionOf(runE), failureBody.targets[1].expectedVersion);
       raw.exec("DROP TRIGGER synthetic_child_failure");

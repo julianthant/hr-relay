@@ -49,6 +49,7 @@ for (const path of ["provider", "scope-loss"] as const) it(`persists and logs on
     read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
     email: () => "synthetic@ucsd.edu", credentials: noSecretAccess, store: noSecretAccess, publicState: noSecretAccess,
     provider: { browserState() { return { state: "open", generation: 1 }; }, async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { throw new Error("unexpected portal"); },
+      async stop() {},
       async closeBrowser() { return { state: "closed" }; }, async cancel() { return { state: "closed" }; },
       async start(_attempt, bind, reportFailure) {
         starts++;
@@ -93,6 +94,7 @@ it("starting the other method closes an unfinished attempt instead of refusing",
     read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
     email: () => "synthetic@ucsd.edu", credentials: noSecretAccess, store: noSecretAccess, publicState: noSecretAccess,
     provider: { async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { throw new Error("unexpected portal"); },
+      async stop() {},
       async closeBrowser() { return { state: "closed" }; }, async cancel(attempt) { cancelled.push(attempt.method); return { state: "closed" }; },
       async start() {} },
   });
@@ -125,6 +127,7 @@ it("reopens the exact browser generation after a drain failure without aborting 
     provider: {
       async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { unused(); }, async start() { unused(); },
       async cancel() { return { state: "closed" }; },
+      async stop() {},
       async closeBrowser() { return recovered ? { state: "closed" } : { state: "uncertain", cause }; },
       async recoverBrowser(browser, generation) { browser.assertCurrent(); calls.push(generation); await release.promise; recovered = true; },
       browserState() { return { state: "closed", generation: 4 }; },
@@ -165,6 +168,7 @@ for (const foreign of [false, true]) it(`settles only recovered attempt custody 
       browserState() { return { state: "closed", generation }; },
       async start(_attempt, _bind, report) { await report(new ProfileOnboardingDuoProviderError("unknown", "worker", foreign ? source : undefined)); },
       async cancel() { return { state: "closed" }; },
+      async stop() {},
       async closeBrowser() { return recovered ? { state: "closed" } : { state: "uncertain" }; },
       async recoverBrowser(browser, expected) { browser.assertCurrent(); assert.equal(expected, generation); generation++; recovered = true; },
     } });
@@ -193,6 +197,7 @@ for (const foreign of [false, true]) it(`a Show failure caught after proved Reop
     email: unused, credentials: unused, store: unused, publicState: unused,
     provider: { async showBrowser() { if (generation === 4) { await opening.promise; if (foreign) throw source; } }, async openPortal() { unused(); },
       browserState() { return { state: "closed", generation }; }, async start() { starts++; }, async cancel() { return { state: "closed" }; },
+      async stop() {},
       async closeBrowser() { return { state: "closed" }; }, async recoverBrowser(browser, expected) { browser.assertCurrent(); assert.equal(expected, generation); generation++; },
     } });
   const start = owner.start(operationId, "touch");
@@ -243,6 +248,7 @@ for (const phase of ["prelaunch", "clean-setup", "old-unproved", "new-unproved",
         }
       },
       async openPortal() { unused(); }, async cancel() { return { state: "closed" }; },
+      async stop() {},
       async closeBrowser() { return newUnproved ? { state: "uncertain", cause: fresh } : recovered ? { state: "closed" } : { state: "uncertain", cause: old }; },
       async start(_attempt, _bind, report) { await report(new ProfileOnboardingDuoProviderError("unknown", "worker", phase === "foreign" ? foreign : old)); },
     } });
@@ -267,4 +273,40 @@ for (const phase of ["prelaunch", "clean-setup", "old-unproved", "new-unproved",
   await owner.drain(operationId); owner.assertAbortable(operationId); owner.assertClosed();
   assert.equal(shows, priorShows, "Cancel needs no successful replacement opening");
   assert.ok(operation.onboarding?.attempts[0]?.providerClosedAt);
+});
+
+for (const fault of ["none", "stale-draft", "provider-stop"] as const) it(`awaits provider shutdown and preserves ${fault} closure evidence`, async () => {
+  const operationId = randomUUID();
+  const operation = SignUpOperationSchema.parse({ schemaVersion: 2, kind: "sign-up", operationId, profileId: randomUUID(),
+    commandId: randomUUID(), writeId: randomUUID(), emailKey: "a".repeat(64), firstName: "Synthetic", lastName: "Operator",
+    createdAt: "2026-11-03T08:00:00.000Z", commandFingerprint: "b".repeat(64), phase: "applying",
+    credentials: { operationId: randomUUID(), keyId: randomUUID(), generation: 1, phase: "ready" },
+    onboarding: { accountId: randomUUID(), generation: 1, attempts: [] } });
+  const primary = new Error("fixture stale draft"), stopFailure = new Error("fixture provider stop unproved");
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let stale = false, stopped = false;
+  const forbidden = (): never => { throw new Error("unexpected credential or write"); };
+  const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)),
+    onEvent() {}, onFailure() {}, failureDiagnostic: () => ({ kind: "unknown", causeTag: "provider" }),
+    read: () => { if (stale) throw primary; return operation; }, update: forbidden,
+    email: forbidden, credentials: forbidden, store: forbidden, publicState: forbidden,
+    provider: { showBrowser: async () => undefined, openPortal: forbidden, start: forbidden, cancel: forbidden, closeBrowser: forbidden,
+      async stop() { entered.resolve(); await release.promise; if (fault === "provider-stop") throw stopFailure; stopped = true; } },
+  });
+  if (fault === "stale-draft") { await owner.showBrowser(operationId); stale = true; }
+  let settled = false;
+  const closing = owner.close();
+  const outcome = closing.then(() => { settled = true; return undefined; }, (error: unknown) => { settled = true; return error; });
+  try {
+    await entered.promise;
+    assert.equal(settled, false); assert.equal(stopped, false);
+    release.resolve();
+    const error = await outcome;
+    assert.equal(stopped, fault !== "provider-stop");
+    if (fault === "none") { assert.equal(error, undefined); owner.assertClosed(); }
+    else {
+      assert.equal(error, fault === "stale-draft" ? primary : stopFailure);
+      assert.throws(() => owner.assertClosed());
+    }
+  } finally { release.resolve(); await outcome; }
 });

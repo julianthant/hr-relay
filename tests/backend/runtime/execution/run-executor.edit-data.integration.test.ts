@@ -193,9 +193,9 @@ function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): 
   run: RunRecord;
   claim: { workerId: string; claimGeneration: number };
 } {
-  const { workerId, workerLifetime } = testWorkerLifetime(database, descriptor.id, 1);
+  const { workerId } = testWorkerLifetime(database, descriptor.id, 1);
   const claimed = database.authority.runs.claimNext({
-    workerLifetime, workflow: descriptor.id,
+    workflow: descriptor.id,
     workerId,
     now: new Date("2026-08-03T09:00:00.000Z").toISOString(),
   });

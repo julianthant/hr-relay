@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { createCommandKernel, type CommandKernel, type SettingsApplicationExecutor, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel, type CommandKernel, type CommandKernelDependencies, type SettingsApplicationExecutor, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
@@ -31,6 +31,8 @@ import { planStart } from "../../../../src/backend/runs/start/plan.js";
 import { createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";
 import { CommandRequestSchema, type CommandRequest } from "../../../../src/rules/commands/commands.js";
 
+export interface FakeWorkerMember { readonly lifetimeId: string; readonly version: number; readonly state: "running" | "exited" }
+
 type RepositoryWrap = (repositories: AuthorityRepositories) => AuthorityRepositories;
 
 type AuthorityTransactionWrap = <Result>(
@@ -43,6 +45,7 @@ interface HarnessOptions {
   readonly profile?: BoundProfileStorageFixture;
   readonly prepareAssistantModelPreference?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["prepareAssistantModelPreference"];
   readonly failureResolution?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["failureResolution"];
+  readonly commandNotices?: CommandKernelDependencies["commandNotices"];
   readonly afterAuthorityCommit?: () => void;
   readonly descriptors?: readonly AnyWorkflowDescriptor[];
 }
@@ -53,6 +56,8 @@ export interface Harness {
   readonly clock: ReturnType<typeof manualClock>;
   readonly plannerIds: ReturnType<typeof sequentialIdFactory>;
   readonly workerCalls: string[];
+  /** The fake pool's members by worker id: a member command cites `lifetimeId` and `version` from here. */
+  readonly workerMembers: Map<string, FakeWorkerMember>;
   readonly writeCalls: string[];
   readonly credentials: ReturnType<typeof createCredentialStore>;
   readonly stateRoot: string;
@@ -128,35 +133,31 @@ export function createCommandKernelTestWorld(profileFixture: () => Promise<Bound
     writeFixtureDescriptor,
   ];
 
-  function acceptingWorkerRuntime(calls: string[], database: AuthorityDatabase): WorkerPoolRuntimeAdoption {
-    const control = async (context: import("../../../../src/backend/runs/commands/command-kernel.js").WorkerRuntimeContext) => {
-      const command = context.command;
-      calls.push(`${command.type === "spawn-worker" ? "spawn" : command.type === "refresh-browser" ? "refresh" : command.type === "reopen-browser" ? "reopen" : command.type}:${command.type}`);
-      if ((command.type === "stop-worker" || command.type === "pause-worker" || command.type === "resume-worker") && "workerId" in command.target) {
-        const lease = database.authority.workerLeases.get(command.target.workerId);
-        assert.ok(lease);
-        const result = database.authority.workerLeases.control({ workerId: lease.workerId,
-          expectedVersion: lease.version, commandId: command.commandId, control: { directive: command.type === "stop-worker" ? "stop" : command.type === "pause-worker" ? "pause" : "run",
-          requestedBy: command.requestedBy, requestedAt: context.now }, now: context.now });
-        assert.equal(result.state, "applied");
-        if (command.type === "stop-worker") return { state: "accepted", directiveLeaseVersions: { before: lease.version, after: lease.version + 1 } };
-      }
-      if (command.type === "refresh-browser" || command.type === "reopen-browser") {
-        const controls = database.authority.workerControls;
-        assert.equal(controls.get(command.commandId)?.phase.state, "admitted");
-        controls.transition(command.commandId, "admitted", { state: "ready" });
-        controls.transition(command.commandId, "ready", { state: "executing", startedAt: context.now });
-        controls.transition(command.commandId, "executing", { state: "succeeded", startedAt: context.now,
-          completedAt: context.now, acknowledgement: { kind: "control", browserSessionId: command.target.browserSessionId } });
-      }
-      return { state: "accepted" };
-    };
+  /** A pool that accepts every effect and keeps each member's lifetime and version in memory, as the real pool does. */
+  function acceptingWorkerRuntime(calls: string[], members: Map<string, FakeWorkerMember>): WorkerPoolRuntimeAdoption {
+    let lifetimes = 0;
+    const state = (workerId: string) => members.get(workerId)?.state ?? "absent";
     return { pool: {
-      assertResetOwner: () => undefined,
-      planPoolWorkerCount: async context => { calls.push(`plan:${context.command.type}`); assert.ok(context.roster);
-        return { state: "accepted", workerIds: context.roster.selected.map(slot => slot.workerId), retirements: [] }; },
-      spawnPoolWorker: control, refreshPoolBrowser: control, reopenPoolBrowser: control,
-      stopPoolWorker: control, pausePoolWorker: control, resumePoolWorker: control,
+      admit: async () => undefined,
+      assertMember: target => {
+        const member = members.get(target.workerId);
+        if ((member?.lifetimeId ?? null) !== target.lifetimeId || (member?.version ?? 0) !== target.expectedVersion) {
+          throw Object.assign(new Error("WORKER_TARGET_STALE"), { code: "WORKER_TARGET_STALE" });
+        }
+        return state(target.workerId);
+      },
+      start: async member => { calls.push(`start:${member.workerId}`);
+        if (state(member.workerId) === "running") throw Object.assign(new Error("WORKER_ALREADY_RUNNING"), { code: "WORKER_ALREADY_RUNNING" });
+        members.set(member.workerId, { lifetimeId: `00000000-0000-4000-8000-${String(++lifetimes).padStart(12, "0")}`, version: 0, state: "running" }); },
+      ensure: async member => { calls.push(`ensure:${member.workerId}`);
+        if (state(member.workerId) === "absent" || state(member.workerId) === "exited") members.set(member.workerId,
+          { lifetimeId: `00000000-0000-4000-8000-${String(++lifetimes).padStart(12, "0")}`, version: 0, state: "running" }); },
+      stop: async (workerId, reason) => { calls.push(`stop:${workerId}:${reason}`);
+        const member = members.get(workerId); if (member !== undefined) members.set(workerId, { ...member, version: member.version + 1, state: "exited" }); },
+      remove: async member => { calls.push(`remove:${member.workerId}`); members.delete(member.workerId); },
+      direct: async (workerId, directive) => { calls.push(`direct:${workerId}:${directive}`); },
+      browser: async (target, type) => { calls.push(`${type}:${target.browserSessionId}`); },
+      checkParkedWrite: async target => { calls.push(`check-parked-write:${target.workerId}`); throw new Error("fixture pool has no parked-write probe"); },
     } };
   }
 
@@ -201,12 +202,14 @@ export function createCommandKernelTestWorld(profileFixture: () => Promise<Bound
     }
 
     const workerCalls: string[] = [];
+    const workerMembers = new Map<string, FakeWorkerMember>();
     const writeCalls: string[] = [];
     const credentials = createCredentialStore({ stateRoot });
     const kernel = createCommandKernel({
       ...(options.profile === undefined ? {} : { authorityProfileId: options.profile.admission.profileBinding.profileId }),
       ...(options.prepareAssistantModelPreference === undefined ? {} : { prepareAssistantModelPreference: options.prepareAssistantModelPreference }),
       ...(options.failureResolution === undefined ? {} : { failureResolution: options.failureResolution }),
+      ...(options.commandNotices === undefined ? {} : { commandNotices: options.commandNotices }),
       lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: options.publishQueued ?? (() => {}) }),
       appVersion: "0.1.0",
       configIdentity: { configFingerprint: database.authority.runtimeConfig.get()!.configFingerprint, configSnapshotId: database.authority.runtimeConfig.get()!.configSnapshotId },
@@ -230,7 +233,7 @@ export function createCommandKernelTestWorld(profileFixture: () => Promise<Bound
       },
       writeResolution: requeueingWriteResolution(writeCalls, database, clock),
       workbookRows: createRunWorkbookService({ database, clock }),
-      workerRuntime: acceptingWorkerRuntime(workerCalls, database),
+      workerRuntime: acceptingWorkerRuntime(workerCalls, workerMembers),
       settings: settingsOverride ?? createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), credentials),
     });
     return {
@@ -239,6 +242,7 @@ export function createCommandKernelTestWorld(profileFixture: () => Promise<Bound
       clock,
       plannerIds: sequentialIdFactory("f"),
       workerCalls,
+      workerMembers,
       writeCalls,
       credentials,
       stateRoot,

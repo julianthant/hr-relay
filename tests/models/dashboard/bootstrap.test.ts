@@ -1,7 +1,9 @@
+import { WorkbookCompatibilitySchema } from "../../../src/models/dashboard/workbook-library.js";
 import { createDashboardModelFixtures } from "../../support/helpers/dashboard-model-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import { describe } from "vitest";
 import { it } from "vitest";
+import { WorkflowBootstrapPrimitiveSchema, WorkflowStartReadinessSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { ServerClockWireSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { runtimeTimeZone } from "../../../src/rules/time/clock.js";
@@ -11,6 +13,18 @@ import { runtimeTimeZone } from "../../../src/rules/time/clock.js";
 const { WORKFLOW_PRIMITIVE, BOOTSTRAP } = createDashboardModelFixtures();
 
 describe("dashboard wire primitives", () => {
+
+  it("serves explicit source selection readiness without type defaults", () => {
+    const needed = { scope: "workbook-sources", state: "selection-needed",
+      fixAction: { kind: "choose-workbook-sources", workflowId: WORKFLOW_PRIMITIVE.id } };
+    const workflow = { ...WORKFLOW_PRIMITIVE, start: { ...WORKFLOW_PRIMITIVE.start,
+      requiredWorkbookFields: ["eid"], workbookReference: { id: "roster", keyFieldId: "eid", mode: "all", writableFields: [] }, readiness: needed } };
+    assert.equal(WorkflowBootstrapPrimitiveSchema.safeParse(workflow).success, true);
+    assert.equal(WorkbookCompatibilitySchema.safeParse({ workflows: [], libraries: [] }).success, true);
+    assert.equal(WorkflowStartReadinessSchema.safeParse({ ...needed, defaultWorkbookId: "roster" }).success, false);
+    assert.equal(WorkflowStartReadinessSchema.safeParse({ scope: "all-dependencies", state: "ready" }).success, false);
+    assert.equal(WorkflowStartReadinessSchema.safeParse({ scope: "workbook-sources", state: "ready", fixAction: needed }).success, false);
+  });
 
   it("refuses a served chunk harness whose composition is not in the same document", () => {
     const composition = {

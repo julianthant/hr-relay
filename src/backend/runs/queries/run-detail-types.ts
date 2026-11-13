@@ -94,9 +94,9 @@ export type CanonicalRunReader = Pick<RunRecordService, "read" | "list" | "withR
 
 export interface RunDetailQueryDeps {
   readonly authorityIdentity?: Readonly<{ installationId: string; profileId: string }>;
+  readonly workerMembers?: () => readonly import("../../runtime/workers/worker-pool.js").WorkerMemberView[];
   /** The local profile's display name, which names who answered a decision. */
   readonly operatorName?: () => string;
-  readonly ownsWorker?: (lease: import("../../../models/run/worker.js").WorkerLeaseRecord) => boolean;
   /** Bounded, versioned same-item history read, composed only with lifecycle authority. */
   readonly itemAttemptHistory?: Readonly<{
     read(runId: string, request: ItemAttemptHistoryRequest): ItemAttemptHistoryResponse;

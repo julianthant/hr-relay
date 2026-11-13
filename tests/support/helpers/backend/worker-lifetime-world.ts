@@ -55,11 +55,7 @@ export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof create
   const h = await world.fixture(), children: ChildProcess[] = [];
   const slot = h.database.authority.workerSlots.list()[0];
   if (slot === undefined) throw new Error("missing member");
-  const lease = h.database.authority.workerLeases.get(slot.workerId);
-  if (lease === undefined) throw new Error("missing lease");
   const now = h.clock.now().toISOString();
-  h.database.authority.workerLeases.reportLifecycle({ workerId: slot.workerId, leaseGeneration: lease.leaseGeneration,
-    lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt, stoppedAt: now, reason: "shutdown" }, now });
   const owner = async (authorityPath = join(h.root, "state.db"), onSpawn?: (child: ChildProcess) => void) => {
     const child = options?.fenceInOwner === true
       ? spawn(process.execPath, ["--import", testProcessImport(), fileURLToPath(new URL("../../../support/processes/write-fence-owner.ts", import.meta.url)), authorityPath, String(h.lifetime.port)], { stdio: ["pipe", "pipe", "inherit", "ipc"] })
@@ -76,28 +72,7 @@ export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof create
     return { child, pid: child.pid };
   };
   const old = await owner();
-  const started = h.database.authority.workerLeases.start({ workerId: slot.workerId, workflow: slot.workflow,
-    browserSystems: ["ucpath", "crm"], processId: old.pid, requestedBy: "local-operator", now });
-  if (started.state !== "started") throw new Error("old birth failed");
-  const observe = (state: "idle" | "paused" | "starting" | "waiting" | "busy") => {
-    const common = { startedAt: started.lease.lifecycle.startedAt, heartbeatAt: now };
-    h.database.authority.workerLeases.reportLifecycle({ workerId: slot.workerId, leaseGeneration: started.lease.leaseGeneration, now,
-      lifecycle: state === "starting" ? { state, startedAt: common.startedAt }
-        : state === "paused" ? { state, ...common, pausedAt: now }
-        : state === "waiting" ? { state, ...common, activity: "authenticating" }
-        : state === "busy" ? { state, ...common, runId: randomUUID() } : { state, ...common } });
-  };
-  const shutdown = async (reason: "shutdown" | "crashed" = "shutdown") => {
-    const current = h.database.authority.workerLeases.get(slot.workerId);
-    if (current === undefined) throw new Error("missing old lifetime");
-    h.database.authority.workerLeases.control({ workerId: slot.workerId, expectedVersion: current.version, now,
-      control: { directive: "stop", requestedAt: now, requestedBy: "local-operator" } });
-    for (const state of ["stopping", "stopped"] as const) h.database.authority.workerLeases.reportLifecycle({ workerId: slot.workerId,
-      leaseGeneration: current.leaseGeneration, now, lifecycle: state === "stopped" ? { state, startedAt: current.lifecycle.startedAt,
-        stoppedAt: now, reason } : { state, startedAt: current.lifecycle.startedAt, heartbeatAt: now } });
-    await stop(old.child);
-  };
-  return { ...h, slot, old, started: started.lease, now, owner, observe, shutdown,
+  return { ...h, slot, old, now, owner,
     fence: async (input: unknown) => {
       if (old.child.stdin === null) throw new Error("fence owner has no channel");
       old.child.stdin.write(`${JSON.stringify(input)}\n`);

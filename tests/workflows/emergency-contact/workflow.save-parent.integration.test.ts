@@ -3,13 +3,14 @@ import { createReceiptService } from "../../../src/backend/runs/trust/receipt-se
 import { readQueueRecordMembers } from "../../../src/backend/runs/queries/ocr-record-members.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import assert from "node:assert/strict";
-import { afterEach, it } from "vitest";
+import { afterAll, afterEach, it } from "vitest";
 import { EmergencyContactMemberInputSchema } from "../../../src/models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactResultSchema } from "../../../src/models/workflows/emergency-contact/result.js";
 
 
 const world = createEmergencyContactRetryWorld();
 afterEach(world.cleanup);
+afterAll(world.releaseTemplates);
 it("keeps the one OCR release and native member lineage while reporting one verified Save and one failed sibling without a forged output", async () => {
   const f = await world.fixture();
   const { facts, persistence } = f;

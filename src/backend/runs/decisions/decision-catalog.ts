@@ -103,6 +103,39 @@ export const DECISION_CATALOG: Readonly<Record<RunDecisionType, DecisionDeclarat
   cancelling: { title: "Cancelling this run", recommended: [], options: [] },
 });
 
+/** The identity review's served text: why Relay asks, each comparison's label, and how each candidate was found. */
+export const IDENTITY_REVIEW_TEXT = Object.freeze({
+  reason: {
+    "several-people": "More than one person in UCPath matches the name on the form.",
+    name: "The name on the form differs from the name in UCPath.",
+    eid: "The form has no matching Employee ID, so Relay found this person by name.",
+    "eid-entered": "Relay is using the Employee ID you entered.",
+    employment: "UCPath does not show exactly one active job for this person.",
+    "name-search": "A UCPath search on the name on the form finds someone else.",
+    agreed: "Confirm this is the person the form means.",
+  },
+  label: { name: "Name", eid: "Employee ID", employment: "Active jobs", "name-search": "Name search" },
+  origin: {
+    "name-resolved": "Found by name in UCPath",
+    "operator-entered": "Employee ID you entered",
+    "name-search": "UCPath search on the name on the form",
+    manual: "Also listed by the name search",
+  },
+  value: {
+    noFormEid: "Not on the form",
+    oneActiveJob: "1 active job",
+    noActiveJob: "No active job",
+    unknownJob: "A job status Relay does not recognize",
+    noMatch: "No match",
+    unnamed: "Name not shown in UCPath",
+  },
+  confirm: {
+    agreed: "Every check agreed. Approving files the rest of this separation for this person.",
+    disagreed: "Approving files the rest of this separation for this person anyway.",
+  },
+  unavailable: "Relay cannot show this identity review. Reload, or cancel the run.",
+});
+
 /** The declared identifier of a parked write, read from its natural key; a declared key that lacks it is corrupt. */
 export function parkedWriteRecordId(taskId: string, idempotencyKey: string): string | undefined {
   const declared = PARKED_WRITE_RECORDS[taskId]?.id;

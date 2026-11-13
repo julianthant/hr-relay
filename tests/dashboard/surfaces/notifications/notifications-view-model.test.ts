@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { notificationsSample } from "../../../../src/dashboard/surfaces/notifications/notifications-fixture.js";
-import { notificationView,updateNotification,type NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
+import { notificationView,updateNotification,withCommandNotices,type NotificationItem,type NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 
 function ready(state: NotificationsState) {
   assert.equal(state.state, "ready");
@@ -61,5 +61,19 @@ describe("frontend notification state", () => {
     assert.throws(() => updateNotification(notificationsSample("normal"), "missing", "read"), /notification-preview-item-missing/);
     for (const control of ["read"] as const) assert.throws(() => updateNotification(notificationsSample("normal"), "sample-gap", control), /notification-preview-item-missing/);
     assert.throws(() => notificationsSample("unknown"), /notification-sample-missing/);
+  });
+});
+
+describe("local command notices", () => {
+  const recovery: NotificationItem = { id: "command:k", kind: "command", priority: true, title: "Result unconfirmed", subject: "", workflow: "", detail: "Review the original request to recover its result.",
+    tone: "warning", age: "Just now", read: false, action: "Review", destination: { kind: "local-recovery", key: "k" } };
+  it("keep their Review route when the served inbox is loading or unavailable", () => {
+    for (const inbox of [{ state: "loading" }, { state: "unavailable", reason: "offline" }] as const) {
+      const merged = ready(withCommandNotices(inbox, [recovery]));
+      assert.deepEqual(notificationView(merged, "all").shown.map(item => [item.id, item.action]), [["command:k", "Review"]]);
+    }
+  });
+  it("leave a non-ready inbox alone when there is no notice", () => {
+    assert.deepEqual(withCommandNotices({ state: "loading" }, []), { state: "loading" });
   });
 });

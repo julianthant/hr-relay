@@ -1,4 +1,3 @@
-import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/write-sequencer-world.js";
@@ -40,7 +39,7 @@ describe("write fence claim admission", () => {
           assert.equal(h.database.authority.runs.requeue({ runId: run.envelope.runId, expectedVersion: run.version,
             claim, cause: "recovery", now: WRITE_FIXTURE_NOW }).state, "applied");
           const member = h.database.authority.workerSlots.get(claim.workerId); assert.ok(member);
-          const reclaimed = h.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(h.database, run.envelope.workflow, member.poolIndex).workerLifetime, workflow: run.envelope.workflow,
+          const reclaimed = h.database.authority.runs.claimNext({ workflow: run.envelope.workflow,
             workerId: claim.workerId, now: WRITE_FIXTURE_NOW });
           assert.equal(reclaimed.state, "claimed");
           if (reclaimed.state !== "claimed") throw new Error("fixture reclaim failed");

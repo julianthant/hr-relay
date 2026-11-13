@@ -309,7 +309,7 @@ _No tasks registered — this store is a declaration-only placeholder._
 
 | Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| `workflow:ocr/read-source-pages` | Bind original pages | read | read | — (sessionless) | — | `request`, `rendered` | `manifest`, `pages` | ∞ | bound |
+| `workflow:ocr/read-source-pages` | Bind original pages | read | read | — (sessionless) | — | `request`, `rendered` | `manifest` (document, page count, fingerprint) | ∞ | bound |
 | `workflow:ocr/read-review-seed` | Build source-bound review | read | read | — (sessionless) | — | `sourceRunId`, `roster`, `manifest`, `readingId`, `formType`, `outcomes` | `sourceRunId`, `accounting`, `roster`, `formType`, `pages`, `grouping`, `records` | ∞ | bound |
 | `workflow:ocr/read-result` | Retain identity outcomes | read | read | — (sessionless) | — | `review`, `outcomes` | `review`, `identities` | ∞ | bound |
 

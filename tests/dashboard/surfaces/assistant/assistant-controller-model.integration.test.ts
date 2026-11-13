@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { ASSISTANT_UNKNOWN_NOTICE } from '../../../../src/dashboard/surfaces/assistant/assistant-model.js';
+import { chatGptStatusFixture } from "../../../support/helpers/chatgpt-status-fixture.js";
 import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
 import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chatgpt-account.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
@@ -128,7 +129,7 @@ it('gives the automatic chat title only after the first reply settles, never rac
   let current!: ReturnType<typeof useAssistantController>;
   function Harness() {
     current = useAssistantController(client, 1, undefined, false);
-    return createElement(AssistantPanel, { producer: createAssistantMockProducer(), accountClient: { chatGptAccount: async () => ({ state: 'signed-out' as const }) },
+    return createElement(AssistantPanel, { producer: createAssistantMockProducer(), accountClient: { chatGptAccount: async () => chatGptStatusFixture({ state: 'signed-out' as const }) },
       served: current, title: 'New chat', onAutomaticTitle: title => { titles.push(title); } });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
@@ -157,7 +158,7 @@ it.each(['run-action', 'workflow'] as const)('renders the existing served %s car
   const producer = createAssistantMockProducer();
   function Harness() {
     current = useAssistantController(client, 1, undefined, false);
-    return createElement(AssistantPanel, { producer, accountClient: { chatGptAccount: async () => ({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });
+    return createElement(AssistantPanel, { producer, accountClient: { chatGptAccount: async () => chatGptStatusFixture({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness) })));
@@ -186,7 +187,7 @@ function setupAccount() {
   let reads = 0;
   const unavailable = ChatGptAccountStateSchema.parse({ state: "unavailable", code: 'CHATGPT_USAGE_UNAVAILABLE',
     message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text });
-  const client = createDashboardClient({ baseUrl: 'http://relay.test', fetchImpl: async () => { reads++; return Response.json(unavailable); } });
+  const client = createDashboardClient({ baseUrl: 'http://relay.test', fetchImpl: async () => { reads++; return Response.json(chatGptStatusFixture(unavailable)); } });
   const port = createServedChatGptAccountPort(client);
   return { port, get reads() { return reads; } };
 }
@@ -217,7 +218,7 @@ it('refuses setup attachments before send callbacks, file readers and registrati
     function Harness() {
       current = useAssistantController(client, 'profile', undefined, false);
       return createElement(ShellAssistantPanel, { producer, served: current, draft,
-        accountClient: { async chatGptAccount() { return ChatGptAccountStateSchema.parse({ state: "signed-out" }); } },
+        accountClient: { async chatGptAccount() { return chatGptStatusFixture(ChatGptAccountStateSchema.parse({ state: "signed-out" })); } },
         async onSendMessage() { sends++; }, async onRegisterSpreadsheet() { registrations++; },
         async onAttachFile() { attachments++; return null; } });
     }
@@ -301,7 +302,7 @@ it('shows the one unknown line after a lost response without replay', async () =
   const account = { ...preview, mode: 'live' as const }, producer = createSetupAssistantProducer();
   function Harness() {
     current = useAssistantController(client, 'current', undefined, false);
-    return createElement(ShellAssistantPanel, { producer, served: current, accountClient: { async chatGptAccount() { return { state: 'signed-out' as const }; } } });
+    return createElement(ShellAssistantPanel, { producer, served: current, accountClient: { async chatGptAccount() { return chatGptStatusFixture({ state: 'signed-out' as const }); } } });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));
@@ -322,7 +323,7 @@ it('disables Cancel and Confirm once a refused decision leaves the issued card s
     async assistantDecide() { decisions++; return { state: 'refused' as const, code: 'ASSISTANT_UNAVAILABLE' as const }; } });
   function Harness() {
     current = useAssistantController(client, 1, undefined, false);
-    return createElement(AssistantPanel, { producer: createAssistantMockProducer(), accountClient: { chatGptAccount: async () => ({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });
+    return createElement(AssistantPanel, { producer: createAssistantMockProducer(), accountClient: { chatGptAccount: async () => chatGptStatusFixture({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: { ...preview, mode: 'live' as const }, children: createElement(Harness) })));
