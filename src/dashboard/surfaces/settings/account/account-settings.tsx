@@ -3,13 +3,13 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import type { z } from "zod";
 import { BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, FormGroup, IconButton, Input, PageHeading, ResultRow, SecretField, dsIcon, useToasts } from "../../../ds/ui.js";
 import { operatorFailureSentence } from "../../../../models/failures/error-catalog.js";
-import { profileInitials } from "../../../../models/profiles/profile-identity.js";
 import { isRelayUsername, RELAY_SIGN_IN_FIELD_MAX, type ProfileDetailsChangeRequestSchema, type ProfileDetailsChangeResultSchema, type ProfileLoginChangeResultSchema } from "../../../../models/profiles/public-profile.js";
 
 export interface AccountValues {
   readonly name: string;
   readonly initials: string;
   readonly timekeeper: string;
+  readonly timekeeperInitials: string;
   readonly lastSignedInAt: string;
 }
 export interface AccountPage { readonly values: AccountValues; readonly duo: "ready" | "setup"; readonly onSignOut: () => void; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; readonly login: Omit<RelayLogin, "username"> }
@@ -46,7 +46,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     {ucpath}
     <Group label="Workflow configuration">
       {details("Timekeeper name", values.timekeeper, timekeeperName => ({ timekeeperName }))}
-      <ResultRow label="Timekeeper initials" value={timekeeperInitials(values.timekeeper)} />
+      {details("Timekeeper initials", values.timekeeperInitials, timekeeperInitials => ({ timekeeperInitials }))}
     </Group>
     <Group label="Security">
       <ResultRow label="Duo" value={duo === "ready" ? "Ready" : "Needs setup"} />
@@ -58,10 +58,6 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
 
 export type ProfileDetailsChangeRequest = z.infer<typeof ProfileDetailsChangeRequestSchema>;
 export type ProfileDetailsChangeResult = z.infer<typeof ProfileDetailsChangeResultSchema>;
-
-function timekeeperInitials(name: string): string {
-  try { return profileInitials(name); } catch { return ""; }
-}
 
 /** A value row whose pencil swaps the value for an inline field: Enter saves, Escape cancels, and focus returns to the pencil. */
 function EditableRow({ label, value, onSave }: { label: string; value: string; onSave: (next: string) => Promise<boolean> }) {
