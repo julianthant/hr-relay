@@ -6,7 +6,8 @@ import { I9_APP_ORIGIN } from "../../../../../src/backend/systems/i9/driver/ui-r
 
 type Scenario = "empty" | "rows" | "restricted";
 
-// Search dialog structure recorded by the read-only live probe (onboarding-served-switch-04, update 3006).
+// Search dialog structure recorded by the read-only live probe (onboarding-served-switch-04, update 3006);
+// the closed change-password inputs present on every I-9 page by onboarding-served-switch-05, updates 3477 and 3561.
 const RESULTS: Record<Scenario, string> = {
   empty: "<h2>No results found. Search again or click Create New Profile to create a new employee.</h2>",
   restricted: "<h2>No results found. Search again or click Create New Profile to create a new employee.</h2>",
@@ -18,6 +19,7 @@ function i9App(scenario: Scenario): string {
   return `<!doctype html><style>.hidden{display:none}</style>
 <table role="grid"><tbody><tr role="row"><td role="gridcell">Dashboard</td></tr></tbody></table>
 <div id="divSearchOptions">Search Options</div>
+<div class="hidden"><input type="password" id="OldPassword"><input type="password" id="WebPassword"><input type="password" id="ConfirmWebPassword"></div>
 <div id="dialog" role="dialog" aria-label="Search for Existing Employee" class="hidden">
   <h3>Search Filter</h3>
   <table><tbody><tr><td>

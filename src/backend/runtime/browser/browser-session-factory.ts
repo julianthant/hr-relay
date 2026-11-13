@@ -331,7 +331,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             const secretControls = 'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete="current-password"], input[autocomplete="new-password"]';
             for (const frame of frames) {
               assertCurrent();
-              const count = await frame.locator(secretControls).count();
+              const count = await frame.locator(secretControls).filter({ visible: true }).count();
               assertCurrent();
               if (count > 0) return unavailable("secret-controls-present");
             }
@@ -352,7 +352,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
                 if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
                 for (const frame of page.frames()) {
                   assertCurrent();
-                  const count = await frame.locator(secretControls).count();
+                  const count = await frame.locator(secretControls).filter({ visible: true }).count();
                   assertCurrent();
                   if (count > 0) throw new FullPageCaptureRefusedError("secret-controls-present");
                 }
@@ -363,7 +363,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             if (pageVersion !== version) return unavailable("page-changed");
             for (const frame of frames) {
               assertCurrent();
-              const count = await frame.locator(secretControls).count();
+              const count = await frame.locator(secretControls).filter({ visible: true }).count();
               assertCurrent();
               if (count > 0) return unavailable("secret-controls-present");
             }
