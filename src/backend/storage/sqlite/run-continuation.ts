@@ -114,7 +114,7 @@ export function originalCheckpoint(repositories: Pick<AuthorityRepositories, "ru
   return reference === undefined ? undefined : retainedCheckpoint(repositories, source.envelope, reference);
 }
 
-/** Fresh executions may resume their own checkpoints, never another run's latest row. */
+/** A fresh read by a non-Retry run takes the item's latest row unless a cancelled run wrote it; Retry and transaction reads always take the latest row. */
 export function readRunCheckpoint(repositories: Pick<AuthorityRepositories, "runCheckpoints"> & { readonly runs?: Pick<AuthorityRepositories["runs"], "get">; readonly lifecycleJournal?: Pick<AuthorityRepositories["lifecycleJournal"], "findContinuationIssue">; readonly gateResults?: AuthorityRepositories["gateResults"] }, envelope: RunEnvelope, nodeId: string, freshTasks = false) {
   if (envelope.continuation !== undefined) {
     if (repositories.runs === undefined || repositories.gateResults === undefined) throw new RunContinuationRefusedError("run-continuation-authority-unavailable");
@@ -125,9 +125,18 @@ export function readRunCheckpoint(repositories: Pick<AuthorityRepositories, "run
     const reference = envelope.continuation.checkpoints.find(row => row.nodeId === nodeId);
     return reference === undefined ? undefined : retainedCheckpoint(repositories, envelope, reference);
   }
-  if (envelope.sourceBound !== undefined || freshTasks && envelope.recovery === "restart-from-start") {
-    return repositories.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, nodeId, envelope.attempt)
-      .filter((checkpoint) => checkpoint.runId === envelope.runId).at(-1);
+  const own = () => repositories.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, nodeId, envelope.attempt)
+    .filter((checkpoint) => checkpoint.runId === envelope.runId).at(-1);
+  if (envelope.sourceBound !== undefined || freshTasks && envelope.recovery === "restart-from-start") return own();
+  const latest = repositories.runCheckpoints.latest(envelope.workflow, envelope.itemId, nodeId);
+  if (!freshTasks || envelope.retryOf !== undefined || latest === undefined || latest.runId === envelope.runId) return latest;
+  return writtenUnderCancel(repositories.runs, latest.runId) ? own() : latest;
+}
+
+/** True when the row's run, or a run it was delegated from, was cancelled. */
+function writtenUnderCancel(runs: Pick<AuthorityRepositories["runs"], "get"> | undefined, runId: string): boolean {
+  for (let run = runs?.get(runId); run !== undefined; run = run.envelope.parent === undefined ? undefined : runs?.get(run.envelope.parent.runId)) {
+    if (run.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled") return true;
   }
-  return repositories.runCheckpoints.latest(envelope.workflow, envelope.itemId, nodeId);
+  return false;
 }
