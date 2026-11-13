@@ -252,6 +252,24 @@ function operatorActionReason(reason: string): string | undefined {
   }
 }
 
+const SCREENSHOT_REFUSED = "Failure screenshot not taken: ";
+const SCREENSHOT_REASON: Readonly<Record<string, string>> = {
+  "page-closed": "the page had already closed", "page-changed": "the page changed while it was being captured",
+  "secret-controls-present": "the page showed a password or other secret field", "authentication-unverified": "the sign-in could not be confirmed",
+  "verification-failed": "the captured page could not be checked", "task-aborted": "the step was stopped first",
+  "lease-ended": "the browser had already been released", TimeoutError: "the browser did not respond in time",
+};
+
+/** Why a step has no screenshot, in the operator's words; any other recorded reason is a browser error. */
+function noScreenshotLine(reason: string): string {
+  return `No screenshot: ${Object.hasOwn(SCREENSHOT_REASON, reason) ? SCREENSHOT_REASON[reason] : "the browser could not take it"}.`;
+}
+
+function failureScreenshotReason(failure: Readonly<{ causeChain: readonly Readonly<{ code: string; summary: string }>[] }>): string | undefined {
+  const refused = failure.causeChain.find(cause => cause.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED" && cause.summary.startsWith(SCREENSHOT_REFUSED));
+  return refused === undefined ? undefined : noScreenshotLine(refused.summary.slice(SCREENSHOT_REFUSED.length).trim());
+}
+
 export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardClient, "artifactUrl">): Readonly<{
   steps: readonly LogStep[]; timeline: readonly LogTimelineStage[];
   ucpathFindings?: Readonly<{ stepId: string; attemptLabel: string; presentation: UcpathFoundPresentation }>;
@@ -313,7 +331,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     else if (row.kind === "transaction-fenced") entry = { kind: "note", id: row.logId, time, message: "Write fenced; submission is not confirmed." };
     else if (row.note.screenshot !== undefined) entry = undefined;
     else if (row.note.operatorAction !== undefined) entry = row.note.operatorAction.kind === "screenshot"
-      ? { kind: "note", id: row.logId, time, message: "Screenshot unavailable: no verified capture association." } : undefined;
+      ? { kind: "note", id: row.logId, time, message: "No screenshot: it could not be saved." } : undefined;
     else if (row.note.level === "info" && row.note.fields !== undefined) entry = undefined;
     else entry = { kind: "note", id: row.logId, time, message: row.note.message, ...(row.note.level === "error" ? { tone: "danger" } : {}) };
     if (entry?.kind === "note" && row.kind === "note" && row.note.fields?.some(field => field.key === "code" && field.kind === "text" && field.value === "BROWSER_SCREENSHOT_CAPTURE_FAILED")) {
@@ -324,6 +342,14 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         && (section.payload.value.writeState === "committed" || section.payload.value.writeState === "verified"));
       if (boundary === "before-submit" || boundary === "after-submit") entry = { ...entry, tone: "danger",
         captureFailure: boundary === "before-submit" ? "pre-submit-failed" : proved ? "post-submit-proved" : "post-submit-unknown" };
+      else {
+        const reason = row.note.fields.find(field => field.key === "reason" && field.kind === "text")?.value;
+        // The failed step's card already says why it has no screenshot.
+        const told = sections.some(section => section.section === "failure" && section.payload.state === "available"
+          && section.payload.value.nodeId === requireNative(row.native).nodeId && section.payload.value.attempt === requireNative(row.native).attempt
+          && failureScreenshotReason(section.payload.value) !== undefined);
+        entry = told ? undefined : typeof reason === "string" ? { ...entry, message: noScreenshotLine(reason) } : entry;
+      }
     }
     const entries: LogEntry[] = entry === undefined ? [] : [entry];
     if (row.kind !== "observed" && screenshots.length > 0) entries.push({ kind: "decision", id: `${row.logId}:captures`, time,
@@ -354,11 +380,13 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     } else if (section.section === "failure" && section.payload.state === "available") {
       const failure = section.payload.value;
       const message = operatorFailureSentence(failure.code);
+      const noScreenshot = failureScreenshotReason(failure);
       order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);
       steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failure.display?.title ?? failure.code,
         entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failure.display?.title ?? failure.code,
           state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message,
           ...(failure.writeState === "not-attempted" ? { footer: WRITE_STATE_NOTE[failure.writeState] } : { caution: WRITE_STATE_NOTE[failure.writeState] }),
+          ...(noScreenshot === undefined ? {} : { unavailableCapture: noScreenshot }),
           ...(failure.decision === undefined ? {} : { served: failure.decision }) } }] });
     } else if (section.section === "identity-gate" && section.payload.state === "available") {
       const gate = section.payload.value;
@@ -471,9 +499,21 @@ const correctionLaunches = new WeakMap<CommandExecutionScope, Map<string, Correc
 
 export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm) {
   const { row } = selection;
-  const request = useMemo(() => ({ client, runId: row.runId, revision: row.rowRevision, day: binding?.authority.day, selection: { row, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
+  // Every day frame re-serves the row as a new object. An equal row that lands while the read is in flight must not
+  // restart it, or frequent frames keep Logs loading forever; one that lands after it settled (a day refresh) reads again.
+  const readRow = useRef(row);
+  const reading = useRef(false);
+  const latestRow = useRef(row);
+  const settledRow = useRef(row);
+  latestRow.current = row;
+  const previous = readRow.current;
+  if (previous.runId !== row.runId || previous.rowRevision !== row.rowRevision || previous.attempt !== row.attempt
+    || previous.traceId !== row.traceId || previous.workflowId !== row.workflowId
+    || !reading.current && row !== settledRow.current && row !== previous) readRow.current = row;
+  const servedRow = readRow.current;
+  const request = useMemo(() => ({ client, runId: servedRow.runId, revision: servedRow.rowRevision, day: binding?.authority.day, selection: { row: servedRow, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
     epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state, dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
-  [client, row, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.day.state, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
+  [client, servedRow, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.day.state, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
   const commandOwner = useMemo<GateCommandOwner>(() => ({ client, runId: row.runId, day: binding?.authority.day,
     epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, scope: binding?.scope }),
   [client, row.runId, binding?.authority.day, binding?.authority.epoch, binding?.authority.dayState.request, binding?.scope]);
@@ -499,10 +539,13 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   useEffect(() => {
     if (request.dayState !== undefined && request.dayState !== "loaded") return;
     const controller = new AbortController();
+    reading.current = true;
+    const ended = () => { reading.current = false; settledRow.current = latestRow.current; };
     void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
-      if (active.current === request && !controller.signal.aborted) setSettled({ request, value: { state: "loaded", snapshot } });
+      if (active.current === request && !controller.signal.aborted) { ended(); setSettled({ request, value: { state: "loaded", snapshot } }); }
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
+      ended();
       if (cause instanceof RunLogSelectionBehindError && request.refreshDay !== undefined && !refreshBudget.revisions.has(request.revision)) {
         refreshBudget.revisions.add(request.revision);
         request.refreshDay();
@@ -518,7 +561,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       setSettled(current => ({ request, value: { state: "failed", error, diagnostic: cause,
         ...(current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });
-    return () => controller.abort();
+    return () => { controller.abort(); reading.current = false; };
   }, [client, request, row.runId, refreshBudget]);
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;
   const detail = value.snapshot?.detail;
