@@ -148,14 +148,32 @@ export function createRunSearchIndex(database: DatabaseSync) {
     const rows = current.state === "building"
       ? database.prepare("SELECT * FROM run_search WHERE json_extract(metadata_json,'$.buildGeneration')=? ORDER BY run_id").iterate(current.sourceGeneration)
       : database.prepare("SELECT * FROM run_search ORDER BY run_id").iterate();
-    for (const raw of rows) {
-      const indexed = FullIndexRowSchema.parse(raw);
-      const run = readRun(database.prepare("SELECT * FROM runs WHERE id=?").get(indexed.run_id));
-      const record = runSearchIndexFromRow(raw, run);
-      const declaration = indexed.declaration_json === null ? null : RunSearchDeclarationSchema.parse(JSON.parse(indexed.declaration_json));
-      const sources = indexed.actor_source_json === null ? [] : ActorSourcesSchema.parse(JSON.parse(indexed.actor_source_json));
-      validateActorSources(run,sources);
-      if (canonicalJsonStringify(record.metadata) !== canonicalJsonStringify(metadataFor(run, declaration, sources))) throw new Error("run-search-source-metadata-invalid");
+    for (const raw of rows) validateIndexedRow(raw, readRun);
+  };
+  const validateIndexedRow = (raw: unknown, readRun: (raw: unknown) => PredecessorRunRecord) => {
+    const indexed = FullIndexRowSchema.parse(raw);
+    const run = readRun(database.prepare("SELECT * FROM runs WHERE id=?").get(indexed.run_id));
+    const record = runSearchIndexFromRow(raw, run);
+    const declaration = indexed.declaration_json === null ? null : RunSearchDeclarationSchema.parse(JSON.parse(indexed.declaration_json));
+    const sources = indexed.actor_source_json === null ? [] : ActorSourcesSchema.parse(JSON.parse(indexed.actor_source_json));
+    validateActorSources(run,sources);
+    if (canonicalJsonStringify(record.metadata) !== canonicalJsonStringify(metadataFor(run, declaration, sources))) throw new Error("run-search-source-metadata-invalid");
+  };
+  /** `validateCoverage` limited to the given runs: the same rules, applied to their runs and index rows only. */
+  const validateCoverageOf = (runIds: ReadonlySet<string>) => {
+    const current = publication();
+    if (current.state === "invalid") return;
+    for (const id of runIds) {
+      const run = database.prepare("SELECT 1 FROM runs WHERE id=?").get(id) !== undefined;
+      if (current.state === "building") {
+        const raw = database.prepare("SELECT * FROM run_search WHERE run_id=? AND json_extract(metadata_json,'$.buildGeneration')=?").get(id, current.sourceGeneration);
+        if (run && raw === undefined && current.afterRun !== null && id <= current.afterRun) throw new Error("run-search-build-prefix-invalid");
+        if (raw !== undefined) validateIndexedRow(raw, runRecordFromRow);
+        continue;
+      }
+      const raw = database.prepare("SELECT * FROM run_search WHERE run_id=?").get(id);
+      if (run !== (raw !== undefined)) throw new Error("run-search-source-coverage-invalid");
+      if (raw !== undefined) validateIndexedRow(raw, runRecordFromRow);
     }
   };
   const write = (run: PredecessorRunRecord, now: string, rebuilding = false) => {
@@ -201,6 +219,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
   return {
     publication,
     validateCoverage,
+    validateCoverageOf,
     initialize(sourceGeneration: number, now: string) { return publish({ state: "published", sourceGeneration, afterRun: null, rowCount: 0 }, now); },
     installTracking() {
       prepareTemporaryState();
