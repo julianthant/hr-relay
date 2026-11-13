@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.js";
-import { startLoopDelayMonitor } from "../../../src/backend/logs/loop-delay.js";
+import { composeLoopDelayMonitor, startLoopDelayMonitor } from "../../../src/backend/logs/loop-delay.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { debugTimelineFixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
 
@@ -26,6 +27,23 @@ describe("dashboard event-loop stalls", () => {
     monitor?.stop();
     monitor = undefined;
     vi.useRealTimers();
+  });
+
+  it("starts the production monitor when composition leaves the choice unset", () => {
+    const source = readFileSync(new URL("../../../src/backend/app/composition/dashboard/runtime-resources.ts", import.meta.url), "utf8");
+    expect(source).toContain("composeLoopDelayMonitor(input.loopDelay, { clock, debugEvents })");
+    const deps = { clock: systemClock, debugEvents: { emit() { return undefined; } } };
+    monitor = composeLoopDelayMonitor(undefined, deps);
+    expect(histogram.enable).toHaveBeenCalledOnce();
+    monitor.stop();
+    monitor = undefined;
+    histogram.enable.mockClear();
+    composeLoopDelayMonitor(false, deps).stop();
+    expect(histogram.enable).not.toHaveBeenCalled();
+    const injected = { stop: vi.fn() };
+    expect(composeLoopDelayMonitor(injected, deps)).toBe(injected);
+    expect(histogram.enable).not.toHaveBeenCalled();
+    expect(injected.stop).not.toHaveBeenCalled();
   });
 
   it("records the largest stall over 200 ms through the debug writer", () => {
