@@ -10,6 +10,7 @@ import { verifyHireTask } from "./tasks/verify-hire.js";
 import { stageHireTask } from "./tasks/stage-hire.js";
 import { createHireTask } from "./tasks/create-hire.js";
 import { searchPersonMatchTask } from "./tasks/search-person-match.js";
+import { readPayPathPositionTask } from "./tasks/read-paypath-position.js";
 import { defineBrowserStore } from "../../../workflow-kit/task-registry.js";
 import { ucpathDriver } from "./driver-declaration.js";
 import { ucpathSession } from "./session-provider.js";
@@ -38,6 +39,7 @@ export const ucpathStore = defineBrowserStore(
     readHireReceipt: readHireReceiptTask, readHireFindings: readHireFindingsTask, matchHire: matchHireTask, verifyHire: verifyHireTask,
     stageHire: stageHireTask, createHire: createHireTask,
     searchPersonMatch: searchPersonMatchTask,
+    readPayPathPosition: readPayPathPositionTask,
     searchPersonOrg: searchPersonOrgTask,
     readJobSummary: readJobSummaryTask,
     probeTermination: matchExistingTerminationTask,

@@ -266,6 +266,7 @@ describe("task contract sealing architecture", () => {
       "src/models/systems/ucpath/read-hire-findings.ts",
       "src/models/systems/ucpath/read-hire-receipt.ts",
       "src/models/systems/ucpath/read-job-summary.ts",
+      "src/models/systems/ucpath/read-paypath-position.ts",
       "src/models/systems/ucpath/read-pending-termination-set.ts",
       "src/models/systems/ucpath/read-transaction-findings.ts",
       "src/models/systems/ucpath/save-emergency-contact.ts",
@@ -314,6 +315,7 @@ describe("task contract sealing architecture", () => {
       "src/models/workflows/separations/read-separation-plan.ts",
       "src/models/workflows/separations/verify-identity-approval.ts",
       "src/models/workflows/separations/verify-termination-receipt.ts",
+      "src/models/workflows/work-study/read-transaction-plan.ts",
     ]);
     const base = readFileSync(resolve(REPO_ROOT, "src/models/task/task-contract.ts"), "utf8");
     for (const effect of ["read", "prepare", "commit"]) {
