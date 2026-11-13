@@ -29,7 +29,8 @@ the served operator/date facts and those IDs remain fixed while the plan is revi
 
 A typed input control is a boolean switch or a `kind: "date"` control. A date control is one
 MM/DD/YYYY value for the whole start. The start plan refuses every entry with the control's declared
-`refusal` when a required date is missing or invalid, and when entries carry different dates.
+`refusal` when a required date is missing or invalid. When entries carry different valid dates, it
+refuses every entry with "<label> must be one date for every entry in this start." instead.
 Otherwise each run's canonical input holds the ISO date, and its raw input keeps the typed text.
 `submitsMode: false` keeps a single-mode surface's mode out of submissions. Work Study uses it for
 its one Employee IDs mode and the required effective date.
