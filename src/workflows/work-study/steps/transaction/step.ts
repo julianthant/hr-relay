@@ -1,13 +1,17 @@
+import { UcpathStagePayPathWorkStudy } from "../../../../models/systems/ucpath/stage-paypath-work-study.js";
+import { UcpathSubmitPayPathWorkStudy } from "../../../../models/systems/ucpath/submit-paypath-work-study.js";
 import { WorkStudyInput } from "../../../../models/workflows/work-study/input.js";
-import { WorkStudyReadTransactionPlan } from "../../../../models/workflows/work-study/read-transaction-plan.js";
+import { WorkStudyReadTransactionPlan, type WorkStudyPlan } from "../../../../models/workflows/work-study/read-transaction-plan.js";
+import { workStudyTarget } from "../../../../rules/work-study/plan.js";
 import { WorkStudyResultSchema } from "../../../../models/workflows/work-study/result.js";
-import { defineStep, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
+import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { PAYPATH_POSITION_NODE } from "../../tasks/read-paypath-position.js";
 import { TRANSACTION_PLAN_NODE } from "../../tasks/read-transaction-plan.js";
 import { buildUcpathAuth } from "../ucpath-auth/step.js";
 
 const PAGE = "PayPath Actions";
+export const SAVE_NODE = "save-transaction";
 const planned = (label: string, fieldPath: string, example: string) =>
   ({ label, sources: [{ nodeId: TRANSACTION_PLAN_NODE, kind: "output", fieldPath }], example }) as const;
 const plannedField = (id: string, operatorField: string, detail: string) =>
@@ -15,7 +19,7 @@ const plannedField = (id: string, operatorField: string, detail: string) =>
 
 export const TRANSACTION_STEP = Object.freeze({
   ...defineWorkflowStep({ key: "transaction", label: "Submit work-study transaction" }), system: "ucpath" as const,
-  description: "Plan the PayPath work-study transaction on the supplied effective date.",
+  description: "Plan the PayPath work-study transaction on the supplied effective date, fill it in PayPath Actions and, in a live run, Save and Submit it.",
   operatorFields: [
     planned("Effective date", "effectiveDate", "08/03/2026"),
     planned("Position change reason", "positionChangeReason", "JRL"),
@@ -24,8 +28,13 @@ export const TRANSACTION_STEP = Object.freeze({
   ] as const,
   review: {
     pages: [{
-      id: "paypath-position-data", title: PAGE, mode: "Read only", nodeIds: [TRANSACTION_PLAN_NODE],
-      lines: [{ id: "plan-values", kind: "check", text: "Plan the effective date, reason JRL, pool F and the matching comments.", nodeIds: [TRANSACTION_PLAN_NODE] }],
+      id: "paypath-position-data", title: PAGE, mode: "Fill form", nodeIds: [TRANSACTION_PLAN_NODE, SAVE_NODE],
+      lines: [
+        { id: "plan-values", kind: "check", text: "Plan the effective date, reason JRL, pool F and the matching comments.", nodeIds: [TRANSACTION_PLAN_NODE] },
+        { id: "check-existing", kind: "check", text: "Check UCPath for a work-study transaction already filed for this employee on the effective date.", nodeIds: [SAVE_NODE] },
+        { id: "fill-paypath", kind: "action", text: "Fill Position Data, the Job Data comments and the Initiator's comments, and read every value back.", nodeIds: [SAVE_NODE] },
+        { id: "save-and-submit", kind: "action", text: "In a live run, click Save and Submit once and read the filed transaction back.", nodeIds: [SAVE_NODE] },
+      ],
       fields: [
         plannedField("effective-date", "Effective date", "The effective date typed for this run."),
         plannedField("position-change-reason", "Position change reason", "Always JRL for a work-study award."),
@@ -37,19 +46,28 @@ export const TRANSACTION_STEP = Object.freeze({
   } as const,
 });
 
-/** The Save of work-study-workflow-02 joins this step as a transaction bound to `outputs["transaction-plan"]`. */
+const saveEntry = defineStepEntries(TRANSACTION_STEP).transaction(SAVE_NODE, {
+  label: "Save and Submit the work-study transaction", prepare: UcpathStagePayPathWorkStudy, commit: UcpathSubmitPayPathWorkStudy,
+  dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000,
+});
+
 export function buildTransaction(author: WorkflowAuthor<typeof WorkStudyInput>, upstream: ReturnType<typeof buildUcpathAuth>) {
   const plan = author.task({ id: TRANSACTION_PLAN_NODE, label: "Plan work-study transaction", contract: WorkStudyReadTransactionPlan, replay: "always-rerun", step: TRANSACTION_STEP },
     [upstream.read], ({ input, outputs }) => ({ input, read: outputs[PAYPATH_POSITION_NODE] }));
-  return { plan, steps: [[TRANSACTION_STEP, [plan]]] as const,
-    result: author.result(WorkStudyResultSchema, [plan], ({ outputs }) => ({ state: "planned" as const, plan: outputs[TRANSACTION_PLAN_NODE] })) };
+  const target = ({ outputs }: { outputs: { [TRANSACTION_PLAN_NODE]: WorkStudyPlan } }) => workStudyTarget(outputs[TRANSACTION_PLAN_NODE]);
+  const save = author.transaction(saveEntry, [plan], { prepareBind: target, commitBind: target });
+  return { plan, steps: [[TRANSACTION_STEP, [plan, save]]] as const,
+    result: author.result(WorkStudyResultSchema, [plan, save], ({ outputs }) => ({
+      state: outputs[SAVE_NODE].disposition === "committed" ? "saved" as const : "already-filed" as const,
+      plan: outputs[TRANSACTION_PLAN_NODE], receipt: outputs[SAVE_NODE].output.receipt,
+    })) };
 }
 
 export const workStudyTransactionDefinition = defineStep({
   group: TRANSACTION_STEP, build: buildTransaction,
   proof: { id: "work-study-transaction", order: 33,
     build: (parent: WorkflowDefinition<typeof WorkStudyInput>) => ({ ...inheritStepProof(parent), code: "wst",
-      label: "Work Study transaction plan", summary: "Reads PayPath for one employee and plans the work-study transaction without filing it.",
+      label: "Work Study transaction", summary: "Reads PayPath for one employee, plans the work-study transaction and files it through Save and Submit.",
       steps: (author: WorkflowAuthor<typeof WorkStudyInput>) => {
         const read = buildUcpathAuth(author), built = buildTransaction(author, read);
         return { steps: [...read.steps, ...built.steps], result: built.result };

@@ -2,21 +2,28 @@ import type { Page } from "playwright";
 
 export type FakePayPathOutcome = "record" | "alert" | "no-results" | "grid" | "nothing";
 
-/** Answers exactly the locators `UCPATH_PAYPATH_UI` builds and records every fill and click; waits reject at once when a control is not shown. */
+/** Answers exactly the locators `UCPATH_PAYPATH_UI` builds and records every fill and click; waits reject at once when a control is not shown. Fills stick unless named in `revert`. */
 export function fakeUcpathPayPathPage(options: Readonly<{
   outcome?: FakePayPathOutcome; alertText?: string; name?: string; headerEmplId?: string; ambiguousPositionNumber?: boolean;
+  revert?: string; alertAfterFill?: string; saveButtons?: number; saveDisabled?: boolean; alertAfterSave?: string;
 }> = {}) {
-  const outcome = options.outcome ?? "record";
+  let outcome = options.outcome ?? "record";
+  let alertText = options.alertText;
   const actions: string[] = [];
   const gotos: string[] = [];
   let searched = false;
   const values: Record<string, string> = {
     name: options.name ?? "Lee, Jordan", "empl-id-display": options.headerEmplId ?? "10000001",
     "effective-date": "07/01/2026", "position-change-reason": "", "position-pool": "", "position-number": "40012345",
+    "job-data-comments": "", "initiator-comments": "",
   };
+  const alertNow = (text: string) => { outcome = "alert"; alertText = text; };
   function control(key: string) {
     const shown = () => {
-      if (key === "name" || key === "empl-id-display" || key in values) return searched && outcome === "record";
+      if (key === "busy") return false;
+      if (key === "name" || key === "empl-id-display" || key in values || key === "job-data-tab" || key === "additional-pay-tab" || key === "save") {
+        return searched && (outcome === "record" || outcome === "alert" && key === "save");
+      }
       if (key === "alert-ok" || key === "alert-text") return searched && outcome === "alert";
       if (key === "no-results") return searched && outcome === "no-results";
       if (key === "rows") return searched && outcome === "grid";
@@ -24,26 +31,43 @@ export function fakeUcpathPayPathPage(options: Readonly<{
     };
     const self = {
       first: () => self,
-      count: async () => key === "position-number" && options.ambiguousPositionNumber === true ? 2 : key === "rows" ? (shown() ? 2 : 0) : shown() ? 1 : 0,
+      count: async () => key === "position-number" && options.ambiguousPositionNumber === true ? 2
+        : key === "save" && options.saveButtons !== undefined ? options.saveButtons
+          : key === "rows" ? (shown() ? 2 : 0) : shown() ? 1 : 0,
       isVisible: async () => shown(),
-      waitFor: async () => { if (!shown()) throw new Error(`Timeout waiting for ${key}`); },
-      innerText: async () => key === "alert-text" ? options.alertText ?? "" : values[key] ?? "",
+      isEnabled: async () => !(key === "save" && options.saveDisabled === true),
+      waitFor: async (wait?: { state?: string }) => {
+        if (wait?.state === "hidden" ? shown() : !shown()) throw new Error(`Timeout waiting for ${key}`);
+      },
+      innerText: async () => key === "alert-text" ? alertText ?? "" : values[key] ?? "",
       inputValue: async () => values[key] ?? "",
-      fill: async (value: string) => { actions.push(`fill:${key}=${value}`); },
-      click: async () => { actions.push(`click:${key}`); if (key === "search") searched = true; },
+      fill: async (value: string) => {
+        actions.push(`fill:${key}=${value}`);
+        if (key in values && options.revert !== key) values[key] = value;
+        if (key !== "empl-id-input" && options.alertAfterFill !== undefined) alertNow(options.alertAfterFill);
+      },
+      click: async () => {
+        actions.push(`click:${key}`);
+        if (key === "search") searched = true;
+        if (key === "save" && options.alertAfterSave !== undefined) alertNow(options.alertAfterSave);
+      },
     };
     return self;
   }
   const textboxes: Record<string, string> = {
     "Empl ID": "empl-id-input", "Effective Date:": "effective-date", "Position Change Reason:": "position-change-reason",
     "Position Pool:": "position-pool", "Position Number:": "position-number",
+    Comments: "job-data-comments", "Initiator's Comments": "initiator-comments",
   };
+  const tabs: Record<string, string> = { "Job Data": "job-data-tab", "Additional Pay Data": "additional-pay-tab" };
   const frameSelectors: Record<string, string> = {
     "body > *": "body", "#PTS_CFG_CL_WRK_PTS_SRCH_BTN": "search", 'tr[id^="trPTS_CFG_CL_STD_RSL"]': "rows",
     '[id="UC_E102_PP_WRK_NAME_DISPLAY"]': "name", '[id="UC_E102_PP_WRK_EMPLID"]': "empl-id-display",
+    '[id="UC_E102_PP_WRK_SUBMIT_BTN"]': "save", "#WAIT_win0": "busy",
   };
   const frame = {
     getByRole: (role: string, input: { name: string }) => {
+      if (role === "link" && tabs[input.name] !== undefined) return control(tabs[input.name] ?? "");
       const key = textboxes[input.name];
       if (role !== "textbox" || key === undefined) throw new Error(`Unexpected PayPath frame role ${role}:${input.name}`);
       return control(key);
@@ -73,5 +97,5 @@ export function fakeUcpathPayPathPage(options: Readonly<{
       return control("alert-text");
     },
   } as unknown as Page;
-  return { page, actions, gotos };
+  return { page, actions, gotos, values };
 }

@@ -86,13 +86,19 @@ Natural keys remain private authority data. Public projections use digest refere
 | --- | --- | --- | --- | --- |
 | `ucpath/create-hire` | `ucpath:hire\|<email>\|<effectiveDate>\|<positionNumber>` | `ucpath/match-hire` | `ucpath/verify-hire` | `operator-only` |
 | `ucpath/create-termination` | `ucpath:termination\|<emplId>\|<effectiveDate>` | `ucpath/match-existing-termination` | `ucpath/verify-termination` | `operator-only` |
+| `ucpath/submit-paypath-work-study` | `ucpath:paypath-work-study\|<emplId>\|<effectiveDate>` | `ucpath/match-paypath-work-study` | `ucpath/verify-paypath-work-study` | `operator-only` |
 | `ucpath/delete-pending-terminations` | `ucpath:pending-terminations-clear:v2\|<emplId>\|<set-digest>` | `ucpath/match-pending-terminations` | `ucpath/verify-pending-terminations-cleared` | `operator-only` |
 | `kuali/save-separation-finalization` | `kuali:<documentNumber>\|finalization\|<transactionNumber>` | `kuali/match-separation-finalization` | `kuali/verify-separation-finalization` | `stabilized`: 30,000 ms after fence, two reads at least 5,000 ms apart, same source state |
 | `ucpath/save-emergency-contact` | `ucpath:emergency-contact\|<employee-and-effect-sha256>` | `ucpath/match-emergency-contact-plan` | `ucpath/verify-emergency-contact-plan` | `operator-only` |
 | `i9/create-profile` | `i9:profile\|<email-lower>\|<first-name-lower>\|<last-name-lower>\|<dob>` | `i9/match-profile` | `i9/verify-profile` | `operator-only` |
 | `i9/create-remote-record` | `i9:remote\|<profile-id>\|<start-date>` | `i9/match-remote-record` | `i9/verify-remote-record` | `operator-only` |
 
-These declarations live in `src/models/systems/ucpath/{create-termination,delete-pending-terminations,save-emergency-contact}.ts` and `src/models/systems/kuali/save-separation-finalization.ts`.
+These declarations live in `src/models/systems/ucpath/{create-termination,delete-pending-terminations,save-emergency-contact,submit-paypath-work-study}.ts` and `src/models/systems/kuali/save-separation-finalization.ts`.
+
+The PayPath work-study probe and verifier fold the SS Smart HR transaction findings for the EID: exactly one
+work-study row on the effective date with Approved, Manually Processed or Pending status is the proof; two are
+ambiguous; Denied, Error or Pushed Back, a capped or unreadable search, or another person's row is unknown. The
+SS Smart HR Action label for a PayPath work-study transaction and every Save-path PayPath anchor are unproven live.
 
 Emergency Contact declares the full ordered demotion/addition plan under the OCR release. Its
 probe checks the complete persisted protected set, and its key validates the raw desired contact
