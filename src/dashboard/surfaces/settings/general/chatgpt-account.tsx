@@ -63,7 +63,6 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
   const description = connected ? <><span className="block">{displayed.name}</span>{plan !== "enabled" && <span className="block">{plan === "limit-reached" ? "Usage limit reached" : "ChatGPT plan access not enabled"}</span>}</>
     : signingIn ? "Waiting for you to finish signing in in your browser"
       : signInExpired ? "Your sign-in attempt expired. Sign in to try again."
-        : displayed.state === "signed-out" && displayed.account !== undefined ? `Signs in as ${displayed.account.email}.`
         : displayed.state === "expired" ? "Your ChatGPT session expired. Reconnect to continue." : "Not connected. Connect your ChatGPT account to Relay.";
   return <BodySection title="Connected account">
       {account.state === "unavailable" && <Notice sticky tone="warning" title="ChatGPT account unavailable" description={account.message} />}

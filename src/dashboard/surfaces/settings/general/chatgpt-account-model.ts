@@ -7,7 +7,7 @@ import { createContext, useSyncExternalStore } from "react";
 
 export type ChatGptAccountSnapshot =
   | { readonly state: "loading" }
-  | { readonly state: "signed-out"; readonly account?: { readonly email: string } }
+  | { readonly state: "signed-out" }
   | { readonly state: "expired" | "sign-in-expired" }
   | { readonly state: "signing-in"; readonly attemptId: string; readonly expiresAt: string; readonly authorizationUrl?: string }
   | { readonly state: "unavailable"; readonly message: string; readonly account?: ChatGptAccountView }
