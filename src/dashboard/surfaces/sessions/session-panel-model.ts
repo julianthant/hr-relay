@@ -361,10 +361,7 @@ export const WORKER_STATE_ORDER: WorkerState[] = ["running", "starting", "idle",
 /** A served step interrupt names what happens to the current step. A directive alone does not. */
 export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
   if (card.state === "failed") return undefined;
-  const interrupt = stepInterruptLabel(card.interrupt);
-  if (interrupt !== undefined) return interrupt;
-  if (card.directive === "run" && card.state === "paused") return "Resume requested";
-  return undefined;
+  return stepInterruptLabel(card.interrupt);
 }
 
 
