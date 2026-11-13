@@ -16,15 +16,16 @@ afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; 
 
 const values = { name: "Jordan Lee", initials: "JL", timekeeper: "Casey Morgan Park", lastSignedInAt: IsoInstantSchema.parse("2026-11-01T10:00:00.000Z") };
 const account = (over: Partial<typeof values> = {}) => ({ ...values, ...over });
-function page(details: AccountPage["details"]): AccountPage {
-  return { values, duo: "ready", onSignOut: () => {}, details,
+function page(details: AccountPage["details"], shown: typeof values = values): AccountPage {
+  return { values: shown, duo: "ready", onSignOut: () => {}, details,
     login: { changePassword: async () => ({ state: "changed" }), changeUsername: async () => ({ state: "changed" }) } };
 }
+const render = (value: AccountPage) => act(async () => root?.render(createElement(ToastProvider, { children: createElement(AccountSettings, { page: value, username: "jordan.lee@ucsd.edu", ucpath: null, deleteAccount: null }) })));
 async function mount(details: AccountPage["details"]): Promise<void> {
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await act(async () => root?.render(createElement(ToastProvider, { children: createElement(AccountSettings, { page: page(details), username: "jordan.lee@ucsd.edu", ucpath: null, deleteAccount: null }) })));
+  await render(page(details));
 }
 const pencil = (label: string): HTMLButtonElement | null => document.body.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
 const input = (label: string): HTMLInputElement => {
@@ -123,5 +124,24 @@ describe("Settings > Account details rows", () => {
     await key("Initials", "Enter");
     await settle();
     assert.deepEqual(sent, []);
+  });
+
+  it("focuses nothing on load", async () => {
+    await mount(async () => ({ state: "changed", account: account() }));
+    assert.equal(document.activeElement, document.body);
+  });
+
+  it("follows a refreshed served account and keeps a saved value across an unrelated re-render", async () => {
+    const details: AccountPage["details"] = async () => ({ state: "changed", account: account({ initials: "ZZ" }) });
+    await mount(details);
+    await click("Edit Initials");
+    await typeInto("Initials", "ZZ");
+    await key("Initials", "Enter");
+    await settle();
+    await render({ ...page(details), values: { ...values } });
+    assert.match(document.body.textContent ?? "", /InitialsZZ/u);
+    await render(page(details, { ...values, name: "Pat Chen", initials: "PC" }));
+    assert.match(document.body.textContent ?? "", /NamePat Chen/u);
+    assert.match(document.body.textContent ?? "", /InitialsPC/u);
   });
 });

@@ -21,12 +21,15 @@ function Group({ label, description, children }: { label: string; description?: 
 /** Account page: read-only profile facts, the changeable Relay username and password, the editable UCPath sign-in, Duo status with Sign out, and Delete account. */
 export function AccountSettings({ page, username, ucpath, deleteAccount }: { page: AccountPage; username: string | undefined; ucpath: ReactNode; deleteAccount: ReactNode }) {
   const { duo, onSignOut, login } = page;
-  const [values, setValues] = useState(page.values);
+  const [saved, setSaved] = useState<{ readonly base: string; readonly values: AccountValues } | undefined>();
+  const base = JSON.stringify(page.values);
+  // A saved result overrides the served values only until the served account itself changes.
+  const values = saved?.base === base ? saved.values : page.values;
   const { toast } = useToasts();
   const save = async (request: ProfileDetailsChangeRequest, title: string): Promise<boolean> => {
     let result: ProfileDetailsChangeResult;
     try { result = await page.details(request); } catch { result = { state: "refused", code: "PROFILE_LOGIN_CHANGE_UNKNOWN" }; }
-    if (result.state === "changed") { setValues(prev => ({ ...prev, ...result.account })); return true; }
+    if (result.state === "changed") { setSaved({ base, values: { ...values, ...result.account } }); return true; }
     toast({ tone: "danger", title: `${title} not changed`, description: operatorFailureSentence(result.code) });
     return false;
   };
@@ -65,9 +68,11 @@ function EditableRow({ label, value, onSave }: { label: string; value: string; o
   const [draft, setDraft] = useState<string | undefined>();
   const pencil = useRef<HTMLButtonElement>(null);
   const editing = draft !== undefined;
-  useEffect(() => { if (!editing) pencil.current?.focus({ preventScroll: true }); }, [editing]);
+  const refocus = useRef(false);
+  useEffect(() => { if (!editing && refocus.current) { refocus.current = false; pencil.current?.focus({ preventScroll: true }); } }, [editing]);
   const finish = async (save: boolean): Promise<void> => {
     const next = draft?.trim();
+    refocus.current = true;
     setDraft(undefined);
     if (save && next !== undefined && next !== value) await onSave(next);
   };
