@@ -158,13 +158,17 @@ it("binds an inherited original to creation issuance after Resume replaced its r
   }
 });
 
-it("gives a fresh Start no other run's row but keeps the latest row for a Retry and a transaction read", async () => {
+it("gives a fresh Start no row of a cancelled run but keeps other runs' latest row, a Retry's and a transaction read's", async () => {
   const h = await sourceBoundHarness(failedSourceReadDescriptor, world => sourceBoundReadStores(world, 2)); cleanups.push(h.dispose);
   const source = h.start(h.proposal()), authority = h.database.authority;
   assert.equal((await h.execute(source)).state, "failed");
   const failed = h.fresh(source), read = readRunCheckpoint(authority, failed.envelope, "read", true); assert.ok(read);
   const fresh = { ...failed.envelope, runId: RunIdSchema.parse(randomUUID()), attempt: PositiveIntSchema.parse(failed.envelope.attempt + 1) };
-  assert.equal(readRunCheckpoint(authority, fresh, "read", true), undefined);
-  assert.deepEqual(readRunCheckpoint(authority, fresh, "read"), read);
-  assert.deepEqual(readRunCheckpoint(authority, { ...fresh, retryOf: failed.envelope.runId }, "read", true), read);
+  assert.deepEqual(readRunCheckpoint(authority, fresh, "read", true), read, "a failed run's row stays a valid ancestor");
+  const { completion: _completion, ...unfinished } = failed;
+  const cancelled = { ...authority, runs: { get: (runId: string) => runId === failed.envelope.runId
+    ? RunRecordSchema.parse({ ...unfinished, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: "2026-07-31T17:00:00.000Z" } }) : authority.runs.get(runId) } };
+  assert.equal(readRunCheckpoint(cancelled, fresh, "read", true), undefined);
+  assert.deepEqual(readRunCheckpoint(cancelled, fresh, "read"), read);
+  assert.deepEqual(readRunCheckpoint(cancelled, { ...fresh, retryOf: failed.envelope.runId }, "read", true), read);
 });

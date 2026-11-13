@@ -147,5 +147,14 @@ it("a plain Start re-issues a delegation whose earlier child did not finish done
   assert.deepEqual(rowsOf(f, a), ["source"]);
   const child = f.database.authority.runs.listChildren(a.envelope.runId)[0];
   assert.ok(child?.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed");
-  await assertFreshStart(f, a);
+  f.observed.length = 0;
+  const b = await f.runUntilSettled(f.start({ emplId: "10800000", text: "b", mode: "ok" }));
+  assert.equal(b.envelope.itemId, a.envelope.itemId);
+  assert.equal(b.envelope.retryOf, undefined);
+  assert.equal(b.lifecycle.state, "parked-gate");
+  // A failed without a Cancel, so its source row stays a valid ancestor; the undone delegation does not.
+  assert.deepEqual(rowsOf(f, b), ["dependent"], "B replays A's source and executes the dependent itself");
+  assert.equal(f.database.authority.runs.listChildren(b.envelope.runId).length, 1, "the delegation was issued again");
+  assert.deepEqual(f.observed, ["b", "b", "dependent:b/b"], "the child reads and the dependent ran again; source did not");
+  assert.ok(replayedFrom(f, b).every(([nodeId, runId]) => nodeId === "source" && runId === a.envelope.runId));
 });
