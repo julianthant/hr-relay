@@ -87,10 +87,10 @@ export function activityPeopleEvidenceItems(people: ActivityPeopleTotal): readon
 
 /** `from..to`, the one shape the URL carries. */
 export function parseActivityRange(value: string, today: string): { from: string; to: string; refusal?: string } {
-  // Only a navigation entry with no selection gets the month-to-date default.
+  // Only a navigation entry with no selection gets the 7-day default.
   if (value === "") {
     if (!isActivityCalendarDate(today)) return { from: "", to: "", refusal: ACTIVITY_RANGE_REFUSAL };
-    return { from: `${today.slice(0, 7)}-01`, to: today };
+    return { from: shiftActivityCalendarDay(today, -6), to: today };
   }
   const parts = value.split("..");
   const from = parts[0] ?? "";
