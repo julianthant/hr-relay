@@ -1,12 +1,9 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import {
-ACTIVITY_DATE_PRESETS,
 ACTIVITY_MAX_YEAR_BUCKETS,
 ACTIVITY_WEEK_STARTS_ON,
 activityCompactRangeLabel,
-activityPresetOf,
-activityPresetRange,
 activityRangeDraft,
 activityRangeValue,
 applyActivityRangeDraft,
@@ -38,46 +35,6 @@ function dateInZone(instant: string, timeZone: string): string {
 }
 
 describe("Activity date range model", () => {
-  it("publishes the exact ordered preset labels and stable values", () => {
-    assert.deepEqual(ACTIVITY_DATE_PRESETS, [
-      { value: "this-week", label: "This week" },
-      { value: "today", label: "Today" },
-      { value: "last-month", label: "Last month" },
-      { value: "last-3-months", label: "Last 3 months" },
-      { value: "last-6-months", label: "Last 6 months" },
-      { value: "last-year", label: "Last year" },
-      { value: "custom", label: "Custom range" },
-    ]);
-  });
-
-  it("builds Sunday-starting and rolling inclusive presets from the report date", () => {
-    const today = "2026-09-26";
-    const expected = [
-      ["this-week", { from: "2026-09-20", to: today }],
-      ["today", { from: today, to: today }],
-      ["last-month", { from: "2026-08-27", to: today }],
-      ["last-3-months", { from: "2026-06-27", to: today }],
-      ["last-6-months", { from: "2026-03-27", to: today }],
-      ["last-year", { from: "2025-09-27", to: today }],
-    ] as const;
-
-    for (const [preset, range] of expected) {
-      assert.deepEqual(activityPresetRange(preset, today), range);
-      assert.equal(activityPresetOf(range, today), preset);
-    }
-    assert.equal(activityPresetOf({ from: "2026-09-21", to: today }, today), "custom");
-  });
-
-  it("clamps rolling month subtraction at month ends and leap days", () => {
-    assert.deepEqual(activityPresetRange("last-month", "2026-03-31"), { from: "2026-03-01", to: "2026-03-31" });
-    assert.deepEqual(activityPresetRange("last-3-months", "2026-03-31"), { from: "2026-01-01", to: "2026-03-31" });
-    assert.deepEqual(activityPresetRange("last-6-months", "2026-03-31"), { from: "2025-10-01", to: "2026-03-31" });
-    assert.deepEqual(activityPresetRange("last-year", "2026-03-31"), { from: "2025-04-01", to: "2026-03-31" });
-    assert.deepEqual(activityPresetRange("last-month", "2024-03-31"), { from: "2024-03-01", to: "2024-03-31" });
-    assert.deepEqual(activityPresetRange("last-year", "2024-03-31"), { from: "2023-04-01", to: "2024-03-31" });
-    assert.deepEqual(activityPresetRange("last-month", "2026-08-31"), { from: "2026-08-01", to: "2026-08-31" });
-  });
-
   it("keeps the URL from..to shape and the applied label exact across year boundaries", () => {
     const parsed = parseActivityRange("2025-12-31..2026-01-01", "2026-01-02");
     assert.deepEqual(parsed, { from: "2025-12-31", to: "2026-01-01" });
@@ -184,16 +141,11 @@ describe("Activity date range model", () => {
     assert.equal(reportToday, "2026-09-25");
     assert.equal(browserToday, "2026-09-26");
 
-    const todayRange = activityPresetRange("today", reportToday);
-    assert.deepEqual(todayRange, { from: "2026-09-25", to: "2026-09-25" });
+    const todayRange = { from: reportToday, to: reportToday };
     assert.equal(activityCompactRangeLabel(todayRange), "09/25/2026");
     assert.deepEqual(readyRange("2026-09-25", "2026-09-25").interval, {
       start: "2026-09-25",
       endExclusive: "2026-09-26",
     });
-  });
-
-  it("refuses a preset request without a valid report-calendar today", () => {
-    assert.throws(() => activityPresetRange("today", "2026-02-30"), /valid YYYY-MM-DD report-calendar date/u);
   });
 });
