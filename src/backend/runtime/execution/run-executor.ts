@@ -54,7 +54,7 @@ import type { AuthorityRepositories } from "../../storage/sqlite/authority-datab
 import { WriteIntentParkCodeSchema, type WriteIntentParkCode } from "../../storage/sqlite/write-commit-contracts.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import { createProviderClient, type ProviderAdapterRegistry, type ProviderClientDependencies, type ProviderRequestIdFactory } from "../../processing/providers/provider-client.js";
-import { buildEntryValidationFailureRecord, buildNodeFailureRecord } from "./run-failure.js";
+import { buildEntryValidationFailureRecord, buildNodeFailureRecord, type FailureEvidenceCause } from "./run-failure.js";
 import { buildRunPreviewResult, buildRunResult } from "../../runs/lifecycle/run-result.js";
 import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath, type SpanEmitter } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
@@ -1047,12 +1047,14 @@ export async function executeClaimedRun(
       node: RuntimeFlowNode,
       taskId: string | undefined,
       error: unknown,
+      secondaryCauses: readonly FailureEvidenceCause[] = [],
     ): Promise<RunExecutionOutcome> => terminalizeAsFailure(buildNodeFailureRecord({
       run: getRun(),
       failureId: deps.ids.uuid(),
       nodeId: node.id,
       ...(taskId === undefined ? {} : { taskId: TaskIdSchema.parse(taskId) }),
       error,
+      secondaryCauses,
       occurredAt: instant(),
       writes: deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, getRun().envelope)
         .writeRunIds().flatMap(id => repositories.writeIntents.listByRun(id))) ?? [],
@@ -1096,6 +1098,7 @@ export async function executeClaimedRun(
       need: SessionNeed | undefined,
       capabilityWiring: TaskCapabilityWiring,
       spanPath: string,
+      failureCauses: FailureEvidenceCause[],
     ): Promise<RunCheckpointRecord> => {
       const contract: AnyReadTaskContract = node.uses;
       const bound: unknown = node.bind(scope);
@@ -1305,6 +1308,12 @@ export async function executeClaimedRun(
               `run ${runId} resolved no ${need.system} instance at enqueue, and ${contract.id} needs one`,
             );
           }
+          let captureRefusal: string | undefined;
+          const screenshotLog: Pick<TaskLogger, "warn"> = { warn: (message, fields) => {
+            if (fields?.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED" && typeof fields.reason === "string") captureRefusal = fields.reason;
+            taskLogger.warn(message, fields);
+          } };
+          let operationFailed = false;
           raw = await withBrowserActionNotes(clock,
             () => raceAbortable(
               deps.sessions.withDriver(need, instanceSelection, controller.signal, (driver, captureScreenshot) => raceAbortable(
@@ -1315,22 +1324,42 @@ export async function executeClaimedRun(
                       try { await captureScreenshot(); captured = true; }
                       catch (error) { captureFailure = { error }; throw error; }
                     };
-                    const output = await run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver,
-                      captureScreenshot: task.impl.screenshots === "task" ? requiredCapture : () => Promise.reject(new TaskError(
-                        contract.id, "BROWSER_SCREENSHOT_CAPTURE_FAILED", "Task screenshot capture requires declared task ownership",
-                      )),
-                    } });
+                    let output: unknown;
+                    try {
+                      output = await run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver,
+                        captureScreenshot: task.impl.screenshots === "task" ? requiredCapture : () => Promise.reject(new TaskError(
+                          contract.id, "BROWSER_SCREENSHOT_CAPTURE_FAILED", "Task screenshot capture requires declared task ownership",
+                        )),
+                      } });
+                    } catch (taskFailure) {
+                      // The page the step stopped on, while its lease still holds it; a refusal is evidence, never the failure.
+                      if (captureFailure?.error !== taskFailure) {
+                        captureRefusal = undefined;
+                        try { await captureScreenshot(); }
+                        catch {
+                          failureCauses.push({ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED",
+                            summary: `Failure screenshot not taken: ${captureRefusal ?? (controller.signal.aborted ? "task-aborted" : "lease-ended")}` });
+                        }
+                      }
+                      throw taskFailure;
+                    }
                     if (captureFailure !== undefined) throw captureFailure.error;
                     if (!captured) await requiredCapture();
                     return output;
                   }),
                 controller.signal,
                 contract.id, retain,
-              ), { taskId: contract.id, nodeId: String(node.id), attempt: envelope.attempt, log: taskLogger }),
+              ), { taskId: contract.id, nodeId: String(node.id), attempt: envelope.attempt, log: screenshotLog }),
               controller.signal,
               contract.id, retain,
-            ),
-            (actions) => drainBrowserActions(spanPath, actions, contract.id),
+            ).catch((error: unknown) => { operationFailed = true; throw error; }),
+            (actions) => {
+              try { drainBrowserActions(spanPath, actions, contract.id); }
+              catch (error) {
+                if (!operationFailed) throw error;
+                failureCauses.push({ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: "Failure screenshot not saved to the run log" });
+              }
+            },
           );
         }
       } finally {
@@ -1466,8 +1495,9 @@ export async function executeClaimedRun(
           name: labelOf(node),
           ...(need === undefined ? {} : { system: need.system }),
         });
+        const failureCauses: FailureEvidenceCause[] = [];
         try {
-          const record = await invokeTask(node, task, scope, need, capabilityWiring, spanPath);
+          const record = await invokeTask(node, task, scope, need, capabilityWiring, spanPath, failureCauses);
           if (refreshedRetained || refreshedMember || accounting?.plan.recompute.includes(String(node.id))) {
             pauseAtBoundary();
             if (deps.authority.withAuthorityTransaction === undefined) throw new Error("delegation-accounting-transaction-unavailable");
@@ -1552,7 +1582,7 @@ export async function executeClaimedRun(
             errorSummary: `task ${contract.id} failed; inspect its structured failure record`,
           });
           const retryable = shouldRetryTaskFailure(taskError.transient, taskAttempt, attempts);
-          if (!retryable) return await failNode(node, contract.id, taskError);
+          if (!retryable) return await failNode(node, contract.id, taskError, failureCauses);
           await waitForBackoff(backoffMs);
         }
       }

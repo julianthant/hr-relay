@@ -18,7 +18,7 @@ import {
 import type { NodeId, TaskId } from "../../../rules/identity/ids.js";
 import { RunRecordSchema } from "../../../models/run/record.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { failureCodeFromTaskCode, catalogCodeForThrown } from "../../../models/failures/error-catalog.js";
+import { ErrorCatalogCodeSchema, failureCodeFromTaskCode, catalogCodeForThrown, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 import {
   CURRENT_DIAGNOSTIC_SAFETY_VERSION,
   FailureRecordSchema,
@@ -70,6 +70,23 @@ export interface NodeFailureInput {
   readonly occurredAt: unknown;
   /** The run's write intents; a settled one makes this a failure after that write. */
   readonly writes: readonly Readonly<{ status: string }>[];
+  /** Evidence faults recorded after the node's own failure, such as a failure screenshot that was not taken. */
+  readonly secondaryCauses?: readonly FailureEvidenceCause[];
+}
+
+export type FailureEvidenceCause = Readonly<{ code: ErrorCatalogCode; summary: string }>;
+
+/** `wrapUnhandledTaskError`'s code for a task error nothing classified. */
+const UNHANDLED_TASK_CODE = "unhandled";
+
+/** A task's declared code, or an error's own catalogued code; anything else is an unclassified task failure. */
+function nodeFailureCode(error: unknown, taskError: TaskError | undefined): string {
+  const thrown = catalogCodeForThrown(error);
+  if (thrown !== undefined) return thrown;
+  if (taskError !== undefined && taskError.code !== UNHANDLED_TASK_CODE) return failureCodeFromTaskCode(taskError.code);
+  const own = taskError === undefined && error instanceof Error && "code" in error && typeof error.code === "string"
+    ? ErrorCatalogCodeSchema.safeParse(failureCodeFromTaskCode(error.code)) : undefined;
+  return own?.success === true ? own.data : "TASK_UNHANDLED_FAILURE";
 }
 
 export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
@@ -78,8 +95,7 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
   const nodeId = NodeIdSchema.parse(input.nodeId);
   const taskId = input.taskId === undefined ? undefined : TaskIdSchema.parse(input.taskId);
   const taskError: TaskError | undefined = input.error instanceof TaskError ? input.error : undefined;
-  const errorCode = input.error instanceof Error && "code" in input.error && typeof input.error.code === "string" ? input.error.code : undefined;
-  const code = catalogCodeForThrown(input.error) ?? failureCodeFromTaskCode(taskError?.code ?? errorCode ?? "unhandled");
+  const code = nodeFailureCode(input.error, taskError);
   const summary = input.error instanceof Error
     ? Buffer.from(sanitizeDebugText(input.error.message)).subarray(0, 32 * 1024).toString("utf8")
     : `node ${nodeId} threw a non-Error value`;
@@ -118,7 +134,7 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
       summary,
       role: "primary",
       transient,
-    }],
+    }, ...(input.secondaryCauses ?? []).map(cause => ({ code: cause.code, summary: sanitizeDebugText(cause.summary), role: "secondary", transient: false }))],
     remediation: [transient
       ? { kind: "retry-when-served", message: `Retry once the underlying condition clears: ${summary}` }
       : { kind: "operator-action", message: `Investigate and correct at the source: ${summary}` }],
