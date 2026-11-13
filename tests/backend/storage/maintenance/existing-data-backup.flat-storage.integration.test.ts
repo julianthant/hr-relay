@@ -3,7 +3,8 @@ import { convertPersonPreferencesRow } from "../../../../src/backend/storage/sql
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { once } from "node:events";
 import { pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
 import nativeFs, { lstatSync, chmodSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
@@ -16,6 +17,8 @@ import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/mai
 import { backupFlatStorage } from "../../../../src/backend/storage/maintenance/existing-data-backup.js";
 import { SourceRecordSchema, StorageBackupSchema, retainedStorageBackup, hash } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AUTHORITY_APPLICATION_ID } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { UnboundPredecessorBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { readNative6RunRecord } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
@@ -23,6 +26,13 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 
+// The flat profile fixture proves its own closure with lsof before deleting its temp folder, so hosts
+// without lsof (Windows) skip every fixture case.
+const hasLsof = spawnSync("lsof", ["-v"], { stdio: "ignore" }).error === undefined;
+const fixtureIt = it.skipIf(!hasLsof);
+// Process closure is provable only on macOS (process-closure.ts); elsewhere backup closure refuses with
+// profile-process-closure-unproved before these cases reach the behaviour they check, so they skip there.
+const closureIt = it.skipIf(!hasLsof || process.platform !== "darwin");
 let previousUmask = process.umask();
 beforeEach(() => { previousUmask = process.umask(0o077); });
 afterEach(() => { process.umask(previousUmask); });
@@ -55,7 +65,7 @@ function untouched(f: Fixture) {
     join(f.workspace, ".tracker", "control", "profile-flat-claim.json"), join(f.workspace, ".tracker", "control", "profile-owner-claims")]) assert.equal(existsSync(path), false, path);
 }
 
-it("archives raw native6 bytes without login or person adoption and excludes preserved auth owners", async () => {
+closureIt("archives raw native6 bytes without login or person adoption and excludes preserved auth owners", async () => {
   const f = await createHistoricalFlatProfileFixture({ closedBrowser: true });
   const paths = [f.databasePath, f.protectedPath, f.artifact, f.reportPath, f.browserPreferencesPath];
   for (const path of [f.databasePath, f.artifact, f.reportPath]) chmodSync(path, 0o644);
@@ -141,7 +151,7 @@ it("archives raw native6 bytes without login or person adoption and excludes pre
 });
 
 for (const options of [{ unknownWrite: true, closedBrowser: false, unretiredWorker: false, nonterminalWorker: false }, { unknownWrite: false, closedBrowser: true, unretiredWorker: true, nonterminalWorker: false }, { unknownWrite: true, closedBrowser: true, unretiredWorker: true, nonterminalWorker: true }]) {
-  it(`archives closed physical resources without rewriting historical lifecycle ${JSON.stringify(options)}`, async () => {
+  closureIt(`archives closed physical resources without rewriting historical lifecycle ${JSON.stringify(options)}`, async () => {
     const f = await createHistoricalFlatProfileFixture(options);
     const database = new DatabaseSync(f.databasePath, { readOnly: true });
     try {
@@ -174,7 +184,7 @@ for (const options of [{ unknownWrite: true, closedBrowser: false, unretiredWork
   });
 }
 
-it("archives genuinely never-initialized native6 settings without creating settings or snapshots", async () => {
+closureIt("archives genuinely never-initialized native6 settings without creating settings or snapshots", async () => {
   const f = await createHistoricalFlatProfileFixture({ neverInitialized: true });
   const raw = new DatabaseSync(f.databasePath, { readOnly: true });
   try {
@@ -192,7 +202,7 @@ it("archives genuinely never-initialized native6 settings without creating setti
   } finally { await f.close(); }
 });
 
-it.each(["server", "workers", "geocode"] as const)("refuses an old-build %s process record before backup admission", async name => {
+fixtureIt.each(["server", "workers", "geocode"] as const)("refuses an old-build %s process record before backup admission", async name => {
   const f = await createHistoricalFlatProfileFixture();
   try {
     plantOldBuildArtifact(f.processLockRoot, name);
@@ -204,7 +214,7 @@ it.each(["server", "workers", "geocode"] as const)("refuses an old-build %s proc
 });
 
 for (const change of ["schema", "claim-prefix", "credential-mode", "symlink", "hardlink"] as const) {
-  it(`refuses ${change} before publishing a flat backup`, async () => {
+  (change === "schema" || change === "claim-prefix" ? fixtureIt : closureIt)(`refuses ${change} before publishing a flat backup`, async () => {
     const f = await createHistoricalFlatProfileFixture();
     const held = change === "hardlink" ? join(f.workspace, "credential-alias") : `${f.protectedPath}.held`;
     if (change === "schema") { const db = new DatabaseSync(f.databasePath); try { db.exec("PRAGMA user_version=7"); } finally { db.close(); } }
@@ -229,7 +239,7 @@ for (const change of ["schema", "claim-prefix", "credential-mode", "symlink", "h
 }
 
 for (const change of ["missing-copy", "extra-copy", "corrupt-copy", "source-bytes", "source-mode", "source-membership", "generation", "missing-source-record", "operation-binding", "projection", "source-digest", "old-v1"] as const) {
-  it(`refuses ${change} on completed backup reuse`, async () => {
+  closureIt(`refuses ${change} on completed backup reuse`, async () => {
     const f = await createHistoricalFlatProfileFixture();
     try {
       await backup(f); const root = receiptRoot(f), copy = join(root, "files", "workspace-data", "reports", "historical-report.csv");
@@ -254,7 +264,7 @@ for (const change of ["missing-copy", "extra-copy", "corrupt-copy", "source-byte
   });
 }
 
-it("reuses immutable archive bytes after identical source replacement between closed admissions", async () => {
+closureIt("reuses immutable archive bytes after identical source replacement between closed admissions", async () => {
   const f = await createHistoricalFlatProfileFixture();
   try {
     const first = await backup(f), root = receiptRoot(f), archive = oldArtifactSnapshot(root);
@@ -270,7 +280,7 @@ it("reuses immutable archive bytes after identical source replacement between cl
   } finally { await f.close(); }
 });
 
-it("resumes only an exact interrupted raw copy prefix without creating a SQLite backup or changing completed copy inodes", async () => {
+closureIt("resumes only an exact interrupted raw copy prefix without creating a SQLite backup or changing completed copy inodes", async () => {
   const f = await createHistoricalFlatProfileFixture();
   const write = nativeFs.writeFileSync.bind(nativeFs); let copied: string | undefined;
   const spy = vi.spyOn(nativeFs, "writeFileSync").mockImplementation((path, data, options) => {
@@ -282,13 +292,15 @@ it("resumes only an exact interrupted raw copy prefix without creating a SQLite 
     try { await assert.rejects(backup(f), /fixture interrupted flat backup/u); }
     finally { spy.mockRestore(); syncBuiltinESMExports(); }
     assert.ok(copied); const inode = statSync(copied).ino, before = readFileSync(f.databasePath);
+    const interrupted = SourceRecordSchema.parse(JSON.parse(readFileSync(join(receiptRoot(f), "source.json"), "utf8"))).operationId;
     const completed = await backup(f); assert.equal(completed.kind, "flat-archive");
+    assert.equal(completed.archive.operationId, interrupted);
     assert.equal(statSync(copied).ino, inode); assert.deepEqual(readFileSync(f.databasePath), before);
     assert.equal(existsSync(join(f.stateRoot, "backups")), false); untouched(f);
   } finally { await f.close(); }
 });
 
-it("refuses a foreign managed-file owner without certifying a backup", async () => {
+closureIt("refuses a foreign managed-file owner without certifying a backup", async () => {
   const f = await createHistoricalFlatProfileFixture(), lstat = nativeFs.lstatSync;
   const spy = vi.spyOn(nativeFs, "lstatSync").mockImplementation((target, options) => {
     const status = lstat(target, options);
@@ -303,7 +315,7 @@ it("refuses a foreign managed-file owner without certifying a backup", async () 
 });
 
 for (const change of ["database-identity", "artifact-root-identity", "sidecar-membership"] as const) {
-  it(`revokes held backup admission after ${change} drift`, async () => {
+  fixtureIt(`revokes held backup admission after ${change} drift`, async () => {
     const f = await createHistoricalFlatProfileFixture(), admission = await acquireFlatArchiveFixture(f.workspace, f.lifetime);
     try {
       if (change === "database-identity") { const path = `${f.databasePath}.new`; writeFileSync(path, readFileSync(f.databasePath), { mode: statSync(f.databasePath).mode & 0o7777 }); renameSync(path, f.databasePath); }
@@ -321,7 +333,7 @@ for (const change of ["database-identity", "artifact-root-identity", "sidecar-me
   });
 }
 
-it("completes only a proved empty installation backup allocation", async () => {
+closureIt("completes only a proved empty installation backup allocation", async () => {
   const f = await createHistoricalFlatProfileFixture(), admission = await acquireFlatArchiveFixture(f.workspace, f.lifetime);
   const root = join(f.workspace, ".tracker", "control", "storage-backups", admission.locator.installationId);
   try { mkdirSync(root, { recursive: true, mode: 0o700 }); }
@@ -331,8 +343,88 @@ it("completes only a proved empty installation backup allocation", async () => {
   } finally { await f.close(); }
 });
 
+fixtureIt("refuses flat backup without publishing where the platform cannot prove process closure", async () => {
+  const f = await createHistoricalFlatProfileFixture(), platform = Object.getOwnPropertyDescriptor(process, "platform");
+  assert.ok(platform);
+  try {
+    try {
+      Object.defineProperty(process, "platform", { value: "linux" });
+      await assert.rejects(backup(f), { message: "profile-process-closure-unproved" });
+    } finally { Object.defineProperty(process, "platform", platform); }
+    assert.equal(existsSync(join(f.workspace, ".tracker", "control", "storage-backups")), false); untouched(f);
+  } finally { await f.close(); }
+});
+
+function plantAuthorityBackup(f: Fixture, change?: "lone-database" | "lone-manifest" | "digest") {
+  const directory = join(f.stateRoot, "backups", "authority"), name = `authority-g0-1-${randomUUID()}.sqlite`;
+  const bytes = readFileSync(f.databasePath), at = "2026-10-01T12:00:00.000Z", fingerprint = "c".repeat(64);
+  const observed = { applicationId: AUTHORITY_APPLICATION_ID, schemaVersion: 6, pageCount: 1, authorityGeneration: 0, authorityContentFingerprint: fingerprint };
+  const manifest = UnboundPredecessorBackupManifestSchema.parse({ kind: "hrauto-authority-backup", manifestVersion: 3, backupFileName: name,
+    sourceDatabaseIdentity: fingerprint, ...observed, createdAt: at, byteSize: bytes.byteLength, sha256: change === "digest" ? "0".repeat(64) : hash(bytes),
+    verification: { state: "verified", observedFrom: "backup-copy", observedAt: at, ...observed, quickCheck: "ok", foreignKeyViolations: 0, invariantViolations: [], exactTableRegistry: true } });
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  if (change !== "lone-manifest") writeFileSync(join(directory, name), bytes, { mode: 0o600 });
+  if (change !== "lone-database") writeFileSync(join(directory, `${name}.manifest.json`), JSON.stringify(manifest), { mode: 0o600 });
+  return `profile/backups/authority/${name}`;
+}
+
+closureIt("archives a predecessor authority backup together with its manifest", async () => {
+  const f = await createHistoricalFlatProfileFixture();
+  try {
+    const path = plantAuthorityBackup(f), report = await backup(f), root = dirname(report.archive.backupPath);
+    const record = StorageBackupSchema.parse(JSON.parse(readFileSync(report.archive.backupPath, "utf8")));
+    for (const member of [path, `${path}.manifest.json`]) {
+      assert.ok(record.files.some(entry => entry.path === member), member);
+      assert.deepEqual(readFileSync(join(root, "files", member)), readFileSync(join(f.stateRoot, member.slice("profile/".length))));
+    }
+  } finally { await f.close(); }
+});
+
+for (const change of ["lone-database", "lone-manifest", "digest"] as const) {
+  closureIt(`refuses a predecessor authority backup with ${change} before writing anything`, async () => {
+    const f = await createHistoricalFlatProfileFixture();
+    try {
+      plantAuthorityBackup(f, change);
+      await assert.rejects(backup(f), { message: change === "digest" ? "flat-archive-authority-pair-refused" : "flat-archive-authority-pair-required" });
+      assert.deepEqual(readdirSync(receiptRoot(f)), []); untouched(f);
+    } finally { await f.close(); }
+  });
+}
+
+async function backupChangedDuringCopy(f: Fixture, change: () => void) {
+  const write = nativeFs.writeFileSync.bind(nativeFs); let changed = false;
+  const spy = vi.spyOn(nativeFs, "writeFileSync").mockImplementation((path, data, options) => {
+    write(path, data, options);
+    if (!changed && String(path).endsWith("/files/profile/state.db")) { changed = true; change(); }
+  });
+  syncBuiltinESMExports();
+  try { return await backup(f); } finally { spy.mockRestore(); syncBuiltinESMExports(); }
+}
+
+closureIt("publishes no backup when copied source bytes change before the copy completes", async () => {
+  const f = await createHistoricalFlatProfileFixture();
+  try {
+    await assert.rejects(backupChangedDuringCopy(f, () => writeFileSync(f.artifact, "changed after its copy")), { code: "STORAGE_BACKUP_SOURCE_CHANGED" });
+    assert.equal(existsSync(join(receiptRoot(f), "backup.json")), false); untouched(f);
+  } finally { await f.close(); }
+});
+
+closureIt("publishes no backup when process closure is lost during the copy", async () => {
+  const f = await createHistoricalFlatProfileFixture();
+  let holder: ChildProcess | undefined;
+  try {
+    await assert.rejects(backupChangedDuringCopy(f, () => { holder = spawn("/bin/sleep", ["60"], { cwd: f.stateRoot, stdio: "ignore" }); }),
+      (error: Error & { code?: string }) => error.code === "STORAGE_BACKUP_CLOSURE_UNPROVED" && error.cause instanceof Error && error.cause.message === "profile-process-closure-unproved");
+    assert.ok(holder);
+    assert.equal(existsSync(join(receiptRoot(f), "backup.json")), false); untouched(f);
+  } finally {
+    if (holder !== undefined && holder.exitCode === null && holder.signalCode === null) { const exited = once(holder, "exit"); holder.kill(); await exited; }
+    await f.close();
+  }
+});
+
 for (const key of ["stateRoot", "artifactRoot", "reportsDir"] as const) {
-  it(`refuses an authentic historical snapshot with an unsupported ${key}`, async () => {
+  fixtureIt(`refuses an authentic historical snapshot with an unsupported ${key}`, async () => {
     const f = await createHistoricalFlatProfileFixture(), database = new DatabaseSync(f.databasePath);
     try {
       const row = database.prepare("SELECT payload_json FROM settings_snapshots LIMIT 1").get(); assert.equal(typeof row?.payload_json, "string");
