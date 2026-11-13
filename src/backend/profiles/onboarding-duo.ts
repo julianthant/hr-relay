@@ -9,7 +9,6 @@ export interface DraftDuoBrowserOwner {
   readonly accountId: string;
   readonly generation: number;
   assertCurrent(): void;
-  acquireCredentials(): Promise<Readonly<{ userId: string; password: string }>>;
   readState(): ProfileOnboardingState;
   reportEvent(event: ProfileOnboardingDuoEvent): void;
   start(method: ProfileOnboardingMethod): Promise<void>;
