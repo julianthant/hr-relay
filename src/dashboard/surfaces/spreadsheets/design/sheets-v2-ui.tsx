@@ -26,7 +26,7 @@ export const Tag = ({ children, workflow }: { children: string; workflow?: boole
   return <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-[5px] bg-ui-hover px-1.5 text-[11px] text-ui-secondary">{Icon && <Icon size={11} aria-hidden />}{children}</span>;
 };
 /** Chips for a spreadsheet: the automatic workflow chip first, then its own tags. */
-export const SheetChips = ({ sheet }: { sheet: Sheet }) => <>{sheet.workflow && <Tag workflow>{sheet.workflow}</Tag>}</>;
+export const SheetChips = ({ sheet }: { sheet: Sheet }) => <>{tagsOf(sheet).map(tag => <Tag key={tag} workflow={tag === sheet.workflow}>{tag}</Tag>)}</>;
 
 const GAP = 4;
 /** Shows the chips that fit the available width, then a +N chip whose tooltip lists every tag. */
@@ -52,7 +52,7 @@ export function TagsFit({ sheet }: { sheet: Sheet }) {
   </div>;
 }
 
-export type MenuAction = 'sync' | 'link' | 'rename' | 'delete' | 'download';
+export type MenuAction = 'sync' | 'link' | 'rename' | 'delete' | 'download' | 'pin' | 'tags';
 /** Same menu on every row and on the detail page. */
 export function SheetMenu({ sheet, onAction, withDownload, label }: { sheet: Sheet; onAction: (action: MenuAction) => void; withDownload: boolean; label: string }) {
   const item = (action: MenuAction, text: string) => <DropdownMenuItem onSelect={() => onAction(action)}>{text}</DropdownMenuItem>;
@@ -61,6 +61,8 @@ export function SheetMenu({ sheet, onAction, withDownload, label }: { sheet: She
     {sheet.sharePoint && item('sync', 'Sync now')}
     {item('link', sheet.sharePoint ? 'Change SharePoint link…' : 'Link to SharePoint…')}
     {item('rename', 'Rename')}
+    {item('pin', sheet.pinned ? 'Unpin' : 'Pin')}
+    {item('tags', 'Edit tags…')}
     <DropdownMenuSeparator />
     <DropdownMenuItem variant="destructive" onSelect={() => onAction('delete')}>Delete</DropdownMenuItem>
   </DropdownMenuContent></DropdownMenu>;
