@@ -101,3 +101,18 @@ it("requires explicit confirmation for account deletion and carries empty-machin
   assert.deepEqual(await client.deleteProfileAccount(request), { state: "signed-out", signUpRequired: true });
   assert.deepEqual(calls, [{ path: "/api/v1/profile/delete-account", body: request }]);
 });
+
+it("posts a password and a username change to their routes and returns the served result, including a refused body", async () => {
+  const seen: { path: string; body: unknown }[] = [];
+  const results = [{ state: "changed" }, { state: "refused", code: "PROFILE_USERNAME_TAKEN" }];
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:5174", fetchImpl: async (url, init) => {
+    seen.push({ path: new URL(url).pathname, body: init?.body });
+    return Response.json(results[seen.length - 1], { status: 200 });
+  } });
+  assert.deepEqual(await client.changeProfilePassword({ currentPassword: "a", newPassword: "b" }), { state: "changed" });
+  assert.deepEqual(await client.changeProfileUsername({ currentPassword: "a", newUsername: "x@ucsd.edu" }), { state: "refused", code: "PROFILE_USERNAME_TAKEN" });
+  assert.deepEqual(seen, [
+    { path: "/api/v1/profile/account/password", body: JSON.stringify({ currentPassword: "a", newPassword: "b" }) },
+    { path: "/api/v1/profile/account/username", body: JSON.stringify({ currentPassword: "a", newUsername: "x@ucsd.edu" }) },
+  ]);
+});

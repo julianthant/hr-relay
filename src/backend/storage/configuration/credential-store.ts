@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
-import type { CredentialStore, CredentialStoreApplyOutcome } from "../../../models/config/credential-store.js";
+import type { CredentialEntryWriter, CredentialStore, CredentialStoreApplyOutcome } from "../../../models/config/credential-store.js";
 import { CredentialEraseInputSchema } from "../../../models/config/credential-store.js";
 import {
   PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, ProtectedSettingsLastAppliedSchema,
   ProtectedSettingsNameSchema, ProtectedSettingsHistoryNameSchema, ProtectedStoreRecordSchema, PROTECTED_SETTINGS_SET_MARKER,
-  initialProtectedStoreRecord, markProtectedSettingsPatch, type ProtectedSettingsApplyInput, type ProtectedStoreRecord,
+  initialProtectedStoreRecord, markProtectedSettingsPatch, type ProtectedSettingsApplyInput, type ProtectedSettingsName, type ProtectedStoreRecord,
 } from "../../../models/config/protected-settings.js";
 import { SettingsApplyRefusalSchema, type SettingsApplyRejectionCode } from "../../../models/config/settings.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
@@ -370,6 +370,17 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       const id = z.uuid().parse(commandId);
       const document = readCurrent();
       return document.retiredLegacy.commandIds.includes(id) || document.history.some(({ receipt }) => receipt.commandId === id);
+    },
+    lastEntryWriters() {
+      admission.assertCredentialRead();
+      const writers: Partial<Record<ProtectedSettingsName, CredentialEntryWriter>> = {};
+      for (const { receipt, marked } of readCurrent().history) {
+        for (const name of ProtectedSettingsNameSchema.options) {
+          const operation = marked[name];
+          if (operation !== undefined) writers[name] = { commandFingerprint: receipt.commandFingerprint, operation: "set" in operation ? "set" : "clear" in operation ? "clear" : "erase" };
+        }
+      }
+      return deepFreeze(writers);
     },
     acceptedAt(commandId: string): string | undefined {
       admission.assertCredentialRead();
