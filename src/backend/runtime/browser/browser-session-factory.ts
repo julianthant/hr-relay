@@ -444,7 +444,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         },
         reset: async (resetInput): Promise<void> => {
           assertCurrent();
-          await this.#resetToNeutralState(binding, page, instance, label, resetInput.signal, assertCurrent, recordEvidence);
+          try { await this.#resetToNeutralState(binding, page, instance, label, resetInput.signal, assertCurrent, recordEvidence); }
+          catch (error) { emit("failed", "session-reset-failed"); throw error; }
           emit("reset");
         },
         close: async (closeInput): Promise<BrowserSessionCloseProof> => {

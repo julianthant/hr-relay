@@ -16,6 +16,7 @@ import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/br
 import { fixtureDuoSigningSource, fixtureWorkflowWorker } from "../../../support/helpers/browser/duo-signing.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 import { BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
+import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { debugTimelineFixture } from "../../../support/helpers/backend/debug-timeline-fixture.js";
 
@@ -88,6 +89,21 @@ describe("browser current-owner fence", () => {
         } finally { await resource.close({ reason: "worker-stop" }); }
       });
     }
+  });
+
+  it("names a failed neutral reset apart from a failed sign-in", async () => {
+    await fixtures.withTempRuntime(async ({ config }) => {
+      const native = fixtures.fakeLauncher(), owner = epoch();
+      const debug: Array<{ phase: string; code?: string }> = [];
+      const factory = new PlaywrightWorkerSessionFactory({ ...options(config, native, owner.assertCurrent),
+        bindings: fixtures.recordingBindings({ verify: fixtures.verifierFor({ authenticated: false, reason: "the launch page is not the application" }).verify }),
+        onDebug: (_worker, event) => { debug.push(event); } });
+      const resource = await factory.open(input);
+      try {
+        await assert.rejects(resource.reset({ signal: new AbortController().signal }), BrowserLoginError);
+        assert.deepEqual(debug.filter(event => event.phase === "failed").map(event => event.code), ["session-reset-failed"]);
+      } finally { await resource.close({ reason: "poisoned" }); }
+    });
   });
 
   it("refuses launch when ownership expires while profile admission resolves", async () => {

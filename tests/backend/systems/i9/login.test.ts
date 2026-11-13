@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { i9LoginRecipe, isAuthenticatedI9Url, verifyI9AuthenticatedApplication } from "../../../../src/backend/systems/i9/login.js";
 import { createSystemSessionTestWorld } from "../../../support/helpers/backend/system-session-world.js";
+import { resolveSystemEntryUrl, resolveSystemLoginUrl } from "../../../../src/models/config/instance.js";
 
 const { CONFIG, SSO, NO_SIGN_IN_FORMS, contextFor } = createSystemSessionTestWorld();
 const APP = "https://wwwe.i9complete.com";
@@ -21,6 +22,17 @@ describe("I-9 UCOP login", () => {
     assert.equal((await verifyI9AuthenticatedApplication(missing.context)).authenticated, false);
     const form = await contextFor({ url: APP, elements: { ...appElements, "sso-submit": {} } }, undefined, "i9");
     assert.equal((await verifyI9AuthenticatedApplication(form.context)).authenticated, false);
+  });
+
+  it("returns a signed-in session to the I-9 application on the neutral reset; login alone starts at the launch page", async () => {
+    // The worker's neutral reset opens the entry URL and then requires this proof (live run 7 failed it on the launch page).
+    const entry = resolveSystemEntryUrl(CONFIG, "i9", "prod", "i9 neutral reset");
+    const world = await contextFor({ url: `${APP}/form-I9/summary/900001/900002`,
+      navigation: { [CONFIG.urls.i9.prod.entry]: CONFIG.urls.i9.prod.entry, [CONFIG.urls.i9.prod.app]: APP },
+      elementsByUrl: { [APP]: appElements } }, undefined, "i9");
+    await world.context.page.goto(entry);
+    assert.equal((await verifyI9AuthenticatedApplication(world.context)).authenticated, true);
+    assert.equal(resolveSystemLoginUrl(CONFIG, "i9", "prod", "i9 login"), CONFIG.urls.i9.prod.entry);
   });
 
   it("uses the campus picker and the shared signed Duo ceremony before dismissing training", async () => {
