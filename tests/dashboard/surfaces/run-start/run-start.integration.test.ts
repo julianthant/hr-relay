@@ -51,6 +51,17 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await mount(h, source); assert.match(text(), /needs readback/u); await press("Replay exact submission");
     assert.equal(document.querySelector('[role="dialog"]') === null, true, 'exact replay must close the launch dialog'); assert.match(text(), /Run submission confirmed/u); assert.deepEqual(h.queueRoots, roots);
   });
+  it("a slow Start that the server applies shows no readback banner and closes as started", async () => {
+    const h = await setup(); const source = await h.completeSource(); let release: () => void = () => { throw new Error("release not initialized"); };
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const client = { ...h.client, executeCommand: async (input: unknown) => { const result = await h.client.executeCommand(input); await pending; return result; } };
+    await mount(h, source, client); await press("Continue"); await press("Confirm"); await press("Continue");
+    await act(async () => checkbox("Dry run").click()); await press("Continue"); await press("Start dry run");
+    assert.equal(h.queueRoots.length, 2); assert.doesNotMatch(text(), /needs readback/u);
+    await act(async () => release());
+    assert.equal(document.querySelector('[role="dialog"]'), null); assert.doesNotMatch(text(), /needs readback/u);
+    assert.equal(window.sessionStorage.length, 0); assert.equal(h.finalCommands.length, 1);
+  });
   it("rapid clicks share one envelope and a delayed response cannot overwrite a reopened launch", async () => {
     const h = await setup(); const source = await h.completeSource(); let release: () => void = () => { throw new Error("release not initialized"); };
     const pending = new Promise<void>((resolve) => { release = resolve; });
