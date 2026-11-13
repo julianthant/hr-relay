@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { afterEach, describe, it, vi } from "vitest";
 import { AuthoritySourceClosureUnprovedError, createBrowserSourceRecovery } from "../../../src/backend/storage/source-closure.js";
+import { ProfileVerifierDocumentSchema } from "../../../src/models/profiles/profile.js";
 import { createProfileSessionWorld } from "../../support/helpers/backend/profile-session-world.js";
 
 const worlds: Awaited<ReturnType<typeof createProfileSessionWorld>>[] = [];
@@ -92,7 +93,7 @@ describe("Relay login change", () => {
     const sam = await machine.signUp(session, samFields);
     assert.equal((await machine.logOut(session, sam.token, "2026-09-06T11:30:00.000Z")).state, "signed-out");
     const samLogin = machine.credentialBytes(sam.profileId);
-    const samRow = () => (JSON.parse(machine.verifierBytes()) as { profiles: { profileId: string }[] }).profiles.find(row => row.profileId === sam.profileId);
+    const samRow = () => ProfileVerifierDocumentSchema.parse(JSON.parse(machine.verifierBytes())).profiles.find(row => row.profileId === sam.profileId);
     const samBefore = samRow();
     const alex = await machine.signUp(session, alexFields);
 

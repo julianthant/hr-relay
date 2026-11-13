@@ -35,6 +35,7 @@ it("serves password and username changes to the signed-in session only, and the 
     assert.deepEqual([foreign.status, await foreign.json()], [403, { state: "refused", code: "PROFILE_SESSION_STALE" }]);
     assert.equal((await change("password", { currentPassword: "disposable-fixture-password", newPassword: "" }, cookie)).status, 400);
     assert.equal((await change("password", { currentPassword: "disposable-fixture-password", newPassword: "p".repeat(161) }, cookie)).status, 400);
+    for (const broken of ["line\nbreak", "carriage\rreturn"]) assert.equal((await change("password", { currentPassword: "disposable-fixture-password", newPassword: broken }, cookie)).status, 400);
     assert.equal((await change("username", { currentPassword: "disposable-fixture-password", newUsername: `${"u".repeat(152)}@ucsd.edu` }, cookie)).status, 400);
     assert.deepEqual(await change("password", { currentPassword: "not-the-password", newPassword: "changed-fixture-password" }, cookie),
       { status: 200, body: { state: "refused", code: "PROFILE_CURRENT_PASSWORD_REFUSED" } });
@@ -126,6 +127,38 @@ it("answers an unknown outcome when a landed swap's flush and read-back both fai
       const path = join(f.machine.stateRoot, name);
       if (statSync(path).isFile()) assert.equal(readFileSync(path).includes("changed-fixture-password"), false, name);
     }
+    assert.equal(PublicProfileStateSchema.parse(await (await post("/api/v1/profile/logout", {}, cookie)).json()).state, "signed-out");
+    const signedIn = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "changed-fixture-password" });
+    assert.equal(PublicProfileStateSchema.parse(await signedIn.json()).state, "active");
+  } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
+});
+
+it("keeps a landed change's result and marks its diagnostics unrecorded when the fault log cannot be written", async () => {
+  const f = await fixture();
+  let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  try {
+    runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+      backendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+    const base = `http://127.0.0.1:${String(runtime.port)}`, { post, finish } = await readyPublicSignUp(base);
+    const finished = await finish();
+    assert.equal(PublicProfileStateSchema.parse(await finished.json()).state, "active");
+    const cookie = finished.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+
+    const rename = fs.renameSync, flush = fs.fsyncSync, append = fs.appendFileSync;
+    let failFlush = false, failAppend = false;
+    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => { rename(from, to); if (String(to).endsWith("profile-verifiers.json")) failFlush = true; });
+    vi.spyOn(fs, "fsyncSync").mockImplementation(descriptor => {
+      if (failFlush) { failFlush = false; failAppend = true; throw new Error("injected flush failure"); }
+      flush(descriptor);
+    });
+    vi.spyOn(fs, "appendFileSync").mockImplementation((...args: Parameters<typeof fs.appendFileSync>) => {
+      if (failAppend) { failAppend = false; throw new Error("injected fault log failure"); }
+      append(...args);
+    });
+    syncBuiltinESMExports();
+    const changed = await post("/api/v1/profile/account/password", { currentPassword: "disposable-fixture-password", newPassword: "changed-fixture-password" }, cookie);
+    vi.restoreAllMocks(); syncBuiltinESMExports();
+    assert.deepEqual([changed.status, await changed.json()], [200, { state: "changed", durability: "unconfirmed", diagnostics: "unrecorded" }]);
     assert.equal(PublicProfileStateSchema.parse(await (await post("/api/v1/profile/logout", {}, cookie)).json()).state, "signed-out");
     const signedIn = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "changed-fixture-password" });
     assert.equal(PublicProfileStateSchema.parse(await signedIn.json()).state, "active");

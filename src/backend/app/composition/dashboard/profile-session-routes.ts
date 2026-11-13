@@ -384,12 +384,14 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   const changeLogin = (c: Context, change: (token: string, at: string) => ReturnType<typeof profileRuntime.session.changePassword>) => {
     const result = change(current(c.req.raw).token, clock.now().toISOString());
     if (result.state === "refused") return c.json(ProfileLoginChangeResultSchema.parse({ state: "refused", code: result.code }));
-    if (result.state === "unknown") {
-      if (result.failure instanceof Error) publicFailure(result.failure);
-      return c.json(ProfileLoginChangeResultSchema.parse({ state: "unknown", code: "PROFILE_LOGIN_CHANGE_UNKNOWN" }));
+    // Custody is retained before the fault is written; a fault that cannot be written is reported beside the settled outcome.
+    let recorded = true;
+    if (result.failure instanceof Error) {
+      try { publicFailure(result.failure); } catch { recorded = false; }
     }
-    if (result.failure instanceof Error) publicFailure(result.failure);
-    return c.json(ProfileLoginChangeResultSchema.parse({ state: "changed", ...(result.durability === undefined ? {} : { durability: result.durability }) }));
+    const diagnostics = recorded ? {} : { diagnostics: "unrecorded" as const };
+    if (result.state === "unknown") return c.json(ProfileLoginChangeResultSchema.parse({ state: "unknown", code: "PROFILE_LOGIN_CHANGE_UNKNOWN", ...diagnostics }));
+    return c.json(ProfileLoginChangeResultSchema.parse({ state: "changed", ...(result.durability === undefined ? {} : { durability: result.durability }), ...diagnostics }));
   };
   app.post("/api/v1/profile/account/password", async c => {
     const request = ProfilePasswordChangeRequestSchema.parse(await c.req.json());
