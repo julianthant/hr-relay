@@ -110,6 +110,22 @@ jobs:
               '--import', 'tsx', 'scripts/test/ci-plan.ts', 'plan', JSON.stringify(input),
             ], { encoding: 'utf8' }).trim());
 
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm ci
+        working-directory: fast-duo
+      - run: npm run lint
+        working-directory: fast-duo
+
   static:
     name: static
     runs-on: ubuntu-latest
@@ -121,12 +137,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npm run lint
       - run: npm ci
         working-directory: fast-duo
       - run: npm test
-        working-directory: fast-duo
-      - run: npm run lint
         working-directory: fast-duo
       - run: npm run build:observer-policy
       - run: npm run build:observer-policy -- --check
@@ -399,7 +412,7 @@ jobs:
 
   unit:
     name: unit
-    needs: [changes, static, privacy, ubuntu, integration, architecture, macos, unit-proofs, perf, smoke]
+    needs: [changes, lint, static, privacy, ubuntu, integration, architecture, macos, unit-proofs, perf, smoke]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:

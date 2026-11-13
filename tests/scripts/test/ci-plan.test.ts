@@ -7,7 +7,7 @@ const filters = { shared: "true", unit: "false", integration: "false", architect
 const context = (workflow = "portable", extra: Record<string, unknown> = {}) => ({ workflow, event: "pull_request",
   base: workflow === "portable" ? "staging" : "main", head: workflow === "portable" ? "feature/test" : "staging",
   draft: false, filters, ...extra });
-const portableResults = { changes: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
+const portableResults = { changes: { result: "success" }, lint: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
   ubuntu: { result: "success" }, integration: { result: "success" }, architecture: { result: "success" },
   perf: { result: "success" }, smoke: { result: "success" } };
 const releaseResults = { ...portableResults, macos: { result: "success" },
@@ -32,17 +32,20 @@ describe("flat CI plan", () => {
 
   it("keeps staging portable and preserves release/manual native shards", () => {
     const portable = createCiPlan(context());
-    expect(portable.ubuntu.include.filter(row => row.suite === "unit")).toHaveLength(2);
+    expect(portable.ubuntu.include.filter(row => row.suite === "unit")).toHaveLength(3);
     expect(portable.ubuntu.include.filter(row => row.suite === "architecture")).toHaveLength(2);
-    expect(portable.ubuntu.include.filter(row => row.suite === "integration")).toHaveLength(20);
+    expect(portable.ubuntu.include.filter(row => row.suite === "integration")).toHaveLength(30);
     expect(portable.macos.include).toEqual([]);
     expect(portable).not.toHaveProperty("windows");
-    expect(portable.testJobs).toBe(24);
+    expect(portable.testJobs).toBe(35);
+    const unitOnly = createCiPlan(context("portable", { filters: { ...filters, shared: "false", unit: "true" } }));
+    expect(unitOnly.ubuntu.include.filter(row => row.suite === "unit")).toHaveLength(3);
+    expect(unitOnly.ubuntu.include.filter(row => row.suite === "integration")).toHaveLength(0);
     for (const manual of [false, true]) {
       const plan = createCiPlan(context("release", manual ? { event: "workflow_dispatch", base: "", head: "", filters: {}, draft: true } : {}));
       expect(plan.macos.include).toEqual(Array.from({ length: 5 }, (_, i) => ({ suite: "native", shard: i + 1, shards: 5 })));
       expect(plan).not.toHaveProperty("windows");
-      expect(plan.testJobs).toBe(29);
+      expect(plan.testJobs).toBe(40);
     }
   });
 
