@@ -53,6 +53,19 @@ describe("served step interrupt", () => {
     assert.deepEqual(row?.liveMessage, { state: "present", value: "Restarts this step on Resume" });
   });
 
+  it("serves a pending pause the Resume command that withdraws it", async () => {
+    const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
+    claimed(w, 1, { pause: PAUSE_REQUESTED });
+    const run = w.authority.getRun(uuidOf(1));
+    assert.ok(run);
+    assert.deepEqual(rowOf(w, 1)?.pauseControl, { expectedVersion: run.version, state: "pause-pending", command: "resume" });
+    const resume = rowOf(w, 1)?.actions.find(action => action.key === "resume");
+    assert.ok(resume?.kind === "command");
+    assert.equal(resume.command, "resume");
+    assert.equal(resume.expectedVersion, run.version);
+    assert.equal(rowOf(w, 1)?.actions.some(action => action.key === "pause"), false);
+  });
+
   it("serves a pending pause during an attempting write as finishing the save first", async () => {
     const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
     claimed(w, 1, { pause: PAUSE_REQUESTED });

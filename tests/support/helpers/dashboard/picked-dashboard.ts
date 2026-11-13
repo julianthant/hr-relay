@@ -115,7 +115,7 @@ export function pickedRunWorld(state: PickedRunState) {
     gate: { state: "absent", reason: "No gate" }, outcome: { state: "absent", reason: "Fictional receipt omitted" }, context: { dataFacts: 0, evidenceFacts: captures.length, attempts: 1 },
     captures: captures.length > 0 ? { state: "available", artifactCount: captures.length } : { state: "absent", reason: "No captures in this scenario" },
     availableSections: ["logs", ...(captures.length > 0 ? ["captures"] : []), ...(state === "post-submit-proved" ? ["failure"] : [])] });
-  const lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 1, state: "ready", update: "installer-unavailable",
+  const lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 1, state: "ready", pause: "running", update: "installer-unavailable",
     targets: terminal ? [] : [{ runId: row.runId, expectedVersion: row.rowRevision, ...(row.pause === undefined ? {} : { pause: row.pause }), pauseUnavailable: unknownWrite }] });
   return { bootstrap: FIXTURE_START_PICKER_BOOTSTRAP, row, day, detail, logs, captureSection, failureSection, lifecycle, bytes, artifactIds: captures.map(capture => capture.artifactId) };
 }

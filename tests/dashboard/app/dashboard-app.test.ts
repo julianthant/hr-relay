@@ -175,7 +175,7 @@ function appClient(): DashboardClient_m1 {
   const served = {
     subscribeProfileSessionStale: () => () => undefined,
     bootstrap: () => Promise.resolve(APP_BOOTSTRAP),
-    applicationLifecycle: () => Promise.resolve(ApplicationLifecycleSchema.parse({ runtimeGeneration: 1, state: "ready", targets: [], update: "installer-unavailable" })),
+    applicationLifecycle: () => Promise.resolve(ApplicationLifecycleSchema.parse({ runtimeGeneration: 1, state: "ready", pause: "running", targets: [], update: "installer-unavailable" })),
     chatGptAccount: async () => chatGptStatusFixture(await (Promise.resolve({ state: "signed-out" }))),
     subscribeDay: (input: Parameters<DashboardClient_m1["subscribeDay"]>[0]) => {
       input.onDay(APP_DAY);
