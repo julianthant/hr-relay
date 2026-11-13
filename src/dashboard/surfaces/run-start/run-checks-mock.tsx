@@ -1,7 +1,7 @@
 import { ArrowLeft, Check, CircleAlert, TriangleAlert } from "lucide-react";
 import { Button, Spinner } from "../../ds/ui.js";
 import { RunList, RunListRow } from "../../ds/primitives/run-list.js";
-import { checkRows, runChecksCounts, runChecksFrame, type RunCheckRow } from "./run-checks-mock-model.js";
+import { checkRows, runChecksCounts, runChecksFrame, type RunCheckRow, type RunChecksCounts } from "./run-checks-mock-model.js";
 
 /** Fix opens Settings at the failed section; the mock reloads the page on the Settings frame, whose Back to run returns. */
 function openSettings(section: string) {
@@ -43,7 +43,7 @@ export function RunChecksStage() {
 }
 
 /** Verdict counts the dialog reads to block Start and to badge the stage. */
-export function runChecksState() {
+export function runChecksState(): RunChecksCounts | undefined {
   const scenario = runChecksFrame();
   return scenario === undefined ? undefined : runChecksCounts(checkRows(scenario));
 }

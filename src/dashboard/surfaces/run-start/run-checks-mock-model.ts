@@ -64,7 +64,8 @@ export function checkRows(scenario: RunChecksScenario): readonly RunCheckRow[] {
   return ids.map(id => row(id, verdicts[id] ?? (scenario === "checking" ? "checking" : "pass")));
 }
 
-export const runChecksCounts = (rows: readonly RunCheckRow[]) => ({
+export interface RunChecksCounts { readonly total: number; readonly ready: number; readonly failed: number; readonly warnings: number; readonly checking: number }
+export const runChecksCounts = (rows: readonly RunCheckRow[]): RunChecksCounts => ({
   total: rows.length,
   ready: rows.filter(item => item.verdict === "pass").length,
   failed: rows.filter(item => item.verdict === "fail").length,
