@@ -54,7 +54,7 @@ async function start(answers: Record<string, Answer>, fallback?: (url: string, i
 }
 const never = (): Promise<Response> => new Promise(() => {});
 const active = { state: "active", profileId: "00000000-0000-4000-8000-000000000002", epoch: 1, duoState: "ready",
-  account: { name: "A B", initials: "AB", timekeeper: "A B", lastSignedInAt: "2026-11-12T00:00:00.000Z" } };
+  account: { name: "A B", initials: "AB", timekeeper: "A B", timekeeperInitials: "AB", lastSignedInAt: "2026-11-12T00:00:00.000Z" } };
 const loadingLabel = (host: HTMLElement) => host.querySelector("[data-startup-loading]")?.getAttribute("aria-label");
 
 it("shows the loading screen, not the sign-in page, while the session is unknown", async () => {

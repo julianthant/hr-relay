@@ -14,7 +14,7 @@ let host: HTMLElement | undefined;
 beforeEach(() => { vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; vi.unstubAllGlobals(); });
 
-const values = { name: "Jordan Lee", initials: "JL", timekeeper: "Casey Morgan Park", lastSignedInAt: IsoInstantSchema.parse("2026-11-01T10:00:00.000Z") };
+const values = { name: "Jordan Lee", initials: "JL", timekeeper: "Casey Morgan Park", timekeeperInitials: "CMP", lastSignedInAt: IsoInstantSchema.parse("2026-11-01T10:00:00.000Z") };
 const account = (over: Partial<typeof values> = {}) => ({ ...values, ...over });
 function page(details: AccountPage["details"], shown: typeof values = values): AccountPage {
   return { values: shown, duo: "ready", onSignOut: () => {}, details,

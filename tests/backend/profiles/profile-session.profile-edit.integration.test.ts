@@ -65,4 +65,29 @@ describe("profile details edit", () => {
     assert.equal(session.changeDetails(alex.token, { name: { firstName: "Alexis", lastName: "Rivers" }, initials: "AR", timekeeperName: "Lex Rivers" }).state, "changed");
     assert.deepEqual(samRow(), samBefore);
   });
+
+  it("stores the timekeeper initials at sign-up and changes them and the timekeeper name independently, for the signed-in profile only", async () => {
+    const machine = await world();
+    const session = machine.open();
+    const sam = await machine.signUp(session, { firstName: "Sam", lastName: "Ortiz", email: "sam@ucsd.edu", password: "secret-sam", createdAt: "2026-09-06T11:00:00.000Z" });
+    assert.equal((await machine.logOut(session, sam.token, "2026-09-06T11:30:00.000Z")).state, "signed-out");
+    const alex = await machine.signUp(session, alexFields);
+    const row = (profileId: string) => machine.machine.readProfileRegistry().profiles.find(entry => entry.profileId === profileId);
+    const samBefore = row(sam.profileId);
+    assert.deepEqual([row(alex.profileId)?.timekeeperName, row(alex.profileId)?.timekeeperInitials, samBefore?.timekeeperInitials], ["Alex Rivera", "AR", "SO"]);
+
+    const renamed = session.changeDetails(alex.token, { timekeeperName: "Lex Rivers Day" });
+    assert.deepEqual(renamed.state === "changed" && [renamed.account.timekeeper, renamed.account.timekeeperInitials], ["Lex Rivers Day", "AR"]);
+    for (const timekeeperInitials of ["", "lr", "L R", "ABCDEFGHI"]) {
+      const refused = session.changeDetails(alex.token, { timekeeperInitials });
+      assert.deepEqual([refused.state, refused.state === "refused" && refused.code], ["refused", "PROFILE_INITIALS_REFUSED"], timekeeperInitials);
+    }
+    const relettered = session.changeDetails(alex.token, { timekeeperInitials: "LXR" });
+    assert.deepEqual(relettered.state === "changed" && [relettered.account.timekeeper, relettered.account.timekeeperInitials, relettered.account.initials], ["Lex Rivers Day", "LXR", "AR"]);
+
+    const restarted = machine.open();
+    assert.equal(restarted.resumeSignedInProfile({ at: "2026-09-06T12:05:00.000Z" }).state, "active");
+    assert.deepEqual([row(alex.profileId)?.timekeeperName, row(alex.profileId)?.timekeeperInitials], ["Lex Rivers Day", "LXR"]);
+    assert.deepEqual(row(sam.profileId), samBefore);
+  });
 });

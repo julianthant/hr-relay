@@ -9,7 +9,7 @@ export async function serveSettings(page: Page, theme: "dark" | "light"): Promis
   await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); Reflect.set(window, "relayMockPersonPreferences", true); Reflect.set(window, "relayMockMotion", false); }, theme);
   await page.route("**/api/v1/profile/state", route => route.fulfill({ json: {
     state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready",
-    account: { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", lastSignedInAt: "2026-11-10T08:30:00-08:00" },
+    account: { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", timekeeperInitials: "JL", lastSignedInAt: "2026-11-10T08:30:00-08:00" },
   } }));
   await page.route("**/api/v1/settings/editable", route => route.fulfill({ json: fixtureSettingsDocument({ preferences: { theme, animations: false } }, 2) }));
   await page.route("**/api/v1/settings/chatgpt-account", route => route.fulfill({ json: chatGptStatusFixture({

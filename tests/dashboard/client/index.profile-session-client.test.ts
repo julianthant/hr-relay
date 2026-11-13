@@ -119,7 +119,7 @@ it("posts a password and a username change to their routes and returns the serve
 
 it("posts a details change and returns the served account or the refusal", async () => {
   const seen: { path: string; body: unknown }[] = [];
-  const account = { name: "Sam Rivera", initials: "SR", timekeeper: "Sam Rivera", lastSignedInAt: "2026-11-01T10:00:00Z" };
+  const account = { name: "Sam Rivera", initials: "SR", timekeeper: "Sam Rivera", timekeeperInitials: "SR", lastSignedInAt: "2026-11-01T10:00:00Z" };
   const results = [{ state: "changed", account }, { state: "refused", code: "PROFILE_INITIALS_REFUSED" }];
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:5174", fetchImpl: async (url, init) => {
     seen.push({ path: new URL(url).pathname, body: init?.body });

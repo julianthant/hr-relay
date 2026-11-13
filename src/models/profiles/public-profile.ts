@@ -22,19 +22,23 @@ export const ProfileLoginChangeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("unknown"), code: z.literal("PROFILE_LOGIN_CHANGE_UNKNOWN"), diagnostics: z.literal("unrecorded").optional() }),
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
 ]);
-/** The signed-in person's account values; Timekeeper initials are not a value of their own but `profileInitials(timekeeper)`. */
+/** The signed-in person's account values; the timekeeper name and timekeeper initials are stored and changed independently. */
 export const ProfileAccountSchema = z.strictObject({ name: z.string(), initials: ProfileRegistryRowSchema.shape.initials,
-  timekeeper: ProfileRegistryRowSchema.shape.timekeeperName, lastSignedInAt: ProfileRegistryRowSchema.shape.lastSignedInAt });
+  timekeeper: ProfileRegistryRowSchema.shape.timekeeperName, timekeeperInitials: ProfileRegistryRowSchema.shape.timekeeperInitials,
+  lastSignedInAt: ProfileRegistryRowSchema.shape.lastSignedInAt });
 export type ProfileAccount = z.infer<typeof ProfileAccountSchema>;
 export function profileAccount(row: ProfileRegistryRow): ProfileAccount {
-  return ProfileAccountSchema.parse({ name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName, lastSignedInAt: row.lastSignedInAt });
+  return ProfileAccountSchema.parse({ name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName,
+    timekeeperInitials: row.timekeeperInitials, lastSignedInAt: row.lastSignedInAt });
 }
 /** A details change names at least one value; each value is checked by `profileDetailsPatch`, whose refusal states the reason. */
 export const ProfileDetailsChangeRequestSchema = z.strictObject({
   name: z.strictObject({ firstName: z.string().max(64), lastName: z.string().max(64) }).optional(),
   initials: z.string().max(64).optional(),
   timekeeperName: z.string().max(256).optional(),
-}).refine(value => value.name !== undefined || value.initials !== undefined || value.timekeeperName !== undefined, "profile-details-change-empty");
+  timekeeperInitials: z.string().max(64).optional(),
+}).refine(value => value.name !== undefined || value.initials !== undefined || value.timekeeperName !== undefined || value.timekeeperInitials !== undefined,
+  "profile-details-change-empty");
 export const ProfileDetailsChangeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("changed"), account: ProfileAccountSchema }),
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
