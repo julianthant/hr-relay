@@ -2,10 +2,10 @@ import type { Page } from "playwright";
 
 export type FakePayPathOutcome = "record" | "alert" | "no-results" | "grid" | "nothing";
 
-/** Answers exactly the locators `UCPATH_PAYPATH_UI` builds and records every fill and click; waits reject at once when a control is not shown. Fills stick unless named in `revert`. */
+/** Answers exactly the locators `UCPATH_PAYPATH_UI` builds and records every fill and click; waits reject at once when a control is not shown or is the one named in `missing`. Fills stick unless named in `revert`. */
 export function fakeUcpathPayPathPage(options: Readonly<{
   outcome?: FakePayPathOutcome; alertText?: string; name?: string; headerEmplId?: string; ambiguousPositionNumber?: boolean;
-  revert?: string; postbackClears?: string; alertAfterFill?: string; saveButtons?: number; saveDisabled?: boolean; alertAfterSave?: string; saveStays?: boolean;
+  missing?: string; revert?: string; postbackClears?: string; alertAfterFill?: string; saveButtons?: number; saveDisabled?: boolean; alertAfterSave?: string; saveStays?: boolean;
 }> = {}) {
   let outcome = options.outcome ?? "record";
   let alertText = options.alertText;
@@ -20,7 +20,7 @@ export function fakeUcpathPayPathPage(options: Readonly<{
   const alertNow = (text: string) => { outcome = "alert"; alertText = text; };
   function control(key: string) {
     const shown = () => {
-      if (key === "busy") return false;
+      if (key === "busy" || key === options.missing) return false;
       if (key === "name" || key === "empl-id-display" || key in values || key.endsWith("-tab") || key === "save") {
         return searched && (outcome === "record" || outcome === "alert" && key === "save");
       }
@@ -58,13 +58,13 @@ export function fakeUcpathPayPathPage(options: Readonly<{
     return self;
   }
   const textboxes: Record<string, string> = {
-    "Empl ID": "empl-id-input", "Effective Date:": "effective-date", "Position Change Reason:": "position-change-reason",
+    "Effective Date:": "effective-date", "Position Change Reason:": "position-change-reason",
     "Position Pool:": "position-pool", "Position Number:": "position-number",
     Comments: "job-data-comments", "Initiator's Comments": "initiator-comments",
   };
   const tabs: Record<string, string> = { "Position Data": "position-data-tab", "Job Data": "job-data-tab", "Additional Pay Data": "additional-pay-tab" };
   const frameSelectors: Record<string, string> = {
-    "body > *": "body", "#PTS_CFG_CL_WRK_PTS_SRCH_BTN": "search", 'tr[id^="trPTS_CFG_CL_STD_RSL"]': "rows",
+    "body > *": "body", "#UC_E102_PP_SRCH_EMPLID": "empl-id-input", "#PTS_CFG_CL_WRK_PTS_SRCH_BTN": "search", 'tr[id^="trPTS_CFG_CL_STD_RSL"]': "rows",
     '[id="UC_E102_PP_WRK_NAME_DISPLAY"]': "name", '[id="UC_E102_PP_WRK_EMPLID"]': "empl-id-display",
     '[id="UC_E102_PP_WRK_SUBMIT_BTN"]': "save", "#WAIT_win0": "busy",
   };

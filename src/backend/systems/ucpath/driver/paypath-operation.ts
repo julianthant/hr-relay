@@ -3,7 +3,7 @@ import type { Clock } from "../../../../rules/time/clock.js";
 import { EidSchema } from "../../../../rules/identity/ids.js";
 import {
   UCPATH_PAYPATH_POSITION_READY, UCPATH_PAYPATH_WORK_STUDY_STAGED, UcpathPayPathReadSchema, UcpathPayPathRefusedError, UcpathPayPathStagedSchema,
-  UcpathPayPathStagedValuesSchema, UcpathPayPathSubmitRefusedError, type UcpathPayPathDriver, type UcpathPayPathStagedValues, type UcpathPayPathWorkStudyTarget,
+  UcpathPayPathStagedValuesSchema, UcpathPayPathSubmitRefusedError, type UcpathPayPathDriver, type UcpathPayPathRefusalCode, type UcpathPayPathStagedValues, type UcpathPayPathWorkStudyTarget,
 } from "../../../../models/ui/ucpath-paypath.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
@@ -25,6 +25,12 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
     await locator.waitFor({ state: "visible", timeout: BOUND_MS });
     assertCurrent();
   };
+  const shownWithin = async (locator: Locator, timeout: number) => {
+    assertCurrent();
+    const visible = await locator.waitFor({ state: "visible", timeout }).then(() => true, () => false);
+    assertCurrent();
+    return visible;
+  };
   const click = async (locator: Locator, targetId: string) => {
     await shown(locator);
     await locator.click({ timeout: BOUND_MS });
@@ -44,6 +50,19 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
     assertCurrent();
     return value;
   };
+  /** Any failure in one stage refuses with the code that names that stage; a revoked owner's error and an already-typed refusal pass through. */
+  const reached = async <T>(code: UcpathPayPathRefusalCode, stage: () => Promise<T>): Promise<T> => {
+    try {
+      return await stage();
+    } catch (cause) {
+      assertCurrent();
+      if (cause instanceof UcpathPayPathRefusedError) throw cause;
+      throw new UcpathPayPathRefusedError(code, undefined, { cause });
+    }
+  };
+  /** An alert whose text cannot be read still refuses as an alert, without text. */
+  const alertShown = async () => new UcpathPayPathRefusedError("paypath-alert-shown",
+    await reached("paypath-alert-shown", () => textOf(ui.alertText(page).first())));
   /** PeopleSoft settles after a field change or click once its processing indicator hides and the network is idle; an alert then refuses with its text. */
   const settle = async (frame: FrameLocator) => {
     try {
@@ -55,7 +74,7 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
       throw new UcpathPayPathRefusedError("unexpected-page-state", undefined, { cause });
     }
     assertCurrent();
-    if (await ui.alertOk(page).isVisible()) throw new UcpathPayPathRefusedError("paypath-alert-shown", await textOf(ui.alertText(page).first()));
+    if (await ui.alertOk(page).isVisible()) throw await alertShown();
   };
   const fillField = async (frame: FrameLocator, locator: Locator, value: string, targetId: string) => {
     await shown(locator);
@@ -92,45 +111,45 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
 
   /** Opens exactly one PayPath record for the Empl ID and returns its frame and displayed name once the header proves the Empl ID. */
   async function openRecord(emplId: UcpathPayPathWorkStudyTarget["emplId"]) {
-    assertCurrent();
-    await page.goto(ui.hrTasksUrl, { waitUntil: "domcontentloaded", timeout: BOUND_MS });
-    assertCurrent();
-    recordBrowserAction("opened", "ucpath.paypath.hr-tasks");
-    await click(ui.payPathCategory(page), "ucpath.paypath.category");
-    await shown(ui.payPathActions(page));
-    await waitForUcpathContentFrameDocument(assertCurrent, page, BOUND_MS);
-    await click(ui.payPathActions(page), "ucpath.paypath.actions");
-
     const frame = ui.frame(page);
-    const emplIdInput = ui.emplIdInput(frame);
-    await shown(emplIdInput);
-    await emplIdInput.fill(emplId, { timeout: BOUND_MS });
-    assertCurrent();
-    recordBrowserAction("typed", "ucpath.paypath.empl-id", emplId);
-    await click(ui.searchButton(frame), "ucpath.paypath.search");
-
-    const alertOk = ui.alertOk(page), noResults = ui.noResults(frame), rows = ui.resultRows(frame), name = ui.nameDisplay(frame);
-    assertCurrent();
-    try {
-      await Promise.any([alertOk, noResults, rows.first(), name].map(locator => locator.waitFor({ state: "visible", timeout: BOUND_MS })));
-    } catch {
+    await reached("paypath-hr-tasks-not-shown", async () => {
       assertCurrent();
-      throw new UcpathPayPathRefusedError("unexpected-page-state");
-    }
-    assertCurrent();
-    if (await alertOk.isVisible()) {
-      throw new UcpathPayPathRefusedError("paypath-alert-shown", await textOf(ui.alertText(page).first()));
-    }
-    if (await noResults.isVisible()) throw new UcpathPayPathRefusedError("employee-not-found");
-    if (await rows.count() > 0) throw new UcpathPayPathRefusedError("paypath-multiple-records");
-    assertCurrent();
-    if (!await name.isVisible()) throw new UcpathPayPathRefusedError("unexpected-page-state");
+      await page.goto(ui.hrTasksUrl, { waitUntil: "domcontentloaded", timeout: BOUND_MS });
+      assertCurrent();
+      recordBrowserAction("opened", "ucpath.paypath.hr-tasks");
+      await click(ui.payPathCategory(page), "ucpath.paypath.category");
+      await shown(ui.payPathActions(page));
+      await waitForUcpathContentFrameDocument(assertCurrent, page, BOUND_MS);
+    });
+    await reached("paypath-search-not-shown", async () => {
+      const emplIdInput = ui.emplIdInput(frame);
+      await click(ui.payPathActions(page), "ucpath.paypath.actions");
+      // Live probe (work-study-workflow-06): a step click that lands before the content frame's first document has loaded is lost; one re-click, never a loop.
+      if (!await shownWithin(emplIdInput, SETTLE_MS)) await click(ui.payPathActions(page), "ucpath.paypath.actions");
+      await shown(emplIdInput);
+      await emplIdInput.fill(emplId, { timeout: BOUND_MS });
+      assertCurrent();
+      recordBrowserAction("typed", "ucpath.paypath.empl-id", emplId);
+      await click(ui.searchButton(frame), "ucpath.paypath.search");
+    });
 
-    const displayedName = await textOf(name);
-    if (displayedName === "") throw new UcpathPayPathRefusedError("paypath-identity-unreadable");
-    const header = EidSchema.safeParse(await textOf(ui.emplIdDisplay(frame)));
-    if (!header.success || header.data !== emplId) throw new UcpathPayPathRefusedError("subject-mismatch");
-    return { frame, displayedName, emplId: header.data };
+    return reached("unexpected-page-state", async () => {
+      const alertOk = ui.alertOk(page), noResults = ui.noResults(frame), rows = ui.resultRows(frame), name = ui.nameDisplay(frame);
+      assertCurrent();
+      await Promise.any([alertOk, noResults, rows.first(), name].map(locator => locator.waitFor({ state: "visible", timeout: BOUND_MS })));
+      assertCurrent();
+      if (await alertOk.isVisible()) throw await alertShown();
+      if (await noResults.isVisible()) throw new UcpathPayPathRefusedError("employee-not-found");
+      if (await rows.count() > 0) throw new UcpathPayPathRefusedError("paypath-multiple-records");
+      assertCurrent();
+      if (!await name.isVisible()) throw new UcpathPayPathRefusedError("unexpected-page-state");
+
+      const displayedName = await reached("paypath-identity-unreadable", () => textOf(name));
+      if (displayedName === "") throw new UcpathPayPathRefusedError("paypath-identity-unreadable");
+      const header = EidSchema.safeParse(await textOf(ui.emplIdDisplay(frame)));
+      if (!header.success || header.data !== emplId) throw new UcpathPayPathRefusedError("subject-mismatch");
+      return { frame, displayedName, emplId: header.data };
+    });
   }
 
   /** The one visible, enabled Save and Submit control; anything else refuses. */
@@ -145,12 +164,12 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
     async readPayPathPosition(input) {
       staged = undefined;
       const { frame, displayedName } = await openRecord(input.emplId);
-      const position = {
+      const position = await reached("unexpected-page-state", async () => ({
         effectiveDate: await valueOf(ui.effectiveDate(frame)),
         positionChangeReason: await valueOf(ui.positionChangeReason(frame)),
         positionPool: await valueOf(ui.positionPool(frame)),
         positionNumber: await valueOf(ui.positionNumber(frame)),
-      };
+      }));
       recordBrowserAction("read", "ucpath.paypath.position-data");
       return UcpathPayPathReadSchema.parse({
         pageStateId: UCPATH_PAYPATH_POSITION_READY, emplId: input.emplId, displayedName, position, observedAt: clock.now().toISOString(),

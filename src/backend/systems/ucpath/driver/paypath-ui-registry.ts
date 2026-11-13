@@ -4,7 +4,7 @@ import { UCPATH_UI_REGISTRY } from "./ui-registry.js";
 
 /**
  * PayPath Actions anchors ported from the old workflow's selectors (verified there 2026-03-17 / 2026-04-24).
- * shortcut: every anchor is unproven in Relay until the read-only live probe on work-study-workflow-01 records it; replace or confirm each one from that probe.
+ * shortcut: every anchor except `emplIdInput` is unproven in Relay until the read-only live probe on work-study-workflow-01 records it; replace or confirm each one from that probe.
  * The Save-path anchors from `positionDataTab` on are unproven too: probe S1-S5 on work-study-workflow-02 records their legacy recipes and live results.
  */
 export const UCPATH_PAYPATH_UI = deepFreeze({
@@ -12,7 +12,8 @@ export const UCPATH_PAYPATH_UI = deepFreeze({
   frame: (page: Page): FrameLocator => page.frameLocator(UCPATH_UI_REGISTRY.root.selector),
   payPathCategory: (page: Page) => page.getByRole("link", { name: /^PayPath\/Additional Pay .*select to expand or collapse/u }),
   payPathActions: (page: Page) => page.getByRole("link", { name: "PayPath Actions", exact: true }),
-  emplIdInput: (frame: FrameLocator) => frame.getByRole("textbox", { name: "Empl ID", exact: true }),
+  // Live probe 2026-11-13 (work-study-workflow-06): the accessible name carries the search operator ("Empl ID begins with").
+  emplIdInput: (frame: FrameLocator) => frame.locator("#UC_E102_PP_SRCH_EMPLID"),
   searchButton: (frame: FrameLocator) => frame.locator("#PTS_CFG_CL_WRK_PTS_SRCH_BTN"),
   resultRows: (frame: FrameLocator) => frame.locator('tr[id^="trPTS_CFG_CL_STD_RSL"]'),
   noResults: (frame: FrameLocator) => frame.getByText(/No matching values were found/iu),

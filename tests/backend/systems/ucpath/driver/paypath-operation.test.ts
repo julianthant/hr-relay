@@ -51,10 +51,29 @@ describe("UCPath PayPath read on a fake page", () => {
     [{ name: "   " }, "paypath-identity-unreadable"],
     [{ headerEmplId: "10000002" }, "subject-mismatch"],
     [{ headerEmplId: "not an id" }, "subject-mismatch"],
+    [{ missing: "category" }, "paypath-hr-tasks-not-shown"],
+    [{ missing: "actions" }, "paypath-hr-tasks-not-shown"],
+    [{ missing: "body" }, "paypath-hr-tasks-not-shown"],
+    [{ missing: "empl-id-input" }, "paypath-search-not-shown"],
+    [{ missing: "search" }, "paypath-search-not-shown"],
+    [{ missing: "empl-id-display" }, "unexpected-page-state"],
+    [{ missing: "effective-date" }, "unexpected-page-state"],
+    [{ outcome: "alert", missing: "alert-text" }, "paypath-alert-shown"],
     [{ outcome: "nothing" }, "unexpected-page-state"],
     [{ ambiguousPositionNumber: true }, "unexpected-page-state"],
   ])("refuses %j with %s", async (options, code) => {
     assert.equal((await refusal(options)).error.code, code);
+  });
+
+  it("clicks PayPath Actions once more, and only once, before refusing a search that never shows", async () => {
+    const { h } = await refusal({ missing: "empl-id-input" });
+    assert.deepEqual(h.actions, ["click:category", "click:actions", "click:actions"]);
+  });
+
+  it("lets a revoked owner's error through instead of a page-state refusal", async () => {
+    const world = fakeUcpathPayPathPage();
+    const driver = createUcpathPayPathOperations(() => { throw new Error("owner-revoked"); }, world.page, manualClock(new Date("2026-08-03T18:00:00.000Z")));
+    await assert.rejects(driver.readPayPathPosition({ emplId: EMPL_ID }), { message: "owner-revoked" });
   });
 });
 
@@ -85,6 +104,13 @@ describe("UCPath PayPath work-study staging on a fake page", () => {
       values: { effectiveDate: "08/03/2026", positionChangeReason: "JRL", positionPool: "F", jobDataComments: COMMENTS, initiatorComments: COMMENTS },
     });
     assert.deepEqual(h.actions, [...OPEN, ...STAGE]);
+  });
+
+  it("refuses paypath-alert-shown without text when an alert after a fill has no readable text", async () => {
+    const error = await world({ alertAfterFill: "Synthetic alert", missing: "alert-text" }).driver.stagePayPathWorkStudy(target).then(() => undefined, (caught: unknown) => caught);
+    assert.ok(error instanceof UcpathPayPathRefusedError);
+    assert.equal(error.code, "paypath-alert-shown");
+    assert.equal(error.alertText, undefined);
   });
 
   it("reports the value a PeopleSoft postback cleared after the field settled, for the task to refuse", async () => {
