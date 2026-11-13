@@ -275,6 +275,26 @@ describe("whole-page factory screenshots", () => {
       assert.equal(bands, 2);
     });
   });
+  it("refuses an unpainted secret control in a shadow tree the capture observer cannot watch", async () => {
+    await withPage(`<div id="shadow-host"></div>${content}`, async (page, resource) => {
+      await page.locator("#shadow-host").evaluate(host => {
+        host.attachShadow({ mode: "open" }).innerHTML = '<input id="otp" autocomplete="one-time-code" style="display:none;width:200px;height:40px;background:rgb(255,0,255)">';
+      });
+      const screenshot = page.screenshot.bind(page);
+      let bands = 0;
+      page.screenshot = async options => {
+        if (++bands !== 1) return screenshot(options);
+        const otp = page.locator("#otp");
+        await otp.evaluate(el => { el.style.display = "block"; });
+        try { return await screenshot(options); }
+        finally { await otp.evaluate(el => { el.style.display = "none"; }); }
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+      assert.equal(bands, 0);
+    });
+  });
   it("refuses a frame attached and removed between bands", async () => {
     await withPage(content, async (page, resource) => {
       const screenshot = page.screenshot.bind(page);

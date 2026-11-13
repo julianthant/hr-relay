@@ -329,11 +329,20 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             if (!proof.authenticated) return unavailable("authentication-unverified");
             const frames = page.frames();
             const secretControls = 'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete="current-password"], input[autocomplete="new-password"]';
+            // The capture observer watches only the light DOM, so an unpainted control is tolerated there alone.
+            const secretPresent = async (frame: Frame): Promise<boolean> => {
+              assertCurrent();
+              const painted = await frame.locator(secretControls).filter({ visible: true }).count();
+              assertCurrent();
+              if (painted > 0) return true;
+              const reachable = await frame.locator(secretControls).count();
+              assertCurrent();
+              const watched = await frame.evaluate(selector => document.querySelectorAll(selector).length, secretControls);
+              assertCurrent();
+              return reachable !== watched;
+            };
             for (const frame of frames) {
-              assertCurrent();
-              const count = await frame.locator(secretControls).filter({ visible: true }).count();
-              assertCurrent();
-              if (count > 0) return unavailable("secret-controls-present");
+              if (await secretPresent(frame)) return unavailable("secret-controls-present");
             }
             if (pageVersion !== version) return unavailable("page-changed");
             const capture = await captureFullPage(page, {
@@ -351,10 +360,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
                 assertCurrent();
                 if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
                 for (const frame of page.frames()) {
-                  assertCurrent();
-                  const count = await frame.locator(secretControls).filter({ visible: true }).count();
-                  assertCurrent();
-                  if (count > 0) throw new FullPageCaptureRefusedError("secret-controls-present");
+                  if (await secretPresent(frame)) throw new FullPageCaptureRefusedError("secret-controls-present");
                 }
                 if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
               },
@@ -362,10 +368,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             assertCurrent();
             if (pageVersion !== version) return unavailable("page-changed");
             for (const frame of frames) {
-              assertCurrent();
-              const count = await frame.locator(secretControls).filter({ visible: true }).count();
-              assertCurrent();
-              if (count > 0) return unavailable("secret-controls-present");
+              if (await secretPresent(frame)) return unavailable("secret-controls-present");
             }
             if (pageVersion !== version) return unavailable("page-changed");
             return Object.freeze({ ...identity, state: "available", ...capture, diagnosticAttachments: diagnostics.snapshot() });
