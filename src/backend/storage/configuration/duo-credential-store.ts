@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { DuoCredentialRecordSchema, DuoEnrollmentScopeSchema, DuoStoredCredentialSchema, type DuoEnrollmentScope } from "../../../models/config/duo-credential-store.js";
+import { DuoCredentialRecordSchema, DuoEnrollmentScopeSchema, DuoStoredCredentialSchema, type DuoEnrollmentScope, type DuoReenrolCommitIntent } from "../../../models/config/duo-credential-store.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -26,10 +26,11 @@ export class DuoCredentialError extends Error {
 
 export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clock = systemClock) {
   const owner = createCanonicalCredentials(admission);
-  const access = <T>(operation: () => T): T => {
-    try { owner.assertCurrent(); return operation(); }
+  const settle = <T>(operation: () => T): T => {
+    try { return operation(); }
     catch (error) { if (error instanceof CanonicalCredentialError) throw new DuoCredentialError(error); throw error; }
   };
+  const access = <T>(operation: () => T): T => settle(() => { owner.assertCurrent(); return operation(); });
   const read = () => access(() => {
     const frame = owner.readRecord("duo");
     return { revision: frame?.revision ?? 0, record: frame === undefined ? { credentials: [] } : DuoCredentialRecordSchema.parse(frame.value) };
@@ -52,12 +53,13 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
     if (value.authenticator === undefined) throw new Error("duo-authenticator-required");
     return { credentialId: value.credentialId, rpId: "duosecurity.com", ...value.authenticator };
   });
-  const signAssertion = (request: DuoAssertionRequest, scope?: DuoEnrollmentScope) => access(() => {
+  const signAssertion = (request: DuoAssertionRequest, scope: DuoEnrollmentScope | undefined, state: "ready" | "staged") => access(() => {
     const parsed = DuoAssertionRequestSchema.parse(request);
     const { credential, material } = required(parsed.credentialId, scope);
-    if (credential.state !== "ready" || credential.scope.rpId !== parsed.rpId
-      || scope !== undefined && parsed.origin !== scope.origin) throw new Error("duo-ready-credential-required");
-    const reservation = owner.reserveDuoCounter(parsed.credentialId, parsed.requestId);
+    if (credential.state !== state || credential.scope.rpId !== parsed.rpId
+      || scope !== undefined && parsed.origin !== scope.origin) throw new Error(`duo-${state}-credential-required`);
+    const reservation = state === "ready" ? owner.reserveDuoCounter(parsed.credentialId, parsed.requestId)
+      : owner.reserveStagedDuoCounter(parsed.credentialId, parsed.requestId, credential.scope);
     owner.assertCurrent();
     const result = createDuoAssertion(material, parsed, reservation.count);
     owner.assertCurrent();
@@ -124,7 +126,16 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
       if (required(credentialId, scope).credential.state !== "ready") throw new Error("duo-ready-credential-required");
       return access(() => owner.reserveDuoCounter(credentialId, requestId));
     },
-    async sign(request: DuoAssertionRequest) { return signAssertion(request); },
-    async signForScope(request: DuoAssertionRequest, scope: DuoEnrollmentScope) { return signAssertion(request, scope); },
+    async sign(request: DuoAssertionRequest) { return signAssertion(request, undefined, "ready"); },
+    async signForScope(request: DuoAssertionRequest, scope: DuoEnrollmentScope) { return signAssertion(request, scope, "ready"); },
+    stage(credentialId: string, scope: DuoEnrollmentScope) {
+      assertScope(scope);
+      return access(() => owner.stageDuoCredential(credentialId, scope, clock.now().toISOString()));
+    },
+    async signStagedForScope(request: DuoAssertionRequest, scope: DuoEnrollmentScope) { assertScope(scope); return signAssertion(request, scope, "staged"); },
+    discardDraft(accountId: string) { settle(() => owner.discardDuoDraft(accountId)); },
+    prepareReenrolCommit(accountId: string) { return access(() => owner.prepareDuoReenrolCommit(accountId)); },
+    inspectReenrolCommit(intent: DuoReenrolCommitIntent) { return settle(() => owner.inspectDuoReenrolCommit(intent)); },
+    commitReenrol(intent: DuoReenrolCommitIntent) { return settle(() => owner.commitDuoReenrol(intent)); },
   });
 }

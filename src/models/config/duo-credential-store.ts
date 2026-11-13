@@ -24,6 +24,7 @@ const CredentialFields = {
 };
 export const DuoStoredCredentialSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("pending"), ...CredentialFields }),
+  z.strictObject({ state: z.literal("staged"), ...CredentialFields, provedAt: TimestampSchema }),
   z.strictObject({ state: z.literal("ready"), ...CredentialFields, confirmedAt: TimestampSchema }),
 ]);
 export type DuoStoredCredential = z.infer<typeof DuoStoredCredentialSchema>;
@@ -33,10 +34,21 @@ export const DuoCredentialRecordSchema = z.strictObject({
 }).superRefine((value, context) => {
   if (new Set(value.credentials.map(row => row.credentialId)).size !== value.credentials.length) context.addIssue({ code: "custom", message: "duo-credential-membership-invalid" });
   for (const credential of value.credentials) {
+    const settledAt = credential.state === "ready" ? credential.confirmedAt : credential.state === "staged" ? credential.provedAt : undefined;
     if (Date.parse(credential.createdAt) < Date.parse(credential.scope.armedAt)
       || Date.parse(credential.createdAt) >= Date.parse(credential.scope.expiresAt)
-      || credential.state === "ready" && (Date.parse(credential.confirmedAt) < Date.parse(credential.createdAt)
-        || Date.parse(credential.confirmedAt) >= Date.parse(credential.scope.expiresAt))) context.addIssue({ code: "custom", message: "duo-credential-event-order-invalid" });
+      || settledAt !== undefined && (Date.parse(settledAt) < Date.parse(credential.createdAt)
+        || Date.parse(settledAt) >= Date.parse(credential.scope.expiresAt))) context.addIssue({ code: "custom", message: "duo-credential-event-order-invalid" });
   }
 });
 export type DuoCredentialRecord = z.infer<typeof DuoCredentialRecordSchema>;
+
+export const DuoReenrolCommitIntentSchema = z.strictObject({
+  commitId: z.uuid(), accountId: z.uuid(), duoRevision: z.number().int().safe().positive(),
+  stagedIds: z.array(CredentialIdSchema).min(1).max(1000), retireIds: z.array(CredentialIdSchema).min(1).max(1000),
+  mac: z.string().regex(/^[a-f0-9]{64}$/u),
+}).superRefine((value, context) => {
+  const ids = [...value.stagedIds, ...value.retireIds];
+  if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", message: "duo-reenrol-intent-membership-invalid" });
+});
+export type DuoReenrolCommitIntent = z.infer<typeof DuoReenrolCommitIntentSchema>;
