@@ -24,9 +24,9 @@ function button(name: string): HTMLButtonElement {
 }
 async function click(name: string) { await act(async () => { button(name).click(); }); }
 
-function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut" | "forgetAccount">> = {}): ChatGptAccountPort {
+function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn">> = {}): ChatGptAccountPort {
   return { mode: "live", getSnapshot: () => snapshot, subscribe: () => () => undefined,
-    signIn: () => Promise.resolve(), forgetAccount: () => Promise.resolve(), signOut: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
+    signIn: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
 }
 
 describe("General ChatGPT account", () => {
@@ -48,7 +48,7 @@ describe("General ChatGPT account", () => {
     assert.equal(focused.textContent, "Manage usage", "the first control of the connected account takes focus");
   });
 
-  it("requests plan access directly for a disabled account, and signing out removes the account", async () => {
+  it("requests plan access directly for a disabled account", async () => {
     const port = createPreviewChatGptAccountPort();
     await port.signIn({ usePlan: false });
     await mount(port);
@@ -67,9 +67,6 @@ describe("General ChatGPT account", () => {
     assert.equal(usage.target, "_blank");
     assert.equal(usage.rel, "noopener noreferrer");
     assert.ok(!window.location.search.includes("jordan.lee"));
-    await act(async () => { await port.signOut(); });
-    assert.equal(port.getSnapshot().state, "signed-out");
-    assert.doesNotMatch(host?.textContent ?? "", /jordan\.lee@example\.com/u);
   });
 
   it("preserves preview connection across Settings remounts without writing credentials to storage", async () => {

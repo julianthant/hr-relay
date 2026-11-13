@@ -12,7 +12,7 @@ function harness() {
   let refresh: ChatGptAccountPort["refresh"] = async () => {};
   const account: ChatGptAccountPort = {
     mode: "live", getSnapshot: () => snapshot, subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    refresh: () => refresh?.() ?? Promise.resolve(), signIn: async () => {}, forgetAccount: async () => {}, signOut: async () => {}, cancelSignIn: async () => {},
+    refresh: () => refresh?.() ?? Promise.resolve(), signIn: async () => {}, cancelSignIn: async () => {},
   };
   const change = (next: ChatGptAccountSnapshot) => { snapshot = next; for (const listener of listeners) listener(); };
   const signals: (AbortSignal | undefined)[] = [];

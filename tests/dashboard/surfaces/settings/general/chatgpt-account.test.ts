@@ -18,9 +18,9 @@ let host: HTMLElement | undefined;
 beforeEach(() => { vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; vi.unstubAllGlobals(); });
 
-function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut" | "forgetAccount">> = {}): ChatGptAccountPort {
+function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn">> = {}): ChatGptAccountPort {
   return { mode: "live", getSnapshot: () => snapshot, subscribe: () => () => undefined,
-    signIn: () => Promise.resolve(), forgetAccount: () => Promise.resolve(), signOut: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
+    signIn: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
 }
 
 describe("General ChatGPT account", () => {
@@ -68,30 +68,24 @@ it("places a rejected account port action outside the field group with its origi
 });
 
 
-for (const scenario of ["initial read failure", "unconfirmed remote revocation"] as const) it(`recovers through Continue after ${scenario} without restarting a pending ceremony`, async () => {
+it("recovers through Continue after an initial read failure without restarting a pending ceremony", async () => {
   const account = ChatGptAccountStateSchema.parse({ state: "connected", name: "Exact held operator", email: "exact@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" });
   const started = ChatGptSignInStartSchema.parse({ state: "started", attemptId: "00000000-0000-4000-8000-000000000001", authorizationUrl: "https://auth.openai.com/api/accounts/authorize?state=synthetic", expiresAt: "2099-01-01T00:05:00.000Z" });
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
-  let starts = 0, reads = 0, disconnected = false;
-  const queries: ChatGptAccountQueries = { chatGptAccount: async () => { reads++; if (scenario === "initial read failure" && reads === 1) throw new Error("synthetic failed read"); return chatGptStatusFixture(disconnected ? { state: "signed-out" } : account); },
-    startChatGptSignIn: async () => { starts++; disconnected = false; return started; },
+  let starts = 0, reads = 0;
+  const queries: ChatGptAccountQueries = { chatGptAccount: async () => { reads++; if (reads === 1) throw new Error("synthetic failed read"); return chatGptStatusFixture(account); },
+    startChatGptSignIn: async () => { starts++; return started; },
     completeChatGptSignIn: () => completion.promise,
     cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId: started.attemptId }),
     testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }),
-    forgetChatGptAccount: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }), signOutChatGpt: async () => { disconnected = true; return { state: "signed-out", remoteRevocation: "unconfirmed" }; },
   };
   const port = createServedChatGptAccountPort(queries, { open: () => ({ navigate() {}, close() {} }) });
   const button = (label: string) => { const found = [...host!.querySelectorAll("button")].find(node => node.textContent === label); assert.ok(found); return found; };
   try {
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
-    if (scenario === "unconfirmed remote revocation") {
-      assert.match(host.textContent ?? "", /Exact held operator.*exact@example.com/u);
-      await act(async () => { await port.signOut(); });
-      assert.deepEqual(port.getResource(), { state: "empty", account: { state: "signed-out" }, warning: "CHATGPT_REVOCATION_UNCONFIRMED" });
-      assert.doesNotMatch(host.textContent ?? "", /Exact held operator|exact@example.com/u);
-    } else assert.equal(port.getResource().state, "failed");
-    const message = ERROR_CATALOG[scenario === "initial read failure" ? "CHATGPT_AUTH_UNAVAILABLE" : "CHATGPT_REVOCATION_UNCONFIRMED"].text;
+    assert.equal(port.getResource().state, "failed");
+    const message = ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text;
     assert.ok(host.textContent?.includes(message));
     const recovery = button("Connect ChatGPT"); assert.equal(recovery.disabled, false);
     await act(async () => { recovery.click(); recovery.click(); });
@@ -102,7 +96,7 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
     assert.equal(starts, 1);
     await act(async () => { completion.resolve({ state: "completed", attemptId: started.attemptId, account }); });
     assert.match(host.textContent ?? "", /Exact held operator.*exact@example.com/u);
-    assert.equal(host.textContent?.includes(message), false); assert.equal(reads, scenario === "initial read failure" ? 2 : 3); assert.equal(starts, 1);
+    assert.equal(host.textContent?.includes(message), false); assert.equal(reads, 2); assert.equal(starts, 1);
   } finally { port.dispose(); }
 });
 
