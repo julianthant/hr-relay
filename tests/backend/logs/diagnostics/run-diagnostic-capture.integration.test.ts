@@ -695,4 +695,28 @@ describe("refused sign-in bundle", () => {
     assert.equal(reason?.state, "allowed");
     assert.equal(reason?.state === "allowed" ? reason.value : undefined, "the check saw https://example.test/read");
   });
+
+  it("drops an employee id from the reason text and the page path the bundle allows", async () => {
+    const database = await openDatabase();
+    const { service } = captureService(database);
+    const login = new BrowserLoginError("ucpath", "verify-landing",
+      "the check refused employee 10456712",
+      "https://example.test/people/10456712");
+    const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+      error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: "2026-08-29T08:00:00.000Z" });
+    const bundle = await createRunDiagnosticCapture({ service }).captureForFailure({
+      failure, configFingerprint: HASH_A, descriptorFingerprint: HASH_B,
+    });
+    const stored = JSON.stringify({ failure, bundle });
+    assert.equal(stored.includes("10456712"), false);
+    const allowed = (key: string) => {
+      const field = bundle.redaction.fields.find(candidate => candidate.key === key);
+      assert.equal(field?.state, "allowed");
+      return field?.state === "allowed" ? field.value : undefined;
+    };
+    assert.equal(allowed("signInReason"), "the check refused employee [removed]");
+    assert.equal(allowed("signInPageAddress"), "https://example.test/people/[removed]");
+  });
 });

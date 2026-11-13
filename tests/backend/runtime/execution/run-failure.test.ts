@@ -254,4 +254,52 @@ describe("refused sign-in detail", () => {
     assert.equal(projectFailureForOperator(failure).summary, operatorFailureSentence("DUO_PROMPT_STALLED"));
     assert.equal(JSON.stringify(failure).includes("unreadable-address"), false);
   });
+
+  it("drops an employee id from the verifier reason and from the page path", () => {
+    const failure = storedSignInFailure(
+      `the check refused employee ${FIXTURE_EMPLOYEE_ID}`,
+      `https://example.test/people/${FIXTURE_EMPLOYEE_ID}`,
+    );
+    assert.equal(failure.debug?.signInRefusal?.reason, "the check refused employee [removed]");
+    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://example.test/people/[removed]");
+    assert.equal(JSON.stringify(failure).includes(FIXTURE_EMPLOYEE_ID), false);
+    assert.equal(projectFailureForOperator(failure).summary, "UCPath sign-in failed.");
+  });
+
+  it("keeps the sign-in check when a cause stack fills the debug budget", () => {
+    const login = new BrowserLoginError("ucpath", "verify-landing", "the application route was refused", "https://example.test/app", {
+      cause: new Error("x".repeat(200_000)),
+    });
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
+      error: new TaskError(TASK_ID, login.code, login.message, { cause: login }),
+      occurredAt: "2026-08-29T08:00:00.000Z" });
+    const debug = failure.debug;
+    assert.ok(debug?.signInRefusal);
+    assert.equal(debug.signInRefusal.step, "verify-landing");
+    assert.equal(debug.signInRefusal.reason, "the application route was refused");
+    assert.equal(debug.signInRefusal.pageAddress, "https://example.test/app");
+    const kept = Buffer.byteLength(debug.stack)
+      + debug.causes.reduce((total, text) => total + Buffer.byteLength(text), 0)
+      + Buffer.byteLength(debug.signInRefusal.reason)
+      + Buffer.byteLength(debug.signInRefusal.pageAddress);
+    assert.ok(kept <= 96 * 1024);
+    assert.equal(debug.omittedBytes, debug.originalBytes - kept);
+    assert.ok(debug.originalBytes > 200_000);
+  });
+
+  it("cuts a multibyte verifier reason on a UTF-8 boundary and counts the bytes it keeps", () => {
+    const failure = storedSignInFailure(`check ${"€".repeat(60_000)}`, "https://example.test/p");
+    const debug = failure.debug;
+    assert.ok(debug?.signInRefusal);
+    const kept = Buffer.byteLength(debug.stack)
+      + debug.causes.reduce((total, text) => total + Buffer.byteLength(text), 0)
+      + Buffer.byteLength(debug.signInRefusal.reason)
+      + Buffer.byteLength(debug.signInRefusal.pageAddress);
+    assert.ok(kept <= 96 * 1024);
+    assert.equal(debug.omittedBytes, debug.originalBytes - kept);
+    assert.equal(debug.signInRefusal.reason.includes("\uFFFD"), false);
+    assert.equal(debug.signInRefusal.pageAddress, "https://example.test/p");
+    assert.match(debug.signInRefusal.reason, /^check /);
+  });
 });

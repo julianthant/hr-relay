@@ -170,3 +170,22 @@ it("explains a protected run without an uppercase URL query from the verifier re
   assert.equal(rendered.includes("10456712"), false);
   assert.equal(rendered.includes("frag-canary"), false);
 });
+
+it("explains a protected run without an employee id in the reason or the page path", () => {
+  const login = new BrowserLoginError("ucpath", "verify-landing",
+    "the check refused employee 10456712", "https://example.test/people/10456712");
+  const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+  const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+    failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+    error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: QUEUED_RUN.createdAt });
+  const run = RunRecordSchema.parse({
+    ...QUEUED_RUN,
+    input: { ...QUEUED_RUN.input, parsed: { ...QUEUED_RUN.input.parsed, protectedBindings: [{
+      kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "00000000-0000-4000-8000-000000000099",
+    }] } },
+  });
+  const rendered = renderExplainRun(buildExplainRunView({ run, checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure }));
+  assert.match(rendered, /sign-in check verify-landing: the check refused employee \[removed\]/);
+  assert.match(rendered, /page https:\/\/example\.test\/people\/\[removed\]/);
+  assert.equal(rendered.includes("10456712"), false);
+});

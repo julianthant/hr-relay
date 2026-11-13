@@ -203,20 +203,28 @@ function withoutPageQuery(text: string): string {
   });
 }
 
+/** An employee id is eight digits. These refusal fields are safe diagnostic text, so the digits do not stay. */
+function withoutEmployeeId(text: string): string {
+  return text.replace(/(?<!\d)\d{8}(?!\d)/gu, "[removed]");
+}
+
 function signInRefusalFrom(error: Error) {
   const login = browserLoginFailure(error);
   if (login === undefined) return undefined;
-  const reason = sanitizeDebugText(withoutPageQuery(login.detail));
-  const address = sanitizeDebugText(pageAddress(login.observedUrl));
+  const reason = withoutEmployeeId(sanitizeDebugText(withoutPageQuery(login.detail)));
+  const address = withoutEmployeeId(sanitizeDebugText(pageAddress(login.observedUrl)));
   if (reason.length === 0) throw new Error("sign-in refusal reason is empty");
   if (address.length === 0) throw new Error("sign-in page address is empty");
   return { system: login.system, step: login.step, reason, pageAddress: address };
 }
 
+/** Keep a whole UTF-8 character or none of it. The caller spends only the bytes actually kept. */
 function takeDebugText(text: string, remaining: { bytes: number }): string {
   const encoded = Buffer.from(text);
-  const result = encoded.subarray(0, remaining.bytes).toString("utf8");
-  remaining.bytes = Math.max(0, remaining.bytes - encoded.byteLength);
+  let end = Math.min(encoded.byteLength, remaining.bytes);
+  while (end > 0 && ((encoded[end] ?? 0) & 0xc0) === 0x80) end -= 1;
+  const result = encoded.subarray(0, end).toString("utf8");
+  remaining.bytes -= Buffer.byteLength(result);
   return result;
 }
 
@@ -232,14 +240,17 @@ export function failureDebugDetails(error: Error) {
   const originalBytes = safe.reduce((total, text) => total + Buffer.byteLength(text), 0)
     + (refusal === undefined ? 0 : Buffer.byteLength(refusal.reason) + Buffer.byteLength(refusal.pageAddress));
   const remaining = { bytes: DEBUG_TEXT_BUDGET };
-  const bounded = safe.map(text => takeDebugText(text, remaining));
-  // The page is short and is what the record exists to keep, so it is taken before the reason.
+  // The check and the page are the refusal. Stack text is optional and takes what is left.
   const pageAddressText = refusal === undefined ? "" : takeDebugText(refusal.pageAddress, remaining);
   const reasonText = refusal === undefined ? "" : takeDebugText(refusal.reason, remaining);
+  const bounded = safe.map(text => takeDebugText(text, remaining));
   const signInRefusal = refusal === undefined || reasonText.length === 0 || pageAddressText.length === 0
     ? undefined
     : { system: refusal.system, step: refusal.step, reason: reasonText, pageAddress: pageAddressText };
+  const retainedBytes = Buffer.byteLength(bounded[0] ?? "")
+    + bounded.slice(1).reduce((total, text) => total + Buffer.byteLength(text), 0)
+    + (signInRefusal === undefined ? 0 : Buffer.byteLength(signInRefusal.reason) + Buffer.byteLength(signInRefusal.pageAddress));
   return { stack: bounded[0] ?? "", causes: bounded.slice(1), originalBytes,
-    omittedBytes: Math.max(0, originalBytes - DEBUG_TEXT_BUDGET),
+    omittedBytes: Math.max(0, originalBytes - retainedBytes),
     ...(signInRefusal === undefined ? {} : { signInRefusal }) };
 }
