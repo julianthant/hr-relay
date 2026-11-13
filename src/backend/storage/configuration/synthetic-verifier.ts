@@ -56,7 +56,3 @@ export function emailMatch(
   if (match === undefined) return "unknown";
   return { profileId: match.profileId };
 }
-
-export function acceptChangedPassword(): "unavailable" {
-  return "unavailable";
-}

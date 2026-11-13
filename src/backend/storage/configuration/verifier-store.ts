@@ -125,6 +125,19 @@ export function createProfileVerifiers(machineRoot: string) {
         }],
       });
     },
+    /** Derive a profile's replacement login row now; `commit` swaps only that row in one atomic rename and clears its failures. */
+    prepareLoginChange(profileId: string, email: string, password: string): { commit(): void } {
+      const created = createSyntheticVerifier(pepper(), email, password);
+      row(profileId);
+      if (read().profiles.some(entry => entry.profileId !== profileId && entry.emailKey === created.emailKey)) throw new Error("profile verifier email is taken");
+      return Object.freeze({ commit() {
+        const current = read();
+        if (current.profiles.some(entry => entry.profileId !== profileId && entry.emailKey === created.emailKey)) throw new Error("profile verifier email is taken");
+        if (!current.profiles.some(entry => entry.profileId === profileId)) throw new Error("profile verifier is missing");
+        write({ schemaVersion: 1, profiles: current.profiles.map(entry => entry.profileId === profileId
+          ? { profileId, emailKey: created.emailKey, salt: created.salt, passwordVerifier: created.passwordVerifier, consecutiveFailures: 0 } : entry) });
+      } });
+    },
     passwordMatches(profileId: string, password: string): boolean {
       const current = row(profileId);
       const verifier: SyntheticVerifier = {

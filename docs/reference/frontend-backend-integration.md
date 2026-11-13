@@ -422,6 +422,15 @@ Sign-in authenticates a current profile through the ordinary endpoint and sessio
 not dispatch storage maintenance or restart the app. Pending onboarding and logout continue through
 their existing recovery boundaries.
 
+The Relay login is the work email and password saved as the profile's UCPath sign-in.
+`POST /api/v1/profile/account/password` `{currentPassword, newPassword}` and
+`POST /api/v1/profile/account/username` `{currentPassword, newUsername}` change it for the current
+session cookie only and return `{state: "changed"}` or `{state: "refused", code}`. A wrong current
+password, a taken username or saved entries that no longer match the login change nothing. The
+change saves the profile's UCPath entries first and then swaps that profile's verifier row as its
+commit point. If it stops between them, the next sign-in with the old login restores the saved
+entries. The session, epoch, Duo material and other profiles are unchanged.
+
 ### Profile onboarding boundary
 
 Details returns canonical `onboarding` state and a limited HttpOnly cookie scoped to profile routes.

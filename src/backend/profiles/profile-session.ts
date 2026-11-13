@@ -91,6 +91,30 @@ function cancelling(operationId?: string): ProfileCancelling {
   };
 }
 
+/** Marks a protected apply made by a Relay login change, so an interrupted change is recognizable at the next sign-in. */
+const LOGIN_CHANGE_FINGERPRINT = createHash("sha256").update("relay-login-change").digest("hex");
+const LOGIN_RESTORE_FINGERPRINT = createHash("sha256").update("relay-login-change-restore").digest("hex");
+type RelayLogin = { readonly email: string; readonly password: string };
+
+/** Set the saved UCPath entries that differ from `login`; true once the store owns the apply. */
+function applyLogin(store: CredentialStore, login: RelayLogin, fingerprint: string, at: string): boolean {
+  const saved = store.read();
+  const entries = {
+    ...(saved.entries.ucpathUserId?.value === login.email ? {} : { ucpathUserId: { set: login.email } }),
+    ...(saved.entries.ucpathPassword?.value === login.password ? {} : { ucpathPassword: { set: login.password } }),
+  };
+  if (Object.keys(entries).length === 0) return true;
+  const commandId = randomUUID();
+  try {
+    const applied = store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId, commandFingerprint: fingerprint, expectedRevision: saved.revision,
+      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), updatedAt: at, entries }));
+    return applied.state === "applied" || store.ownsCommandId(commandId);
+  } catch (error) {
+    if (!(error instanceof CredentialStoreCommitUncertainError)) throw error;
+    return store.ownsCommandId(commandId);
+  }
+}
+
 function contained(profileRoot: string, candidate: string): string {
   const root = realpathSync(profileRoot);
   const path = resolve(root, candidate);
@@ -441,8 +465,17 @@ export function createProfileSession(input: {
     return issueOnboardingSession(operation);
   }
 
+  /** The saved login to restore when a login change stopped before its verifier commit: its marked apply is latest and its saved entries no longer prove the verifier. */
+  function interruptedLoginChange(profileId: string, record: ReturnType<CredentialStore["read"]>, proved: RelayLogin): RelayLogin | undefined {
+    if (record.lastApplied?.commandFingerprint !== LOGIN_CHANGE_FINGERPRINT) return undefined;
+    const email = record.entries.ucpathUserId?.value, password = record.entries.ucpathPassword?.value;
+    const owner = email === undefined ? "unknown" : verifiers.identify(email), ownEmail = owner !== "unknown" && owner.profileId === profileId;
+    if (ownEmail && password !== undefined && verifiers.passwordMatches(profileId, password)) return undefined;
+    return { email: ownEmail && email !== undefined ? email : proved.email, password: proved.password };
+  }
+
   function admitSignedIn(row: ProfileRegistryRow, at: ReturnType<typeof IsoInstantSchema.parse>,
-    credentialsMatch: (entries: ReturnType<ReturnType<typeof storeFor>["read"]>["entries"]) => boolean): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
+    credentialsMatch: (entries: ReturnType<ReturnType<typeof storeFor>["read"]>["entries"]) => boolean, proved?: RelayLogin): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
     const finishing = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === row.profileId && entry.onboarding !== undefined);
     if (finishing.length > 1) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
     for (const operation of finishing) {
@@ -462,8 +495,9 @@ export function createProfileSession(input: {
     }
     try {
       const active = activate(row.profileId);
-      const record = storeFor(row.profileId).read();
-      if (!credentialsMatch(record.entries)) {
+      const store = storeFor(row.profileId), interrupted = proved === undefined ? undefined : interruptedLoginChange(row.profileId, store.read(), proved);
+      if (interrupted !== undefined && !applyLogin(store, interrupted, LOGIN_RESTORE_FINGERPRINT, at)) throw new Error("profile-login-change-restore-refused");
+      if (!credentialsMatch(store.read().entries)) {
         sessions.clear();
         registry.advanceSession(selection.activeProfileId, "profile-sign-in-refused");
         releaseOrdinary(row.profileId);
@@ -553,6 +587,43 @@ export function createProfileSession(input: {
       return createDuoCredentialStore(admittedProfile(operation.profileId), input.clock ?? systemClock);
     },
   });
+
+  /** Change the signed-in profile's Relay login, which is also its saved UCPath sign-in. The verifier row swap is the commit point. */
+  function changeLogin(token: string, fields: { readonly currentPassword: string; readonly at: string; readonly email?: string; readonly password?: string }): { readonly state: "changed" } | ProfileRefusal {
+    const at = IsoInstantSchema.parse(fields.at);
+    admission.assertWritable();
+    admission.lifetime.assertRuntimeAvailable();
+    const initial = requireSession(token);
+    if ("state" in initial) return initial;
+    return withProfileLock(machineRoot, () => {
+      const session = requireSession(token);
+      if ("state" in session) return session;
+      if (readOperations().some(operation => operation.kind === "sign-up")) return refusal("PROFILE_TRANSITION_BLOCKED");
+      const nowMs = Date.parse(at);
+      if (verifiers.locked(session.profileId, nowMs)) return refusal("PROFILE_CURRENT_PASSWORD_REFUSED");
+      if (!verifiers.passwordMatches(session.profileId, fields.currentPassword)) {
+        verifiers.recordFailure(session.profileId, nowMs);
+        return refusal("PROFILE_CURRENT_PASSWORD_REFUSED");
+      }
+      const store = storeFor(session.profileId, session.admission), saved = store.read().entries;
+      const email = saved.ucpathUserId?.value, owner = email === undefined ? "unknown" : verifiers.identify(email);
+      if (email === undefined || saved.ucpathPassword?.value !== fields.currentPassword || owner === "unknown" || owner.profileId !== session.profileId) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
+      const prior = { email, password: fields.currentPassword }, next = { email: fields.email ?? email, password: fields.password ?? fields.currentPassword };
+      const claimed = verifiers.identify(next.email);
+      if (claimed !== "unknown" && claimed.profileId !== session.profileId) return refusal("PROFILE_USERNAME_TAKEN");
+      const verifier = verifiers.prepareLoginChange(session.profileId, next.email, next.password);
+      if (!applyLogin(store, next, LOGIN_CHANGE_FINGERPRINT, at)) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
+      try { verifier.commit(); }
+      catch (error) {
+        let restored: boolean;
+        try { restored = applyLogin(store, prior, LOGIN_RESTORE_FINGERPRINT, at); }
+        catch (cleanup) { throw new AggregateError([error, cleanup], "profile login change and its restore failed", { cause: cleanup }); }
+        if (!restored) throw new Error("profile-login-change-restore-refused", { cause: error });
+        throw error;
+      }
+      return { state: "changed" };
+    });
+  }
 
   async function cancelOnboarding(token: string, operationId: string): Promise<{ readonly state: "signed-out" }> {
     requireOnboardingSession(token, operationId);
@@ -770,7 +841,8 @@ export function createProfileSession(input: {
           verifiers.recordFailure(row.profileId, nowMs);
           return refusal("PROFILE_SIGN_IN_REFUSED");
         }
-        return admitSignedIn(row, at, entries => entries.ucpathUserId?.value === fields.email && entries.ucpathPassword?.value === fields.password);
+        return admitSignedIn(row, at, entries => entries.ucpathUserId?.value === fields.email && entries.ucpathPassword?.value === fields.password,
+          { email: fields.email, password: fields.password });
       });
     },
     resumeSignedInProfile(fields: { readonly at: string }): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
@@ -791,8 +863,11 @@ export function createProfileSession(input: {
         });
       });
     },
-    changePassword(): ProfileRefusal {
-      return refusal("PROFILE_VERIFIER_UNAVAILABLE");
+    changePassword(token: string, fields: { readonly currentPassword: string; readonly newPassword: string; readonly at: string }) {
+      return changeLogin(token, { currentPassword: fields.currentPassword, password: fields.newPassword, at: fields.at });
+    },
+    changeUsername(token: string, fields: { readonly currentPassword: string; readonly newUsername: string; readonly at: string }) {
+      return changeLogin(token, { currentPassword: fields.currentPassword, email: fields.newUsername, at: fields.at });
     },
     logOut(token: string, inputFields: { readonly at: string }): { readonly state: "signed-out" } | ProfileLogoutResult | ProfileCancelling {
       const at = IsoInstantSchema.parse(inputFields.at);

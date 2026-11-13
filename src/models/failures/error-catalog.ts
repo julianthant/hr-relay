@@ -727,8 +727,12 @@ export const ERROR_CATALOG = Object.freeze({
     "Saved work email and password were removed, but a backup still has a copy.",
     EmptyParametersSchema,
   ),
-  PROFILE_VERIFIER_UNAVAILABLE: catalogEntry(
-    "A password change waits for a live sign-in that proves the new password.",
+  PROFILE_CURRENT_PASSWORD_REFUSED: catalogEntry(
+    "That is not your current password. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_USERNAME_TAKEN: catalogEntry(
+    "Another profile on this computer already uses that email. Nothing was changed.",
     EmptyParametersSchema,
   ),
   PROFILE_FLAT_STORE_MIGRATION_FAILED: catalogEntry("Relay could not verify the old store backup and start a clean profile installation. Startup is stopped; remaining data is preserved.", EmptyParametersSchema),

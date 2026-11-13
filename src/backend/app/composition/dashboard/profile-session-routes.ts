@@ -11,12 +11,15 @@ CancelProfileOnboardingDuoRequestSchema,
 CancelProfileOnboardingRequestSchema,
 CompleteProfileOnboardingRequestSchema, ReopenProfileOnboardingBrowserRequestSchema,
 ConfirmProfileOnboardingDuoRequestSchema,DeleteProfileAccountRequestSchema,PROFILE_ONBOARDING_STATE,
+ProfileLoginChangeResultSchema,
 ProfileLoginRequestSchema,
+ProfilePasswordChangeRequestSchema,
 ProfileFirstRunCheckSchema,
 ProfileOnboardingStateSchema,
 ProfileSignUpRequestSchema,
 PublicProfileStateSchema,
 StartProfileOnboardingDuoRequestSchema,
+ProfileUsernameChangeRequestSchema,
 type PublicProfileState
 } from "../../../../models/profiles/public-profile.js";
 import { systemClock } from "../../../../rules/time/clock.js";
@@ -183,6 +186,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.use("/api/v1/profile/logout", operatorMutationIngressGuard);
   app.use("/api/v1/profile/delete-account", operatorMutationIngressGuard);
   app.use("/api/v1/profile/onboarding/*", operatorMutationIngressGuard);
+  app.use("/api/v1/profile/account/*", operatorMutationIngressGuard);
   const activeState = (profileId: string, epoch: number) => {
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === profileId);
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
@@ -376,6 +380,16 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: machine.readProfileRegistry().profiles.length === 0 }));
     } finally { transitioning = false; }
   };
+  const loginChanged = (result: { readonly state: "changed" } | { readonly state: "refused"; readonly code: string }) =>
+    ProfileLoginChangeResultSchema.parse(result.state === "refused" ? { state: "refused", code: result.code } : result);
+  app.post("/api/v1/profile/account/password", async c => {
+    const active = current(c.req.raw), request = ProfilePasswordChangeRequestSchema.parse(await c.req.json());
+    return c.json(loginChanged(profileRuntime.session.changePassword(active.token, { ...request, at: clock.now().toISOString() })));
+  });
+  app.post("/api/v1/profile/account/username", async c => {
+    const active = current(c.req.raw), request = ProfileUsernameChangeRequestSchema.parse(await c.req.json());
+    return c.json(loginChanged(profileRuntime.session.changeUsername(active.token, { ...request, at: clock.now().toISOString() })));
+  });
   app.post("/api/v1/profile/logout", c => endSession(c, false));
   app.post("/api/v1/profile/delete-account", c => endSession(c, true));
   if (bundle !== undefined) app.use("*", staticBundleHandler(bundle));
