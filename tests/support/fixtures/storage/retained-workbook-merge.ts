@@ -24,10 +24,10 @@ const version = (libraryId: string, id: string, name: string, revision: number, 
   id, name, version: revision, snapshotId: JSON.stringify([libraryId, id]), savedAt: at, source: origin,
 });
 const targetState = WorkbookLibraryStateSchema.parse({ libraryId: targetId, revision: 2, selectedVersionId: 'revision:2',
-  origin: { kind: 'local' }, removed: false, versions: [version(targetId, 'original', 'Original version', 1, 'import'),
+  origin: { kind: 'local' }, removed: false, pinned: false, tags: [], versions: [version(targetId, 'original', 'Original version', 1, 'import'),
     version(targetId, 'revision:2', 'Saved revision 2', 2, 'operator'), version(targetId, `merge:${sourceId}`, 'From Source.xlsx', 1, 'retained')] });
 const sourceState = WorkbookLibraryStateSchema.parse({ libraryId: sourceId, revision: 2, selectedVersionId: 'original',
-  origin: { kind: 'local' }, removed: true, versions: [version(sourceId, 'original', 'Original version', 1, 'import')] });
+  origin: { kind: 'local' }, removed: true, pinned: false, tags: [], versions: [version(sourceId, 'original', 'Original version', 1, 'import')] });
 const record = WorkbookLibraryActionRecordSchema.parse({ libraryId: targetId, at,
   action: { operationId: 'merge', expectedRevision: 1, expectedVersion: 1,
     change: { kind: 'merge', name: 'Merged.xlsx', duplicates: 'keep-both', sources: [{ libraryId: sourceId, expectedRevision: 1, expectedVersion: 1 }] } }, result: targetState });

@@ -27,9 +27,6 @@ function protectedInput(command: SettingsCommand) {
 }
 
 function ordinaryRequestRefusal(command: Extract<SettingsCommand, { type: "apply-settings" }>) {
-  if (command.payload.assistantPermission !== undefined && command.payload.assistantPermission.mode !== "every-action") {
-    return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "invalid-value", message: "assistant confirmation is required for every action" });
-  }
   if (containsRetiredSettingsPatch(command.payload.patch)) {
     return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "not-editable", message: "retired settings cannot be edited" });
   }
@@ -68,7 +65,7 @@ export function createSettingsApplicationExecutor(
       let resolved: ResolvedConfig;
       try {
         const currentConfig = ResolvedConfigSchema.parse(resolveCandidate(current.settings));
-        settings = command.payload.assistantPermission === undefined ? mergeSettingsPatch(current.settings, command.payload.patch) : current.settings;
+        settings = mergeSettingsPatch(current.settings, command.payload.patch);
         resolved = ResolvedConfigSchema.parse(resolveCandidate(settings));
         if (sha256Hex(canonicalJsonStringify(resolved.config)) !== resolved.fingerprint) {
           throw new Error("settings-resolution-fingerprint-mismatch");

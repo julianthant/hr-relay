@@ -21,7 +21,7 @@ const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.i
 const entry = WorkbookLibraryEntrySchema.parse({ libraryId: "roster", name: "Roster", version: 1, updatedAt: "2026-11-01T00:00:00Z", rowCount: 2,
   worksheets: [{ id: "first", name: "First" }, { id: "second", name: "Second" }], metadata: { typeId: "onboarding-roster", sharePoint: null },
   type: { id: "onboarding-roster", name: "Roster", keyFieldId: "email", fields: ["email"], defaultWorkbookId: "roster" },
-  state: { libraryId: "roster", revision: 1, selectedVersionId: "version", removed: false, origin: { kind: "local" }, versions: [{ id: "version", name: "Reviewed", snapshotId: "snapshot", version: 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" }] } });
+  state: { libraryId: "roster", revision: 1, selectedVersionId: "version", removed: false, pinned: false, tags: [], origin: { kind: "local" }, versions: [{ id: "version", name: "Reviewed", snapshotId: "snapshot", version: 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" }] } });
 const versionView = WorkbookLibraryVersionViewSchema.parse({ libraryId: entry.libraryId, version: entry.state.versions[0], workbook: {
   name: "Roster", libraryId: entry.libraryId, themes: [], hasFormulas: false,
   sheets: entry.worksheets.map(sheet => ({ ...sheet, width: descriptor.requiredWorkbookFields.length, hidden: [],

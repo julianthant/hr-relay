@@ -55,7 +55,7 @@ it("resolves a wire token at HTTP ingress and refuses a private digest before ke
   registerCommandsRoutes(app, { clock: manualClock(new Date(NOW)), commandJournal: repositories.commands,
     resolveWriteCommand: request => resolveWriteCommandTarget(request, repositories), protectedCommandAcceptedAt: () => undefined,
     bulkCommandAcceptances: { withTransaction: forbidden }, intake: { prepare: async () => undefined }, resolveIdentityGateAnswer: forbidden,
-    commands: { execute: forbidden, executeBulk: forbidden, submit: async request => {
+    commands: { execute: forbidden, executeBulk: forbidden, completeConsumed: forbidden, publish: forbidden, submit: async request => {
       received.push(request); return CommandResultSchema.parse({ state: "rejected", commandId: UUID_5, code: "invalid-state", message: "Fixture no execution" });
     } },
   });
