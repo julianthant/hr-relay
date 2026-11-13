@@ -687,6 +687,14 @@ export const ERROR_CATALOG = Object.freeze({
     "That name cannot be used as the timekeeper name.",
     EmptyParametersSchema,
   ),
+  PROFILE_DISPLAY_NAME_REFUSED: catalogEntry(
+    "That name cannot be used. Use a first and last name that each start with a letter.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_INITIALS_REFUSED: catalogEntry(
+    "Initials must be 1 to 8 letters A to Z.",
+    EmptyParametersSchema,
+  ),
   PROFILE_SIGN_IN_REFUSED: catalogEntry(
     "That email and password did not match a profile on this computer.",
     EmptyParametersSchema,
@@ -727,8 +735,44 @@ export const ERROR_CATALOG = Object.freeze({
     "Saved work email and password were removed, but a backup still has a copy.",
     EmptyParametersSchema,
   ),
-  PROFILE_VERIFIER_UNAVAILABLE: catalogEntry(
-    "A password change waits for a live sign-in that proves the new password.",
+  PROFILE_CURRENT_PASSWORD_REFUSED: catalogEntry(
+    "The current password was not accepted. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_USERNAME_TAKEN: catalogEntry(
+    "Another profile on this computer already uses that email. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_USERNAME_REFUSED: catalogEntry(
+    "Enter a different @ucsd.edu email with no spaces around it. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_UNKNOWN: catalogEntry(
+    "Relay could not confirm whether your sign-in changed, and nothing will be undone. Try your new username and password first, then your current ones.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_UNSETTLED: catalogEntry(
+    "Your sign-in change did not finish. Try it again; until it finishes, your current username and password still sign you in.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_BUSY: catalogEntry(
+    "Another save was in progress, so your sign-in was not changed. Try again.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_DUO_REENROL_OPEN: catalogEntry(
+    "Duo setup is still open for this profile. Finish or cancel it, then try again.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_DUO_REENROL_BUSY: catalogEntry(
+    "Relay can switch to the new Duo setup only while no run, change or Duo sign-in is in progress. Nothing was changed; wait for current work to finish, then try again.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_DUO_REENROL_REFUSED: catalogEntry(
+    "The new Duo setup no longer matches the saved Duo devices, so nothing was changed. Cancel this setup and start it again.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_DUO_REENROL_UNCERTAIN: catalogEntry(
+    "Relay could not confirm that switching to the new Duo setup finished cleanly. Check this profile's Duo status; if the profile stays closed, restart Relay so it can check the setup.",
     EmptyParametersSchema,
   ),
   PROFILE_FLAT_STORE_MIGRATION_FAILED: catalogEntry("Relay could not verify the old store backup and start a clean profile installation. Startup is stopped; remaining data is preserved.", EmptyParametersSchema),

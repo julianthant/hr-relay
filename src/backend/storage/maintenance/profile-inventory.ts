@@ -6,7 +6,7 @@ import { basename,join,relative,resolve,sep } from "node:path";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { SignUpOperationSchema } from "../../../models/profiles/profile.js";
+import { ProfileOperationSchema } from "../../../models/profiles/profile.js";
 import { BrowserSystemIdSchema,type BrowserSystemId } from "../../../rules/identity/ids.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -83,6 +83,14 @@ function registryMembership(admission: RuntimeAdmission): BrowserRegistryMembers
   return { machineRoot: binding.machineRoot, profileId: binding.profileId, roots: inventoryBrowserRoots(admission).inventory().roots };
 }
 
+/** A setup root belongs to a sign-up or a Duo re-enrolment draft, bound by operation, profile, account and generation. */
+export function assertSetupRootDraft(value: unknown, root: Readonly<{ profileId: string; owner: Readonly<{ operationId: string; accountId: string; providerGeneration: number }> }>): void {
+  const operation = ProfileOperationSchema.parse(value);
+  const draft = operation.kind === "sign-up" ? operation.onboarding : operation.kind === "duo-reenrol" ? operation.draft : undefined;
+  if (operation.operationId !== root.owner.operationId || operation.profileId !== root.profileId || draft?.accountId !== root.owner.accountId
+    || draft.generation !== root.owner.providerGeneration) throw new Error("profile-inventory-browser-membership-unavailable");
+}
+
 function stoppedBrowserProfiles(admission: RuntimeAdmission, custody: BrowserProfileCustody, savedBrowserRoot: string,
   browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">): RetainedBrowserProfile[] {
   const registry = registryMembership(admission);
@@ -93,9 +101,7 @@ function stoppedBrowserProfiles(admission: RuntimeAdmission, custody: BrowserPro
     if (row.profileId !== binding.profileId || row.owner.kind !== "signup") continue;
     const file = readPrivateFile(join(binding.machineRoot, "machine", "operations", `${row.owner.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
     if (file === undefined) throw new Error("profile-inventory-browser-membership-unavailable");
-    const operation = SignUpOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
-    if (operation.operationId !== row.owner.operationId || operation.profileId !== row.profileId || operation.onboarding?.accountId !== row.owner.accountId
-      || operation.onboarding.generation !== row.owner.providerGeneration) throw new Error("profile-inventory-browser-membership-unavailable");
+    assertSetupRootDraft(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)), { profileId: row.profileId, owner: row.owner });
     profiles.push({ profileRoot: join(binding.machineRoot, row.profileRoot), profileDirectory: join(binding.machineRoot, row.directory), cleanupCompleted: false });
   }
   return profiles;

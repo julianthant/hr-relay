@@ -1,6 +1,6 @@
 import type { DuoAssertion, DuoAssertionRequest } from "../storage/configuration/duo-signing.js";
 import type { DuoEnrollmentScope } from "../../models/config/duo-credential-store.js";
-import type { ProfileOnboardingBrowser, ProfileOnboardingMethod, ProfileOnboardingState } from "../../models/profiles/public-profile.js";
+import type { DuoReenrolState, ProfileOnboardingBrowser, ProfileOnboardingMethod, ProfileOnboardingState } from "../../models/profiles/public-profile.js";
 import type { ProfileOnboardingDuoEvent, ProfileOnboardingDuoFailure } from "../../models/profiles/profile.js";
 
 export interface DraftDuoBrowserOwner {
@@ -9,8 +9,7 @@ export interface DraftDuoBrowserOwner {
   readonly accountId: string;
   readonly generation: number;
   assertCurrent(): void;
-  acquireCredentials(): Promise<Readonly<{ userId: string; password: string }>>;
-  readState(): ProfileOnboardingState;
+  readState(): ProfileOnboardingState | DuoReenrolState;
   reportEvent(event: ProfileOnboardingDuoEvent): void;
   start(method: ProfileOnboardingMethod): Promise<void>;
   cancel(method: ProfileOnboardingMethod, attemptId: string): Promise<void>;

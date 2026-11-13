@@ -1,4 +1,5 @@
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../mocks/helpers/fixture-settings.js";
+import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
 import { syntheticSettingsAuthority } from "../../../support/helpers/dashboard/settings-harness.js";
 // @vitest-environment jsdom
@@ -58,14 +59,14 @@ async function mountSettingsPage(client: DashboardClient, section: string,
   document.body.append(element);
   await act(async () => {
     root = createRoot(element);
-    root.render(createElement(DashboardClientProvider, { client,
+    root.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client,
       children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso,
         children: createElement(SettingsPage, { profileName, onClose: () => undefined,
           section, actorId: "local-operator",
           descriptorFingerprint: "d".repeat(64), onSection: () => undefined,
           ...(onExitGuardChange === undefined ? {} : { onExitGuardChange }), ...(accountPage === undefined ? {} : { accountPage }) }),
       }),
-    }));
+    }) }));
   });
   await act(async () => undefined);
   return element;
@@ -236,7 +237,8 @@ describe("editable Settings surface", () => {
     const applied: unknown[] = [];
     const transport = await settingsClient(applied);
     host = await mountSettingsPage(transport.client, "account", undefined, undefined, undefined,
-      { values: { name: "Synthetic Operator", initials: "SO", timekeeper: "Synthetic Operator", lastSignedInAt: "2026-08-28T08:00:00-08:00" }, duo: "ready", onSignOut: () => undefined });
+      { values: { name: "Synthetic Operator", initials: "SO", timekeeper: "Synthetic Operator", lastSignedInAt: "2026-08-28T08:00:00-08:00" }, duo: "ready", onSignOut: () => undefined,
+        details: async () => ({ state: "refused", code: "PROFILE_INITIALS_REFUSED" }), login: { changePassword: async () => ({ state: "changed" }), changeUsername: async () => ({ state: "changed" }) } });
     const open = async (): Promise<HTMLInputElement> => {
       const pencil = host?.querySelector<HTMLButtonElement>('button[aria-label="Edit UCPath username"]');
       assert.ok(pencil);

@@ -894,6 +894,19 @@ A completed Chromium platform receipt with a matching ready encrypted key surviv
 retention hook, just like the software key. Actual provider failures still retain their error and
 block Finish through the existing custody checks.
 
+Setting Duo up again for an active profile is a separate `duo-reenrol` operation beside the active session. The same draft owner
+runs its attempts under a fresh account, but a proved credential is staged, not confirmed, so workflows keep signing with the
+ready set. Commit requires both methods. Its fence proves the profile idle and sets an in-process commit hold in one authority
+transaction; the intent, head and record then publish under that hold, and the hold clears only once they are proved. A failure
+after the intent gets one validated reconciliation, never a retry, and the result is reported uncertain; a recorded intent keeps
+every session of that profile stale until boot reconciles it under stopped custody or holds that person. Logout and delete
+account refuse while a draft is open; cancel and the internal close their callers run first abandon an uncommitted draft by
+discarding only its rows. Boot proves every uncommitted draft's setup browser closed, closes its attempts and marks it aborted, so it
+can never be started, shown or committed again. Boot discards the rows and the operation at once for the profile it selects;
+otherwise that profile's next sign-in or resume does it before any credential read and before the session is returned, and a failed
+discard leaves the person signed out for the next sign-in to retry. An uncommitted draft does not refuse a stopped repair claim on
+its profile; a recorded commit intent does.
+
 Draft Duo publication resumes only its authenticated prior/next intent, including stopped recovery.
 The native onboarding Finish intent owns verifier and registry publication together; verifier preparation does not publish an account. Fresh database, key, protected credential, verifier-pepper file identity/digest and method witnesses precede that intent. Exact prior/next prefixes recover together, while a changed source remains HOLD.
 Finish recovery retains the exact Finish identity and immutable method receipts; it does not repeat
