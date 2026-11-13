@@ -62,6 +62,11 @@ describe("UCPath PayPath read on a fake page", () => {
     assert.equal((await refusal(options)).error.code, code);
   });
 
+  it("clicks PayPath Actions once more, and only once, before refusing a search that never shows", async () => {
+    const { h } = await refusal({ missing: "empl-id-input" });
+    assert.deepEqual(h.actions, ["click:category", "click:actions", "click:actions"]);
+  });
+
   it("lets a revoked owner's error through instead of a page-state refusal", async () => {
     const world = fakeUcpathPayPathPage();
     const driver = createUcpathPayPathOperations(() => { throw new Error("owner-revoked"); }, world.page, manualClock(new Date("2026-08-03T18:00:00.000Z")));

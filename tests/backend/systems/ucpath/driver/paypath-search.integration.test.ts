@@ -10,7 +10,7 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 const template = readFileSync(new URL("../../../../support/fixtures/ui/ucpath/paypath-actions-search.html", import.meta.url), "utf8");
 const EMPL_ID = EidSchema.parse("10000001");
 
-async function probedPage(state: Readonly<{ droppedStepClicks?: number }> = {}) {
+async function probedPage(state: Readonly<{ droppedStepClicks?: number; frameDelayMs?: number }> = {}) {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   const body = template.replace("__FIXTURE__", JSON.stringify(state));
@@ -32,4 +32,19 @@ describe("UCPath PayPath search on the probed page states", () => {
       await h.browser.close();
     }
   }, 60_000);
+
+  it.each([
+    ["the content frame appears after the step link", { frameDelayMs: 500 }],
+    ["the first step click is lost", { droppedStepClicks: 1 }],
+  ])("reaches the search when %s", async (_state, state) => {
+    const h = await probedPage(state);
+    try {
+      const error = await h.driver.readPayPathPosition({ emplId: EMPL_ID }).then(() => undefined, (caught: unknown) => caught);
+      assert.ok(error instanceof UcpathPayPathRefusedError, String(error));
+      assert.equal(error.code, "employee-not-found");
+      assert.ok(await h.page.evaluate(() => Reflect.get(window, "payPathStepClicks") as number) <= 2);
+    } finally {
+      await h.browser.close();
+    }
+  }, 90_000);
 });

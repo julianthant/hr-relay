@@ -25,6 +25,12 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
     await locator.waitFor({ state: "visible", timeout: BOUND_MS });
     assertCurrent();
   };
+  const shownWithin = async (locator: Locator, timeout: number) => {
+    assertCurrent();
+    const visible = await locator.waitFor({ state: "visible", timeout }).then(() => true, () => false);
+    assertCurrent();
+    return visible;
+  };
   const click = async (locator: Locator, targetId: string) => {
     await shown(locator);
     await locator.click({ timeout: BOUND_MS });
@@ -112,8 +118,10 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
       await waitForUcpathContentFrameDocument(assertCurrent, page, BOUND_MS);
     });
     await reached("paypath-search-not-shown", async () => {
-      await click(ui.payPathActions(page), "ucpath.paypath.actions");
       const emplIdInput = ui.emplIdInput(frame);
+      await click(ui.payPathActions(page), "ucpath.paypath.actions");
+      // Live probe (work-study-workflow-06): a step click that lands before the content frame's first document has loaded is lost; one re-click, never a loop.
+      if (!await shownWithin(emplIdInput, SETTLE_MS)) await click(ui.payPathActions(page), "ucpath.paypath.actions");
       await shown(emplIdInput);
       await emplIdInput.fill(emplId, { timeout: BOUND_MS });
       assertCurrent();

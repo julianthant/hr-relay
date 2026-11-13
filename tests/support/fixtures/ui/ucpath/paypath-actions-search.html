@@ -12,17 +12,23 @@ if (path.endsWith("NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL")) {
   const steps = el("div", { hidden: "" });
   const actions = el("a", { id: "win2divPTGP_STEP_DVW_PTGP_STEP_BTN_GB$1$$6", href: "javascript:void(0);" }, "PayPath Actions");
   steps.append(actions, el("a", { href: "javascript:void(0);" }, "PayPath Actions ACAD"), el("a", { href: "javascript:void(0);" }, "PayPath Actions STAFF"));
-  const frame = el("iframe", { id: "main_target_win0", name: "TargetContent", src: "/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).HCR_SM_SEARCH.GBL?NavColl=true" });
-  let stepClicks = 0;
+  // Probe B: the step link is clickable before the content frame exists; a click before the frame's first document loads is lost.
+  let frame, frameLoaded = false;
+  const addFrame = () => {
+    frame = el("iframe", { id: "main_target_win0", name: "TargetContent", src: "/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).HCR_SM_SEARCH.GBL?NavColl=true" });
+    frame.addEventListener("load", () => { frameLoaded = true; }, { once: true });
+    document.body.append(frame);
+  };
+  window.payPathStepClicks = 0;
   group.addEventListener("click", () => { steps.hidden = false; });
   actions.addEventListener("click", () => {
-    stepClicks += 1;
-    if (state.stepLoads === "never" || stepClicks <= (state.droppedStepClicks ?? 0)) return;
+    window.payPathStepClicks += 1;
+    if (!frameLoaded || window.payPathStepClicks <= (state.droppedStepClicks ?? 0)) return;
     frame.src = "/psc/ucphrprd/EMPLOYEE/HRMS/c/UC_EXTENSIONS.UC_E102_STAFF_ACAD.GBL";
   });
   nav.append(group, steps);
-  document.body.append(nav, frame);
-  if (state.hrTasks === "missing-paypath") group.remove();
+  document.body.append(nav);
+  if (state.frameDelayMs === undefined) addFrame(); else setTimeout(addFrame, state.frameDelayMs);
 } else if (path.endsWith("HCR_SM_SEARCH.GBL")) {
   document.body.append(el("h1", {}, "Search/Match"), el("h2", {}, "Find an Existing Value"),
     el("label", { for: "HCR_SM_PARM_VW_SM_PARM_CD" }, "Search Parameter"), el("input", { id: "HCR_SM_PARM_VW_SM_PARM_CD" }),
@@ -35,7 +41,7 @@ if (path.endsWith("NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL")) {
     op.append(el("option", {}, "begins with"));
     document.body.append(el("label", { id: `${id}_LBL`, for: id }, label), op, el("input", { id, "aria-labelledby": `${id}_LBL ${id}$op` }));
   }
-  const search = el("a", { id: "PTS_CFG_CL_WRK_PTS_SRCH_BTN", role: "button", href: "javascript:void(0);" }, "Search");
+  const search = el("input", { id: "PTS_CFG_CL_WRK_PTS_SRCH_BTN", type: "button", value: "Search" });
   search.addEventListener("click", () => { document.body.append(el("div", { id: "SEARCH_RESULT_NONE" }, "No matching values were found.")); });
   document.body.append(search);
 }
