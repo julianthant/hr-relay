@@ -199,6 +199,9 @@ export function projectWorkbookCompatibility(workflowsInput: readonly WorkflowWo
 
 
 const NameSchema = z.string().refine(value => value.trim().length > 0);
+/** Tags the operator typed; workflow-derived tags come from `origin` and are never stored here. */
+export const WorkbookLibraryTagsSchema = z.array(z.string().min(1).max(40).refine(tag => tag.trim() === tag, { message: "tags are trimmed" })).max(20)
+  .refine(tags => new Set(tags.map(tag => tag.toLowerCase())).size === tags.length, { message: "tags must be unique" });
 export const WorkbookLibraryOriginSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("local") }),
   z.strictObject({ kind: z.literal("workflow"), runId: RunIdSchema, partitionDay: DateOnlySchema, workflowId: WorkflowIdSchema, workflowLabel: NameSchema,
@@ -219,7 +222,7 @@ export const WorkbookLibraryVersionViewSchema = z.strictObject({
 export const WorkbookLibraryStateSchema = z.strictObject({
   libraryId: WorkbookIdSchema, revision: WorkbookRevisionSchema, selectedVersionId: WorkbookIdSchema,
   origin: WorkbookLibraryOriginSchema,
-  removed: z.boolean(), versions: z.array(WorkbookLibraryVersionSchema).min(1),
+  removed: z.boolean(), pinned: z.boolean(), tags: WorkbookLibraryTagsSchema, versions: z.array(WorkbookLibraryVersionSchema).min(1),
 }).superRefine((state, context) => {
   if (new Set(state.versions.map(version => version.id)).size !== state.versions.length
     || !state.versions.some(version => version.id === state.selectedVersionId)) {
@@ -254,6 +257,9 @@ const CurrentWorkbookLibraryChanges = [
   z.strictObject({ kind: z.literal("delete-version"), versionId: WorkbookIdSchema }),
   z.strictObject({ kind: z.literal("use-version"), versionId: WorkbookIdSchema }),
   z.strictObject({ kind: z.literal("remove") }),
+  z.strictObject({ kind: z.literal("pin") }),
+  z.strictObject({ kind: z.literal("unpin") }),
+  z.strictObject({ kind: z.literal("set-tags"), tags: WorkbookLibraryTagsSchema }),
 ] as const;
 export const WorkbookLibraryChangeSchema = z.discriminatedUnion("kind", CurrentWorkbookLibraryChanges);
 const RetainedWorkbookLibraryChangeSchema = z.discriminatedUnion("kind", [
