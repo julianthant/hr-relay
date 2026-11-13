@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
+import { z } from "zod";
 import { inspectNativeAuthority, validateAuthorityStore } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
 import { seedCheckClosureStore } from "../../../support/fixtures/storage/check-closure-store.js";
@@ -63,7 +64,7 @@ it("seeds one authority store that passes the whole-store check", async () => {
     expect(() => validateAuthorityStore(raw)).not.toThrow();
     expect(() => inspectNativeAuthority(raw)).not.toThrow();
     const populated = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).filter(name =>
-      (raw.prepare(`SELECT COUNT(*) AS n FROM "${name}"`).get() as { n: number }).n > 0).sort();
+      z.object({ n: z.number().int() }).parse(raw.prepare(`SELECT COUNT(*) AS n FROM "${name}"`).get()).n > 0).sort();
     expect(populated).toEqual(POPULATED_TABLES);
   } finally { raw.close(); store.closeDatabase(); await store.cleanup(); }
-}, 120_000);
+});

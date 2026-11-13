@@ -3,6 +3,13 @@ import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { validateAuthorityChanges, validateAuthorityStore, type AuthorityRowChange } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import type { AuthorityTableName } from "../../../../src/models/config/authority.js";
+import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
+import { runRecordColumns, runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
+import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
+import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { fixtureUuid } from "../../../support/fixtures/ledger-projection-fixtures.js";
 import { seedCheckClosureStore } from "../../../support/fixtures/storage/check-closure-store.js";
 
 type Row = Record<string, unknown>;
@@ -130,5 +137,31 @@ describe("authority check closure regressions", () => {
       { table: "runs", before: { id: deleted, owner_worker_id: null } },
       { table: "run_search", before: { run_id: deleted } },
     ]))).toBeUndefined();
+  });
+
+  it("re-checks a checkpoint's replays in the other runs of its work item", () => {
+    // The checkpoint is replayed by a later attempt of the same item, and its own recorded event is gone: the whole check
+    // accepts that store, and refuses it once the checkpoint itself is deleted.
+    const checkpoint = one("SELECT * FROM run_checkpoints WHERE run_id=?", fixtureUuid("closure-checkpoint-run"));
+    edited(() => {
+      const owner = runRecordFromRow(read("runs", "id", text(checkpoint.run_id)));
+      const maxRunNumber = z.object({ n: z.number().int() }).parse(raw.prepare("SELECT coalesce(max(run_number),0) AS n FROM runs").get()).n;
+      const peer = RunRecordSchema.parse({ ...owner, runNumber: maxRunNumber + 1,
+        envelope: { ...owner.envelope, runId: fixtureUuid("closure-checkpoint-peer"), attempt: owner.envelope.attempt + 1 } });
+      const columns = runRecordColumns(peer);
+      raw.prepare(`INSERT INTO runs(${Object.keys(columns).join(",")}) VALUES(${Object.keys(columns).map(() => "?").join(",")})`).run(...Object.values(columns));
+      createTimelineRepository({ database: raw, mutate: work => work().result, read: work => work(), assertOwner: () => undefined }).append({
+        schemaVersion: 1, eventId: fixtureUuid("closure-checkpoint-replay"), workflow: peer.envelope.workflow, scope: { kind: "run", runId: peer.envelope.runId },
+        occurredAt: peer.createdAt, recordedAt: peer.createdAt, retentionDate: peer.createdAt.slice(0, 10), source: { kind: "native" },
+        payload: { kind: "checkpoint-replayed", runId: peer.envelope.runId, workflow: peer.envelope.workflow, attempt: peer.envelope.attempt, claimGeneration: 1,
+          checkpoint: timelineCheckpointReference(RunCheckpointRecordSchema.parse(nativeOrdinaryRecordFromRow("run_checkpoints", checkpoint))) },
+      });
+      raw.prepare("DELETE FROM timeline_events WHERE run_id=? AND kind='checkpoint-recorded'").run(text(checkpoint.run_id));
+      expect(refusal(() => validateAuthorityStore(raw, "none"))).toBeUndefined();
+
+      raw.prepare("DELETE FROM run_checkpoints WHERE id=?").run(text(checkpoint.id));
+      expect(refusal(() => validateAuthorityStore(raw, "none"))).toContain("timeline-checkpoint-reference-mismatch");
+      expect(refusal(() => validateAuthorityChanges(raw, [{ table: "run_checkpoints", before: checkpoint }], "none"))).toContain("timeline-checkpoint-reference-mismatch");
+    });
   });
 });

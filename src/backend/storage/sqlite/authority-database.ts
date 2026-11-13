@@ -1440,9 +1440,10 @@ type StoredRow = Record<string, unknown>;
 /**
  * A key a stored row image emits. Re-validating every unit keyed by the keys of a change's old and new images gives the
  * same verdict as the whole-store check: `run`, `worker`, `snapshot` and `intent` scope the invariants and search coverage,
- * the others find the rows whose validator reads the changed row.
+ * `item` reaches every run of one work item, whose replays read each other's checkpoints; the others find the rows whose
+ * validator reads the changed row.
  */
-export type DependencyKey = `${"run" | "worker" | "snapshot" | "intent" | "command" | "chat" | "family"}:${string}` | "profile" | "search-publication";
+export type DependencyKey = `${"run" | "item" | "worker" | "snapshot" | "intent" | "command" | "chat" | "family"}:${string}` | "profile" | "search-publication";
 
 /** One table's part of the closure: the keys an image emits, and the rows of this table whose validator reads a row emitting a key. */
 type TableChangePolicy = Readonly<{ keys: (row: StoredRow) => readonly DependencyKey[];
@@ -1453,11 +1454,14 @@ function selectRows(database: DatabaseSync, sql: string, ...values: string[]): r
   return RowsSchema.parse(database.prepare(sql).all(...values));
 }
 
+const COLUMN_KEY_KINDS = ["run", "worker", "snapshot", "intent", "command", "chat"] as const;
+type ColumnKeys = Readonly<Partial<Record<typeof COLUMN_KEY_KINDS[number], string>>>;
+
 /** Keys from columns, e.g. `{ run: "run_id" }`; a null column emits nothing. */
-function columnKeys(row: StoredRow, columns: Readonly<Partial<Record<"run" | "worker" | "snapshot" | "intent" | "command" | "chat", string>>>): DependencyKey[] {
-  return Object.entries(columns).flatMap(([kind, column]) => {
-    const value = row[column];
-    return typeof value === "string" ? [`${kind}:${value}` as DependencyKey] : [];
+function columnKeys(row: StoredRow, columns: ColumnKeys): DependencyKey[] {
+  return COLUMN_KEY_KINDS.flatMap(kind => {
+    const value = columns[kind] === undefined ? undefined : row[columns[kind]];
+    return typeof value === "string" ? [`${kind}:${value}` as const] : [];
   });
 }
 
@@ -1477,11 +1481,11 @@ function jsonRunKeys(row: StoredRow, columns: readonly string[]): DependencyKey[
 }
 
 /** Rows of `table` whose column equals the key's value, for each key kind listed. */
-function byColumn(table: AuthorityTableName, columns: Readonly<Partial<Record<"run" | "intent" | "command" | "chat", string>>>): TableChangePolicy["dependents"] {
+function byColumn(table: AuthorityTableName, columns: ColumnKeys): TableChangePolicy["dependents"] {
   return (database, key) => {
-    const separator = key.indexOf(":");
-    const column = separator < 0 ? undefined : (columns as Readonly<Record<string, string | undefined>>)[key.slice(0, separator)];
-    return column === undefined ? [] : selectRows(database, `SELECT * FROM ${table} WHERE ${column}=?`, key.slice(separator + 1));
+    const kind = COLUMN_KEY_KINDS.find(candidate => key.startsWith(`${candidate}:`));
+    const column = kind === undefined ? undefined : columns[kind];
+    return kind === undefined || column === undefined ? [] : selectRows(database, `SELECT * FROM ${table} WHERE ${column}=?`, key.slice(kind.length + 1));
   };
 }
 
@@ -1532,7 +1536,7 @@ const TABLE_CHANGE_POLICIES = deepFreeze<Record<AuthorityTableName, TableChangeP
   run_requests: selfOnly(),
   run_delegations: selfOnly(row => columnKeys(row, { run: "parent_run_id" })),
   delegation_dependencies: selfOnly(),
-  run_checkpoints: selfOnly(row => columnKeys(row, { run: "run_id" })),
+  run_checkpoints: selfOnly(row => [...columnKeys(row, { run: "run_id" }), `item:${JSON.stringify([row.workflow, row.item_id])}`]),
   gate_results: selfOnly(row => columnKeys(row, { run: "run_id" })),
   run_results: { keys: row => columnKeys(row, { run: "run_id" }), dependents: byColumn("run_results", { run: "run_id" }) },
   run_failures: selfOnly(row => columnKeys(row, { run: "run_id" })),
@@ -1605,6 +1609,10 @@ export function validateAuthorityChanges(database: DatabaseSync, changes: readon
   const keys = new Set(changes.flatMap(changeKeys));
   const ofKind = (kind: string) => new Set([...keys].flatMap(key => key.startsWith(`${kind}:`) ? [key.slice(kind.length + 1)] : []));
   const runs = ofKind("run");
+  for (const item of ofKind("item")) {
+    const [workflow, itemId] = z.tuple([z.string(), z.string()]).parse(JSON.parse(item));
+    for (const { id } of z.array(z.object({ id: z.string() })).parse(database.prepare("SELECT id FROM runs WHERE workflow=? AND item_id=?").all(workflow, itemId))) runs.add(id);
+  }
   withAncestorRuns(database, runs);
   for (const run of runs) keys.add(`run:${run}`);
   const units = new Map<AuthorityTableName, Map<string, StoredRow>>();
