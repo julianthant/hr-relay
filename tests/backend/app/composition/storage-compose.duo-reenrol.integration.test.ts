@@ -11,6 +11,8 @@ import { requireLifecycleApplied, RunRecordService } from "../../../../src/backe
 import type { WorkerMemberView } from "../../../../src/backend/runtime/workers/worker-pool.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createDuoCredentialStore } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
+import { DuoReenrolOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
@@ -191,4 +193,109 @@ it("boot holds only that person when the recorded commit cannot be proved", asyn
     assert.equal(machine.readProfileRegistry().activeProfileId, null);
     assert.throws(() => runtime.session.signIn({ email: "fence@ucsd.edu", password: "synthetic-fence-password", at: AT }), { code: "PROFILE_DUO_REENROL_UNCERTAIN" });
   } finally { await runtime.close("shutdown"); machine.release(); }
+});
+
+/** A signed-up profile whose re-enrolment a process left at `stage`, quitting cleanly or crashing. */
+async function leftoverDraft(stage: "pending" | "proved", quit: "clean" | "crash") {
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "duo-reenrol-boot-")));
+  cleanups.push(async () => { rmSync(workspace, { recursive: true, force: true }); });
+  const lifetime = await runtimeLifetimeLock();
+  const clock = manualClock(new Date(AT));
+  const machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
+  mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
+  const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(), admission: machine, clock, hostFacts: { primaryDisplay: null } });
+  const fields = { firstName: "Synthetic", lastName: "Operator", email: "boot@ucsd.edu", password: "synthetic-boot-password", createdAt: AT };
+  const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(fields));
+  if (active.state !== "active") throw new Error("synthetic sign-up refused");
+  const duo = (admission: typeof machine) => {
+    const owner = admission.admitProfile(active.profileId);
+    try { const store = createDuoCredentialStore(owner, clock); return { identity: store.identity(), rows: store.read().credentials }; }
+    finally { owner.release(); }
+  };
+  const before = duo(machine);
+  const opened = runtime.session.beginDuoReenrol(active.token);
+  for (const method of stage === "pending" ? ["key"] as const : ["key", "touch"] as const) {
+    const started = await runtime.session.startDuoReenrol(active.token, opened.operationId, method);
+    const attemptId: string | undefined = started.methods[method].attemptId;
+    assert.ok(attemptId);
+    if (stage === "proved" && method === "key") runtime.session.confirmDuoReenrol(active.token, opened.operationId, method, attemptId);
+  }
+  if (quit === "clean") await runtime.close("shutdown");
+  const stateRoot = machine.stateRoot;
+  machine.release();
+  const operationFile = join(stateRoot, "machine", "operations", `${opened.operationId}.json`);
+  return { workspace, lifetime, clock, fields, active, before, duo, operationId: opened.operationId, operationFile,
+    operation: () => fs.existsSync(operationFile) ? DuoReenrolOperationSchema.parse(JSON.parse(fs.readFileSync(operationFile, "utf8"))) : undefined,
+    recordFile: join(stateRoot, "machine", "duo-credentials", `${active.profileId}.json`) };
+}
+type Leftover = Awaited<ReturnType<typeof leftoverDraft>>;
+
+/** One real boot: the stopped person passes, then a composed runtime whose recovery runs before any session. */
+async function boot(f: Leftover) {
+  await initializeRegisteredPersonStores(f.workspace, f.lifetime, { primaryDisplay: null }, f.clock);
+  const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
+  const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(), admission: machine, clock: f.clock, hostFacts: { primaryDisplay: null } });
+  const selected = machine.readProfileRegistry().activeProfileId;
+  let closed = false;
+  const close = async () => { if (closed) return; closed = true; try { await runtime.close("shutdown"); } finally { machine.release(); } };
+  cleanups.push(close);
+  await runtime.session.recoverOnboarding();
+  return { machine, runtime, selected, close };
+}
+
+function deselect(f: Leftover) {
+  const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
+  try { createProfileRegistry(machine).advanceSession(null, "profile-startup-held"); } finally { machine.release(); }
+}
+
+for (const [stage, quit] of [["pending", "clean"], ["proved", "clean"], ["proved", "crash"]] as const) {
+  it(`boot keeps the person selected and discards a re-enrolment left ${stage === "pending" ? "with a pending attempt" : "with both methods proved"} at a ${quit === "clean" ? "quit" : "crash"}`, async () => {
+    const f = await leftoverDraft(stage, quit);
+    const booted = await boot(f);
+    assert.equal(booted.selected, f.active.profileId);
+    assert.equal(f.operation(), undefined);
+    const resumed = booted.runtime.session.resumeSignedInProfile({ at: AT });
+    assert.equal(resumed.state, "active");
+    if (resumed.state === "active") assert.equal(booted.runtime.session.prepareCurrentStorage(resumed.token).state, "available");
+    assert.deepEqual(f.duo(booted.machine), f.before);
+  });
+}
+
+it("boot aborts a deselected person's leftover re-enrolment without holding them, and their next sign-in discards it", async () => {
+  const f = await leftoverDraft("pending", "clean");
+  deselect(f);
+  for (let index = 0; index < 2; index++) {
+    const booted = await boot(f);
+    const operation = f.operation();
+    assert.ok(operation?.abort !== undefined);
+    assert.equal(operation.draft.attempts.every(attempt => attempt.providerClosedAt !== undefined), true);
+    if (index === 0) { await booted.close(); continue; }
+    const signedIn = booted.runtime.session.signIn({ email: f.fields.email, password: f.fields.password, at: AT });
+    assert.ok(signedIn.state === "active");
+    assert.equal(f.operation(), undefined);
+    assert.deepEqual(f.duo(booted.machine), f.before);
+    assert.throws(() => booted.runtime.session.readDuoReenrol(signedIn.token, f.operationId), { code: "PROFILE_SESSION_STALE" });
+    const fresh = booted.runtime.session.beginDuoReenrol(signedIn.token);
+    assert.deepEqual([fresh.operationId !== f.operationId, fresh.methods.key.state, fresh.methods.touch.state], [true, "idle", "idle"]);
+  }
+});
+
+it("a sign-in whose leftover discard fails stays signed out with the draft aborted, and the next sign-in finishes it", async () => {
+  const f = await leftoverDraft("proved", "clean");
+  deselect(f);
+  const booted = await boot(f);
+  const rename = fs.renameSync;
+  vi.spyOn(fs, "renameSync").mockImplementation((source, destination) => {
+    if (String(destination) === f.recordFile) throw new Error("synthetic record publication failure");
+    return rename(source, destination);
+  });
+  syncBuiltinESMExports();
+  assert.throws(() => booted.runtime.session.signIn({ email: f.fields.email, password: f.fields.password, at: AT }), { code: "DUO_CREDENTIAL_UNCERTAIN" });
+  vi.restoreAllMocks(); syncBuiltinESMExports();
+  assert.equal(booted.machine.readProfileRegistry().activeProfileId, null);
+  assert.ok(f.operation()?.abort !== undefined);
+
+  assert.equal(booted.runtime.session.signIn({ email: f.fields.email, password: f.fields.password, at: AT }).state, "active");
+  assert.equal(f.operation(), undefined);
+  assert.deepEqual(f.duo(booted.machine), f.before);
 });

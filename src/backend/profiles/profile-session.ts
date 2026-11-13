@@ -523,6 +523,9 @@ export function createProfileSession(input: {
     }
     try {
       const active = activate(row.profileId);
+      // A draft boot aborted while its profile was signed out is discarded before the first credential read, which its stage files would refuse.
+      const leftover = reenrolmentFor(row.profileId);
+      if (leftover?.abort !== undefined && leftover.commit === undefined) discardDuoReenrol(leftover);
       const store = storeFor(row.profileId);
       if (proved !== undefined) restoreInterruptedLogin(verifiers, store, row.profileId, proved, at);
       if (!credentialsMatch(store.read().entries)) {
@@ -706,12 +709,20 @@ export function createProfileSession(input: {
     withProfileLock(machineRoot, () => discardDuoReenrol(authorize()));
   }
 
-  function discardDuoReenrol(operation: DuoReenrolOperation): void {
+  /** Marks a drained draft aborted, so it can never be started, shown or committed again. */
+  function abortDuoReenrol(operation: DuoReenrolOperation): DuoReenrolOperation {
     if (operation.commit !== undefined || commitHolds.has(operation.profileId)) throw new ProfileSessionRefusedError("PROFILE_DUO_REENROL_UNCERTAIN");
     onboarding.assertAbortable(operation.operationId);
-    if (operation.abort === undefined) writeOperation({ ...operation, abort: { abortedAt: IsoInstantSchema.parse((input.clock ?? systemClock).now().toISOString()) } });
-    duoStore(operation.profileId).discardDraft(operation.draft.accountId);
-    deleteOperation(operation.operationId);
+    if (operation.abort !== undefined) return operation;
+    const aborted = { ...operation, abort: { abortedAt: IsoInstantSchema.parse((input.clock ?? systemClock).now().toISOString()) } };
+    writeOperation(aborted);
+    return aborted;
+  }
+
+  function discardDuoReenrol(operation: DuoReenrolOperation): void {
+    const aborted = abortDuoReenrol(operation);
+    duoStore(aborted.profileId).discardDraft(aborted.draft.accountId);
+    deleteOperation(aborted.operationId);
   }
 
   /** The commit intent for exactly the credentials the draft's two proved attempts stored; anything else is a pre-effect refusal. */
@@ -968,8 +979,8 @@ export function createProfileSession(input: {
       const operations = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.onboarding !== undefined);
       const reenrolments = readOperations().filter((entry): entry is DuoReenrolOperation => entry.kind === "duo-reenrol");
       const selected = options.finishOnly === true ? operations.filter(operation => operation.onboarding?.finish !== undefined) : operations;
-      // A recorded commit is reconciled under stopped custody. Every other draft's browser is proved closed and its attempts closed,
-      // so a later cancel can drain it; its rows are discarded now only for the profile this boot would resume, whose storage it admits.
+      // A recorded commit is reconciled under stopped custody. Every other draft's browser is proved closed, its attempts closed and the
+      // draft aborted; its rows are discarded now for the profile this boot would resume, otherwise at that profile's next sign-in.
       const closed = options.finishOnly === true ? [] : reenrolments.filter(operation => operation.commit === undefined);
       if (selected.length === 0 && closed.length === 0) return;
       const selectedIds = new Set([...selected, ...closed].map(operation => operation.operationId));
@@ -1036,7 +1047,10 @@ export function createProfileSession(input: {
       }
       for (const operation of closed) {
         if (operation.draft.attempts.some(attempt => attempt.providerClosedAt === undefined)) onboarding.recoverClosed(operation.operationId);
-        if (registry.read().activeProfileId === operation.profileId) withProfileLock(machineRoot, () => discardDuoReenrol(registeredReenrol(operation.operationId)));
+        withProfileLock(machineRoot, () => {
+          const aborted = abortDuoReenrol(registeredReenrol(operation.operationId));
+          if (registry.read().activeProfileId === aborted.profileId) discardDuoReenrol(aborted);
+        });
       }
     },
     /**

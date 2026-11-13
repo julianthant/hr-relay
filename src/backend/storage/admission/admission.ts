@@ -814,9 +814,9 @@ export class RuntimeAdmission {
             if (file === undefined) throw new Error("profile-storage-claim-changed");
             return ProfileOperationSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
           }) : [];
-          // An open Duo re-enrolment keeps its profile's runtime storage usable; only a repair of that profile waits for it.
+          // An open Duo re-enrolment keeps its profile's storage usable; only a repair of that profile waits for a recorded commit.
           if (currentOperations.some(operation => operation.kind === "logout" ? operation.phase !== "complete"
-            : operation.kind === "duo-reenrol" ? purpose === "repair" && operation.profileId === id
+            : operation.kind === "duo-reenrol" ? purpose === "repair" && operation.profileId === id && operation.commit !== undefined
             : phase === "runtime" && (purpose !== "repair" || operation.profileId === id))
             || (phase === "setup" ? current.activeProfileId !== null && current.activeProfileId !== id
               : registered?.lifecycle !== "ready" || registered.credentialState !== "saved" || registered.registration.onboardingCompletion === undefined)) {

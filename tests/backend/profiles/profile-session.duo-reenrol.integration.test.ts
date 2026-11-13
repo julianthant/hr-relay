@@ -219,24 +219,51 @@ describe("abandoning a Duo re-enrolment leaves the profile as it was", () => {
 });
 
 describe("a re-enrolment draft whose profile is not resumed at boot", () => {
-  it("is closed at boot and can be cancelled after the next sign-in, leaving the old enrolment", async () => {
-    const machine = await createProfileSessionWorld();
+  /** A pending re-enrolment left by a process that ended, its person deselected by a boot that held them for an unrelated reason. */
+  async function leftoverAfterBoot(machine: World) {
     const session = machine.open();
     const alex = await machine.signUp(session, alexFields);
     const before = workflowDuo(machine, alex.profileId);
     const opened = session.beginDuoReenrol(alex.token);
     await session.startDuoReenrol(alex.token, opened.operationId, "key");
-    // A boot that held this person for an unrelated reason deselected them before recovery.
     createProfileRegistry(machine.machine).advanceSession(null);
-
     const restarted = machine.open();
     await restarted.recoverOnboarding();
-    assert.equal(existsSync(join(machine.machineRoot, "machine", "operations", `${opened.operationId}.json`)), true);
+    const operationFile = join(machine.machineRoot, "machine", "operations", `${opened.operationId}.json`);
+    const operation = DuoReenrolOperationSchema.parse(JSON.parse(fs.readFileSync(operationFile, "utf8")));
+    return { restarted, alex, before, operationId: opened.operationId, operationFile, operation };
+  }
+
+  it("is aborted at boot and discarded by the next sign-in before the session is returned, leaving the old enrolment", async () => {
+    const machine = await createProfileSessionWorld();
+    const { restarted, alex, before, operationId, operationFile, operation } = await leftoverAfterBoot(machine);
+    assert.notEqual(operation.abort, undefined);
+    assert.equal(operation.draft.attempts.every(attempt => attempt.providerClosedAt !== undefined), true);
+
     const signedIn = restarted.signIn({ email: alexFields.email, password: alexFields.password, at: "2026-09-06T12:40:00.000Z" });
     assert.ok(signedIn.state === "active");
-    const resumed = restarted.beginDuoReenrol(signedIn.token);
-    assert.equal(resumed.operationId, opened.operationId);
-    await restarted.cancelDuoReenrol(signedIn.token, opened.operationId);
+    assert.equal(existsSync(operationFile), false);
+    assert.deepEqual(workflowDuo(machine, alex.profileId), before);
+    assert.throws(() => restarted.readDuoReenrol(signedIn.token, operationId), { code: "PROFILE_SESSION_STALE" });
+    const fresh = restarted.beginDuoReenrol(signedIn.token);
+    assert.deepEqual([fresh.operationId !== operationId, fresh.methods.key.state, fresh.methods.touch.state], [true, "idle", "idle"]);
+    // The ended process's owner still holds its attempt lease in memory and cannot drain a draft sign-in already removed.
+    await assert.rejects(machine.close(), { code: "PROFILE_SESSION_STALE" });
+  });
+
+  it("refuses nothing for another person while it waits, and is discarded only by its own person's sign-in", async () => {
+    const machine = await createProfileSessionWorld();
+    const { restarted, alex, before, operationFile, operation } = await leftoverAfterBoot(machine);
+    const leftover = fs.readFileSync(operationFile);
+    assert.notEqual(operation.abort, undefined);
+
+    const sam = await machine.signUp(restarted, { ...alexFields, firstName: "Sam", email: "sam@ucsd.edu", password: "secret-two" });
+    assert.equal(restarted.prepareCurrentStorage(sam.token).state, "available");
+    assert.equal((await machine.logOut(restarted, sam.token, "2026-09-06T12:45:00.000Z")).state, "signed-out");
+    assert.deepEqual(fs.readFileSync(operationFile), leftover);
+
+    assert.equal(restarted.signIn({ email: alexFields.email, password: alexFields.password, at: "2026-09-06T12:50:00.000Z" }).state, "active");
+    assert.equal(existsSync(operationFile), false);
     assert.deepEqual(workflowDuo(machine, alex.profileId), before);
     await assert.rejects(machine.close(), { code: "PROFILE_SESSION_STALE" });
   });
