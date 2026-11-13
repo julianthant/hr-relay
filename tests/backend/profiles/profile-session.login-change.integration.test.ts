@@ -331,4 +331,33 @@ describe("Relay login change", () => {
     assert.equal(refusalCode(restarted.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:03:00.000Z" })), "PROFILE_SIGN_IN_REFUSED");
     assert.equal(restarted.signIn({ email: "alex@ucsd.edu", password: "secret-three", at: "2026-09-06T12:04:00.000Z" }).state, "active");
   });
+
+  it.each([
+    ["the username after a completed password change", "password", "ucpathUserId"],
+    ["the password after a completed username change", "username", "ucpathPassword"],
+  ] as const)("never recreates %s that Settings cleared", async (_name, kind, cleared) => {
+    const machine = await world();
+    const session = machine.open();
+    const alex = await machine.signUp(session, alexFields);
+    const at = "2026-09-06T12:01:00.000Z";
+    const changed = kind === "password" ? session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at })
+      : session.changeUsername(alex.token, { currentPassword: "secret-one", newUsername: "alex.rivera@ucsd.edu", at });
+    assert.equal(changed.state, "changed");
+    machine.saveInSettings(alex.profileId, { [cleared]: { clear: true } });
+    const login = kind === "password" ? { email: "alex@ucsd.edu", password: "secret-two" } : { email: "alex.rivera@ucsd.edu", password: "secret-one" };
+    assert.equal(refusalCode(machine.open().signIn({ ...login, at: "2026-09-06T12:02:00.000Z" })), "PROFILE_AUTHORITY_UNAVAILABLE");
+    const saved = machine.savedLogin(alex.profileId);
+    assert.equal(cleared === "ucpathUserId" ? saved.userId : saved.password, undefined);
+  });
+
+  it("recovers an interrupted change whose write is dated before the untouched entry", async () => {
+    const machine = await world();
+    const session = machine.open();
+    const alex = await machine.signUp(session, alexFields);
+    inject("stop");
+    assert.equal(refusalCode(session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T11:00:00.000Z" })), "PROFILE_LOGIN_CHANGE_UNSETTLED");
+    restoreFiles();
+    assert.equal(machine.open().signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:02:00.000Z" }).state, "active");
+    assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-one" });
+  });
 });

@@ -83,7 +83,7 @@ export async function createProfileSessionWorld() {
   }
 
   /** Save protected entries the way a Settings edit does: an ordinary protected apply with its own command id. */
-  function saveInSettings(profileId: string, entries: { ucpathUserId?: { set: string }; ucpathPassword?: { set: string }; sharepointOnboardingRosterUrl?: { set: string } }): void {
+  function saveInSettings(profileId: string, entries: Partial<Record<"ucpathUserId" | "ucpathPassword" | "sharepointOnboardingRosterUrl", { set: string } | { clear: true }>>): void {
     const owner: RuntimeAdmission = machine.admitProfile(profileId);
     try {
       const store = createCredentialStore({ admission: owner, stateRoot: owner.stateRoot });

@@ -425,20 +425,23 @@ their existing recovery boundaries.
 The Relay login is the work email and password saved as the profile's UCPath sign-in.
 `POST /api/v1/profile/account/password` `{currentPassword, newPassword}` and
 `POST /api/v1/profile/account/username` `{currentPassword, newUsername}` change it for the current
-session cookie only and return `{state: "changed"}` or `{state: "refused", code}`. A wrong current
-password counts toward the sign-in lockout. A new username must be a plain address that changes
-the verifier key and is not taken. Refusals leave the saved login unchanged. The change saves the
-profile's UCPath entries first and then swaps that profile's verifier row as its commit point; the
-swap waits until the entries are proved durable. If the change stops between them, it answers `PROFILE_LOGIN_CHANGE_UNSETTLED` and the
-session stays signed in: its next change writes the proved old login back first, and after a
-restart resume is refused until a sign-in with the old login writes it back. Login writes carry
-command ids derived from their purpose, profile and time, so recovery survives unrelated protected
-saves, while a Settings edit of the UCPath entries is never overwritten. Neither path needs a
-logout, so parked writes are untouched. An unreadable verifier after a failed swap leaves the
-outcome unknown: nothing is undone and the change stays unsettled. A swap that landed is never undone; if only its flush or
-directory close failed, the result is `{state: "changed", durability: "unconfirmed"}`, the failure
-is logged and an unclosed descriptor stays held by its owner. The epoch, Duo material and other
-profiles are unchanged.
+session cookie only. They return `{state: "changed"}`, `{state: "unknown", code}` or
+`{state: "refused", code}`. A wrong current password counts toward the sign-in lockout. A new
+username must be a plain `@ucsd.edu` address the sign-in form accepts, must change the verifier key
+and must not be taken. Refusals leave the saved login unchanged.
+
+The change saves both UCPath entries in one marked write, then swaps that profile's verifier row as
+its commit point, and only once the entries are proved durable. If it stops between them, it
+answers `PROFILE_LOGIN_CHANGE_UNSETTLED` and the session stays signed in: its next change writes the
+proved old login back first, and after a restart resume is refused until a sign-in with the old
+login writes it back. Recovery reads the credential store's own history (`lastEntryWriters`) and
+writes back only while a marked login write was the last to set both entries, so it survives
+unrelated protected saves and never overwrites a later Settings set, clear or erase. Neither path
+needs a logout, so parked writes stay held. A swap that landed is never undone: if only its flush
+or directory close failed, the result is `{state: "changed", durability: "unconfirmed"}`, the
+failure is logged and an unclosed descriptor stays held by its owner. If the verifier cannot be read
+back after a failed swap, the result is `PROFILE_LOGIN_CHANGE_UNKNOWN`, nothing is undone and
+neither login is promised. The epoch, Duo material and other profiles are unchanged.
 
 ### Profile onboarding boundary
 
