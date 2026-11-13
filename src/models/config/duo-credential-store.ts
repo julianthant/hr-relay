@@ -23,8 +23,8 @@ const CredentialFields = {
   authenticator: z.strictObject({ userHandle: z.string().optional(), transport: z.enum(["internal", "usb"]), isResidentCredential: z.boolean() }).optional(),
 };
 export const DuoStoredCredentialSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("pending"), ...CredentialFields }),
-  z.strictObject({ state: z.literal("staged"), ...CredentialFields, provedAt: TimestampSchema }),
+  z.strictObject({ state: z.literal("pending"), ...CredentialFields, reenrol: z.literal(true).optional() }),
+  z.strictObject({ state: z.literal("staged"), ...CredentialFields, reenrol: z.literal(true), provedAt: TimestampSchema }),
   z.strictObject({ state: z.literal("ready"), ...CredentialFields, confirmedAt: TimestampSchema }),
 ]);
 export type DuoStoredCredential = z.infer<typeof DuoStoredCredentialSchema>;

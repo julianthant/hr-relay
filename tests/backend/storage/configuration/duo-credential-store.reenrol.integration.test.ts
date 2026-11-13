@@ -41,7 +41,7 @@ async function activeProfile(f?: Fixture) {
   const active = store.read().credentials.filter(row => row.state === "ready").map(row => row.credentialId);
   assert.deepEqual(active.slice(-2), old.map(row => row.credentialId));
   const fresh = [material(reenrolAccount, "usb", 2), material(reenrolAccount, "internal", 2)] as const;
-  for (const row of fresh) store.enroll(enrollInput(row));
+  for (const row of fresh) store.enroll({ ...enrollInput(row), reenrol: true });
   const machineRoot = join(fixture.machine.stateRoot, "machine");
   return { f: fixture, clock, store, profileId, signUpAccount, reenrolAccount, old, active, fresh,
     headPath: join(machineRoot, "credential-keys", `${profileId}.json`), keyDirectory: join(machineRoot, "credential-keys"),
@@ -68,11 +68,11 @@ function writeStage(directory: string, w: Active, owner: string, target: "head" 
 function assertCommitted(w: Active, intent: DuoReenrolCommitIntent) {
   assert.deepEqual(states(w), Object.fromEntries(w.fresh.map(row => [row.credentialId, "ready"])));
   const current = head(w);
-  for (const id of w.active) {
+  assert.deepEqual(intent.retireIds.slice(0, w.active.length), w.active);
+  for (const id of intent.retireIds) {
     assert.ok(current.retired.includes(id));
     assert.equal(current.counters.some(counter => counter.credentialId === id), false);
   }
-  assert.deepEqual(intent.retireIds, w.active);
   assert.deepEqual(reenrolStages(w), []);
 }
 
@@ -107,6 +107,9 @@ it("stages only a fresh account's own pending row on its exact scope inside the 
     const signUpPending = material(w.signUpAccount, "usb", 4);
     w.store.enroll(signUpPending);
     assert.throws(() => w.store.stage(signUpPending.credentialId, signUpPending.scope), { code: "DUO_CREDENTIAL_CONFLICT" });
+    const unmarked = material(w.reenrolAccount, "usb", 7);
+    w.store.enroll(unmarked);
+    assert.throws(() => w.store.stage(unmarked.credentialId, unmarked.scope), { code: "DUO_CREDENTIAL_CONFLICT" });
     w.store.stage(key.credentialId, key.scope);
     assert.throws(() => w.store.stage(key.credentialId, key.scope), { code: "DUO_CREDENTIAL_CONFLICT" });
     w.clock.advanceWall(600_000);
@@ -127,6 +130,20 @@ it("refuses staging, staged counters and discard for a sign-up draft that holds 
     assert.throws(() => store.prepareReenrolCommit(account), { code: "DUO_CREDENTIAL_CONFLICT" });
     assert.deepEqual(storageTree(f.workspace), before);
   } finally { await f.close(); }
+});
+
+it("refuses the ordinary confirm for a re-enrolment row so it can become ready only through commit", async () => {
+  const w = await activeProfile();
+  try {
+    const identity = w.store.identity(), before = storageTree(w.f.workspace), owner = createCanonicalCredentials(w.f.admission);
+    for (const row of w.fresh) assert.throws(() => w.store.confirm(row.credentialId, row.scope), /duo-pending-credential-mismatch/u);
+    const frame = owner.readRecord("duo"); assert.ok(frame);
+    const credentials = DuoCredentialRecordSchema.parse(frame.value).credentials.map(row => row.credentialId === w.fresh[0].credentialId && row.state === "pending"
+      ? (({ reenrol: _reenrol, ...fields }) => fields)(row) : row);
+    assert.throws(() => owner.replaceRecord("duo", frame.revision, { credentials }), { code: "CREDENTIAL_CONFLICT" });
+    assert.deepEqual(storageTree(w.f.workspace), before);
+    assert.equal(w.store.identity(), identity);
+  } finally { await w.f.close(); }
 });
 
 it("reserves a staged counter only for its exact staged scope and never for a ready or pending row", async () => {
@@ -156,14 +173,14 @@ it("keeps the generic replace refusing removal and leaves staged rows unchangeab
     const record = DuoCredentialRecordSchema.parse(frame.value), before = storageTree(w.f.workspace);
     const stagedRow = record.credentials.find(row => row.credentialId === w.fresh[0].credentialId);
     assert.ok(stagedRow?.state === "staged");
-    const { provedAt, ...fields } = stagedRow;
-    const added = { ...material(w.reenrolAccount, "usb", 5), state: "staged" as const, createdAt: provedAt, provedAt };
+    const { provedAt, reenrol: _reenrol, ...fields } = stagedRow;
+    const added = { ...material(w.reenrolAccount, "usb", 5), state: "staged" as const, reenrol: true as const, createdAt: provedAt, provedAt };
     const { authenticator: _authenticator, ...addedRow } = added;
     for (const credentials of [
       record.credentials.filter(row => row.credentialId !== w.old[0].credentialId),
       record.credentials.filter(row => row.credentialId !== stagedRow.credentialId),
       record.credentials.map(row => row === stagedRow ? { ...fields, state: "ready" as const, confirmedAt: provedAt } : row),
-      record.credentials.map(row => row === stagedRow ? { ...fields, state: "pending" as const } : row),
+      record.credentials.map(row => row === stagedRow ? { ...fields, state: "pending" as const, reenrol: true as const } : row),
       [...record.credentials, addedRow],
     ]) assert.throws(() => owner.replaceRecord("duo", frame.revision, { credentials }), { code: "CREDENTIAL_CONFLICT" });
     assert.deepEqual(storageTree(w.f.workspace), before);
@@ -196,13 +213,32 @@ it("discards only the re-enrolment account's draft rows and retires their ids an
   } finally { await w.f.close(); }
 });
 
+it("refuses to commit a draft whose ids an interrupted discard retired, before the active set is retired", async () => {
+  const w = await stagedProfile();
+  try {
+    const intent = w.store.prepareReenrolCommit(w.reenrolAccount), identity = w.store.identity();
+    const owner = createCanonicalCredentials(w.f.admission, { afterReplace(kind) { if (kind === "head") throw new Error("synthetic crash after discard head"); } });
+    assert.throws(() => owner.discardDuoDraft(w.reenrolAccount), { code: "CREDENTIAL_UNCERTAIN" });
+    const interrupted = storageTree(w.f.workspace);
+    assert.throws(() => w.store.prepareReenrolCommit(w.reenrolAccount), { code: "DUO_CREDENTIAL_CONFLICT" });
+    assert.deepEqual(w.store.inspectReenrolCommit(intent), { head: "not-applied", record: "unprovable" });
+    assert.throws(() => w.store.commitReenrol(intent), { code: "DUO_CREDENTIAL_UNCERTAIN" });
+    assert.deepEqual(storageTree(w.f.workspace), interrupted);
+    assert.equal(w.store.identity(), identity);
+    assert.ok(w.active.every(id => !head(w).retired.includes(id)));
+    assert.equal((await w.store.sign(signRequest(w.old[0]))).signCount, 1);
+    w.store.discardDraft(w.reenrolAccount);
+    assert.deepEqual(Object.keys(states(w)), w.active);
+  } finally { await w.f.close(); }
+});
+
 it("converges a discard interrupted between its head and record publications", async () => {
   const w = await stagedProfile();
   try {
     const owner = createCanonicalCredentials(w.f.admission, { afterReplace(kind) { if (kind === "head") throw new Error("synthetic lost head acknowledgment"); } });
     assert.throws(() => owner.discardDuoDraft(w.reenrolAccount), { code: "CREDENTIAL_UNCERTAIN" });
     assert.ok(w.fresh.every(row => head(w).retired.includes(row.credentialId)));
-    writeStage(w.duoDirectory, w, w.reenrolAccount, "duo");
+    writeStage(w.duoDirectory, w, randomUUID(), "duo");
     assert.throws(() => w.store.read(), { code: "DUO_CREDENTIAL_UNAVAILABLE" });
     createDuoCredentialStore(w.f.admission, w.clock).discardDraft(w.reenrolAccount);
     assert.deepEqual(Object.keys(states(w)), w.active);
@@ -213,11 +249,14 @@ it("converges a discard interrupted between its head and record publications", a
 it("commits staged rows as ready after their arm window has passed and retires the active set", async () => {
   const w = await stagedProfile();
   try {
+    const stray = material(randomUUID(), "internal", 8);
+    w.store.enroll(enrollInput(stray));
     const before = w.store.identity(), provedAt = w.clock.now().toISOString();
     w.clock.advanceWall(3_600_000);
     const intent = w.store.prepareReenrolCommit(w.reenrolAccount);
     assert.deepEqual(DuoReenrolCommitIntentSchema.parse(intent), intent);
     assert.deepEqual(intent.stagedIds, w.fresh.map(row => row.credentialId));
+    assert.deepEqual(intent.retireIds, [...w.active, stray.credentialId]);
     assert.deepEqual(w.store.inspectReenrolCommit(intent), { head: "not-applied", record: "not-applied" });
     w.store.commitReenrol(intent);
     assert.deepEqual(w.store.inspectReenrolCommit(intent), { head: "applied", record: "applied" });
@@ -288,25 +327,24 @@ for (const point of crashPoints) {
   });
 }
 
-it("rolls a commit forward across a real controller restart with its head stage left behind", async () => {
+it("removes re-enrolment stages at boot and rolls a commit forward across a real controller restart", async () => {
   const w = await stagedProfile();
   const binding = w.f.admission.profileBinding, intent = w.store.prepareReenrolCommit(w.reenrolAccount);
-  writeStage(w.keyDirectory, w, intent.commitId, "head");
+  writeStage(w.keyDirectory, w, intent.commitId, "head"); writeStage(w.duoDirectory, w, w.reenrolAccount, "duo");
+  assert.equal(reenrolStages(w).length, 2);
   await w.f.closeController();
   const lifetime = await RuntimeLifetimeLock.acquire(0);
   const machine = acquireEntrypointAdmission(w.f.workspace, "exclusive", lifetime);
   let admission: ReturnType<typeof machine.admitProfile> | undefined;
   try {
-    assert.throws(() => signInBoundProfileFixture(machine), { code: "CREDENTIAL_UNAVAILABLE" });
+    assert.deepEqual(reenrolStages(w), []);
+    signInBoundProfileFixture(machine);
     admission = machine.admitProfile(binding.profileId);
     const reopened = createDuoCredentialStore(admission, w.clock);
-    assert.throws(() => reopened.identity(), { code: "DUO_CREDENTIAL_UNAVAILABLE" });
     assert.deepEqual(reopened.inspectReenrolCommit(intent), { head: "not-applied", record: "not-applied" });
     reopened.commitReenrol(intent);
     assert.deepEqual(Object.fromEntries(reopened.read().credentials.map(row => [row.credentialId, row.state])),
       Object.fromEntries(w.fresh.map(row => [row.credentialId, "ready"])));
-    signInBoundProfileFixture(machine);
-    assert.deepEqual(reenrolStages(w), []);
   } finally { admission?.release(); machine.release(); await lifetime.close(); await w.f.close(); }
 });
 
@@ -334,7 +372,7 @@ it("classifies a foreign record, a tampered intent and an unreadable record as u
   } finally { await w.f.close(); }
 });
 
-it("holds an unreadable record unprovable and keeps a discard refused once the commit head retired the active set", async () => {
+it("holds an unreadable record or head unprovable and keeps a discard refused once the commit head retired the active set", async () => {
   const w = await stagedProfile();
   try {
     const intent = w.store.prepareReenrolCommit(w.reenrolAccount);
@@ -348,6 +386,13 @@ it("holds an unreadable record unprovable and keeps a discard refused once the c
     assert.throws(() => w.store.commitReenrol(intent), { code: "DUO_CREDENTIAL_UNCERTAIN" });
     assert.deepEqual(storageTree(w.f.workspace), corrupt);
     writeFileSync(recordPath, bytes);
+    const headBytes = readFileSync(w.headPath);
+    writeFileSync(w.headPath, headBytes.subarray(0, headBytes.length - 16));
+    const unreadableHead = storageTree(w.f.workspace);
+    assert.deepEqual(w.store.inspectReenrolCommit(intent), { head: "unprovable", record: "unprovable" });
+    assert.throws(() => w.store.commitReenrol(intent), { code: "DUO_CREDENTIAL_UNCERTAIN" });
+    assert.deepEqual(storageTree(w.f.workspace), unreadableHead);
+    writeFileSync(w.headPath, headBytes);
     w.store.commitReenrol(intent);
     assertCommitted(w, intent);
   } finally { await w.f.close(); }

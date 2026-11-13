@@ -58,8 +58,9 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
     const { credential, material } = required(parsed.credentialId, scope);
     if (credential.state !== state || credential.scope.rpId !== parsed.rpId
       || scope !== undefined && parsed.origin !== scope.origin) throw new Error(`duo-${state}-credential-required`);
-    const reservation = state === "ready" ? owner.reserveDuoCounter(parsed.credentialId, parsed.requestId)
-      : owner.reserveStagedDuoCounter(parsed.credentialId, parsed.requestId, credential.scope);
+    if (state === "staged" && scope === undefined) throw new Error("duo-staged-credential-required");
+    const reservation = state === "ready" || scope === undefined ? owner.reserveDuoCounter(parsed.credentialId, parsed.requestId)
+      : owner.reserveStagedDuoCounter(parsed.credentialId, parsed.requestId, scope);
     owner.assertCurrent();
     const result = createDuoAssertion(material, parsed, reservation.count);
     owner.assertCurrent();
@@ -94,7 +95,7 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
       return read().record.credentials.filter(row => canonicalJsonStringify(row.scope) === canonicalJsonStringify(parsed)).map(({ credentialId, state }) => ({ credentialId, state }));
     },
     enroll(input: { credentialId: string; scope: DuoEnrollmentScope; privateKeyPkcs8: string; publicKeySpki: string;
-      authenticator?: { userHandle?: string; transport: "internal" | "usb"; isResidentCredential: boolean }; initialSignCount?: number }) {
+      authenticator?: { userHandle?: string; transport: "internal" | "usb"; isResidentCredential: boolean }; initialSignCount?: number; reenrol?: true }) {
       const { initialSignCount, ...material } = input;
       if (material.authenticator?.transport === "internal") z.number().int().min(0).max(0xffff_ffff).parse(initialSignCount);
       else if (initialSignCount !== undefined) throw new Error("duo-platform-counter-unexpected");
@@ -114,7 +115,7 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
       return access(() => {
         const { revision, record } = read();
         const pending = record.credentials.find(row => row.credentialId === credentialId);
-        if (pending?.state !== "pending" || canonicalJsonStringify(pending.scope) !== canonicalJsonStringify(scope)) throw new Error("duo-pending-credential-mismatch");
+        if (pending?.state !== "pending" || pending.reenrol === true || canonicalJsonStringify(pending.scope) !== canonicalJsonStringify(scope)) throw new Error("duo-pending-credential-mismatch");
         if (pending.authenticator?.transport === "internal") owner.readDuoCounter(credentialId);
         const credentials = record.credentials.map(row => row === pending ? { ...row, state: "ready", confirmedAt: clock.now().toISOString() } : row);
         return { revision: owner.replaceRecord("duo", revision, DuoCredentialRecordSchema.parse({ credentials })).revision };
