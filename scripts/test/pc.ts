@@ -62,8 +62,12 @@ export function selectPcFiles(listed: readonly string[], patterns: readonly stri
   return { files: selected.filter(file => !nativeFiles.has(file)), skipped: selected.filter(file => nativeFiles.has(file)) };
 }
 
-async function command(program: string, args: string[], cwd: string, log?: string, input?: Buffer): Promise<number> {
-  const child = spawn(program, args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
+export function pcVitestEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...env, RELAY_TEST_NATIVE: "1" };
+}
+
+async function command(program: string, args: string[], cwd: string, log?: string, input?: Buffer, env?: NodeJS.ProcessEnv): Promise<number> {
+  const child = spawn(program, args, { cwd, stdio: ["pipe", "pipe", "pipe"], ...(env ? { env } : {}) });
   child.stdout.on("data", (chunk: Buffer) => { process.stdout.write(chunk); if (log) appendFileSync(log, chunk); });
   child.stderr.on("data", (chunk: Buffer) => { process.stderr.write(chunk); if (log) appendFileSync(log, chunk); });
   return new Promise((resolveExit, reject) => {
@@ -74,8 +78,8 @@ async function command(program: string, args: string[], cwd: string, log?: strin
   });
 }
 
-async function checked(program: string, args: string[], cwd: string, log?: string, input?: Buffer) {
-  const code = await command(program, args, cwd, log, input);
+async function checked(program: string, args: string[], cwd: string, log?: string, input?: Buffer, env?: NodeJS.ProcessEnv) {
+  const code = await command(program, args, cwd, log, input, env);
   if (code !== 0) throw new Error(`${program} exited ${code}`);
 }
 
@@ -117,7 +121,7 @@ async function remote(slot: string): Promise<number> {
       await measurePcPhase("build", record, () => checked("npm", ["run", "web:build"], cwd));
     } else record({ phase: "build", startedAt: new Date().toISOString(), durationMs: 0, outcome: "skipped" });
     process.stdout.write(`test:pc slot=${slot} files=${request.files.length} node=${process.versions.node} tmpfs=${temp}\n`);
-    return await measurePcPhase("test", record, () => command("npx", ["--no-install", "vitest", "run", ...projects, "--maxWorkers=2", "--passWithNoTests=false", ...request.files], cwd));
+    return await measurePcPhase("test", record, () => command("npx", ["--no-install", "vitest", "run", ...projects, "--maxWorkers=2", "--passWithNoTests=false", ...request.files], cwd, undefined, undefined, pcVitestEnv(process.env)));
   } finally {
     await measurePcPhase("cleanup", record, () => checked("rm", ["-rf", "--", temp], cwd));
     writeFileSync(join(slot, "completed"), "done\n");
@@ -207,7 +211,7 @@ async function mac(patterns: string[]): Promise<number> {
       const files: string[] = [];
       for (const [index, args] of pcListingArgs(patterns).entries()) {
         const listing = join(run, `listed-${index}.json`);
-        await checked(process.execPath, ["node_modules/vitest/vitest.mjs", "list", ...args, "--filesOnly", `--json=${listing}`], root, log);
+        await checked(process.execPath, ["node_modules/vitest/vitest.mjs", "list", ...args, "--filesOnly", `--json=${listing}`], root, log, undefined, pcVitestEnv(process.env));
         files.push(...z.array(z.object({ file: z.string() })).parse(JSON.parse(readFileSync(listing, "utf8")))
           .map(({ file }) => relative(root, file).replaceAll("\\", "/")));
       }

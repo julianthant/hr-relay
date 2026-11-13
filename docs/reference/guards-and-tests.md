@@ -145,8 +145,8 @@ CLI exclusions do not reach these named projects. Local unit and integration pro
 `NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` entry unless `RELAY_TEST_NATIVE=1`.
 `ci-run.sh` sets that variable before it lists, so each slice still selects the same files. Naming
 an excluded file on the Vitest command line prints that the variable is required and does not run
-the file. `npm run test:pc` lists through Vitest and does not set the variable, so those files are
-absent from its list; its native filter is unchanged. Selection refuses when a named file is no longer
+the file. `npm run test:pc` sets `RELAY_TEST_NATIVE=1` for its Vitest listing and for the remote
+Vitest run. Its native filter is unchanged. Selection refuses when a named file is no longer
 listed. Files are packed longest first onto the least-loaded job using
 the preceding successful run's `ci-timings` artifact, seeded by `scripts/test/ci-durations.json`
 when none is retained; unmeasured files count as the positive median, or one second.
@@ -176,7 +176,7 @@ also refresh the committed seed from a successful run:
 `gh run download <run-id> -n ci-timings -D <dir>` then copy its generated `ci-durations.json` to
 `scripts/test/ci-durations.json`. Corrupt reports and download failures fail CI.
 A new test file requiring native platform proofs belongs in `NATIVE_FILES`, outside Ubuntu shards.
-`LINUX_NATIVE_FILES` names the `NATIVE_FILES` members that pass on Linux (28 files, never a serial or storage file; the READY-bound upgrade proof is four files that share `tests/support/helpers/storage/ready-bound-upgrade.ts`): Ubuntu shards run them because `ci-run.sh` sets `RELAY_TEST_NATIVE=1`, and the macOS native shards still run them. `npm run test:pc` does not set that variable, so they are absent from its Vitest list. `tests/scripts/test/ci-files.test.ts` pins the list.
+`LINUX_NATIVE_FILES` names the `NATIVE_FILES` members that pass on Linux (28 files, never a serial or storage file; the READY-bound upgrade proof is four files that share `tests/support/helpers/storage/ready-bound-upgrade.ts`): Ubuntu shards run them because `ci-run.sh` sets `RELAY_TEST_NATIVE=1`, and the macOS native shards still run them. `npm run test:pc` sets that variable for its listing and remote run, so its unchanged filter still keeps them. `tests/scripts/test/ci-files.test.ts` pins the list.
 Both platforms select from this one list; platform refusals remain failures until their proof is implemented.
 
 ### Pre-push tests on the PC
