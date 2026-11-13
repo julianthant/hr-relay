@@ -1,5 +1,5 @@
 import { ChatGptAccountStatusSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptEmptyRequestSchema,
-  ChatGptOcrTestResultSchema, ChatGptSignInCompletionSchema, ChatGptSignInRequestSchema, ChatGptSignInStartResultSchema, ChatGptSignOutResultSchema,
+  ChatGptOcrTestResultSchema, ChatGptSignInCompletionSchema, ChatGptSignInRequestSchema, ChatGptSignInStartResultSchema,
   type ChatGptSignInRequest } from "../../../models/dashboard/chatgpt-account.js";
 import type { z } from "zod";
 import type { DashboardTransport } from "../transport.js";
@@ -12,8 +12,6 @@ export interface ChatGptAccountQueries {
   completeChatGptSignIn(attemptId: string, signal?: AbortSignal): Promise<z.infer<typeof ChatGptSignInCompletionSchema>>;
   cancelChatGptSignIn(attemptId: string, signal?: AbortSignal): Promise<z.infer<typeof ChatGptCancelResultSchema>>;
   testChatGptOcr(signal?: AbortSignal): Promise<z.infer<typeof ChatGptOcrTestResultSchema>>;
-  forgetChatGptAccount(): Promise<z.infer<typeof ChatGptSignOutResultSchema>>;
-  signOutChatGpt(): Promise<z.infer<typeof ChatGptSignOutResultSchema>>;
 }
 export function createChatGptAccountQueries(transport: DashboardTransport): ChatGptAccountQueries {
   return Object.freeze({
@@ -40,16 +38,6 @@ export function createChatGptAccountQueries(transport: DashboardTransport): Chat
       const path = "/api/v1/settings/chatgpt-account/test-ocr";
       return parseOrThrow(ChatGptOcrTestResultSchema, `POST ${path}`, await transport.requestJson(path,
         { method: "POST", body: JSON.stringify(ChatGptEmptyRequestSchema.parse({})), ...(signal === undefined ? {} : { signal }) }));
-    },
-    async signOutChatGpt() {
-      const path = "/api/v1/settings/chatgpt-account/sign-out";
-      return parseOrThrow(ChatGptSignOutResultSchema, `POST ${path}`, await transport.requestJson(path,
-        { method: "POST", body: JSON.stringify(ChatGptEmptyRequestSchema.parse({})) }));
-    },
-    async forgetChatGptAccount() {
-      const path = "/api/v1/settings/chatgpt-account/forget-account";
-      return parseOrThrow(ChatGptSignOutResultSchema, `POST ${path}`, await transport.requestJson(path,
-        { method: "POST", body: JSON.stringify(ChatGptEmptyRequestSchema.parse({})) }));
     },
   });
 }
