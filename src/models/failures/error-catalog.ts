@@ -767,9 +767,6 @@ export const ERROR_CATALOG = Object.freeze({
   PROFILE_RESTORE_ADMISSION_REQUIRED: catalogEntry(
     "Log out cannot finish until restore admission accepts the machine erasure journal.",
     EmptyParametersSchema,
-  ),  CHATGPT_REVOCATION_UNCONFIRMED: catalogEntry(
-    "Your ChatGPT account is signed out locally. Remote revocation could not be confirmed.",
-    EmptyParametersSchema,
   ),
   CHATGPT_AUTH_BUSY: catalogEntry(
     "A ChatGPT sign-in is already in progress.",
