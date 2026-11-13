@@ -908,7 +908,8 @@ export function RunStartDialog({
             {isRerun && snapshot === null && sourceError === null && <p role="status">Loading source…</p>}
             {sourceError !== null && <Banner tone="danger" title="Rerun unavailable">{sourceError}</Banner>}
             {recoveryError !== null && <Banner tone="danger" title="Submission recovery unavailable">{recoveryError}</Banner>}
-            {recovery !== null && result === null && (
+            {/* While the Start is in flight its outcome is not unknown yet; only a settled, unresolved command needs readback. */}
+            {recovery !== null && result === null && !busy && (
               <Banner tone="warning" title="A previous submission needs readback">
                 <MetaLine items={[recovery.commandId, recovery.target.workflowId]} />
                 <Button disabled={busy} onClick={() => void sendFinal(recovery, requestFingerprint)}>Replay exact submission</Button>
