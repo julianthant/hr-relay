@@ -41,6 +41,13 @@ describe("General ChatGPT account", () => {
     assert.doesNotMatch(html, /Connect ChatGPT/u);
   });
 
+  it("shows the account row and the Manage usage link only, with no plan or usage card", () => {
+    const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "connected", name: "Plan operator", email: "plan@example.com", planUsage: "enabled" }) }));
+    assert.match(html, /Plan operator.*plan@example\.com/u);
+    assert.match(html, /href="https:\/\/chatgpt\.com\/settings\/usage"[^>]*>.*Manage usage/u);
+    assert.doesNotMatch(html, /Plan limits|Usage limit|role="progressbar"|<progress/u);
+  });
+
   it("renders loading, expired, unavailable and usage-limit states distinctly", () => {
     const render = (snapshot: ChatGptAccountSnapshot) => renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) }));
     const loading = render({ state: "loading" });
