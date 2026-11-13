@@ -145,4 +145,3 @@ function shiftActivityCalendarDay(value: string, dayDelta: number): string {
   shifted.setUTCDate(shifted.getUTCDate() + dayDelta);
   return formatActivityCalendarDate(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, shifted.getUTCDate());
 }
-

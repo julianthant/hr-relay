@@ -182,4 +182,3 @@ it("refuses an already completed authorization result when the completion GET ab
     assert.equal(ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account.state, "connected");
   } finally { await f.cleanup(); }
 });
-
