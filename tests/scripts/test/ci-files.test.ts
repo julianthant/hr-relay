@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { balance, durationsFromReports, LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
+import { namedNativeRefusal, nativeOptIn, nativeRunExcludes, REBUILD_INTEGRATION_TEST_EXCLUDE, REBUILD_UNIT_TEST_EXCLUDE } from "../../../vitest.config.js";
 
 const linuxNativeReport = [
   "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
@@ -144,5 +145,58 @@ describe("CI file selection", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+const localNativeOptOut = [...new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES])].sort();
+
+describe("local native opt-in", () => {
+  it("keeps unit and integration off native files until RELAY_TEST_NATIVE=1", () => {
+    expect(process.env.RELAY_TEST_NATIVE).not.toBe("1");
+    expect([...REBUILD_UNIT_TEST_EXCLUDE].filter(file => localNativeOptOut.includes(file)).sort()).toEqual(localNativeOptOut);
+    expect([...REBUILD_INTEGRATION_TEST_EXCLUDE].filter(file => localNativeOptOut.includes(file)).sort()).toEqual(localNativeOptOut);
+    expect(nativeRunExcludes(undefined)).toEqual(localNativeOptOut);
+    expect(nativeRunExcludes("1")).toEqual([]);
+    expect(nativeOptIn(undefined, "node --import tsx scripts/test/pc.ts --remote /slot")).toBe(true);
+    expect(nativeOptIn(undefined, "node node_modules/vitest/vitest.mjs run")).toBe(false);
+    expect(nativeOptIn("1", "")).toBe(true);
+  });
+
+  it("collects every listed file when RELAY_TEST_NATIVE=1", () => {
+    const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
+    const listed = [...localNativeOptOut, ...LINUX_NATIVE_FILES];
+    const child = spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"), "--input-type=module", "--eval", `
+      const config = await import("./vitest.config.ts");
+      const listed = ${JSON.stringify(listed)};
+      for (const file of listed) {
+        if (config.REBUILD_UNIT_TEST_EXCLUDE.includes(file) || config.REBUILD_INTEGRATION_TEST_EXCLUDE.includes(file)) {
+          throw new Error("still excluded " + file);
+        }
+      }
+      if (config.nativeRunExcludes("1").length !== 0) throw new Error("opt-in still excludes files");
+    `], { cwd: repoRoot, env: { ...process.env, RELAY_TEST_NATIVE: "1" }, encoding: "utf8" });
+    expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(0);
+  });
+
+  it("tells a worker to set RELAY_TEST_NATIVE when a skipped file is named", () => {
+    const file = "tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts";
+    const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
+    expect(namedNativeRefusal(["node", "vitest", file], undefined, repoRoot)).toContain("RELAY_TEST_NATIVE=1");
+    expect(namedNativeRefusal(["node", "vitest", file], "1", repoRoot)).toBeUndefined();
+    expect(namedNativeRefusal(["node", "vitest", "tests/backend/runtime/"], undefined, repoRoot)).toBeUndefined();
+    expect(namedNativeRefusal(["node", "vitest", LINUX_NATIVE_FILES[0] ?? ""], undefined, repoRoot)).toContain("RELAY_TEST_NATIVE=1");
+    const env = { ...process.env };
+    delete env.RELAY_TEST_NATIVE;
+    const child = spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"), "--input-type=module", "--eval", `
+      process.argv.push(${JSON.stringify(file)});
+      await import("./vitest.config.ts");
+    `], { cwd: repoRoot, env, encoding: "utf8" });
+    expect(child.status, child.stderr).toBe(1);
+    expect(child.stderr).toContain(`Set RELAY_TEST_NATIVE=1 to run native, serial, and serial-storage tests. Not run: ${file}`);
+  });
+
+  it("sets RELAY_TEST_NATIVE before CI lists files", () => {
+    const script = readFileSync(new URL("../../../scripts/test/ci-run.sh", import.meta.url), "utf8");
+    expect(script).toMatch(/^export RELAY_TEST_NATIVE=1$/m);
   });
 });

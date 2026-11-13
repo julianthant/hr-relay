@@ -101,7 +101,8 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
   parse the edited documents; prose alone needs no runtime suite.
 - Staging PRs run portable Ubuntu unit, integration and architecture suites plus static and
   privacy. Keep `NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` out of Ubuntu shards,
-  retaining release coverage. Add new native proofs to `scripts/test/ci-files.ts`.
+  retaining release coverage. Local unit and integration runs skip those files unless
+  `RELAY_TEST_NATIVE=1`. Add new native proofs to `scripts/test/ci-files.ts`.
 - Only the operator starts full-release CI; agents never dispatch or rerun CI workflows.
 - Native proofs run in CI only for operator-started releases. Release checks build the
   web bundle, run coverage alone, then perf; coverage already selects unit, integration and

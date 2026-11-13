@@ -1,6 +1,8 @@
 import { prepareWindowsObserverPolicy } from "./scripts/build/windows-observer-policy.js";
+import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./scripts/test/ci-files.js";
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
 import { availableParallelism } from "node:os";
 import { scaledMs } from "./tests/support/time-scale.js";
 
@@ -8,7 +10,7 @@ prepareWindowsObserverPolicy(import.meta.dirname);
 
 export const REBUILD_COVERAGE_INCLUDE = ["src/**/*.ts", "src/**/*.tsx"] as const;
 export const REBUILD_UNIT_TEST_INCLUDE = ["tests/**/*.test.ts"] as const;
-export const REBUILD_UNIT_TEST_EXCLUDE = [
+const UNIT_EXCLUDE_GLOBS = [
   "tests/**/*.integration.test.ts",
   "tests/**/*.local.test.ts",
   "tests/architecture/**",
@@ -16,10 +18,46 @@ export const REBUILD_UNIT_TEST_EXCLUDE = [
   "tests/perf/**",
 ] as const;
 export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/**/*.integration.test.ts"] as const;
-export const REBUILD_INTEGRATION_TEST_EXCLUDE = [
+const INTEGRATION_EXCLUDE_GLOBS = [
   "tests/**/*.local.integration.test.ts",
   "tests/perf/**",
 ] as const;
+
+export function nativeRunExcludes(optIn: string | undefined): readonly string[] {
+  if (optIn === "1") return [];
+  return [...new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES])].sort();
+}
+
+// shortcut: a Vitest process started by scripts/test/pc.ts opts in so that runner still lists LINUX_NATIVE_FILES, upgrade when test:pc sets RELAY_TEST_NATIVE itself.
+export function nativeOptIn(envValue: string | undefined, parentArgs: string): boolean {
+  return envValue === "1" || parentArgs.includes("scripts/test/pc.ts");
+}
+
+function parentArgs(): string {
+  try {
+    return execFileSync("ps", ["-o", "args=", "-p", String(process.ppid)], { encoding: "utf8" });
+  } catch {
+    return "";
+  }
+}
+
+export function namedNativeRefusal(argv: readonly string[], optIn: string | undefined, cwd = process.cwd()): string | undefined {
+  if (optIn === "1") return undefined;
+  const optedOut = new Set(nativeRunExcludes(undefined));
+  const base = cwd.replaceAll("\\", "/").replace(/\/$/u, "");
+  const named = argv.map(arg => {
+    const normalized = arg.replaceAll("\\", "/");
+    if (normalized.startsWith(`${base}/`)) return normalized.slice(base.length + 1);
+    return normalized.replace(/^\.\//u, "");
+  }).filter(file => optedOut.has(file));
+  if (named.length === 0) return undefined;
+  return `Set RELAY_TEST_NATIVE=1 to run native, serial, and serial-storage tests. Not run: ${named.join(", ")}`;
+}
+
+const nativeOptedIn = nativeOptIn(process.env.RELAY_TEST_NATIVE, parentArgs());
+const nativeExcludes = nativeRunExcludes(nativeOptedIn ? "1" : undefined);
+export const REBUILD_UNIT_TEST_EXCLUDE = [...UNIT_EXCLUDE_GLOBS, ...nativeExcludes];
+export const REBUILD_INTEGRATION_TEST_EXCLUDE = [...INTEGRATION_EXCLUDE_GLOBS, ...nativeExcludes];
 export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
   "tests/architecture/**/*.test.ts",
 ] as const;
@@ -171,3 +209,9 @@ export default defineConfig({
     })),
   },
 });
+
+const nativeRefusal = namedNativeRefusal(process.argv, nativeOptedIn ? "1" : process.env.RELAY_TEST_NATIVE);
+if (nativeRefusal !== undefined) {
+  process.stderr.write(`${nativeRefusal}\n`);
+  process.exit(1);
+}

@@ -141,7 +141,12 @@ The root check rules own platform placement and release authorization.
 files: `NATIVE_FILES` (storage closure, backup and restore proofs requiring native runners, unit and
 integration) and `SERIAL_FILES` (native browser process proofs that require file isolation). `scripts/test/ci-run.sh` lists a project through
 Vitest, selects the job's files with that script and passes the paths explicitly; Vitest 4.1.11's
-CLI exclusions do not reach these named projects. Selection refuses when a named file is no longer
+CLI exclusions do not reach these named projects. Local unit and integration projects exclude every
+`NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` entry unless `RELAY_TEST_NATIVE=1`.
+`ci-run.sh` sets that variable before it lists, so each slice still selects the same files. Naming
+an excluded file on the Vitest command line prints that the variable is required and does not run
+the file. A Vitest process started by `scripts/test/pc.ts` is opted in, so `npm run test:pc` still
+lists every file and its native filter is unchanged. Selection refuses when a named file is no longer
 listed. Files are packed longest first onto the least-loaded job using
 the preceding successful run's `ci-timings` artifact, seeded by `scripts/test/ci-durations.json`
 when none is retained; unmeasured files count as the positive median, or one second.
@@ -256,7 +261,7 @@ live lease. GitHub CI remains the merge gate.
 
 ### CI scheduling
 
-Unit and integration use two workers. Ubuntu jobs put test temp on tmpfs and have 20-minute
+Ubuntu unit and integration use three workers. macOS native unit and integration use two. Serial and storage use one. Ubuntu jobs put test temp on tmpfs and have 20-minute
 budgets; macOS jobs use a RAM disk with Spotlight indexing off and have 30-minute budgets. Budgets are
 hang guards. CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
 Vitest test and hook limits, test wait helpers and the browser deadlines tests pass to product code by it.
