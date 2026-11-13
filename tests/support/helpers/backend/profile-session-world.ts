@@ -12,7 +12,7 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } fro
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createCredentialStore, createSyntheticProfileSession, finishProfileOnboarding } from "../admission-fixture.js";
-import { registerBoundProfile } from "../synthetic-database-admission.js";
+import { registerBoundProfile, unregisterBoundProfile } from "../synthetic-database-admission.js";
 import { runtimeLifetimeLock } from "./runtime-lifetime.js";
 
 type Session = ReturnType<typeof createSyntheticProfileSession>;
@@ -24,8 +24,13 @@ export async function createProfileSessionWorld() {
   const lifetime = await runtimeLifetimeLock();
   const machine = acquireEntrypointAdmission(root, "shared", lifetime);
   function credentialsFor(owner: RuntimeAdmission) {
+    // The registry only lets this lookup return the owner's store. The caller keeps that store and may release the owner.
     registerBoundProfile(owner, machine);
-    return createCredentialStore({ stateRoot: owner.stateRoot });
+    try {
+      return createCredentialStore({ stateRoot: owner.stateRoot });
+    } finally {
+      unregisterBoundProfile(owner);
+    }
   }
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   const machineRoot = machine.stateRoot;
