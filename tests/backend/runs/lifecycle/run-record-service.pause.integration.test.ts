@@ -56,11 +56,19 @@ it("withdraws a requested pause on Resume and keeps the claim and envelope of th
   const running = world.runningRun(f.service, f.request, f.runtimeConfig);
   const pausing = requireLifecycleApplied(f.service.pause({ commandId: randomUUID(), runId: running.envelope.runId, expectedVersion: running.version }));
   assert.equal(pausing.pause?.state, "requested");
-  const resumed = requireLifecycleApplied(f.service.resumePaused({ commandId: randomUUID(), runId: pausing.envelope.runId, expectedVersion: pausing.version }));
+  const withdrawal = { commandId: randomUUID(), runId: pausing.envelope.runId, expectedVersion: pausing.version };
+  const resumed = requireLifecycleApplied(f.service.resumePaused(withdrawal));
   assert.equal(Object.hasOwn(resumed, "pause"), false);
   assert.deepEqual(resumed.lifecycle, pausing.lifecycle);
   assert.deepEqual(resumed.envelope, pausing.envelope);
   assert.equal(resumed.version, pausing.version + 1);
+  assert.deepEqual(f.database.authority.runs.get(resumed.envelope.runId), resumed);
+  // The journal records the withdrawal as a pause change, never as a Resume, and a replay reads it back as stored.
+  const journaled = f.database.authority.lifecycleJournal.getCommand(withdrawal.commandId);
+  assert.ok(journaled !== undefined && "kind" in journaled && journaled.kind === "run-lifecycle");
+  assert.equal(journaled.operation, "pause");
+  assert.equal(f.database.authority.lifecycleJournal.findRunResume(resumed.envelope.runId), undefined);
+  assert.deepEqual(requireLifecycleApplied(f.service.resumePaused(withdrawal)), resumed);
   assert.deepEqual(f.database.authority.runs.get(resumed.envelope.runId), resumed);
 });
 

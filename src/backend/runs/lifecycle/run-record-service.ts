@@ -675,10 +675,16 @@ export class RunRecordService {
   private changePause(input: unknown, operation: "pause" | "resume"): RunMutationOutcome | RunExistence {
     const request = CanonicalPauseRequestSchema.parse(input);
     return this.dependencies.database.withAuthorityTransaction(repositories => {
-      const journal = this.inspectJournal(repositories, operation, request, { kind: "version", expectedVersion: request.expectedVersion });
+      const source = this.read(request.runId);
+      // Resume before a requested pause takes effect withdraws it. The journal records that as a pause change, so the
+      // Resume journal keeps the acknowledgement an accounting parent is bound to; a replay keeps its stored operation.
+      const journaled = repositories.lifecycleJournal.getCommand(request.commandId);
+      const withdrawn = operation === "resume" && (journaled === undefined
+        ? source.state === "present" && pendingInterruptOf(source.run) === "pause-requested"
+        : "kind" in journaled && journaled.kind === "run-lifecycle" && journaled.operation === "pause");
+      const journal = this.inspectJournal(repositories, withdrawn ? "pause" : operation, request, { kind: "version", expectedVersion: request.expectedVersion });
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
       if (journal.state === "replay") return this.replayRun(journal.result);
-      const source = this.read(request.runId);
       if (source.state !== "present") return source;
       const current = source.run;
       if (current.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: current.version });
@@ -693,7 +699,6 @@ export class RunRecordService {
         return { state: "applied" as const, run: current };
       }
       // A withdrawn pause never took effect, so it leaves the envelope and any delegation acknowledgement as they are.
-      const withdrawn = operation === "resume" && pendingInterruptOf(current) === "pause-requested";
       const retryEvidence = operation === "resume" ? captureDelegationResume(repositories, request.runId) : [];
       if (retryEvidence === undefined) return refused({ reason: "policy-refused" });
       // Only a member-Retry hold still blocking the join outlives Resume; an acknowledged retry leaves nothing to hold.
