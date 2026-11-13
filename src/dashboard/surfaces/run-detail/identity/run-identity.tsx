@@ -125,7 +125,7 @@ export function RunProvenanceBar({
                 },
                 { key: "Requested by", value: surface.actorId ?? "Not recorded" },
                 /* Repeated priority and actor facts belong in disclosure, not identical chips on every row. */
-                { key: "Priority", value: surface.priority },
+                { key: "Priority", value: surface.priority === "interactive" ? "On" : "Off" },
                 /* Keep the operator name beside run identity so renaming never obscures the subject. */
                 ...(surface.displayName.state === "present"
                   ? [{ key: "Named", value: surface.displayName.value }]
@@ -141,8 +141,8 @@ export function RunProvenanceBar({
             <BulletList
               items={[
                 surface.priority === "bulk"
-                  ? "Bulk yields the worker to anything interactive — a 50-person packet must never make one urgent separation wait."
-                  : "Interactive takes a worker ahead of bulk work.",
+                  ? "Priority is off: this run yields the worker to any run with Priority on — a 50-person packet must never make one urgent separation wait."
+                  : "Priority is on: this run takes a worker ahead of runs without Priority.",
                 shape.state === "moved"
                   ? `This run's SHAPE is a prior descriptor. It is not comparable with a ${shortFingerprint(shape.servedShape)} run, and a retry would replay retired code.`
                   : shape.state === "unserved"
