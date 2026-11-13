@@ -692,11 +692,14 @@ export class RunRecordService {
         this.recordJournal(repositories, journal.command, journalRun(current));
         return { state: "applied" as const, run: current };
       }
-      // A withdrawn pause never took effect, so it leaves the envelope and any held delegation as they are.
+      // A withdrawn pause never took effect, so it leaves the envelope and any delegation acknowledgement as they are.
       const withdrawn = operation === "resume" && pendingInterruptOf(current) === "pause-requested";
-      const delegationResumed = operation === "resume" ? captureDelegationResume(repositories, request.runId) : [];
-      if (delegationResumed === undefined || withdrawn && delegationResumed.length > 0
-        || delegationResumed.length > 0 && !authenticateDelegationResume(repositories, request, delegationResumed)) return refused({ reason: "policy-refused" });
+      const retryEvidence = operation === "resume" ? captureDelegationResume(repositories, request.runId) : [];
+      if (retryEvidence === undefined) return refused({ reason: "policy-refused" });
+      // Only a member-Retry hold still blocking the join outlives Resume; an acknowledged retry leaves nothing to hold.
+      if (withdrawn && retryEvidence.length > 0 && repositories.dependencies.readiness(request.runId, "join").state === "blocked") return refused({ reason: "policy-refused" });
+      const delegationResumed = withdrawn ? [] : retryEvidence;
+      if (delegationResumed.length > 0 && !authenticateDelegationResume(repositories, request, delegationResumed)) return refused({ reason: "policy-refused" });
       const now = this.dependencies.clock.now().toISOString();
       const resumeDescriptor = operation === "resume" && delegationResumed.length > 0
         ? this.dependencies.resolveDescriptor?.(current.envelope.workflow) : undefined;
