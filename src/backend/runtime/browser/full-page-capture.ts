@@ -65,8 +65,8 @@ async function observeSecrets(frame: Frame, selector: string): Promise<void> {
       for (const record of records) {
         if (record.type === "attributes" && record.target instanceof HTMLInputElement && ((record.attributeName === "type" && record.oldValue?.toLowerCase() === "password")
           || (record.attributeName === "autocomplete" && record.oldValue !== null && ["one-time-code", "current-password", "new-password"].includes(record.oldValue)))) state.seen = true;
-        // A secret control already removed again cannot prove it was never painted.
-        for (const node of record.addedNodes) if (node instanceof Element && [...(node.matches(selector) ? [node] : []), ...node.querySelectorAll(selector)].some(el => !el.isConnected)) state.seen = true;
+        // A secret control that left this document (removed, or moved into a shadow tree or another frame) is no longer watched.
+        for (const node of record.removedNodes) if (node instanceof Element && [...(node.matches(selector) ? [node] : []), ...node.querySelectorAll(selector)].some(el => !document.contains(el))) state.seen = true;
       }
     }), seen: painted() };
     (window as CaptureWindow).__relayCaptureSecrets = state;

@@ -295,6 +295,30 @@ describe("whole-page factory screenshots", () => {
       assert.equal(bands, 0);
     });
   });
+  it("refuses an unpainted secret control that leaves the watched light DOM during a band", async () => {
+    await withPage(`<div id="shadow-host"></div>${content}<input id="otp" autocomplete="one-time-code" style="display:none;width:200px;height:40px;background:rgb(255,0,255)">`, async (page, resource) => {
+      await page.locator("#shadow-host").evaluate(host => { host.attachShadow({ mode: "open" }); });
+      const screenshot = page.screenshot.bind(page);
+      let bands = 0;
+      page.screenshot = async options => {
+        if (++bands !== 1) return screenshot(options);
+        await page.evaluate(() => { document.querySelector("#shadow-host")!.shadowRoot!.append(document.querySelector("#otp")!); });
+        await page.evaluate(() => { document.querySelector<HTMLElement>("#shadow-host")!.shadowRoot!.querySelector<HTMLElement>("#otp")!.style.display = "block"; });
+        try { return await screenshot(options); }
+        finally {
+          await page.evaluate(() => {
+            const otp = document.querySelector("#shadow-host")!.shadowRoot!.querySelector<HTMLElement>("#otp")!;
+            otp.style.display = "none";
+            document.body.append(otp);
+          });
+        }
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+      assert.equal(bands, 1);
+    });
+  });
   it("refuses a frame attached and removed between bands", async () => {
     await withPage(content, async (page, resource) => {
       const screenshot = page.screenshot.bind(page);
