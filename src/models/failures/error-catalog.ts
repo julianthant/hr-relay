@@ -747,8 +747,28 @@ export const ERROR_CATALOG = Object.freeze({
     "Saved work email and password were removed, but a backup still has a copy.",
     EmptyParametersSchema,
   ),
-  PROFILE_VERIFIER_UNAVAILABLE: catalogEntry(
-    "A password change waits for a live sign-in that proves the new password.",
+  PROFILE_CURRENT_PASSWORD_REFUSED: catalogEntry(
+    "The current password was not accepted. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_USERNAME_TAKEN: catalogEntry(
+    "Another profile on this computer already uses that email. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_USERNAME_REFUSED: catalogEntry(
+    "Enter a different @ucsd.edu email with no spaces around it. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_UNKNOWN: catalogEntry(
+    "Relay could not confirm whether your sign-in changed, and nothing will be undone. Try your new username and password first, then your current ones.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_UNSETTLED: catalogEntry(
+    "Your sign-in change did not finish. Try it again; until it finishes, your current username and password still sign you in.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_BUSY: catalogEntry(
+    "Another save was in progress, so your sign-in was not changed. Try again.",
     EmptyParametersSchema,
   ),
   PROFILE_FLAT_STORE_MIGRATION_FAILED: catalogEntry("Relay could not verify the old store backup and start a clean profile installation. Startup is stopped; remaining data is preserved.", EmptyParametersSchema),
