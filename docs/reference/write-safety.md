@@ -95,12 +95,17 @@ Natural keys remain private authority data. Public projections use digest refere
 
 These declarations live in `src/models/systems/ucpath/{create-termination,delete-pending-terminations,save-emergency-contact,submit-paypath-work-study}.ts` and `src/models/systems/kuali/save-separation-finalization.ts`.
 
-The PayPath work-study probe and verifier fold the SS Smart HR transaction findings for the EID. Absence needs no
-transaction of any kind on the effective date, so the Action label never decides absence. The proof is the one
-work-study row on that date, with Approved, Manually Processed or Pending status and nothing else on the date; two
-work-study rows are ambiguous; any other transaction on the date, a Denied, Error or Pushed Back row, or a capped or
-unreadable search is unknown, and another person's row refuses. The SS Smart HR Action label for a PayPath
-work-study transaction and every Save-path PayPath anchor are unproven live.
+The PayPath work-study probe and verifier fold the SS Smart HR transaction findings for the EID in
+`src/rules/work-study/transaction-verdict.ts`. Before any Save the probe is absent only when no transaction of any
+kind shows the effective date; any row on that date is unknown and the run refuses with nothing staged, so an
+existing row is never taken as this person's filing. After Save and Submit the commit read-back and the verifier
+take as proof the one filed work-study row now on that date and nothing else; two such rows are ambiguous, and any
+other row on the date, a Denied, Error or Pushed Back row, or a capped or unreadable search is unknown and parks.
+Because the "Saved" answer to a parked write rechecks through the probe, a landed Save cannot settle that way until
+a row can be tied to reason JRL or pool F. Four facts behind both folds are unproven live: that PayPath transactions
+are listed in the SS Smart HR search, the Action label a work-study row shows, that its start date is the PayPath
+effective date, and that the PayPath header name matches the SS Smart HR detail name. Every Save-path PayPath
+anchor is unproven too.
 
 Emergency Contact declares the full ordered demotion/addition plan under the OCR release. Its
 probe checks the complete persisted protected set, and its key validates the raw desired contact

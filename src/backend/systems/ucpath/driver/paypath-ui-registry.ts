@@ -5,7 +5,7 @@ import { UCPATH_UI_REGISTRY } from "./ui-registry.js";
 /**
  * PayPath Actions anchors ported from the old workflow's selectors (verified there 2026-03-17 / 2026-04-24).
  * shortcut: every anchor is unproven in Relay until the read-only live probe on work-study-workflow-01 records it; replace or confirm each one from that probe.
- * The Save-path anchors from `jobDataTab` on are unproven too: probe S1-S5 on work-study-workflow-02 records their legacy recipes and live results.
+ * The Save-path anchors from `positionDataTab` on are unproven too: probe S1-S5 on work-study-workflow-02 records their legacy recipes and live results.
  */
 export const UCPATH_PAYPATH_UI = deepFreeze({
   hrTasksUrl: "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y",

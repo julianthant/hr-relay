@@ -76,14 +76,14 @@ it("work-study/planned-transaction — with Dry run on, reads PayPath, plans and
   assert.deepEqual(f.database.authority.writeIntents.countDryRunEvidenceByRun(f.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
   const itemId = f.database.authority.runs.get(f.runId)?.envelope.itemId;
   assert.ok(itemId);
-  assert.ok(f.database.authority.runCheckpoints.latest("work-study", itemId, "transaction-plan"), "the plan node ran and checkpointed");
+  assert.deepEqual(f.database.authority.runCheckpoints.latest("work-study", itemId, "transaction-plan")?.output.value, PLAN, "the plan node ran and checkpointed the full plan");
   assert.equal(f.database.authority.runCheckpoints.latest("work-study", itemId, "save-transaction"), undefined, "no transaction checkpoint");
   assert.deepEqual(f.history(f.runId), []);
 });
 
-it("work-study/planned-transaction — with Dry run on, a person already filed for the date is previewed as present without staging", async () => {
+it("work-study/planned-transaction — with Dry run on, a person with a transaction already on the date is refused before staging", async () => {
   const f = await workStudyRun({ dryRun: true, rows: [filed()] });
-  assert.deepEqual(f.failures.map(failure => failure.summary), []);
+  assert.match(f.failures[0]?.summary ?? "", /preview probe .* is indeterminate; the real run would refuse to fence or click here/u);
   assert.deepEqual(f.paypath.events, ["read:paypath:10000001", "read:transactions:10000001"]);
   assert.deepEqual(f.database.authority.writeIntents.countDryRunEvidenceByRun(f.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
 });
@@ -112,16 +112,22 @@ it("work-study/verified-save — files once, proves the receipt by reading the t
   assert.equal(WorkStudyResultSchema.parse(again.stored.result.value).receipt.transactionId, "T009000001");
 });
 
-it("work-study/already-filed — a person who already has the transaction for that effective date is not filed again", async () => {
+it("work-study/already-filed — a person who already has a transaction on the effective date is refused before the Save, not filed twice", async () => {
   const f = await workStudyRun({ rows: [filed(), filed({ transactionId: "T008000002", startDate: "07/01/2026" })] });
-  assert.deepEqual(f.failures.map(failure => failure.summary), []);
-  assert.equal(f.paypath.events.some(event => event.startsWith("prepare:")), false, "nothing is staged once the probe finds the filing");
+  assert.match(f.failures[0]?.summary ?? "", /pre-write probe .* is indeterminate; refusing to fence or click/u);
+  assert.equal(f.paypath.events.some(event => event.startsWith("prepare:")), false, "nothing is staged once the probe finds the date taken");
   assert.equal(f.commits(), 0);
-  assert.ok(f.stored);
-  const result = WorkStudyResultSchema.parse(f.stored.result.value);
-  assert.equal(result.state, "already-filed");
-  assert.equal(result.receipt.transactionId, "T008000001");
-  assert.deepEqual(f.history(f.runId), [], "a found filing is not an automation submission");
+  assert.deepEqual(f.intents, []);
+  assert.equal(WorkStudyResultSchema.safeParse(f.stored?.result.value).success, false, "a refused person has no saved result");
+  assert.deepEqual(f.history(f.runId), []);
+});
+
+it("work-study/unknown — a Save whose read-back shows another kind of transaction on the date parks, never reported saved", async () => {
+  const f = await workStudyRun({ filedAction: "Terminatn" });
+  assert.equal(f.commits(), 1);
+  assert.deepEqual(f.intents.map(intent => intent.status), ["parked"]);
+  assert.equal(f.lifecycle, "parked-write");
+  assert.equal(f.stored, undefined);
 });
 
 for (const submit of ["answer-lost", "nothing-filed", "alert"] as const) {
@@ -139,17 +145,18 @@ for (const submit of ["answer-lost", "nothing-filed", "alert"] as const) {
   });
 }
 
-it.each<[string, Parameters<typeof deterministicPayPathOperations>[0]]>([
-  ["a value PayPath did not keep", { stagedValues: { positionPool: "" } }],
-  ["another person on the staged page", { observedName: "Other, Person" }],
-  ["an unreadable transaction search", { findingsUnreadable: true }],
-  ["two work-study transactions on the effective date", { rows: [filed(), filed({ transactionId: "T008000002" })] }],
-  ["a denied work-study transaction on the effective date", { rows: [filed({ approvalStatus: "Denied" })] }],
-  ["another kind of transaction on the effective date", { rows: [filed({ action: "Terminatn" })] }],
-  ["another person's row in the transaction list", { rows: [filed({ startDate: "07/01/2026", displayedName: "Other, Person" })] }],
-])("refuses %s before the fence with no Save and no write intent", async (_name, options) => {
+const PROBE_UNKNOWN = /pre-write probe .* is indeterminate; refusing to fence or click/u;
+it.each<[string, Parameters<typeof deterministicPayPathOperations>[0], RegExp]>([
+  ["a value PayPath did not keep", { stagedValues: { positionPool: "" } }, /did not keep a work-study value/u],
+  ["another person on the staged page", { observedName: "Other, Person" }, /staged-page subject does not match commit-input subject — subject mismatch, zero fence, zero click/u],
+  ["an unreadable transaction search", { findingsUnreadable: true }, PROBE_UNKNOWN],
+  ["two work-study transactions on the effective date", { rows: [filed(), filed({ transactionId: "T008000002" })] }, PROBE_UNKNOWN],
+  ["a denied work-study transaction on the effective date", { rows: [filed({ approvalStatus: "Denied" })] }, PROBE_UNKNOWN],
+  ["another kind of transaction on the effective date", { rows: [filed({ action: "Terminatn" })] }, PROBE_UNKNOWN],
+  ["another person's row in the transaction list", { rows: [filed({ startDate: "07/01/2026", displayedName: "Other, Person" })] }, /pre-write probe .* failed; refusing to fence or click/u],
+])("refuses %s before the fence with no Save and no write intent", async (_name, options, summary) => {
   const f = await workStudyRun(options);
-  assert.ok(f.failures.length > 0);
+  assert.match(f.failures[0]?.summary ?? "", summary);
   assert.equal(f.commits(), 0);
   assert.deepEqual(f.intents, []);
   assert.equal(f.lifecycle, "terminal");

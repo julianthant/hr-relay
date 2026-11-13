@@ -12,7 +12,7 @@ export const stagePayPathWorkStudyTask = defineTask(ucpathDriver, UcpathStagePay
   async run({ input, ctx }) {
     const staged = await ctx.driver.stagePayPathWorkStudy(input).catch((error: unknown) => {
       if (ctx.signal.aborted || !(error instanceof UcpathPayPathRefusedError)) throw error;
-      if (error.code === "paypath-alert-shown") ctx.recordData({ direction: "read", field: "alertText", value: error.alertText ?? "" });
+      if (error.code === "paypath-alert-shown" && error.alertText !== undefined) ctx.recordData({ direction: "read", field: "alertText", value: error.alertText });
       return ctx.fail(error.code, refuse(error.code), { cause: error });
     });
     if (staged.emplId !== input.emplId) return ctx.fail("subject-mismatch", refuse("subject-mismatch"));

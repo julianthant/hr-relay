@@ -1,4 +1,4 @@
-import { operatorFailureSentence } from "../../../../models/failures/error-catalog.js";
+import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../../models/failures/error-catalog.js";
 import { UcpathSubmitPayPathWorkStudy } from "../../../../models/systems/ucpath/submit-paypath-work-study.js";
 import { UcpathPayPathSubmitRefusedError } from "../../../../models/ui/ucpath-paypath.js";
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
@@ -14,7 +14,7 @@ export const submitPayPathWorkStudyTask = defineTask(ucpathDriver, UcpathSubmitP
     await ctx.driver.submitPayPathWorkStudy(input, ctx.mutation).catch((error: unknown) => {
       if (!(error instanceof UcpathPayPathSubmitRefusedError)) throw error;
       ctx.recordData({ direction: "read", field: "alertText", value: error.alertText });
-      return ctx.fail("paypath-submit-refused", operatorFailureSentence("PAYPATH_SUBMIT_REFUSED"), { subject: input.emplId, cause: error });
+      return ctx.fail("paypath-submit-refused", operatorFailureSentence(failureCodeFromTaskCode("paypath-submit-refused")), { subject: input.emplId, cause: error });
     });
     const verdict = await readWorkStudyVerdict(ctx.driver, input, workStudySavedVerdict, (_code, message) => {
       throw new Error(`${message}. The Save already happened, so this parks.`);
