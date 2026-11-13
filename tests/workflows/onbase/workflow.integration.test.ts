@@ -2,7 +2,7 @@ import { onbaseModule } from "../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument } from "@cantoo/pdf-lib";
 import { afterEach, it } from "vitest";
 import { createOnbaseDriver } from "../../../src/backend/systems/onbase/driver/interpreter.js";
 import { executeClaimedRun } from "../../../src/backend/runtime/execution/run-executor.js";
