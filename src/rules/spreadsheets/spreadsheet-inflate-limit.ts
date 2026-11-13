@@ -37,17 +37,27 @@ function add(count: { bytes: number }, amount: number): void {
 
 async function countDeflated(bytes: Uint8Array, part: { bytes: number }, total: { bytes: number }): Promise<void> {
   const reader = new Blob([new Uint8Array(bytes)]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+  let failure: unknown;
   try {
     while (true) {
       const next = await reader.read();
-      if (next.done) return;
+      if (next.done) break;
       if (!(next.value instanceof Uint8Array)) throw new Error('spreadsheet inflate produced a non-binary chunk');
       add(part, next.value.byteLength);
       add(total, next.value.byteLength);
     }
-  } finally {
-    await reader.cancel().catch(() => undefined);
+  } catch (error) {
+    failure = error;
   }
+  // A failed cancel is its own failure. It must not replace the inflate error the readers already map.
+  try {
+    await reader.cancel();
+  } catch (error) {
+    if (failure === undefined) failure = error;
+    else if (failure instanceof Error && error !== failure && failure.cause === undefined) failure.cause = error;
+  }
+  if (failure instanceof Error) throw failure;
+  if (failure !== undefined) throw new Error('spreadsheet inflate failed', { cause: failure });
 }
 
 export async function assertSpreadsheetWithinInflateLimit(data: ArrayBuffer | Uint8Array): Promise<void> {
