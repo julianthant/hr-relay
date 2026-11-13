@@ -11,12 +11,13 @@ import { BulkRunCommandRequestSchema, CommandRequestSchema, type BulkRunCommandR
 import { lifecycleCommandId } from "../../../src/rules/commands/lifecycle-command-id.js";
 import { PARITY_WORKFLOW_COMPOSITION } from "../../parity/helpers/workflow-composition.js";
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
+import { pickedRunWorld } from "../../support/helpers/dashboard/picked-dashboard.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 
-async function mount(pause: "running" | "pause-pending" | "paused" = "running") {
+async function mount(pause: "running" | "pause-pending" | "paused" = "running", day: typeof FIXTURE_DAY_WIRE = FIXTURE_DAY_WIRE) {
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
   let lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 17, state: "ready", pause, update: "installer-unavailable",
@@ -26,7 +27,7 @@ async function mount(pause: "running" | "pause-pending" | "paused" = "running") 
   const sent: Array<CommandRequest | BulkRunCommandRequest> = [];
   const client = { ...transport, applicationLifecycle: async () => lifecycle,
     subscribeDay(input: Parameters<typeof transport.subscribeDay>[0]) {
-      input.onDay(FIXTURE_DAY_WIRE); input.onState({ state: "live" }); return { close() {} };
+      input.onDay(day); input.onState({ state: "live" }); return { close() {} };
     },
     async executeBulkCommand(raw: unknown) { sent.push(BulkRunCommandRequestSchema.parse(raw)); return new Promise<never>(() => undefined); },
     async executeCommand(raw: unknown) { sent.push(CommandRequestSchema.parse(raw)); return reply.promise; },
@@ -103,4 +104,19 @@ it("Pause all and Resume all follow the served application pause value", async (
     assert.equal(paused.sent.length, 1);
     assert.equal(paused.sent[0].type, "resume");
   } finally { await paused.close(); }
+});
+
+it("a pause-pending run shows an enabled Resume from the served command and pressing it sends resume", async () => {
+  const world = pickedRunWorld("pausing");
+  const f = await mount("pause-pending", world.day);
+  try {
+    const resume = f.button("Resume");
+    assert.equal(resume.disabled, false);
+    await act(async () => resume.click());
+    assert.equal(f.sent.length, 1);
+    const request = f.sent[0]; assert.ok(request.family === "run" && !("targets" in request));
+    assert.equal(request.type, "resume");
+    assert.equal(request.target.runId, world.row.runId);
+    assert.equal(request.target.expectedVersion, world.row.rowRevision);
+  } finally { await f.close(); }
 });
