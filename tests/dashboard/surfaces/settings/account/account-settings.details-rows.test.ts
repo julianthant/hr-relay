@@ -44,10 +44,9 @@ const key = (label: string, name: string) => act(async () => { input(label).disp
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 
 describe("Settings > Account details rows", () => {
-  it("gives Name, Initials and Timekeeper name a pencil and Timekeeper initials the timekeeper's letters without one", async () => {
+  it("gives Name, Initials, Timekeeper name and Timekeeper initials a pencil and shows the served timekeeper initials", async () => {
     await mount(async () => ({ state: "changed", account: account() }));
-    for (const label of ["Name", "Initials", "Timekeeper name"]) assert.ok(pencil(`Edit ${label}`), `pencil ${label}`);
-    assert.equal(pencil("Edit Timekeeper initials"), null);
+    for (const label of ["Name", "Initials", "Timekeeper name", "Timekeeper initials"]) assert.ok(pencil(`Edit ${label}`), `pencil ${label}`);
     assert.match(document.body.textContent ?? "", /Timekeeper initialsCMP/u);
     assert.match(document.body.textContent ?? "", /InitialsJL/u);
   });
@@ -66,7 +65,7 @@ describe("Settings > Account details rows", () => {
     assert.match(document.body.textContent ?? "", /InitialsSR/u);
   });
 
-  it("saves initials and the timekeeper name; the timekeeper letters follow the served name", async () => {
+  it("saves initials and the timekeeper name; the timekeeper initials stay the served value", async () => {
     const sent: ProfileDetailsChangeRequest[] = [];
     let served = account();
     await mount(async request => { sent.push(request); served = account({ ...served, ...(request.initials === undefined ? { timekeeper: request.timekeeperName ?? served.timekeeper } : { initials: request.initials }) }); return { state: "changed", account: served }; });
@@ -80,7 +79,33 @@ describe("Settings > Account details rows", () => {
     await settle();
     assert.deepEqual(sent, [{ initials: "JXL" }, { timekeeperName: "Alex Kim" }]);
     assert.match(document.body.textContent ?? "", /InitialsJXL/u);
-    assert.match(document.body.textContent ?? "", /Timekeeper initialsAK/u);
+    assert.match(document.body.textContent ?? "", /Timekeeper initialsCMP/u);
+  });
+
+  it("saves timekeeper initials through the served operation and shows the served value", async () => {
+    const sent: ProfileDetailsChangeRequest[] = [];
+    await mount(async request => { sent.push(request); return { state: "changed", account: account({ timekeeperInitials: "CP" }) }; });
+    await click("Edit Timekeeper initials");
+    assert.equal(input("Timekeeper initials").value, "CMP");
+    await typeInto("Timekeeper initials", "CP");
+    await key("Timekeeper initials", "Enter");
+    await settle();
+    assert.deepEqual(sent, [{ timekeeperInitials: "CP" }]);
+    assert.match(document.body.textContent ?? "", /Timekeeper initialsCP/u);
+  });
+
+  it("refuses bad timekeeper initials with a toast, keeps the old value, and returns focus on Escape", async () => {
+    await mount(async () => ({ state: "refused", code: "PROFILE_INITIALS_REFUSED" } satisfies ProfileDetailsChangeResult));
+    await click("Edit Timekeeper initials");
+    await typeInto("Timekeeper initials", "!!");
+    await key("Timekeeper initials", "Enter");
+    await settle();
+    assert.match(document.body.textContent ?? "", new RegExp(ERROR_CATALOG.PROFILE_INITIALS_REFUSED.text.slice(0, 30), "u"));
+    assert.match(document.body.textContent ?? "", /Timekeeper initialsCMP/u);
+    await click("Edit Timekeeper initials");
+    await key("Timekeeper initials", "Escape");
+    await settle();
+    assert.equal(document.activeElement, pencil("Edit Timekeeper initials"));
   });
 
   it("shows the backend's reason as a toast and keeps the old value when a change is refused", async () => {
