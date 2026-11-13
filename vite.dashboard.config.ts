@@ -61,7 +61,7 @@ return defineConfig({
     outDir: distDir,
     emptyOutDir: true,
     // Build the dashboard and design-system specimen together.
-    rollupOptions: {
+    rolldownOptions: {
       input: {
         index: resolve(import.meta.dirname, "src/dashboard/index.html"),
         kit: resolve(import.meta.dirname, "src/dashboard/kit.html"),
