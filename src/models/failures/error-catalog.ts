@@ -759,6 +759,22 @@ export const ERROR_CATALOG = Object.freeze({
     "Another save was in progress, so your sign-in was not changed. Try again.",
     EmptyParametersSchema,
   ),
+  PROFILE_DUO_REENROL_OPEN: catalogEntry(
+    "Duo setup is still open for this profile. Finish or cancel it, then try again.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_DUO_REENROL_BUSY: catalogEntry(
+    "Relay can switch to the new Duo setup only while no run, change or Duo sign-in is in progress. Nothing was changed; wait for current work to finish, then try again.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_DUO_REENROL_REFUSED: catalogEntry(
+    "The new Duo setup no longer matches the saved Duo devices, so nothing was changed. Cancel this setup and start it again.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_DUO_REENROL_UNCERTAIN: catalogEntry(
+    "Relay could not confirm that switching to the new Duo setup finished cleanly. Check this profile's Duo status; if the profile stays closed, restart Relay so it can check the setup.",
+    EmptyParametersSchema,
+  ),
   PROFILE_FLAT_STORE_MIGRATION_FAILED: catalogEntry("Relay could not verify the old store backup and start a clean profile installation. Startup is stopped; remaining data is preserved.", EmptyParametersSchema),
   PROFILE_SIGN_UP_OTHER_SIGNED_IN: catalogEntry(
     "Another profile is still signed in on this computer. Log in to it and log out, then create the new profile.",

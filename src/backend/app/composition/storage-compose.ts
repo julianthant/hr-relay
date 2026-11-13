@@ -404,6 +404,23 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
       catch (error) { throw retainAuthoritySourceClosure(recoveryFailure === undefined ? [error] : [recoveryFailure.error, error], { admission: { recoveryMachine, recovery } }); }
       if (recoveryFailure !== undefined) throw recoveryFailure.error;
     }
+    const reenrolCommits = await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? [] : machine.readDuoReenrolCommitProfileIds());
+    if (reenrolCommits.length !== 0) {
+      const commitMachine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
+      let commits: ReturnType<typeof createProfileSession> | undefined;
+      let commitFailure: { error: unknown } | undefined;
+      try {
+        commits = createProfileSession({ machineRoot: commitMachine.stateRoot, admission: commitMachine, clock });
+        for (const unproved of commits.reconcileDuoReenrolCommits()) {
+          held.set(unproved.profileId, unproved.error);
+          logHeldPerson(workspace, unproved.error, "profile-startup-duo-reenrol", clock);
+        }
+      } catch (error) { commitFailure = { error }; }
+      if (commitFailure !== undefined && hasUnprovedSourceClosure(commitFailure.error)) throw retainAuthoritySourceClosure([commitFailure.error], { admission: { commitMachine, commits } });
+      try { commits?.close(); commitMachine.release(); }
+      catch (error) { throw retainAuthoritySourceClosure(commitFailure === undefined ? [error] : [commitFailure.error, error], { admission: { commitMachine, commits } }); }
+      if (commitFailure !== undefined) throw commitFailure.error;
+    }
     registered = await withStoppedMachineStorage(workspace, lifetime, async machine => {
       if (machine.requiresFlatStoreMigration()) return [];
       const pending = new Set(machine.readPendingLogoutProfileIds());
@@ -828,9 +845,11 @@ export function composeProfileRuntime(input: Readonly<{
   const contextFor = (expected?: RuntimeAdmission): Context => {
     const selected = captureSelectedProfileStorage(machine), entry = resources.get(selected.profileId)?.ordinary;
     if (entry === undefined || expected !== undefined && expected !== entry.admission) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-    if (entry.state !== "open" || entry.preparation !== undefined) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    if (entry.state !== "open" || entry.preparation !== undefined || session.duoReenrolCommitHeld(selected.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     entry.context ??= composeSelectedProfileStorage({ machineAdmission: machine, admission: entry.admission, credentials: entry.credentials,
-      hostFacts: input.hostFacts, clock: input.clock, assertOrdinaryOwner: () => { if (entry.state !== "open") throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE"); } });
+      hostFacts: input.hostFacts, clock: input.clock, assertOrdinaryOwner: () => {
+        if (entry.state !== "open" || session.duoReenrolCommitHeld(selected.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+      } });
     return entry.context;
   };
   const initializeOwners = (profileId: string, expected: RuntimeAdmission): Owned => {
@@ -943,6 +962,18 @@ export function composeProfileRuntime(input: Readonly<{
   };
   const session = createProfileSession({ machineRoot: machine.stateRoot, admission: machine, clock: input.clock,
     ...(input.onboardingDuo === undefined ? {} : { onboardingDuo: input.onboardingDuo }),
+    idleFence: { withIdleProfile: (profileId, body) => {
+      const entry = resources.get(profileId)?.ordinary;
+      if (entry === undefined || entry.state !== "open" || entry.preparation !== undefined) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+      const owned = initializeOwners(profileId, entry.admission), context = owned.context, activity = owned.activity;
+      if (context === undefined || activity === undefined) throw new RuntimeCustodyUncertainError([new Error("profile-resource-custody-unavailable")]);
+      // The proof and body's hold share one write transaction, so no claim, enqueue or lease commits between them. The swap runs
+      // after this commits, synchronously and under the hold, which every session, context and guarded transaction refuses.
+      return context.database.withAuthorityTransaction(() => {
+        if (activity.hasUnquiescedWork(profileId)) throw new ProfileSessionRefusedError("PROFILE_DUO_REENROL_BUSY");
+        return body();
+      });
+    } },
     credentialsFor: (admission, purpose) => {
       const profileId = admission.profileBinding.profileId, entry = resources.get(profileId) ?? {};
       const current = entry[purpose];

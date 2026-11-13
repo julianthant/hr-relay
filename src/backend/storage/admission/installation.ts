@@ -12,7 +12,7 @@ readdirSync,realpathSync,renameSync,rmSync,rmdirSync,unlinkSync,writeFileSync
 import { basename,dirname,isAbsolute,join,relative,resolve } from "node:path";
 import { z } from "zod";
 import { ConfigSchema } from "../../../models/config/schema.js";
-import { LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason } from "../../../models/profiles/profile.js";
+import { LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOperationSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason } from "../../../models/profiles/profile.js";
 import { CanonicalCredentialConversionPlanSchema,CanonicalCredentialHeadSchema,CanonicalCredentialOperationSchema,CanonicalCredentialPublicationSourceSchema,CanonicalCredentialRestoreSnapshotSchema,CredentialMaintenanceHold,captureCanonicalCredentialStartupLocks,publishStoppedCanonicalCredentials,type CanonicalCredentialConversionPlan } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
 import { sameDirectory, fileIdentityObservation, capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,removeExactPath,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
@@ -51,7 +51,6 @@ import { verifyStoppedBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { offlineMaintenanceWorkspace } from "./lifetime-lock.js";
 
 
-const ProfileOperationSchema = z.union([SignUpOperationSchema, LogoutOperationSchema]);
 const ProfileOperationMutationSchema = z.union([z.strictObject({ kind: z.literal("write"), operation: ProfileOperationSchema }), z.strictObject({ kind: z.literal("delete"), operationId: z.uuid() })]);
 const ProfileErasureHeadSchema = z.lazy(() => z.strictObject({ profileId: z.uuid(), originOperationId: z.uuid(), head: CredentialErasureHeadSchema, credentialKey: CredentialKeyWitnessSchema.optional() }));
 const PriorRestoreFileBindingSchema = z.strictObject({ dev: z.number().int().nonnegative(), ino: z.number().int().nonnegative(),
@@ -1313,7 +1312,8 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
       if (!/^[0-9a-f-]{36}\.json$/u.test(name)) fail("profile-operation-identity-mismatch");
       const file = readPrivateFile(join(operationDirectory, name), { label: "lock", maxBytes: 1_048_576 });
       if (file === undefined) fail("profile-operation-identity-mismatch");
-      const version = z.looseObject({ schemaVersion: z.number().int(), kind: z.string(), phase: z.string() }).parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+      const version = z.looseObject({ schemaVersion: z.number().int(), kind: z.string(), phase: z.string().optional() })
+        .refine(value => value.kind === "duo-reenrol" || value.phase !== undefined, "profile-operation-phase-required").parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
       if (version.kind === "logout" && version.schemaVersion !== 3) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED", {
         cause: new Error(version.phase === "complete" ? "profile-control-upgrade-legacy-logout-completion-unproved" : "profile-control-upgrade-legacy-logout-epoch-unproved") });
     }
@@ -1570,6 +1570,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (!lstatMaybe(path)) {
           if (input.kind === "sign-up" && !creating) fail("profile-signup-intent-unissued");
           if (input.kind === "logout" && !document.profiles.some(row => row.profileId === input.profileId)) fail("profile-logout-unregistered");
+          if (input.kind === "duo-reenrol" && (input.commit !== undefined || input.abort !== undefined || input.draft.attempts.length !== 0
+            || !document.profiles.some(row => row.profileId === input.profileId && row.lifecycle === "ready" && row.duoState === "ready"))) fail("profile-duo-reenrol-unissued");
         } else {
           const before = readStrict(path, ProfileOperationSchema);
           if (before.kind !== input.kind || before.profileId !== input.profileId) fail("profile-operation-identity-mismatch");
@@ -1584,6 +1586,10 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
               || before.onboarding?.abort !== undefined && canonicalJsonStringify(input.onboarding?.abort) !== canonicalJsonStringify(before.onboarding.abort)
               || before.onboarding?.finish !== undefined && canonicalJsonStringify(input.onboarding?.finish) !== canonicalJsonStringify(before.onboarding.finish)) fail("profile-signup-intent-changed");
           }
+          if (before.kind === "duo-reenrol" && input.kind === "duo-reenrol"
+            && (before.createdAt !== input.createdAt || before.draft.accountId !== input.draft.accountId || before.draft.generation !== input.draft.generation
+              || before.commit !== undefined && canonicalJsonStringify(input.commit) !== canonicalJsonStringify(before.commit)
+              || before.abort !== undefined && canonicalJsonStringify(input.abort) !== canonicalJsonStringify(before.abort))) fail("profile-duo-reenrol-intent-changed");
         }
       }
       const operation = typeof input === "string" ? { kind: "delete" as const, operationId: z.uuid().parse(input) }

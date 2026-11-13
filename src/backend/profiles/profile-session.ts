@@ -22,18 +22,19 @@ import { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
 import { ProfileSessionRefusedError } from "./profile-errors.js";
 
 import { operatorFailureSentence,type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
-import { assertFinishedProfileOnboarding,deriveProfileNames,LogoutOperationSchema,ProfileAuthoritySnapshotSchema,ProfileNameValidationError,SignUpOperationSchema,profileDetailsPatch,type LogoutOperation,type ProfileDetailsChange,type ProfileRegistryRow,type ProfileAuthoritySnapshot,type ProfileOperation,type SignUpOperation } from "../../models/profiles/profile.js";
+import { assertFinishedProfileOnboarding,deriveProfileNames,DuoReenrolOperationSchema,LogoutOperationSchema,ProfileAuthoritySnapshotSchema,ProfileNameValidationError,ProfileOperationSchema,profileDetailsPatch,type DuoReenrolOperation,type LogoutOperation,type ProfileDetailsChange,type ProfileRegistryRow,type ProfileAuthoritySnapshot,type ProfileOperation,type SignUpOperation } from "../../models/profiles/profile.js";
 import type { ProfileOnboardingMethod } from "../../models/profiles/public-profile.js";
-import { ProfileOnboardingStateSchema,profileAccount,type ProfileAccount,type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
+import { DuoReenrolStateSchema,ProfileOnboardingStateSchema,profileAccount,type DuoReenrolState,type ProfileAccount,type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
+import type { DuoReenrolCommitIntent } from "../../models/config/duo-credential-store.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { systemClock,type Clock } from "../../rules/time/clock.js";
 import { noSymlinkAncestry,withOperationProof,type DirectoryIdentity } from "../storage/configuration/credential-safe-file.js";
-import { createDuoCredentialStore } from "../storage/configuration/duo-credential-store.js";
+import { createDuoCredentialStore,DuoCredentialError } from "../storage/configuration/duo-credential-store.js";
 import { createProfileVerifiers } from "../storage/configuration/verifier-store.js";
 import { type CredentialInventory } from "./credential-inventory.js";
 import type { ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
 import { changeRelayLogin,RelayLoginOutcomeUnknownError,RelayLoginUnsettledError,restoreInterruptedLogin,type RelayLogin,type RelayLoginChange } from "./login-change.js";
-import { createProfileOnboarding } from "./profile-onboarding.js";
+import { createProfileOnboarding,type DuoDraft } from "./profile-onboarding.js";
 import { appendDuoDiagnostic } from "../logs/duo-diagnostics.js";
 import { createDebugEventWriter } from "../logs/debug-events.js";
 import { createProfileRegistry,ProfileRegistryAuthorityError,withProfileLock } from "./registry.js";
@@ -46,6 +47,15 @@ import type { SettingsRuntimeSnapshot } from "../runtime/settings/settings-runti
 export interface ProfileActivity {
   hasUnquiescedWork(profileId: string): boolean;
   requestCancellation?(profileId: string): void;
+}
+
+/**
+ * The profile runtime's fence for a Duo re-enrolment commit. Inside one authority write transaction it proves that the profile
+ * holds no run, write, lease, artifact, worker child or command, then runs body there to set the commit hold. Body publishes
+ * nothing: a machine operation published inside a profile transaction changes the registry that transaction's admission observed.
+ */
+export interface ProfileIdleFence {
+  withIdleProfile<T>(profileId: string, body: () => T): T;
 }
 
 export interface ActiveProfileSession {
@@ -118,7 +128,7 @@ export function createProfileSession(input: {
   readonly completedLogout?: (operationId: string) => Readonly<{ profileId: string; epoch: number }> | undefined;
   readonly closeStorage?: (profileId: string, admission: RuntimeAdmission) => void;
   readonly sessionChange?: (profileId: string) => { readonly state: "closed" } | ProfileRefusal | ProfileCancelling;
-
+  readonly idleFence?: ProfileIdleFence;
 }) {
   const admission = requireRuntimeAdmission(input.admission);
   admission.assertWritable();
@@ -139,6 +149,8 @@ export function createProfileSession(input: {
   const storageAdmissions = new Map<string, { ordinary?: RuntimeAdmission; settlement?: RuntimeAdmission }>();
   const authoritySnapshots = new WeakSet<ProfileAuthoritySnapshot>();
   let logoutContinuationGeneration = 0;
+  /** Profiles whose re-enrolment commit has started an effect it has not proved settled; every session of them reads as stale. */
+  const commitHolds = new Set<string>();
 
   function writeOperation(operation: ProfileOperation): void {
     admission.publishProfileOperation(operation);
@@ -154,7 +166,7 @@ export function createProfileSession(input: {
       const path = join(directory, name);
       const info = fileStatus(path);
       if (!info.isFile() || info.isSymbolicLink()) throw new Error("profile operation is malformed");
-      const parsed = z.union([SignUpOperationSchema, LogoutOperationSchema]).safeParse(JSON.parse(readFileSync(path, "utf8")));
+      const parsed = ProfileOperationSchema.safeParse(JSON.parse(readFileSync(path, "utf8")));
       if (!parsed.success) throw new Error("profile operation is malformed");
       operations.push(parsed.data);
     }
@@ -221,7 +233,9 @@ export function createProfileSession(input: {
     const row = current.profiles.find(entry => entry.profileId === session.profileId);
     if (current.activeProfileId !== session.profileId || current.sessionGeneration !== session.epoch
       || row?.lifecycle !== "ready" || row.credentialState !== "saved" || row.registration.onboardingCompletion === undefined
-      || readOperations().some(operation => operation.kind === "logout" ? operation.phase !== "complete" : operation.profileId === session.profileId)) {
+      || commitHolds.has(session.profileId)
+      || readOperations().some(operation => operation.kind === "logout" ? operation.phase !== "complete"
+        : operation.profileId === session.profileId && (operation.kind === "sign-up" || operation.commit !== undefined))) {
       sessions.delete(token);
       return refusal("PROFILE_SESSION_STALE");
     }
@@ -330,12 +344,22 @@ export function createProfileSession(input: {
 
   function publishSignUp(operation: SignUpOperation): ActiveProfileSession { return activate(settleSignUp(operation)); }
 
-  function onboardingState(operation: SignUpOperation): ProfileOnboardingState {
+  function signUpDraft(operation: SignUpOperation): DuoDraft {
     const draft = operation.onboarding;
     if (draft === undefined || operation.phase !== "applying" && !(operation.phase === "publishing" && draft.finish !== undefined)) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+    return { operationId: operation.operationId, profileId: operation.profileId, accountId: draft.accountId, generation: draft.generation,
+      attempts: draft.attempts, sealed: draft.finish !== undefined, aborted: draft.abort !== undefined, settle: "confirm" };
+  }
+
+  function reenrolDraft(operation: DuoReenrolOperation): DuoDraft {
+    return { operationId: operation.operationId, profileId: operation.profileId, accountId: operation.draft.accountId, generation: operation.draft.generation,
+      attempts: operation.draft.attempts, sealed: operation.commit !== undefined, aborted: operation.abort !== undefined, settle: "stage" };
+  }
+
+  function duoSetupState(draft: DuoDraft) {
     const method = (name: "key" | "touch") => {
       const attempt = draft.attempts.findLast(entry => entry.method === name && entry.generation === draft.generation);
-      if (draft.abort !== undefined) return { state: "unavailable" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+      if (draft.aborted) return { state: "unavailable" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
       const idle = input.onboardingDuo === undefined ? "unavailable" as const : "idle" as const;
       const state = attempt?.state === "closed" ? idle : attempt?.state ?? idle;
       return { state: attempt !== undefined && state === "pending"
@@ -347,8 +371,40 @@ export function createProfileSession(input: {
         exactCredentialRequestObserved: attempt?.portal?.acceptance === "exact-credential-request" };
     };
     const methods = { key: method("key"), touch: method("touch") };
-    return ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: operation.operationId, profileId: operation.profileId,
-      step: methods.key.state === "complete" && methods.touch.state === "complete" ? "ready" : "duo", methods, browser: onboarding.browserState(operation.operationId) });
+    return { operationId: draft.operationId, profileId: draft.profileId,
+      step: methods.key.state === "complete" && methods.touch.state === "complete" ? "ready" as const : "duo" as const, methods, browser: onboarding.browserState(draft.operationId) };
+  }
+
+  function onboardingState(operation: SignUpOperation): ProfileOnboardingState {
+    return ProfileOnboardingStateSchema.parse({ state: "onboarding", ...duoSetupState(signUpDraft(operation)) });
+  }
+
+  function reenrolState(operation: DuoReenrolOperation): DuoReenrolState {
+    return DuoReenrolStateSchema.parse({ state: "duo-reenrol", ...duoSetupState(reenrolDraft(operation)) });
+  }
+
+  /** A re-enrolment for a registered profile; the internal closure authority needs no session, only this binding. */
+  function registeredReenrol(operationId: string): DuoReenrolOperation {
+    const operation = readOperations().find((entry): entry is DuoReenrolOperation => entry.kind === "duo-reenrol" && entry.operationId === operationId);
+    if (operation === undefined || !registry.read().profiles.some(row => row.profileId === operation.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    return operation;
+  }
+
+  function reenrolmentFor(profileId: string): DuoReenrolOperation | undefined {
+    const open = readOperations().filter((entry): entry is DuoReenrolOperation => entry.kind === "duo-reenrol" && entry.profileId === profileId);
+    if (open.length > 1) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+    return open[0];
+  }
+
+  /** The public authority: the active session's own, Duo-ready profile and its open re-enrolment. */
+  function requireReenrol(token: string, operationId: string, allowAbort = false): { session: { profileId: string; epoch: number; admission: RuntimeAdmission }; operation: DuoReenrolOperation } {
+    const session = requireSession(token);
+    if ("state" in session) throw new ProfileSessionRefusedError(session.code);
+    const operation = registeredReenrol(operationId);
+    if (operation.profileId !== session.profileId) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    if (registry.read().profiles.find(row => row.profileId === session.profileId)?.duoState !== "ready") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+    if (!allowAbort && operation.abort !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+    return { session, operation };
   }
 
   function requireOnboardingSession(token: string, operationId: string) {
@@ -508,16 +564,16 @@ export function createProfileSession(input: {
   }
 
   const onboarding = createProfileOnboarding({
-    onEvent: (operation, event) => {
+    onEvent: (draft, event) => {
       const clock = input.clock ?? systemClock;
       appendDuoDiagnostic(machineRoot, clock.now(), event);
-      AuthorityDatabase.withProfileOnboardingTimeline(admittedProfile(operation.profileId), clock, repository => {
+      AuthorityDatabase.withProfileOnboardingTimeline(admittedProfile(draft.profileId), clock, repository => {
         const build = z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"))).version;
         createDebugEventWriter({ repository, clock, build }).emit({ category: "duo",
           phase: event.stage === "refused" || event.stage === "aborted" ? "failed" : event.stage === "timed-out" ? "expired" : event.stage === "replied" ? "settled" : "started",
           ...(event.code === undefined ? {} : { code: event.code }), ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }),
-          correlationId: event.requestId ?? operation.operationId, area: "profile-onboarding", reason: event.detail ? `${event.stage}-${event.detail}` : event.stage },
-        { kind: "transport", connectionId: operation.operationId });
+          correlationId: event.requestId ?? draft.operationId, area: "profile-onboarding", reason: event.detail ? `${event.stage}-${event.detail}` : event.stage },
+        { kind: "transport", connectionId: draft.operationId });
       });
     },
     failureDiagnostic: error => error instanceof ProfileOnboardingDuoProviderError ? { kind: error.kind, causeTag: error.reason } : { kind: "unknown", causeTag: "provider" }, clock: input.clock ?? systemClock,
@@ -533,26 +589,30 @@ export function createProfileSession(input: {
     },
     ...(input.onboardingDuo === undefined ? {} : { provider: input.onboardingDuo }),
     read: operationId => {
-      const operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operationId);
+      const operation = readOperations().find((entry): entry is SignUpOperation | DuoReenrolOperation => entry.kind !== "logout" && entry.operationId === operationId);
+      if (operation?.kind === "duo-reenrol") return reenrolDraft(registeredReenrol(operationId));
       if (operation === undefined || registry.read().profiles.some(row => row.profileId === operation.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
-      return operation;
+      return signUpDraft(operation);
     },
     update: (operationId, change) => withProfileLock(machineRoot, () => {
-      const operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operationId);
+      const operation = readOperations().find((entry): entry is SignUpOperation | DuoReenrolOperation => entry.kind !== "logout" && entry.operationId === operationId);
+      if (operation?.kind === "duo-reenrol") {
+        const current = registeredReenrol(operationId);
+        if (current.commit !== undefined) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+        const outcome = change(reenrolDraft(current));
+        writeOperation({ ...current, draft: { ...current.draft, attempts: [...outcome.attempts] } }); return outcome.result;
+      }
       if (operation?.onboarding === undefined || operation.phase !== "applying"
         || registry.read().profiles.some(row => row.profileId === operation.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
-      const outcome = change(operation); writeOperation(outcome.operation); return outcome.result;
+      const outcome = change(signUpDraft(operation)); writeOperation({ ...operation, onboarding: { ...operation.onboarding, attempts: [...outcome.attempts] } }); return outcome.result;
     }),
-    email: operation => {
-      const email = storeFor(operation.profileId).read().entries.ucpathUserId?.value;
-      if (email === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-      return email;
+    publicState: draft => {
+      const operation = readOperations().find((entry): entry is SignUpOperation | DuoReenrolOperation => entry.kind !== "logout" && entry.operationId === draft.operationId);
+      if (operation?.kind === "duo-reenrol") return reenrolState(operation);
+      if (operation === undefined) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+      return onboardingState(operation);
     },
-    publicState: onboardingState,
-    store: operation => {
-      if (operation.onboarding === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-      return createDuoCredentialStore(admittedProfile(operation.profileId), input.clock ?? systemClock);
-    },
+    store: draft => createDuoCredentialStore(admittedProfile(draft.profileId), input.clock ?? systemClock),
   });
 
   /**
@@ -632,6 +692,70 @@ export function createProfileSession(input: {
     });
   }
 
+  function duoStore(profileId: string) { return createDuoCredentialStore(admittedProfile(profileId), input.clock ?? systemClock); }
+
+  /** Drains the draft's browser and attempts, then aborts it: its rows are discarded and the operation removed; the ready set is untouched. */
+  async function abandonDuoReenrol(operationId: string, authorize: () => DuoReenrolOperation): Promise<void> {
+    withProfileLock(machineRoot, () => {
+      const operation = authorize();
+      if (operation.commit !== undefined || commitHolds.has(operation.profileId)) throw new ProfileSessionRefusedError("PROFILE_DUO_REENROL_UNCERTAIN");
+      onboarding.beginTransition(operationId);
+    });
+    try { await onboarding.drain(operationId).catch(retainOnboardingBrowserFailure); }
+    finally { onboarding.endTransition(operationId); }
+    withProfileLock(machineRoot, () => discardDuoReenrol(authorize()));
+  }
+
+  function discardDuoReenrol(operation: DuoReenrolOperation): void {
+    if (operation.commit !== undefined || commitHolds.has(operation.profileId)) throw new ProfileSessionRefusedError("PROFILE_DUO_REENROL_UNCERTAIN");
+    onboarding.assertAbortable(operation.operationId);
+    if (operation.abort === undefined) writeOperation({ ...operation, abort: { abortedAt: IsoInstantSchema.parse((input.clock ?? systemClock).now().toISOString()) } });
+    duoStore(operation.profileId).discardDraft(operation.draft.accountId);
+    deleteOperation(operation.operationId);
+  }
+
+  /** The commit intent for exactly the credentials the draft's two proved attempts stored; anything else is a pre-effect refusal. */
+  function prepareDuoReenrolCommit(operation: DuoReenrolOperation): DuoReenrolCommitIntent {
+    const draft = reenrolDraft(operation);
+    onboarding.verifyProved(draft);
+    const proved = (["key", "touch"] as const).flatMap(method => {
+      const receipt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
+      return receipt?.ceremony === undefined || receipt.ceremony.mechanism === "native-platform" ? [] : [receipt.ceremony.credentialId];
+    });
+    let intent: DuoReenrolCommitIntent;
+    try { intent = duoStore(operation.profileId).prepareReenrolCommit(draft.accountId); }
+    catch (error) {
+      if (error instanceof DuoCredentialError && error.code === "DUO_CREDENTIAL_CONFLICT") throw new ProfileSessionRefusedError("PROFILE_DUO_REENROL_REFUSED", { cause: error });
+      throw error;
+    }
+    if (canonicalJsonStringify([...intent.stagedIds].sort()) !== canonicalJsonStringify([...proved].sort())) throw new ProfileSessionRefusedError("PROFILE_DUO_REENROL_REFUSED");
+    return intent;
+  }
+
+  /**
+   * One validated reconciliation after a commit effect failed: the operation, the head and the record are each classified against
+   * the intent. Only when every piece is applied or not applied does it finish the remaining steps and clear the hold.
+   */
+  function reconcileDuoReenrolCommit(profileId: string, operationId: string, intent: DuoReenrolCommitIntent, failure: unknown): never {
+    let released = false;
+    try {
+      const recorded = readOperations().find(entry => entry.operationId === operationId);
+      const store = duoStore(profileId), state = store.inspectReenrolCommit(intent);
+      const published = recorded?.kind === "duo-reenrol" && recorded.commit !== undefined && canonicalJsonStringify(recorded.commit) === canonicalJsonStringify(intent);
+      if (recorded?.kind === "duo-reenrol" && recorded.commit === undefined && state.head === "not-applied" && state.record === "not-applied") released = true;
+      else if (published && state.record !== "unprovable" && state.head !== "unprovable") {
+        store.commitReenrol(intent);
+        deleteOperation(operationId);
+        released = true;
+      } else if (recorded === undefined && state.head === "applied" && state.record === "applied") released = true;
+    } catch (cause) {
+      if (hasUnprovedSourceClosure(cause)) admission.retainSourceClosure(cause);
+      throw new ProfileSessionRefusedError("PROFILE_DUO_REENROL_UNCERTAIN", { cause: new AggregateError([failure, cause], "duo-reenrol-commit-reconciliation-unproved") });
+    }
+    if (released) commitHolds.delete(profileId);
+    throw new ProfileSessionRefusedError("PROFILE_DUO_REENROL_UNCERTAIN", { cause: failure });
+  }
+
   return withProvedOperations({
     close(): void {
       onboarding.assertClosed();
@@ -647,6 +771,109 @@ export function createProfileSession(input: {
       }
     },
     closeOnboarding(): Promise<void> { return onboarding.close(); },
+    /** Opens, or returns the open, Duo re-enrolment for the active session's Duo-ready profile; its old enrolment keeps signing. */
+    beginDuoReenrol(token: string): DuoReenrolState {
+      admission.assertWritable();
+      admission.lifetime.assertRuntimeAvailable();
+      return withProfileLock(machineRoot, () => {
+        const session = requireSession(token);
+        if ("state" in session) throw new ProfileSessionRefusedError(session.code);
+        if (registry.read().profiles.find(row => row.profileId === session.profileId)?.duoState !== "ready") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+        const open = reenrolmentFor(session.profileId);
+        // An aborted draft is returned too, so its cancel can finish the discard.
+        if (open !== undefined) return reenrolState(open);
+        const operation = DuoReenrolOperationSchema.parse({ schemaVersion: 1, kind: "duo-reenrol", operationId: randomUUID(), profileId: session.profileId,
+          createdAt: IsoInstantSchema.parse((input.clock ?? systemClock).now().toISOString()), draft: { accountId: randomUUID(), generation: 1, attempts: [] } });
+        writeOperation(operation);
+        return reenrolState(operation);
+      });
+    },
+    readDuoReenrol(token: string, operationId: string): DuoReenrolState {
+      return withProfileLock(machineRoot, () => reenrolState(requireReenrol(token, operationId, true).operation));
+    },
+    async showDuoReenrolBrowser(token: string, operationId: string): Promise<DuoReenrolState> {
+      requireReenrol(token, operationId);
+      await onboarding.showBrowser(operationId).catch(retainOnboardingBrowserFailure);
+      return reenrolState(requireReenrol(token, operationId).operation);
+    },
+    async reopenDuoReenrolBrowser(token: string, operationId: string, generation: number): Promise<DuoReenrolState> {
+      requireReenrol(token, operationId);
+      await onboarding.reopenBrowser(operationId, generation);
+      return reenrolState(requireReenrol(token, operationId).operation);
+    },
+    async openDuoReenrolPortal(token: string, operationId: string): Promise<DuoReenrolState> {
+      requireReenrol(token, operationId);
+      await onboarding.openPortal(operationId).catch(retainOnboardingBrowserFailure);
+      return reenrolState(requireReenrol(token, operationId).operation);
+    },
+    async startDuoReenrol(token: string, operationId: string, method: ProfileOnboardingMethod): Promise<DuoReenrolState> {
+      withProfileLock(machineRoot, () => requireReenrol(token, operationId));
+      await onboarding.start(operationId, method).catch(retainOnboardingBrowserFailure);
+      return reenrolState(requireReenrol(token, operationId).operation);
+    },
+    confirmDuoReenrol(token: string, operationId: string, method: ProfileOnboardingMethod, attemptId: string): DuoReenrolState {
+      withProfileLock(machineRoot, () => requireReenrol(token, operationId));
+      onboarding.confirm(operationId, method, attemptId);
+      return reenrolState(requireReenrol(token, operationId).operation);
+    },
+    async cancelDuoReenrolAttempt(token: string, operationId: string, method: ProfileOnboardingMethod, attemptId: string): Promise<DuoReenrolState> {
+      withProfileLock(machineRoot, () => requireReenrol(token, operationId));
+      await onboarding.cancelAttempt(operationId, method, attemptId).catch(retainOnboardingBrowserFailure);
+      return reenrolState(requireReenrol(token, operationId).operation);
+    },
+    /** Abandons the re-enrolment: the profile, its session and its ready Duo set stay exactly as they were. */
+    async cancelDuoReenrol(token: string, operationId: string): Promise<ActiveProfileSession> {
+      const { session } = requireReenrol(token, operationId, true);
+      await abandonDuoReenrol(operationId, () => requireReenrol(token, operationId, true).operation);
+      return { state: "active", token, epoch: session.epoch, profileId: session.profileId };
+    },
+    /**
+     * The internal closure authority: no session, bound to a registered profile and its own open re-enrolment, able only to drain
+     * and abort. Logout and delete account refuse while a re-enrolment exists, so their callers close it first, before revoking.
+     */
+    async closeDuoReenrol(profileId: string): Promise<void> {
+      const operation = withProfileLock(machineRoot, () => {
+        if (!registry.read().profiles.some(row => row.profileId === profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+        return reenrolmentFor(profileId);
+      });
+      if (operation === undefined) return;
+      const authorize = () => {
+        const current = registeredReenrol(operation.operationId);
+        if (current.profileId !== profileId) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+        return current;
+      };
+      await abandonDuoReenrol(operation.operationId, authorize);
+    },
+    /**
+     * Replaces the ready Duo set with the draft's two staged credentials when the profile is idle. A refusal before any effect leaves
+     * the draft committable; once an effect starts the profile stays closed until one reconciliation proves the outcome.
+     */
+    async commitDuoReenrol(token: string, operationId: string): Promise<ActiveProfileSession> {
+      const initial = requireReenrol(token, operationId);
+      onboarding.assertBrowserAvailable(operationId);
+      if (reenrolState(initial.operation).step !== "ready") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+      onboarding.beginTransition(operationId);
+      try { await onboarding.drain(operationId).catch(retainOnboardingBrowserFailure); }
+      finally { onboarding.endTransition(operationId); }
+      return withProfileLock(machineRoot, () => {
+        const { session, operation } = requireReenrol(token, operationId), profileId = session.profileId, fence = input.idleFence;
+        if (fence === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+        const intent = prepareDuoReenrolCommit(operation);
+        // The hold is set in the transaction that proved the profile idle; from then on every session and context of it refuses, and
+        // the swap below runs synchronously, so nothing enters between the proof and the swap.
+        try { fence.withIdleProfile(profileId, () => { commitHolds.add(profileId); }); }
+        catch (error) { commitHolds.delete(profileId); throw error; }
+        try {
+          writeOperation({ ...operation, commit: intent });
+          duoStore(profileId).commitReenrol(intent);
+          deleteOperation(operationId);
+        } catch (error) { reconcileDuoReenrolCommit(profileId, operationId, intent, error); }
+        commitHolds.delete(profileId);
+        return { state: "active", token, epoch: session.epoch, profileId };
+      });
+    },
+    /** Whether a re-enrolment commit holds this profile closed in this process. */
+    duoReenrolCommitHeld(profileId: string): boolean { return commitHolds.has(profileId); },
     signUp(fields: {
       readonly firstName: string;
       readonly lastName: string;
@@ -727,7 +954,8 @@ export function createProfileSession(input: {
         if (pending.onboarding.finish === undefined) {
           const candidate: SignUpOperation = { ...pending, phase: "publishing", onboarding: { ...pending.onboarding,
             finish: { finishId: randomUUID(), finishedAt: IsoInstantSchema.parse((input.clock ?? systemClock).now().toISOString()) } } };
-          onboarding.verifyFinish(candidate);
+          onboarding.verifyProved(signUpDraft(candidate));
+          assertFinishedProfileOnboarding(candidate);
           writeOperation(candidate);
         }
         const operation = requireOnboarding(token, operationId), session = publishSignUp(operation);
@@ -738,13 +966,17 @@ export function createProfileSession(input: {
     cancelOnboarding,
     async recoverOnboarding(options: Readonly<{ deferActivation?: boolean; finishOnly?: boolean; registrationProofs?: readonly StartupRegistrationProof[] }> = {}): Promise<void> {
       const operations = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.onboarding !== undefined);
+      const reenrolments = readOperations().filter((entry): entry is DuoReenrolOperation => entry.kind === "duo-reenrol");
       const selected = options.finishOnly === true ? operations.filter(operation => operation.onboarding?.finish !== undefined) : operations;
-      if (selected.length === 0) return;
-      const selectedIds = new Set(selected.map(operation => operation.operationId));
+      // A recorded commit is reconciled under stopped custody. Every other draft's browser is proved closed and its attempts closed,
+      // so a later cancel can drain it; its rows are discarded now only for the profile this boot would resume, whose storage it admits.
+      const closed = options.finishOnly === true ? [] : reenrolments.filter(operation => operation.commit === undefined);
+      if (selected.length === 0 && closed.length === 0) return;
+      const selectedIds = new Set([...selected, ...closed].map(operation => operation.operationId));
       const browserRoot = join(machineRoot, "browsers", "onboarding");
       const browserRoots = createBrowserRoots(admission);
-      const bound=operations.map(operation=>{
-        const draft=operation.onboarding;
+      const bound=[...operations, ...reenrolments].map(operation=>{
+        const draft=operation.kind === "sign-up" ? operation.onboarding : operation.draft;
         if(draft===undefined)throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
         const rootInput = browserRoots.signupRoot({ profileId: operation.profileId, profileRoot: browserRoot, credentialFingerprint: null,
           owner: { kind: "signup", operationId: operation.operationId, accountId: draft.accountId, providerGeneration: draft.generation } }, true);
@@ -760,6 +992,11 @@ export function createProfileSession(input: {
       const config=resolveConfigWithProvenance({},{primaryDisplay:null},clock,{stateRoot:machineRoot,artifactRoot:admission.artifactRoot}).config;
       const present=bound.filter(entry => selectedIds.has(entry.operation.operationId)).flatMap(entry=>{
         if(entry.rootInput !== undefined && lstatSync(entry.rootInput.profileDirectory,{throwIfNoEntry:false})!==undefined)return [{ ...entry, rootInput: entry.rootInput }];
+        // A re-enrolment that never registered a setup browser root launched none.
+        if (entry.operation.kind === "duo-reenrol") {
+          if (entry.rootInput !== undefined && entry.operation.abort === undefined) throw new NativeBrowserClosureUnprovedError([new Error("abandoned-duo-reenrol-browser-missing-without-owned-cleanup")]);
+          return [];
+        }
         if(entry.operation.onboarding?.finish===undefined&&entry.operation.onboarding?.abort===undefined) {
           throw new NativeBrowserClosureUnprovedError([new Error("abandoned-onboarding-browser-missing-without-owned-cleanup")]);
         }
@@ -797,6 +1034,37 @@ export function createProfileSession(input: {
           await cancelOnboarding(session.token, operation.operationId);
         }
       }
+      for (const operation of closed) {
+        if (operation.draft.attempts.some(attempt => attempt.providerClosedAt === undefined)) onboarding.recoverClosed(operation.operationId);
+        if (registry.read().activeProfileId === operation.profileId) withProfileLock(machineRoot, () => discardDuoReenrol(registeredReenrol(operation.operationId)));
+      }
+    },
+    /**
+     * Boot's roll-forward of recorded re-enrolment commits under stopped custody. Each is classified against its intent and finished
+     * only when every piece is applied or not applied; the profiles it could not prove are returned for their admission to be held.
+     */
+    reconcileDuoReenrolCommits(): readonly Readonly<{ profileId: string; error: ProfileSessionRefusedError }>[] {
+      admission.assertWritable();
+      admission.assertExclusive();
+      if (sessions.size !== 0) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+      const unproved: { profileId: string; error: ProfileSessionRefusedError }[] = [];
+      for (const operation of readOperations()) {
+        if (operation.kind !== "duo-reenrol" || operation.commit === undefined) continue;
+        const intent = operation.commit;
+        try {
+          withProfileLock(machineRoot, () => {
+            const store = duoStore(registeredReenrol(operation.operationId).profileId), state = store.inspectReenrolCommit(intent);
+            if (state.head === "unprovable" || state.record === "unprovable") throw new ProfileSessionRefusedError("PROFILE_DUO_REENROL_UNCERTAIN");
+            store.commitReenrol(intent);
+            deleteOperation(operation.operationId);
+          });
+        } catch (cause) {
+          if (hasUnprovedSourceClosure(cause)) throw cause;
+          unproved.push({ profileId: operation.profileId, error: cause instanceof ProfileSessionRefusedError && cause.code === "PROFILE_DUO_REENROL_UNCERTAIN" ? cause
+            : new ProfileSessionRefusedError("PROFILE_DUO_REENROL_UNCERTAIN", { cause }) });
+        }
+      }
+      return unproved;
     },
     signIn(fields: { readonly email: string; readonly password: string; readonly at: string }): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
       const at = IsoInstantSchema.parse(fields.at);
@@ -866,6 +1134,7 @@ export function createProfileSession(input: {
         const current = requireSession(token);
         if ("state" in current) return current;
         if (current.epoch === Number.MAX_SAFE_INTEGER) return refusal("PROFILE_TRANSITION_BLOCKED");
+        if (reenrolmentFor(session.profileId) !== undefined) return refusal("PROFILE_DUO_REENROL_OPEN");
         storeFor(session.profileId, current.admission);
         if (input.prepareLogout === undefined) return refusal("PROFILE_LOGOUT_BLOCKED");
         const prepared = input.prepareLogout(session.profileId, current.admission);
@@ -957,6 +1226,7 @@ export function createProfileSession(input: {
       const completed = input.completedLogout?.(operationId), document = registry.read();
       if (completed === undefined || document.activeProfileId !== null || document.sessionGeneration !== completed.epoch
         || storageAdmissions.has(completed.profileId) || sessions.size !== 0) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+      if (reenrolmentFor(completed.profileId) !== undefined) throw new ProfileSessionRefusedError("PROFILE_DUO_REENROL_OPEN");
       try { admission.deleteProfileAccount(completed.profileId, completed.epoch); }
       catch (cause) { throw new ProfileSessionRefusedError("PROFILE_ACCOUNT_DELETION_REFUSED", { cause }); }
     },

@@ -65,12 +65,13 @@ export const ProfileOnboardingBrowserSchema = z.discriminatedUnion("state", [
 ]);
 export type ProfileOnboardingBrowser = z.infer<typeof ProfileOnboardingBrowserSchema>;
 
-export const ProfileOnboardingStateSchema = z.strictObject({
-  state: z.literal(PROFILE_ONBOARDING_STATE), operationId: z.uuid(), profileId: ProfileIdSchema,
+const DuoSetupFields = {
+  operationId: z.uuid(), profileId: ProfileIdSchema,
   step: z.enum(["duo", "ready"]),
   methods: z.strictObject({ key: ProfileOnboardingMethodStateSchema, touch: ProfileOnboardingMethodStateSchema }),
   browser: ProfileOnboardingBrowserSchema,
-}).superRefine((value, context) => {
+};
+function refineDuoSetup(value: Readonly<{ step: "duo" | "ready"; methods: Readonly<Record<ProfileOnboardingMethod, ProfileOnboardingMethodState>> }>, context: z.RefinementCtx): void {
   const complete = value.methods.key.state === "complete" && value.methods.touch.state === "complete";
   if ((value.step === "ready") !== complete) context.addIssue({ code: "custom", message: "profile-onboarding-readiness-invalid" });
   for (const [name, method] of Object.entries(value.methods)) {
@@ -79,8 +80,12 @@ export const ProfileOnboardingStateSchema = z.strictObject({
       context.addIssue({ code: "custom", message: "profile-onboarding-method-incomplete" });
     }
   }
-});
+}
+export const ProfileOnboardingStateSchema = z.strictObject({ state: z.literal(PROFILE_ONBOARDING_STATE), ...DuoSetupFields }).superRefine(refineDuoSetup);
 export type ProfileOnboardingState = z.infer<typeof ProfileOnboardingStateSchema>;
+/** Setting Duo up again is a resource of the active session, so the profile's own state stays active while it is open. */
+export const DuoReenrolStateSchema = z.strictObject({ state: z.literal("duo-reenrol"), ...DuoSetupFields }).superRefine(refineDuoSetup);
+export type DuoReenrolState = z.infer<typeof DuoReenrolStateSchema>;
 export const CompleteProfileOnboardingRequestSchema = z.strictObject({ operationId: z.uuid() });
 export type CompleteProfileOnboardingRequest = z.infer<typeof CompleteProfileOnboardingRequestSchema>;
 export const CancelProfileOnboardingRequestSchema = CompleteProfileOnboardingRequestSchema;
