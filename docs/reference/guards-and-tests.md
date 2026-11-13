@@ -158,14 +158,14 @@ Other native files count half because two workers share them.
 
 | Job | Runner | Jobs | Contents |
 | --- | --- | --- | --- |
-| unit | Ubuntu | 2 (3 without integration) | unit files except `NATIVE_FILES`, plus `LINUX_NATIVE_FILES` |
+| unit | Ubuntu | 3 | unit files except `NATIVE_FILES`, plus `LINUX_NATIVE_FILES` |
 | architecture | Ubuntu | 2 | architecture files |
-| integration | Ubuntu | 20 | integration files except `NATIVE_FILES` and `SERIAL_FILES`, plus `LINUX_NATIVE_FILES` |
+| integration | Ubuntu | 30 | integration files except `NATIVE_FILES` and `SERIAL_FILES`, plus `LINUX_NATIVE_FILES` |
 | perf | Ubuntu | 1 | `npm run test:perf` on ready pull requests |
 | smoke | Ubuntu | 1 | `npm run test:smoke` on the built dashboard on ready pull requests |
 | native | macOS, operator-started full releases only | 5 | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |
 
-Full staging runs also include `static`, `privacy`, `perf` and `smoke`. The job-level whole-pipeline FIFO
+Full staging runs also include `lint`, `static`, `privacy`, `perf` and `smoke`. The job-level whole-pipeline FIFO
 admission and draft policy are described in [repository governance](../repository-governance.md).
 Each shard downloads the same `ci-balancing` input and uploads Vitest JSON reports as `durations-*`.
 Report basenames include the runner OS and selection group, so merged artifacts preserve both platforms.
