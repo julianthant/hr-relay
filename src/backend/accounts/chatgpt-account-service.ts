@@ -91,12 +91,16 @@ async function boundedEmptyResponse(response: Response): Promise<boolean> {
   finally { await reader.cancel(); reader.releaseLock(); }
 }
 function publicState(record: ChatGptCredentialRecord | undefined, now: number): ChatGptAccountState {
-  if (record?.session == null || record.registration === null) return { state: "signed-out", ...(record?.registration == null ? {} : { account: { email: record.registration.email } }) };
+  if (record?.session == null || record.registration === null) return { state: "signed-out" };
   if (Date.parse(record.session.expiresAt) <= now) return { state: "expired" };
   if (record.session.usage === "unavailable") return { state: "unavailable", code: "CHATGPT_USAGE_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text };
   return { state: "connected", name: record.registration.name, email: record.registration.email, expiresAt: record.session.expiresAt,
     planUsage: !record.session.usePlan || !PLAN_SCOPES.every(scope => record.session?.scopes.includes(scope)) ? "disabled"
       : record.session.usage === "limit-reached" ? "limit-reached" : "enabled" };
+}
+/** The record after its account is forgotten: no identity, client or session, and a new host. */
+function forgotten(record: ChatGptCredentialRecord): ChatGptCredentialRecord {
+  return { ...record, revision: record.revision + 1, hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null, session: null };
 }
 async function closeServer(server: Server): Promise<void> {
   server.closeAllConnections();
@@ -172,7 +176,14 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       catch (error) { retainCredentialClosure(error); throw error; }
     },
     async withLock<T>(operation: (transaction: ChatGptCredentialTransaction) => Promise<T>): Promise<T> {
-      try { return await credentialRepository.withLock(operation); }
+      try {
+        return await credentialRepository.withLock(transaction => {
+          // A registration without a session is an account that ended; every change starts from it forgotten.
+          const current = transaction.read();
+          if (current !== undefined && current.registration !== null && current.session === null) transaction.replace(forgotten(current), current.revision);
+          return operation(transaction);
+        });
+      }
       catch (error) { retainCredentialClosure(error); throw error; }
     },
   };
@@ -433,7 +444,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       finishStartup();
     }
   }
-  async function disconnect(forget: boolean): Promise<ChatGptSignedOut> {
+  async function disconnect(): Promise<ChatGptSignedOut> {
     active(); if (signOutLifetime !== undefined) throw fault("CHATGPT_AUTH_BUSY");
     const epoch = ++generation;
     const assertCurrent = () => { active(); if (epoch !== generation) throw fault("CHATGPT_AUTH_CANCELLED"); };
@@ -446,7 +457,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       await Promise.all([...inferenceLifetimes]); assertCurrent(); assertResourceClosure();
       return repository.withLock(async transaction => {
         assertCurrent();
-        const current = transaction.read(); if (current === undefined || current.registration === null || !forget && (current.session === null || current.clientId === null)) return { state: "signed-out", remoteRevocation: "not-needed" };
+        const current = transaction.read(); if (current === undefined || current.registration === null) return { state: "signed-out", remoteRevocation: "not-needed" };
         let remoteRevocation: "confirmed" | "unconfirmed" | "not-needed" = current.session?.refreshToken == null ? "not-needed" : "unconfirmed";
         try { if (current.session?.refreshToken != null && current.clientId !== null) {
           const discovered = await discovery(); assertCurrent();
@@ -462,7 +473,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
           retainCredentialClosure(error); assertResourceClosure(); assertCurrent(); remoteRevocation = "unconfirmed";
         }
         assertCurrent(); assertResourceClosure();
-        transaction.replace({ ...current, revision: current.revision + 1, session: null, ...(forget ? { hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null } : {}) }, current.revision);
+        transaction.replace(forgotten(current), current.revision);
         return { state: "signed-out", remoteRevocation };
       });
     })();
@@ -474,6 +485,10 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     return record.session !== null && (rejectedSessionToken !== undefined && privateEqual(record.session.accessToken, rejectedSessionToken)
       || Date.parse(record.session.expiresAt) <= clock.nowMs() + 60_000);
   }
+  function unrenewableEnded(record: ChatGptCredentialRecord): boolean {
+    return record.session !== null && record.session.refreshToken === null && (rejectedSessionToken !== undefined && privateEqual(record.session.accessToken, rejectedSessionToken)
+      || Date.parse(record.session.expiresAt) <= clock.nowMs());
+  }
   async function renewCredentials(transaction: ChatGptCredentialTransaction, assertCurrent: () => void, signal?: AbortSignal, diagnostic?: ChatGptInferenceDiagnostic): Promise<ChatGptCredentialRecord> {
     const epoch = generation;
     assertCurrent();
@@ -481,14 +496,17 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     if (current?.session == null || current.registration === null || current.clientId === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
     if (needsRefresh(current)) {
       if (diagnostic !== undefined) diagnostic.path = "auth-refresh";
-      if (current.session.refreshToken === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
+      if (current.session.refreshToken === null) {
+        if (unrenewableEnded(current) && epoch === generation && !closed) transaction.replace(forgotten(current), current.revision);
+        throw fault("CHATGPT_ACCOUNT_EXPIRED");
+      }
       if (current.session.earliestRefreshAt !== null && clock.nowMs() / 1000 < current.session.earliestRefreshAt) throw fault("CHATGPT_ACCOUNT_EXPIRED");
       let result;
       try { result = await token(new URLSearchParams({ grant_type: "refresh_token", client_id: current.clientId, refresh_token: current.session.refreshToken, resource: RESOURCE }), current.clientId, current.session.usePlan, undefined, signal, diagnostic); }
       catch (error) {
         assertCurrent();
         if (error instanceof ChatGptAccountError && error.code === "CHATGPT_ACCOUNT_EXPIRED" && epoch === generation && !closed)
-          transaction.replace({ ...current, revision: current.revision + 1, session: null }, current.revision);
+          transaction.replace(forgotten(current), current.revision);
         throw error;
       }
       assertCurrent();
@@ -528,8 +546,8 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         active(); assertResourceClosure();
         if (pending !== undefined || signOutLifetime !== undefined) return readAccount();
         const observed = repository.read();
-        if (observed?.session == null || observed.session.refreshToken === null || !needsRefresh(observed)) return readAccount();
-        if (observed.session.earliestRefreshAt !== null && clock.nowMs() / 1000 < observed.session.earliestRefreshAt) {
+        if (observed?.session == null || !needsRefresh(observed) || observed.session.refreshToken === null && !unrenewableEnded(observed)) return readAccount();
+        if (observed.session.refreshToken !== null && observed.session.earliestRefreshAt !== null && clock.nowMs() / 1000 < observed.session.earliestRefreshAt) {
           if (Date.parse(observed.session.expiresAt) > clock.nowMs()) return readAccount();
           throw fault("CHATGPT_AUTH_UNAVAILABLE");
         }
@@ -543,7 +561,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         try { assertResourceClosure(); }
         catch (closure) { diagnostic.path = "resource-closure"; recordFailure(closure, diagnostic); throw closure; }
         recordFailure(error, diagnostic);
-        if (error instanceof ChatGptAccountError && error.code === "CHATGPT_ACCOUNT_EXPIRED") return { state: "expired" };
+        if (error instanceof ChatGptAccountError && error.code === "CHATGPT_ACCOUNT_EXPIRED") return readAccount();
         throw error;
       }
     })().finally(() => { if (refreshingAccount === reading) refreshingAccount = undefined; });
@@ -1255,6 +1273,6 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     if (signOutFailure instanceof Error) throw signOutFailure;
     if (signOutFailure !== undefined) throw new Error("ChatGPT sign-out failed", { cause: signOutFailure });
   }
-  return Object.freeze({ setDebugEvents, readAccount, refreshAccount, readStatus, checkConnection, readAuthority, revalidateAuthority, signIn, signOut: () => disconnect(false), forgetAccount: () => disconnect(true), extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, verifyAssistantCapability, captureAssistantModelPolicy, close });
+  return Object.freeze({ setDebugEvents, readAccount, refreshAccount, readStatus, checkConnection, readAuthority, revalidateAuthority, signIn, signOut: disconnect, forgetAccount: disconnect, extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, verifyAssistantCapability, captureAssistantModelPolicy, close });
 }
 export type ChatGptAccountService = ReturnType<typeof createChatGptAccountService>;
