@@ -8,7 +8,7 @@ export interface PrivacyFinding { readonly path: string; readonly rule: string }
 
 const fixtureFiles = new Map(synthetic.fixtureFiles.map(({ path, sha256 }) => [path, sha256]));
 const sourcePaths = new Set(synthetic.sourcePaths);
-const publicConfigFiles = new Map(synthetic.publicConfigFiles.map(({ path, sha256 }) => [path, sha256]));
+const publicConfigFiles = new Map<string, string>(synthetic.publicConfigFiles.map(({ path, sha256 }) => [path, sha256]));
 const credentialCanaries = new Map(synthetic.credentialCanaries.map(({ path, sha256 }) => [path, sha256]));
 const allowedTokens = {
   eid: new Set(synthetic.eid),
