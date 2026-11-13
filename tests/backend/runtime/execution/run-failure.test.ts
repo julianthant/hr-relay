@@ -302,4 +302,33 @@ describe("refused sign-in detail", () => {
     assert.equal(debug.signInRefusal.pageAddress, "https://example.test/p");
     assert.match(debug.signInRefusal.reason, /^check /);
   });
+
+  it("drops a percent-encoded employee id from the verifier reason and the page path", () => {
+    const encoded = "%31%30%34%35%36%37%31%32";
+    const failure = storedSignInFailure(
+      `the check saw https://example.test/people/${encoded}`,
+      `https://example.test/people/${encoded}`,
+    );
+    assert.equal(failure.debug?.signInRefusal?.reason, "the check saw https://example.test/people/[removed]");
+    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://example.test/people/[removed]");
+    const stored = JSON.stringify(failure);
+    assert.equal(stored.includes(FIXTURE_EMPLOYEE_ID), false);
+    assert.equal(stored.toLowerCase().includes(encoded.toLowerCase()), false);
+  });
+
+  it("keeps the check when the page address fills its share of the debug budget", () => {
+    const failure = storedSignInFailure("the application route was refused", `https://example.test/${"p".repeat(100_000)}`);
+    const debug = failure.debug;
+    assert.ok(debug?.signInRefusal);
+    assert.equal(debug.signInRefusal.reason, "the application route was refused");
+    assert.match(debug.signInRefusal.pageAddress, /^https:\/\/example\.test\//);
+    assert.ok(Buffer.byteLength(debug.signInRefusal.pageAddress) <= Math.floor(96 * 1024 / 2));
+    const kept = Buffer.byteLength(debug.stack)
+      + debug.causes.reduce((total, text) => total + Buffer.byteLength(text), 0)
+      + Buffer.byteLength(debug.signInRefusal.reason)
+      + Buffer.byteLength(debug.signInRefusal.pageAddress);
+    assert.ok(kept <= 96 * 1024);
+    assert.equal(debug.omittedBytes, debug.originalBytes - kept);
+    assert.ok(debug.originalBytes > 100_000);
+  });
 });

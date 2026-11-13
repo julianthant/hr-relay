@@ -203,16 +203,28 @@ function withoutPageQuery(text: string): string {
   });
 }
 
+/** Percent-encoding is decoded before an employee id is recognized. A broken sequence is left as written. */
+function decodeUriText(text: string): string {
+  return text.replace(/(?:%[0-9A-Fa-f]{2})+/gu, (run) => {
+    try { return decodeURIComponent(run); }
+    catch { return run; }
+  });
+}
+
 /** An employee id is eight digits. These refusal fields are safe diagnostic text, so the digits do not stay. */
 function withoutEmployeeId(text: string): string {
   return text.replace(/(?<!\d)\d{8}(?!\d)/gu, "[removed]");
 }
 
+function refusalText(text: string): string {
+  return withoutEmployeeId(decodeUriText(sanitizeDebugText(text)));
+}
+
 function signInRefusalFrom(error: Error) {
   const login = browserLoginFailure(error);
   if (login === undefined) return undefined;
-  const reason = withoutEmployeeId(sanitizeDebugText(withoutPageQuery(login.detail)));
-  const address = withoutEmployeeId(sanitizeDebugText(pageAddress(login.observedUrl)));
+  const reason = refusalText(withoutPageQuery(login.detail));
+  const address = refusalText(pageAddress(login.observedUrl));
   if (reason.length === 0) throw new Error("sign-in refusal reason is empty");
   if (address.length === 0) throw new Error("sign-in page address is empty");
   return { system: login.system, step: login.step, reason, pageAddress: address };
@@ -239,9 +251,10 @@ export function failureDebugDetails(error: Error) {
   const refusal = signInRefusalFrom(error);
   const originalBytes = safe.reduce((total, text) => total + Buffer.byteLength(text), 0)
     + (refusal === undefined ? 0 : Buffer.byteLength(refusal.reason) + Buffer.byteLength(refusal.pageAddress));
-  const remaining = { bytes: DEBUG_TEXT_BUDGET };
-  // The check and the page are the refusal. Stack text is optional and takes what is left.
-  const pageAddressText = refusal === undefined ? "" : takeDebugText(refusal.pageAddress, remaining);
+  // The page cannot spend the whole budget. The check is taken from what remains, then stack text.
+  const pageSlot = { bytes: Math.floor(DEBUG_TEXT_BUDGET / 2) };
+  const pageAddressText = refusal === undefined ? "" : takeDebugText(refusal.pageAddress, pageSlot);
+  const remaining = { bytes: DEBUG_TEXT_BUDGET - Buffer.byteLength(pageAddressText) };
   const reasonText = refusal === undefined ? "" : takeDebugText(refusal.reason, remaining);
   const bounded = safe.map(text => takeDebugText(text, remaining));
   const signInRefusal = refusal === undefined || reasonText.length === 0 || pageAddressText.length === 0

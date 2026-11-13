@@ -719,4 +719,30 @@ describe("refused sign-in bundle", () => {
     assert.equal(allowed("signInReason"), "the check refused employee [removed]");
     assert.equal(allowed("signInPageAddress"), "https://example.test/people/[removed]");
   });
+
+  it("drops a percent-encoded employee id from the reason and the page the bundle allows", async () => {
+    const database = await openDatabase();
+    const { service } = captureService(database);
+    const encoded = "%31%30%34%35%36%37%31%32";
+    const login = new BrowserLoginError("ucpath", "verify-landing",
+      `the check saw https://example.test/people/${encoded}`,
+      `https://example.test/people/${encoded}`);
+    const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+      error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: "2026-08-29T08:00:00.000Z" });
+    const bundle = await createRunDiagnosticCapture({ service }).captureForFailure({
+      failure, configFingerprint: HASH_A, descriptorFingerprint: HASH_B,
+    });
+    const stored = JSON.stringify({ failure, bundle });
+    assert.equal(stored.includes("10456712"), false);
+    assert.equal(stored.toLowerCase().includes(encoded.toLowerCase()), false);
+    const allowed = (key: string) => {
+      const field = bundle.redaction.fields.find(candidate => candidate.key === key);
+      assert.equal(field?.state, "allowed");
+      return field?.state === "allowed" ? field.value : undefined;
+    };
+    assert.equal(allowed("signInReason"), "the check saw https://example.test/people/[removed]");
+    assert.equal(allowed("signInPageAddress"), "https://example.test/people/[removed]");
+  });
 });
