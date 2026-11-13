@@ -2797,21 +2797,21 @@ export class AuthorityDatabase implements Disposable {
     const path = join(admission.stateRoot, "state.db");
     requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
     const plan = AuthorityDatabase.inspectEvidenceSchemaUpgrade(admission, descriptors);
-    if (plan.pending.length === 0 || plan.inspection.authorityContentFingerprint !== expectedFingerprint)
+    // One record per backed source: the journal keys a settled upgrade by its source fingerprint.
+    const conversion = plan.pending[0];
+    if (conversion === undefined || plan.inspection.authorityContentFingerprint !== expectedFingerprint)
       throw new Error("evidence-schema-conversion-source-changed");
     const verified = verifyBackup(admission, backup.manifestPath), binding = admission.profileBinding;
     if (canonicalJsonStringify(verified) !== canonicalJsonStringify(backup) || verified.manifest.installationId !== binding.installationId
       || verified.manifest.profileId !== binding.profileId || verified.manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
       || verified.manifest.authorityContentFingerprint !== expectedFingerprint || verified.manifest.authorityGeneration !== plan.inspection.authorityGeneration)
       throw new Error("evidence-schema-conversion-backup-changed");
-    const records = plan.pending.map(conversion => {
-      const statement = AuthorityEvidenceSchemaUpgradeRecordSchema.omit({ evidenceSchemaMac: true }).parse({ recordKey: randomUUID(), upgradeId: expectedFingerprint, phase: "settled",
-        fromSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
-        planDigest: evidenceSchemaPlanDigest(expectedFingerprint, conversion),
-        evidenceSchemas: conversion, backup: { manifestPath: backup.manifestPath, sha256: backup.manifest.sha256, authorityGeneration: plan.inspection.authorityGeneration },
-        by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: clock.now().toISOString() });
-      return AuthorityEvidenceSchemaUpgradeRecordSchema.parse({ ...statement, evidenceSchemaMac: admission.sealStoppedEvidenceSchemaConversion(statement) });
-    });
+    const statement = AuthorityEvidenceSchemaUpgradeRecordSchema.omit({ evidenceSchemaMac: true }).parse({ recordKey: randomUUID(), upgradeId: expectedFingerprint, phase: "settled",
+      fromSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
+      planDigest: evidenceSchemaPlanDigest(expectedFingerprint, conversion),
+      evidenceSchemas: conversion, backup: { manifestPath: backup.manifestPath, sha256: backup.manifest.sha256, authorityGeneration: plan.inspection.authorityGeneration },
+      by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: clock.now().toISOString() });
+    const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse({ ...statement, evidenceSchemaMac: admission.sealStoppedEvidenceSchemaConversion(statement) });
     const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });
     let primary: { error: unknown } | undefined;
     try {
@@ -2819,8 +2819,8 @@ export class AuthorityDatabase implements Disposable {
       try {
         admission.assertStoppedProtectedSettingsUpgrade();
         if (inspectNativeAuthority(database).authorityContentFingerprint !== expectedFingerprint) throw new Error("evidence-schema-conversion-source-changed");
-        const insert = database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)");
-        for (const record of records) insert.run(record.recordKey, record.upgradeId, record.phase, backup.manifest.sha256, canonicalJsonStringify(record), record.recordedAt);
+        database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
+          .run(record.recordKey, record.upgradeId, record.phase, backup.manifest.sha256, canonicalJsonStringify(record), record.recordedAt);
         inspectNativeAuthority(database); admission.assertStoppedProtectedSettingsUpgrade();
         database.exec("COMMIT");
       } catch (error) {

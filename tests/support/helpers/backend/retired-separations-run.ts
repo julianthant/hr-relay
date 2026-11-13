@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { vi } from "vitest";
+import { z } from "zod";
 import { JsonValueSchema, type JsonValue } from "../../../../src/rules/validation/canonical-json.js";
 
 function merge(example: JsonValue, value: JsonValue): JsonValue {
@@ -8,6 +9,21 @@ function merge(example: JsonValue, value: JsonValue): JsonValue {
   const result: Record<string, JsonValue> = Object.fromEntries(Object.entries(example));
   for (const [key, child] of Object.entries(value)) result[key] = result[key] === undefined ? child : merge(result[key], child);
   return result;
+}
+
+const CANONICAL_INPUT = "../../../../src/models/workflow/canonical-input.js";
+
+/** Rebuild the module graph as a next build whose Separations inputs gained a field: both the current schema hash and its profile-name-domain predecessor hash move, while stored values still parse. Returns the restore. */
+export function simulateNextSeparationsInputGeneration(): () => void {
+  vi.resetModules();
+  vi.doMock(CANONICAL_INPUT, async importOriginal => {
+    const original = await importOriginal<typeof import("../../../../src/models/workflow/canonical-input.js")>();
+    const defineCanonicalInput = (input: z.ZodType, canonical: z.ZodType, samples: readonly [unknown, ...unknown[]]): z.ZodType =>
+      original.defineCanonicalInput(input, canonical instanceof z.ZodObject && "timekeeperName" in canonical.shape
+        ? canonical.extend({ nextInputGeneration: z.literal(true).optional() }) : canonical, samples);
+    return { ...original, defineCanonicalInput };
+  });
+  return () => { vi.doUnmock(CANONICAL_INPUT); vi.resetModules(); };
 }
 
 /** A closed profile store holding a terminal Separations run with a committed Kuali write, stamped with this build's own Separations input hash. */
