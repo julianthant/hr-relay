@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
-import { it } from "vitest";
+import fs, { rmSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { afterEach, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { ProfileLoginChangeResultSchema, PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
 import { publicProfileShellFixture as fixture, readyPublicSignUp } from "../../../../support/helpers/backend/public-profile-shell.js";
+
+afterEach(() => { vi.restoreAllMocks(); syncBuiltinESMExports(); });
 
 it("serves password and username changes to the signed-in session only, and the changed login signs in after logout", async () => {
   const f = await fixture();
@@ -46,5 +49,45 @@ it("serves password and username changes to the signed-in session only, and the 
     assert.deepEqual(old, { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
     const signedIn = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-in", { email: "fixture.changed@ucsd.edu", password: "changed-fixture-password" })).json());
     assert.equal(signedIn.state, "active");
+  } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
+});
+
+it("signs out a change whose saved entries could not be put back, and the old login signs in again through the same application", async () => {
+  const f = await fixture();
+  let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  try {
+    runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+      backendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+    const base = `http://127.0.0.1:${String(runtime.port)}`, { post, finish } = await readyPublicSignUp(base);
+    const finished = await finish();
+    assert.equal(PublicProfileStateSchema.parse(await finished.json()).state, "active");
+    const cookie = finished.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+
+    // The verifier swap fails, then the one write-back that follows fails before it starts.
+    const rename = fs.renameSync, open = fs.openSync;
+    let failNextCredentialOpen = false;
+    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (String(to).endsWith("profile-verifiers.json")) { failNextCredentialOpen = true; throw new Error("injected replacement failure"); }
+      rename(from, to);
+    });
+    vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
+      if (failNextCredentialOpen && String(path).includes("/credentials/")) { failNextCredentialOpen = false; throw new Error("injected write-back failure"); }
+      return open(path, flags, mode);
+    });
+    syncBuiltinESMExports();
+    const changed = await post("/api/v1/profile/account/password", { currentPassword: "disposable-fixture-password", newPassword: "changed-fixture-password" }, cookie);
+    vi.restoreAllMocks(); syncBuiltinESMExports();
+    assert.deepEqual([changed.status, await changed.json()], [200, { state: "refused", code: "PROFILE_LOGIN_CHANGE_UNSETTLED" }]);
+    assert.match(changed.headers.get("set-cookie") ?? "", /Max-Age=0/u);
+    assert.deepEqual(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).json()),
+      { state: "signed-out", signUpRequired: false });
+
+    const fresh = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "changed-fixture-password" })).json());
+    assert.deepEqual(fresh, { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
+    const old = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
+    assert.equal(PublicProfileStateSchema.parse(await old.json()).state, "active");
+    const oldCookie = old.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(oldCookie);
+    assert.deepEqual(await (await post("/api/v1/profile/account/password", { currentPassword: "disposable-fixture-password", newPassword: "changed-fixture-password" }, oldCookie)).json(),
+      { state: "changed" });
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });

@@ -32,7 +32,7 @@ import { createDuoCredentialStore } from "../storage/configuration/duo-credentia
 import { createProfileVerifiers } from "../storage/configuration/verifier-store.js";
 import { type CredentialInventory } from "./credential-inventory.js";
 import type { ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
-import { changeRelayLogin,RelayLoginUnsettledError,restoreInterruptedLogin,type RelayLogin,type RelayLoginChange } from "./login-change.js";
+import { changeRelayLogin,restoreInterruptedLogin,type RelayLogin,type RelayLoginChange } from "./login-change.js";
 import { createProfileOnboarding } from "./profile-onboarding.js";
 import { appendDuoDiagnostic } from "../logs/duo-diagnostics.js";
 import { createDebugEventWriter } from "../logs/debug-events.js";
@@ -557,7 +557,7 @@ export function createProfileSession(input: {
   });
 
   /** Change the signed-in profile's Relay login under the profile lock. */
-  function changeLogin(token: string, fields: { readonly currentPassword: string; readonly change: RelayLoginChange; readonly at: string }): { readonly state: "changed" } | ProfileRefusal {
+  function changeLogin(token: string, fields: { readonly currentPassword: string; readonly change: RelayLoginChange; readonly at: string }): { readonly state: "changed"; readonly durability?: "unconfirmed" } | ProfileRefusal {
     const at = IsoInstantSchema.parse(fields.at);
     admission.assertWritable();
     admission.lifetime.assertRuntimeAvailable();
@@ -567,13 +567,8 @@ export function createProfileSession(input: {
       const session = requireSession(token);
       if ("state" in session) return session;
       if (readOperations().some(operation => operation.kind === "sign-up")) return refusal("PROFILE_TRANSITION_BLOCKED");
-      try {
-        const result = changeRelayLogin(verifiers, storeFor(session.profileId, session.admission), session.profileId, { ...fields, at });
-        return result === "changed" ? { state: "changed" } : refusal(result);
-      } catch (error) {
-        if (error instanceof RelayLoginUnsettledError) sessions.delete(token);
-        throw error;
-      }
+      const result = changeRelayLogin(verifiers, storeFor(session.profileId, session.admission), session.profileId, { ...fields, at });
+      return result === "changed" ? { state: "changed" } : result === "unconfirmed" ? { state: "changed", durability: "unconfirmed" } : refusal(result);
     });
   }
 

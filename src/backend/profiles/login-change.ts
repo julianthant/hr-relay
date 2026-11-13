@@ -49,7 +49,7 @@ function proves(verifiers: Verifiers, profileId: string, login: Partial<RelayLog
 
 /** Change one profile's login. The caller holds the profile lock and a live session. */
 export function changeRelayLogin(verifiers: Verifiers, store: CredentialStore, profileId: string,
-  fields: { readonly currentPassword: string; readonly change: RelayLoginChange; readonly at: string }): "changed" | ErrorCatalogCode {
+  fields: { readonly currentPassword: string; readonly change: RelayLoginChange; readonly at: string }): "changed" | "unconfirmed" | ErrorCatalogCode {
   const nowMs = Date.parse(fields.at);
   if (verifiers.locked(profileId, nowMs)) return "PROFILE_CURRENT_PASSWORD_REFUSED";
   if (!verifiers.passwordMatches(profileId, fields.currentPassword)) {
@@ -69,8 +69,8 @@ export function changeRelayLogin(verifiers: Verifiers, store: CredentialStore, p
   if (!saveLogin(store, next, CHANGE, fields.at)) return "PROFILE_LOGIN_CHANGE_BUSY";
   try { verifier.commit(); }
   catch (error) {
-    // Only a swap that never landed is undone; a landed swap with a failed flush already holds the new login on both sides.
-    if (verifier.landed()) throw error;
+    // A swap that landed holds the new login on both sides; only its flush is unproved, so it is reported, not undone.
+    if (verifier.landed()) return "unconfirmed";
     let restored: boolean;
     try { restored = saveLogin(store, prior, RESTORE, fields.at); }
     catch (cleanup) { throw new RelayLoginUnsettledError({ cause: new AggregateError([error, cleanup], "profile login change and its restore failed") }); }

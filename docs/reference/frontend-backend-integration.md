@@ -429,9 +429,11 @@ session cookie only and return `{state: "changed"}` or `{state: "refused", code}
 password counts toward the sign-in lockout. A new username must be a plain address that changes
 the verifier key and is not taken. Refusals leave the saved login unchanged. The change saves the profile's UCPath entries first and then swaps
 that profile's verifier row as its commit point. If it stops between them, resume is refused and the
-next sign-in with the old login writes that login back. A swap that landed is never undone. When the
-saved entries cannot be written back in the same request, that session ends. The epoch, Duo
-material and other profiles are unchanged.
+next sign-in with the old login writes that login back. A swap that landed is never undone; if
+only its flush failed, the result is `{state: "changed", durability: "unconfirmed"}`. When the saved
+entries cannot be written back in the same request, the route logs the session out through the
+ordinary logout path and refuses with `PROFILE_LOGIN_CHANGE_UNSETTLED`, so the old login can sign
+in again on the same application. The epoch, Duo material and other profiles are unchanged.
 
 ### Profile onboarding boundary
 

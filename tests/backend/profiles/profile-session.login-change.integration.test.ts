@@ -124,7 +124,7 @@ describe("Relay login change", () => {
       : session.changeUsername(alex.token, { currentPassword: "secret-one", ...change, at }), /profile-login-change-unsettled/u);
     restoreFiles();
     assert.deepEqual([machine.savedLogin(alex.profileId).userId, machine.savedLogin(alex.profileId).password], [next.email, next.password], kind);
-    assert.equal(refusalCode(session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-three", at })), "PROFILE_SESSION_STALE");
+    assert.equal(refusalCode(session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-three", at })), "PROFILE_AUTHORITY_UNAVAILABLE");
 
     const restarted = machine.open();
     assert.equal(refusalCode(restarted.resumeSignedInProfile({ at: "2026-09-06T12:02:00.000Z" })), "PROFILE_AUTHORITY_UNAVAILABLE");
@@ -156,12 +156,13 @@ describe("Relay login change", () => {
     assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-two" });
   });
 
-  it("keeps the new login when the verifier swap landed but its flush failed", async () => {
+  it("reports a change whose verifier swap landed but whose flush failed as changed with unconfirmed durability", async () => {
     const machine = await world();
     const session = machine.open();
     const alex = await machine.signUp(session, alexFields);
     failVerifierSwap("flush");
-    assert.throws(() => session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:01:00.000Z" }), /injected flush failure/u);
+    assert.deepEqual(session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:01:00.000Z" }),
+      { state: "changed", durability: "unconfirmed" });
     restoreFiles();
     assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-two" });
     const restarted = machine.open();

@@ -25,6 +25,7 @@ type PublicProfileState
 import { systemClock } from "../../../../rules/time/clock.js";
 import { appendEmergencyFault } from "../../../logs/emergency-faults.js";
 import { serializeTokenedErrorCauses } from "../../../../models/failures/error-origins.js";
+import { RelayLoginUnsettledError } from "../../../profiles/login-change.js";
 import { ProfileRuntimeStartFailedError,ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { type ActiveProfileSession } from "../../../profiles/profile-session.js";
 import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
@@ -346,7 +347,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       return c.json(response.body, response.status);
     } finally { transitioning = false; }
   });
-  const endSession = async (c: Context, deleting: boolean) => {
+  const closeSession = async (c: Context, deleting: boolean): Promise<PublicProfileState> => {
     const deletion = deleting ? DeleteProfileAccountRequestSchema.parse(await c.req.json()) : undefined;
     const active = selection === undefined ? undefined : current(c.req.raw);
     if (active === undefined && (pending === undefined || cookieOf(c.req.raw) !== pending.sessionId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
@@ -372,23 +373,34 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       await operation.runtime.detach();
       await profileRuntime.awaitClosurePreparation(operation.profileId);
       const result = profileRuntime.session.resumeLogout(operation.operationId);
-      if (result.state !== "signed-out") return c.json(PublicProfileStateSchema.parse(result.state === "refused"
-        ? { state: "refused", code: result.code } : { state: "cancelling", operationId: operation.operationId }));
+      if (result.state !== "signed-out") return PublicProfileStateSchema.parse(result.state === "refused"
+        ? { state: "refused", code: result.code } : { state: "cancelling", operationId: operation.operationId });
       if (operation.deleting) profileRuntime.session.deleteLoggedOutAccount(operation.operationId);
       pending = undefined;
       c.header("set-cookie", `${cookieName}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
-      return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: machine.readProfileRegistry().profiles.length === 0 }));
+      return PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: machine.readProfileRegistry().profiles.length === 0 });
     } finally { transitioning = false; }
   };
-  const loginChanged = (result: { readonly state: "changed" } | { readonly state: "refused"; readonly code: string }) =>
-    ProfileLoginChangeResultSchema.parse(result.state === "refused" ? { state: "refused", code: result.code } : result);
+  const endSession = async (c: Context, deleting: boolean) => c.json(await closeSession(c, deleting));
+  // A change whose saved entries could not be put back signs out through ordinary logout, so the old login can sign in and restore them.
+  const changeLogin = async (c: Context, change: (token: string, at: string) => ReturnType<typeof profileRuntime.session.changePassword>) => {
+    const active = current(c.req.raw);
+    try {
+      const result = change(active.token, clock.now().toISOString());
+      return c.json(ProfileLoginChangeResultSchema.parse(result.state === "refused" ? { state: "refused", code: result.code } : result));
+    } catch (error) {
+      if (!(error instanceof RelayLoginUnsettledError)) throw error;
+      await closeSession(c, false);
+      return c.json(ProfileLoginChangeResultSchema.parse({ state: "refused", code: "PROFILE_LOGIN_CHANGE_UNSETTLED" }));
+    }
+  };
   app.post("/api/v1/profile/account/password", async c => {
-    const request = ProfilePasswordChangeRequestSchema.parse(await c.req.json()), active = current(c.req.raw);
-    return c.json(loginChanged(profileRuntime.session.changePassword(active.token, { ...request, at: clock.now().toISOString() })));
+    const request = ProfilePasswordChangeRequestSchema.parse(await c.req.json());
+    return changeLogin(c, (token, at) => profileRuntime.session.changePassword(token, { ...request, at }));
   });
   app.post("/api/v1/profile/account/username", async c => {
-    const request = ProfileUsernameChangeRequestSchema.parse(await c.req.json()), active = current(c.req.raw);
-    return c.json(loginChanged(profileRuntime.session.changeUsername(active.token, { ...request, at: clock.now().toISOString() })));
+    const request = ProfileUsernameChangeRequestSchema.parse(await c.req.json());
+    return changeLogin(c, (token, at) => profileRuntime.session.changeUsername(token, { ...request, at }));
   });
   app.post("/api/v1/profile/logout", c => endSession(c, false));
   app.post("/api/v1/profile/delete-account", c => endSession(c, true));

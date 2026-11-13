@@ -739,6 +739,10 @@ export const ERROR_CATALOG = Object.freeze({
     "Enter a different plain email address with no spaces around it. Nothing was changed.",
     EmptyParametersSchema,
   ),
+  PROFILE_LOGIN_CHANGE_UNSETTLED: catalogEntry(
+    "Your sign-in could not be changed, so Relay signed you out. Sign in with your current username and password.",
+    EmptyParametersSchema,
+  ),
   PROFILE_LOGIN_CHANGE_BUSY: catalogEntry(
     "Another save was in progress, so your sign-in was not changed. Try again.",
     EmptyParametersSchema,

@@ -12,7 +12,7 @@ export type ProfileSignUpRequest = z.infer<typeof ProfileSignUpRequestSchema>;
 export const ProfilePasswordChangeRequestSchema = z.strictObject({ currentPassword: ProfileLoginRequestSchema.shape.password, newPassword: ProfileLoginRequestSchema.shape.password });
 export const ProfileUsernameChangeRequestSchema = z.strictObject({ currentPassword: ProfileLoginRequestSchema.shape.password, newUsername: ProfileLoginRequestSchema.shape.email });
 export const ProfileLoginChangeResultSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("changed") }),
+  z.strictObject({ state: z.literal("changed"), durability: z.literal("unconfirmed").optional() }),
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
 ]);
 export const DeleteProfileAccountRequestSchema = z.strictObject({ confirmed: z.literal(true),
