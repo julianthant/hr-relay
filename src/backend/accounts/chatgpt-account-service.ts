@@ -234,6 +234,13 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     },
   };
   let lifecycle: ChatGptLifecycle = { phase: "idle", epoch: 0 };
+  /** The authority of the forgotten record, keyed by the expiry error of the operation that wrote it. */
+  const erasures = new WeakMap<Error, ChatGptAccountAuthority>();
+  function forgetEnded(transaction: ChatGptCredentialTransaction, current: ChatGptCredentialRecord, expired: Error): void {
+    const next = forgotten(current);
+    transaction.replace(next, current.revision);
+    erasures.set(expired, Object.freeze({ revision: next.revision, attemptGeneration: lifecycle.epoch, availability: "signed-out" }));
+  }
   let rejectedSessionToken: string | undefined;
   let planFailureToken: string | undefined;
   let refreshingAccount: Promise<ChatGptAccountState> | undefined;
@@ -560,8 +567,9 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     if (needsRefresh(current)) {
       if (diagnostic !== undefined) diagnostic.path = "auth-refresh";
       if (current.session.refreshToken === null) {
-        if (unrenewableEnded(current) && epoch === lifecycle.epoch && lifecycle.phase !== "closed") transaction.replace(forgotten(current), current.revision);
-        throw fault("CHATGPT_ACCOUNT_EXPIRED");
+        const expired = fault("CHATGPT_ACCOUNT_EXPIRED");
+        if (unrenewableEnded(current) && epoch === lifecycle.epoch && lifecycle.phase !== "closed") forgetEnded(transaction, current, expired);
+        throw expired;
       }
       if (current.session.earliestRefreshAt !== null && clock.nowMs() / 1000 < current.session.earliestRefreshAt) throw fault("CHATGPT_ACCOUNT_EXPIRED");
       let result;
@@ -569,7 +577,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       catch (error) {
         assertCurrent();
         if (error instanceof ChatGptAccountError && error.code === "CHATGPT_ACCOUNT_EXPIRED" && epoch === lifecycle.epoch && lifecycle.phase !== "closed")
-          transaction.replace(forgotten(current), current.revision);
+          forgetEnded(transaction, current, error);
         throw error;
       }
       assertCurrent();
@@ -769,7 +777,15 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     operation.assertCurrent();
     if (diagnostic !== undefined) { diagnostic.path = "http-error"; recordProviderCode(diagnostic, code); }
     await rejectProviderCode(code, operation);
-    if (response.status === 401) { rejectedSessionToken = invokedAccessToken; throw fault("CHATGPT_ACCOUNT_EXPIRED"); }
+    if (response.status === 401) {
+      rejectedSessionToken = invokedAccessToken;
+      const expired = fault("CHATGPT_ACCOUNT_EXPIRED");
+      if (operation.credentials.session?.refreshToken === null) await repository.withLock(async transaction => {
+        const current = transaction.read();
+        if (operation.epoch === lifecycle.epoch && lifecycle.phase !== "closed" && current?.session != null && privateEqual(current.session.accessToken, invokedAccessToken)) forgetEnded(transaction, current, expired);
+      });
+      throw expired;
+    }
     if (response.status === 403 && (code === undefined || ["subscription_sharing_user_not_eligible", "chatpass_v2_scope_not_authorized", "chatpass_v2_invalid_authorization_context"].includes(code))) {
       planFailureToken = invokedAccessToken; throw fault("CHATGPT_PLAN_DISABLED");
     }
@@ -844,7 +860,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       authority = operation.authority;
       return { state: "completed" as const, checkedAt: IsoInstantSchema.parse(clock.now().toISOString()), authority };
     } catch (error) {
-      authority = operation?.authority ?? authority;
+      authority = (error instanceof Error ? erasures.get(error) : undefined) ?? operation?.authority ?? authority;
       return { state: "failed" as const, error: error instanceof ChatGptAccountError && error.code === "CHATGPT_OCR_CANCELLED"
         ? fault("CHATGPT_CONNECTION_CANCELLED") : error, authority };
     } finally { operation?.close(); }
