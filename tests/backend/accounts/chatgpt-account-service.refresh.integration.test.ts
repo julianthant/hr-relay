@@ -52,7 +52,7 @@ it("keeps quota authority across renewal until a completed inference proves usag
   } finally { await f.cleanup(); }
 });
 
-it("preserves credentials on temporary renewal failure and marks real refresh denial expired", async () => {
+it("preserves credentials on temporary renewal failure and forgets the account on real refresh denial", async () => {
   const f = await chatGptFixture();
   try {
     await f.connected(); f.clock.advanceWall(3_600_000); const before = f.repository.read();
@@ -60,8 +60,8 @@ it("preserves credentials on temporary renewal failure and marks real refresh de
     await assert.rejects(f.service.refreshAccount(), { code: "CHATGPT_AUTH_UNAVAILABLE" });
     assert.deepEqual(f.repository.read(), before);
     f.setTokenStatus(400, "invalid_grant");
-    assert.deepEqual(await f.service.refreshAccount(), { state: "expired" });
-    assert.equal(f.repository.read()?.session, null); assert.equal(f.repository.read()?.clientId, before?.clientId);
+    assert.deepEqual(await f.service.refreshAccount(), { state: "signed-out" });
+    assert.equal(f.repository.read()?.session, null); assert.equal(f.repository.read()?.clientId, null); assert.equal(f.repository.read()?.registration, null);
   } finally { await f.cleanup(); }
 });
 
@@ -94,6 +94,6 @@ it("does not resurrect credentials when sign-out supersedes a pending account re
     await entered.promise;
     const signingOut = f.service.signOut(); release.resolve();
     await reading; await signingOut;
-    assert.equal(f.repository.read()?.session, null); assert.deepEqual(f.service.readAccount(), { state: "signed-out", account: { email: "synthetic@example.com" } });
+    assert.equal(f.repository.read()?.session, null); assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
   } finally { release.resolve(); await f.cleanup(); }
 });
