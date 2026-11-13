@@ -548,11 +548,6 @@ export function createProfileSession(input: {
       if (email === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
       return email;
     },
-    credentials: operation => {
-      const entries = storeFor(operation.profileId).read().entries;
-      if (entries.ucpathUserId === undefined || entries.ucpathPassword === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-      return { userId: entries.ucpathUserId.value, password: entries.ucpathPassword.value };
-    },
     publicState: onboardingState,
     store: operation => {
       if (operation.onboarding === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
