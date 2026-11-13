@@ -44,11 +44,11 @@ describe("General ChatGPT account", () => {
     assert.match(host?.textContent ?? "", /jordan.lee@example\.com/u);
     assert.doesNotMatch(host?.textContent ?? "", /Using ChatGPT plan|Preview/u);
     const focused = document.activeElement;
-    assert.ok(focused instanceof HTMLButtonElement && host?.contains(focused), "focus recovers inside the account region after Connect");
-    assert.equal(focused.textContent, "Disconnect", "the first control of the connected account row takes focus");
+    assert.ok(focused instanceof HTMLAnchorElement && host?.contains(focused), "focus recovers inside the account region after Connect");
+    assert.equal(focused.textContent, "Manage usage", "the first control of the connected account takes focus");
   });
 
-  it("requests plan access directly for a disabled account, then signs out", async () => {
+  it("requests plan access directly for a disabled account, and signing out removes the account", async () => {
     const port = createPreviewChatGptAccountPort();
     await port.signIn({ usePlan: false });
     await mount(port);
@@ -67,7 +67,7 @@ describe("General ChatGPT account", () => {
     assert.equal(usage.target, "_blank");
     assert.equal(usage.rel, "noopener noreferrer");
     assert.ok(!window.location.search.includes("jordan.lee"));
-    await click("Disconnect");
+    await act(async () => { await port.signOut(); });
     assert.equal(port.getSnapshot().state, "signed-out");
     assert.doesNotMatch(host?.textContent ?? "", /jordan\.lee@example\.com/u);
   });
@@ -102,15 +102,18 @@ describe("General ChatGPT account", () => {
     assert.equal(port.getSnapshot().state, "signed-out");
   });
 
-  it("keeps the account visible when sign-out cannot be confirmed", async () => {
-    const port = controlledPort({ state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "enabled" },
-      { signOut: () => Promise.reject(new Error("synthetic-lost-response")) });
-    await mount(port);
-    await click("Disconnect");
-    assert.match(host?.textContent ?? "", /Sign-out could not be confirmed/u);
-    assert.match(host?.textContent ?? "", /operator@example\.com/u);
-    assert.equal(port.getSnapshot().state, "connected");
-    assert.equal(button("Disconnect").disabled, false);
+  it("offers no Disconnect or different-account control for any account state", async () => {
+    for (const snapshot of [
+      { state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "enabled" },
+      { state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "disabled" },
+      { state: "expired" },
+      { state: "signed-out", account: { email: "operator@example.com" } },
+      { state: "signed-out" },
+    ] as const satisfies readonly ChatGptAccountSnapshot[]) {
+      await mount(controlledPort(snapshot));
+      assert.doesNotMatch(host?.textContent ?? "", /Disconnect|Use a different account/u, snapshot.state);
+      act(() => root?.unmount()); root = undefined; host?.remove();
+    }
   });
 
   it("allows an in-flight adapter to settle after the card unmounts", async () => {

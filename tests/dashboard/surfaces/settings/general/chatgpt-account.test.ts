@@ -37,7 +37,7 @@ describe("General ChatGPT account", () => {
     const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port }));
     assert.match(html, /Held operator.*held@example\.com/u);
     assert.match(html, /ChatGPT account unavailable.*Account read failed/u);
-    assert.doesNotMatch(html, /disabled=""[^>]*>Disconnect/u);
+    assert.doesNotMatch(html, /Disconnect/u);
     assert.doesNotMatch(html, /Connect ChatGPT/u);
   });
 
@@ -87,7 +87,7 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
     await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
     if (scenario === "unconfirmed remote revocation") {
       assert.match(host.textContent ?? "", /Exact held operator.*exact@example.com/u);
-      await act(async () => button("Disconnect").click());
+      await act(async () => { await port.signOut(); });
       assert.deepEqual(port.getResource(), { state: "empty", account: { state: "signed-out" }, warning: "CHATGPT_REVOCATION_UNCONFIRMED" });
       assert.doesNotMatch(host.textContent ?? "", /Exact held operator|exact@example.com/u);
     } else assert.equal(port.getResource().state, "failed");
@@ -107,36 +107,13 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
 });
 
 
-it("lets a known expired session disconnect without inventing credentials for unknown accounts", async () => {
-  let signOuts = 0;
-  const port = controlledPort({ state: "expired" }, { signOut: async () => { signOuts++; } });
-  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
-  const disconnect = [...host.querySelectorAll("button")].find(button => button.textContent === "Disconnect");
-  assert.ok(disconnect); await act(async () => disconnect.click()); assert.equal(signOuts, 1);
-  const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "unavailable", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text }) }));
-  assert.doesNotMatch(html, /Disconnect/u);
+it("offers Reconnect for an expired session without a separate disconnect", () => {
+  const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "expired" }) }));
+  assert.match(html, />Reconnect</u);
+  assert.doesNotMatch(html, /Disconnect|Use a different account/u);
 });
 
 it("keeps OCR diagnostics out of the account panel", () => {
   const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "connected", name: "Operator", email: "operator@example.com", planUsage: "enabled" }) }));
   assert.doesNotMatch(html, /Test OCR|OCR test/u);
-  assert.match(html, /Disconnect/u);
-});
-
-it("offers a different account only when an identity remains", async () => {
-  const retained = { state: "signed-out", account: { email: "synthetic@example.com" } } as const;
-  for (const snapshot of [retained, { state: "expired" } as const, { state: "connected", name: "Synthetic", email: "synthetic@example.com", planUsage: "enabled" } as const]) {
-    const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) }));
-    assert.match(html, /Use a different account/u);
-  }
-  for (const snapshot of [{ state: "signed-out" } as const, { state: "signing-in", attemptId: "pending", expiresAt: "2099-01-01T00:00:00.000Z" } as const]) {
-    assert.doesNotMatch(renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) })), /Use a different account/u);
-  }
-  let forgotten = 0;
-  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(ChatGptAccountSettings, { port: controlledPort(retained, { forgetAccount: async () => { forgotten++; } }) })));
-  assert.match(host.textContent ?? "", /Signs in as synthetic@example.com\./u);
-  const button = [...host.querySelectorAll("button")].find(button => button.textContent === "Use a different account");
-  assert.ok(button); await act(async () => button.click()); assert.equal(forgotten, 1);
 });
