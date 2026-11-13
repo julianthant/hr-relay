@@ -380,7 +380,7 @@ export function RunPauseControl({ runLabel, state, command, interrupt, onAction 
   const pendingStatus = stepInterruptLabel(interrupt) ?? "Pause is not yet recorded.";
   return <div className="flex items-center gap-2" aria-label={`${runLabel} pause controls`}>
 
-    <Button size="sm" variant="secondary" disabled={command === undefined || onAction === undefined} onClick={() => command !== undefined && onAction?.(command)}>{state === "pause-pending" ? "Pausing…" : command === "resume" ? "Resume" : "Pause"}</Button>
+    <Button size="sm" variant="secondary" disabled={command === undefined || onAction === undefined} onClick={() => command !== undefined && onAction?.(command)}>{command === "resume" ? "Resume" : state === "pause-pending" ? "Pausing…" : "Pause"}</Button>
     {state !== "running" && <span className="sr-only" role="status">{state === "pause-pending" ? pendingStatus : state === "paused" ? "Pause recorded. Resume explicitly after restart." : "Run pause authority is unavailable."}</span>}
   </div>;
 }
