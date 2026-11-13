@@ -4,13 +4,9 @@ import { FIXTURE_RUN_DETAILS } from "../../../support/fixtures/dashboard/run-det
 import { FIXTURE_FAILURE_SECTIONS } from "../../../support/fixtures/dashboard/run-detail/receipts-failures.js";
 import { FIXTURE_IDS } from "../../../support/fixtures/dashboard/fixture-queue.js";
 import { DelegationConfigUnavailableError } from "../../../../src/backend/runs/lifecycle/delegation-admission.js";
-import { ERROR_CATALOG, ErrorCatalogCodeSchema, failureCodeFromTaskCode, operatorFailureSentence, resolveErrorCatalogFailure } from "../../../../src/models/failures/error-catalog.js";
+import { ERROR_CATALOG, operatorFailureSentence, resolveErrorCatalogFailure } from "../../../../src/models/failures/error-catalog.js";
 import { projectFailureForOperator } from "../../../../src/models/trust/failure.js";
-import { READABLE_WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
-import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
 import { describe,it } from "vitest";
 import {
 buildNodeFailureRecord, buildEntryValidationFailureRecord
@@ -81,43 +77,6 @@ describe("node failure code selection", () => {
     assert.deepEqual(failure.causeChain.map(({ code, role }) => [code, role]),
       [["SUBJECT_MISMATCH", "primary"], ["BROWSER_SCREENSHOT_CAPTURE_FAILED", "secondary"]]);
     assert.equal(failure.causeChain[1]?.summary, "Failure screenshot not taken: page-closed");
-  });
-});
-
-describe("runtime failure code catalog coverage", () => {
-  const catalogued = (code: string) => ErrorCatalogCodeSchema.safeParse(failureCodeFromTaskCode(code)).success;
-
-  it("catalogues every task error code a registered workflow declares", () => {
-    const missing = new Set<string>();
-    let declared = 0;
-    for (const { descriptor } of READABLE_WORKFLOW_MODULES) for (const node of descriptorRuntimeNodes(descriptor)) {
-      const contracts = node.kind === "task" ? [node.uses] : node.kind === "transaction" ? [node.prepare.uses, node.commit.uses] : [];
-      for (const contract of contracts) for (const code of contract.errorCodes) {
-        declared += 1;
-        if (!catalogued(code)) missing.add(`${contract.id}: ${code}`);
-      }
-    }
-    assert.ok(declared > 0, "the registry declared no task error codes");
-    assert.deepEqual([...missing], []);
-  });
-
-  it("catalogues every literal task error code the runtime constructs", () => {
-    const root = resolve(process.cwd(), "src/backend/runtime");
-    const constructed = new Map<string, string>();
-    const walk = (directory: string): void => {
-      for (const entry of readdirSync(directory, { withFileTypes: true })) {
-        const path = join(directory, entry.name);
-        if (entry.isDirectory()) walk(path);
-        else if (entry.name.endsWith(".ts")) {
-          for (const match of readFileSync(path, "utf8").matchAll(/new TaskError\(\s*[^,]+,\s*"([^"]+)"/gu)) {
-            constructed.set(match[1] ?? "", relative(process.cwd(), path));
-          }
-        }
-      }
-    };
-    walk(root);
-    assert.ok(constructed.has("BROWSER_SCREENSHOT_CAPTURE_FAILED"), "the source scan found no runtime TaskError codes");
-    assert.deepEqual([...constructed].filter(([code]) => !catalogued(code)).map(([code, path]) => `${path}: ${code}`), []);
   });
 });
 

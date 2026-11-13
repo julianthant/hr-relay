@@ -16,21 +16,30 @@ import { happySessionHarness, personLookupQueuedRun, type SessionFactoryHarness 
 const { executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld();
 afterEach(cleanup);
 
-const thrownTask = defineTask(ucpathDriver, SearchPersonOrg, {
-  sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
-  async run({ input, ctx }) {
-    await ctx.driver.searchPersonOrg(input);
-    throw Object.assign(new Error("Timeout 30000ms exceeded."), { name: "TimeoutError" });
-  },
-});
+type Thrown = "timeout" | "undefined" | "declared";
 
-type Page = BrowserScreenshotEvidence["state"] | "throws";
+function thrownTask(thrown: Thrown) {
+  return defineTask(ucpathDriver, SearchPersonOrg, {
+    sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
+    async run({ input, ctx }) {
+      await ctx.driver.searchPersonOrg(input);
+      const nonError: unknown = undefined;
+      if (thrown === "undefined") throw nonError;
+      if (thrown === "declared") ctx.fail("PERSON_LOOKUP_UCPATH_SEARCH_FAILED", "UCPath search stopped");
+      throw Object.assign(new Error("Timeout 30000ms exceeded."), { name: "TimeoutError" });
+    },
+  });
+}
 
-function sessionsShowing(page: Page): SessionFactoryHarness {
+/** `deadline` reaches the task deadline while the failure screenshot is being taken. */
+type Page = BrowserScreenshotEvidence["state"] | "throws" | "deadline";
+
+function sessionsShowing(page: Page, reachDeadline: () => void): SessionFactoryHarness {
   const base = happySessionHarness();
   return { ...base, factory: { ...base.factory, async open(input) {
     const resource = await base.factory.open(input);
     return { ...resource, async screenshot(): Promise<BrowserScreenshotEvidence> {
+      if (page === "deadline") reachDeadline();
       if (page === "throws") throw new Error("synthetic screenshot refusal");
       const evidence = { pageVersion: 1, sessionId: resource.sessionId, observedAt: "2026-08-29T08:00:00.000Z" } as const;
       return page === "available"
@@ -40,9 +49,11 @@ function sessionsShowing(page: Page): SessionFactoryHarness {
   } } };
 }
 
-async function runThrownStep(page: Page, notes: "saved" | "screenshot-refused" = "saved") {
+async function runThrownStep(page: Page, options: Readonly<{ notes?: "saved" | "screenshot-refused"; thrown?: Thrown }> = {}) {
   const services: ReturnType<typeof createDiagnosticCaptureService>[] = [];
-  const h = await executorHarness({ sessions: sessionsShowing(page), stores: registryWithUcpathSearch(thrownTask),
+  const deadlines: (() => void)[] = [];
+  const h = await executorHarness({ sessions: sessionsShowing(page, () => deadlines.shift()?.()),
+    stores: registryWithUcpathSearch(thrownTask(options.thrown ?? "timeout")),
     screenshotCapture: { capture: context => {
       const service = services[0];
       assert.ok(service, "the diagnostic capture service is wired before the run starts");
@@ -54,7 +65,12 @@ async function runThrownStep(page: Page, notes: "saved" | "screenshot-refused" =
   services.push(createDiagnosticCaptureService({ artifacts, authority: database.authority, clock, ids: sequentialIdFactory("d") }));
   const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
   const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
-  const outcome = await executeClaimedRun({ ...h.deps, taskNotes: notes === "saved" ? writer : { ...writer, emitRunAction(input, run) {
+  deadlines.push(() => {
+    const [deadline] = h.scheduler.pending();
+    assert.ok(deadline, "the task deadline is armed while its failure screenshot is taken");
+    deadline.fire();
+  });
+  const outcome = await executeClaimedRun({ ...h.deps, taskNotes: (options.notes ?? "saved") === "saved" ? writer : { ...writer, emitRunAction(input, run) {
     if (input.action.kind === "screenshot") throw new Error("synthetic Screenshot action persistence failure");
     return writer.emitRunAction(input, run);
   } } }, { ...claimed, signal: SIGNAL });
@@ -88,21 +104,24 @@ describe("a task that throws", () => {
   });
 
   it.each([
-    { page: "unavailable" as const, reason: "page-closed" },
-    { page: "throws" as const, reason: "Error" },
-  ])("names why no screenshot was taken when the capture is refused ($reason)", async ({ page, reason }) => {
+    { page: "unavailable" as const, reason: "page-closed", leaseFaults: [] },
+    { page: "throws" as const, reason: "Error", leaseFaults: [["TASK_UNHANDLED_FAILURE",
+      "The browser lease failed after the task stopped: ucpath operation and selected browser screenshot both failed", "secondary"]] },
+  ])("names why no screenshot was taken when the capture is refused ($reason)", async ({ page, reason, leaseFaults }) => {
     const { outcome, failure, stepCaptures } = await runThrownStep(page);
     assert.equal(outcome.state, "failed");
     assert.ok(failure);
     assert.equal(failure.code, "TASK_UNHANDLED_FAILURE", "a refused capture never replaces the task's own failure");
-    assert.ok(failure.debug?.causes.some(text => /^TimeoutError: .*Timeout 30000ms exceeded/u.test(text)), "the task's own error stays in the failure evidence");
-    assert.deepEqual(failure.causeChain.slice(1), [{ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED",
-      summary: `Failure screenshot not taken: ${reason}`, role: "secondary", transient: false }]);
+    assert.match(failure.summary, /Timeout 30000ms exceeded/u);
+    assert.deepEqual(failure.causeChain.slice(1).map(({ code, summary, role }) => [code, summary, role]), [
+      ["BROWSER_SCREENSHOT_CAPTURE_FAILED", `Failure screenshot not taken: ${reason}`, "secondary"],
+      ...leaseFaults,
+    ]);
     assert.deepEqual(stepCaptures, []);
   });
 
   it("keeps the task's own failure when the run log refuses the failure screenshot", async () => {
-    const { outcome, failure, stepCaptures } = await runThrownStep("available", "screenshot-refused");
+    const { outcome, failure, stepCaptures } = await runThrownStep("available", { notes: "screenshot-refused" });
     assert.equal(outcome.state, "failed");
     assert.ok(failure);
     assert.equal(failure.code, "TASK_UNHANDLED_FAILURE");
@@ -110,5 +129,38 @@ describe("a task that throws", () => {
     assert.deepEqual(failure.causeChain.slice(1).map(({ code, summary }) => [code, summary]),
       [["BROWSER_SCREENSHOT_CAPTURE_FAILED", "Failure screenshot not saved to the run log"]]);
     assert.deepEqual(stepCaptures, []);
+  });
+
+  it("captures the stopped page when the task throws a non-Error undefined", async () => {
+    const { outcome, failure, stepCaptures } = await runThrownStep("available", { thrown: "undefined" });
+    assert.equal(outcome.state, "failed");
+    assert.equal(failure?.code, "TASK_UNHANDLED_FAILURE");
+    assert.deepEqual(failure?.causeChain.map(({ code }) => code), ["TASK_UNHANDLED_FAILURE"]);
+    assert.equal(stepCaptures.length, 1);
+  });
+
+  it("keeps a declared task failure when both the failure screenshot and the lease's own screenshot fail", async () => {
+    const { outcome, failure, stepCaptures } = await runThrownStep("throws", { thrown: "declared" });
+    assert.equal(outcome.state, "failed");
+    assert.ok(failure);
+    assert.equal(failure.code, "PERSON_LOOKUP_UCPATH_SEARCH_FAILED");
+    assert.match(failure.summary, /UCPath search stopped/u);
+    assert.deepEqual(failure.causeChain.slice(1).map(({ code, summary }) => [code, summary]), [
+      ["BROWSER_SCREENSHOT_CAPTURE_FAILED", "Failure screenshot not taken: Error"],
+      ["TASK_UNHANDLED_FAILURE", "The browser lease failed after the task stopped: ucpath operation and selected browser screenshot both failed"],
+    ]);
+    assert.deepEqual(stepCaptures, []);
+  });
+
+  it("keeps the task's own failure when its deadline is reached during the failure screenshot", async () => {
+    const { outcome, failure } = await runThrownStep("deadline");
+    assert.equal(outcome.state, "failed");
+    assert.ok(failure);
+    assert.equal(failure.code, "TASK_UNHANDLED_FAILURE");
+    assert.match(failure.summary, /Timeout 30000ms exceeded/u);
+    assert.deepEqual(failure.causeChain.slice(1).map(({ code, summary }) => [code, summary]), [
+      ["BROWSER_SCREENSHOT_CAPTURE_FAILED", "Failure screenshot not taken: task-deadline"],
+      ["TASK_UNHANDLED_FAILURE", "The browser lease failed after the task stopped: ucpath/search-person-org exceeded its immutable 60000ms task deadline"],
+    ]);
   });
 });

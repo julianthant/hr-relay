@@ -54,7 +54,7 @@ import type { AuthorityRepositories } from "../../storage/sqlite/authority-datab
 import { WriteIntentParkCodeSchema, type WriteIntentParkCode } from "../../storage/sqlite/write-commit-contracts.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import { createProviderClient, type ProviderAdapterRegistry, type ProviderClientDependencies, type ProviderRequestIdFactory } from "../../processing/providers/provider-client.js";
-import { buildEntryValidationFailureRecord, buildNodeFailureRecord, type FailureEvidenceCause } from "./run-failure.js";
+import { buildEntryValidationFailureRecord, buildNodeFailureRecord, followingFailureCause, type FailureEvidenceCause } from "./run-failure.js";
 import { buildRunPreviewResult, buildRunResult } from "../../runs/lifecycle/run-result.js";
 import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath, type SpanEmitter } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
@@ -1308,59 +1308,73 @@ export async function executeClaimedRun(
               `run ${runId} resolved no ${need.system} instance at enqueue, and ${contract.id} needs one`,
             );
           }
-          let captureRefusal: string | undefined;
+          const captureRefusals: string[] = [];
           const screenshotLog: Pick<TaskLogger, "warn"> = { warn: (message, fields) => {
-            if (fields?.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED" && typeof fields.reason === "string") captureRefusal = fields.reason;
+            if (fields?.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED" && typeof fields.reason === "string") captureRefusals.push(fields.reason);
             taskLogger.warn(message, fields);
           } };
-          let operationFailed = false;
-          raw = await withBrowserActionNotes(clock,
-            () => raceAbortable(
-              deps.sessions.withDriver(need, instanceSelection, controller.signal, (driver, captureScreenshot) => raceAbortable(
-                Promise.resolve().then(async () => {
-                    let captured = false;
-                    let captureFailure: Readonly<{ error: unknown }> | undefined;
-                    const requiredCapture = async (): Promise<void> => {
-                      try { await captureScreenshot(); captured = true; }
-                      catch (error) { captureFailure = { error }; throw error; }
-                    };
-                    let output: unknown;
-                    try {
-                      output = await run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver,
-                        captureScreenshot: task.impl.screenshots === "task" ? requiredCapture : () => Promise.reject(new TaskError(
-                          contract.id, "BROWSER_SCREENSHOT_CAPTURE_FAILED", "Task screenshot capture requires declared task ownership",
-                        )),
-                      } });
-                    } catch (taskFailure) {
-                      // The page the step stopped on, while its lease still holds it; a refusal is evidence, never the failure.
-                      if (captureFailure?.error !== taskFailure) {
-                        captureRefusal = undefined;
-                        try { await captureScreenshot(); }
-                        catch {
-                          failureCauses.push({ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED",
-                            summary: `Failure screenshot not taken: ${captureRefusal ?? (controller.signal.aborted ? "task-aborted" : "lease-ended")}` });
+          let operationFailure: Readonly<{ error: unknown }> | undefined;
+          let stopped: Readonly<{ error: unknown }> | undefined;
+          const failureCapture: { state: "pending" | "settled" } = { state: "pending" };
+          const failureCaptureRefused = (reason: string): void => {
+            if (failureCapture.state === "settled") return;
+            failureCapture.state = "settled";
+            failureCauses.push({ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: `Failure screenshot not taken: ${reason}` });
+          };
+          try {
+            raw = await withBrowserActionNotes(clock,
+              () => raceAbortable(
+                deps.sessions.withDriver(need, instanceSelection, controller.signal, (driver, captureScreenshot) => raceAbortable(
+                  Promise.resolve().then(async () => {
+                      let captured = false;
+                      let captureFailure: Readonly<{ error: unknown }> | undefined;
+                      const requiredCapture = async (): Promise<void> => {
+                        try { await captureScreenshot(); captured = true; }
+                        catch (error) { captureFailure = { error }; throw error; }
+                      };
+                      let output: unknown;
+                      try {
+                        output = await run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver,
+                          captureScreenshot: task.impl.screenshots === "task" ? requiredCapture : () => Promise.reject(new TaskError(
+                            contract.id, "BROWSER_SCREENSHOT_CAPTURE_FAILED", "Task screenshot capture requires declared task ownership",
+                          )),
+                        } });
+                      } catch (taskFailure) {
+                        stopped = { error: taskFailure };
+                        // The page the step stopped on, while its lease still holds it; a refusal is evidence, never the failure.
+                        if (captureFailure === undefined || captureFailure.error !== taskFailure) {
+                          const earlierRefusals = captureRefusals.length;
+                          try { await captureScreenshot(); }
+                          catch { failureCaptureRefused(captureRefusals.slice(earlierRefusals).at(-1) ?? (controller.signal.aborted ? "task-deadline" : "lease-ended")); }
                         }
+                        failureCapture.state = "settled";
+                        throw taskFailure;
                       }
-                      throw taskFailure;
-                    }
-                    if (captureFailure !== undefined) throw captureFailure.error;
-                    if (!captured) await requiredCapture();
-                    return output;
-                  }),
+                      if (captureFailure !== undefined) throw captureFailure.error;
+                      if (!captured) await requiredCapture();
+                      return output;
+                    }),
+                  controller.signal,
+                  contract.id, retain,
+                ), { taskId: contract.id, nodeId: String(node.id), attempt: envelope.attempt, log: screenshotLog }),
                 controller.signal,
                 contract.id, retain,
-              ), { taskId: contract.id, nodeId: String(node.id), attempt: envelope.attempt, log: screenshotLog }),
-              controller.signal,
-              contract.id, retain,
-            ).catch((error: unknown) => { operationFailed = true; throw error; }),
-            (actions) => {
-              try { drainBrowserActions(spanPath, actions, contract.id); }
-              catch (error) {
-                if (!operationFailed) throw error;
-                failureCauses.push({ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: "Failure screenshot not saved to the run log" });
-              }
-            },
-          );
+              ).catch((error: unknown) => { operationFailure = { error }; throw error; }),
+              (actions) => {
+                try { drainBrowserActions(spanPath, actions, contract.id); }
+                catch (error) {
+                  if (operationFailure === undefined) throw error;
+                  failureCauses.push({ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: "Failure screenshot not saved to the run log" });
+                }
+              },
+            );
+          } catch (error) {
+            // A deadline or lease fault after the task stopped is recorded beside the task's own failure, not in its place.
+            if (stopped === undefined || error === stopped.error || error instanceof RunAbandonedError) throw error;
+            if (failureCapture.state === "settled") failureCauses.push(followingFailureCause(error, "The browser lease failed after the task stopped"));
+            else failureCaptureRefused(controller.signal.aborted ? "task-deadline" : "lease-ended");
+            throw stopped.error;
+          }
         }
       } finally {
         deadline.cancel();

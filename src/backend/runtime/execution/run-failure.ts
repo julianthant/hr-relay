@@ -89,6 +89,13 @@ function nodeFailureCode(error: unknown, taskError: TaskError | undefined): stri
   return own?.success === true ? own.data : "TASK_UNHANDLED_FAILURE";
 }
 
+/** A fault that followed a node's own failure, recorded beside that failure rather than in its place. */
+export function followingFailureCause(error: unknown, context: string): FailureEvidenceCause {
+  const code = ErrorCatalogCodeSchema.safeParse(nodeFailureCode(error, error instanceof TaskError ? error : undefined));
+  return { code: code.success ? code.data : "TASK_UNHANDLED_FAILURE",
+    summary: `${context}: ${error instanceof Error ? error.message : "a non-Error value"}` };
+}
+
 export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
   const run = RunRecordSchema.parse(input.run);
   const occurredAt = IsoInstantSchema.parse(input.occurredAt);
