@@ -18,7 +18,6 @@ export function useStartupGate(session: PublicProfileState | undefined, readFail
   }, [resumable, port]);
   return {
     loading: !readFailed && (session === undefined || resumable && resume === "pending"),
-    resumable: resumable && resume === "pending",
     unavailable: resume === "unavailable",
   };
 }

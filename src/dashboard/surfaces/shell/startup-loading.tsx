@@ -4,10 +4,8 @@ import { AppLockup } from "./app-lockup.js";
 
 export type StartupLoadingVariant = "mark" | "bar" | "shell";
 
-/** Recommended: `mark`. The same 1fr/auto/1fr grid in every variant keeps the lockup still when the dashboard replaces it. */
-export const RECOMMENDED_STARTUP_VARIANT: StartupLoadingVariant = "mark";
-
-export function StartupLoading({ variant = RECOMMENDED_STARTUP_VARIANT }: { variant?: StartupLoadingVariant }) {
+/** Default `mark` is the recommended variant; the same 1fr/auto/1fr grid in every variant keeps the lockup still. */
+export function StartupLoading({ variant = "mark" }: { variant?: StartupLoadingVariant }) {
   if (variant === "shell") return <main data-startup-loading={variant} className="flex min-h-0 flex-1 flex-col bg-[color:var(--ds-surface-page)]"><DashboardSkeleton /></main>;
   return (
     <main data-startup-loading={variant} role="status" aria-label="Starting Relay" aria-busy="true"
