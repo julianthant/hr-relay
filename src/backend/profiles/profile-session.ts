@@ -32,7 +32,7 @@ import { createDuoCredentialStore } from "../storage/configuration/duo-credentia
 import { createProfileVerifiers } from "../storage/configuration/verifier-store.js";
 import { type CredentialInventory } from "./credential-inventory.js";
 import type { ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
-import { changeRelayLogin,restoreInterruptedLogin,type RelayLogin,type RelayLoginChange } from "./login-change.js";
+import { changeRelayLogin,RelayLoginUnsettledError,restoreInterruptedLogin,type RelayLogin,type RelayLoginChange } from "./login-change.js";
 import { createProfileOnboarding } from "./profile-onboarding.js";
 import { appendDuoDiagnostic } from "../logs/duo-diagnostics.js";
 import { createDebugEventWriter } from "../logs/debug-events.js";
@@ -127,6 +127,7 @@ export function createProfileSession(input: {
   const registry = createProfileRegistry(admission);
   const verifiers = createProfileVerifiers(machineRoot);
   const sessions = new Map<string, { readonly profileId: string; readonly epoch: number; readonly admission: RuntimeAdmission }>();
+  const unsettledLogins = new Map<string, RelayLogin>();
   const onboardingSessions = new Map<string, { readonly operationId: string; readonly epoch: number }>();
   function retainOnboardingBrowserFailure(error: unknown): never {
     if (!hasUnprovedSourceClosure(error) && !(error instanceof ProfileSessionRefusedError && error.code === "BROWSER_CLOSURE_UNPROVED")) throw error;
@@ -234,6 +235,7 @@ export function createProfileSession(input: {
     if (selected !== null && selected !== profileId) throw new Error("profile-session-not-current");
     const epoch = registry.advanceSession(profileId, "profile-activated");
     sessions.clear();
+    unsettledLogins.clear();
     releaseOrdinary(profileId);
     const currentAdmission = admittedProfile(profileId);
     currentAdmission.assertWritable();
@@ -556,8 +558,12 @@ export function createProfileSession(input: {
     },
   });
 
-  /** Change the signed-in profile's Relay login under the profile lock. */
-  function changeLogin(token: string, fields: { readonly currentPassword: string; readonly change: RelayLoginChange; readonly at: string }): { readonly state: "changed"; readonly durability?: "unconfirmed" } | ProfileRefusal {
+  /**
+   * Change the signed-in profile's Relay login under the profile lock. A change left unsettled keeps its proved old login in
+   * memory for this session, and the session's next change writes it back first; after a restart the old-login sign-in does.
+   */
+  function changeLogin(token: string, fields: { readonly currentPassword: string; readonly change: RelayLoginChange; readonly at: string }):
+    { readonly state: "changed"; readonly durability?: "unconfirmed"; readonly failure?: unknown } | ProfileRefusal {
     const at = IsoInstantSchema.parse(fields.at);
     admission.assertWritable();
     admission.lifetime.assertRuntimeAvailable();
@@ -567,8 +573,22 @@ export function createProfileSession(input: {
       const session = requireSession(token);
       if ("state" in session) return session;
       if (readOperations().some(operation => operation.kind === "sign-up")) return refusal("PROFILE_TRANSITION_BLOCKED");
-      const result = changeRelayLogin(verifiers, storeFor(session.profileId, session.admission), session.profileId, { ...fields, at });
-      return result === "changed" ? { state: "changed" } : result === "unconfirmed" ? { state: "changed", durability: "unconfirmed" } : refusal(result);
+      const store = storeFor(session.profileId, session.admission);
+      const unsettled = unsettledLogins.get(token);
+      if (unsettled !== undefined) { restoreInterruptedLogin(verifiers, store, session.profileId, unsettled, at); unsettledLogins.delete(token); }
+      const priorEmail = store.read().entries.ucpathUserId?.value;
+      try {
+        const outcome = changeRelayLogin(verifiers, store, session.profileId, { ...fields, at });
+        if (outcome.kind === "refused") return refusal(outcome.code);
+        if (outcome.kind === "changed") return { state: "changed" };
+        if (hasUnprovedSourceClosure(outcome.failure)) admission.retainSourceClosure(outcome.failure);
+        return { state: "changed", durability: "unconfirmed", failure: outcome.failure };
+      } catch (error) {
+        if (hasUnprovedSourceClosure(error)) { admission.retainSourceClosure(error); throw error; }
+        if (!(error instanceof RelayLoginUnsettledError) || priorEmail === undefined) throw error;
+        unsettledLogins.set(token, { email: priorEmail, password: fields.currentPassword });
+        return refusal("PROFILE_LOGIN_CHANGE_UNSETTLED");
+      }
     });
   }
 
@@ -610,6 +630,7 @@ export function createProfileSession(input: {
       onboarding.assertClosed();
       logoutContinuationGeneration++;
       sessions.clear();
+      unsettledLogins.clear();
       onboardingSessions.clear();
       completedOnboarding.clear();
       for (const profileId of storageAdmissions.keys()) {

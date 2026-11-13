@@ -427,13 +427,15 @@ The Relay login is the work email and password saved as the profile's UCPath sig
 `POST /api/v1/profile/account/username` `{currentPassword, newUsername}` change it for the current
 session cookie only and return `{state: "changed"}` or `{state: "refused", code}`. A wrong current
 password counts toward the sign-in lockout. A new username must be a plain address that changes
-the verifier key and is not taken. Refusals leave the saved login unchanged. The change saves the profile's UCPath entries first and then swaps
-that profile's verifier row as its commit point. If it stops between them, resume is refused and the
-next sign-in with the old login writes that login back. A swap that landed is never undone; if
-only its flush failed, the result is `{state: "changed", durability: "unconfirmed"}`. When the saved
-entries cannot be written back in the same request, the route logs the session out through the
-ordinary logout path and refuses with `PROFILE_LOGIN_CHANGE_UNSETTLED`, so the old login can sign
-in again on the same application. The epoch, Duo material and other profiles are unchanged.
+the verifier key and is not taken. Refusals leave the saved login unchanged. The change saves the
+profile's UCPath entries first and then swaps that profile's verifier row as its commit point; the
+swap waits until the entries are proved durable. If the change stops between them, it answers `PROFILE_LOGIN_CHANGE_UNSETTLED` and the
+session stays signed in: its next change writes the proved old login back first, and after a
+restart resume is refused until a sign-in with the old login writes it back. Neither path needs a
+logout, so parked writes are untouched. A swap that landed is never undone; if only its flush or
+directory close failed, the result is `{state: "changed", durability: "unconfirmed"}`, the failure
+is logged and an unclosed descriptor stays held by its owner. The epoch, Duo material and other
+profiles are unchanged.
 
 ### Profile onboarding boundary
 

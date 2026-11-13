@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { afterEach, describe, it, vi } from "vitest";
+import { AuthoritySourceClosureUnprovedError, createBrowserSourceRecovery } from "../../../src/backend/storage/source-closure.js";
 import { createProfileSessionWorld } from "../../support/helpers/backend/profile-session-world.js";
 
 const worlds: Awaited<ReturnType<typeof createProfileSessionWorld>>[] = [];
@@ -11,29 +12,36 @@ const alexFields = { firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.ed
 const samFields = { firstName: "Sam", lastName: "Ortiz", email: "sam@ucsd.edu", password: "secret-sam", createdAt: "2026-09-06T11:00:00.000Z" };
 
 /**
- * Fail the verifier swap. "before" fails its rename; "stop" also fails every later credential open, as when the process stops there;
- * "flush" lets the rename land and fails the directory flush after it.
+ * Inject one failure into a login change. "before" fails the verifier rename; "stop" also fails every later credential open,
+ * as when the process stops there; "flush" and "close" let the verifier rename land and fail its directory flush or descriptor
+ * close; "entries-flush" lets the saved entries' rename land and fails their directory flush.
  */
-function failVerifierSwap(mode: "before" | "stop" | "flush"): void {
-  const rename = fs.renameSync, open = fs.openSync, flush = fs.fsyncSync;
-  let stopped = false, landed = false;
+function inject(mode: "before" | "stop" | "flush" | "close" | "entries-flush"): { leaked: number[] } {
+  const rename = fs.renameSync, open = fs.openSync, flush = fs.fsyncSync, close = fs.closeSync, leaked: number[] = [];
+  let stopped = false, failFlush = false, failClose = false;
   vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-    if (String(to).endsWith("profile-verifiers.json")) {
-      if (mode === "flush") { rename(from, to); landed = true; return; }
-      stopped = mode === "stop";
-      throw new Error("injected replacement failure");
+    const target = String(to);
+    if (target.endsWith("profile-verifiers.json") && mode !== "entries-flush") {
+      if (mode === "before" || mode === "stop") { stopped = mode === "stop"; throw new Error("injected replacement failure"); }
+      rename(from, to); failFlush = mode === "flush"; failClose = mode === "close"; return;
     }
     rename(from, to);
+    if (mode === "entries-flush" && target.endsWith("/credentials/protected.json")) failFlush = true;
   });
   vi.spyOn(fs, "fsyncSync").mockImplementation(descriptor => {
-    if (landed) { landed = false; throw new Error("injected flush failure"); }
+    if (failFlush) { failFlush = false; throw new Error("injected flush failure"); }
     flush(descriptor);
+  });
+  vi.spyOn(fs, "closeSync").mockImplementation(descriptor => {
+    if (failClose) { failClose = false; leaked.push(descriptor); throw new Error("injected close failure"); }
+    close(descriptor);
   });
   vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
     if (stopped && String(path).includes("/credentials/")) throw new Error("injected stop");
     return open(path, flags, mode);
   });
   syncBuiltinESMExports();
+  return { leaked };
 }
 function restoreFiles(): void { vi.restoreAllMocks(); syncBuiltinESMExports(); }
 function refusalCode(result: { state: string; code?: string }) { return result.state === "refused" ? result.code : result.state; }
@@ -100,7 +108,7 @@ describe("Relay login change", () => {
     const session = machine.open();
     const alex = await machine.signUp(session, alexFields);
     const verifiers = machine.verifierBytes();
-    failVerifierSwap("before");
+    inject("before");
     assert.throws(() => session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:01:00.000Z" }), /injected replacement failure/u);
     restoreFiles();
     assert.equal(machine.verifierBytes(), verifiers);
@@ -118,13 +126,13 @@ describe("Relay login change", () => {
     const machine = await world();
     const session = machine.open();
     const alex = await machine.signUp(session, alexFields);
-    failVerifierSwap("stop");
+    inject("stop");
     const at = "2026-09-06T12:01:00.000Z";
-    assert.throws(() => "newPassword" in change ? session.changePassword(alex.token, { currentPassword: "secret-one", ...change, at })
-      : session.changeUsername(alex.token, { currentPassword: "secret-one", ...change, at }), /profile-login-change-unsettled/u);
+    const result = "newPassword" in change ? session.changePassword(alex.token, { currentPassword: "secret-one", ...change, at })
+      : session.changeUsername(alex.token, { currentPassword: "secret-one", ...change, at });
+    assert.equal(refusalCode(result), "PROFILE_LOGIN_CHANGE_UNSETTLED");
     restoreFiles();
     assert.deepEqual([machine.savedLogin(alex.profileId).userId, machine.savedLogin(alex.profileId).password], [next.email, next.password], kind);
-    assert.equal(refusalCode(session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-three", at })), "PROFILE_AUTHORITY_UNAVAILABLE");
 
     const restarted = machine.open();
     assert.equal(refusalCode(restarted.resumeSignedInProfile({ at: "2026-09-06T12:02:00.000Z" })), "PROFILE_AUTHORITY_UNAVAILABLE");
@@ -160,9 +168,9 @@ describe("Relay login change", () => {
     const machine = await world();
     const session = machine.open();
     const alex = await machine.signUp(session, alexFields);
-    failVerifierSwap("flush");
-    assert.deepEqual(session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:01:00.000Z" }),
-      { state: "changed", durability: "unconfirmed" });
+    inject("flush");
+    const result = session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:01:00.000Z" });
+    assert.deepEqual([result.state, result.state === "changed" && result.durability], ["changed", "unconfirmed"]);
     restoreFiles();
     assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-two" });
     const restarted = machine.open();
@@ -196,5 +204,62 @@ describe("Relay login change", () => {
     assert.equal(refusalCode(session.changeUsername(alex.token, { currentPassword: "secret-one", newUsername, at: "2026-09-06T12:01:00.000Z" })), "PROFILE_USERNAME_REFUSED");
     assert.equal(machine.verifierBytes(), verifiers);
     assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-one" });
+  });
+
+  it("settles an unsettled change on the same session's next change", async () => {
+    const machine = await world();
+    const session = machine.open();
+    const alex = await machine.signUp(session, alexFields);
+    inject("stop");
+    assert.equal(refusalCode(session.changeUsername(alex.token, { currentPassword: "secret-one", newUsername: "alex.rivera@ucsd.edu", at: "2026-09-06T12:01:00.000Z" })), "PROFILE_LOGIN_CHANGE_UNSETTLED");
+    restoreFiles();
+    assert.equal(session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:02:00.000Z" }).state, "changed");
+    assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-two" });
+    assert.equal(machine.open().signIn({ email: "alex@ucsd.edu", password: "secret-two", at: "2026-09-06T12:03:00.000Z" }).state, "active");
+  });
+
+  it("never commits the verifier over saved entries whose write was not proved durable", async () => {
+    const machine = await world();
+    const session = machine.open();
+    const alex = await machine.signUp(session, alexFields);
+    const verifiers = machine.verifierBytes();
+    inject("entries-flush");
+    assert.equal(refusalCode(session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:01:00.000Z" })), "PROFILE_LOGIN_CHANGE_UNSETTLED");
+    restoreFiles();
+    assert.equal(machine.verifierBytes(), verifiers);
+    const restarted = machine.open();
+    assert.equal(refusalCode(restarted.signIn({ email: "alex@ucsd.edu", password: "secret-two", at: "2026-09-06T12:02:00.000Z" })), "PROFILE_SIGN_IN_REFUSED");
+    assert.equal(restarted.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:03:00.000Z" }).state, "active");
+    assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-one" });
+  });
+
+  it("restores an interrupted password change for a username saved with surrounding spaces at sign-up", async () => {
+    const machine = await world();
+    const session = machine.open();
+    const alex = await machine.signUp(session, { ...alexFields, email: " alex@ucsd.edu " });
+    inject("stop");
+    assert.equal(refusalCode(session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:01:00.000Z" })), "PROFILE_LOGIN_CHANGE_UNSETTLED");
+    restoreFiles();
+    const restarted = machine.open();
+    assert.equal(restarted.signIn({ email: " alex@ucsd.edu ", password: "secret-one", at: "2026-09-06T12:02:00.000Z" }).state, "active");
+    assert.deepEqual(machine.savedLogin(alex.profileId), { userId: " alex@ucsd.edu ", password: "secret-one" });
+  });
+
+  it("reports a landed change whose directory close failed as changed and holds the machine owner until that descriptor is proved closed", async () => {
+    const machine = await world();
+    const session = machine.open();
+    const alex = await machine.signUp(session, alexFields);
+    const { leaked } = inject("close");
+    const result = session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:01:00.000Z" });
+    restoreFiles();
+    assert.deepEqual([result.state, result.state === "changed" && result.durability], ["changed", "unconfirmed"]);
+    const failure = result.state === "changed" ? result.failure : undefined;
+    assert.ok(failure instanceof AuthoritySourceClosureUnprovedError);
+    assert.throws(() => machine.open().signIn({ email: "alex@ucsd.edu", password: "secret-two", at: "2026-09-06T12:02:00.000Z" }), /authority-source-closure-unproved/u);
+    const recovery = createBrowserSourceRecovery();
+    recovery.retain(failure);
+    await recovery.prove(() => { for (const descriptor of leaked) fs.closeSync(descriptor); return Promise.resolve(); });
+    assert.equal(leaked.length, 1);
+    assert.equal(machine.open().signIn({ email: "alex@ucsd.edu", password: "secret-two", at: "2026-09-06T12:03:00.000Z" }).state, "active");
   });
 });

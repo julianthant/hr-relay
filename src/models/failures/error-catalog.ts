@@ -740,7 +740,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   PROFILE_LOGIN_CHANGE_UNSETTLED: catalogEntry(
-    "Your sign-in could not be changed, so Relay signed you out. Sign in with your current username and password.",
+    "Your sign-in change did not finish. Try it again; until it finishes, your current username and password still sign you in.",
     EmptyParametersSchema,
   ),
   PROFILE_LOGIN_CHANGE_BUSY: catalogEntry(

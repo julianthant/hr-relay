@@ -52,7 +52,7 @@ it("serves password and username changes to the signed-in session only, and the 
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
 
-it("signs out a change whose saved entries could not be put back, and the old login signs in again through the same application", async () => {
+it("keeps the session after an unsettled change and settles it on the same application's next change, without logging out", async () => {
   const f = await fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
@@ -75,19 +75,18 @@ it("signs out a change whose saved entries could not be put back, and the old lo
       return open(path, flags, mode);
     });
     syncBuiltinESMExports();
-    const changed = await post("/api/v1/profile/account/password", { currentPassword: "disposable-fixture-password", newPassword: "changed-fixture-password" }, cookie);
+    const unsettled = await post("/api/v1/profile/account/username", { currentPassword: "disposable-fixture-password", newUsername: "fixture.changed@ucsd.edu" }, cookie);
     vi.restoreAllMocks(); syncBuiltinESMExports();
-    assert.deepEqual([changed.status, await changed.json()], [200, { state: "refused", code: "PROFILE_LOGIN_CHANGE_UNSETTLED" }]);
-    assert.match(changed.headers.get("set-cookie") ?? "", /Max-Age=0/u);
-    assert.deepEqual(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).json()),
-      { state: "signed-out", signUpRequired: false });
+    assert.deepEqual([unsettled.status, await unsettled.json()], [200, { state: "refused", code: "PROFILE_LOGIN_CHANGE_UNSETTLED" }]);
+    assert.equal(unsettled.headers.get("set-cookie"), null);
+    assert.equal(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).json()).state, "active");
 
-    const fresh = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "changed-fixture-password" })).json());
-    assert.deepEqual(fresh, { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
-    const old = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
-    assert.equal(PublicProfileStateSchema.parse(await old.json()).state, "active");
-    const oldCookie = old.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(oldCookie);
-    assert.deepEqual(await (await post("/api/v1/profile/account/password", { currentPassword: "disposable-fixture-password", newPassword: "changed-fixture-password" }, oldCookie)).json(),
-      { state: "changed" });
+    const retried = await post("/api/v1/profile/account/password", { currentPassword: "disposable-fixture-password", newPassword: "changed-fixture-password" }, cookie);
+    assert.deepEqual(await retried.json(), { state: "changed" });
+    assert.equal(PublicProfileStateSchema.parse(await (await post("/api/v1/profile/logout", {}, cookie)).json()).state, "signed-out");
+    assert.deepEqual(PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-in", { email: "fixture.changed@ucsd.edu", password: "changed-fixture-password" })).json()),
+      { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
+    const signedIn = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "changed-fixture-password" });
+    assert.equal(PublicProfileStateSchema.parse(await signedIn.json()).state, "active");
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
