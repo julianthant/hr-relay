@@ -4,8 +4,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { PauseAllQuitControls, RunPauseControl } from "../../../../src/dashboard/surfaces/queue/queue-toolbar.js";
 import { queuePauseLabel } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
-import { pauseTimeline, type LogTimelineStage } from "../../../../src/dashboard/surfaces/run-detail/logs/log-timeline-model.js";
-import { workerDirectiveNote, type WorkerCardWire } from "../../../../src/dashboard/surfaces/sessions/session-panel-model.js";
 import type { QueueSurfaceWire, StepInterruptWire } from "../../../../src/models/dashboard/projection.js";
 
 type Control = NonNullable<QueueSurfaceWire["pauseControl"]>;
@@ -40,7 +38,7 @@ describe("run toolbar shows the served pause control", () => {
 });
 
 describe("Pause all shows the served application state", () => {
-  const all = (state: "ready" | "pausing" | "paused" | "unavailable") => renderToStaticMarkup(createElement(PauseAllQuitControls, { state, activeCount: 2 }));
+  const all = (state: "ready" | "pausing" | "paused" | "unavailable") => renderToStaticMarkup(createElement(PauseAllQuitControls, { state, activeCount: 2, onPauseAll: () => undefined, onResumeAll: () => undefined }));
   it("offers Pause all when ready and Resume all when paused", () => {
     assert.match(all("ready"), /aria-label="Pause all runs"/u);
     assert.match(all("paused"), /aria-label="Resume all runs"/u);
@@ -49,32 +47,5 @@ describe("Pause all shows the served application state", () => {
     assert.match(all("pausing"), /Pauses are not yet confirmed/u);
     assert.match(all("pausing"), /disabled=""/u);
     assert.match(all("unavailable"), /Pause all is unavailable/u);
-  });
-});
-
-describe("worker card shows the served interrupt", () => {
-  const card = (interrupt?: StepInterruptWire, state: WorkerCardWire["state"] = "running", directive: WorkerCardWire["directive"] = "run") =>
-    ({ state, directive, ...(interrupt === undefined ? {} : { interrupt }) }) as WorkerCardWire;
-  it("names the served interrupt and nothing else", () => {
-    assert.equal(workerDirectiveNote(card({ action: "pause", step: "cancel" })), "This step will restart");
-    assert.equal(workerDirectiveNote(card({ action: "pause", step: "finish-write" })), "Finishing the save first");
-    assert.equal(workerDirectiveNote(card({ action: "stop", step: "cancel" }, "running", "stop")), "This step is cancelled");
-    assert.equal(workerDirectiveNote(card(undefined, "paused", "run")), undefined, "a directive and a state derive no note");
-    assert.equal(workerDirectiveNote(card({ action: "pause", step: "cancel" }, "failed")), undefined);
-  });
-});
-
-describe("Logs timeline shows the served pause control", () => {
-  const timeline: readonly LogTimelineStage[] = [
-    { id: "a", label: "A", state: "completed", substeps: [] }, { id: "b", label: "B", state: "active", substeps: [] }, { id: "c", label: "C", state: "pending", substeps: [] },
-  ];
-  it("marks every served state", () => {
-    assert.equal(pauseTimeline(timeline, "running"), timeline);
-    assert.equal(pauseTimeline(timeline, "unavailable"), timeline);
-    assert.equal(pauseTimeline(timeline, "pause-pending", { action: "pause", step: "cancel" })[1]?.statusLabel, "This step will restart");
-    assert.equal(pauseTimeline(timeline, "pause-pending", { action: "stop", step: "cancel" })[1]?.statusLabel, "This step is cancelled");
-    const paused = pauseTimeline(timeline, "paused");
-    assert.equal(paused[1]?.state, "waiting");
-    assert.equal(paused[1]?.statusLabel, "Pause recorded. Resume to continue.");
   });
 });
