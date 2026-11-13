@@ -25,12 +25,19 @@ it("proves the filed transaction from the one work-study row on the effective da
   });
 });
 
-it("is absent, bound to the business key, when no work-study row carries the effective date", () => {
-  const verdict = workStudyTransactionVerdict(target, findings([row({ startDate: "07/01/2026" }), row({ transactionId: "T002209632", action: "Terminatn" })]));
+it("is absent, bound to the business key, only when no transaction of any kind carries the effective date", () => {
+  const verdict = workStudyTransactionVerdict(target, findings([row({ startDate: "07/01/2026" }), row({ transactionId: "T002209632", action: "Terminatn", startDate: "06/30/2026" })]));
   expect(verdict.state).toBe("absent");
   const other = workStudyTransactionVerdict({ ...target, effectiveDate: "09/01/2026" }, findings([]));
   expect(verdict.state === "absent" && other.state === "absent" && verdict.evidence.idempotencyKeyDigest !== other.evidence.idempotencyKeyDigest).toBe(true);
   expect(verdict.state === "absent" && other.state === "absent" && verdict.evidence.queryDigest !== other.evidence.queryDigest).toBe(true);
+});
+
+it.each([
+  ["a transaction of another kind", [row({ action: "Terminatn" })]],
+  ["a work-study row beside another transaction", [row(), row({ transactionId: "T002209632", action: "Hire" })]],
+])("is unknown, never absent or filed, when the effective date shows %s", (_name, rows) => {
+  expect(workStudyTransactionVerdict(target, findings(rows)).state).toBe("unknown");
 });
 
 it("is ambiguous when two work-study rows carry the effective date", () => {

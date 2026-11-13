@@ -64,8 +64,9 @@ const target = UcpathPayPathWorkStudyTargetSchema.parse({
 });
 const OPEN = ["click:category", "click:actions", "fill:empl-id-input=10000001", "click:search"];
 const STAGE = [
-  "fill:effective-date=08/03/2026", "fill:position-change-reason=JRL", "fill:position-pool=F",
-  "click:job-data-tab", `fill:job-data-comments=${COMMENTS}`, "click:additional-pay-tab", `fill:initiator-comments=${COMMENTS}`,
+  "fill:effective-date=08/03/2026", "press:effective-date=Tab", "fill:position-change-reason=JRL", "press:position-change-reason=Tab",
+  "fill:position-pool=F", "press:position-pool=Tab", "click:job-data-tab", `fill:job-data-comments=${COMMENTS}`, "press:job-data-comments=Tab",
+  "click:additional-pay-tab", `fill:initiator-comments=${COMMENTS}`, "press:initiator-comments=Tab",
 ];
 const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
 
@@ -133,6 +134,29 @@ describe("UCPath PayPath work-study Save on a fake page", () => {
     await assert.rejects(h.driver.submitPayPathWorkStudy(target, capability()));
     await h.driver.stagePayPathWorkStudy(target);
     await assert.rejects(h.driver.submitPayPathWorkStudy({ ...target, effectiveDate: "09/01/2026" }, capability()));
+    assert.equal(h.actions.includes("click:save"), false);
+  });
+
+  it("refuses to click when the page no longer shows the staged Empl ID", async () => {
+    const h = world();
+    await h.driver.stagePayPathWorkStudy(target);
+    h.values["empl-id-display"] = "10000002";
+    await assert.rejects(h.driver.submitPayPathWorkStudy(target, capability()), (error: unknown) => error instanceof UcpathPayPathRefusedError && error.code === "subject-mismatch");
+    assert.equal(h.actions.includes("click:save"), false);
+  });
+
+  it("throws, for the caller to park, when PeopleSoft neither answers nor leaves the staged page after the click", async () => {
+    const h = world({ saveStays: true });
+    await h.driver.stagePayPathWorkStudy(target);
+    await assert.rejects(h.driver.submitPayPathWorkStudy(target, capability()), /paypath-submit-outcome-unseen/u);
+    assert.deepEqual(h.actions.filter(action => action === "click:save"), ["click:save"]);
+  });
+
+  it("refuses to click when the staged Initiator's comments changed", async () => {
+    const h = world();
+    await h.driver.stagePayPathWorkStudy(target);
+    h.values["initiator-comments"] = "changed";
+    await assert.rejects(h.driver.submitPayPathWorkStudy(target, capability()), (error: unknown) => error instanceof UcpathPayPathRefusedError && error.code === "staged-value-mismatch");
     assert.equal(h.actions.includes("click:save"), false);
   });
 

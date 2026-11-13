@@ -145,6 +145,8 @@ it.each<[string, Parameters<typeof deterministicPayPathOperations>[0]]>([
   ["an unreadable transaction search", { findingsUnreadable: true }],
   ["two work-study transactions on the effective date", { rows: [filed(), filed({ transactionId: "T008000002" })] }],
   ["a denied work-study transaction on the effective date", { rows: [filed({ approvalStatus: "Denied" })] }],
+  ["another kind of transaction on the effective date", { rows: [filed({ action: "Terminatn" })] }],
+  ["another person's row in the transaction list", { rows: [filed({ startDate: "07/01/2026", displayedName: "Other, Person" })] }],
 ])("refuses %s before the fence with no Save and no write intent", async (_name, options) => {
   const f = await workStudyRun(options);
   assert.ok(f.failures.length > 0);

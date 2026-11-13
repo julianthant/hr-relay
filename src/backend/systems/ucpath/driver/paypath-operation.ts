@@ -55,6 +55,8 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
     await locator.fill(value, { timeout: BOUND_MS });
     assertCurrent();
     recordBrowserAction("typed", targetId, value);
+    await locator.press("Tab", { timeout: BOUND_MS });
+    assertCurrent();
     await settle(frame);
     return valueOf(locator);
   };
@@ -101,7 +103,7 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
     if (displayedName === "") throw new UcpathPayPathRefusedError("paypath-identity-unreadable");
     const header = EidSchema.safeParse(await textOf(ui.emplIdDisplay(frame)));
     if (!header.success || header.data !== emplId) throw new UcpathPayPathRefusedError("subject-mismatch");
-    return { frame, displayedName };
+    return { frame, displayedName, emplId: header.data };
   }
 
   /** The one visible, enabled Save and Submit control; anything else refuses. */
@@ -130,7 +132,7 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
 
     async stagePayPathWorkStudy(input) {
       staged = undefined;
-      const { frame, displayedName } = await openRecord(input.emplId);
+      const { frame, displayedName, emplId } = await openRecord(input.emplId);
       const effectiveDate = await fillField(frame, ui.effectiveDate(frame), input.effectiveDate, "ucpath.paypath.effective-date");
       const positionChangeReason = await fillField(frame, ui.positionChangeReason(frame), input.positionChangeReason, "ucpath.paypath.position-change-reason");
       const positionPool = await fillField(frame, ui.positionPool(frame), input.positionPool, "ucpath.paypath.position-pool");
@@ -143,7 +145,7 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
       await saveControl(frame);
       recordBrowserAction("read", "ucpath.paypath.staged-values");
       const result = UcpathPayPathStagedSchema.parse({
-        pageStateId: UCPATH_PAYPATH_WORK_STUDY_STAGED, emplId: input.emplId, displayedName,
+        pageStateId: UCPATH_PAYPATH_WORK_STUDY_STAGED, emplId, displayedName,
         values: { effectiveDate, positionChangeReason, positionPool, jobDataComments, initiatorComments }, observedAt: clock.now().toISOString(),
       });
       staged = stagedKey(input);
@@ -162,10 +164,21 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
       if (staged === undefined || staged !== stagedKey(input)) throw new UcpathPayPathRefusedError("unexpected-page-state");
       staged = undefined;
       const frame = ui.frame(page);
-      await click(await saveControl(frame), "ucpath.paypath.save-and-submit");
+      const header = EidSchema.safeParse(await textOf(ui.emplIdDisplay(frame)));
+      if (!header.success || header.data !== input.emplId) throw new UcpathPayPathRefusedError("subject-mismatch");
+      if (await valueOf(ui.initiatorComments(frame)) !== input.comments) throw new UcpathPayPathRefusedError("staged-value-mismatch");
+      const save = await saveControl(frame);
+      await click(save, "ucpath.paypath.save-and-submit");
+      // PeopleSoft answers with an alert or replaces the staged page; seeing neither leaves the outcome unknown, and the caller parks.
+      const outcome = await Promise.any([
+        ui.alertOk(page).waitFor({ state: "visible", timeout: BOUND_MS }).then(() => "alert" as const),
+        save.waitFor({ state: "detached", timeout: BOUND_MS }).then(() => "left-staged-page" as const),
+      ]).catch(() => "unseen" as const);
+      assertCurrent();
+      if (outcome === "alert") throw new UcpathPayPathSubmitRefusedError(await textOf(ui.alertText(page).first()));
+      if (outcome === "unseen") throw new Error("paypath-submit-outcome-unseen");
       await ui.busy(frame).waitFor({ state: "hidden", timeout: BOUND_MS });
       assertCurrent();
-      if (await ui.alertOk(page).isVisible()) throw new UcpathPayPathSubmitRefusedError(await textOf(ui.alertText(page).first()));
     },
   };
 }

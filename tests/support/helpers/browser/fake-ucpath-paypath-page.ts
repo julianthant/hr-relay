@@ -5,13 +5,13 @@ export type FakePayPathOutcome = "record" | "alert" | "no-results" | "grid" | "n
 /** Answers exactly the locators `UCPATH_PAYPATH_UI` builds and records every fill and click; waits reject at once when a control is not shown. Fills stick unless named in `revert`. */
 export function fakeUcpathPayPathPage(options: Readonly<{
   outcome?: FakePayPathOutcome; alertText?: string; name?: string; headerEmplId?: string; ambiguousPositionNumber?: boolean;
-  revert?: string; alertAfterFill?: string; saveButtons?: number; saveDisabled?: boolean; alertAfterSave?: string;
+  revert?: string; alertAfterFill?: string; saveButtons?: number; saveDisabled?: boolean; alertAfterSave?: string; saveStays?: boolean;
 }> = {}) {
   let outcome = options.outcome ?? "record";
   let alertText = options.alertText;
   const actions: string[] = [];
   const gotos: string[] = [];
-  let searched = false;
+  let searched = false, saved = false;
   const values: Record<string, string> = {
     name: options.name ?? "Lee, Jordan", "empl-id-display": options.headerEmplId ?? "10000001",
     "effective-date": "07/01/2026", "position-change-reason": "", "position-pool": "", "position-number": "40012345",
@@ -37,8 +37,10 @@ export function fakeUcpathPayPathPage(options: Readonly<{
       isVisible: async () => shown(),
       isEnabled: async () => !(key === "save" && options.saveDisabled === true),
       waitFor: async (wait?: { state?: string }) => {
+        if (wait?.state === "detached") { if (!(key === "save" && saved && options.alertAfterSave === undefined && options.saveStays !== true)) throw new Error(`Timeout waiting for ${key} to detach`); return; }
         if (wait?.state === "hidden" ? shown() : !shown()) throw new Error(`Timeout waiting for ${key}`);
       },
+      press: async (keyName: string) => { actions.push(`press:${key}=${keyName}`); },
       innerText: async () => key === "alert-text" ? alertText ?? "" : values[key] ?? "",
       inputValue: async () => values[key] ?? "",
       fill: async (value: string) => {
@@ -49,6 +51,7 @@ export function fakeUcpathPayPathPage(options: Readonly<{
       click: async () => {
         actions.push(`click:${key}`);
         if (key === "search") searched = true;
+        if (key === "save") saved = true;
         if (key === "save" && options.alertAfterSave !== undefined) alertNow(options.alertAfterSave);
       },
     };

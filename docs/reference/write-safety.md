@@ -95,10 +95,12 @@ Natural keys remain private authority data. Public projections use digest refere
 
 These declarations live in `src/models/systems/ucpath/{create-termination,delete-pending-terminations,save-emergency-contact,submit-paypath-work-study}.ts` and `src/models/systems/kuali/save-separation-finalization.ts`.
 
-The PayPath work-study probe and verifier fold the SS Smart HR transaction findings for the EID: exactly one
-work-study row on the effective date with Approved, Manually Processed or Pending status is the proof; two are
-ambiguous; Denied, Error or Pushed Back, a capped or unreadable search, or another person's row is unknown. The
-SS Smart HR Action label for a PayPath work-study transaction and every Save-path PayPath anchor are unproven live.
+The PayPath work-study probe and verifier fold the SS Smart HR transaction findings for the EID. Absence needs no
+transaction of any kind on the effective date, so the Action label never decides absence. The proof is the one
+work-study row on that date, with Approved, Manually Processed or Pending status and nothing else on the date; two
+work-study rows are ambiguous; any other transaction on the date, a Denied, Error or Pushed Back row, or a capped or
+unreadable search is unknown, and another person's row refuses. The SS Smart HR Action label for a PayPath
+work-study transaction and every Save-path PayPath anchor are unproven live.
 
 Emergency Contact declares the full ordered demotion/addition plan under the OCR release. Its
 probe checks the complete persisted protected set, and its key validates the raw desired contact

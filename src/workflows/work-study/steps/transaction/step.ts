@@ -46,6 +46,9 @@ export const TRANSACTION_STEP = Object.freeze({
   } as const,
 });
 
+/** What the operator is told per person: filed by this run, or already filed for this date and not filed again. */
+const WORK_STUDY_DISPOSITION_STATE = { committed: "saved", "already-present": "already-filed" } as const;
+
 const saveEntry = defineStepEntries(TRANSACTION_STEP).transaction(SAVE_NODE, {
   label: "Save and Submit the work-study transaction", prepare: UcpathStagePayPathWorkStudy, commit: UcpathSubmitPayPathWorkStudy,
   dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000,
@@ -58,7 +61,7 @@ export function buildTransaction(author: WorkflowAuthor<typeof WorkStudyInput>, 
   const save = author.transaction(saveEntry, [plan], { prepareBind: target, commitBind: target });
   return { plan, steps: [[TRANSACTION_STEP, [plan, save]]] as const,
     result: author.result(WorkStudyResultSchema, [plan, save], ({ outputs }) => ({
-      state: outputs[SAVE_NODE].disposition === "committed" ? "saved" as const : "already-filed" as const,
+      state: WORK_STUDY_DISPOSITION_STATE[outputs[SAVE_NODE].disposition],
       plan: outputs[TRANSACTION_PLAN_NODE], receipt: outputs[SAVE_NODE].output.receipt,
     })) };
 }

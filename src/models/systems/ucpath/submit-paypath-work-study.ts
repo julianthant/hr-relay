@@ -16,7 +16,7 @@ export const UcpathSubmitPayPathWorkStudy = defineTaskContract({
   effect: "commit",
   input: UcpathPayPathWorkStudyTargetSchema,
   output: UcpathSubmitPayPathWorkStudyOutputSchema,
-  errorCodes: ["unexpected-page-state", "subject-mismatch", "paypath-submit-refused"],
+  errorCodes: ["paypath-submit-refused"],
   subject: {
     kind: "person",
     expected: { fromInput: ContractFieldPathSchema.parse("expectedName"), identity: "name" },

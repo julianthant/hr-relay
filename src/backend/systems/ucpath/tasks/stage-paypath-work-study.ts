@@ -16,11 +16,9 @@ export const stagePayPathWorkStudyTask = defineTask(ucpathDriver, UcpathStagePay
       return ctx.fail(error.code, refuse(error.code), { cause: error });
     });
     if (staged.emplId !== input.emplId) return ctx.fail("subject-mismatch", refuse("subject-mismatch"));
-    const expected = {
-      effectiveDate: input.effectiveDate, positionChangeReason: input.positionChangeReason, positionPool: input.positionPool,
-      jobDataComments: input.comments, initiatorComments: input.comments,
-    };
-    if (Object.entries(expected).some(([field, value]) => staged.values[field as keyof typeof expected] !== value)) {
+    const kept = staged.values;
+    if (kept.effectiveDate !== input.effectiveDate || kept.positionChangeReason !== input.positionChangeReason || kept.positionPool !== input.positionPool
+      || kept.jobDataComments !== input.comments || kept.initiatorComments !== input.comments) {
       return ctx.fail("staged-value-mismatch", refuse("staged-value-mismatch"));
     }
     await ctx.captureScreenshot();
