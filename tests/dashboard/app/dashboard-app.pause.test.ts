@@ -19,7 +19,7 @@ Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} di
 async function mount() {
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
-  let lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 17, state: "ready", update: "installer-unavailable",
+  let lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 17, state: "ready", pause: "running", update: "installer-unavailable",
     targets: [{ runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, expectedVersion: 7 },
       { runId: "00000000-0000-4000-8000-000000000099", expectedVersion: 11 }] });
   const reply = Promise.withResolvers<CommandResult>();

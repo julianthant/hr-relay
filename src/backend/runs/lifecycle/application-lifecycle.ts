@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { ApplicationLifecycleSchema } from "../../../models/dashboard/application-lifecycle.js";
 import { runClaim } from "../../../models/run/record.js";
-import { applicationStateOf, interruptTransition } from "../../../rules/runs/run-interrupt.js";
+import { applicationPauseOf, applicationStateOf, interruptTransition } from "../../../rules/runs/run-interrupt.js";
 import { ApplicationAdmissionRefusedError } from "../../storage/sqlite/run-store-contracts.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 
@@ -28,7 +28,7 @@ export function createApplicationLifecycle(input: Readonly<{
     const runtime = input.database.authority.runtimeConfig.get();
     if (runtime === undefined) throw new ApplicationAdmissionRefusedError("application-runtime-unavailable");
     return ApplicationLifecycleSchema.parse({ runtimeGeneration: runtime.generation,
-      state: applicationStateOf({ quitting, admission: admission.state }),
+      state: applicationStateOf({ quitting, admission: admission.state }), pause: applicationPauseOf(active),
       targets: active.map(run => ({ runId: run.envelope.runId, expectedVersion: run.version,
         ...(run.pause === undefined ? {} : { pause: run.pause }), pauseUnavailable: interruptTransition(run, { kind: "pause" }).state === "refused" })),
       update: input.updateHost === undefined ? "installer-unavailable" : busy || blocked ? "deferred" : input.updateHost.pending() ? "pending" : "idle",
