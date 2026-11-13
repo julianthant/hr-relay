@@ -129,7 +129,12 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   beforePinTags?: boolean;
 }>): WorkbookLibraryRepository {
   const { database } = deps;
-  const withPinTags = <T extends object>(state: T) => deps.beforePinTags === true ? { pinned: false, tags: [], ...state } : state;
+  const withPinTags = (state: unknown) => {
+    if (deps.beforePinTags !== true) return state;
+    // A predecessor state is strict: a pin or tags already present is not schema-29 data.
+    if (typeof state !== 'object' || state === null || 'pinned' in state || 'tags' in state) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    return { ...state, pinned: false, tags: [] };
+  };
   const lastUsed = (workflowId: string) => stored(() => {
     const id = WorkflowIdSchema.parse(workflowId);
     const row = database.prepare('SELECT * FROM workflow_workbook_selections WHERE workflow_id=?').get(id);

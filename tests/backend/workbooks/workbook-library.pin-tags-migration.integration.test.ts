@@ -45,3 +45,24 @@ it('upgrades every stored state and recorded action to unpinned with no manual t
   expect(repository.libraryActionRecord('roster', 'rename-original')?.result).toMatchObject({ pinned: false, tags: [] });
   expect(() => database.exec("UPDATE workbook_library_actions SET digest='changed'")).toThrow(/workbook-library-action-immutable/u);
 });
+
+const SYNTHETIC_PIN_TAGS = `json('true'),'$TAGS',json('["Retained synthetic tag"]')`;
+const payloads = (database: DatabaseSync, table: string) => database.prepare(`SELECT payload_json FROM ${table} ORDER BY id`).all();
+
+it('refuses a schema-29 state that already carries a pin or tags, changing nothing', () => {
+  const database = schema29Store();
+  database.exec(`UPDATE workbook_library_state SET payload_json=json_set(payload_json,'$.pinned',${SYNTHETIC_PIN_TAGS.replace('$TAGS', '$.tags')})`);
+  const before = payloads(database, 'workbook_library_state');
+  expect(() => validateWorkbookLibrary(database, true, true, false)).toThrow();
+  expect(payloads(database, 'workbook_library_state')).toEqual(before);
+});
+
+it('refuses a schema-29 recorded action whose result already carries a pin or tags, changing nothing', () => {
+  const database = schema29Store();
+  database.exec(`DROP TRIGGER workbook_library_actions_update;
+    UPDATE workbook_library_actions SET payload_json=json_set(payload_json,'$.result.pinned',${SYNTHETIC_PIN_TAGS.replace('$TAGS', '$.result.tags')});
+    CREATE TRIGGER workbook_library_actions_update BEFORE UPDATE ON workbook_library_actions BEGIN SELECT RAISE(ABORT,'workbook-library-action-immutable'); END`);
+  const before = payloads(database, 'workbook_library_actions');
+  expect(() => validateWorkbookLibrary(database, true, true, false)).toThrow();
+  expect(payloads(database, 'workbook_library_actions')).toEqual(before);
+});
