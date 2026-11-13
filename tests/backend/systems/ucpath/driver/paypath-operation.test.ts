@@ -51,10 +51,21 @@ describe("UCPath PayPath read on a fake page", () => {
     [{ name: "   " }, "paypath-identity-unreadable"],
     [{ headerEmplId: "10000002" }, "subject-mismatch"],
     [{ headerEmplId: "not an id" }, "subject-mismatch"],
+    [{ missing: "category" }, "paypath-hr-tasks-not-shown"],
+    [{ missing: "actions" }, "paypath-hr-tasks-not-shown"],
+    [{ missing: "body" }, "paypath-hr-tasks-not-shown"],
+    [{ missing: "empl-id-input" }, "paypath-search-not-shown"],
+    [{ missing: "search" }, "paypath-search-not-shown"],
     [{ outcome: "nothing" }, "unexpected-page-state"],
     [{ ambiguousPositionNumber: true }, "unexpected-page-state"],
   ])("refuses %j with %s", async (options, code) => {
     assert.equal((await refusal(options)).error.code, code);
+  });
+
+  it("lets a revoked owner's error through instead of a page-state refusal", async () => {
+    const world = fakeUcpathPayPathPage();
+    const driver = createUcpathPayPathOperations(() => { throw new Error("owner-revoked"); }, world.page, manualClock(new Date("2026-08-03T18:00:00.000Z")));
+    await assert.rejects(driver.readPayPathPosition({ emplId: EMPL_ID }), { message: "owner-revoked" });
   });
 });
 

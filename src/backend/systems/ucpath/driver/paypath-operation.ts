@@ -44,6 +44,15 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
     assertCurrent();
     return value;
   };
+  /** Any failed wait in one navigation stage refuses with the code that names that stage; a revoked owner still throws first. */
+  const reached = async (code: "paypath-hr-tasks-not-shown" | "paypath-search-not-shown", stage: () => Promise<void>) => {
+    try {
+      await stage();
+    } catch (cause) {
+      assertCurrent();
+      throw new UcpathPayPathRefusedError(code, undefined, { cause });
+    }
+  };
   /** PeopleSoft settles after a field change or click once its processing indicator hides and the network is idle; an alert then refuses with its text. */
   const settle = async (frame: FrameLocator) => {
     try {
@@ -92,22 +101,25 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
 
   /** Opens exactly one PayPath record for the Empl ID and returns its frame and displayed name once the header proves the Empl ID. */
   async function openRecord(emplId: UcpathPayPathWorkStudyTarget["emplId"]) {
-    assertCurrent();
-    await page.goto(ui.hrTasksUrl, { waitUntil: "domcontentloaded", timeout: BOUND_MS });
-    assertCurrent();
-    recordBrowserAction("opened", "ucpath.paypath.hr-tasks");
-    await click(ui.payPathCategory(page), "ucpath.paypath.category");
-    await shown(ui.payPathActions(page));
-    await waitForUcpathContentFrameDocument(assertCurrent, page, BOUND_MS);
-    await click(ui.payPathActions(page), "ucpath.paypath.actions");
-
     const frame = ui.frame(page);
-    const emplIdInput = ui.emplIdInput(frame);
-    await shown(emplIdInput);
-    await emplIdInput.fill(emplId, { timeout: BOUND_MS });
-    assertCurrent();
-    recordBrowserAction("typed", "ucpath.paypath.empl-id", emplId);
-    await click(ui.searchButton(frame), "ucpath.paypath.search");
+    await reached("paypath-hr-tasks-not-shown", async () => {
+      assertCurrent();
+      await page.goto(ui.hrTasksUrl, { waitUntil: "domcontentloaded", timeout: BOUND_MS });
+      assertCurrent();
+      recordBrowserAction("opened", "ucpath.paypath.hr-tasks");
+      await click(ui.payPathCategory(page), "ucpath.paypath.category");
+      await shown(ui.payPathActions(page));
+      await waitForUcpathContentFrameDocument(assertCurrent, page, BOUND_MS);
+    });
+    await reached("paypath-search-not-shown", async () => {
+      await click(ui.payPathActions(page), "ucpath.paypath.actions");
+      const emplIdInput = ui.emplIdInput(frame);
+      await shown(emplIdInput);
+      await emplIdInput.fill(emplId, { timeout: BOUND_MS });
+      assertCurrent();
+      recordBrowserAction("typed", "ucpath.paypath.empl-id", emplId);
+      await click(ui.searchButton(frame), "ucpath.paypath.search");
+    });
 
     const alertOk = ui.alertOk(page), noResults = ui.noResults(frame), rows = ui.resultRows(frame), name = ui.nameDisplay(frame);
     assertCurrent();

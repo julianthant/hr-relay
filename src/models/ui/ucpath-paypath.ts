@@ -59,6 +59,8 @@ export const UcpathPayPathStagedSchema = z.strictObject({
 export type UcpathPayPathStaged = z.infer<typeof UcpathPayPathStagedSchema>;
 
 export const UCPATH_PAYPATH_REFUSAL_CODES = [
+  "paypath-hr-tasks-not-shown",
+  "paypath-search-not-shown",
   "employee-not-found",
   "subject-mismatch",
   "paypath-multiple-records",

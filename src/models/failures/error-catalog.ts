@@ -126,6 +126,8 @@ export const ERROR_CATALOG = Object.freeze({
   SAVED_EFFECT_MISMATCH: catalogEntry("UCPath Save could not be confirmed against the complete approved contact plan. The write requires operator resolution.", EmptyParametersSchema),
   CONTACT_SAVE_UNAVAILABLE: catalogEntry("Emergency Contact Save is unavailable. Use Dry Run to review the prepared contact plan.", EmptyParametersSchema),
   CONTACT_APPROVED_PLAN_CONFLICT: catalogEntry("The approved selection contains conflicting primary contact plans for an employee. Select one intended contact per employee or correct the OCR records, then approve again.", EmptyParametersSchema),
+  PAYPATH_HR_TASKS_NOT_SHOWN: catalogEntry("UCPath HR Tasks did not show the PayPath Actions link. Nothing was changed; open HR Tasks > PayPath/Additional Pay in UCPath and check the page.", EmptyParametersSchema),
+  PAYPATH_SEARCH_NOT_SHOWN: catalogEntry("PayPath Actions did not show its Empl ID search. Nothing was changed; open PayPath Actions in UCPath and check the page.", EmptyParametersSchema),
   PAYPATH_MULTIPLE_RECORDS: catalogEntry("PayPath Actions found more than one job record for this employee. Nothing was changed; file this person by hand.", EmptyParametersSchema),
   PAYPATH_ALERT_SHOWN: catalogEntry("UCPath showed an alert on PayPath Actions for this employee. Nothing was changed; open PayPath Actions for this employee and read the alert.", EmptyParametersSchema),
   STAGED_VALUE_MISMATCH: catalogEntry("PayPath Actions did not keep a work-study value Relay filled. Nothing was saved; review the employee in UCPath.", EmptyParametersSchema),
