@@ -82,8 +82,8 @@ export async function createProfileSessionWorld() {
     } finally { owner.release(); }
   }
 
-  /** Save UCPath entries the way a Settings edit does: an ordinary protected apply with no login-change marker. */
-  function saveInSettings(profileId: string, entries: { ucpathUserId?: { set: string }; ucpathPassword?: { set: string } }): void {
+  /** Save protected entries the way a Settings edit does: an ordinary protected apply with its own command id. */
+  function saveInSettings(profileId: string, entries: { ucpathUserId?: { set: string }; ucpathPassword?: { set: string }; sharepointOnboardingRosterUrl?: { set: string } }): void {
     const owner: RuntimeAdmission = machine.admitProfile(profileId);
     try {
       const store = createCredentialStore({ admission: owner, stateRoot: owner.stateRoot });

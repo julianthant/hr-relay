@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import type { CredentialStore } from "../../models/config/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../models/config/protected-settings.js";
 import type { ErrorCatalogCode } from "../../models/failures/error-catalog.js";
@@ -10,12 +11,25 @@ import { ProfileSessionRefusedError } from "./profile-errors.js";
 
 /**
  * The Relay login is the work email and password saved as the profile's UCPath sign-in, proved against the machine verifier row.
- * A change saves the entries under CHANGE, then swaps the verifier row as its commit point. A change that stops between the two
- * leaves the marked entries no longer proving the verifier; the old login writes itself back, on the same session's next change
- * or at the next sign-in.
+ * A change saves the entries, then swaps the verifier row as its commit point. A change that stops between the two leaves entries
+ * that no longer prove the verifier; the old login writes itself back, on the same session's next change or at the next sign-in.
+ * Login writes take a command id derived from their purpose, profile and time, so the store's append-only receipts prove that the
+ * newest UCPath entries came from a login write, whatever unrelated saves came after; a Settings edit of those entries does not.
  */
-const CHANGE = createHash("sha256").update("relay-login-change").digest("hex");
-const RESTORE = createHash("sha256").update("relay-login-change-restore").digest("hex");
+const PURPOSES = { change: createHash("sha256").update("relay-login-change").digest("hex"), restore: createHash("sha256").update("relay-login-change-restore").digest("hex") };
+type Purpose = keyof typeof PURPOSES;
+
+function loginCommandId(purpose: Purpose, profileId: string, at: string, sequence: number): string {
+  const hash = createHash("sha256").update(canonicalJsonStringify({ purpose, profileId, at, sequence })).digest("hex");
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-${(8 + Number.parseInt(hash.charAt(16), 16) % 4).toString(16)}${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+}
+
+/** True when the newest saved UCPath entry was written by a login change or restore. */
+function loginWritten(store: CredentialStore, profileId: string, entries: ReturnType<CredentialStore["read"]>["entries"]): boolean {
+  const times = [entries.ucpathUserId?.updatedAt, entries.ucpathPassword?.updatedAt].filter(time => time !== undefined).sort();
+  const newest = times.at(-1);
+  return newest !== undefined && (["change", "restore"] as const).some(purpose => store.ownsCommandId(loginCommandId(purpose, profileId, newest, 0)));
+}
 
 export type RelayLogin = { readonly email: string; readonly password: string };
 export type RelayLoginChange = { readonly kind: "password"; readonly password: string } | { readonly kind: "username"; readonly email: string };
@@ -32,16 +46,18 @@ export type RelayLoginOutcome = { readonly kind: "changed" } | { readonly kind: 
  * Save the entries that differ from `login`. "uncertain" means the store owns the write but could not prove it durable;
  * a write whose descriptors could not be proved closed throws for its owner to retain.
  */
-function saveLogin(store: CredentialStore, login: RelayLogin, fingerprint: string, at: string): "applied" | "uncertain" | "refused" {
+function saveLogin(store: CredentialStore, profileId: string, login: RelayLogin, purpose: Purpose, at: string): "applied" | "uncertain" | "refused" {
   const saved = store.read();
   const entries = {
     ...(saved.entries.ucpathUserId?.value === login.email ? {} : { ucpathUserId: { set: login.email } }),
     ...(saved.entries.ucpathPassword?.value === login.password ? {} : { ucpathPassword: { set: login.password } }),
   };
   if (Object.keys(entries).length === 0) return "applied";
-  const commandId = randomUUID();
+  let sequence = 0;
+  while (store.ownsCommandId(loginCommandId(purpose, profileId, at, sequence))) sequence++;
+  const commandId = loginCommandId(purpose, profileId, at, sequence);
   try {
-    return store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId, commandFingerprint: fingerprint, expectedRevision: saved.revision,
+    return store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId, commandFingerprint: PURPOSES[purpose], expectedRevision: saved.revision,
       protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), updatedAt: at, entries })).state === "applied" ? "applied" : "refused";
   } catch (error) {
     if (!(error instanceof CredentialStoreCommitUncertainError) || hasUnprovedSourceClosure(error)) throw error;
@@ -74,16 +90,20 @@ export function changeRelayLogin(verifiers: Verifiers, store: CredentialStore, p
     if (verifiers.identify(next.email) !== "unknown") return refused("PROFILE_USERNAME_TAKEN");
   }
   const verifier = verifiers.prepareLoginChange(profileId, next.email, next.password);
-  const written = saveLogin(store, next, CHANGE, fields.at);
+  const written = saveLogin(store, profileId, next, "change", fields.at);
   if (written === "refused") return refused("PROFILE_LOGIN_CHANGE_BUSY");
   // The verifier is committed only over durable entries; unproved entries stay marked for the old login to settle.
   if (written === "uncertain") throw new RelayLoginUnsettledError({ cause: new Error("profile-login-change-entries-unproved") });
   try { verifier.commit(); }
   catch (error) {
+    let landed: boolean;
+    // An unreadable verifier leaves the swap unknown: nothing is undone, and the old login settles it if the swap did not land.
+    try { landed = verifier.landed(); }
+    catch (readback) { throw new RelayLoginUnsettledError({ cause: new AggregateError([error, readback], "profile login change verifier outcome unknown") }); }
     // A swap that landed holds the new login on both sides; its failure is reported to the caller, never undone.
-    if (verifier.landed()) return { kind: "unconfirmed", failure: error };
+    if (landed) return { kind: "unconfirmed", failure: error };
     let restored: ReturnType<typeof saveLogin>;
-    try { restored = saveLogin(store, prior, RESTORE, fields.at); }
+    try { restored = saveLogin(store, profileId, prior, "restore", fields.at); }
     catch (cleanup) { throw new RelayLoginUnsettledError({ cause: new AggregateError([error, cleanup], "profile login change and its restore failed") }); }
     if (restored === "refused") throw new RelayLoginUnsettledError({ cause: error });
     throw error;
@@ -96,11 +116,9 @@ export function changeRelayLogin(verifiers: Verifiers, store: CredentialStore, p
  * A saved email that still keys this profile is kept as saved; otherwise the proved email is written as sign-up would save it.
  */
 export function restoreInterruptedLogin(verifiers: Verifiers, store: CredentialStore, profileId: string, proved: RelayLogin, at: string): void {
-  const record = store.read(), fingerprint = record.lastApplied?.commandFingerprint;
-  if (fingerprint !== CHANGE && fingerprint !== RESTORE) return;
-  const email = record.entries.ucpathUserId?.value, password = record.entries.ucpathPassword?.value;
-  if (email === proved.email && password === proved.password || proves(verifiers, profileId, { email, password })) return;
+  const entries = store.read().entries, email = entries.ucpathUserId?.value, password = entries.ucpathPassword?.value;
+  if (email === proved.email && password === proved.password || !loginWritten(store, profileId, entries) || proves(verifiers, profileId, { email, password })) return;
   const owner = email === undefined ? "unknown" : verifiers.identify(email);
   const restored = email !== undefined && owner !== "unknown" && owner.profileId === profileId ? email : proved.email;
-  if (saveLogin(store, { email: restored, password: proved.password }, RESTORE, at) === "refused") throw new ProfileSessionRefusedError("PROFILE_LOGIN_CHANGE_BUSY");
+  if (saveLogin(store, profileId, { email: restored, password: proved.password }, "restore", at) === "refused") throw new ProfileSessionRefusedError("PROFILE_LOGIN_CHANGE_BUSY");
 }

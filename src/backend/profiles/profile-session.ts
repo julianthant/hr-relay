@@ -584,9 +584,10 @@ export function createProfileSession(input: {
         if (hasUnprovedSourceClosure(outcome.failure)) admission.retainSourceClosure(outcome.failure);
         return { state: "changed", durability: "unconfirmed", failure: outcome.failure };
       } catch (error) {
-        if (hasUnprovedSourceClosure(error)) { admission.retainSourceClosure(error); throw error; }
-        if (!(error instanceof RelayLoginUnsettledError) || priorEmail === undefined) throw error;
-        unsettledLogins.set(token, { email: priorEmail, password: fields.currentPassword });
+        const unclosed = hasUnprovedSourceClosure(error);
+        if (unclosed) admission.retainSourceClosure(error);
+        if (error instanceof RelayLoginUnsettledError && priorEmail !== undefined) unsettledLogins.set(token, { email: priorEmail, password: fields.currentPassword });
+        if (unclosed || !(error instanceof RelayLoginUnsettledError) || priorEmail === undefined) throw error;
         return refusal("PROFILE_LOGIN_CHANGE_UNSETTLED");
       }
     });

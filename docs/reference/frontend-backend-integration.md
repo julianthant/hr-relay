@@ -431,8 +431,11 @@ the verifier key and is not taken. Refusals leave the saved login unchanged. The
 profile's UCPath entries first and then swaps that profile's verifier row as its commit point; the
 swap waits until the entries are proved durable. If the change stops between them, it answers `PROFILE_LOGIN_CHANGE_UNSETTLED` and the
 session stays signed in: its next change writes the proved old login back first, and after a
-restart resume is refused until a sign-in with the old login writes it back. Neither path needs a
-logout, so parked writes are untouched. A swap that landed is never undone; if only its flush or
+restart resume is refused until a sign-in with the old login writes it back. Login writes carry
+command ids derived from their purpose, profile and time, so recovery survives unrelated protected
+saves, while a Settings edit of the UCPath entries is never overwritten. Neither path needs a
+logout, so parked writes are untouched. An unreadable verifier after a failed swap leaves the
+outcome unknown: nothing is undone and the change stays unsettled. A swap that landed is never undone; if only its flush or
 directory close failed, the result is `{state: "changed", durability: "unconfirmed"}`, the failure
 is logged and an unclosed descriptor stays held by its owner. The epoch, Duo material and other
 profiles are unchanged.

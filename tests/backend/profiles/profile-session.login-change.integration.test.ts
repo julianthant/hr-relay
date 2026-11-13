@@ -16,14 +16,14 @@ const samFields = { firstName: "Sam", lastName: "Ortiz", email: "sam@ucsd.edu", 
  * as when the process stops there; "flush" and "close" let the verifier rename land and fail its directory flush or descriptor
  * close; "entries-flush" lets the saved entries' rename land and fails their directory flush.
  */
-function inject(mode: "before" | "stop" | "flush" | "close" | "entries-flush"): { leaked: number[] } {
-  const rename = fs.renameSync, open = fs.openSync, flush = fs.fsyncSync, close = fs.closeSync, leaked: number[] = [];
-  let stopped = false, failFlush = false, failClose = false;
+function inject(mode: "before" | "stop" | "flush" | "close" | "close-unread" | "entries-flush"): { leaked: number[] } {
+  const rename = fs.renameSync, open = fs.openSync, flush = fs.fsyncSync, close = fs.closeSync, read = fs.readFileSync, leaked: number[] = [];
+  let stopped = false, failFlush = false, failClose = false, failRead = false;
   vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
     const target = String(to);
     if (target.endsWith("profile-verifiers.json") && mode !== "entries-flush") {
       if (mode === "before" || mode === "stop") { stopped = mode === "stop"; throw new Error("injected replacement failure"); }
-      rename(from, to); failFlush = mode === "flush"; failClose = mode === "close"; return;
+      rename(from, to); failFlush = mode === "flush"; failClose = mode === "close" || mode === "close-unread"; return;
     }
     rename(from, to);
     if (mode === "entries-flush" && target.endsWith("/credentials/protected.json")) failFlush = true;
@@ -33,15 +33,28 @@ function inject(mode: "before" | "stop" | "flush" | "close" | "entries-flush"): 
     flush(descriptor);
   });
   vi.spyOn(fs, "closeSync").mockImplementation(descriptor => {
-    if (failClose) { failClose = false; leaked.push(descriptor); throw new Error("injected close failure"); }
+    if (failClose) { failClose = false; failRead = mode === "close-unread"; leaked.push(descriptor); throw new Error("injected close failure"); }
     close(descriptor);
   });
+  vi.spyOn(fs, "readFileSync").mockImplementation(((path: fs.PathOrFileDescriptor, options?: unknown) => {
+    if (failRead && String(path).endsWith("profile-verifiers.json")) { failRead = false; throw new Error("injected readback failure"); }
+    return Reflect.apply(read, fs, options === undefined ? [path] : [path, options]) as unknown;
+  }) as typeof fs.readFileSync);
   vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
     if (stopped && String(path).includes("/credentials/")) throw new Error("injected stop");
     return open(path, flags, mode);
   });
   syncBuiltinESMExports();
   return { leaked };
+}
+function unclosedSource(error: unknown): AuthoritySourceClosureUnprovedError | undefined {
+  const pending = [error];
+  for (let value = pending.pop(); value !== undefined; value = pending.pop()) {
+    if (value instanceof AuthoritySourceClosureUnprovedError) return value;
+    if (value instanceof AggregateError) pending.push(...(value.errors as unknown[]));
+    if (value instanceof Error && value.cause !== undefined) pending.push(value.cause);
+  }
+  return undefined;
 }
 function restoreFiles(): void { vi.restoreAllMocks(); syncBuiltinESMExports(); }
 function refusalCode(result: { state: string; code?: string }) { return result.state === "refused" ? result.code : result.state; }
@@ -261,5 +274,45 @@ describe("Relay login change", () => {
     await recovery.prove(() => { for (const descriptor of leaked) fs.closeSync(descriptor); return Promise.resolve(); });
     assert.equal(leaked.length, 1);
     assert.equal(machine.open().signIn({ email: "alex@ucsd.edu", password: "secret-two", at: "2026-09-06T12:03:00.000Z" }).state, "active");
+  });
+
+  it.each(["the same session's next change", "a sign-in with the old login after a restart"])("keeps an unsettled change recoverable through an unrelated Settings save, by %s", async way => {
+    const machine = await world();
+    const session = machine.open();
+    const alex = await machine.signUp(session, alexFields);
+    inject("stop");
+    assert.equal(refusalCode(session.changeUsername(alex.token, { currentPassword: "secret-one", newUsername: "alex.rivera@ucsd.edu", at: "2026-09-06T12:01:00.000Z" })), "PROFILE_LOGIN_CHANGE_UNSETTLED");
+    restoreFiles();
+    machine.saveInSettings(alex.profileId, { sharepointOnboardingRosterUrl: { set: "https://example.sharepoint.com/sites/hr/roster.xlsx" } });
+    if (way === "the same session's next change") {
+      assert.equal(session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:02:00.000Z" }).state, "changed");
+      assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-two" });
+      return;
+    }
+    const restarted = machine.open();
+    assert.equal(refusalCode(restarted.signIn({ email: "alex.rivera@ucsd.edu", password: "secret-one", at: "2026-09-06T12:02:00.000Z" })), "PROFILE_SIGN_IN_REFUSED");
+    assert.equal(restarted.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:03:00.000Z" }).state, "active");
+    assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-one" });
+  });
+
+  it("holds the unclosed descriptor when the verifier cannot be read back after a failed close, and does not undo the swap", async () => {
+    const machine = await world();
+    const session = machine.open();
+    const alex = await machine.signUp(session, alexFields);
+    const verifiers = machine.verifierBytes();
+    const { leaked } = inject("close-unread");
+    let thrown: unknown;
+    try { session.changePassword(alex.token, { currentPassword: "secret-one", newPassword: "secret-two", at: "2026-09-06T12:01:00.000Z" }); }
+    catch (error) { thrown = error; }
+    restoreFiles();
+    const failure = unclosedSource(thrown);
+    assert.ok(failure, "the closure failure reaches the caller");
+    assert.equal(leaked.length, 1);
+    assert.throws(() => machine.open().signIn({ email: "alex@ucsd.edu", password: "secret-two", at: "2026-09-06T12:02:00.000Z" }), (error: unknown) => unclosedSource(error) === failure);
+    const recovery = createBrowserSourceRecovery();
+    recovery.retain(failure);
+    await recovery.prove(() => { for (const descriptor of leaked) fs.closeSync(descriptor); return Promise.resolve(); });
+    assert.notEqual(machine.verifierBytes(), verifiers);
+    assert.deepEqual(machine.savedLogin(alex.profileId), { userId: "alex@ucsd.edu", password: "secret-two" });
   });
 });
