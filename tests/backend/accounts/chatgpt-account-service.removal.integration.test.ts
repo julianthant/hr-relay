@@ -41,3 +41,29 @@ it("reads a stored registration without a session as not connected and signs in 
     assert.equal(f.repository.read()?.registration?.subject, "other-subject");
   } finally { await f.cleanup(); }
 });
+for (const ending of ["refresh-denied", "unrenewable-expired"] as const)
+  it(`shows the plain connect state on the first status read that forgets a ${ending} connection`, async () => {
+    const f = await chatGptFixture();
+    try {
+      if (ending === "unrenewable-expired") f.setToken({ refresh_token: undefined });
+      await f.connected(); f.clock.advanceWall(3_600_000);
+      if (ending === "refresh-denied") f.setTokenStatus(400, "invalid_grant");
+      const status = await f.service.readStatus();
+      assert.deepEqual(status.account, { state: "signed-out" }); assert.deepEqual(status.usage, { state: "unavailable", reason: "signed-out" });
+      assert.equal(f.repository.read()?.registration, null); assert.equal(f.repository.read()?.session, null);
+      assert.deepEqual((await f.service.readStatus()).account, { state: "signed-out" });
+    } finally { await f.cleanup(); }
+  });
+it("forgets an unrenewable connection whose access token is rejected", async () => {
+  const f = await chatGptFixture();
+  try {
+    f.setToken({ refresh_token: undefined }); await f.connected();
+    f.setModelsHook(async () => Response.json({ detail: "rejected" }, { status: 401 }));
+    for (let read = 1; read <= 2; read++) {
+      const status = await f.service.readStatus();
+      assert.deepEqual(status.account, { state: "signed-out" }, `read ${String(read)}`);
+      assert.equal(f.repository.read()?.registration, null); assert.equal(f.repository.read()?.session, null);
+    }
+    assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 1);
+  } finally { await f.cleanup(); }
+});
