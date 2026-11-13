@@ -111,6 +111,8 @@ export async function createIntakeAuthority(profileFixture: () => Promise<BoundP
     execute: request => runtime.kernel.execute(request),
     submit: async request => runtime.kernel.execute(request),
     executeBulk: forbidden,
+    completeConsumed: forbidden,
+    publish: forbidden,
   };
   registerCommandsRoutes(app, { clock, commands, resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority), commandJournal: { get: id => database.authority.commands.get(id) },
     protectedCommandAcceptedAt: forbidden, bulkCommandAcceptances: { withTransaction: work => database.withAuthorityTransaction(repositories => work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })) },

@@ -476,10 +476,16 @@ export function settingsAuthoritySnapshot(h: Harness, commandId: string) {
   };
 }
 
-export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot">) {
+/** Assistant chat rows an accepted send writes; a fault check that spans a send names its exact history writes. */
+export const ASSISTANT_HISTORY_TABLES = Object.freeze(["assistant_conversations", "assistant_messages"]);
+export interface HistoryWrites { readonly tables: readonly string[]; readonly writes: number }
+const NO_HISTORY_WRITES: HistoryWrites = { tables: [], writes: 0 };
+
+export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot">, history: HistoryWrites = NO_HISTORY_WRITES) {
   const raw = new DatabaseSync(join(h.stateRoot, "state.db"), { readOnly: true });
   try {
-    const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events') ORDER BY name").all();
+    const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events') ORDER BY name").all()
+      .filter(row => typeof row.name !== "string" || !history.tables.includes(row.name));
     const rows = tables.map(row => {
       if (typeof row.name !== "string" || !/^[a-z_]+$/u.test(row.name)) throw new Error("fixture table identity invalid");
       return { table: row.name, rows: raw.prepare(`SELECT * FROM ${row.name} ORDER BY rowid`).all() };
@@ -490,19 +496,35 @@ export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot"
   } finally { raw.close(); }
 }
 
-export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number) {
-  const after = faultAuthoritySnapshot(h);
+type TimelinePage = ReturnType<Harness["database"]["authority"]["timelineEvents"]["page"]>;
+/** The dashboard's loop-delay monitor writes a stall diagnostic on its own clock; a slow host can land one inside any checked span. */
+const isLoopStall = (record: TimelinePage[number]) => record.payload.kind === "debug" && record.payload.event.category === "boot"
+  && record.payload.event.area === "event-loop" && record.payload.event.reason === "event-loop-stall";
+
+/** Asserts a span wrote nothing to authority except loop-stall diagnostics; returns how many it wrote. */
+export function assertOnlyLoopStallWrites(database: Harness["database"], before: Readonly<{ generation: number; timeline: TimelinePage }>): number {
+  const timeline = database.authority.timelineEvents.page({ limit: 500 });
+  assert.deepEqual(timeline.slice(0, before.timeline.length), before.timeline);
+  const added = timeline.slice(before.timeline.length);
+  assert.ok(added.every(isLoopStall), "the span wrote only loop-stall diagnostics");
+  assert.equal(database.getMeta().authorityGeneration, before.generation + added.length);
+  return added.length;
+}
+
+export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number,
+  history: HistoryWrites = NO_HISTORY_WRITES) {
+  const after = faultAuthoritySnapshot(h, history);
   assert.deepEqual(after.schema, before.schema, "HTTP refusal changes no table, index or trigger");
   assert.deepEqual(after.rows, before.rows, "HTTP refusal changes no HR, settings, command, audit or proof owner");
   assert.deepEqual(after.timeline.slice(0, before.timeline.length), before.timeline);
-  const added = after.timeline.slice(before.timeline.length);
-  assert.equal(added.length, expected);
-  for (const record of added) {
+  const added = after.timeline.slice(before.timeline.length), stalls = added.filter(isLoopStall).length;
+  assert.equal(added.length - stalls, expected);
+  for (const record of added.filter(record => !isLoopStall(record))) {
     assert.equal(record.payload.kind, "debug");
     if (record.payload.kind !== "debug") throw new Error("HTTP refusal wrote non-debug authority");
     assert.equal(record.payload.event.category, "http");
   }
-  assert.equal(after.generation, Number(before.generation) + expected);
+  assert.equal(after.generation, Number(before.generation) + expected + history.writes + stalls);
 }
 
 export function rawSettingsPatchFingerprint(patch: unknown): string {
