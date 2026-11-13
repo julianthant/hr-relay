@@ -18,6 +18,7 @@ import { InputRunSurfaceSchema } from "../../../src/models/workflow/ingress.js";
 import { inputRunParserLabel } from "../../../src/models/workflow/ingress.js";
 import { inputRunSeparatorLabel } from "../../../src/models/workflow/ingress.js";
 import { inputRunValueNoun } from "../../../src/models/workflow/ingress.js";
+import { parseTypedDate } from "../../../src/models/workflow/ingress.js";
 import type { InputRunExample } from "../../../src/models/workflow/ingress.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
@@ -399,6 +400,49 @@ describe("a declared input-run example", () => {
       (surface.examples ?? []).map((example) => example.key),
       ["one-eid"],
     );
+  });
+});
+
+describe("typed input controls", () => {
+  const EID_PARSER = { split: { kind: "delimited", delimiters: [",", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }] };
+  const mode = (value: string) => ({ value, label: "Employee IDs", inputLabel: "Employee IDs", hint: "Separate IDs with commas.", placeholder: "10000001",
+    defaults: [], parser: { kind: "entries", spec: EID_PARSER }, display: { kind: "first-present", fields: ["emplId"] }, identityFields: ["emplId"] });
+  const dateControl = { kind: "date", field: "effectiveDate", label: "Effective date", placement: "input", modes: ["eids"], requires: [],
+    required: true, refusal: "Choose a valid effective date." };
+  const surface = (controls: readonly unknown[], extra: Record<string, unknown> = {}) => ({ placeholder: "10000001", parser: EID_PARSER,
+    typedInput: { modeField: "mode", modeLabel: "Input", initialMode: "eids", description: "Each ID starts one run.", modes: [mode("eids")], controls, ...extra } });
+
+  it("accepts a date control with its label, required flag and refusal, beside an unchanged boolean control", () => {
+    const parsed = InputRunSurfaceSchema.parse(surface([dateControl,
+      { field: "crmCheck", label: "CRM check", placement: "input", modes: ["eids"], requires: [] }]));
+    assert.deepEqual(parsed.typedInput?.controls, [dateControl,
+      { field: "crmCheck", label: "CRM check", placement: "input", modes: ["eids"], requires: [] }]);
+  });
+
+  it.each([
+    ["an unknown kind", { ...dateControl, kind: "time" }],
+    ["a date control without its refusal", { ...dateControl, refusal: undefined }],
+    ["a date control without its required flag", { ...dateControl, required: undefined }],
+    ["a date control placed on a step", { ...dateControl, placement: "step" }],
+  ])("refuses %s", (_name, control) => {
+    assert.equal(InputRunSurfaceSchema.safeParse(surface([control])).success, false);
+  });
+
+  it("keeps the mode out of submissions only for a surface with exactly one mode", () => {
+    assert.equal(InputRunSurfaceSchema.parse(surface([dateControl], { submitsMode: false })).typedInput?.submitsMode, false);
+    assert.equal(InputRunSurfaceSchema.safeParse(surface([dateControl], { submitsMode: false, modes: [mode("eids"), mode("names")] })).success, false);
+    assert.equal(InputRunSurfaceSchema.safeParse(surface([dateControl], { submitsMode: true })).success, false);
+  });
+
+  it.each([
+    ["08/03/2026", "2026-08-03"],
+    ["02/29/2028", "2028-02-29"],
+  ])("reads the typed date %s as %s", (text, iso) => {
+    assert.equal(parseTypedDate(text), iso);
+  });
+
+  it.each(["", "8/3/2026", "2026-08-03", "02/30/2026", "02/29/2026", "13/01/2026", " 08/03/2026"])("refuses the typed date %j", (text) => {
+    assert.equal(parseTypedDate(text), undefined);
   });
 });
 }

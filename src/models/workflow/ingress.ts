@@ -1,6 +1,7 @@
 /** Run-surface ingress: closed, serializable domain unions with exhaustive interpreters, so one declaration drives both the server's start command and the client's panel. */
 import { z } from "zod";
-import { PositiveIntSchema } from "../../rules/identity/ids.js";
+import { DateOnlySchema, PositiveIntSchema } from "../../rules/identity/ids.js";
+import { UsDateFactSchema } from "./step-omission.js";
 import { collapseWhitespace } from "../fields/cell-coercion.js";
 
 /** A field name as it appears in a workflow input schema. */
@@ -351,13 +352,27 @@ export const InputRunExampleSchema = z.strictObject({
 });
 export type InputRunExample = z.infer<typeof InputRunExampleSchema>;
 
-const TypedInputControlSchema = z.strictObject({
+const TypedInputControlBase = {
   field: InputFieldNameSchema,
   label: z.string().min(1),
-  placement: z.enum(["input", "step", "hidden"]),
   modes: z.array(z.string().min(1)).min(1),
   requires: z.array(InputFieldNameSchema),
-});
+};
+/** A boolean switch carries no kind; a date is one value the operator types as MM/DD/YYYY for the whole start, which the start plan refuses with `refusal` and stores as an ISO date. */
+const TypedInputControlSchema = z.union([
+  z.strictObject({ ...TypedInputControlBase, placement: z.enum(["input", "step", "hidden"]) }),
+  z.strictObject({ ...TypedInputControlBase, kind: z.literal("date"), placement: z.literal("input"),
+    required: z.boolean(), refusal: z.string().min(1) }),
+]);
+export type TypedInputControl = z.infer<typeof TypedInputControlSchema>;
+export type TypedDateControl = Extract<TypedInputControl, { kind: "date" }>;
+
+/** The operator's MM/DD/YYYY as an ISO date, or undefined when it is not one real calendar date. */
+export function parseTypedDate(text: string): string | undefined {
+  if (!UsDateFactSchema.safeParse(text).success) return undefined;
+  const [month, day, year] = text.split("/");
+  return DateOnlySchema.safeParse(`${year}-${month}-${day}`).data;
+}
 const TypedInputModeSchema = z.strictObject({
   value: z.string().min(1), label: z.string().min(1),
   inputLabel: z.string().min(1), hint: z.string().min(1), placeholder: z.string().min(1),
@@ -379,8 +394,11 @@ const TypedInputModeSchema = z.strictObject({
 export const TypedInputSurfaceSchema = z.strictObject({
   modeField: InputFieldNameSchema, modeLabel: z.string().min(1), initialMode: z.string().min(1).nullable(),
   description: z.string().min(1),
+  /* `false` keeps the mode out of every submission, for a workflow whose input has one way to name a subject and no mode field. */
+  submitsMode: z.literal(false).optional(),
   modes: z.array(TypedInputModeSchema).min(1), controls: z.array(TypedInputControlSchema),
-});
+}).refine(surface => surface.submitsMode === undefined || surface.modes.length === 1,
+  { message: "a surface that submits no mode must declare exactly one mode", path: ["submitsMode"] });
 export type TypedInputSurface = z.infer<typeof TypedInputSurfaceSchema>;
 export type TypedInputDraft = Readonly<Record<string, string | boolean>>;
 

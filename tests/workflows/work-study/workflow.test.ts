@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { WorkStudyInput } from "../../../src/models/workflows/work-study/input.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../src/workflow-kit/workflow.js";
 import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
+import { WorkflowStartWireSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { workStudyWorkflow } from "../../../src/workflows/work-study/workflow.js";
 
 const ingress = WorkStudyInput;
@@ -26,4 +27,12 @@ it("compiles the sign-in and transaction steps with one stop-after-prepare Save,
   expect(descriptor.timeline.map(step => [step.key, step.label])).toEqual([["ucpath-auth", "Sign in to UCPath"], ["transaction", "Submit work-study transaction"]]);
   expect(descriptorRuntimeNodes(descriptor).filter(node => node.kind === "transaction").map(node => String(node.id))).toEqual(["save-transaction"]);
   expect(workflowDryRunSupport(descriptor).state).toBe("supported");
+});
+
+it("declares one required effective date for the whole start, served as declared", () => {
+  const served = WorkflowStartWireSchema.shape.inputRun.parse(descriptor.surfaces.inputRun);
+  expect(served?.typedInput?.submitsMode).toBe(false);
+  expect(served?.typedInput?.modes.map(mode => mode.value)).toEqual(["employee-ids"]);
+  expect(served?.typedInput?.controls).toEqual([{ kind: "date", field: "effectiveDate", label: "Effective date", placement: "input",
+    modes: ["employee-ids"], requires: [], required: true, refusal: "Choose a valid effective date." }]);
 });

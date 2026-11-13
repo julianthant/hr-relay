@@ -87,6 +87,12 @@ it("serves every readable definition with exact ordered steps and declared failu
   }
 });
 
+it("reviews Work Study's effective date as a date control of an input that carries no mode", () => {
+  const workStudy = workflows().find(entry => entry.id === "work-study"); assert.ok(workStudy);
+  assert.deepEqual(workStudy.reviewSpec.runOptions.controls, [{ field: "effectiveDate", label: "Effective date", placement: "input",
+    modes: ["employee-ids"], requires: [], kind: "string" }]);
+});
+
 it("derives visible controls, mode defaults, upload facts and omission forms", () => {
   const entries = workflows();
   const lookup = entries.find(entry => entry.id === "person-lookup"); assert.ok(lookup);

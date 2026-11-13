@@ -1,5 +1,5 @@
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
-import { WORK_STUDY_INPUT_PARSER, WorkStudyCanonicalInput, WorkStudyInput } from "../../models/workflows/work-study/input.js";
+import { WORK_STUDY_INPUT_PARSER, WORK_STUDY_TYPED_INPUT, WorkStudyCanonicalInput, WorkStudyInput } from "../../models/workflows/work-study/input.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { workStudyTransactionDefinition } from "./steps/transaction/step.js";
@@ -11,7 +11,7 @@ export const workStudyWorkflow = defineWorkflow({
   requiredWorkbookFields: [],
   input: WorkStudyInput, canonicalInput: WorkStudyCanonicalInput, inputSubject: "eid",
   surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
-  surfaces: { inputRun: { placeholder: "10000001, 10000002", parser: WORK_STUDY_INPUT_PARSER } },
+  surfaces: { inputRun: { placeholder: "10000001, 10000002", parser: WORK_STUDY_INPUT_PARSER, typedInput: WORK_STUDY_TYPED_INPUT } },
   role: defineWorkflowRole({ kind: "composition" }), scenarios: ["work-study/planned-transaction", "work-study/verified-save", "work-study/already-filed", "work-study/unknown"],
   identity: { matchKey: input => `${input.emplId}:${input.effectiveDate}` },
   presentation: { title: input => input.emplId, subtitle: () => "PayPath work-study transaction" },
