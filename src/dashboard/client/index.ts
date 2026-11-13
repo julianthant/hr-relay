@@ -1,4 +1,10 @@
-import { ReopenProfileOnboardingBrowserRequestSchema, type ReopenProfileOnboardingBrowserRequest, DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
+import type { z } from "zod";
+import { ReopenProfileOnboardingBrowserRequestSchema, type ReopenProfileOnboardingBrowserRequest, DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfilePasswordChangeRequestSchema, ProfileUsernameChangeRequestSchema, ProfileLoginChangeResultSchema, ProfileDetailsChangeRequestSchema, ProfileDetailsChangeResultSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
+type ProfilePasswordChangeRequest = z.infer<typeof ProfilePasswordChangeRequestSchema>;
+type ProfileUsernameChangeRequest = z.infer<typeof ProfileUsernameChangeRequestSchema>;
+type ProfileLoginChangeResult = z.infer<typeof ProfileLoginChangeResultSchema>;
+type ProfileDetailsChangeRequest = z.infer<typeof ProfileDetailsChangeRequestSchema>;
+type ProfileDetailsChangeResult = z.infer<typeof ProfileDetailsChangeResultSchema>;
 import { DASHBOARD_REQUEST_REPORT_MESSAGE, debugFailureOutcome, DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
 import { parseOrThrow } from "./queries/query-parse.js";
 import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
@@ -43,6 +49,9 @@ export interface DashboardClient extends DashboardQueries, DashboardCommands {
   resumeProfile(): Promise<PublicProfileState>;
   signUpProfile(request: ProfileSignUpRequest): Promise<PublicProfileState>;
   logOutProfile(): Promise<PublicProfileState>;
+  changeProfilePassword(request: ProfilePasswordChangeRequest): Promise<ProfileLoginChangeResult>;
+  changeProfileUsername(request: ProfileUsernameChangeRequest): Promise<ProfileLoginChangeResult>;
+  changeProfileDetails(request: ProfileDetailsChangeRequest): Promise<ProfileDetailsChangeResult>;
   deleteProfileAccount(request: DeleteProfileAccountRequest): Promise<PublicProfileState>;
   completeProfileOnboarding(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
   cancelProfileOnboardingDuo(request: CancelProfileOnboardingDuoRequest): Promise<PublicProfileState>;
@@ -158,6 +167,21 @@ export function createDashboardClient(input: Readonly<{
       profileAuthority = undefined;
       return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/logout", { method: "POST", body: "{}" })).body);
     },
+    async changeProfilePassword(request) {
+      return parseLoginChange((await transport.requestJsonResponse("/api/v1/profile/account/password", {
+        method: "POST", body: JSON.stringify(ProfilePasswordChangeRequestSchema.parse(request)),
+      })).body);
+    },
+    async changeProfileUsername(request) {
+      return parseLoginChange((await transport.requestJsonResponse("/api/v1/profile/account/username", {
+        method: "POST", body: JSON.stringify(ProfileUsernameChangeRequestSchema.parse(request)),
+      })).body);
+    },
+    async changeProfileDetails(request) {
+      return parseDetailsChange((await transport.requestJsonResponse("/api/v1/profile/account/details", {
+        method: "POST", body: JSON.stringify(ProfileDetailsChangeRequestSchema.parse(request)),
+      })).body);
+    },
     async completeProfileOnboarding(request) {
       return activateProfile("/api/v1/profile/onboarding/complete", {
         method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
@@ -251,6 +275,14 @@ export type { WorkbookLibraryQueries } from "./queries/workbook-library-queries.
 export type { AssistantQueries } from "./queries/assistant-queries.js";
 export type { AssistantModelPreferenceView, AssistantRequest, AssistantResult } from "../../models/dashboard/assistant.js";
 
+function parseLoginChange(body: unknown): ProfileLoginChangeResult {
+  const wire = WIRE_ERROR_BODY.safeParse(body);
+  return ProfileLoginChangeResultSchema.parse(wire.success ? { state: "refused", code: wire.data.code } : body);
+}
+function parseDetailsChange(body: unknown): ProfileDetailsChangeResult {
+  const wire = WIRE_ERROR_BODY.safeParse(body);
+  return ProfileDetailsChangeResultSchema.parse(wire.success ? { state: "refused", code: wire.data.code } : body);
+}
 function parseProfileState(body: unknown): PublicProfileState {
   const wire = WIRE_ERROR_BODY.safeParse(body);
   return PublicProfileStateSchema.parse(wire.success ? { state: "refused", code: wire.data.code } : body);

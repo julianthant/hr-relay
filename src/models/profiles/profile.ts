@@ -117,6 +117,38 @@ export function deriveProfileNames(firstName: string, lastName: string): {
   return { firstName: first.data, lastName: last.data, initials: profileInitials(timekeeperName), timekeeperName };
 }
 
+/** Initials a person enters for themself: one to eight letters A to Z. */
+export const ProfileInitialsSchema = z.string().regex(/^[A-Z]{1,8}$/u);
+/** A timekeeper name every word of which starts with a letter A to Z, so the initials workflows derive from it are letters too. */
+export const ProfileTimekeeperNameSchema = ProfileDisplayNameSchema
+  .refine(value => value.split(/\s+/u).every(word => /^[A-Za-z]/u.test(word)), "timekeeper name words must start with a letter");
+
+export type ProfileDetailsChange = {
+  readonly name?: { readonly firstName: string; readonly lastName: string };
+  readonly initials?: string;
+  readonly timekeeperName?: string;
+};
+export type ProfileDetailsPatch = Partial<Pick<ProfileRegistryRow, "firstName" | "lastName" | "initials" | "timekeeperName">>;
+export type ProfileDetailsRefusalCode = "PROFILE_DISPLAY_NAME_REFUSED" | "PROFILE_INITIALS_REFUSED" | "PROFILE_NAME_REFUSED";
+
+function isProfileName(firstName: string, lastName: string): boolean {
+  try { deriveProfileNames(firstName, lastName); return true; }
+  catch (error) {
+    if (error instanceof ProfileNameValidationError) return false;
+    throw error;
+  }
+}
+
+/** The registry patch for a details change, or the code of the first refused value; nothing is trimmed or corrected. */
+export function profileDetailsPatch(change: ProfileDetailsChange): { readonly patch: ProfileDetailsPatch } | { readonly refused: ProfileDetailsRefusalCode } {
+  if (change.name !== undefined && !isProfileName(change.name.firstName, change.name.lastName)) return { refused: "PROFILE_DISPLAY_NAME_REFUSED" };
+  if (change.initials !== undefined && !ProfileInitialsSchema.safeParse(change.initials).success) return { refused: "PROFILE_INITIALS_REFUSED" };
+  if (change.timekeeperName !== undefined && !ProfileTimekeeperNameSchema.safeParse(change.timekeeperName).success) return { refused: "PROFILE_NAME_REFUSED" };
+  return { patch: { ...(change.name === undefined ? {} : { firstName: change.name.firstName, lastName: change.name.lastName }),
+    ...(change.initials === undefined ? {} : { initials: change.initials }),
+    ...(change.timekeeperName === undefined ? {} : { timekeeperName: change.timekeeperName }) } };
+}
+
 export const ProfileDatabaseBindingSchema = z.strictObject({ installationId: z.uuid(), profileId: ProfileIdSchema });
 export type ProfileDatabaseBinding = z.infer<typeof ProfileDatabaseBindingSchema>;
 

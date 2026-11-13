@@ -108,4 +108,21 @@ describe("the provenance bar uses the demo's identity wording", () => {
     assert.equal(/Config/u.test(popover.textContent ?? ""), false);
     assert.equal(/Attempt/u.test(popover.textContent ?? ""), false);
   });
+  it.each(["interactive", "bulk"] as const)("words %s priority as Priority On or Off", async priority => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted = root;
+    await act(async () => {
+      root.render(createElement(RunProvenanceBar, {
+        surface: { ...surface, priority }, workflowLabel: "Person Lookup", currentAppVersion: "0.1.0", servedDescriptorHash: DESCRIPTOR_HASH,
+      }));
+    });
+    const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Run provenance"]');
+    if (trigger === null) throw new Error("the provenance bar rendered no trigger");
+    await act(async () => { trigger.click(); });
+    const text = document.querySelector<HTMLElement>('[aria-label="Provenance"]')?.textContent ?? "";
+    assert.match(text, priority === "interactive" ? /Priority.*On/u : /Priority.*Off/u);
+    assert.doesNotMatch(text, /Interactive|Bulk/u);
+  });
 });
