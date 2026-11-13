@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { it } from "vitest";
+import fs, { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { basename, join } from "node:path";
+import { it, vi } from "vitest";
 import { CanonicalCredentialHeadSchema, createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { createDuoCredentialStore } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -65,10 +66,22 @@ function reenrolStages(w: Active) {
 function writeStage(directory: string, w: Active, owner: string, target: "head" | "duo") {
   writeFileSync(join(directory, `.${w.profileId}.${owner}.reenrol-${target}.canonical.tmp`), randomBytes(48), { mode: 0o600 });
 }
-function assertCommitted(w: Active, intent: DuoReenrolCommitIntent) {
-  assert.deepEqual(states(w), Object.fromEntries(w.fresh.map(row => [row.credentialId, "ready"])));
+/** Fails the one rename into `target`, leaving the operation's real stage with its real bytes: the on-disk prefix of a crash just before it. */
+function crashBeforeRename(target: string, operation: () => unknown): string {
+  const rename = fs.renameSync;
+  let stage: string | undefined;
+  vi.spyOn(fs, "renameSync").mockImplementation((source, destination) => {
+    if (stage === undefined && String(destination) === target) { stage = String(source); throw new Error("synthetic crash before rename"); }
+    return rename(source, destination);
+  });
+  syncBuiltinESMExports();
+  try { assert.throws(operation); } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
+  assert.ok(stage); return basename(stage);
+}
+function assertCommitted(w: Active, intent: DuoReenrolCommitIntent, kept: Readonly<Record<string, string>> = {}) {
+  assert.deepEqual(states(w), { ...kept, ...Object.fromEntries(w.fresh.map(row => [row.credentialId, "ready"])) });
   const current = head(w);
-  assert.deepEqual(intent.retireIds.slice(0, w.active.length), w.active);
+  assert.deepEqual(intent.retireIds, w.active);
   for (const id of intent.retireIds) {
     assert.ok(current.retired.includes(id));
     assert.equal(current.counters.some(counter => counter.credentialId === id), false);
@@ -232,6 +245,55 @@ it("refuses to commit a draft whose ids an interrupted discard retired, before t
   } finally { await w.f.close(); }
 });
 
+const draftCrashes: readonly Readonly<{ name: string; target: "head" | "duo"; write(w: Active): unknown }>[] = [
+  { name: "a marked enrolment's record", target: "duo", write: w => w.store.enroll({ ...material(w.reenrolAccount, "usb", 9), reenrol: true }) },
+  { name: "a marked enrolment's pending counter", target: "head", write: w => w.store.enroll({ ...enrollInput(material(w.reenrolAccount, "internal", 9)), reenrol: true }) },
+  { name: "a staging record", target: "duo", write: w => { w.clock.advanceWall(1000); return w.store.stage(w.fresh[0].credentialId, w.fresh[0].scope); } },
+  { name: "a staged counter reservation", target: "head", write: w => {
+    w.clock.advanceWall(1000); w.store.stage(w.fresh[0].credentialId, w.fresh[0].scope);
+    const owner = createCanonicalCredentials(w.f.admission);
+    return owner.reserveStagedDuoCounter(w.fresh[0].credentialId, randomUUID(), w.fresh[0].scope);
+  } },
+];
+for (const point of draftCrashes) {
+  it(`discards a draft interrupted just before ${point.name} replaces its file`, async () => {
+    const w = await activeProfile();
+    try {
+      const identity = w.store.identity(), target = point.target === "head" ? w.headPath : join(w.duoDirectory, `${w.profileId}.json`);
+      const stage = crashBeforeRename(target, () => point.write(w));
+      assert.match(stage, new RegExp(`^\\.${w.profileId}\\.${w.reenrolAccount}\\.reenrol-${point.target}\\.canonical\\.tmp$`, "u"));
+      assert.deepEqual(reenrolStages(w), [stage]);
+      assert.throws(() => w.store.identity(), { code: "DUO_CREDENTIAL_UNAVAILABLE" });
+      createDuoCredentialStore(w.f.admission, w.clock).discardDraft(w.reenrolAccount);
+      assert.deepEqual(Object.keys(states(w)), w.active);
+      assert.equal(w.store.identity(), identity);
+      assert.deepEqual(reenrolStages(w), []);
+    } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); await w.f.close(); }
+  });
+}
+
+it("removes a draft write's stage at boot so sign-in and the active set survive a crash before its rename", async () => {
+  const w = await activeProfile();
+  const binding = w.f.admission.profileBinding, identity = w.store.identity();
+  w.clock.advanceWall(1000);
+  crashBeforeRename(join(w.duoDirectory, `${w.profileId}.json`), () => w.store.stage(w.fresh[0].credentialId, w.fresh[0].scope));
+  assert.equal(reenrolStages(w).length, 1);
+  await w.f.closeController();
+  const lifetime = await RuntimeLifetimeLock.acquire(0);
+  const machine = acquireEntrypointAdmission(w.f.workspace, "exclusive", lifetime);
+  let admission: ReturnType<typeof machine.admitProfile> | undefined;
+  try {
+    assert.deepEqual(reenrolStages(w), []);
+    signInBoundProfileFixture(machine);
+    admission = machine.admitProfile(binding.profileId);
+    const reopened = createDuoCredentialStore(admission, w.clock);
+    assert.equal(reopened.identity(), identity);
+    assert.equal(reopened.read().credentials.find(row => row.credentialId === w.fresh[0].credentialId)?.state, "pending");
+    reopened.discardDraft(w.reenrolAccount);
+    assert.deepEqual(reopened.read().credentials.map(row => row.credentialId), w.active);
+  } finally { admission?.release(); machine.release(); await lifetime.close(); await w.f.close(); }
+});
+
 it("converges a discard interrupted between its head and record publications", async () => {
   const w = await stagedProfile();
   try {
@@ -256,13 +318,18 @@ it("commits staged rows as ready after their arm window has passed and retires t
     const intent = w.store.prepareReenrolCommit(w.reenrolAccount);
     assert.deepEqual(DuoReenrolCommitIntentSchema.parse(intent), intent);
     assert.deepEqual(intent.stagedIds, w.fresh.map(row => row.credentialId));
-    assert.deepEqual(intent.retireIds, [...w.active, stray.credentialId]);
+    assert.deepEqual(intent.retireIds, w.active);
+    const widened = { ...intent, retireIds: [...intent.retireIds, stray.credentialId] }, widenedTree = storageTree(w.f.workspace);
+    assert.deepEqual(w.store.inspectReenrolCommit(widened), { head: "not-applied", record: "unprovable" });
+    assert.throws(() => w.store.commitReenrol(widened), { code: "DUO_CREDENTIAL_UNCERTAIN" });
+    assert.deepEqual(storageTree(w.f.workspace), widenedTree);
     assert.deepEqual(w.store.inspectReenrolCommit(intent), { head: "not-applied", record: "not-applied" });
     w.store.commitReenrol(intent);
     assert.deepEqual(w.store.inspectReenrolCommit(intent), { head: "applied", record: "applied" });
-    assertCommitted(w, intent);
+    assertCommitted(w, intent, { [stray.credentialId]: "pending" });
+    assert.equal(head(w).retired.includes(stray.credentialId), false);
     const frame = createCanonicalCredentials(w.f.admission).readRecord("duo"); assert.ok(frame);
-    const rows = DuoCredentialRecordSchema.parse(frame.value).credentials;
+    const rows = DuoCredentialRecordSchema.parse(frame.value).credentials.filter(row => row.credentialId !== stray.credentialId);
     assert.ok(rows.every(row => row.state === "ready" && row.confirmedAt === provedAt));
     assert.notEqual(w.store.identity(), before);
     assert.deepEqual(w.store.credentials().map(row => row.credentialId), w.fresh.map(row => row.credentialId));

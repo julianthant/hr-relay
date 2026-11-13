@@ -4,7 +4,7 @@ import { createCipheriv,createDecipheriv,createHash,createHmac,randomBytes,rando
 import { lstatSync,readdirSync } from "node:fs";
 import { dirname,join } from "node:path";
 import { z } from "zod";
-import { DuoCredentialRecordSchema, DuoEnrollmentScopeSchema, DuoReenrolCommitIntentSchema, type DuoCredentialRecord, type DuoEnrollmentScope, type DuoReenrolCommitIntent, type DuoStoredCredential } from "../../../models/config/duo-credential-store.js";
+import { DuoCredentialRecordSchema, DuoEnrollmentScopeSchema, DuoReenrolCommitIntentSchema, DuoStoredCredentialSchema, type DuoCredentialRecord, type DuoEnrollmentScope, type DuoReenrolCommitIntent, type DuoStoredCredential } from "../../../models/config/duo-credential-store.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import type { SignUpOperation } from "../../../models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -1181,10 +1181,9 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
           && candidate.publicKeySpki === credential.publicKeySpki && candidate.privateKeyPkcs8 === credential.privateKeyPkcs8))) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
       const priorRows = new Map(prior.credentials.map(row => [row.credentialId, canonicalJsonStringify(row)]));
       const nextRows = new Map(next.credentials.map(row => [row.credentialId, canonicalJsonStringify(row)]));
-      // A re-enrolment row is enrolled pending here, then changes only through the bounded re-enrolment operations.
+      // Re-enrolment rows enter, change and leave only through the bounded re-enrolment operations.
       if ([...prior.credentials, ...next.credentials].some(row => (row.state === "staged" || row.state === "pending" && row.reenrol === true)
-        && priorRows.get(row.credentialId) !== nextRows.get(row.credentialId)
-        && !(row.state === "pending" && !priorRows.has(row.credentialId)))) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+        && priorRows.get(row.credentialId) !== nextRows.get(row.credentialId))) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
     }
     return publishRecord(kind, head, key, deepFreeze({ revision: increment(current?.revision ?? 0), value }));
   }
@@ -1229,7 +1228,14 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
     if (!publishable(head, next)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
     return publishRecord("duo", head, key, deepFreeze({ revision: increment(expectedRevision), value: next }), stage).revision;
   }
-  function reserveCounter(credential: DuoStoredCredential, requestId: string): Readonly<{ count: number; revision: number }> {
+  function initializeCounter(credential: DuoStoredCredential | undefined, credentialId: string, count: number, stage?: string): void {
+    if (credential?.state !== "pending" || credential.authenticator?.transport !== "internal") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
+    const { head, key } = readHead();
+    if (head.retired.includes(credentialId) || head.counters.some(counter => counter.credentialId === credentialId)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+    publishHead(head, key, { counters: [...head.counters, Counter.parse({ credentialId, publicKeySpki: credential.publicKeySpki, count, requests: [] })] }, stage);
+  }
+  function reserveCounter(credential: DuoStoredCredential, requestId: string, stage?: string): Readonly<{ count: number; revision: number }> {
     validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
     const { head, key } = readHead(), credentialId = credential.credentialId;
     if (head.retired.includes(credentialId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
@@ -1241,24 +1247,23 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
     const count = (prior?.count ?? 0) + 1;
     const counter = Counter.parse({ credentialId, publicKeySpki: credential.publicKeySpki, count,
       requests: [...(prior?.requests ?? []), { requestId, count }] });
-    const revision = publishHead(head, key, { counters: [...head.counters.filter(candidate => candidate.credentialId !== credentialId), counter] });
+    const revision = publishHead(head, key, { counters: [...head.counters.filter(candidate => candidate.credentialId !== credentialId), counter] }, stage);
     return { count, revision };
   }
   type CommitBody = Omit<DuoReenrolCommitIntent, "mac">;
   type Classification = "applied" | "not-applied" | "unprovable";
-  /** The record a commit publishes from its exact source: only this account's rows, now ready. Undefined when the source no longer matches. */
+  /** The record a commit publishes from its exact source: the ready set removed, this account's staged rows ready, other rows untouched. */
   function committedRecord(record: DuoCredentialRecord, intent: CommitBody): DuoCredentialRecord | undefined {
     const account = record.credentials.filter(row => row.scope.accountId === intent.accountId);
-    const others = record.credentials.filter(row => row.scope.accountId !== intent.accountId);
+    const ready = record.credentials.filter(row => row.state === "ready");
     if (canonicalJsonStringify(account.map(row => row.credentialId)) !== canonicalJsonStringify(intent.stagedIds)
-      || canonicalJsonStringify(others.map(row => row.credentialId)) !== canonicalJsonStringify(intent.retireIds)) return undefined;
-    const credentials = [];
-    for (const row of account) {
-      if (row.state !== "staged") return undefined;
+      || canonicalJsonStringify(ready.map(row => row.credentialId)) !== canonicalJsonStringify(intent.retireIds)
+      || account.some(row => row.state !== "staged")) return undefined;
+    return DuoCredentialRecordSchema.parse({ credentials: record.credentials.filter(row => row.state !== "ready").map(row => {
+      if (row.state !== "staged" || row.scope.accountId !== intent.accountId) return row;
       const { provedAt, reenrol: _reenrol, ...fields } = row;
-      credentials.push({ ...fields, state: "ready" as const, confirmedAt: provedAt });
-    }
-    return DuoCredentialRecordSchema.parse({ credentials });
+      return { ...fields, state: "ready" as const, confirmedAt: provedAt };
+    }) });
   }
   function commitMac(key: Buffer, intent: CommitBody, record: DuoCredentialRecord): string {
     const { commitId, accountId, duoRevision, stagedIds, retireIds } = intent;
@@ -1365,15 +1370,21 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
       try { locked(() => {
         const record = read("duo"), document = DuoCredentialRecordSchema.parse(record?.value);
         const credential = document.credentials.find(candidate => candidate.credentialId === credentialId);
-        if (credential?.state !== "pending" || credential.authenticator?.transport !== "internal") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-        validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
-        const { head, key } = readHead();
-        if (head.retired.includes(credentialId) || head.counters.some(counter => counter.credentialId === credentialId)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
-        const counter = Counter.parse({ credentialId, publicKeySpki: credential.publicKeySpki, count, requests: [] });
-        const { mac: _mac, ...priorBody } = head;
-        const body = ActiveHeadBody.parse({ ...priorBody, revision: increment(head.revision), counters: [...head.counters, counter] });
-        publish(headPath, encode({ ...body, mac: headMac(body, key) }));
+        if (credential?.state === "pending" && credential.reenrol === true) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+        initializeCounter(credential, credentialId, count);
       }); } catch (error) { translate(error); }
+    },
+    /** Enrols a re-enrolment row pending, with its platform counter; its stages are re-enrolment stages, so discard and boot can clear them. */
+    enrollReenrolDuoCredential(input: DuoStoredCredential, initialSignCount?: number): Readonly<{ revision: number }> {
+      try { return locked(() => {
+        const credential = DuoStoredCredentialSchema.parse(input), { revision, record } = readDuo();
+        if (credential.state !== "pending" || credential.reenrol !== true
+          || record.credentials.some(row => row.credentialId === credential.credentialId)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+        assertReenrolAccount(record, credential.scope.accountId);
+        const next = publishDuo(revision, { credentials: [...record.credentials, credential] }, reenrolStagePath(canonical, credential.scope.accountId, "duo"));
+        if (initialSignCount !== undefined) initializeCounter(credential, credential.credentialId, initialSignCount, reenrolStagePath(canonical, credential.scope.accountId, "head"));
+        return { revision: next };
+      }, true); } catch (error) { translate(error); }
     },
     readDuoCounter(credentialId: string): number {
       try {
@@ -1401,8 +1412,8 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
         const credential = record.credentials.find(candidate => candidate.credentialId === credentialId && candidate.state === "staged"
           && canonicalJsonStringify(candidate.scope) === expected);
         if (credential === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-        return reserveCounter(credential, requestId);
-      }); } catch (error) { translate(error); }
+        return reserveCounter(credential, requestId, reenrolStagePath(canonical, credential.scope.accountId, "head"));
+      }, true); } catch (error) { translate(error); }
     },
     stageDuoCredential(credentialId: string, scope: DuoEnrollmentScope, provedAt: string): Readonly<{ revision: number }> {
       try { return locked(() => {
@@ -1414,8 +1425,8 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
         if (pending.authenticator?.transport === "internal" && !readHead().head.counters.some(counter => counter.credentialId === credentialId
           && counter.publicKeySpki === pending.publicKeySpki)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
         const credentials = record.credentials.map(row => row === pending ? { ...pending, state: "staged" as const, reenrol: true as const, provedAt: at } : row);
-        return { revision: publishDuo(revision, { credentials }) };
-      }); } catch (error) { translate(error); }
+        return { revision: publishDuo(revision, { credentials }, reenrolStagePath(canonical, parsed.accountId, "duo")) };
+      }, true); } catch (error) { translate(error); }
     },
     /** Removes an abandoned re-enrolment's rows: retire their ids and counters in the head, then drop them from the record. */
     discardDuoDraft(accountId: string): void {
@@ -1443,7 +1454,7 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
           assertReenrolAccount(record, owner);
           const intent = { commitId: randomUUID(), accountId: owner, duoRevision: revision,
             stagedIds: record.credentials.filter(row => row.scope.accountId === owner).map(row => row.credentialId),
-            retireIds: record.credentials.filter(row => row.scope.accountId !== owner).map(row => row.credentialId) };
+            retireIds: record.credentials.filter(row => row.state === "ready").map(row => row.credentialId) };
           const next = intent.stagedIds.length === 0 || record.credentials.some(row => head.retired.includes(row.credentialId))
             ? undefined : committedRecord(record, intent);
           if (next === undefined || !publishable({ ...head, retired: [...head.retired, ...intent.retireIds] }, next)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");

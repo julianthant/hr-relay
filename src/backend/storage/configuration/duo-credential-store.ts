@@ -102,6 +102,10 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
       const credential = DuoStoredCredentialSchema.parse({ ...material, state: "pending", createdAt: clock.now().toISOString() });
       assertScope(credential.scope);
       validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
+      if (credential.state === "pending" && credential.reenrol === true) return access(() => {
+        if (read().record.credentials.some(row => row.credentialId === credential.credentialId)) throw new Error("duo-credential-id-reused");
+        return { credentialId: credential.credentialId, revision: owner.enrollReenrolDuoCredential(credential, initialSignCount).revision };
+      });
       return access(() => {
         const { revision, record } = read();
         if (record.credentials.some(row => row.credentialId === credential.credentialId)) throw new Error("duo-credential-id-reused");
