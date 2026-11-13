@@ -128,6 +128,8 @@ export const ERROR_CATALOG = Object.freeze({
   CONTACT_APPROVED_PLAN_CONFLICT: catalogEntry("The approved selection contains conflicting primary contact plans for an employee. Select one intended contact per employee or correct the OCR records, then approve again.", EmptyParametersSchema),
   PAYPATH_MULTIPLE_RECORDS: catalogEntry("PayPath Actions found more than one job record for this employee. Nothing was changed; file this person by hand.", EmptyParametersSchema),
   PAYPATH_ALERT_SHOWN: catalogEntry("UCPath showed an alert on PayPath Actions for this employee. Nothing was changed; open PayPath Actions for this employee and read the alert.", EmptyParametersSchema),
+  STAGED_VALUE_MISMATCH: catalogEntry("PayPath Actions did not keep a work-study value Relay filled. Nothing was saved; review the employee in UCPath.", EmptyParametersSchema),
+  PAYPATH_SUBMIT_REFUSED: catalogEntry("UCPath answered the PayPath Save and Submit with an alert. Whether the work-study transaction was filed is unknown; check this employee's transactions in UCPath before acting.", EmptyParametersSchema),
   PAYPATH_IDENTITY_UNREADABLE: catalogEntry("PayPath Actions did not show the employee's name. Nothing was changed; review the employee in UCPath.", EmptyParametersSchema),
   CONTACT_APPROVED_FIELDS_INVALID: catalogEntry("The approved contact fields cannot form a complete UCPath contact plan. Correct and approve the OCR record again.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_BACKUP_FAILED: catalogEntry("The automatic shutdown backup could not be verified. Relay has not completed a clean shutdown.", EmptyParametersSchema),

@@ -22,8 +22,8 @@ it.each([
   expect(ingress.safeParse(value).success).toBe(false);
 });
 
-it("compiles the sign-in and plan steps with no write node and no dry-run support", () => {
+it("compiles the sign-in and transaction steps with one stop-after-prepare Save, so Dry run is offered", () => {
   expect(descriptor.timeline.map(step => [step.key, step.label])).toEqual([["ucpath-auth", "Sign in to UCPath"], ["transaction", "Submit work-study transaction"]]);
-  expect(descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction")).toBe(false);
-  expect(workflowDryRunSupport(descriptor).state).not.toBe("supported");
+  expect(descriptorRuntimeNodes(descriptor).filter(node => node.kind === "transaction").map(node => String(node.id))).toEqual(["save-transaction"]);
+  expect(workflowDryRunSupport(descriptor).state).toBe("supported");
 });

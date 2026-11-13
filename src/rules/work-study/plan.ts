@@ -1,4 +1,4 @@
-import type { UcpathPayPathRead } from "../../models/ui/ucpath-paypath.js";
+import type { UcpathPayPathRead, UcpathPayPathWorkStudyTarget } from "../../models/ui/ucpath-paypath.js";
 import type { WorkStudyPlan } from "../../models/workflows/work-study/read-transaction-plan.js";
 import type { WorkStudyInputValue } from "../../models/workflows/work-study/input.js";
 
@@ -22,6 +22,14 @@ export function planWorkStudyTransaction(input: WorkStudyInputValue, read: Ucpat
     emplId: input.emplId, name: read.displayedName, effectiveDate: workStudyUsDate(input.effectiveDate),
     positionChangeReason: WORK_STUDY_POSITION_CHANGE_REASON, positionPool: WORK_STUDY_POSITION_POOL,
     comments: workStudyComments(input.effectiveDate), current: read.position,
+  };
+}
+
+/** The transaction the Save files: exactly the planned values, for the person PayPath named when the plan was read. */
+export function workStudyTarget(plan: WorkStudyPlan): UcpathPayPathWorkStudyTarget {
+  return {
+    emplId: plan.emplId, expectedName: plan.name, effectiveDate: plan.effectiveDate,
+    positionChangeReason: plan.positionChangeReason, positionPool: plan.positionPool, comments: plan.comments,
   };
 }
 

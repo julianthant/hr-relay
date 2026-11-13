@@ -45,6 +45,8 @@ export const PARKED_WRITE_RECORDS: Readonly<Record<string, ParkedWriteRecord>> =
     id: { segment: 1, where: id => `Smart HR Transactions for ${id}` } },
   "ucpath/delete-pending-terminations": { record: "pending termination removal", system: "UCPath", act: "Save", check: "Smart HR Transactions", again: "remove them again", againHint: "Relay removes the pending terminations once more.",
     id: { segment: 1, where: id => `Smart HR Transactions for ${id}` } },
+  "ucpath/submit-paypath-work-study": { record: "work-study transaction", system: "UCPath", act: "Submit", check: "Smart HR Transactions", again: "file it again", againHint: "Relay files the work-study transaction once more.",
+    id: { segment: 1, where: id => `Smart HR Transactions for ${id}` } },
   "ucpath/create-hire": { record: "hire", system: "UCPath", act: "Submit", check: "Smart HR Transactions", again: "file it again", againHint: "Relay files the hire once more." },
   "ucpath/save-emergency-contact": { record: "emergency contact", system: "UCPath", act: "Save", check: "the employee's emergency contacts", again: "save it again", againHint: "Relay saves the emergency contact once more." },
   "kuali/save-separation-finalization": { record: "separation document", system: "Kuali", act: "Save", check: "the separation document", again: "save it again", againHint: "Relay saves the document once more.",
