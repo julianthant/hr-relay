@@ -125,11 +125,11 @@ export function createProfileVerifiers(machineRoot: string) {
         }],
       });
     },
-    /** Derive a profile's replacement login row now. `commit` swaps only that row and clears its failures; `landed` reads back whether the swap took effect. */
-    prepareLoginChange(profileId: string, email: string, password: string): { commit(): void; landed(): boolean } {
+    /** Derive a profile's replacement login row now. `swap` replaces only that row and clears its failures; `landed` reads back whether the swap took effect. */
+    prepareLoginChange(profileId: string, email: string, password: string): { swap(): void; landed(): boolean } {
       const created = createSyntheticVerifier(pepper(), email, password);
       return Object.freeze({
-        commit() {
+        swap() {
           const current = read();
           if (current.profiles.some(entry => entry.profileId !== profileId && entry.emailKey === created.emailKey)) throw new Error("profile verifier email is taken");
           if (!current.profiles.some(entry => entry.profileId === profileId)) throw new Error("profile verifier is missing");
