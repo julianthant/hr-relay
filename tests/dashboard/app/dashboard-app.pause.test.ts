@@ -7,7 +7,7 @@ import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
-import { CommandRequestSchema, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
+import { BulkRunCommandRequestSchema, CommandRequestSchema, type BulkRunCommandRequest, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
 import { lifecycleCommandId } from "../../../src/rules/commands/lifecycle-command-id.js";
 import { PARITY_WORKFLOW_COMPOSITION } from "../../parity/helpers/workflow-composition.js";
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
@@ -16,18 +16,19 @@ import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 
-async function mount() {
+async function mount(pause: "running" | "pause-pending" | "paused" = "running") {
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
-  let lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 17, state: "ready", pause: "running", update: "installer-unavailable",
+  let lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 17, state: "ready", pause, update: "installer-unavailable",
     targets: [{ runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, expectedVersion: 7 },
       { runId: "00000000-0000-4000-8000-000000000099", expectedVersion: 11 }] });
   const reply = Promise.withResolvers<CommandResult>();
-  const sent: CommandRequest[] = [];
+  const sent: Array<CommandRequest | BulkRunCommandRequest> = [];
   const client = { ...transport, applicationLifecycle: async () => lifecycle,
     subscribeDay(input: Parameters<typeof transport.subscribeDay>[0]) {
       input.onDay(FIXTURE_DAY_WIRE); input.onState({ state: "live" }); return { close() {} };
     },
+    async executeBulkCommand(raw: unknown) { sent.push(BulkRunCommandRequestSchema.parse(raw)); return new Promise<never>(() => undefined); },
     async executeCommand(raw: unknown) { sent.push(CommandRequestSchema.parse(raw)); return reply.promise; },
   };
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE.day}`);
@@ -56,8 +57,7 @@ it("Pause all sends exact global membership once, including runs outside the sel
     assert.deepEqual(request.target, { runtimeGeneration: 17 });
     assert.deepEqual(request.payload.targets, f.lifecycle.targets);
     assert.equal(request.source, "dashboard");
-    assert.equal(f.button("Pause all runs").disabled, true);
-    f.lifecycle = ApplicationLifecycleSchema.parse({ ...f.lifecycle, targets: f.lifecycle.targets.map(target => ({ ...target,
+    f.lifecycle = ApplicationLifecycleSchema.parse({ ...f.lifecycle, pause: "paused", targets: f.lifecycle.targets.map(target => ({ ...target,
       expectedVersion: target.expectedVersion + 1, pauseUnavailable: false, pause: { state: "paused", requestedAt: request.requestedAt, pausedAt: request.requestedAt,
         commandId: lifecycleCommandId("application-pause", { commandId: request.commandId, runId: target.runId }) } })) });
     await act(async () => { f.reply.resolve({ state: "applied", commandId: request.commandId,
@@ -86,7 +86,21 @@ it("keyboard quit confirms without a run list and retains an uncertain request w
     await act(async () => f.reply.reject(new Error("lost response")));
     await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "q", metaKey: true, cancelable: true })));
     assert.equal(document.querySelector('[role="dialog"]'), null);
-    assert.equal(f.button("Pause all runs").disabled, true);
     assert.equal(f.sent.length, 1);
   } finally { await f.close(); }
+});
+
+it("Pause all and Resume all follow the served application pause value", async () => {
+  const pending = await mount("pause-pending");
+  try {
+    assert.equal(pending.button("Pause all runs").disabled, true);
+    assert.match(pending.host.textContent ?? "", /pause/iu);
+  } finally { await pending.close(); }
+  const paused = await mount("paused");
+  try {
+    assert.equal(paused.button("Resume all runs").disabled, false);
+    await act(async () => paused.button("Resume all runs").click());
+    assert.equal(paused.sent.length, 1);
+    assert.equal(paused.sent[0].type, "resume");
+  } finally { await paused.close(); }
 });
