@@ -6,8 +6,8 @@ import type { z } from "zod";
 import { TimelinePageRequestSchema, TimelineEventRecordSchema, debugEventLevel, type TimelineAppend, type TimelineCheckpointReferenceSchema } from "../../../models/events/timeline.js";
 import { readLocalDebugLog } from "../../storage/events/local-debug-log.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
-import { CHILD_ONLY_WORKFLOW_MODULES, DESCRIPTORS } from "../registries/workflow-registry.js";
-import { STEP_PROOF_DESCRIPTORS, stepProofDescriptorOf } from "../registries/step-proof-modules.js";
+import { READABLE_WORKFLOW_MODULES } from "../registries/workflow-registry.js";
+import { STEP_PROOF_DESCRIPTORS } from "../registries/step-proof-modules.js";
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import { descriptorRuntimeNodes } from "../../../workflow-kit/workflow.js";
 import { RunIdSchema, TraceIdSchema } from "../../../rules/identity/ids.js";
@@ -31,6 +31,11 @@ export interface ExplainComposeInput {
   readonly repoRoot?: string;
   readonly clock?: Clock;
 }
+
+const EXPLAIN_DESCRIPTORS = Object.freeze([
+  ...READABLE_WORKFLOW_MODULES.map(module => module.descriptor),
+  ...STEP_PROOF_DESCRIPTORS,
+]);
 
 const SUBJECT_HELP = "usage: cli explain run <traceId|runId> [--json] [--bundle <dir>]";
 
@@ -165,8 +170,7 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
   if (runId === undefined) throw new Error(`no run matches "${identity}" in this authority database`);
   const run = requireTrustRun(runReader, runId);
 
-  const descriptor = DESCRIPTORS.find((entry) => entry.id === run.envelope.workflow)
-    ?? stepProofDescriptorOf(run.envelope.workflow);
+  const descriptor = EXPLAIN_DESCRIPTORS.find((entry) => entry.id === run.envelope.workflow);
   if (descriptor === undefined) {
     throw new Error(
       `run ${run.envelope.runId} is workflow ${run.envelope.workflow}, which this build does not register`,
@@ -181,7 +185,7 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
   if (result !== undefined && result.runId !== run.envelope.runId) throw new Error("TRUST_EVIDENCE_IDENTITY_MISMATCH: Explain result");
   const settled = run.lifecycle.state === "terminal" && run.lifecycle.outcome !== "interrupted";
   const receipt = settled
-    ? createReceiptService({ database, descriptors: [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...STEP_PROOF_DESCRIPTORS], runReader }).ensureReceipt(run.envelope.runId)
+    ? createReceiptService({ database, descriptors: EXPLAIN_DESCRIPTORS, runReader }).ensureReceipt(run.envelope.runId)
     : undefined;
 
   const replayedCheckpoints = authority.timelineEvents.withReadSnapshot(() => {
