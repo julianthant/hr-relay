@@ -390,7 +390,6 @@ describe_m3("legacy workflow previews", () => {
   });
   it_m3("rejects reversed and invalid dates", () => {
     expect_m3(mockDraftError_m3("old-kronos-reports", draft("old-kronos-reports", { startDate: "2026-02-01", endDate: "2026-01-31" }))).toMatch(/date range/);
-    expect_m3(mockDraftError_m3("work-study", draft("work-study", { effectiveDate: "2026-02-30" }))).toMatch(/effective date/);
   });
   it_m3("retains source history on rerun and matches duplicates by content, not filename", () => {
     const source = mockRunsForDraft_m3("oath-upload", draft("oath-upload", { uploadMode: "upload-only", dryRun: false }), 1)[0];
@@ -412,8 +411,8 @@ describe_m3("legacy workflow previews", () => {
     expect_m3(mockQueueView_m3([done, waiting], ["all"], "oldest")).toEqual([waiting, done]);
   });
   it_m3("seeds each workflow with its own fictional input and log graph", () => {
-    const runs = seedMockRuns_m3(); expect_m3(runs.filter(run => !run.parentId)).toHaveLength(19);
-    expect_m3(runs).toHaveLength(25);
+    const runs = seedMockRuns_m3(); expect_m3(runs.filter(run => !run.parentId)).toHaveLength(18);
+    expect_m3(runs).toHaveLength(24);
     for (const id of ["i9-lookup"]) expect_m3(runs.find(run => run.workflowId === id)!.parentId).toBe("mock:onbase:sample");
     expect_m3(runs.filter(run => run.parentId && run.workflowId === "ocr")).toHaveLength(5);
     expect_m3(runs.filter(run => run.records !== undefined).every(run => run.workflowId === "ocr")).toBe(true);
@@ -509,10 +508,7 @@ describe_m4("source-backed workflow operation detail", () => {
     expect_m4(clicks(concurrent)).toContain("Cancel unsubmitted draft"); expect_m4(clicks(concurrent)).not.toContain("Save and Submit");
     expect_m4(fields(concurrent)).toEqual(expect_m4.arrayContaining([expect_m4.objectContaining({ label: "Draft status", value: "Cancelled" })]));
   });
-  it_m4("carries exact Work-Study comments and OnBase import settings and all required keywords", () => {
-    const work = completed("work-study", { effectiveDate: "2026-09-12" })[0];
-    expect_m4(fields(work)).toEqual(expect_m4.arrayContaining([expect_m4.objectContaining({ label: "Position change reason", value: "JRL" }), expect_m4.objectContaining({ label: "Comments", value: "Updated pool id to F per work study award 09/12/2026" })]));
-    expect_m4(clicks(work)).toEqual(expect_m4.arrayContaining(["Job Data", "Additional Pay Data", "Save and Submit"]));
+  it_m4("carries exact OnBase import settings and all required keywords", () => {
     const imported = person("onbase"), values = fields(imported);
     expect_m4(values).toEqual(expect_m4.arrayContaining([expect_m4.objectContaining({ label: "File type", value: "PDF (.pdf)" }), expect_m4.objectContaining({ label: "Document name", value: "EMERGENCY CONTACT INFORMATION" })]));
     expect_m4(values.map(field => field.label)).toEqual(expect_m4.arrayContaining(["UCPath ID", "Last name", "First name", "Document name", "Department name", "Department code", "Vice Chancellor", "Vice Chancellor code"]));
@@ -697,12 +693,7 @@ describe_m0("mock final employee identity", () => {
     expect_m0(fields.find(field => field.id === `${run.id}:field:0`)).toMatchObject({ label: "Kuali ID", value: "48216" });
     expect_m0(fields.find(field => field.id === `${run.id}:field:2`)).toMatchObject({ label: "Employee ID", value: "10000001" });
   });
-  it_m0("retains an eight-digit employee input in earlier steps and final readback", () => {
-    const run = mockRunsForDraft_m0("work-study", { ...initialMockDraft_m0("work-study"), text: "10000009" }, 0)[0];
-    const fields = mockRunLog_m0(run).steps.flatMap(step => step.entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []));
-    expect_m0(fields.filter(field => field.label === "Employee ID").every(field => field.value === "10000009")).toBe(true);
-    expect_m0(fields.find(field => field.id === `${run.id}:field:1`)).toMatchObject({ label: "Employee ID", value: "10000009" });
-  });
+
 });
 
 const faultDraft = (fault: MockDraft_m4["fault"]): MockDraft_m4 => ({ ...initialMockDraft_m2("emergency-contact"), fault, files: [{ name: "contact.pdf", size: 100, digest: "synthetic" }] });

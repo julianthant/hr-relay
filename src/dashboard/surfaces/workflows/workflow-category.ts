@@ -16,7 +16,7 @@ const WORKFLOW_CATEGORY_DISPLAY: Record<WorkflowCategory, CategoryDisplay> = {
   separation: { label: "Separations", order: 2 },
   timekeeping: { label: "Timekeeping", order: 3 },
   search: { label: "Search", order: 4 },
-  operations: { label: "Operations", order: 5 },
+  operations: { label: "Work Study", order: 5 },
 };
 
 /** what a category this build has no heading for is worth in the sort */

@@ -6,7 +6,7 @@ import {
   type StepOmissionField,
   type StepOmissionForm,
 } from "../../../models/workflow/step-omission.js";
-import { inputRunValueNoun, parseInputRunText, toRawSubmission, type InputParserSpec, type InputRunSurface, type TypedInputSurface, type TypedInputDraft } from "../../../models/workflow/ingress.js";
+import { inputRunValueNoun, parseInputRunText, toRawSubmission, type InputParserSpec, type InputRunSurface, parseTypedDate, type TypedDateControl, type TypedInputSurface, type TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { CANONICAL_FIELDS } from "../../../models/fields/registry.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
@@ -24,11 +24,39 @@ export function typedInputMode(surface: TypedInputSurface, draft: TypedInputDraf
   return mode;
 }
 
+/** The date controls the chosen mode shows, each one shared date typed as MM/DD/YYYY. */
+export function typedDateControls(surface: TypedInputSurface, mode: string): readonly TypedDateControl[] {
+  return surface.controls.filter((control): control is TypedDateControl => "kind" in control && control.modes.includes(mode));
+}
+
+/** Each date as typed, refused with the control's declared wording when required and missing or not a real day. */
+function typedDates(surface: TypedInputSurface, mode: string, draft: TypedInputDraft): Record<string, string> {
+  return Object.fromEntries(typedDateControls(surface, mode).flatMap(control => {
+    const value = draft[control.field];
+    const text = typeof value === "string" ? value.trim() : "";
+    if (text === "" ? control.required : parseTypedDate(text) === undefined) throw new Error(control.refusal);
+    return text === "" ? [] : [[control.field, text]];
+  }));
+}
+
+/** A surface that submits no mode has one mode, so its records name none. */
+function recordMode(surface: TypedInputSurface, record: Record<string, JsonValue>): string | undefined {
+  if (surface.submitsMode === false) return surface.modes[0]?.value;
+  const value = record[surface.modeField];
+  return typeof value === "string" ? value : undefined;
+}
+
+export const usDateText = (value: string): string | undefined => {
+  if (parseTypedDate(value) !== undefined) return value;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+  return iso === null ? undefined : `${iso[2]}/${iso[3]}/${iso[1]}`;
+};
+
 export function typedInputDefaults(surface: TypedInputSurface, mode: string | null = surface.initialMode): TypedInputDraft {
   if (mode === null) return {};
   const selected = typedInputMode(surface, { [surface.modeField]: mode });
   if (selected === undefined) throw new Error(`Choose ${surface.modeLabel}.`);
-  return { [surface.modeField]: mode, ...Object.fromEntries(selected.defaults.map(({ field, value }) => {
+  return { [surface.modeField]: mode, ...Object.fromEntries(typedDateControls(surface, mode).map(control => [control.field, ""])), ...Object.fromEntries(selected.defaults.map(({ field, value }) => {
     if (value.kind === "count") throw new Error("Typed input controls require text or boolean defaults");
     return [field, value.kind === "text" ? value.text : value.value];
   })) };
@@ -45,7 +73,7 @@ export function changeTypedInput(surface: TypedInputSurface, draft: TypedInputDr
     ...Object.fromEntries(surface.controls.filter(control => control.placement === "hidden" && draft[control.field] !== undefined).map(control => [control.field, draft[control.field]])) }
     : { ...draft, [field]: value };
   for (const control of surface.controls) {
-    if (control.placement !== "hidden" && !typedControlAvailable(surface, next, control.field)) next[control.field] = false;
+    if (!("kind" in control) && control.placement !== "hidden" && !typedControlAvailable(surface, next, control.field)) next[control.field] = false;
   }
   return next;
 }
@@ -57,8 +85,8 @@ function typedRecord(input: JsonValue): Record<string, JsonValue> {
 
 export function typedInputText(surface: TypedInputSurface, input: JsonValue): string {
   const record = typedRecord(input);
-  const modeValue = record[surface.modeField];
-  if (typeof modeValue !== "string") throw new Error("Typed input source has no mode");
+  const modeValue = recordMode(surface, record);
+  if (modeValue === undefined) throw new Error("Typed input source has no mode");
   const selected = typedInputMode(surface, { [surface.modeField]: modeValue });
   if (selected === undefined) throw new Error("Typed input source has no mode");
   const display = selected.display;
@@ -77,13 +105,17 @@ export function typedInputText(surface: TypedInputSurface, input: JsonValue): st
 
 export function restoreTypedInput(surface: TypedInputSurface, input: JsonValue): TypedInputDraft {
   const record = typedRecord(input);
-  const mode = record[surface.modeField];
-  if (typeof mode !== "string") throw new Error("Typed input source has no mode");
+  const mode = recordMode(surface, record);
+  if (mode === undefined) throw new Error("Typed input source has no mode");
   const draft = { ...typedInputDefaults(surface, mode) };
+  const dateFields = new Set(typedDateControls(surface, mode).map(control => control.field));
   for (const field of Object.keys(draft)) {
+    if (field === surface.modeField && surface.submitsMode === false) continue;
     const value = record[field];
     if (typeof value !== typeof draft[field]) throw new Error(`Typed input source field ${field} is invalid`);
-    if (typeof value === "string" || typeof value === "boolean") draft[field] = value;
+    const text = dateFields.has(field) && typeof value === "string" ? usDateText(value) : value;
+    if (text === undefined) throw new Error(`Typed input source field ${field} is invalid`);
+    if (typeof text === "string" || typeof text === "boolean") draft[field] = text;
   }
   const selected = typedInputMode(surface, draft);
   if (selected === undefined) throw new Error("Typed input source has no mode");
@@ -112,12 +144,13 @@ export function restoreTypedInput(surface: TypedInputSurface, input: JsonValue):
 function parseTypedEntries(surface: TypedInputSurface, text: string, draft: TypedInputDraft): readonly JsonValue[] {
   const mode = typedInputMode(surface, draft);
   if (mode === undefined) throw new Error(`Choose ${surface.modeLabel}.`);
-  const options = Object.fromEntries(mode.defaults.map(({ field }) => [field, draft[field]]));
+  const options = { ...Object.fromEntries(mode.defaults.map(({ field }) => [field, draft[field]])), ...typedDates(surface, mode.value, draft) };
+  const named = surface.submitsMode === false ? {} : { [surface.modeField]: mode.value };
   for (const control of surface.controls) {
     if (options[control.field] === true && !typedControlAvailable(surface, draft, control.field)) throw new Error(`${control.label} requires its declared mode and options`);
   }
   const parser = mode.parser;
-  if (parser.kind === "entries") return parseInputRunText(parser.spec, text).map(entry => JsonValueSchema.parse({ ...toRawSubmission(entry), [surface.modeField]: mode.value, ...options }));
+  if (parser.kind === "entries") return parseInputRunText(parser.spec, text).map(entry => JsonValueSchema.parse({ ...toRawSubmission(entry), ...named, ...options }));
   return text.split(parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
     const fields = entry.split(",").map(field => field.trim());
     const fail = () => new Error(formatErrorCatalogFailure(createErrorCatalogFailure(parser.missingIdentifiersCode, {})).text);
@@ -133,7 +166,7 @@ function parseTypedEntries(surface: TypedInputSurface, text: string, draft: Type
       return [[identifier.field, identifier.canonicalField === "ssn" ? CANONICAL_FIELDS.ssn.schema.parse(value) : value]];
     }));
     if (Object.keys(values).length === 0) throw fail();
-    return JsonValueSchema.parse({ [surface.modeField]: mode.value,
+    return JsonValueSchema.parse({ ...named,
       [parser.familyName]: CANONICAL_FIELDS.fullName.schema.parse(family), [parser.givenName]: CANONICAL_FIELDS.fullName.schema.parse(given), ...values, ...options });
   });
 }
@@ -148,8 +181,8 @@ export function previewRunInput(surface: InputRunSurface, text: string, draft: T
       const values = { ...typedInputDefaults(declaration, mode.value), ...draft };
       if (sourceInput !== undefined) restoreTypedInput(declaration, sourceInput);
       const source = sourceInput === undefined ? undefined : typedRecord(sourceInput);
-      const people = source !== undefined && source[declaration.modeField] === mode.value && text === typedInputText(declaration, source)
-        ? [JsonValueSchema.parse({ ...source, ...Object.fromEntries(mode.defaults.map(({ field }) => [field, values[field]])) })]
+      const people = source !== undefined && recordMode(declaration, source) === mode.value && text === typedInputText(declaration, source)
+        ? [JsonValueSchema.parse({ ...source, ...Object.fromEntries(mode.defaults.map(({ field }) => [field, values[field]])), ...typedDates(declaration, mode.value, values) })]
         : parseTypedEntries(declaration, text, values);
       const unique = new Map<string, JsonValue>();
       for (const person of people) {
