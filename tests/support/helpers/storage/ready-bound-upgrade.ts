@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { createRequire } from "node:module";
+import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -34,6 +35,9 @@ import { QUEUED_RUN, START_PLAN } from "../../fixtures/phase1f-run-fixtures.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../helpers/admission-fixture.js";
 import { update as artifactUpdate } from "../../helpers/database-foundation/fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+
+// node:sqlite loads on first use so importing this helper stays pure.
+const sqlite = () => createRequire(import.meta.url)("node:sqlite") as { DatabaseSync: typeof DatabaseSyncType };
 
 
 export const hostFacts = { primaryDisplay: null };
@@ -114,7 +118,7 @@ export async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVe
   assert.ok(existsSync(join(profile.machine.stateRoot, "machine", "credential-keys", `${binding.profileId}.json`)));
   assert.equal(profile.machine.readProfileRegistry().profiles.find(value => value.profileId === binding.profileId)?.credentialState, "saved");
   profile.admission.release();
-  const raw = new DatabaseSync(profile.path);
+  const raw = new (sqlite().DatabaseSync)(profile.path);
   try {
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
@@ -169,7 +173,7 @@ export async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVe
 }
 
 export function rawEight(path: string, version = 8) {
-  const raw = new DatabaseSync(path, { readOnly: true });
+  const raw = new (sqlite().DatabaseSync)(path, { readOnly: true });
   try {
     const present = new Set(raw.prepare("SELECT name FROM sqlite_schema WHERE type='table'").all().map(row => String(row.name)));
     return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && !isWorkerCustodyDroppedTable(table) && present.has(table)).map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
