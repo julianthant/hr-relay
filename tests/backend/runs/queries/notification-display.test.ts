@@ -8,9 +8,10 @@ import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/check
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { NotificationRecordSchema, type NotificationRecord } from "../../../../src/models/notifications/notifications.js";
 import { ONBOARDING_INPUT_EXAMPLE } from "../../../../src/models/workflows/onboarding/input.js";
+import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { HASH_A as HASH_A_INPUT, HASH_B as HASH_B_INPUT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { makeWorld, notificationRecordOf,runRecordOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { makeWorld, notificationRecordOf, queuedEventOf, runRecordOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
 const HASH_A = FingerprintSchema.parse(HASH_A_INPUT), HASH_B = FingerprintSchema.parse(HASH_B_INPUT);
 const worlds: DashboardWorld[] = [];
@@ -130,76 +131,93 @@ it("resolves command notices that target a run the way that run resolves, and a 
 });
 
 const onboarding = onboardingModule.descriptor;
-const onboardingRun = (overrides: Record<string, unknown> = {}) => RunRecordSchema.parse({
-  ...runRecordOf({ seed: 4, workflow: onboarding.id, descriptor: onboarding, lifecycle: { state: "terminal", outcome: "failed", failureId: "44444444-4444-4444-8444-444444444444", endedAt: "2026-10-02T17:00:00.000Z" } }),
+const FAILED = { state: "terminal", outcome: "failed", failureId: "44444444-4444-4444-8444-444444444444", endedAt: "2026-10-02T17:00:00.000Z" } as const;
+const onboardingRun = (overrides: Record<string, unknown> = {}, schemaHash = deriveSchemaHash(onboarding.canonicalInput, "output")) => RunRecordSchema.parse({
+  ...runRecordOf({ seed: 4, workflow: onboarding.id, descriptor: onboarding, lifecycle: FAILED }),
   input: { raw: { email: ONBOARDING_INPUT_EXAMPLE.email }, ingressSchemaHash: HASH_A,
-    parsed: { schemaHash: deriveSchemaHash(onboarding.canonicalInput, "output"), protectedBindings: [], value: ONBOARDING_INPUT_EXAMPLE } },
+    parsed: { schemaHash, protectedBindings: [], value: ONBOARDING_INPUT_EXAMPLE } },
   ...overrides,
 });
-const onboardingDeps = async (current = onboardingRun()) => ({ ...await deps([]), read: () => ({ state: "present" as const, disposition: "live" as const, run: current }), descriptor: () => onboarding });
+/** Display deps over a world whose timeline holds the run's `run.queued` with `queuedTitle`, or none when it is omitted. */
+const queuedDeps = async (current: ReturnType<typeof onboardingRun>, workflow: AnyWorkflowDescriptor, seed: number, queuedTitle?: string) => {
+  const world = await makeWorld();
+  worlds.push(world);
+  if (queuedTitle !== undefined) queuedEventOf(world, { seed, workflow: workflow.id, descriptor: workflow, title: queuedTitle });
+  return { ...await deps([], descriptor, world), read: () => ({ state: "present" as const, disposition: "live" as const, run: current }), descriptor: () => workflow };
+};
 const notice = (trigger: NotificationRecord["trigger"], links: readonly unknown[]) => NotificationRecordSchema.parse({
   ...notificationRecordOf({ seed: 4, title: "Notice", lastSeenAt: "2026-10-02T17:00:00.000Z" }),
   trigger, channel: trigger === "verified-done" ? "inbox" : "ping", links,
 });
 const runLink = (current: ReturnType<typeof onboardingRun>) => ({ kind: "run" as const, runId: current.envelope.runId });
-const failureLink = (current: ReturnType<typeof onboardingRun>) => ({ kind: "failure" as const, runId: current.envelope.runId, failureId: "44444444-4444-4444-8444-444444444444" });
-const OWN_TITLE = { state: "available", workflow: "Onboarding", subject: ONBOARDING_INPUT_EXAMPLE.email } as const;
+const failureLink = (current: ReturnType<typeof onboardingRun>) => ({ kind: "failure" as const, runId: current.envelope.runId, failureId: FAILED.failureId });
+const QUEUED_TITLE = "Spring roster row 12";
+const OWN_TITLE = { state: "available", workflow: "Onboarding", subject: QUEUED_TITLE } as const;
 
 it.each([
   ["failed", failureLink], ["gate-waiting", runLink], ["write-parked", runLink], ["repeating", failureLink], ["verified-done", runLink],
-] as const)("names the run by its own title on a %s notice for a workflow that declares no subject", async (trigger, link) => {
+] as const)("names the run by its queued title on a %s notice for a workflow that declares no subject", async (trigger, link) => {
   const current = onboardingRun();
-  assert.deepEqual(notificationDisplayContext(notice(trigger, [link(current)]), await onboardingDeps(current)), OWN_TITLE);
+  assert.deepEqual(notificationDisplayContext(notice(trigger, [link(current)]), await queuedDeps(current, onboarding, 4, QUEUED_TITLE)), OWN_TITLE);
 });
 
-it.each(["recovery", "command-result"] as const)("names the target run by its own title on a %s command notice", async kind => {
+it.each(["recovery", "command-result"] as const)("names the target run by its queued title on a %s command notice", async kind => {
   const current = onboardingRun();
   const request = CommandRequestSchema.parse({
     commandId: "11111111-1111-4111-8111-111111111111", requestedAt: "2026-10-02T17:00:00.000Z",
     requestedBy: "local-operator", source: "dashboard", family: "run", type: "retry",
     target: { runId: current.envelope.runId, expectedVersion: 1 },
   });
-  const display = notificationDisplayContext(notice("command", [{ kind, commandId: request.commandId }]), { ...await onboardingDeps(current), command: () => request });
+  const display = notificationDisplayContext(notice("command", [{ kind, commandId: request.commandId }]), { ...await queuedDeps(current, onboarding, 4, QUEUED_TITLE), command: () => request });
   assert.deepEqual(display, OWN_TITLE);
+});
+
+it("shows the title the run was queued under, not one today's presentation would derive from its input", async () => {
+  const current = onboardingRun();
+  const display = notificationDisplayContext(notice("failed", [failureLink(current)]), await queuedDeps(current, onboarding, 4, QUEUED_TITLE));
+  assert.deepEqual(display, OWN_TITLE);
+  assert.ok(display.state === "available" && !display.subject.includes(ONBOARDING_INPUT_EXAMPLE.email));
+});
+
+it("names a run admitted under an older input schema by its queued title without parsing its input", async () => {
+  const historical = onboardingRun({}, HASH_B);
+  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(historical)]), await queuedDeps(historical, onboarding, 4, QUEUED_TITLE)), OWN_TITLE);
+});
+
+it("keeps workflow-only when the run's queued event is no longer retained", async () => {
+  const current = onboardingRun();
+  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), await queuedDeps(current, onboarding, 4)), { state: "workflow-only", workflow: "Onboarding" });
 });
 
 const TIMEKEEPER = { kind: "profile", inputPath: "timekeeperName", name: "timekeeperName", profileId: "66666666-6666-4666-8666-666666666666", sessionEpoch: 1 };
 const separationRun = (overrides: Record<string, unknown> = {}, bindings: unknown[] = [TIMEKEEPER]) => RunRecordSchema.parse({
-  ...runRecordOf({ seed: 5, workflow: separationsDescriptor.id, descriptor: separationsDescriptor, lifecycle: { state: "terminal", outcome: "failed", failureId: "44444444-4444-4444-8444-444444444444", endedAt: "2026-10-02T17:00:00.000Z" } }),
+  ...runRecordOf({ seed: 5, workflow: separationsDescriptor.id, descriptor: separationsDescriptor, lifecycle: FAILED }),
   input: { raw: { documentNumber: "4510" }, ingressSchemaHash: HASH_A, parsed: { schemaHash: deriveSchemaHash(separationsDescriptor.canonicalInput, "output"), protectedBindings: bindings,
     value: { documentNumber: "4510", timekeeperName: "Synthetic Timekeeper", searchTimeoutMs: 30_000 } } },
   ...overrides,
 });
-const separationDeps = async (current: ReturnType<typeof separationRun>) => ({ ...await deps([]),
-  read: () => ({ state: "present" as const, disposition: "live" as const, run: current }), descriptor: () => separationsDescriptor });
 
-it("names a run whose declared subject checkpoint was never written by the run's own title", async () => {
+it("names a run whose declared subject checkpoint was never written by its queued title", async () => {
   const current = separationRun();
-  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), await separationDeps(current)),
+  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), await queuedDeps(current, separationsDescriptor, 5, "Separation 4510")),
     { state: "available", workflow: separationsDescriptor.label, subject: "Separation 4510" });
 });
 
 it("prefers the operator's name for the run", async () => {
   const current = onboardingRun({ displayName: "Spring hire" });
-  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), await onboardingDeps(current)), { ...OWN_TITLE, subject: "Spring hire" });
+  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), await queuedDeps(current, onboarding, 4, QUEUED_TITLE)), { ...OWN_TITLE, subject: "Spring hire" });
 });
 
-it("names a protected-subject run only as the run's own title does", async () => {
+it("names a protected-subject run only by its queued title, never its operator name", async () => {
   const current = separationRun({ displayName: "Canary separation" }, [TIMEKEEPER,
     { kind: "test-data-local", inputPath: "documentNumber", name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: "55555555-5555-4555-8555-555555555555" }]);
-  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), await separationDeps(current)),
+  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), await queuedDeps(current, separationsDescriptor, 5, "Protected test subject")),
     { state: "available", workflow: separationsDescriptor.label, subject: "Protected test subject" });
-});
-
-it("keeps workflow-only when the run's stored input predates the workflow's current input schema", async () => {
-  const current = onboardingRun();
-  const stale = RunRecordSchema.parse({ ...current, input: { ...current.input, parsed: { ...current.input.parsed, schemaHash: HASH_B } } });
-  assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(stale)]), await onboardingDeps(stale)), { state: "workflow-only", workflow: "Onboarding" });
 });
 
 it("reads as unavailable when the notice's source is truly gone", async () => {
   const current = onboardingRun();
-  const regular = await onboardingDeps(current);
+  const regular = await queuedDeps(current, onboarding, 4, QUEUED_TITLE);
   assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), { ...regular, read: () => ({ state: "absent", runId: current.envelope.runId }) }), { state: "unavailable" });
   assert.deepEqual(notificationDisplayContext(notice("failed", [failureLink(current)]), { ...regular, descriptor: () => undefined }), { state: "unavailable" });
   assert.deepEqual(notificationDisplayContext(notice("command", [{ kind: "command-result", commandId: "11111111-1111-4111-8111-111111111111" }]), regular), { state: "unavailable" });
