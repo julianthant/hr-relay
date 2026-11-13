@@ -47,7 +47,7 @@ function Fixture() {
     });
     return <QueuePanel outcomes={mockQueueOutcomes(runs)} surfaces={surfaces} state={{ nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set() }} handlers={{ onSelect() {} }} workflowLabelOf={() => 'Person Lookup'} panelLabel="Person Lookup" day="2026-08-03" />;
   }
-  if (surface === 'export') return <ActivityView data={activitySample(ACTIVITY_SAMPLE_RANGE, 'normal')} range={ACTIVITY_SAMPLE_RANGE} today={ACTIVITY_SAMPLE_TODAY} period="custom" onPreset={() => {}} onRange={() => {}} onExport={() => {
+  if (surface === 'export') return <ActivityView data={activitySample(ACTIVITY_SAMPLE_RANGE, 'normal')} range={ACTIVITY_SAMPLE_RANGE} today={ACTIVITY_SAMPLE_TODAY} onRange={() => {}} onExport={() => {
     countCall();
     if (mode === 'pending') return new Promise<void>(() => {});
     return Promise.reject(new Error('Synthetic export refusal'));
