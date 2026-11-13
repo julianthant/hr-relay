@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { balance, durationsFromReports, LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
-import { namedNativeRefusal, nativeOptIn, nativeRunExcludes, REBUILD_INTEGRATION_TEST_EXCLUDE, REBUILD_UNIT_TEST_EXCLUDE } from "../../../vitest.config.js";
+import { namedNativeRefusal, nativeRunExcludes } from "../../../vitest.config.js";
 
 const linuxNativeReport = [
   "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
@@ -151,30 +151,35 @@ describe("CI file selection", () => {
 const localNativeOptOut = [...new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES])].sort();
 
 describe("local native opt-in", () => {
+  const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
+
+  function loadProjects(native: "0" | "1") {
+    const env = { ...process.env };
+    if (native === "1") env.RELAY_TEST_NATIVE = "1";
+    else delete env.RELAY_TEST_NATIVE;
+    return spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"), "--input-type=module", "--eval", `
+      const config = await import("./vitest.config.ts");
+      const wanted = ${JSON.stringify(localNativeOptOut)};
+      const present = (list) => wanted.filter(file => list.includes(file)).sort();
+      const unit = present(config.REBUILD_UNIT_TEST_EXCLUDE);
+      const integration = present(config.REBUILD_INTEGRATION_TEST_EXCLUDE);
+      if (process.env.RELAY_TEST_NATIVE === "1") {
+        if (unit.length !== 0 || integration.length !== 0) throw new Error("opt-in still excludes " + unit.concat(integration).join(","));
+      } else if (JSON.stringify(unit) !== JSON.stringify(wanted) || JSON.stringify(integration) !== JSON.stringify(wanted)) {
+        throw new Error("unset excluded " + unit.length + " and " + integration.length + " of " + wanted.length);
+      }
+    `], { cwd: repoRoot, env, encoding: "utf8" });
+  }
+
   it("keeps unit and integration off native files until RELAY_TEST_NATIVE=1", () => {
-    expect(process.env.RELAY_TEST_NATIVE).not.toBe("1");
-    expect([...REBUILD_UNIT_TEST_EXCLUDE].filter(file => localNativeOptOut.includes(file)).sort()).toEqual(localNativeOptOut);
-    expect([...REBUILD_INTEGRATION_TEST_EXCLUDE].filter(file => localNativeOptOut.includes(file)).sort()).toEqual(localNativeOptOut);
     expect(nativeRunExcludes(undefined)).toEqual(localNativeOptOut);
     expect(nativeRunExcludes("1")).toEqual([]);
-    expect(nativeOptIn(undefined, "node --import tsx scripts/test/pc.ts --remote /slot")).toBe(true);
-    expect(nativeOptIn(undefined, "node node_modules/vitest/vitest.mjs run")).toBe(false);
-    expect(nativeOptIn("1", "")).toBe(true);
+    const child = loadProjects("0");
+    expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(0);
   });
 
   it("collects every listed file when RELAY_TEST_NATIVE=1", () => {
-    const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
-    const listed = [...localNativeOptOut, ...LINUX_NATIVE_FILES];
-    const child = spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"), "--input-type=module", "--eval", `
-      const config = await import("./vitest.config.ts");
-      const listed = ${JSON.stringify(listed)};
-      for (const file of listed) {
-        if (config.REBUILD_UNIT_TEST_EXCLUDE.includes(file) || config.REBUILD_INTEGRATION_TEST_EXCLUDE.includes(file)) {
-          throw new Error("still excluded " + file);
-        }
-      }
-      if (config.nativeRunExcludes("1").length !== 0) throw new Error("opt-in still excludes files");
-    `], { cwd: repoRoot, env: { ...process.env, RELAY_TEST_NATIVE: "1" }, encoding: "utf8" });
+    const child = loadProjects("1");
     expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(0);
   });
 

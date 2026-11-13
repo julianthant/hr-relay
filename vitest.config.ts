@@ -2,7 +2,6 @@ import { prepareWindowsObserverPolicy } from "./scripts/build/windows-observer-p
 import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./scripts/test/ci-files.js";
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
-import { execFileSync } from "node:child_process";
 import { availableParallelism } from "node:os";
 import { scaledMs } from "./tests/support/time-scale.js";
 
@@ -28,19 +27,6 @@ export function nativeRunExcludes(optIn: string | undefined): readonly string[] 
   return [...new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES])].sort();
 }
 
-// shortcut: a Vitest process started by scripts/test/pc.ts opts in so that runner still lists LINUX_NATIVE_FILES, upgrade when test:pc sets RELAY_TEST_NATIVE itself.
-export function nativeOptIn(envValue: string | undefined, parentArgs: string): boolean {
-  return envValue === "1" || parentArgs.includes("scripts/test/pc.ts");
-}
-
-function parentArgs(): string {
-  try {
-    return execFileSync("ps", ["-o", "args=", "-p", String(process.ppid)], { encoding: "utf8" });
-  } catch {
-    return "";
-  }
-}
-
 export function namedNativeRefusal(argv: readonly string[], optIn: string | undefined, cwd = process.cwd()): string | undefined {
   if (optIn === "1") return undefined;
   const optedOut = new Set(nativeRunExcludes(undefined));
@@ -54,8 +40,7 @@ export function namedNativeRefusal(argv: readonly string[], optIn: string | unde
   return `Set RELAY_TEST_NATIVE=1 to run native, serial, and serial-storage tests. Not run: ${named.join(", ")}`;
 }
 
-const nativeOptedIn = nativeOptIn(process.env.RELAY_TEST_NATIVE, parentArgs());
-const nativeExcludes = nativeRunExcludes(nativeOptedIn ? "1" : undefined);
+const nativeExcludes = nativeRunExcludes(process.env.RELAY_TEST_NATIVE);
 export const REBUILD_UNIT_TEST_EXCLUDE = [...UNIT_EXCLUDE_GLOBS, ...nativeExcludes];
 export const REBUILD_INTEGRATION_TEST_EXCLUDE = [...INTEGRATION_EXCLUDE_GLOBS, ...nativeExcludes];
 export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
@@ -210,7 +195,7 @@ export default defineConfig({
   },
 });
 
-const nativeRefusal = namedNativeRefusal(process.argv, nativeOptedIn ? "1" : process.env.RELAY_TEST_NATIVE);
+const nativeRefusal = namedNativeRefusal(process.argv, process.env.RELAY_TEST_NATIVE);
 if (nativeRefusal !== undefined) {
   process.stderr.write(`${nativeRefusal}\n`);
   process.exit(1);
