@@ -60,6 +60,24 @@ describe("browser current-owner fence", () => {
     });
   });
 
+  it("names the failed Playwright call and page error class on the capture cause, without its message text", async () => {
+    await fixtures.withTempRuntime(async ({ config }) => {
+      const native = fixtures.fakeLauncher(), owner = epoch();
+      const cause = new Error("frame.evaluate: ReferenceError: Quillan is not defined\n    at <anonymous>:3:7");
+      const debug: Array<{ area?: string }> = [];
+      const factory = new PlaywrightWorkerSessionFactory({ ...options(config, native, owner.assertCurrent),
+        bindings: fixtures.recordingBindings({ verify: async () => { throw cause; } }),
+        onDebug: (_worker, event) => { if (event.reason === "capture-cause") debug.push(event); } });
+      const resource = await factory.open(input);
+      try {
+        const capture = await resource.screenshot!();
+        assert.equal(capture.state === "unavailable" ? capture.reason : capture.state, "verification-failed");
+        assert.deepEqual(debug.map(event => event.area), ["frame-evaluate-referenceerror"]);
+        assert.equal(/Quillan/u.test(JSON.stringify(debug)), false);
+      } finally { await resource.close({ reason: "worker-stop" }); }
+    });
+  });
+
   it("refuses launch when ownership expires while profile admission resolves", async () => {
     await fixtures.withTempRuntime(async ({ config }) => {
       const owner = epoch(), native = fixtures.fakeLauncher();

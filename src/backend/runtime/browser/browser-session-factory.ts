@@ -89,7 +89,7 @@ export interface BrowserSessionFactoryOptions {
   readonly onAuthenticationEvidence?: (evidence: AuthenticatedApplicationEvidence) => void;
 
   readonly onNavigation?: (url: string) => void;
-  readonly onDebug?: (workerId: WorkerId, event: Pick<DebugEvent, "phase" | "correlationId"> & Partial<Pick<DebugEvent, "code" | "durationMs" | "pinned" | "message" | "stack" | "reason">>) => void;
+  readonly onDebug?: (workerId: WorkerId, event: Pick<DebugEvent, "phase" | "correlationId"> & Partial<Pick<DebugEvent, "code" | "durationMs" | "pinned" | "message" | "stack" | "reason" | "area">>) => void;
 }
 
 /** Resolved once per authentication; never logged, never interpolated. */
@@ -137,6 +137,12 @@ function bindingFor(bindings: BrowserSystemBindings, system: BrowserSystemId): B
     );
   }
   return binding;
+}
+
+// A Playwright message starts "<object>.<method>: [<Class>: ]"; only those closed names leave it, never the text.
+function playwrightCall(error: unknown): string | undefined {
+  const match = error instanceof Error ? /^([a-z][A-Za-z]{0,40})\.([a-z][A-Za-z]{0,40}): (?:([A-Z][A-Za-z]{0,40}Error): )?/u.exec(error.message) : null;
+  return match === null ? undefined : [match[1], match[2], match[3]].filter(part => part !== undefined).join("-").toLowerCase();
 }
 
 export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFactory {
@@ -377,9 +383,10 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             assertCurrent();
             if (error instanceof FullPageCaptureRefusedError) return unavailable(error.reason);
             if (pageVersion !== version) return unavailable("page-changed");
-            for (const cause of serializeErrorCauses(error)) {
+            const call = playwrightCall(error);
+            for (const [index, cause] of serializeErrorCauses(error).entries()) {
               this.#options.onDebug?.(workerId, { phase: "failed", correlationId: sessionId,
-                reason: "capture-cause", code: cause.code, message: cause.name, stack: cause.stack });
+                reason: "capture-cause", code: cause.code, message: cause.name, stack: cause.stack, ...(index === 0 && call !== undefined ? { area: call } : {}) });
             }
             return unavailable("verification-failed");
           }
