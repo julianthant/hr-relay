@@ -8,7 +8,7 @@ import type { AuthorityDatabase } from "../../helpers/synthetic-storage-admissio
 import { CONFIG_SNAPSHOT, HASH_A, NOW } from "../phase1c-contract-fixtures.js";
 import { QUEUED_RUN, WORKFLOW_ID } from "../phase1f-run-fixtures.js";
 import { fixtureUuid, ledgerCommitFixture } from "../ledger-projection-fixtures.js";
-import { testRunService, testWorkerPorts } from "../run-lifecycle-fixtures.js";
+import { admitFixtureSlot, testRunService, testWorkerPorts } from "../run-lifecycle-fixtures.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
@@ -34,7 +34,7 @@ export type CheckClosureStore = Readonly<{
  * Opens one authority store and fills as many registry tables as the repository and service
  * APIs allow, with interlinked rows, so whole-store checks run against a realistic closure.
  */
-export async function seedCheckClosureStore(): Promise<CheckClosureStore> {
+export async function seedCheckClosureStore(options: Readonly<{ activeRuns?: boolean }> = {}): Promise<CheckClosureStore> {
   const world = createAuthorityAccountingTestWorld();
   const { CLOCK } = world;
   const database = await world.openDatabase();
@@ -161,15 +161,41 @@ export async function seedCheckClosureStore(): Promise<CheckClosureStore> {
   seedWorkbooks(database, world);
 
   releaseSeededWriteOwners(database, CLOCK.now().toISOString());
+  if (options.activeRuns === true) holdTwoRuns(database);
   let closed = false;
   return { databasePath, database,
     closeDatabase: () => {
       if (closed) return;
       closed = true;
-      releaseSeededWriteOwners(database, CLOCK.now().toISOString());
+      if (options.activeRuns !== true) releaseSeededWriteOwners(database, CLOCK.now().toISOString());
       database.close();
     },
     cleanup: async () => { closed = true; world.cleanup(); } };
+}
+
+/** Leaves two interactive person-lookup runs running, each held by its own worker slot; interactive priority claims them ahead of the queued bulk runs. */
+function holdTwoRuns(database: AuthorityDatabase): void {
+  for (const poolIndex of [1, 2]) {
+    const slot = database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, WORKFLOW_ID, poolIndex, NOW));
+    const runId = fixtureUuid(`closure-active-run-${String(poolIndex)}`);
+    database.authority.runs.enqueue(RunRecordSchema.parse({
+      ...QUEUED_RUN,
+      envelope: { ...QUEUED_RUN.envelope, runId, itemId: fixtureUuid(`closure-active-item-${String(poolIndex)}`), traceId: `pl-120000-020${String(poolIndex)}`,
+        priority: "interactive", contractFingerprint: personLookupDescriptor.contractFingerprint, descriptorVersion: personLookupDescriptor.version },
+      input: { ...QUEUED_RUN.input, parsed: { schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
+        value: { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false }, protectedBindings: [] } },
+    }));
+    const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: slot.workerId, now: NOW });
+    assert.equal(claimed.state === "claimed" ? claimed.run.envelope.runId : undefined, runId);
+    let current = claimed.state === "claimed" ? claimed.run : undefined;
+    assert.ok(current);
+    for (const state of ["validating", "running"] as const) {
+      const moved = database.authority.runs.transition({ runId, expectedVersion: current.version, claim: { workerId: slot.workerId, claimGeneration: 1 },
+        lifecycle: { state, workerId: slot.workerId, claimedAt: NOW, heartbeatAt: NOW }, now: NOW });
+      assert.equal(moved.state, "applied");
+      current = moved.state === "applied" ? moved.run : current;
+    }
+  }
 }
 
 function commitWrite(database: AuthorityDatabase, path: string, clock: World["CLOCK"], index: number): void {
