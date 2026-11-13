@@ -14,7 +14,7 @@ it("reads retained predecessor Separations values, warnings and fresh plans with
     const { sequentialIdFactory } = await import("../../../support/fixtures/phase1f-run-fixtures.js");
     const { protectedSecretSource } = await import("../../../support/helpers/protected-secret-source.js");
     const { repeatEvidenceDigest } = await import("../../../../src/models/run/rerun.js");
-    const admissions = collectEvidenceSchemaAdmissions({ descriptors: [descriptor], runs: [f.run], writes: f.writes,
+    const { admissions } = collectEvidenceSchemaAdmissions({ descriptors: [descriptor], runs: [f.run], writes: f.writes,
       checkpoints: f.checkpoints, results: [f.result], gates: [] });
     const schemaReader: import("../../../../src/models/storage/evidence-schema-admission.js").EvidenceSchemaReader = (owner, source, oldHash, currentHash) => {
       if (oldHash === currentHash) return oldHash;
