@@ -1,9 +1,9 @@
 import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Fragment, useState, type CSSProperties } from "react";
 import { RunList, RunListRow } from "../../ds/primitives/run-list.js";
-import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, SegmentedChoice, dsIcon } from "../../ds/ui.js";
+import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, SegmentedChoice, dsIcon } from "../../ds/ui.js";
 import { ChartHeading, KeyFigures, LineChart, StackedBars } from "./analytics-charts.js";
-import { ACTIVITY_DATE_PRESETS, type ActivityDatePreset, type ActivityDateRange } from "./activity-model.js";
+import type { ActivityDateRange } from "./activity-model.js";
 import { analyticsBuckets, analyticsClock, analyticsPeriodLabel, finished, shiftDate, shiftRange, type AnalyticsData, type AnalyticsWorkflow } from "./analytics-model.js";
 
 const QUICK = [{ value: "7d", label: "7d" }, { value: "30d", label: "30d" }, { value: "90d", label: "90d" }] as const;
@@ -18,23 +18,14 @@ const OUTCOMES = [
 const sum = (rows: readonly AnalyticsWorkflow[]) => ({ done: rows.reduce((n, r) => n + r.done, 0), failed: rows.reduce((n, r) => n + r.failed, 0), attention: rows.reduce((n, r) => n + r.attention, 0) });
 
 /** The served Analytics toolbar: one period for every chart on the page, a workflow filter and the export. */
-export function AnalyticsToolbar({ range, today, period, onPreset, onRange, workflows, workflow, onWorkflow, exportButton, rangeInput }: {
-  range: ActivityDateRange; today: string; period: ActivityDatePreset; onPreset: (preset: ActivityDatePreset) => void; onRange: (range: ActivityDateRange) => void;
-  workflows: readonly AnalyticsWorkflow[]; workflow: string; onWorkflow: (id: string) => void; exportButton: React.ReactNode; rangeInput: React.ReactNode;
+export function AnalyticsToolbar({ range, today, onRange, workflows, workflow, onWorkflow, exportButton }: {
+  range: ActivityDateRange; today: string; onRange: (range: ActivityDateRange) => void;
+  workflows: readonly AnalyticsWorkflow[]; workflow: string; onWorkflow: (id: string) => void; exportButton: React.ReactNode;
 }) {
-  const [editing, setEditing] = useState(false);
   const quick = QUICK.find(option => { const candidate = quickRange(option.value, today); return candidate.from === range.from && candidate.to === range.to; })?.value;
-  const preset = ACTIVITY_DATE_PRESETS.find(option => option.value === period && option.value !== "custom");
   return <>
     <div className="ds-toolbar-row flex flex-wrap items-center gap-2">
-      <SegmentedChoice hideLabel label="Report period" value={(quick ?? "") as Quick} options={QUICK} onChange={value => { setEditing(false); onRange(quickRange(value, today)); }} />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="outline" className="ds-filter-trigger" iconAfter={<ChevronDown aria-hidden className="size-3.5 text-ui-muted" />}>{quick ? "Custom…" : preset?.label ?? "Custom range"}</Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-[200px]">
-          <DropdownMenuItem onSelect={() => { setEditing(true); onPreset("custom"); }}>Choose dates…</DropdownMenuItem><DropdownMenuSeparator />
-          {ACTIVITY_DATE_PRESETS.filter(option => option.value !== "custom").map(option => <DropdownMenuItem key={option.value} onSelect={() => { setEditing(false); onPreset(option.value); }}>{option.label}</DropdownMenuItem>)}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <SegmentedChoice hideLabel label="Report period" value={(quick ?? "") as Quick} options={QUICK} onChange={value => onRange(quickRange(value, today))} />
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="outline" className="ds-filter-trigger" iconAfter={<ChevronDown aria-hidden className="size-3.5 text-ui-muted" />}>{workflow === "all" ? "By workflow" : workflows.find(row => row.id === workflow)?.label}</Button></DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-[220px]"><DropdownMenuRadioGroup value={workflow} onValueChange={onWorkflow}>
@@ -42,7 +33,6 @@ export function AnalyticsToolbar({ range, today, period, onPreset, onRange, work
           {workflows.map(row => <DropdownMenuRadioItem key={row.id} value={row.id}>{row.label}</DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup></DropdownMenuContent>
       </DropdownMenu>
-      {(editing || period === "custom" && !quick) && rangeInput}
       <span className="ml-auto">{exportButton}</span>
     </div>
   </>;
