@@ -21,7 +21,7 @@ export const STATUS_MOCK_COMMAND_RESULTS: readonly CommandResultFeedEntry[] = [
     settlement: { kind: "refused", reason: "rejected", problem: "invalid-state", message: "The run already finished.", code: "invalid-state" } },
 ];
 export const STATUS_MOCK_BULK_OUTCOME: BulkBatchOutcome = {
-  plan: { verb: "retry", label: "Retry", eligible: [], skipped: [{ runId: mockUuid(7), title: "EID 10000002" }], unavailable: [] },
+  plan: { verb: "retry", label: "Retry", eligible: [] },
   subjects: new Map([[mockUuid(4), "EID 10000001"], [mockUuid(8), "EID 10000003"], [mockUuid(9), "EID 10000004"]]),
   response: BulkRunCommandResponseSchema.parse({ state: "vector", bulkCommandId: mockUuid(910), type: "retry", requestedCount: 4, results: [
     { outcome: "applied", runId: mockUuid(4), commandId: mockUuid(911), replayed: false, detail: "Retry started." },

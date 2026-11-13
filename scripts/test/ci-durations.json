@@ -770,7 +770,6 @@
   "tests/backend/workbooks/workflow-workbook-service.reference.integration.test.ts": 0.2,
   "tests/cli.integration.test.ts": 7.4,
   "tests/cli.test.ts": 5.3,
-  "tests/dashboard/app/commands/bulk-dispatch.integration.test.ts": 0,
   "tests/dashboard/app/commands/bulk-dispatch.test.ts": 0,
   "tests/dashboard/app/commands/command-dispatch.integration.test.ts": 9,
   "tests/dashboard/app/commands/command-dispatch.parked-write.test.ts": 0,

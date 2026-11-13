@@ -35,7 +35,7 @@ let root: Root_m0 | undefined;
 let host: HTMLDivElement | undefined;
 const _afterEachFixture0 = () => { act_m0(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; };
 
-it_m0('redraws only affected selections while preserving new handlers, clock and bulk state', async () => {
+it_m0('redraws only affected selections while preserving new handlers and clock', async () => {
 try {
 
 
@@ -61,9 +61,6 @@ try {
   act_m0(() => host?.querySelector<HTMLElement>(`[data-demo-row-id="${rows[2].runId}"]`)?.click());
   assert_m0.deepEqual(selected, [rows[2].runId]);
   state = { ...state, nowIso: '2026-08-14T19:00:00.000Z' }; draw(); assert_m0.equal(renders.length, 3); renders.length = 0;
-  state = { ...state, selectMode: true, bulkIds: new Set([rows[2].runId]) }; handlers = { ...handlers, onToggleBulk() {} }; draw();
-  assert_m0.equal(renders.length, 3);
-  assert_m0.equal(host.querySelectorAll('[role="checkbox"][aria-checked="true"]').length, 1);
 
 } finally {
 _afterEachFixture0();
@@ -133,11 +130,11 @@ function single(status: QueueSurfaceWire_m1["status"]): QueueSurfaceWire_m1 {
   assert_m1.ok(row, `missing ${status} fixture`);
   return row;
 }
-function render(surface: QueueSurfaceWire_m1, members: readonly MemberSurfaceWire_m1[] = [], selectMode = false): HTMLElement {
+function render(surface: QueueSurfaceWire_m1, members: readonly MemberSurfaceWire_m1[] = []): HTMLElement {
   const host = document.createElement("div");
   host.innerHTML = renderToStaticMarkup_m1(createElement_m1(QueueRow_m1, {
-    surface, members, state: { nowIso: FIXTURE_NOW_m1, openWells: new Set<string>(), selectMode, panelWorkflowId: surface.workflowId },
-    handlers: { onSelect: () => {}, onToggleBulk: () => {} }, workflowLabelOf: () => "Separations",
+    surface, members, state: { nowIso: FIXTURE_NOW_m1, openWells: new Set<string>(), panelWorkflowId: surface.workflowId },
+    handlers: { onSelect: () => {} }, workflowLabelOf: () => "Separations",
   }));
   return host;
 }
@@ -188,17 +185,6 @@ describe_m1("approved mixed queue presentation", () => {
     assert_m1.ok(!unknown.textContent?.includes("0s"));
     const zero = render(QueueSurfaceWireSchema_m1.parse({ ...done, endedAt: { state: "present", value: done.startedAt } }));
     assert_m1.ok(zero.textContent?.includes("0s"));
-  });
-  it_m1("places the bulk selector outside the card and keeps the row's selection target", () => {
-    const row = single("queued");
-    const host = render(row, [], true);
-    const target = host.querySelector("[data-demo-row-id]");
-    assert_m1.ok(target);
-    const checkbox = host.querySelector('[role="checkbox"]');
-    assert_m1.ok(checkbox);
-    assert_m1.ok(!target.contains(checkbox));
-    assert_m1.equal(target.getAttribute("tabindex"), "0");
-    assert_m1.equal(target.getAttribute("aria-pressed"), "false");
   });
   it_m1("shows the served group counter and ordered member statuses in Name/Status columns", () => {
     const operation = FIXTURE_DAY_WIRE_m1.queueSurfaces.find(row => row.surfaceKind === "operation" && row.memberRunIds.length === 3);

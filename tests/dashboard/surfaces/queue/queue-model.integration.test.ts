@@ -349,22 +349,6 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     assert_m1.ok(memberButton() === null);
   });
 
-  it_m1("keeps batch and individual selection local with partial-selection state", async () => {
-    const rows = [lookupRow(1), lookupRow(2), lookupRow(3)];
-    const toggled: string[] = [], opened: string[] = [];
-    const handlers: QueueHandlers_m1 = { onSelect: id => { opened.push(id); }, onToggleBulk: id => { toggled.push(id); } };
-    await render(rows, handlers, undefined, { selectMode: true, bulkIds: new Set([rows[0].runId]) });
-    const groupSelection = document.querySelector<HTMLElement>('[role="checkbox"]'); assert_m1.ok(groupSelection);
-    assert_m1.equal(groupSelection.getAttribute("data-state"), "indeterminate");
-    const memberSelection = document.querySelector<HTMLElement>(`tr[data-demo-row-id="${rows[1].runId}"] [role="checkbox"]`); assert_m1.ok(memberSelection);
-    await act_m1(async () => memberSelection.click());
-    await act_m1(async () => groupSelection.click());
-    assert_m1.deepEqual(toggled, [rows[1].runId, `batch:${uuidOf_m1(700)}`]);
-    assert_m1.deepEqual(opened, []);
-    await render(rows, handlers, undefined, { selectMode: true, bulkIds: new Set(rows.map(row => row.runId)) });
-    assert_m1.equal(groupSelection.getAttribute("data-state"), "checked");
-  });
-
   it_m1("keeps a single-person start flat and expands a large group by its stable session key", async () => {
     const single = lookupRow(1, { session: { state: "present", itemScope: "session", sessionId: uuidOf_m1(702), presentation: { layout: "items", groupInQueue: false, version: 1, startedAt: base.startedAt } } });
     assert_m1.equal(queueItemLayout([single]).displayTop[0], single);

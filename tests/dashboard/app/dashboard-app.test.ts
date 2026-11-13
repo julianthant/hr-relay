@@ -5,9 +5,7 @@ import { syntheticSettingsAuthority } from "../../support/helpers/dashboard/sett
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
 import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
 import { useDashboardCommandBinding } from "../../../src/dashboard/state/client-context.js";
-import { QueueToolbar, ConfirmBulkCommandDialog, type PendingBulkCommand } from "../../../src/dashboard/surfaces/queue/queue-toolbar.js";
 import { CommandRecovery } from "../../../src/dashboard/surfaces/shared/actions/command-recovery.js";
-import { composeBulkRunCommand, planBulkVerb } from "../../../src/dashboard/app/commands/bulk-dispatch.js";
 import { verifyShellCommandEffect } from "../../../src/dashboard/app/commands/command-dispatch.js";
 import type { CommandOutcome, CommandExecutionOptions } from "../../../src/dashboard/app/commands/command-executor.js";
 import { CommandRequestSchema, BulkRunCommandRequestSchema } from "../../../src/rules/commands/commands.js";
@@ -835,7 +833,7 @@ it_m2("renders an authenticated child workflow without a public launch source", 
   assert_m2.ok(h.host.querySelector(`[data-demo-row-id="${parent.runId}"]`));
   assert_m2.ok(h.host.querySelector(`[data-demo-row-id="${member.runId}"]`));
 });
-describe_m2("dispatchBulk's rejection arm (the selection band's bulk post)", () => {
+describe_m2("the bulk command rejection arm (Resume all's bulk post)", () => {
   it_m2("preserves uncertainty from a post-dispatch throw", async () => {
     const bytes: string[] = [];
     let day = FIXTURE_DAY_WIRE_m2;
@@ -855,27 +853,20 @@ describe_m2("dispatchBulk's rejection arm (the selection band's bulk post)", () 
     function BulkHarness() {
       const binding = useDashboardCommandBinding();
       if (binding === undefined) throw new Error("missing fixture binding");
-      const [selectMode, setSelectMode] = useState(false);
-      const [selected, setSelected] = useState(false);
-      const [pending, setPending] = useState<PendingBulkCommand | null>(null);
       const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
       const [, update] = useState(0);
       const candidates = FIXTURE_DAY_WIRE_m2.queueSurfaces.filter(row => row.parent === null).map(row => ({ runId: row.runId, title: row.title, actions: row.actions }));
-      const plan = planBulkVerb(candidates, "cancel", candidates.map(row => row.runId));
+      const targets = candidates.flatMap(row => row.actions.flatMap(action => action.kind === "command" && action.command === "cancel" ? [{ runId: row.runId, title: row.title, expectedVersion: action.expectedVersion }] : []));
       const options: CommandExecutionOptions = { scope: binding.scope, readback: (request, reply) => verifyShellCommandEffect(client, FIXTURE_DAY_WIRE_m2.day, request, reply),
         publish: outcome => { published.push(outcome); binding.feedback(outcome); update(value => value + 1); } };
       const entries = binding.executor.retainedAttempts().flatMap(attempt => attempt.outcome?.kind === "uncertain" && "targets" in attempt.request
-        ? [{ inFlightKey: attempt.request.commandId, label: "cancel", targets: plan.eligible }] : []);
+        ? [{ inFlightKey: attempt.request.commandId, label: "cancel", targets }] : []);
       return createElement_m2(Fragment, null,
-        createElement_m2(QueueToolbar, { sort: "attention", onSort: () => undefined, selectMode, onSelectMode: setSelectMode, selectedCount: selected ? candidates.length : 0,
-          visibleIds: candidates.map(row => row.runId), onSelectAll: () => setSelected(true), onClearSelection: () => setSelected(false), bulkPlans: selected ? [plan] : [], bulkUnavailable: [],
-          onBulk: next => setPending({ plan: next }), bulkOutcome: null, onDismissBulkOutcome: () => undefined, onSelectRun: () => undefined }),
-        createElement_m2(ConfirmBulkCommandDialog, { pending, onCancel: () => setPending(null), onConfirm: confirmed => {
-          setPending(null);
-          const composed = composeBulkRunCommand(confirmed.plan, { actorId: binding.scope.actorId, source: "queue", requestedAt: binding.authority.nowIso });
-          if (composed.state !== "ready") throw new Error("bulk fixture composition refused");
-          void binding.executor.execute(composed.request, options);
-        } }),
+        createElement_m2("button", { onClick: () => {
+          const commandId = crypto.randomUUID();
+          void binding.executor.execute({ commandId, bulkCommandId: commandId, requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "queue", family: "run", type: "cancel",
+            targets: targets.map(({ runId, expectedVersion }) => ({ runId, expectedVersion })), mode: "best-effort" }, options);
+        } }, "Send cancel"),
         entries.map(entry => createElement_m2("button", { key: entry.inFlightKey, onClick: () => setRecoveryKey(entry.inFlightKey) }, `Review ${entry.label}`)), // stands in for the Priority notification's Review action
         createElement_m2(CommandRecovery, { entries, pendingKey: recoveryKey, onReview: setRecoveryKey, onReplay: entry => { setRecoveryKey(null); void binding.executor.replay(entry.inFlightKey, options); } }),
       );
@@ -887,11 +878,7 @@ describe_m2("dispatchBulk's rejection arm (the selection band's bulk post)", () 
       assert_m2.ok(button, `missing ${name} action`);
       await act_m2(async () => button.click()); await settle();
     };
-    await click("Select"); await click("Select all"); await click("Cancel");
-    const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent?.startsWith("Cancel"));
-    assert_m2.equal(confirm instanceof HTMLButtonElement, true, "missing bulk confirmation action");
-    if (!(confirm instanceof HTMLButtonElement)) throw new Error("missing bulk confirmation action");
-    await act_m2(async () => confirm.click()); await settle();
+    await click("Send cancel");
     assert_m2.equal(bytes.length, 1);
     assert_m2.match(document.body.textContent ?? "", /cancel: outcome unknown/u);
     assert_m2.doesNotMatch(document.body.textContent ?? "", /private transport sentinel|Command confirmed/u);
