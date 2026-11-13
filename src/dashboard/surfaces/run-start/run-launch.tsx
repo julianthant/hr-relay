@@ -14,7 +14,7 @@ export function RunLaunchHost({ controller, onPreviewClose, workersStopped, ...p
   const { toast } = useToasts();
   const setOpen = controller.setOpen;
   const changeOpen = useCallback((open: boolean) => { setOpen(open); if (!open) onPreviewClose?.(); }, [setOpen, onPreviewClose]);
-  return <><RunChecksMockHost catalog={props.catalog} /><RunStartSurfaces {...props} rerunSource={props.previewLaunch ? undefined : controller.rerunSource} rerunInputText={props.previewLaunch ? undefined : controller.rerunInputText} open={controller.open || props.previewLaunch !== undefined} onOpenChange={changeOpen} onCloseAutoFocus={controller.closeFocus}
+  return <><RunChecksMockHost /><RunStartSurfaces {...props} rerunSource={props.previewLaunch ? undefined : controller.rerunSource} rerunInputText={props.previewLaunch ? undefined : controller.rerunInputText} open={controller.open || props.previewLaunch !== undefined} onOpenChange={changeOpen} onCloseAutoFocus={controller.closeFocus}
     onApplied={(workflowId, count, workerStartup) => {
       if (workerStartup?.state !== "refused" || workersStopped?.(workflowId) !== true) toast(runLaunchAppliedToast({ label: props.catalog.find(workflow => workflow.id === workflowId)?.label ?? workflowId,
         count, rerun: !props.previewLaunch && controller.rerunSource !== undefined, workerStartup }));

@@ -14,6 +14,7 @@ import { StatusMockReadiness, StatusMockRosterPicker } from "../../settings/stat
 import { statusMockDefaultPicks, statusMockPicksBlocked, type StatusMockPicks } from "../../settings/status-mock/status-mock-picks.js";
 import { statusMock } from "../../settings/status-mock/status-mock-model.js";
 import { WorkflowPdfInput } from "./workflow-pdf-input.js";
+import { RunChecksStage, runChecksState } from "../../run-start/run-checks-mock.js";
 
 export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmit, initialDraft, onDraftChange }: {
   initialDraft?: MockDraft; onDraftChange?: (draft: MockDraft) => void;
@@ -31,7 +32,8 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   const [fileError, setFileError] = useState<string>();
   const [reading, setReading] = useState(false);
   const [optionalSteps, setOptionalSteps] = useViewState("launchCustomize", false);
-  const stages: Array<"Steps" | "Values" | "Options" | "Input"> = source ? ["Steps", "Values", "Options"] : ["Input", "Options", ...(optionalSteps ? ["Steps" as const] : [])];
+  const checks = runChecksState();
+  const stages: Array<"Steps" | "Values" | "Options" | "Input" | "Checks"> = [...(source ? ["Steps", "Values", "Options"] as const : ["Input", "Options", ...(optionalSteps ? ["Steps" as const] : [])] as const), ...(checks ? ["Checks" as const] : [])];
   const index = stages.findIndex(candidate => candidate === stage);
   const last = index === stages.length - 1;
   const error = fileError ?? (stage === "Steps" || index === stages.length - 1 ? mockDraftError(workflowId, draft) : mockDraftInputError(workflowId, draft)) ?? (workflowId === "oath-upload" ? mockOathDuplicate(runs, draft) : undefined);
@@ -47,7 +49,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   // Priority follows the run's size until the operator changes it: ticked for one person, unticked for several.
   const people = pdf ? draft.files.length : typedEntries.length;
   const priority = priorityTouched ? draft.priority === "interactive" : people <= 1;
-  const startDisabled = blocked || Boolean(error) || reading || (spreadsheetPicker && statusMockPicksBlocked(picks));
+  const startDisabled = blocked || (stage === "Checks" && checks !== undefined && (checks.failed > 0 || checks.checking > 0)) || Boolean(error) || reading || (spreadsheetPicker && statusMockPicksBlocked(picks));
   const advance = () => { if (startDisabled) return; if (last) onSubmit(workflowId, { ...draft, priority: priority ? "interactive" : "background" }, source?.id); else setStage(stages[index + 1]); };
   // Enter continues (or starts on the last step); Shift+Enter keeps its newline in a textbox. Buttons, links and open pickers keep Enter for themselves.
   // Listens on the document so Enter still works when focus fell back to the dialog after a step change.
@@ -83,7 +85,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <ol aria-label="Run configuration path" className="launch-stagebar m-0 list-none">
         {stages.map((name, position) => <li key={name} aria-current={name === stage ? "step" : undefined}><BareButton aria-label={`${position + 1} ${name}`} onClick={() => setStage(name)} disabled={position > index + 1 || position === index + 1 && startDisabled}>
-          <span aria-hidden className="launch-stage-marker" data-current={name === stage || undefined} data-completed={position < index || undefined}>{position < index ? <Check className="size-3" aria-hidden /> : position + 1}</span><span className={cn("text-body", name === stage ? "font-semibold" : "text-ui-secondary")}>{name}</span></BareButton></li>)}
+          <span aria-hidden className="launch-stage-marker" data-current={name === stage || undefined} data-completed={position < index || undefined}>{position < index ? <Check className="size-3" aria-hidden /> : position + 1}</span><span className={cn("text-body", name === stage ? "font-semibold" : "text-ui-secondary")}>{name}</span>{name === "Checks" && checks && checks.failed > 0 && <Badge tone="danger">{checks.failed} failed</Badge>}{name === "Checks" && checks && checks.failed === 0 && checks.warnings > 0 && <Badge tone="warning">{checks.warnings} {checks.warnings === 1 ? "warning" : "warnings"}</Badge>}</BareButton></li>)}
       </ol><DialogBody key={stage} className="launch-content @container">
         {stage === "Steps" && <section className="flex flex-col gap-1"><div className="flex items-baseline justify-between gap-3"><h3 className="m-0 text-[length:var(--ds-row-heading)] font-normal leading-[var(--ds-row-heading-lh)] text-[color:var(--ds-fg)]">Steps</h3><span className="text-[13px] text-ui-muted">{included} of {planSteps.length} included</span></div>
           <p className="m-0 text-[13px] leading-4 text-[color:var(--ds-fg-secondary)]">{source ? "Select steps for the new run. Statuses show the source outcome." : "Replace reading steps with manual values. Form actions stay included."}</p>
@@ -118,6 +120,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           {draft.method === "delegated" && <Banner tone="info" title="Delegated lookup">Searches I-9 Complete by last and first name, optionally SSN, then reads the Section 2 signer and status. The parent owns this run.</Banner>}
           {error && draft.method !== "delegated" && (draft.text || draft.files.length || fileError) && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
         </section>}
+        {stage === "Checks" && <RunChecksStage />}
         {stage === "Options" && chatGptBlocked && <StatusMockReadiness frame="run-b" />}
         {stage === "Options" && <div className="flex flex-col gap-8">
           <RunList title="Run">

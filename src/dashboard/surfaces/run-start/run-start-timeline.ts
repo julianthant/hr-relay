@@ -3,7 +3,7 @@
 
 import type { StartMethod } from "./run-start-model.js";
 
-export type RunStartStage = "Input" | "Options" | "Steps" | "Values" | "Warning" | "Confirm";
+export type RunStartStage = "Input" | "Options" | "Steps" | "Values" | "Warning" | "Checks" | "Confirm";
 
 export interface RunStartStageSpec {
   readonly label: RunStartStage;
