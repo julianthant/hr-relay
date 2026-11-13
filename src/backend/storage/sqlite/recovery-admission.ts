@@ -1,10 +1,5 @@
 import { lstatSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
-
-export function requireSupportedRecoverySchema(schemaVersion: number): void {
-  if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error(`authority-schema-mismatch { schemaVersion: ${schemaVersion}, supported: ${CURRENT_AUTHORITY_SCHEMA_VERSION} }`);
-}
 
 /** Reject aliases before a stopped operation can replace or convert an authority. */
 export function requireDatabaseSourcePath(path: string): void {
