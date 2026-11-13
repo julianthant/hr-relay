@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { ciPlanSchema, createCiPlan, hasTimingArtifact, registeredTimingWorkflows, timingRunIds } from "../../../scripts/test/ci-plan.js";
@@ -117,6 +117,18 @@ async function discoverTimings(workflows: { id: number; path: string }[], emptyH
 }
 
 describe("separate event and admitted proof workflows", () => {
+  it("pins every setup-node step to the Node 26 version file", () => {
+    expect(readFileSync(new URL("../../../.node-version", import.meta.url), "utf8")).toBe("26\n");
+    for (const name of readdirSync(new URL("../../../.github/workflows/", import.meta.url))) {
+      if (!name.endsWith(".yml")) continue;
+      const body = readFileSync(new URL(`../../../.github/workflows/${name}`, import.meta.url), "utf8");
+      const uses = body.match(/uses: actions\/setup-node@/gu)?.length ?? 0;
+      const pins = body.match(/node-version-file: \.node-version/gu)?.length ?? 0;
+      expect(pins, name).toBe(uses);
+      expect(body, name).not.toContain("node-version-file: package.json");
+    }
+  });
+
   it("owns disjoint actual triggers and never loads release from staging CI", () => {
     const ciTrigger = ci.split("\npermissions:\n")[0];
     const releaseTrigger = release.split("\npermissions:\n")[0];
