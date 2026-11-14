@@ -1,8 +1,9 @@
 import { existsSync, readdirSync, statSync, statfsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
-import { verifyBackupManifestAtPath } from "../../../storage/sqlite/backup-service.js";
+import { parseBackupManifestFile, verifyBackupBytesAtPath } from "../../../storage/sqlite/backup-service.js";
+import { authoritySourceDatabaseIdentity } from "../../../storage/sqlite/database-identity.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import type { NotificationInbox } from "../../../runs/notifications/inbox.js";
 import { StorageHealthConcernSchema } from "../../../../rules/notifications/notification-triggers.js";
@@ -24,6 +25,27 @@ function ownWrite<T>(database: AuthorityDatabase, write: () => T): T {
   if (entry !== undefined && sameKey(entry.key, before) && after.dataVersion === before.dataVersion) inspected.set(database, { key: after, integrityFailed: entry.integrityFailed });
   return result;
 }
+/** A stall line is this process's own diagnostic append; letting it move the key would re-inspect the store, stall again and loop. */
+export function ownedDiagnostics(database: AuthorityDatabase, debugEvents: { emit(input: unknown): unknown }): { emit(input: unknown): unknown } {
+  return { emit: input => ownWrite(database, () => debugEvents.emit(input)) };
+}
+type CheckedBackup = { manifest: string; backupPath: string; backup: string; failed: boolean };
+const checkedBackups = new WeakMap<AuthorityDatabase, ReadonlyMap<string, CheckedBackup>>();
+function fileIdentity(path: string): string {
+  const stats = statSync(path, { bigint: true, throwIfNoEntry: false });
+  return stats === undefined ? "missing" : `${String(stats.dev)}:${String(stats.ino)}:${String(stats.size)}:${String(stats.mtimeNs)}:${String(stats.ctimeNs)}`;
+}
+/** A manifest is written only after its bytes passed full inspection, so a binding and checksum match proves the backup is still that verified copy. */
+async function assertBackupUnchanged(admission: RuntimeAdmission, manifestPath: string): Promise<string> {
+  const expected = admission.authorityBackupExpectedSource();
+  if (expected.kind !== "profile") throw new Error("profile-backup-binding-required");
+  const manifest = parseBackupManifestFile(manifestPath);
+  if (manifest.sourceDatabaseIdentity !== authoritySourceDatabaseIdentity(expected)
+    || manifest.installationId !== expected.binding.installationId || manifest.profileId !== expected.binding.profileId) throw new Error("backup-profile-binding-mismatch");
+  const backupPath = join(dirname(manifestPath), manifest.backupFileName);
+  await verifyBackupBytesAtPath(backupPath, manifest);
+  return backupPath;
+}
 /** No backup writer, credential reader, or unrelated outbox is called by this observation. */
 export async function readNotificationHealth(input: { admission: RuntimeAdmission; database: AuthorityDatabase; reader: Pick<RunRecordService, "list">; stateRoot: string; clock: Clock }): Promise<NotificationHealthReading> {
   const { stateRoot, clock } = input;
@@ -41,12 +63,23 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
   }
   let backupFailed = false;
   const backupRoot = join(stateRoot, "backups", "authority");
+  const remembered = checkedBackups.get(input.database), current = new Map<string, CheckedBackup>();
   if (existsSync(backupRoot)) {
     for (const file of readdirSync(backupRoot).filter(name => name.endsWith(".manifest.json"))) {
-      try { await verifyBackupManifestAtPath(input.admission,join(backupRoot, file)); }
-      catch { backupFailed = true; }
+      const manifestPath = join(backupRoot, file), prior = remembered?.get(manifestPath);
+      let checked: CheckedBackup;
+      if (prior !== undefined && prior.manifest === fileIdentity(manifestPath) && prior.backup === fileIdentity(prior.backupPath)) checked = prior;
+      else {
+        const manifest = fileIdentity(manifestPath);
+        let backupPath = manifestPath, failed = false;
+        try { backupPath = await assertBackupUnchanged(input.admission, manifestPath); } catch { failed = true; }
+        checked = { manifest, backupPath, backup: fileIdentity(backupPath), failed };
+      }
+      current.set(manifestPath, checked);
+      backupFailed ||= checked.failed;
     }
   }
+  checkedBackups.set(input.database, current);
   return { freeBytes: Number(filesystem.bavail * filesystem.bsize), walBytes: existsSync(wal) ? statSync(wal).size : 0, integrityFailed, backupFailed, leaseExpired };
 }
 
