@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
-import { inboxProjection, notificationPolicy, notificationTargetMatches, useInboxWiring, type InboxWiring } from "../../../src/dashboard/state/inbox-wiring-adapter.js";
+import { inboxProjection, notificationDay, notificationPolicy, notificationTargetMatches, useInboxWiring, type InboxWiring } from "../../../src/dashboard/state/inbox-wiring-adapter.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { CommandExecutor, type CommandExecutionScope } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
@@ -309,8 +309,8 @@ it("matches recovery and command-result targets by command id and bulk results b
   const request = NotificationCommandRequestSchema.parse({ commandId: parsed, requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read", target: { notificationId: id, actorId: "local-operator", expectedVersion: 1 } });
   const result = CommandResultSchema.parse({ state: "rejected", commandId: parsed, code: "policy-refused", message: "Relay did not do this, so nothing changed." });
   const recovery = { kind: "recovery" as const, commandId: parsed, request };
-  const commandResult = { kind: "command-result" as const, commandId: parsed, request, result };
-  const bulk = (bulkCommandId: typeof parsed) => NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId, type: "retry", requestedCount: 1, results: [], notAttempted: [] });
+  const commandResult = { kind: "command-result" as const, commandId: parsed, day: "2026-08-03", request, result };
+  const bulk = (bulkCommandId: typeof parsed) => NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId, type: "retry", requestedCount: 1, results: [], notAttempted: [], days: {} });
   assert.equal(notificationTargetMatches(commandRow("command-unknown"), recovery), true);
   assert.equal(notificationTargetMatches(commandRow("command-unknown"), { ...recovery, commandId: other }), false);
   assert.equal(notificationTargetMatches(commandRow("command-refused"), commandResult), true);
@@ -322,4 +322,10 @@ it("matches recovery and command-result targets by command id and bulk results b
   assert.equal(notificationTargetMatches(commandRow("bulk-incomplete"), recovery), false);
   assert.equal(notificationTargetMatches(row(), recovery), false);
   assert.equal(notificationTargetMatches(commandRow("command-unknown"), { kind: "storage" }), false);
+});
+
+it("groups served notices by local day", () => {
+  const now = new Date(2026, 10, 11, 15).toISOString();
+  const at = (days: number) => new Date(2026, 10, 11 - days, 9).toISOString();
+  assert.deepEqual([0, 1, 3, 8].map(days => notificationDay(at(days), now)), ["Today", "Yesterday", "Sunday", "November 3"]);
 });

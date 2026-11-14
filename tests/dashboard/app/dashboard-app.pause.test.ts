@@ -9,8 +9,8 @@ import { DashboardClientProvider } from "../../../src/dashboard/state/client-con
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
 import { BulkRunCommandRequestSchema, CommandRequestSchema, type BulkRunCommandRequest, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
 import { lifecycleCommandId } from "../../../src/rules/commands/lifecycle-command-id.js";
-import { PARITY_WORKFLOW_COMPOSITION } from "../../parity/helpers/workflow-composition.js";
-import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
 import { pickedRunWorld } from "../../support/helpers/dashboard/picked-dashboard.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 
@@ -36,7 +36,7 @@ async function mount(pause: "running" | "pause-pending" | "paused" = "running", 
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   await act(async () => root.render(createElement(DashboardClientProvider, { client,
-    children: createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION }) })));
+    children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION }) })));
   const button = (name: string) => {
     const button = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.getAttribute("aria-label") === name || button.textContent === name);
     assert.ok(button, `missing ${name}`); return button;
@@ -58,6 +58,7 @@ it("Pause all sends exact global membership once, including runs outside the sel
     assert.deepEqual(request.target, { runtimeGeneration: 17 });
     assert.deepEqual(request.payload.targets, f.lifecycle.targets);
     assert.equal(request.source, "dashboard");
+    assert.equal(f.button("Pause all runs").disabled, true);
     f.lifecycle = ApplicationLifecycleSchema.parse({ ...f.lifecycle, pause: "paused", targets: f.lifecycle.targets.map(target => ({ ...target,
       expectedVersion: target.expectedVersion + 1, pauseUnavailable: false, pause: { state: "paused", requestedAt: request.requestedAt, pausedAt: request.requestedAt,
         commandId: lifecycleCommandId("application-pause", { commandId: request.commandId, runId: target.runId }) } })) });
@@ -87,6 +88,7 @@ it("keyboard quit confirms without a run list and retains an uncertain request w
     await act(async () => f.reply.reject(new Error("lost response")));
     await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "q", metaKey: true, cancelable: true })));
     assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(f.button("Pause all runs").disabled, true);
     assert.equal(f.sent.length, 1);
   } finally { await f.close(); }
 });

@@ -10,7 +10,6 @@ Package ID / linked brief or issue:
 - [ ] Typecheck and lint
 - [ ] Manifest, store catalog and roadmap checks
 - [ ] Unit, integration and architecture CI checks
-- [ ] Desktop parity
 - [ ] Privacy check: no real employee data, rosters, private PDFs, .env or credentials
 - [ ] Release only: coverage and performance
 

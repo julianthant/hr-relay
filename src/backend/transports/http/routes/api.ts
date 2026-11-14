@@ -79,8 +79,6 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/settings/path-picker", operatorMutationIngressGuard);
   app.use("/api/v1/settings/chatgpt-account/sign-in", operatorMutationIngressGuard);
   app.use("/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel", operatorMutationIngressGuard);
-  app.use("/api/v1/settings/chatgpt-account/sign-out", operatorMutationIngressGuard);
-  app.use("/api/v1/settings/chatgpt-account/forget-account", operatorMutationIngressGuard);
   app.use("/api/v1/exports/xlsx", operatorMutationIngressGuard);
   app.use("/api/v1/exports/search", operatorMutationIngressGuard);
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
@@ -122,9 +120,14 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     const parsed = DashboardErrorReportSchema.safeParse(input);
     if (!parsed.success || !dashboardReportAccepted(parsed.data)) return c.json(wireError("DEBUG_REPORT_INVALID", "Dashboard error report fields are invalid.", false), 400);
     const report = parsed.data;
+    const runReader = deps.runDetail.runReader;
+    if (report.runId !== undefined && runReader === undefined) throw new Error("TRUST_RUN_READER_NOT_CONFIGURED");
+    const existence = report.runId === undefined ? undefined : runReader?.read(report.runId);
+    const run = existence?.state === "present" ? existence.run : undefined;
     debugEvents.emit({ category: "client", phase: "failed", correlationId: report.reportId,
       area: "dashboard", reason: report.reason,
-      route: report.route, surface: report.surface, release: report.release, code: report.code, message: report.message, stack: report.stack }, { kind: "client", clientId: report.clientId });
+      route: report.route, surface: report.surface, release: report.release, code: report.code, message: report.message, stack: report.stack },
+      run === undefined ? { kind: "client", clientId: report.clientId } : { kind: "run", runId: run.envelope.runId }, run?.envelope.workflow);
     return c.json({ state: "recorded", reportId: report.reportId }, 201);
   });
   registerDataRoutes(app, () => deps.data ?? composeDataQueries(deps.runDetail));
