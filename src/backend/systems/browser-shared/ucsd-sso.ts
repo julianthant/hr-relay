@@ -598,12 +598,12 @@ export async function verifyUcsdAuthenticatedApplication(
 ): Promise<AuthenticationProbe> {
   input.assertCurrent();
   const url = page.url();
-  if (!input.urlIsApplication(url)) return { authenticated: false, reason: input.urlRefusal };
+  if (!input.urlIsApplication(url)) return { authenticated: false, reason: input.urlRefusal, check: "application-route" };
 
   input.assertCurrent();
   const positive = await input.positive();
   input.assertCurrent();
-  if (!positive.holds) return { authenticated: false, reason: positive.detail };
+  if (!positive.holds) return { authenticated: false, reason: positive.detail, check: "positive-evidence" };
 
   const absences = [await probeSsoFormAbsent(page, input.assertCurrent)];
   for (const absence of input.additionalAbsences ?? []) {
@@ -612,7 +612,7 @@ export async function verifyUcsdAuthenticatedApplication(
   }
   input.assertCurrent();
   const present = absences.find((fact) => !fact.holds);
-  if (present !== undefined) return { authenticated: false, reason: present.detail };
+  if (present !== undefined) return { authenticated: false, reason: present.detail, check: "sign-in-form-absent" };
 
   return {
     authenticated: true,
