@@ -91,7 +91,7 @@ _26 registered stores · 98 bound tasks · 0 pending contracts._
 
 ### `ucpath`
 
-**Kind:** browser store · **Browser system:** `ucpath` · **Driver declaration:** `semantic-ready` · **Tasks:** 25 (17 read · 4 prepare · 4 commit)
+**Kind:** browser store · **Browser system:** `ucpath` · **Driver declaration:** `semantic-ready` · **Tasks:** 26 (18 read · 4 prepare · 4 commit)
 
 | Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
 |---|---|---|---|---|---|---|---|---|---|
@@ -109,6 +109,11 @@ _26 registered stores · 98 bound tasks · 0 pending contracts._
 | `ucpath/search-person-match` | Search for person | read | search | `ucpath` (read) | — | `lastName`, `firstName`, `dob`, `ssn` | `hits`, `confirmed`, `dropped` | 4h | bound |
 | `ucpath/search-person-org` | Searching | read | search | `ucpath` (read) | — | `kind="by-eid"` + `emplId` / `kind="by-name"` + `name`, `keepNonHdh` | `results`, `selection` | 4h | bound |
 | `ucpath/read-job-summary` | Job Summary | read | read | `ucpath` (read) | — | `emplId` | `pageStateId`, `emplId`, `displayedName`, `jobRows`, `rowCount`, `renderContext`, `observedAt` | 4h | bound |
+| `ucpath/read-paypath-position` | Read PayPath position data | read | read | `ucpath` (read) | — | `emplId` | `pageStateId`, `emplId`, `displayedName`, `position`, `observedAt` | 0 (re-read every run) | bound |
+| `ucpath/match-paypath-work-study` | Probe PayPath work-study transaction | read | match | `ucpath` (read) | — | `emplId`, `expectedName`, `effectiveDate`, `positionChangeReason`, `positionPool`, `comments` | `state="present"` + `proof` / `state="absent"` + `evidence` / `state="ambiguous"` + `matches`, `observedAt`, `queryDigest`, `evidence` / `state="unknown"` + `reason`, `observedAt` | 0 (re-read every run) | bound |
+| `ucpath/stage-paypath-work-study` | Stage PayPath work-study transaction | prepare | stage | `ucpath` (transaction) | — | `emplId`, `expectedName`, `effectiveDate`, `positionChangeReason`, `positionPool`, `comments` | `staged`, `stagedPageState` | — | bound |
+| `ucpath/submit-paypath-work-study` | Submit PayPath work-study transaction | commit | submit | `ucpath` (transaction) | — | `emplId`, `expectedName`, `effectiveDate`, `positionChangeReason`, `positionPool`, `comments` | `receipt` | — | bound |
+| `ucpath/verify-paypath-work-study` | Verify filed PayPath work-study transaction | read | verify | `ucpath` (read) | — | `emplId`, `expectedName`, `effectiveDate`, `positionChangeReason`, `positionPool`, `comments` | `state="present"` + `proof` / `state="absent"` + `evidence` / `state="ambiguous"` + `matches`, `observedAt`, `queryDigest`, `evidence` / `state="unknown"` + `reason`, `observedAt` | 0 (re-read every run) | bound |
 | `ucpath/match-existing-termination` | Probe UCPath Termination | read | match | `ucpath` (read) | — | `emplId`, `expectedName`, `emplRecord`, `effectiveDate`, `template`, `reasonCode`, `lastDateWorked`, `initiatorComments` | `state="present"` + `proof` / `state="absent"` + `evidence` / `state="ambiguous"` + `matches`, `observedAt`, `queryDigest`, `evidence` / `state="unknown"` + `reason`, `observedAt` | 0 (re-read every run) | bound |
 | `ucpath/stage-termination` | Stage UCPath Termination | prepare | stage | `ucpath` (transaction) | — | `emplId`, `expectedName`, `emplRecord`, `effectiveDate`, `template`, `reasonCode`, `lastDateWorked`, `initiatorComments` | `stagedPageState`, `emplId`, `observedName`, `observedEmplRecord`, `template`, `transactionDate`, `effectiveDate`, `resolvedReasonOption`, `observedReasonOptions`, `lastDateWorked`, `lastDateWorkedOverridden`, `transactionIdDisplay`, `observedAt` | — | bound |
 | `ucpath/create-termination` | Submit UCPath Termination | commit | create | `ucpath` (transaction) | — | `emplId`, `expectedName`, `emplRecord`, `effectiveDate`, `template`, `reasonCode`, `lastDateWorked`, `initiatorComments` | `receipt` | — | bound |
@@ -364,6 +369,14 @@ _No tasks registered — this store is a declaration-only placeholder._
 | `workflow:separations/match-active-employment` | Select Employment | read | match | — (sessionless) | — | `documentNumber`, `jobSummary` | `rowIndex`, `emplRecord`, `hrStatus`, `businessUnit`, `deptId`, `department`, `payrollTitleCode`, `payrollTitle`, `effectiveDate`, `rowCount` | ∞ | bound |
 | `workflow:separations/read-separation-dates` | Reconcile Separation Dates | read | read | — (sessionless) | — | `plan`, `timekeeperName`, `lastPunchDate`, `sickDates`, `holidayDates`, `unclassifiedPayCodes`, `observedWindow` | `lastDayWorked`, `separationDate`, `terminationEffectiveDate`, `kualiLastDayWorked`, `kualiSeparationDate`, `lastDayWorkedChanged`, `separationDateChanged`, `latestSickDate`, `firstHolidayDate`, `latestHolidayDate`, `separationDeterminingLeave`, `unclassifiedPayCodes`, `terminationComments`, `dateChangeComments`, `source` | ∞ | bound |
 | `workflow:separations/verify-termination-receipt` | Verify Termination Receipt | read | verify | — (sessionless) | — | `proof`, `disposition`, `approvedEmplId`, `expectedEffectiveDate` | `transactionNumber`, `approvalStatus`, `effectiveDate`, `emplId`, `displayedName`, `disposition` | ∞ | bound |
+
+### `workflow:work-study`
+
+**Kind:** workflow mini-store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 1 (1 read · 0 prepare · 0 commit)
+
+| Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| `workflow:work-study/read-transaction-plan` | Plan work-study transaction | read | read | — (sessionless) | — | `input`, `read` | `emplId`, `name`, `effectiveDate`, `positionChangeReason`, `positionPool`, `comments`, `current` | ∞ | bound |
 
 ### Pending contracts (declared by a descriptor, no store implementation)
 
