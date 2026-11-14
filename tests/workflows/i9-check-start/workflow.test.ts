@@ -2,8 +2,9 @@ import { expect, it } from "vitest";
 import { i9CheckStartWorkflow } from "../../../src/workflows/i9-check-start/workflow.js";
 import { I9CheckStartInput, i9CheckStartMatchKey } from "../../../src/models/workflows/i9-check/start.js";
 import { OcrInputSchema } from "../../../src/models/workflows/ocr/input.js";
-import { descriptorRuntimeNodes, workflowPlanning, workflowProjections, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowDryRunSupport, workflowPlanning, workflowProjections, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
 import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
+import { i9CheckModule, i9LookupModule, ocrModule } from "../../support/helpers/registered-workflows.js";
 import { i9ApprovedSource } from "../../support/fixtures/i9-check-start.js";
 
 it("compiles one PDF batch with admitted OCR and existing person children, one workbook and a blocking tracker projection", () => {
@@ -31,4 +32,13 @@ it("compiles one PDF batch with admitted OCR and existing person children, one w
   expect(title(input)).toBe("I-9 Check · 2 PDFs");
   expect(i9CheckStartMatchKey(input)).toBe(i9CheckStartMatchKey({ ...input, documents: input.documents.toReversed() }));
   expect(I9CheckStartInput.safeParse({ ...input, documents: [input.documents[0], input.documents[0]] }).success).toBe(false);
+});
+
+it("supports a dry run that previews the results workbook; child-only workflows stay unsupported", () => {
+  const descriptor = compileWorkflow(i9CheckStartWorkflow).descriptor;
+  expect(workflowDryRunSupport(descriptor)).toEqual({ state: "supported", firstPublicationNodeId: "save-workbook" });
+  expect(descriptor.surfaces?.uploadRun?.supportsDryRun).toBe(true);
+  for (const module of [ocrModule, i9CheckModule, i9LookupModule]) {
+    expect(workflowDryRunSupport(module.descriptor), module.descriptor.id).toEqual({ state: "unsupported", reason: "no-transaction-node" });
+  }
 });

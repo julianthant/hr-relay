@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { z } from "zod";
+import * as resultModule from "../../../src/models/run/result.js";
 import { RunDelegatedDryRunPreviewResultSchema, RunDryRunPreviewResultSchema, isRunPreviewSchemaHash, readRunPreviewResult, resolveDelegationEvidenceOutput, delegationEvidenceOutput, terminalDelegationDependencyRecord, deriveRunResultDigest, deriveTerminalDependencyDigest, RunResultRecordSchema, DelegationTerminalEvidenceSchema } from "../../../src/models/run/result.js";
 import { JsonValueSchema } from "../../../src/rules/validation/canonical-json.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
@@ -42,6 +43,28 @@ it("refuses mismatched preview kinds, malformed steps and claimed commits under 
   assert.throws(() => readRunPreviewResult(bound(RunDelegatedDryRunPreviewResultSchema, local)));
   assert.throws(() => readRunPreviewResult(bound(RunDelegatedDryRunPreviewResultSchema, { ...delegated, externalCommit: "saved" })));
   assert.throws(() => readRunPreviewResult(bound(RunDelegatedDryRunPreviewResultSchema, { ...delegated, steps: [{ nodeId: "members", state: "done" }] })));
+});
+
+const publication = { kind: "publication-dry-run-preview", externalCommit: "none", coverage: { state: "full" },
+  steps: [{ nodeId: "read", state: "exercised" }, { nodeId: "save", state: "publication-preview" },
+    { nodeId: "publish", state: "unavailable", reason: "requires-unsubmitted-output" }] } as const;
+const publicationSchema = () => {
+  assert.ok(resultModule.RunPublicationDryRunPreviewResultSchema, "RunPublicationDryRunPreviewResultSchema must be exported");
+  return resultModule.RunPublicationDryRunPreviewResultSchema as unknown as z.ZodType;
+};
+
+it("round-trips a publication preview and keeps it distinct from the other preview kinds", () => {
+  const result = bound(publicationSchema(), publication);
+  assert.deepEqual(readRunPreviewResult(result), publication);
+  assert.equal(isRunPreviewSchemaHash(result.resultSchemaHash), true);
+  assert.notEqual(result.resultSchemaHash, deriveSchemaHash(RunDryRunPreviewResultSchema, "output"));
+  assert.notEqual(result.resultSchemaHash, deriveSchemaHash(RunDelegatedDryRunPreviewResultSchema, "output"));
+});
+
+it("refuses a publication-preview step under the local and delegated preview kinds", () => {
+  const step = { nodeId: "save", state: "publication-preview" };
+  assert.throws(() => readRunPreviewResult(bound(RunDryRunPreviewResultSchema, { ...local, steps: [...local.steps, step] })));
+  assert.throws(() => readRunPreviewResult(bound(RunDelegatedDryRunPreviewResultSchema, { ...delegated, steps: [...delegated.steps, step] })));
 });
 
 function previewEvidence(dryRun = true) {

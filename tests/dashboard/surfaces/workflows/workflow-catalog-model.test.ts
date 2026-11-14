@@ -17,6 +17,9 @@ import { MOCK_WORKFLOW_CATALOG as MOCK_WORKFLOW_CATALOG_m1 } from "../../../../s
 import { buildWorkflowCatalog as buildWorkflowCatalog_m1,servedLaunchWorkflows as servedLaunchWorkflows_m1 } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP as FIXTURE_START_PICKER_BOOTSTRAP_m1 } from "../../../mocks/helpers/fixture-start.js";
 import { MOCK_WORKFLOW_COMPOSITION, servedFixtureSources as servedFixtureSources_m1 } from "../../../mocks/helpers/workflow-composition.js";
+import { childWorkflowModuleOf, WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { projectWorkflowStartSteps } from "../../../../src/backend/runs/queries/bootstrap.js";
+import { workflowDryRunSupport } from "../../../../src/workflow-kit/workflow.js";
 
 
 {
@@ -137,15 +140,18 @@ describe_m1("frontend workflow catalog", () => {
       expect_m1(entries.find(entry => entry.id === "person-lookup")?.source).toBe("preview");
     }
   });
-  it_m1("retains explicit mock fixtures while production selects Person Lookup, Separations and Emergency Contact served and keeps OCR hidden", () => {
+  it_m1("retains explicit mock fixtures while production serves Person Lookup, Separations, Emergency Contact and I-9 Check and hides child workflows", () => {
     const listed = Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source !== "hidden").map(([id]) => id).sort();
-    expect_m1(MOCK_WORKFLOW_CATALOG_m1.workflows.map(flow => flow.id).sort()).toEqual(listed);
+    expect_m1(MOCK_WORKFLOW_CATALOG_m1.workflows.filter(flow => WORKFLOW_SOURCES_m1[flow.id] !== "hidden").map(flow => flow.id).sort()).toEqual(listed);
     expect_m1(listed).toEqual(catalog.map(entry => entry.id).sort());
-    expect_m1(Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source === "served").map(([id]) => id)).toEqual(["separations", "person-lookup", "emergency-contact"]);
+    expect_m1(Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source === "served").map(([id]) => id)).toEqual(["separations", "person-lookup", "emergency-contact", "i9-check-start"]);
     const product = buildWorkflowCatalog_m1(served, true);
     expect_m1(product.find(entry => entry.id === "separations")).toMatchObject({ source: "served" });
     expect_m1(product.find(entry => entry.id === "person-lookup")).toMatchObject({ source: "served" });
     expect_m1(product.find(entry => entry.id === "emergency-contact")).toMatchObject({ source: "served" });
+    expect_m1(product.find(entry => entry.id === "i9-check-start")).toMatchObject({ source: "served", launch: { state: "served" } });
+    expect_m1(product.find(entry => entry.id === "i9-lookup")).toBeUndefined();
+    expect_m1(product.find(entry => entry.id === "i9-check")).toBeUndefined();
     expect_m1(product.find(entry => entry.id === "ocr")).toBeUndefined();
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("ocr", false)).toBe("hidden");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("ocr", true)).toBe("hidden");
@@ -153,6 +159,11 @@ describe_m1("frontend workflow catalog", () => {
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("separations", false)).toBe("served");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("separations", true)).toBe("served");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("onboarding", false)).toBe("mock");
+    for (const preview of [false, true]) {
+      expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("i9-check-start", preview)).toBe("served");
+      expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("i9-lookup", preview)).toBe("hidden");
+    }
+    expect_m1(Object.hasOwn(WORKFLOW_SOURCES_m1, "i9-check")).toBe(false);
     expect_m1(served.every(flow => Object.hasOwn(WORKFLOW_SOURCES_m1, flow.workflowId))).toBe(true);
     expect_m1(catalog.every(entry => entry.source === "preview" && entry.served === undefined)).toBe(true);
     expect_m1(servedLaunchWorkflows_m1(catalog)).toEqual([]);
@@ -173,7 +184,7 @@ describe_m1("frontend workflow catalog", () => {
     const future = { ...served[0], workflowId: "new-workflow", label: "New workflow", categoryId: "Payroll", code: "NW" };
     const renamed = { ...served[0], label: "Registered name" };
     const entries = buildWorkflowCatalog_m1([renamed, served[1], future], true, servedFixtureSources_m1([renamed, served[1], future]));
-    expect_m1(entries).toHaveLength(14);
+    expect_m1(entries).toHaveLength(13);
     expect_m1(new Set(entries.map(entry => entry.id)).size).toBe(entries.length);
     expect_m1(entries.find(entry => entry.id === renamed.workflowId)).toMatchObject({ label: "Registered name", source: "served", launch: { state: "served" }, served: renamed });
     expect_m1(entries.find(entry => entry.id === future.workflowId)).toMatchObject({ label: future.label, code: "NW", launch: { state: "served" }, served: future });
@@ -198,7 +209,45 @@ describe_m1("frontend workflow catalog", () => {
     expect_m1(catalog.find(entry => entry.id === "ocr")).toBeUndefined();
     const hiddenOcr = { ...served[0], workflowId: "ocr", label: "OCR" };
     expect_m1(buildWorkflowCatalog_m1([hiddenOcr, ...served], true, { ...servedFixtureSources_m1(served), ocr: "hidden" }).some(entry => entry.id === "ocr")).toBe(false);
-    expect_m1(catalog.filter(entry => entry.launch.state === "unavailable").map(entry => entry.id).sort()).toEqual(["i9-lookup"]);
+    expect_m1(catalog.find(entry => entry.id === "i9-lookup")).toBeUndefined();
+    expect_m1(catalog.find(entry => entry.id === "sharepoint-download")).toBeUndefined();
+    expect_m1(catalog.filter(entry => entry.launch.state === "unavailable").map(entry => entry.id).sort()).toEqual([]);
+  });
+  it_m1("keeps hidden OCR and I-9 Lookup and removed SharePoint Download out of the catalog", () => {
+    expect_m1(WORKFLOW_SOURCES_m1.ocr).toBe("hidden");
+    expect_m1(catalog.find(entry => entry.id === "ocr")).toBeUndefined();
+    expect_m1(WORKFLOW_SOURCES_m1["i9-lookup"]).toBe("hidden");
+    expect_m1(catalog.find(entry => entry.id === "i9-lookup")).toBeUndefined();
+    expect_m1(catalog.find(entry => entry.id === "sharepoint-download")).toBeUndefined();
+    const hiddenOcr = { ...served[0], workflowId: "ocr", label: "OCR" };
+    expect_m1(buildWorkflowCatalog_m1([hiddenOcr, ...served], true, { ...servedFixtureSources_m1(served), ocr: "hidden" }).some(entry => entry.id === "ocr")).toBe(false);
+    expect_m1(catalog.filter(entry => entry.launch.state === "unavailable").map(entry => entry.id).sort()).toEqual([]);
+  });
+  it_m1("boots the product catalog from public definitions without exposing or disabling the I-9 PDF parent", () => {
+    const publicStarts = WORKFLOW_MODULES.map(({ descriptor, role }) => ({
+      workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category, code: descriptor.code, role,
+      enqueue: descriptor.enqueue, version: descriptor.version, steps: projectWorkflowStartSteps(descriptor),
+      requiredWorkbookFields: descriptor.requiredWorkbookFields, referenceSources: [], spreadsheetIntake: false,
+      ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
+      uploadRun: descriptor.surfaces.uploadRun,
+      inputRun: descriptor.surfaces.inputRun === undefined
+        ? { state: "absent" as const, reason: "No typed input" }
+        : { state: "present" as const, surface: descriptor.surfaces.inputRun },
+    }));
+    const product = buildWorkflowCatalog_m1(publicStarts);
+    const parent = product.filter(entry => entry.id === "i9-check-start");
+    expect_m1(parent).toHaveLength(1);
+    expect_m1(parent[0]).toMatchObject({ source: "served", launch: { state: "served" },
+      served: { uploadRun: { pdfInput: { documentsField: "documents", asOfField: "asOf", reviewerField: "reviewerName" } },
+        workbookReference: { id: "action-history" }, steps: [{ key: "documents" }, { key: "roster-reference" }, { key: "retention" }] } });
+    expect_m1(product.filter(entry => ["i9-check", "i9-lookup", "ocr"].includes(entry.id))).toEqual([]);
+    expect_m1(() => buildWorkflowCatalog_m1(publicStarts.filter(flow => flow.workflowId !== "i9-check-start")))
+      .toThrow("WORKFLOW_SERVED_REGISTRATION_MISSING: i9-check-start");
+    expect_m1(childWorkflowModuleOf("i9-check-start", "i9-check").descriptor.id).toBe("i9-check");
+    for (const owner of ["ocr", "onboarding"]) expect_m1(childWorkflowModuleOf(owner, "i9-lookup").descriptor.id).toBe("i9-lookup");
+    const module = WORKFLOW_MODULES.find(entry => entry.descriptor.id === "i9-check-start");
+    assert_m0.ok(module);
+    expect_m1(workflowDryRunSupport(module.descriptor)).toEqual({ state: "supported", firstPublicationNodeId: "save-workbook" });
   });
 });
 }
