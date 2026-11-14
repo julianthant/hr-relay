@@ -459,8 +459,10 @@ to Z, and `PROFILE_NAME_REFUSED` for a timekeeper name that is padded, has a con
 longer than 129 characters or has a word that does not start with a letter. The timekeeper initials
 are a stored value of their own: sign-up writes the letters of the timekeeper name, and changing the
 timekeeper name leaves them as they are. `/profile/state`, bootstrap's actor label, the admitted
-profile identity (`displayName` and `initials`) and the next run's timekeeper name read the new
-values. A run already planned or started keeps the timekeeper name it captured.
+profile identity (`displayName` and `initials`) and the next run's timekeeper name and initials read
+the new values. Separations signs its Kuali and date-change comments with the stored timekeeper
+initials, admitted with the name from one identity read. A run already planned or started keeps the
+timekeeper name and initials it captured.
 
 ### Profile onboarding boundary
 

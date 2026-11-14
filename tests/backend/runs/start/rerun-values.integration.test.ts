@@ -218,7 +218,7 @@ describe("source-bound Rerun value read", () => {
   it.each(["safe-identity", "embedded-protected-value"] as const)("withholds protected input in the %s HTTP response", async kind => {
     const descriptor = DESCRIPTORS.find(entry => entry.id === "separations"); assert.ok(descriptor);
     const name = kind === "safe-identity" ? "Fixture Hidden Operator" : "1234567";
-    const secrets = protectedSecretSource({ profileName: name });
+    const secrets = protectedSecretSource({ profileName: name, profileInitials: "FO" });
     let secretReads = 0;
     const h = await launchHarness("reject-active", undefined, { descriptor,
       protectedSecrets: { read: () => { secretReads += 1; return secrets.read(); } } });

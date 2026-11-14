@@ -14,10 +14,16 @@ it("reads retained predecessor Separations values, warnings and fresh plans with
     const { sequentialIdFactory } = await import("../../../support/fixtures/phase1f-run-fixtures.js");
     const { protectedSecretSource } = await import("../../../support/helpers/protected-secret-source.js");
     const { repeatEvidenceDigest } = await import("../../../../src/models/run/rerun.js");
-    const { admissions } = collectEvidenceSchemaAdmissions({ descriptors: [descriptor], runs: [f.run], writes: f.writes,
+    const { admissions, retirements } = collectEvidenceSchemaAdmissions({ descriptors: [descriptor], runs: [f.run], writes: f.writes,
       checkpoints: f.checkpoints, results: [f.result], gates: [] });
+    // The pre-initials Separations input is retired history, so its sealed retirement answers with the stored hash, as production does.
+    assert.ok(retirements.some(entry => entry.owner.id === f.run.envelope.runId));
     const schemaReader: import("../../../../src/models/storage/evidence-schema-admission.js").EvidenceSchemaReader = (owner, source, oldHash, currentHash) => {
       if (oldHash === currentHash) return oldHash;
+      const retired = retirements.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner));
+      if (retired !== undefined) {
+        assert.equal(retired.sourceDigest, evidenceSchemaSourceDigest(owner, source)); assert.equal(retired.sourceSchemaHash, oldHash); return oldHash;
+      }
       const proof = admissions.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner));
       assert.ok(proof); assert.equal(proof.sourceDigest, evidenceSchemaSourceDigest(owner, source));
       assert.equal(proof.sourceSchemaHash, oldHash); assert.equal(proof.currentSchemaHash, currentHash); return currentHash;

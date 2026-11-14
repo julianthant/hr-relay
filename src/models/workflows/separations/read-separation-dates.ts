@@ -8,7 +8,7 @@ import {
   TimecardWindowSchema,
 } from "../../../rules/separations/separation-dates.js";
 import { TimecardDateSchema } from "../../../rules/kronos/separation-timecard.js";
-import { KualiTimekeeperNameSchema } from "../../ui/kuali-document-identity.js";
+import { ProfileInitialsSchema } from "../../profiles/profile.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 
 export const ReadSeparationDatesOutputSchema = ReconciledSeparationDatesSchema;
@@ -21,8 +21,8 @@ export const SeparationsReadSeparationDates = defineTaskContract({
   input: z.strictObject({
     /** What the separation document carried, validated before the timecard ran. */
     plan: SeparationPlanSchema,
-    /** The operator whose initials sign the Kuali audit lines. */
-    timekeeperName: KualiTimekeeperNameSchema,
+    /** The person's stored Timekeeper initials that sign the Kuali audit lines. */
+    timekeeperInitials: ProfileInitialsSchema,
     /** Null means the card had no physical punch. */
     lastPunchDate: TimecardDateSchema.nullable(),
     sickDates: z.array(TimecardDateSchema),

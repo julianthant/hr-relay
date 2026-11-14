@@ -1004,7 +1004,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...savedFinalizationLeaves(KUALI_FINALIZATION_RESULT, "finalization.proof"),
 
         /* This names one action id, the timekeeper who files it, the search bound, and how the document was reached — the READ, never the person. */
-  ...person(SEPARATIONS_INPUT, "timekeeperName", "operatorEmployeeId"),
+  ...person(SEPARATIONS_INPUT, "timekeeperName", "timekeeperInitials", "operatorEmployeeId"),
   ...open(SEPARATIONS_INPUT, "documentNumber", "searchTimeoutMs",
     "reRead.ordinal", "reRead.reason"),
 

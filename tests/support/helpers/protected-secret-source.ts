@@ -13,9 +13,9 @@ const TEST_FINGERPRINT = "0".repeat(64);
 
 /** Synthetic private-store source. Values are test-only and never cross a production wire. */
 export function protectedSecretSource(
-  values: Partial<Record<ProtectedSettingsName, unknown>> & { readonly profileName?: string } = {},
+  values: Partial<Record<ProtectedSettingsName, unknown>> & { readonly profileName?: string; readonly profileInitials?: string } = {},
 ): ProtectedSecretSource {
-  const { profileName, ...credentials } = values;
+  const { profileName, profileInitials: storedInitials, ...credentials } = values;
   const entries = Object.fromEntries(Object.entries(credentials).map(([name, value], index) => [name, {
     valueId: `00000000-0000-4000-8000-${String(index + 10).padStart(12, "0")}`,
     value,
@@ -39,6 +39,6 @@ export function protectedSecretSource(
   });
   return { read: () => ({ ...record, ...(profileName === undefined ? {} : { profileIdentity: {
     profileId: "00000000-0000-4000-8000-000000000003", sessionEpoch: 1,
-    displayName: profileName, initials: profileInitials(profileName),
+    displayName: profileName, initials: storedInitials ?? profileInitials(profileName),
   } }) }) };
 }

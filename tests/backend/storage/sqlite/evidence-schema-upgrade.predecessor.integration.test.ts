@@ -17,7 +17,7 @@ it("persists predecessor input, completed Kuali proof, linked result and receipt
     const { collectEvidenceSchemaAdmissions } = await import("../../../../src/backend/storage/sqlite/evidence-schema-upgrade.js");
     const { evidenceSchemaSourceDigest } = await import("../../../../src/models/storage/evidence-schema-admission.js");
     const { canonicalJsonStringify } = await import("../../../../src/rules/validation/canonical-json.js");
-    const { admissions } = collectEvidenceSchemaAdmissions({ descriptors: [descriptor, separationsDescriptor], runs: [f.run, f.separationsRun], writes: f.writes.map(write => write.intent),
+    const { admissions, retirements } = collectEvidenceSchemaAdmissions({ descriptors: [descriptor, separationsDescriptor], runs: [f.run, f.separationsRun], writes: f.writes.map(write => write.intent),
       checkpoints: f.checkpoints, results: [f.result], gates: f.gates });
     const schemaReader: import("../../../../src/models/storage/evidence-schema-admission.js").EvidenceSchemaReader = (owner, source, oldHash, currentHash) => {
       if (oldHash === currentHash) return oldHash;
@@ -61,6 +61,8 @@ it("persists predecessor input, completed Kuali proof, linked result and receipt
     assert.throws(() => terminal.build(running, evidence, clock, schemaReader), /not bound/u);
 
     assert.equal(f.separationsRun.input.parsed.schemaHash, "66dc2f33bf56808164be764f921a1e5a2a95afd5e0a7b760fdba687ee81575dc");
-    assert.ok(admissions.some(entry => entry.owner.kind === "run-input" && entry.owner.id === f.separationsRun.envelope.runId));
+    // The Separations input moved on since generation 1, so that run is retired history, never admitted under the current schema.
+    assert.ok(retirements.some(entry => entry.owner.id === f.separationsRun.envelope.runId && entry.sourceSchemaHash === f.separationsRun.input.parsed.schemaHash));
+    assert.ok(!admissions.some(entry => entry.owner.kind === "run-input" && entry.owner.id === f.separationsRun.envelope.runId));
   } finally { await f.cleanup(); }
 });

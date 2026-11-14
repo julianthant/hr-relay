@@ -27,7 +27,6 @@ import type { RunRecord } from "../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import {
   buildFinalizationComments,
-  separationInitials,
 } from "../../../src/rules/separations/separation-dates.js";
 import {
   kualiFinalizationFields,
@@ -71,6 +70,8 @@ export const COMPOSITION_UCPATH_NAME = "Deterministic Person";
 export const COMPOSITION_OTHER_NAME = "Somebody Else";
 export const COMPOSITION_DOCUMENT_NAME = "Person, Deterministic";
 export const COMPOSITION_TIMEKEEPER = "Deterministic Timekeeper";
+/** The timekeeper's stored initials; deliberately not the letters of the name. */
+export const COMPOSITION_TIMEKEEPER_INITIALS = "TQ";
 export const COMPOSITION_RECEIPT = "T009000001";
 export const COMPOSITION_WORKER_ID = "separations-worker-1";
 export const COMPOSITION_RUN_ID = UUID_2;
@@ -93,7 +94,7 @@ export const COMPOSITION_EXISTING_COMMENTS = "";
 
 export const COMPOSITION_DATE_CHANGE_COMMENTS =
   `Updated Separation Date from ${COMPOSITION_KUALI_LDW} to ${COMPOSITION_SEPARATION_DATE} `
-  + `per Kronos timesheet. -${separationInitials(COMPOSITION_TIMEKEEPER)}`;
+  + `per Kronos timesheet. -${COMPOSITION_TIMEKEEPER_INITIALS}`;
 
 export const COMPOSITION_TERMINATION_COMMENTS =
   `Termination eff ${COMPOSITION_EFFECTIVE_DATE}. Last Day Worked ${COMPOSITION_LAST_DAY_WORKED}. `
@@ -105,7 +106,7 @@ export const COMPOSITION_FINALIZATION_COMMENTS = buildFinalizationComments({
   dateChangeComments: COMPOSITION_DATE_CHANGE_COMMENTS,
   documentNumber: COMPOSITION_DOCUMENT,
   transactionNumber: COMPOSITION_RECEIPT,
-  initials: separationInitials(COMPOSITION_TIMEKEEPER),
+  initials: COMPOSITION_TIMEKEEPER_INITIALS,
   asOfDate: COMPOSITION_AS_OF_DATE,
 });
 
@@ -130,6 +131,7 @@ export const COMPOSITION_FINALIZATION_FIELDS: KualiFinalizationFields =
 export const COMPOSITION_RUN_INPUT = Object.freeze({
   documentNumber: COMPOSITION_DOCUMENT,
   timekeeperName: COMPOSITION_TIMEKEEPER,
+  timekeeperInitials: COMPOSITION_TIMEKEEPER_INITIALS,
   searchTimeoutMs: 15_000,
 });
 
@@ -275,7 +277,7 @@ export function compositionQueuedRun(
 ): Record<string, unknown> {
   const admitted = admitProtectedInput(separationsDescriptor,
     [{ documentNumber: COMPOSITION_DOCUMENT, searchTimeoutMs: 15_000 }],
-    protectedSecretSource({ profileName: COMPOSITION_TIMEKEEPER }))[0];
+    protectedSecretSource({ profileName: COMPOSITION_TIMEKEEPER, profileInitials: COMPOSITION_TIMEKEEPER_INITIALS }))[0];
   if (admitted === undefined) throw new Error("fixture protected input admission missing");
   return {
     envelope: {

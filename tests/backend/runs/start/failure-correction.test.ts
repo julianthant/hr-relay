@@ -25,7 +25,7 @@ import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 
 function fixture() {
-  const original = { documentNumber: "4510", timekeeperName: "Synthetic Timekeeper", searchTimeoutMs: 15000, reRead: { ordinal: 1, reason: "corrected dates" } };
+  const original = { documentNumber: "4510", timekeeperName: "Synthetic Timekeeper", timekeeperInitials: "ST", searchTimeoutMs: 15000, reRead: { ordinal: 1, reason: "corrected dates" } };
   const failureId = uuidOf(30);
   const base = runRecordOf({ seed: 1, workflow: "separations", descriptor: separationsDescriptor,
     lifecycle: { state: "terminal", outcome: "failed", endedAt: "2026-08-03T19:00:00.000Z", failureId, errorSummary: "Employee absent" } });
@@ -51,6 +51,7 @@ describe("failed-run single-field rerun", () => {
     assert.deepEqual(run.input.parsed.value, original);
     assert.deepEqual(request.rerunSource?.failureCorrection, { failureId: failure.failureId, inputField: "operatorEmployeeId" });
     assert.equal(Object.hasOwn(submission, "timekeeperName"), false);
+    assert.equal(Object.hasOwn(submission, "timekeeperInitials"), false);
   });
   it("refuses stale revisions, invalid EIDs, extra changes and undeclared failures", () => {
     const { run, failure, request } = fixture();
@@ -139,7 +140,7 @@ it("replans a missing Kuali document as the corrected item, preserving lineage a
   assert.equal(planned.matchKey, "separations:4502#re-read-1");
   assert.equal(planned.itemId, deriveItemId(separationsDescriptor.id, "separations:4502#re-read-1"));
   assert.notEqual(planned.itemId, run.envelope.itemId);
-  assert.deepEqual(planned.input.value, { ...original, documentNumber: "4502", timekeeperName: freshIdentity.displayName });
+  assert.deepEqual(planned.input.value, { ...original, documentNumber: "4502", timekeeperName: freshIdentity.displayName, timekeeperInitials: freshIdentity.initials });
   assert.deepEqual(planned.input.protectedBindings, [{ kind: "profile", inputPath: "timekeeperName", name: "timekeeperName", profileId: freshIdentity.profileId, sessionEpoch: freshIdentity.sessionEpoch }]);
   assert.notDeepEqual(planned.input.protectedBindings, run.input.parsed.protectedBindings);
   assert.deepEqual(run.input.parsed.value, original);

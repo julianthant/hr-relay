@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
+import { z } from "zod";
 import { predecessorSeparationsRerun } from "../../../support/helpers/backend/predecessor-separations-rerun.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import type { EvidenceSchemaAdmission } from "../../../../src/models/storage/evidence-schema-admission.js";
@@ -138,6 +139,7 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
   const { separationsDescriptor: descriptor } = await import("../../../support/helpers/registered-workflows.js");
   const { sequentialIdFactory } = await import("../../../support/fixtures/phase1f-run-fixtures.js");
   const { repeatEvidenceDigest } = await import("../../../../src/models/run/rerun.js");
+  const { profileInitials } = await import("../../../../src/models/profiles/profile-identity.js");
   const before = frozenRows(f.path), lifetime = await RuntimeLifetimeLock.acquire(0);
   try {
     const startup = () => initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null });
@@ -155,6 +157,8 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
     try {
       const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
       assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("converted-rerun-sign-in-refused");
+      // The account enters initials of its own, so a plan that derived letters from the name would be caught.
+      assert.equal(runtime.session.changeDetails(active.token, { timekeeperInitials: "QZ" }).state, "changed");
       const admission = machine.admitProfile(active.profileId), credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot });
       const database = AuthorityDatabase.open(admission, { path: f.path, migrationOwner: "certified-rerun-readback", busyTimeoutMs: 250 }, systemClock,
         undefined, undefined, undefined, credentials);
@@ -181,6 +185,9 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
         const retained = database.authority.startPlans.get(plan.startPlanId); assert.ok(retained);
         assert.equal(Reflect.get(Object(retained.planned[0]?.input.value), "timekeeperName"), identity.displayName);
         assert.notEqual(identity.displayName, Reflect.get(Object(f.run.input.parsed.value), "timekeeperName"));
+        assert.equal(identity.initials, "QZ"); assert.notEqual(profileInitials(identity.displayName), identity.initials);
+        assert.equal(Reflect.get(Object(retained.planned[0]?.input.value), "timekeeperInitials"), identity.initials);
+        assert.equal(Object.hasOwn(z.record(z.string(), z.unknown()).parse(f.run.input.parsed.value), "timekeeperInitials"), false);
         assert.throws(() => planner.plan({ ...input, submissions: [{ ...input.submissions[0], timekeeperName: "Caller Override" }] }));
         for (const wire of [values, warning, plan]) {
           assert.equal(JSON.stringify(wire).includes("Deterministic Timekeeper"), false);

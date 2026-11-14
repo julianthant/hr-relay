@@ -16,6 +16,18 @@ export const EvidenceSchemaAdmissionSchema = z.strictObject({
   sourceDigest: FingerprintSchema,
 });
 export type EvidenceSchemaAdmission = z.infer<typeof EvidenceSchemaAdmissionSchema>;
+/** Canonical-input hashes of the Separations inputs from before the stored timekeeper initials: each workflow's last current hash and its profile-name-domain predecessor. */
+export const RETIRED_INPUT_GENERATIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  separations: Object.freeze([
+    "9139ca6501ab707e3c47dfe55fcc89741dfc53dda0b783a7afb8ee2c2e1ee77d",
+    "66dc2f33bf56808164be764f921a1e5a2a95afd5e0a7b760fdba687ee81575dc",
+  ]),
+  "separations-kuali-finalization": Object.freeze([
+    "d881b2db363e3d2061b3729ade8bc59b22c95972c6a33ca22ab676be3b1bbc52",
+    "5ab3b24512e81356add63761e2c0d6f16226e9ba39bb84b3f98aff28842e026d",
+  ]),
+});
+
 /** A stored run input whose canonical-input generation this build no longer parses; it stays readable history, never current input. */
 export const EvidenceSchemaRetirementSchema = z.strictObject({
   owner: z.strictObject({ kind: z.literal("run-input"), id: z.uuid() }),

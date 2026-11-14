@@ -18,7 +18,7 @@ Run → Separations → Enter EID or Enter document number (subject `finalizatio
 
 ## Passing dry run
 
-Logs show Kuali, UCPath and Kronos reads done and every transaction stage as previewed or Not clicked. No UCPath submit, no Kuali finalization; the Kuali document stays unsaved and unchanged. `explain run` shows no write attempt. The Explorer timeline for the workflow matches the Logs steps.
+Logs show Kuali, UCPath and Kronos reads done and every transaction stage as previewed or Not clicked. No UCPath submit, no Kuali finalization; the Kuali document stays unsaved and unchanged. `explain run` shows no write attempt. The Explorer timeline for the workflow matches the Logs steps. In the planned values, the comment initials (`-XY` in the date-change and finalization comments) equal the signed-in account's Timekeeper initials, not letters derived from the timekeeper name.
 
 ## Gotchas
 

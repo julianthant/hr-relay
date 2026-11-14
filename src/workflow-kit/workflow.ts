@@ -10,7 +10,7 @@ import { delegationInvocationCommandId } from "../rules/commands/lifecycle-comma
 import type { RerunValueMappingSpec } from "../models/workflow/rerun-values.js";
 import { validateRerunValueMappings } from "../models/validation/rerun-values.js";
 import { retainedRunProtectedBindings } from "../models/write-safety/protected-input.js";
-import { ProtectedInputDeclarationSchema, type ProtectedInputBinding, type ProtectedInputDeclaration } from "../models/write-safety/protected-input.js";
+import { ProtectedInputDeclarationSchema, protectedDeclarationPaths, type ProtectedInputBinding, type ProtectedInputDeclaration } from "../models/write-safety/protected-input.js";
 import { z } from "zod";
 import { validateFailureCorrections, type FailureCorrection } from "../models/workflow/failure-correction.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../rules/validation/canonical-json.js";
@@ -978,7 +978,7 @@ function assertInputRunExamples(id: string, input: z.ZodType, inputRun: InputRun
     for (const entry of entries) {
       const parsed = input.safeParse(toRawSubmission(entry));
       if (!parsed.success && !parsed.error.issues.every((issue) => issue.code === "invalid_type"
-        && issue.path.length === 1 && protectedInputs.some(({ inputPath }) => inputPath === issue.path[0]))) {
+        && issue.path.length === 1 && protectedInputs.some((declaration) => protectedDeclarationPaths(declaration).includes(String(issue.path[0]))))) {
         throw new Error(
           `${id}: input-run example "${example.key}" entry ${String(entry.index + 1)} ("${entry.sourceText}") `
           + `is refused by this workflow's own input schema: ${parsed.error.message}`,
@@ -998,10 +998,12 @@ function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSur
       assertSchemaOffersPath(input, constant.field, `${id}: input-run parser constant`);
     }
     for (const declaration of protectedInputs) {
-      assertSchemaOffersPath(input, declaration.inputPath, `${id}: protected input`);
-      if (inputRun.parser.rules.some((rule) => rule.emit === declaration.inputPath)
-        || inputRun.parser.constants?.some((constant) => constant.field === declaration.inputPath)) {
-        throw new Error(`${id}: protected input ${declaration.name} cannot be supplied by the browser parser`);
+      for (const inputPath of protectedDeclarationPaths(declaration)) {
+        assertSchemaOffersPath(input, inputPath, `${id}: protected input`);
+        if (inputRun.parser.rules.some((rule) => rule.emit === inputPath)
+          || inputRun.parser.constants?.some((constant) => constant.field === inputPath)) {
+          throw new Error(`${id}: protected input ${inputPath} cannot be supplied by the browser parser`);
+        }
       }
     }
     assertInputRunExamples(id, input, inputRun, protectedInputs);

@@ -3,6 +3,7 @@ import {
   KualiDocumentNumberSchema,
   KualiTimekeeperNameSchema,
 } from "../../models/ui/kuali-document-identity.js";
+import { ProfileInitialsSchema } from "../../models/profiles/profile.js";
 import { defineCanonicalInput } from "../../models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
 import { SeparationsMatchIdentity } from "../../models/workflows/separations/match-identity.js";
@@ -29,6 +30,7 @@ const SeparationsInputShape = {
   operatorEmployeeId: EidSchema.optional(),
   documentNumber: KualiDocumentNumberSchema,
   timekeeperName: KualiTimekeeperNameSchema,
+  timekeeperInitials: ProfileInitialsSchema,
 } as const;
 
 export const SeparationsInput = z.strictObject({
@@ -48,11 +50,13 @@ export const SeparationsCanonicalInput = defineCanonicalInput(
     {
       documentNumber: "4510",
       timekeeperName: "Synthetic Timekeeper",
+      timekeeperInitials: "ST",
     },
     {
       operatorEmployeeId: SeparationsMatchIdentity.example.packet.emplId,
       documentNumber: "4524",
       timekeeperName: "Synthetic Timekeeper",
+      timekeeperInitials: "ST",
       searchTimeoutMs: 30_000,
       reRead: { ordinal: 1, reason: "the department corrected the last day worked" },
     },
