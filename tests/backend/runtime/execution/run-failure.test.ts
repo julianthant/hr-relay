@@ -140,6 +140,10 @@ it.each(["not-attempted", "unknown"] as const)("shows the registered delegation 
 });
 
 const FIXTURE_EMPLOYEE_ID = "10456712";
+
+function percentEncode(text: string): string {
+  return [...text].map(character => `%${character.charCodeAt(0).toString(16).padStart(2, "0")}`).join("");
+}
 const APPLICATION_ROUTE_REASON = "the login could not prove the authenticated application: the observed URL is not a UCPath PeopleSoft application route; the public UCPath portal, campus discovery, SSO, Duo and the classic-PIA expiry landings are all refused here";
 
 function storedSignInFailure(detail: string, observedUrl: string, system: "ucpath" | "crm" = "ucpath") {
@@ -330,5 +334,44 @@ describe("refused sign-in detail", () => {
     assert.ok(kept <= 96 * 1024);
     assert.equal(debug.omittedBytes, debug.originalBytes - kept);
     assert.ok(debug.originalBytes > 100_000);
+  });
+
+  it("strips a credential and an uppercase URL that were percent-encoded in the verifier reason", () => {
+    const encoded = percentEncode("password=SECRET_CANARY HTTPS://user:USERINFO_CANARY@example.test/read?token=QUERY_CANARY#FRAGMENT_CANARY");
+    const failure = storedSignInFailure(`the check saw ${encoded}`, "https://example.test/login");
+    assert.equal(failure.debug?.signInRefusal?.reason, "the check saw password=[removed] https://example.test/read");
+    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://example.test/login");
+    const stored = JSON.stringify(failure);
+    for (const canary of ["SECRET_CANARY", "USERINFO_CANARY", "QUERY_CANARY", "FRAGMENT_CANARY", "?token=", "#FRAGMENT"]) {
+      assert.equal(stored.includes(canary), false, canary);
+    }
+  });
+
+  it("strips a query and fragment hidden in a percent-encoded page path", () => {
+    const failure = storedSignInFailure(
+      "the check failed",
+      "https://example.test/read%3Ftoken%3DQUERY_CANARY%23FRAGMENT_CANARY",
+    );
+    assert.equal(failure.debug?.signInRefusal?.reason, "the check failed");
+    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://example.test/read");
+    const stored = JSON.stringify(failure);
+    assert.equal(stored.includes("QUERY_CANARY"), false);
+    assert.equal(stored.includes("FRAGMENT_CANARY"), false);
+    assert.equal(stored.includes("?token="), false);
+    assert.equal(stored.includes("#FRAGMENT"), false);
+  });
+
+  it("drops an employee id hidden in an undecodable percent-encoding run", () => {
+    const encoded = percentEncode(FIXTURE_EMPLOYEE_ID);
+    const failure = storedSignInFailure(
+      `the check saw https://example.test/people/%FF${encoded}`,
+      `https://example.test/people/%FF${encoded}`,
+    );
+    assert.equal(failure.debug?.signInRefusal?.reason, "the check saw https://example.test/people/[invalid-encoding]");
+    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://example.test/people/[invalid-encoding]");
+    const stored = JSON.stringify(failure);
+    assert.equal(stored.includes(FIXTURE_EMPLOYEE_ID), false);
+    assert.equal(stored.toLowerCase().includes(encoded.toLowerCase()), false);
+    assert.equal(stored.includes(`%FF${encoded}`), false);
   });
 });

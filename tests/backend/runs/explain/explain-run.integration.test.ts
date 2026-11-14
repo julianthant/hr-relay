@@ -210,3 +210,52 @@ it("explains a protected run without a percent-encoded employee id", () => {
   assert.equal(rendered.includes("10456712"), false);
   assert.equal(rendered.toLowerCase().includes(encoded.toLowerCase()), false);
 });
+
+it("explains a protected run without a percent-encoded credential or uppercase URL", () => {
+  const encoded = percentEncode("password=SECRET_CANARY HTTPS://user:USERINFO_CANARY@example.test/read?token=QUERY_CANARY#FRAGMENT_CANARY");
+  const login = new BrowserLoginError("ucpath", "verify-landing", `the check saw ${encoded}`, "https://example.test/login");
+  const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+  const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+    failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+    error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: QUEUED_RUN.createdAt });
+  const run = protectedExplainRun();
+  const rendered = renderExplainRun(buildExplainRunView({ run, checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure }));
+  assert.match(rendered, /sign-in check verify-landing: the check saw password=\[removed\] https:\/\/example\.test\/read/);
+  assert.match(rendered, /page https:\/\/example\.test\/login/);
+  for (const canary of ["SECRET_CANARY", "USERINFO_CANARY", "QUERY_CANARY", "FRAGMENT_CANARY"]) {
+    assert.equal(rendered.includes(canary), false, canary);
+  }
+});
+
+it("explains a protected run without a query hidden in the page path or an undecodable employee-id run", () => {
+  const encoded = percentEncode("10456712");
+  const login = new BrowserLoginError("ucpath", "verify-landing",
+    `the check saw https://example.test/people/%FF${encoded}`,
+    "https://example.test/read%3Ftoken%3DQUERY_CANARY%23FRAGMENT_CANARY");
+  const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+  const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+    failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+    error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: QUEUED_RUN.createdAt });
+  const rendered = renderExplainRun(buildExplainRunView({
+    run: protectedExplainRun(), checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure,
+  }));
+  assert.match(rendered, /sign-in check verify-landing: the check saw https:\/\/example\.test\/people\/\[invalid-encoding\]/);
+  assert.match(rendered, /page https:\/\/example\.test\/read/);
+  assert.equal(rendered.includes("10456712"), false);
+  assert.equal(rendered.toLowerCase().includes(encoded.toLowerCase()), false);
+  assert.equal(rendered.includes("QUERY_CANARY"), false);
+  assert.equal(rendered.includes("FRAGMENT_CANARY"), false);
+});
+
+function percentEncode(text: string): string {
+  return [...text].map(character => `%${character.charCodeAt(0).toString(16).padStart(2, "0")}`).join("");
+}
+
+function protectedExplainRun() {
+  return RunRecordSchema.parse({
+    ...QUEUED_RUN,
+    input: { ...QUEUED_RUN.input, parsed: { ...QUEUED_RUN.input.parsed, protectedBindings: [{
+      kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "00000000-0000-4000-8000-000000000099",
+    }] } },
+  });
+}

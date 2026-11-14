@@ -203,12 +203,23 @@ function withoutPageQuery(text: string): string {
   });
 }
 
-/** Percent-encoding is decoded before an employee id is recognized. A broken sequence is left as written. */
+/** Percent-encoding is decoded until it is plain or an undecodable run is replaced.
+ * The raw run is not kept: a broken sequence can hide an employee id from the digit mask.
+ * Decoding finishes before URL, credential and employee-id suppression, and does not run again. */
 function decodeUriText(text: string): string {
-  return text.replace(/(?:%[0-9A-Fa-f]{2})+/gu, (run) => {
-    try { return decodeURIComponent(run); }
-    catch { return run; }
-  });
+  let current = text;
+  let passes = 0;
+  while (passes < 8) {
+    passes += 1;
+    let changed = false;
+    current = current.replace(/(?:%[0-9A-Fa-f]{2})+/gu, (run) => {
+      changed = true;
+      try { return decodeURIComponent(run); }
+      catch { return "[invalid-encoding]"; }
+    });
+    if (!changed) return current;
+  }
+  return current.replace(/(?:%[0-9A-Fa-f]{2})+/gu, () => "[invalid-encoding]");
 }
 
 /** An employee id is eight digits. These refusal fields are safe diagnostic text, so the digits do not stay. */
@@ -217,13 +228,13 @@ function withoutEmployeeId(text: string): string {
 }
 
 function refusalText(text: string): string {
-  return withoutEmployeeId(decodeUriText(sanitizeDebugText(text)));
+  return withoutEmployeeId(sanitizeDebugText(withoutPageQuery(decodeUriText(text))));
 }
 
 function signInRefusalFrom(error: Error) {
   const login = browserLoginFailure(error);
   if (login === undefined) return undefined;
-  const reason = refusalText(withoutPageQuery(login.detail));
+  const reason = refusalText(login.detail);
   const address = refusalText(pageAddress(login.observedUrl));
   if (reason.length === 0) throw new Error("sign-in refusal reason is empty");
   if (address.length === 0) throw new Error("sign-in page address is empty");

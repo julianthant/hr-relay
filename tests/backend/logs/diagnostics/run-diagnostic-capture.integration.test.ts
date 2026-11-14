@@ -745,4 +745,61 @@ describe("refused sign-in bundle", () => {
     assert.equal(allowed("signInReason"), "the check saw https://example.test/people/[removed]");
     assert.equal(allowed("signInPageAddress"), "https://example.test/people/[removed]");
   });
+
+  it("strips a percent-encoded credential and URL from the reason the bundle allows", async () => {
+    const database = await openDatabase();
+    const { service } = captureService(database);
+    const encoded = percentEncode("password=SECRET_CANARY HTTPS://user:USERINFO_CANARY@example.test/read?token=QUERY_CANARY#FRAGMENT_CANARY");
+    const login = new BrowserLoginError("ucpath", "verify-landing", `the check saw ${encoded}`, "https://example.test/login");
+    const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+      error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: "2026-08-29T08:00:00.000Z" });
+    const bundle = await createRunDiagnosticCapture({ service }).captureForFailure({
+      failure, configFingerprint: HASH_A, descriptorFingerprint: HASH_B,
+    });
+    const stored = JSON.stringify({ failure, bundle });
+    for (const canary of ["SECRET_CANARY", "USERINFO_CANARY", "QUERY_CANARY", "FRAGMENT_CANARY"]) {
+      assert.equal(stored.includes(canary), false, canary);
+    }
+    const allowed = (key: string) => {
+      const field = bundle.redaction.fields.find(candidate => candidate.key === key);
+      assert.equal(field?.state, "allowed");
+      return field?.state === "allowed" ? field.value : undefined;
+    };
+    assert.equal(allowed("signInReason"), "the check saw password=[removed] https://example.test/read");
+    assert.equal(allowed("signInPageAddress"), "https://example.test/login");
+  });
+
+  it("strips a query hidden in the page path and an undecodable employee-id run", async () => {
+    const database = await openDatabase();
+    const { service } = captureService(database);
+    const encoded = percentEncode("10456712");
+    const login = new BrowserLoginError("ucpath", "verify-landing",
+      `the check saw https://example.test/people/%FF${encoded}`,
+      "https://example.test/read%3Ftoken%3DQUERY_CANARY%23FRAGMENT_CANARY");
+    const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+      error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: "2026-08-29T08:00:00.000Z" });
+    const bundle = await createRunDiagnosticCapture({ service }).captureForFailure({
+      failure, configFingerprint: HASH_A, descriptorFingerprint: HASH_B,
+    });
+    const stored = JSON.stringify({ failure, bundle });
+    assert.equal(stored.includes("10456712"), false);
+    assert.equal(stored.toLowerCase().includes(encoded.toLowerCase()), false);
+    assert.equal(stored.includes("QUERY_CANARY"), false);
+    assert.equal(stored.includes("FRAGMENT_CANARY"), false);
+    const allowed = (key: string) => {
+      const field = bundle.redaction.fields.find(candidate => candidate.key === key);
+      assert.equal(field?.state, "allowed");
+      return field?.state === "allowed" ? field.value : undefined;
+    };
+    assert.equal(allowed("signInReason"), "the check saw https://example.test/people/[invalid-encoding]");
+    assert.equal(allowed("signInPageAddress"), "https://example.test/read");
+  });
 });
+
+function percentEncode(text: string): string {
+  return [...text].map(character => `%${character.charCodeAt(0).toString(16).padStart(2, "0")}`).join("");
+}
