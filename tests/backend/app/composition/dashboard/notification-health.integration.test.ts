@@ -1,5 +1,5 @@
 import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
@@ -28,6 +28,16 @@ describe("canonical notification producers", () => {
       bytes[bytes.length - 1] ^= 0xff; writeFileSync(backupFile, bytes);
       expect((await read()).backupFailed).toBe(true);
       bytes[bytes.length - 1] ^= 0xff; writeFileSync(backupFile, bytes);
+      expect((await read()).backupFailed).toBe(false);
+      writeFileSync(`${backupFile}-wal`, Buffer.alloc(4096, 1));
+      expect((await read()).backupFailed).toBe(true);
+      rmSync(`${backupFile}-wal`);
+      expect((await read()).backupFailed).toBe(false);
+      const manifestFile = join(directory, files.find(name => name.endsWith(".manifest.json"))!), manifestText = readFileSync(manifestFile, "utf8");
+      const disagreeing = JSON.parse(manifestText) as { pageCount: number; verification: { pageCount: number } };
+      disagreeing.pageCount += 1; disagreeing.verification.pageCount += 1; writeFileSync(manifestFile, JSON.stringify(disagreeing));
+      expect((await read()).backupFailed).toBe(true);
+      writeFileSync(manifestFile, manifestText);
       expect((await read()).backupFailed).toBe(false);
       writeFileSync(join(directory, "corrupt.manifest.json"), "not a manifest");
       expect((await read()).backupFailed).toBe(true);

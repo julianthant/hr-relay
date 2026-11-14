@@ -15,11 +15,11 @@ import { AuthorityBackupService, syntheticStateRoot } from "../../../../support/
 
 const { fixture, seedRun } = createNotificationCompositionTestWorld();
 const IDLE_MS = 10 * 60_000;
-/** The first pass reads the store once each for integrity, notification sources and live-run leases; idle passes after it read nothing. */
-const IDLE = { wholeStore: 1, liveRunLists: 2 };
+/** The first pass reads the store once for integrity, each backup once, and the runs once each for notification sources and live-run leases; idle passes after it read nothing. */
+const idle = (backups: number) => ({ wholeStore: 1 + backups, liveRunLists: 2 });
 
 /** Store reads the gate watch makes over an idle period on a store holding a queued run and `backups` verified backups, optionally logging an event-loop stall each minute. */
-async function idleReads(backups: number, stalls = false): Promise<typeof IDLE> {
+async function idleReads(backups: number, stalls = false): Promise<ReturnType<typeof idle>> {
   const f = await fixture();
   try {
     seedRun(f, RunRecordSchema.parse(QUEUED_RUN));
@@ -51,13 +51,13 @@ async function idleReads(backups: number, stalls = false): Promise<typeof IDLE> 
 }
 
 describe("dashboard idle load", () => {
-  it("costs the same bounded number of store reads over an idle period whatever the store holds", async () => {
+  it("reads the store and each backup once over an idle period, not once a minute", async () => {
     const small = await idleReads(1);
     const large = await idleReads(4);
-    expect({ small, large }).toEqual({ small: IDLE, large: IDLE });
+    expect({ small, large }).toEqual({ small: idle(1), large: idle(4) });
   });
 
   it("does not re-read the store because of its own event-loop stall lines", async () => {
-    expect(await idleReads(1, true)).toEqual(IDLE);
+    expect(await idleReads(1, true)).toEqual(idle(1));
   });
 });
