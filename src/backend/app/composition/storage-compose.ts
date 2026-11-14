@@ -23,6 +23,7 @@ import { readPrivateFile } from "../../storage/configuration/credential-safe-fil
 import { assertCredentialStoreOwner,createCredentialStore,type CredentialStoreHooks } from "../../storage/configuration/credential-store.js";
 import { prepareStoppedBackupClosure,probeRestoreProfileBrowsersClosed,ProfileRestoreBrowserCustodyUnprovedError,type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
 import { assertStoppedProfileResourcesClosed } from "../../storage/maintenance/profile-custody.js";
+import { fsyncPath,writePrivateStage } from "../../storage/private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../storage/sqlite/migrations.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
@@ -32,9 +33,9 @@ import { assertProfileBrowserRoot,composeProfileClosureInventory } from "./profi
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { closeSync,existsSync,mkdirSync,openSync,readdirSync,readFileSync } from "node:fs";
+import { closeSync,existsSync,mkdirSync,openSync,readdirSync,readFileSync,renameSync,rmSync } from "node:fs";
 import { appendEmergencyFault } from "../../logs/emergency-faults.js";
-import { join,resolve } from "node:path";
+import { dirname,join,resolve } from "node:path";
 import { z } from "zod";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
@@ -302,6 +303,29 @@ export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, l
   }
 }
 
+const pendingShutdownBackupPath = (workspace: string) => join(workspace, rebuildRuntimeIsolation.stateRoot, "shutdown-backup.pending.json");
+
+/** Records the people whose quit-time backup is unfinished; whoever next holds the lifetime lock completes it. */
+export function writePendingShutdownBackup(workspace: string, people: readonly string[]): void {
+  const path = pendingShutdownBackupPath(workspace), directory = dirname(path), stage = `${path}.stage`;
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  rmSync(stage, { force: true });
+  writePrivateStage(stage, Buffer.from(JSON.stringify({ people })));
+  renameSync(stage, path);
+  fsyncPath(directory);
+}
+
+export function readPendingShutdownBackup(workspace: string): ReadonlySet<string> | undefined {
+  const path = pendingShutdownBackupPath(workspace);
+  if (!existsSync(path)) return undefined;
+  return new Set(z.strictObject({ people: z.array(z.uuid()).min(1) }).parse(JSON.parse(readFileSync(path, "utf8"))).people);
+}
+
+export function removePendingShutdownBackup(workspace: string): void {
+  rmSync(pendingShutdownBackupPath(workspace), { force: true });
+  fsyncPath(dirname(pendingShutdownBackupPath(workspace)));
+}
+
 /**
  * The quit-time backup of the stopped store runs in a detached process so the dashboard exits at once. The finisher takes the
  * lifetime lock this process releases, so it never runs beside a dashboard; a killed finisher leaves no manifest, so nothing counts.
@@ -315,6 +339,7 @@ export function detachedShutdownBackup(launch: Readonly<{ command: string; prefi
       const people = await withStoppedMachineStorage(workspace, lifetime, machine => Promise.resolve(shutdownBackupPeople(machine, lifetime).map(profile => profile.profileId)));
       if (people.length === 0) return;
       assertMaintenanceCustodyAvailable("backup");
+      writePendingShutdownBackup(workspace, people);
       const logDirectory = join(workspace, rebuildRuntimeIsolation.stateRoot, "logs");
       mkdirSync(logDirectory, { recursive: true, mode: 0o700 });
       const log = openSync(join(logDirectory, "shutdown-backup.log"), "a", 0o600);
