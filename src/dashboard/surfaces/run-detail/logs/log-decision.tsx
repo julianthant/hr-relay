@@ -47,6 +47,7 @@ function DecisionBody({ decision, fieldLabel }: { decision: LogDecision; fieldLa
     {decision.lastCompleted && <p className="log-last-completed"><Check aria-hidden className="size-3" />Last completed · {decision.lastCompleted}</p>}
     {decision.field && <div className="log-failed-field"><span>{fieldLabel ?? decision.field.label}</span><strong>{decision.field.value}</strong><span>{decision.field.outcome}</span></div>}
     {decision.comparison && <Compare rows={decision.comparison} />}
+    {decision.unavailableCapture && <div className="log-capture-unavailable"><ImageOff aria-hidden className="size-4" />{decision.unavailableCapture}</div>}
   </>;
 }
 

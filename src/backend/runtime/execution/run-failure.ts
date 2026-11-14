@@ -1,4 +1,5 @@
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
+import { browserLoginFailure } from "../../systems/browser-shared/login-contract.js";
 import { hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 
 import { TaskError } from "../../../workflow-kit/errors.js";
@@ -18,11 +19,12 @@ import {
 import type { NodeId, TaskId } from "../../../rules/identity/ids.js";
 import { RunRecordSchema } from "../../../models/run/record.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { failureCodeFromTaskCode, catalogCodeForThrown } from "../../../models/failures/error-catalog.js";
+import { ErrorCatalogCodeSchema, failureCodeFromTaskCode, catalogCodeForThrown, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 import {
   CURRENT_DIAGNOSTIC_SAFETY_VERSION,
   FailureRecordSchema,
   settledWriteState,
+  signInPage,
   type FailureRecord,
 } from "../../../models/trust/failure.js";
 
@@ -70,6 +72,30 @@ export interface NodeFailureInput {
   readonly occurredAt: unknown;
   /** The run's write intents; a settled one makes this a failure after that write. */
   readonly writes: readonly Readonly<{ status: string }>[];
+  /** Evidence faults recorded after the node's own failure, such as a failure screenshot that was not taken. */
+  readonly secondaryCauses?: readonly FailureEvidenceCause[];
+}
+
+export type FailureEvidenceCause = Readonly<{ code: ErrorCatalogCode; summary: string }>;
+
+/** `wrapUnhandledTaskError`'s code for a task error nothing classified. */
+const UNHANDLED_TASK_CODE = "unhandled";
+
+/** A task's declared code, or an error's own catalogued code; anything else is an unclassified task failure. */
+function nodeFailureCode(error: unknown, taskError: TaskError | undefined): string {
+  const thrown = catalogCodeForThrown(error);
+  if (thrown !== undefined) return thrown;
+  if (taskError !== undefined && taskError.code !== UNHANDLED_TASK_CODE) return failureCodeFromTaskCode(taskError.code);
+  const own = taskError === undefined && error instanceof Error && "code" in error && typeof error.code === "string"
+    ? ErrorCatalogCodeSchema.safeParse(failureCodeFromTaskCode(error.code)) : undefined;
+  return own?.success === true ? own.data : "TASK_UNHANDLED_FAILURE";
+}
+
+/** A fault that followed a node's own failure, recorded beside that failure rather than in its place. */
+export function followingFailureCause(error: unknown, context: string): FailureEvidenceCause {
+  const code = ErrorCatalogCodeSchema.safeParse(nodeFailureCode(error, error instanceof TaskError ? error : undefined));
+  return { code: code.success ? code.data : "TASK_UNHANDLED_FAILURE",
+    summary: `${context}: ${error instanceof Error ? error.message : "a non-Error value"}` };
 }
 
 export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
@@ -78,8 +104,7 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
   const nodeId = NodeIdSchema.parse(input.nodeId);
   const taskId = input.taskId === undefined ? undefined : TaskIdSchema.parse(input.taskId);
   const taskError: TaskError | undefined = input.error instanceof TaskError ? input.error : undefined;
-  const errorCode = input.error instanceof Error && "code" in input.error && typeof input.error.code === "string" ? input.error.code : undefined;
-  const code = catalogCodeForThrown(input.error) ?? failureCodeFromTaskCode(taskError?.code ?? errorCode ?? "unhandled");
+  const code = nodeFailureCode(input.error, taskError);
   const summary = input.error instanceof Error
     ? Buffer.from(sanitizeDebugText(input.error.message)).subarray(0, 32 * 1024).toString("utf8")
     : `node ${nodeId} threw a non-Error value`;
@@ -118,7 +143,7 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
       summary,
       role: "primary",
       transient,
-    }],
+    }, ...(input.secondaryCauses ?? []).map(cause => ({ code: cause.code, summary: sanitizeDebugText(cause.summary), role: "secondary", transient: false }))],
     remediation: [transient
       ? { kind: "retry-when-served", message: `Retry once the underlying condition clears: ${summary}` }
       : { kind: "operator-action", message: `Investigate and correct at the source: ${summary}` }],
@@ -169,6 +194,29 @@ export function buildEntryValidationFailureRecord(input: EntryValidationFailureI
   });
 }
 
+const DEBUG_TEXT_BUDGET = 96 * 1024;
+
+function signInRefusalFrom(error: Error) {
+  const login = browserLoginFailure(error);
+  if (login === undefined) return undefined;
+  return {
+    system: login.system,
+    step: login.step,
+    ...(login.check === undefined ? {} : { check: login.check }),
+    ...signInPage(login.observedUrl),
+  };
+}
+
+/** Keep a whole UTF-8 character or none of it. The caller spends only the bytes actually kept. */
+function takeDebugText(text: string, remaining: { bytes: number }): string {
+  const encoded = Buffer.from(text);
+  let end = Math.min(encoded.byteLength, remaining.bytes);
+  while (end > 0 && ((encoded[end] ?? 0) & 0xc0) === 0x80) end -= 1;
+  const result = encoded.subarray(0, end).toString("utf8");
+  remaining.bytes -= Buffer.byteLength(result);
+  return result;
+}
+
 export function failureDebugDetails(error: Error) {
   const texts = [error.stack ?? error.message];
   const seen = new Set<unknown>([error]);
@@ -177,14 +225,13 @@ export function failureDebugDetails(error: Error) {
     seen.add(cause); texts.push(`${cause.name}: ${cause.stack ?? cause.message}`); cause = cause.cause;
   }
   const safe = texts.map(sanitizeDebugText);
+  const signInRefusal = signInRefusalFrom(error);
   const originalBytes = safe.reduce((total, text) => total + Buffer.byteLength(text), 0);
-  let remaining = 96 * 1024;
-  const bounded = safe.map(text => {
-    const bytes = Buffer.from(text);
-    const result = bytes.subarray(0, remaining).toString("utf8");
-    remaining = Math.max(0, remaining - bytes.byteLength);
-    return result;
-  });
+  const remaining = { bytes: DEBUG_TEXT_BUDGET };
+  const bounded = safe.map(text => takeDebugText(text, remaining));
+  const retainedBytes = Buffer.byteLength(bounded[0] ?? "")
+    + bounded.slice(1).reduce((total, text) => total + Buffer.byteLength(text), 0);
   return { stack: bounded[0] ?? "", causes: bounded.slice(1), originalBytes,
-    omittedBytes: Math.max(0, originalBytes - 96 * 1024) };
+    omittedBytes: Math.max(0, originalBytes - retainedBytes),
+    ...(signInRefusal === undefined ? {} : { signInRefusal }) };
 }
