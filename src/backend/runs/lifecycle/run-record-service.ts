@@ -675,10 +675,16 @@ export class RunRecordService {
   private changePause(input: unknown, operation: "pause" | "resume"): RunMutationOutcome | RunExistence {
     const request = CanonicalPauseRequestSchema.parse(input);
     return this.dependencies.database.withAuthorityTransaction(repositories => {
-      const journal = this.inspectJournal(repositories, operation, request, { kind: "version", expectedVersion: request.expectedVersion });
+      const source = this.read(request.runId);
+      // Resume before a requested pause takes effect withdraws it. The journal records that as a pause change, so the
+      // Resume journal keeps the acknowledgement an accounting parent is bound to; a replay keeps its stored operation.
+      const journaled = repositories.lifecycleJournal.getCommand(request.commandId);
+      const withdrawn = operation === "resume" && (journaled === undefined
+        ? source.state === "present" && pendingInterruptOf(source.run) === "pause-requested"
+        : "kind" in journaled && journaled.kind === "run-lifecycle" && journaled.operation === "pause");
+      const journal = this.inspectJournal(repositories, withdrawn ? "pause" : operation, request, { kind: "version", expectedVersion: request.expectedVersion });
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
       if (journal.state === "replay") return this.replayRun(journal.result);
-      const source = this.read(request.runId);
       if (source.state !== "present") return source;
       const current = source.run;
       if (current.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: current.version });
@@ -692,8 +698,13 @@ export class RunRecordService {
         this.recordJournal(repositories, journal.command, journalRun(current));
         return { state: "applied" as const, run: current };
       }
-      const delegationResumed = operation === "resume" ? captureDelegationResume(repositories, request.runId) : [];
-      if (delegationResumed === undefined || delegationResumed.length > 0 && !authenticateDelegationResume(repositories, request, delegationResumed)) return refused({ reason: "policy-refused" });
+      // A withdrawn pause never took effect, so it leaves the envelope and any delegation acknowledgement as they are.
+      const retryEvidence = operation === "resume" ? captureDelegationResume(repositories, request.runId) : [];
+      if (retryEvidence === undefined) return refused({ reason: "policy-refused" });
+      // Only a member-Retry hold still blocking the join outlives Resume; an acknowledged retry leaves nothing to hold.
+      if (withdrawn && retryEvidence.length > 0 && repositories.dependencies.readiness(request.runId, "join").state === "blocked") return refused({ reason: "policy-refused" });
+      const delegationResumed = withdrawn ? [] : retryEvidence;
+      if (delegationResumed.length > 0 && !authenticateDelegationResume(repositories, request, delegationResumed)) return refused({ reason: "policy-refused" });
       const now = this.dependencies.clock.now().toISOString();
       const resumeDescriptor = operation === "resume" && delegationResumed.length > 0
         ? this.dependencies.resolveDescriptor?.(current.envelope.workflow) : undefined;
@@ -710,7 +721,7 @@ export class RunRecordService {
           runtimeGeneration: runtime.generation, releases: admission.commandId });
       }
       const result = repositories.runs.setPause({ runId: request.runId, expectedVersion: request.expectedVersion, now,
-        ...(operation === "resume" && !accountingResume ? { continuation: captureRunContinuation(repositories, current) } : {}),
+        ...(operation === "resume" && !accountingResume && !withdrawn ? { continuation: captureRunContinuation(repositories, current) } : {}),
         pause: next.interrupt === "paused" ? { state: "paused", requestedAt: now, pausedAt: now, commandId: request.commandId }
           : next.interrupt === "pause-requested" ? { state: "requested", requestedAt: now, commandId: request.commandId } : undefined },
         accountingResume ? resumeAuthorization : undefined);
@@ -727,16 +738,17 @@ export class RunRecordService {
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
       if (journal.state === "replay") return this.replayRun(journal.result);
       const source = this.read(request.runId);
-      if (source.state !== "present" || source.run.pause?.state !== "requested"
-        || interruptTransition(source.run, { kind: "acknowledge-pause" }).state === "refused") return refused({ reason: "invalid-state" });
+      const next = source.state === "present" ? interruptTransition(source.run, { kind: "acknowledge-pause" }) : undefined;
+      if (source.state !== "present" || next?.state !== "applied") return refused({ reason: "invalid-state" });
       this.assertCurrentExecution({ runId: request.runId, claim: request.claim });
       if (repositories.writeIntents.listByRun(request.runId).some(intent => intent.status === "attempting")) {
         return refused({ reason: "illegal-transition", from: source.run.lifecycle.state, to: "queued",
           message: "a pause cannot release a claim over an unfinished write" });
       }
       const now = this.dependencies.clock.now().toISOString();
-      const result = repositories.runs.setPause({ runId: request.runId, claim: request.claim, expectedVersion: source.run.version, now, acknowledge: true,
-        pause: { ...source.run.pause, state: "paused", pausedAt: now } });
+      // A pause Resume withdrew after the step stopped releases the run unpaused, to continue from its checkpoint.
+      const pause = next.interrupt === "paused" && source.run.pause !== undefined ? { ...source.run.pause, state: "paused" as const, pausedAt: now } : undefined;
+      const result = repositories.runs.setPause({ runId: request.runId, claim: request.claim, expectedVersion: source.run.version, now, acknowledge: true, pause });
       if (result.state === "conflict") return refused({ reason: "lost" });
       this.recordJournal(repositories, journal.command, journalRun(result.run));
       return { state: "applied" as const, run: result.run };

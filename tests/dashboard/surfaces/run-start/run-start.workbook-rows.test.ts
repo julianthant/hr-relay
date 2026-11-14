@@ -22,7 +22,12 @@ import { servedFixtureSources } from "../../../mocks/helpers/workflow-compositio
 
 const h = createRunStartDialogHarness();
 let routedRoot: Root | undefined;
-afterEach(async () => { await act(async () => routedRoot?.unmount()); routedRoot = undefined; await h.cleanup(); });
+let reopenRoot: Root | undefined;
+afterEach(async () => {
+  await act(async () => { routedRoot?.unmount(); reopenRoot?.unmount(); });
+  routedRoot = undefined; reopenRoot = undefined;
+  await h.cleanup();
+});
 const descriptor = DESCRIPTORS.find(flow => flow.id === "onboarding"); assert.ok(descriptor?.surfaces.inputRun);
 const descriptorId = descriptor.id;
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
@@ -164,4 +169,16 @@ it("keeps earlier selected rows visible and disabled after a named-version chang
   await dialog.press("Clear previous row selection");
   assert.equal(checkboxRows().some(checkbox => checkbox.getAttribute("aria-checked") === "true"), false);
   await select(0); assert.equal(dialog.disabled("Continue"), false);
+});
+
+it("keeps the row selection silently when the dialog is reopened for the same spreadsheet and version", async () => {
+  const host = document.createElement("div"); document.body.append(host); reopenRoot = createRoot(host);
+  const client = h.stubClient({ ...libraryReads });
+  const render = (open: boolean) => act(async () => reopenRoot?.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client,
+    children: createElement(FixtureCommandBinding, { actorId: h.ACTOR_ID, children: createElement(RunStartDialog, { open, onOpenChange() {}, panelWorkflowId: descriptor.id, actorId: h.ACTOR_ID, onApplied() {}, onOpenIntake() {},
+      catalog: buildWorkflowCatalog([workflow], false, servedFixtureSources([workflow])) }) }) }) })));
+  await render(true); await h.settle(); await chooseCurrent(); await select(0);
+  await render(false); await h.settle(); await render(true); await h.settle();
+  assert.equal(document.body.textContent?.includes("Previous row selection"), false);
+  assert.equal(checkboxRows().filter(checkbox => checkbox.getAttribute("aria-checked") === "true").length, 1);
 });
