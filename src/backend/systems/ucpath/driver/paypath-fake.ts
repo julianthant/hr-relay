@@ -6,6 +6,7 @@ import {
 import { UCPATH_SS_SMART_HR_DISPLAYED_NAME } from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import { UcpathTransactionFindingsSchema, type UcpathTransactionFinding, type UcpathTransactionFindings } from "../../../../models/ui/ucpath-transaction-findings.js";
 import type { Eid } from "../../../../rules/identity/ids.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 
 export function refusePayPathOperations(): UcpathPayPathDriver {
@@ -31,7 +32,7 @@ export function deterministicPayPathOperations(options: Readonly<{
   let staged: UcpathPayPathWorkStudyTarget | undefined;
   const operations: UcpathPayPathDriver = {
     async readPayPathPosition(input) {
-      events.push(`read:paypath:${input.emplId}`);
+      events.push(`read:paypath:${directIdentifierDisplay(input.emplId)}`);
       if (options.refusal !== undefined) throw new UcpathPayPathRefusedError(options.refusal, options.alertText);
       if (options.read === undefined) throw new Error("PayPath fixture requires an explicit read or refusal");
       return UcpathPayPathReadSchema.parse(options.read);
@@ -39,7 +40,7 @@ export function deterministicPayPathOperations(options: Readonly<{
     async stagePayPathWorkStudy(raw) {
       const target = UcpathPayPathWorkStudyTargetSchema.parse(raw);
       staged = undefined;
-      events.push(`prepare:paypath:${target.emplId}`);
+      events.push(`prepare:paypath:${directIdentifierDisplay(target.emplId)}`);
       if (options.stageRefusal !== undefined) throw new UcpathPayPathRefusedError(options.stageRefusal, options.alertText);
       staged = target;
       return UcpathPayPathStagedSchema.parse({
@@ -59,7 +60,7 @@ export function deterministicPayPathOperations(options: Readonly<{
       const target = staged;
       if (target === undefined || target.emplId !== input.emplId || target.effectiveDate !== input.effectiveDate) throw new Error("PayPath has not been staged");
       staged = undefined;
-      events.push(`commit:paypath:${target.emplId}`);
+      events.push(`commit:paypath:${directIdentifierDisplay(target.emplId)}`);
       const submit = options.submit ?? "files";
       if (submit === "alert") throw new UcpathPayPathSubmitRefusedError("Synthetic PayPath save error");
       if (submit === "nothing-filed") return;
@@ -71,7 +72,7 @@ export function deterministicPayPathOperations(options: Readonly<{
     },
   };
   const readTransactionFindings = async (input: Readonly<{ emplId: Eid }>): Promise<UcpathTransactionFindings> => {
-    events.push(`read:transactions:${input.emplId}`);
+    events.push(`read:transactions:${directIdentifierDisplay(input.emplId)}`);
     if (options.findingsUnreadable === true) {
       return UcpathTransactionFindingsSchema.parse({ state: "unreadable", emplId: input.emplId, reason: "fixture transaction search did not settle",
         diagnostic: { state: "not-attempted", cause: "not-indeterminate-settlement" }, observedAt: now });
