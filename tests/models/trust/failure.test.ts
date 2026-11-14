@@ -4,6 +4,7 @@ import {
 buildEntryValidationFailureRecord,
 buildNodeFailureRecord,
 } from "../../../src/backend/runtime/execution/run-failure.js";
+import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import {
 CURRENT_DIAGNOSTIC_SAFETY_VERSION,
 FailureRecordSchema,
@@ -86,8 +87,13 @@ describe("diagnostic evidence projection", () => {
     });
 
     assert.equal(authority.diagnosticSafetyVersion, CURRENT_DIAGNOSTIC_SAFETY_VERSION);
+    assert.equal(authority.code, "TASK_UNHANDLED_FAILURE");
     assert.equal(authority.summary, "node searching threw a non-Error value");
-    assert.equal(projectFailureForOperator(authority, false).summary, UNREGISTERED);
+    assert.equal(JSON.stringify(authority).includes(RAW), false);
+    const projected = projectFailureForOperator(authority, false);
+    assert.equal(projected.summary, ERROR_CATALOG.TASK_UNHANDLED_FAILURE.text);
+    assert.equal(projected.summary.includes(RAW), false);
+    assert.equal(JSON.stringify(projected).includes(RAW), false);
   });
 
   it("serves unstamped failure text without rewriting authority", () => {
