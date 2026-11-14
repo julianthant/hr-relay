@@ -698,6 +698,14 @@ export const ERROR_CATALOG = Object.freeze({
     "That name cannot be used as the timekeeper name.",
     EmptyParametersSchema,
   ),
+  PROFILE_DISPLAY_NAME_REFUSED: catalogEntry(
+    "That name cannot be used. Use a first and last name that each start with a letter.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_INITIALS_REFUSED: catalogEntry(
+    "Initials must be 1 to 8 letters A to Z.",
+    EmptyParametersSchema,
+  ),
   PROFILE_SIGN_IN_REFUSED: catalogEntry(
     "That email and password did not match a profile on this computer.",
     EmptyParametersSchema,
