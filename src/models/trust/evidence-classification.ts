@@ -563,7 +563,45 @@ function i9ReferenceLeaves(scope: EvidenceValueScope): unknown[] {
       .map(path => `reference.snapshot.${path}`));
 }
 
+const PAYPATH_POSITION_FIELDS = ["effectiveDate", "positionChangeReason", "positionPool", "positionNumber"] as const;
+function payPathReadLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...person(scope, `${prefix}emplId`, `${prefix}displayedName`),
+    ...open(scope, `${prefix}pageStateId`, `${prefix}observedAt`, ...PAYPATH_POSITION_FIELDS.map(field => `${prefix}position.${field}`))];
+}
+function workStudyPlanLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...person(scope, `${prefix}emplId`, `${prefix}name`),
+    ...open(scope, ...["effectiveDate", "positionChangeReason", "positionPool", "comments"].map(field => `${prefix}${field}`),
+      ...PAYPATH_POSITION_FIELDS.map(field => `${prefix}current.${field}`))];
+}
+function workStudyProofLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...person(scope, `${prefix}emplId`, `${prefix}displayedName`),
+    ...open(scope, ...["kind", "effectiveDate", "transactionId", "action", "approvalStatus", "source"].map(field => `${prefix}${field}`))];
+}
+const WORK_STUDY_STAGED_FIELDS = ["effectiveDate", "positionChangeReason", "positionPool", "jobDataComments", "initiatorComments"] as const;
+
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...payPathReadLeaves(taskOutput("ucpath/read-paypath-position"), ""),
+  ...person(taskOutput("ucpath/stage-paypath-work-study"), "staged.emplId", "staged.displayedName"),
+  ...open(taskOutput("ucpath/stage-paypath-work-study"), "stagedPageState", "staged.pageStateId", "staged.observedAt",
+    ...WORK_STUDY_STAGED_FIELDS.map(field => `staged.values.${field}`)),
+  /* PeopleSoft alert text is free text that can name the employee. */
+  ...["stage", "submit"].map(verb => ({ scope: taskOutput(`ucpath/${verb}-paypath-work-study`), path: "alertText", classification: "direct-identifier", transform: "drop" })),
+  ...workStudyProofLeaves(taskOutput("ucpath/submit-paypath-work-study"), "receipt."),
+  ...workStudyProofLeaves(writeProof("ucpath/submit-paypath-work-study"), ""),
+  ...["match", "verify"].flatMap(verb => {
+    const scope = taskOutput(`ucpath/${verb}-paypath-work-study`);
+    return [...open(scope, "state", "reason", "matches", "observedAt", "evidence.source", "evidence.sourceState", "evidence.observedAt"),
+      ...onboardingPrivateLeaves(scope, "queryDigest", "evidence.idempotencyKeyDigest", "evidence.queryDigest", "evidence.evidenceRef"),
+      ...population(scope, "evidence"), ...workStudyProofLeaves(scope, "proof.")];
+  }),
+  /* PeopleSoft alert text is free text that can name the employee. */
+  { scope: taskOutput("ucpath/read-paypath-position"), path: "alertText", classification: "direct-identifier", transform: "drop" },
+  ...payPathReadLeaves(workflowResult("work-study-ucpath-auth"), ""),
+  ...workStudyPlanLeaves(taskOutput("workflow:work-study/read-transaction-plan"), ""),
+  ...["work-study", "work-study-transaction"].flatMap(id => [
+    ...workStudyPlanLeaves(workflowResult(id), "plan."), ...open(workflowResult(id), "state"), ...workStudyProofLeaves(workflowResult(id), "receipt."),
+  ]),
+  ...["work-study", "work-study-ucpath-auth", "work-study-transaction"].flatMap(id => [...person(workflowInput(id), "emplId"), ...open(workflowInput(id), "effectiveDate")]),
   ...approvedOcrRecordLeaves(taskOutput("ocr/read-approved-record"), "record."),
   ...approvedOcrSnapshotLeaves(taskOutput("ocr/read-approved-snapshot")),
   ...approvedOcrSnapshotLeaves(workflowResult("emergency-contact-read-document")),

@@ -3,7 +3,7 @@
   "onboarding": "mock",
   "person-lookup": "served",
   "i9-lookup": "hidden",
-  "work-study": "mock",
+  "work-study": "served",
   "kronos-pay-rule": "mock",
   "ocr": "hidden",
   "oath-signature": "mock",

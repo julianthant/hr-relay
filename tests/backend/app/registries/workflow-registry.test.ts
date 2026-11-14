@@ -1,10 +1,11 @@
-import { crmDocDownloadModule, emergencyContactModule, i9CheckStartModule, onboardingModule, personLookupModule, separationsModule } from "../../../support/helpers/registered-workflows.js";
+import { crmDocDownloadModule, emergencyContactModule, i9CheckStartModule, onboardingModule, personLookupModule, registeredModule, separationsModule } from "../../../support/helpers/registered-workflows.js";
 import { describe,expect,it } from "vitest";
 import { CHILD_ONLY_WORKFLOW_MODULES, childWorkflowModuleOf, createWorkflowRegistry, DESCRIPTORS, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 
 import { WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 import { PersonLookupInput } from "../../../../src/workflows/person-lookup/workflow.js";
+import { workStudyWorkflow } from "../../../../src/workflows/work-study/workflow.js";
 import { compileFixtureWorkflow } from "../../../support/fixtures/workflow-definition-fixtures.js";
 import { createSearchWorkflowDefinitionFixtures } from "../../../support/helpers/search-workflow-definition-fixtures.js";
 
@@ -33,8 +34,8 @@ describe("workflow descriptor registry", () => {
   });
 
   it("preserves the existing public module identities and picker order", () => {
-    expect(WORKFLOW_MODULES).toEqual([personLookupModule, separationsModule, onboardingModule, i9CheckStartModule, crmDocDownloadModule, emergencyContactModule]);
-    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations", "onboarding", "i9-check-start", "crm-doc-download", "emergency-contact"]);
+    expect(WORKFLOW_MODULES).toEqual([personLookupModule, separationsModule, onboardingModule, registeredModule(workStudyWorkflow), i9CheckStartModule, crmDocDownloadModule, emergencyContactModule]);
+    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations", "onboarding", "work-study", "i9-check-start", "crm-doc-download", "emergency-contact"]);
 
     for (const module of WORKFLOW_MODULES) {
       expect(workflowModuleOf(module.descriptor.id)).toBe(module);

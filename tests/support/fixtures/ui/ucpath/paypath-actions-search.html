@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- PayPath Actions page states from the read-only live probe on work-study-workflow-06 (2026-11-13): anchors only, no person data. -->
+<html><head><meta charset="utf-8"><title>PayPath Actions fixture</title></head>
+<body>
+<script>
+const state = __FIXTURE__;
+const path = location.pathname;
+const el = (tag, attrs = {}, text = "") => { const node = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v); node.textContent = text; return node; };
+if (path.endsWith("NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL")) {
+  const nav = el("nav", { "aria-label": "HR Tasks Item List" });
+  const group = el("a", { id: "win2divPTGP_STEP_DVW_PTGP_STEP_BTN_GB$3", href: "javascript:void(0);" }, "PayPath/Additional Pay (select to expand or collapse child steps)");
+  const steps = el("div", { hidden: "" });
+  const actions = el("a", { id: "win2divPTGP_STEP_DVW_PTGP_STEP_BTN_GB$1$$6", href: "javascript:void(0);" }, "PayPath Actions");
+  steps.append(actions, el("a", { href: "javascript:void(0);" }, "PayPath Actions ACAD"), el("a", { href: "javascript:void(0);" }, "PayPath Actions STAFF"));
+  // Probe B: the step link is clickable before the content frame exists; a click before the frame's first document loads is lost.
+  let frame, frameLoaded = false;
+  const addFrame = () => {
+    frame = el("iframe", { id: "main_target_win0", name: "TargetContent", src: "/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).HCR_SM_SEARCH.GBL?NavColl=true" });
+    frame.addEventListener("load", () => { frameLoaded = true; }, { once: true });
+    document.body.append(frame);
+  };
+  window.payPathStepClicks = 0;
+  group.addEventListener("click", () => { steps.hidden = false; });
+  actions.addEventListener("click", () => {
+    window.payPathStepClicks += 1;
+    if (!frameLoaded || window.payPathStepClicks <= (state.droppedStepClicks ?? 0)) return;
+    frame.src = "/psc/ucphrprd/EMPLOYEE/HRMS/c/UC_EXTENSIONS.UC_E102_STAFF_ACAD.GBL";
+  });
+  nav.append(group, steps);
+  document.body.append(nav);
+  if (state.frameDelayMs === undefined) addFrame(); else setTimeout(addFrame, state.frameDelayMs);
+} else if (path.endsWith("HCR_SM_SEARCH.GBL")) {
+  document.body.append(el("h1", {}, "Search/Match"), el("h2", {}, "Find an Existing Value"),
+    el("label", { for: "HCR_SM_PARM_VW_SM_PARM_CD" }, "Search Parameter"), el("input", { id: "HCR_SM_PARM_VW_SM_PARM_CD" }),
+    el("a", { id: "PTS_CFG_CL_WRK_PTS_SRCH_BTN", role: "button", href: "javascript:void(0);" }, "Search"));
+} else if (path.endsWith("UC_E102_STAFF_ACAD.GBL")) {
+  document.body.append(el("h1", {}, "PayPath Actions"), el("h2", {}, "Find an Existing Value"));
+  for (const [field, label] of [["EMPLID", "Empl ID"], ["EMPL_RCD_CHAR", "Empl Record"], ["NAME_DISPLAY", "Name"], ["POSITION_NBR", "Position Number"], ["EMPL_CLASS", "Employee Classification"]]) {
+    const id = `UC_E102_PP_SRCH_${field}`;
+    const op = el("select", { id: `${id}$op` });
+    op.append(el("option", {}, "begins with"));
+    document.body.append(el("label", { id: `${id}_LBL`, for: id }, label), op, el("input", { id, "aria-labelledby": `${id}_LBL ${id}$op` }));
+  }
+  const search = el("input", { id: "PTS_CFG_CL_WRK_PTS_SRCH_BTN", type: "button", value: "Search" });
+  search.addEventListener("click", () => { document.body.append(el("div", { id: "SEARCH_RESULT_NONE" }, "No matching values were found.")); });
+  document.body.append(search);
+}
+</script>
+</body></html>
