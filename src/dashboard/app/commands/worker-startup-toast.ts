@@ -33,8 +33,7 @@ function queuedWorkerTitle(state: "refused" | "unknown", count?: number): string
   return `${subject} queued; ${state === "refused" ? "worker unavailable" : "worker status unknown"}`;
 }
 
-/** Shared with Start so Resume, Retry and Recover cannot drift from its wording. */
-export function workerStartupToast(startup: RunWorkerStartupFailure): WorkerStartupToast {
+function workerStartupToast(startup: RunWorkerStartupFailure): WorkerStartupToast {
   return { tone: "warning", title: queuedWorkerTitle(startup.state), description: startup.message };
 }
 
@@ -67,20 +66,18 @@ export function unconfirmedBulkWorkerToast(request: StartupRequest, reply: Start
   return appliedWorkerStartupToast(request, reply);
 }
 
-/** Why no worker of a workflow can take a run: every one has stopped. Undefined while any can. */
-export function workflowWorkersStopped(day: DashboardDayWire, workflowId: string): DashboardDayWire["workerCards"][number]["stopReason"] {
-  const workers = day.workerCards.filter(card => card.workflowId === workflowId);
-  return workers.some(card => card.state !== "failed") ? undefined : workers[0]?.stopReason;
-}
-
-/** Queued runs no worker can take: every worker of their workflow has stopped. Sticky while that holds. */
+/** Queued runs no worker can take: every worker of their workflow has stopped, or it has none. Sticky while that holds. */
 export function stoppedWorkerToasts(day: DashboardDayWire, workflowLabel: (workflowId: string) => string): WorkerStartupToast[] {
   const waiting = day.queueSurfaces.filter(row => row.status === "queued" && row.pause === undefined);
   return [...new Set(waiting.map(row => row.workflowId))].flatMap(workflowId => {
-    const stopped = workflowWorkersStopped(day, workflowId);
-    if (stopped === undefined) return [];
-    const runs = waiting.filter(row => row.workflowId === workflowId).length;
+    const workers = day.workerCards.filter(card => card.workflowId === workflowId);
+    const stopped = workers.some(card => card.state !== "failed") ? undefined : workers[0]?.stopReason;
+    // Only served membership proves a workflow has no worker; a preview plan asks for none.
+    const none = workers.length === 0 && day.workerAuthority.state === "present" && !day.workerAuthority.members.some(member => member.workflow === workflowId);
+    const runs = waiting.filter(row => row.workflowId === workflowId && (!none || row.surfaceKind !== "preview")).length;
+    if (runs === 0 || (stopped === undefined && !none)) return [];
     return [{ tone: "warning" as const, title: queuedWorkerTitle("refused", runs === 1 ? undefined : runs),
-      description: `${workflowLabel(workflowId)} worker ${WORKER_STOP_REASON_LABEL[stopped]}. Retry it in Sessions.` }];
+      description: stopped === undefined ? `${workflowLabel(workflowId)} has no worker. Add one in Sessions.`
+        : `${workflowLabel(workflowId)} worker ${WORKER_STOP_REASON_LABEL[stopped]}. Retry it in Sessions.` }];
   });
 }

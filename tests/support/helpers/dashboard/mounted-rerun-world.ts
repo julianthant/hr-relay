@@ -48,13 +48,13 @@ async function fill(node: HTMLInputElement | HTMLTextAreaElement, value: string)
   const setter: { set?: (this: unknown, value: string) => void } | undefined = Object.getOwnPropertyDescriptor(node instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype, "value");
   assert.ok(setter?.set); await act(async () => { setter.set?.call(node, value); node.dispatchEvent(new Event("input", { bubbles: true })); });
 }
-async function mount(h: Harness, source: RunRecord | undefined, client: DashboardClient = h.client, workersStopped?: (workflowId: string) => boolean) {
+async function mount(h: Harness, source: RunRecord | undefined, client: DashboardClient = h.client) {
   const workflows = [h.workflow]; const sourceRef = source === undefined ? undefined : { runId: source.envelope.runId, expectedVersion: source.version };
   function Launcher({ actorId, requestKey, nowIso, bound }: { actorId: string; requestKey: number; nowIso: string; bound: boolean }) { const { toast } = useToasts(); const controller = useRunLaunch(false, "launch-main"); return createElement("main", { id: "launch-main", tabIndex: -1 },
     createElement("button", { onClick: () => sourceRef === undefined ? controller.openStart() : controller.openRerun(sourceRef) }, sourceRef === undefined ? "Run workflow" : "Rerun source"),
     bound ? createElement(FixtureCommandBinding, { actorId, requestKey, nowIso, feedback: outcome => {
       if (outcome.kind === "refused" || outcome.kind === "conflict") toast(runStartRefusalToast(outcome.feedback.text));
-    }, children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId, workersStopped, onOpenIntake: () => { throw new Error("unexpected intake"); } }) }) : createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId, onOpenIntake: () => { throw new Error("unexpected intake"); } })); }
+    }, children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId, onOpenIntake: () => { throw new Error("unexpected intake"); } }) }) : createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId, onOpenIntake: () => { throw new Error("unexpected intake"); } })); }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   async function replaceBinding(nextClient: DashboardClient, { actorId = "local-operator", requestKey = 0, nowIso = h.clock.now().toISOString(), bound = true } = {}) {
     const launcher = createElement(Launcher, { actorId, requestKey, nowIso, bound });

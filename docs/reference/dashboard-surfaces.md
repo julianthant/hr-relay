@@ -823,11 +823,14 @@ trace and other actions. A recorded pause uses the outline Queued style with a P
 remain Pausing until recorded. Logs marks the corresponding timeline boundary. The queue toolbar
 pauses every run in the application lifecycle snapshot, including runs outside the selected day.
 When every target is paused it offers Resume all, retaining each command outcome. A single Resume,
-Retry or Recover shows Start's worker warning instead of the confirmed toast when that result
+Retry or Recover shows the queued-run worker warning instead of the confirmed toast when that result
 carries worker startup. Resume all keeps the confirmed toast and adds one warning naming how many
 runs have no worker, including when another run keeps the batch from confirming. While a workflow
 has unpaused queued runs and every one of its workers has stopped, a sticky warning names how the
-worker stopped and points to Retry in Sessions. Queue rows serve `cancelledBy` for a cancelled run:
+worker stopped and points to Retry in Sessions. When served membership shows the workflow has no
+worker and a run other than a preview waits, the warning says so and points to Add workers in Sessions.
+This notice is how a Start learns its worker failed to start, since Start replies before startup; while
+that startup is still pending the worker card reads Starting and no notice shows. Queue rows serve `cancelledBy` for a cancelled run:
 the Cancelled pill credits the operator only for their own cancel and otherwise shows Relay's reason
 (the profile logged out, or a never-claimed run from a previous day was cancelled at startup). Command-Q opens
 “Pause all and quit?” with Keep working and confirmation, without a run list. A pending quit shows a

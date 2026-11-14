@@ -269,10 +269,12 @@ version changes, affected dependencies, or write resolution, and its result carr
 Replay preserves the marker in `already-applied`. Unmarked empty results, tagged nonempty results,
 and marker claims for other requests refuse validation.
 
-A committed Start retains its applied result and run targets when worker startup fails. Its
-`workerStartup` field distinguishes refused startup from unknown startup without changing enqueue
-authority. Confirmed readback closes the Start dialog, clears the retained submission and shows the
-existing warning toast with the queued-run message. Startup failure remains a terminal diagnostic.
+A Start's applied result returns once its runs commit and never carries `workerStartup`; worker
+startup runs after the reply. Confirmed readback closes the Start dialog, clears the retained
+submission and shows the started toast. A startup that fails later shows on the workflow's worker
+cards and in the sticky queued-run notice. A queueing Resume, Retry or Recover keeps its applied result
+and run targets when worker startup fails; its `workerStartup` field distinguishes refused startup from
+unknown startup without changing enqueue authority. Startup failure remains a terminal diagnostic.
 
 A pre-dispatch validation failure can say Nothing was sent. A failure after dispatch is unknown:
 the backend may have recorded the command. Retain the original request/command identity and check

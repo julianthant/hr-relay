@@ -15,6 +15,7 @@ import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/l
 import { derivePersistedSettingsFingerprint } from "../../../../src/models/config/settings.js";
 import { WorkerPoolMemberSchema, workerPoolMember, type WorkerPoolMember } from "../../../../src/models/run/worker-slot.js";
 import { WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { PreflightAdmissionScopeSchema } from "../../../../src/rules/preflight/preflight-admission.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
@@ -34,6 +35,12 @@ export interface ControlHarness {
   readonly children: ScriptedWorkerChild[];
   readonly spawnRequests: WorkerSpawnRequest[];
   readonly faults: Error[];
+  /** Worker startup failures a command reported after its reply. */
+  readonly detachedStartupFailures: Error[];
+  /** Whether the fixture workflow's startup was pending, at each change the capacity republished. */
+  readonly startupPending: boolean[];
+  /** With `holdPreflight`, each member start's preflight waits here until released or aborted by the pool's stop. */
+  readonly preflight: Readonly<{ entered(): number; release(): void }>;
   readonly settled: string[];
   readonly changes: WorkerMemberView[];
   readonly stateRoot: string;
@@ -50,7 +57,8 @@ export function createDashboardPoolTestWorld() {
 
   /** `real` swaps the scripted children for real processes from the given launch and spawner. */
   async function openControlHarness(behavior: Partial<ScriptedWorkerBehavior> = {},
-    real?: (lifetime: RuntimeLifetimeLock) => Readonly<{ launch: WorkerCliLaunchSpec; spawn: WorkerProcessSpawner }>): Promise<ControlHarness> {
+    real?: (lifetime: RuntimeLifetimeLock) => Readonly<{ launch: WorkerCliLaunchSpec; spawn: WorkerProcessSpawner }>,
+    options: Readonly<{ holdPreflight?: boolean }> = {}): Promise<ControlHarness> {
     const profile = await createBoundProfileFixture(real === undefined ? {} : { sharedMachine: true }), root = profile.stateRoot;
     const clock = manualClock(new Date(NOW));
     const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock,
@@ -59,12 +67,29 @@ export function createDashboardPoolTestWorld() {
     seedSyntheticRuntimeConfig(database);
     const scheduler = new ManualScheduler(clock, 0);
     const children: ScriptedWorkerChild[] = [], spawnRequests: WorkerSpawnRequest[] = [], faults: Error[] = [], settled: string[] = [];
+    const detachedStartupFailures: Error[] = [], startupPending: boolean[] = [];
     const changes: WorkerMemberView[] = [];
     const spawnChild = scriptedWorkerSpawner(children, behavior);
     const lifecycle = new RunRecordService({ database, clock, ids: sequentialIdFactory("e"), publishQueued: () => {} });
     const lock = profile.lifetime;
     assert.ok(lock instanceof RuntimeLifetimeLock);
     const realProcess = real?.(lock);
+    let preflightsEntered = 0;
+    const heldPreflights: (() => void)[] = [];
+    const preflight = { entered: () => preflightsEntered, release: () => { for (const release of heldPreflights.splice(0)) release(); } };
+    const workerPreflight = options.holdPreflight !== true ? undefined : {
+      currentScope: () => { const active = database.authority.runtimeConfig.get(); assert.ok(active);
+        return PreflightAdmissionScopeSchema.parse({ configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint,
+          descriptorFingerprint: "a".repeat(64), requestedCapabilities: ["executor.run"] }); },
+      admission: {
+        // Like a real detector, a held check gives up when the pool's stop aborts it.
+        prepare: (_scope: unknown, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
+          preflightsEntered += 1; heldPreflights.push(resolve);
+          signal.addEventListener("abort", () => { reject(signal.reason instanceof Error ? signal.reason : new Error("preflight aborted")); }, { once: true });
+        }),
+        assertReady: () => undefined,
+      },
+    };
     const workers = composeWorkerPool({
       admission: profile.admission, sessionGeneration: 1, profileRoot: join(root, "browsers"), database, clock, scheduler,
       ids: sequentialIdFactory("a"),
@@ -76,6 +101,7 @@ export function createDashboardPoolTestWorld() {
       },
       onChange: view => { changes.push(view); },
       onFault: error => { faults.push(error); },
+      ...(workerPreflight === undefined ? {} : { preflight: workerPreflight }),
     });
     cleanups.push(async () => { await workers.pool.stopAll("shutdown"); });
     const kernel = createCommandKernel({
@@ -91,7 +117,7 @@ export function createDashboardPoolTestWorld() {
         reconcileReplay: () => { throw new Error("worker-pool fixture has no persisted settings replay authority"); },
         applyOrdinary: command => ({ state: "applied", revision: command.target.expectedRevision + 1, settingsFingerprint: derivePersistedSettingsFingerprint({}), settings: {} }) },
     });
-    return { database, admission: profile.admission, profileRoot: join(root, "browsers"), stateRoot: root, lifecycle, clock, scheduler, kernel, workers, children, spawnRequests, faults, settled, changes };
+    return { database, admission: profile.admission, profileRoot: join(root, "browsers"), stateRoot: root, lifecycle, clock, scheduler, kernel, workers, children, spawnRequests, faults, detachedStartupFailures, startupPending, preflight, settled, changes };
   }
 
   let commandSequence = 0;
@@ -141,8 +167,11 @@ export function createDashboardPoolTestWorld() {
   }
 
   function launchCommands(harness: ControlHarness) {
-    return createDashboardCommandService({ kernel: harness.kernel, projection: { ingestFromTimeline: () => {}, refreshRun: () => {} },
-      startWorkerCapacity: createRunWorkerCapacity({ kernel: harness.kernel, authority: harness.database.authority, running: harness.workers.running, ensureRunning: harness.workers.ensureRunning }) });
+    const capacity = createRunWorkerCapacity({ kernel: harness.kernel, authority: harness.database.authority, running: harness.workers.running, ensureRunning: harness.workers.ensureRunning,
+      own: harness.workers.own, reportDetachedFailure: error => { harness.detachedStartupFailures.push(error); },
+      startupPendingChanged: () => { harness.startupPending.push(capacity.startupPending(WORKFLOW)); } });
+    const service = createDashboardCommandService({ kernel: harness.kernel, projection: { ingestFromTimeline: () => {}, refreshRun: () => {} }, startWorkerCapacity: capacity });
+    return Object.freeze({ ...service, startupPending: capacity.startupPending });
   }
 
   const cleanup = async () => {

@@ -810,15 +810,23 @@ membership. Free workers share
 the workflow's unclaimed items, including workers that become free or are added in Sessions later.
 Created workers remain in the pool, idle after their work finishes.
 
-Enqueue can commit before startup. Its response remains `applied` or `already-applied` with the
-queued run targets when startup fails. `workerStartup` carries `RUN_QUEUED_WORKER_UNAVAILABLE`,
-the retained child command when available, and a distinct `refused` or `unknown` startup state.
-The native control phase determines whether an admitted effect remains uncertain. The dashboard
-closes the confirmed submission and shows the queued-run warning; it does not invite another Start.
-Exact replay reconciles retained children without repeating failed or uncertain effects or replacing
-a member that later crashed or was removed. A capacity shortfall on replay without retained startup
-evidence reports unknown startup and requires reconciliation.
-`src/backend/runs/commands/command-service.ts` serializes enqueue and startup per workflow.
+Start replies once its enqueue commits; its capacity step runs after the reply, so the response
+never waits for preflight or a member's ready handshake. A startup that then fails leaves the
+workflow with failed worker cards or no worker, which the dashboard's sticky queued-run notice reports,
+and reaches the supervisor fault log through the capacity's detached-failure report. While any capacity
+step for a workflow is unsettled, that workflow's members that are not live are served as starting and
+its queued rows carry no no-worker flag, so the notice appears only once startup has settled as failed.
+The worker pool owns the detached step: stopping the pool for shutdown or logout closes starts, aborting a
+pending worker preflight and refusing any later member start, and waits for the step to settle before
+it returns.
+Resume, Retry and Recover, single or bulk, still wait for capacity. Their response remains `applied` or
+`already-applied` with the queued run targets when startup fails, and `workerStartup` carries
+`RUN_QUEUED_WORKER_UNAVAILABLE`, the retained child command when available, and a distinct `refused`
+or `unknown` startup state. The native control phase determines whether an admitted effect remains
+uncertain. Exact replay asks for capacity again; it reconciles retained children without repeating
+failed or uncertain effects or replacing a member that later crashed or was removed.
+`src/backend/runs/commands/command-service.ts` runs one capacity step at a time per workflow and
+admits one Start at a time per workflow, in separate lanes.
 
 ## Not built yet
 

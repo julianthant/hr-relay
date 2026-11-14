@@ -46,7 +46,7 @@ import {
   dsIcon,
   dsText,
 } from "../../ds/ui.js";
-import type { CommandResult, RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
+import type { CommandResult } from "../../../rules/commands/commands.js";
 import { runStartRefusalToast, settleCommandResult } from "../../app/commands/command-result.js";
 import {
   type InputRunSurface,
@@ -275,7 +275,7 @@ export function RunStartDialog({
   panelWorkflowId: string;
   /** echoed from bootstrap; the server matches it against the request identity */
   actorId: string;
-  onApplied?: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure) => void;
+  onApplied?: (workflowId: string, count?: number) => void;
   /** Hand intake the picker’s workflow, never the panel’s incidental scope. */
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
@@ -677,9 +677,7 @@ export function RunStartDialog({
       if (outcome.kind === "confirmed") {
         dismissLaunchRecovery(window.sessionStorage, command);
         finalRequest.current = null; setRecovery(null); setPlan(null); reviewedRequest.current = null; setExpiredPlan(false); setResult(null); setBusy(false);
-        const workerStartup = reply !== undefined && "state" in reply && (reply.state === "applied" || reply.state === "already-applied")
-          ? reply.workerStartup : undefined;
-        onApplied?.(command.target.workflowId, plan?.planned.length, workerStartup);
+        onApplied?.(command.target.workflowId, plan?.planned.length);
         onOpenChange(false);
         ++launchInstance.current;
       } else if ((outcome.kind === "refused" || outcome.kind === "conflict") && reply !== undefined && "state" in reply
@@ -1187,7 +1185,7 @@ export function RunStartSurfaces({
   catalog: readonly WorkflowCatalogEntry[];
   panelWorkflowId: string;
   actorId: string;
-  onApplied?: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure) => void;
+  onApplied?: (workflowId: string, count?: number) => void;
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;

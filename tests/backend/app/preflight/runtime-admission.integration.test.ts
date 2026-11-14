@@ -122,7 +122,8 @@ async function harness(configureRunners?: (runners: readonly PreflightRunner[]) 
   const kernel = createCommandKernel(kernelDependencies);
   let capacityCalls = 0, projections = 0;
   const serviceWithKernel = (kernel: ReturnType<typeof createCommandKernel>) => createDashboardCommandService({ kernel, projection: { ingestFromTimeline: () => { projections++; }, refreshRun: unexpected },
-    startWorkerCapacity: { workflowOf: () => personLookupDescriptor.id, ensure: async () => { capacityCalls++; } } });
+    startWorkerCapacity: { workflowOf: () => personLookupDescriptor.id, ensure: async () => { capacityCalls++; },
+      detach: work => { void work; }, startupPending: () => false } });
   const service = serviceWithKernel(kernel);
   const ingress = { workflowId: personLookupDescriptor.id, submissions: [{ emplId: "10873698" }], dryRun: false };
   const command = (plan: ReturnType<typeof plans.plan>) => ({ commandId: "99999999-9999-4999-8999-999999999999", requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "start", type: "start-run",
@@ -300,7 +301,8 @@ for (const change of ["profile", "assistant-grant-expiry"] as const) it(`Start r
     let capacity = 0;
     const service = createDashboardCommandService({ kernel,
       projection: { ingestFromTimeline: () => { throw new Error("refused Start must not project"); }, refreshRun: () => { throw new Error("unexpected projection"); } },
-      startWorkerCapacity: { workflowOf: () => h.ingress.workflowId, ensure: async () => { capacity++; } } });
+      startWorkerCapacity: { workflowOf: () => h.ingress.workflowId, ensure: async () => { capacity++; },
+        detach: () => { throw new Error("a refused Start detaches no worker startup"); }, startupPending: () => false } });
     await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress), command = h.command(plan);
     armed = true;
     const operation = service.submit(command).catch((error: unknown) => error); completed = operation;

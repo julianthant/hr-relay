@@ -97,7 +97,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const servedReader = { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), withRunTreeSnapshot: lifecycle.withRunTreeSnapshot.bind(lifecycle), summaries };
   let snapshotWorkers: () => readonly WorkerMemberView[] = () => [];
   const workerMembers = (): readonly WorkerMemberView[] => snapshotWorkers();
-  const projection = createOperatorProjection({ workerMembers, stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader });
+  let startupPending: (workflowId: string) => boolean = () => false;
+  const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader });
 
   const { noteWriter, timelineTimer, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, lifecycle, debugEvents });
 
@@ -216,12 +217,15 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const knowledge = assistantKnowledgeArtifact(DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served").map(descriptor => ({ id: descriptor.id, label: descriptor.label })));
 
 
+  const startWorkerCapacity = createRunWorkerCapacity({ kernel, authority: database.authority, running: workers.running, ensureRunning: workers.ensureRunning,
+    own: workers.own, reportDetachedFailure: reportSupervisorFault, startupPendingChanged: () => { projection.reconcileWorkerAuthority(); } });
+  startupPending = startWorkerCapacity.startupPending;
   const commands = createDashboardCommandService({
     commandNotices: notificationInbox,
     quitAccepted: applicationLifecycle.quitAccepted,
     kernel,
     projection,
-    startWorkerCapacity: createRunWorkerCapacity({ kernel, authority: database.authority, running: workers.running, ensureRunning: workers.ensureRunning }),
+    startWorkerCapacity,
   });
 
   const startPlans = createStartPlanService({

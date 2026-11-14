@@ -1,7 +1,7 @@
 import { startAdmissionFixture as fixture } from "../../../../support/helpers/backend/start-admission-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { readSettings } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { StartPlanWireSchema } from "../../../../../src/models/dashboard/start-plan.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
@@ -62,10 +62,12 @@ for (const input of [
     const response = await f.post("commands", command); assert.equal(response.status, 200);
     const result = CommandResultSchema.parse(await response.json()); assert.equal(result.state, "applied");
     if (result.state !== "applied") throw new Error("the enqueue committed before worker admission");
-    // Preflight passes and startup reaches the fixture spawner, which refuses every spawn.
+    assert.equal(result.workerStartup, undefined, "Start replies before its worker starts");
+    // After the reply, preflight passes and startup reaches the fixture spawner, which refuses every spawn.
+    await vi.waitFor(() => assert.equal(f.startupFaults().length, 1));
     assert.deepEqual(f.detectorErrors, []); assert.equal(f.spawns(), 1);
     assert.equal(f.context.database.authority.notifications.listByActor("local-operator").length > 0, true, "the race write must land");
-    assert.equal(result.workerStartup?.state, "refused"); assert.equal(result.workerStartup?.code, "RUN_QUEUED_WORKER_UNAVAILABLE");
+    assert.equal(f.context.database.authority.workerSlots.active(input.workflowId).length, 1);
     const runs = f.context.database.authority.runs.listByWorkflow(input.workflowId);
     assert.equal(runs.length, 1); assert.equal(runs[0]?.lifecycle.state, "queued");
     assert.ok(result.affectedTargets.some(target => target.family === "run" && target.runId === runs[0]?.envelope.runId));
@@ -73,7 +75,8 @@ for (const input of [
     assert.equal(replay.state, "already-applied");
     if (replay.state !== "already-applied") throw new Error("an exact replay must retain the original enqueue");
     // A replay asks for worker capacity again; it reaches the refusing spawner a second time.
-    assert.equal(replay.workerStartup?.state, "refused"); assert.equal(replay.workerStartup?.code, "RUN_QUEUED_WORKER_UNAVAILABLE");
+    assert.equal(replay.workerStartup, undefined);
+    await vi.waitFor(() => assert.equal(f.startupFaults().length, 2));
     assert.deepEqual(f.detectorErrors, []); assert.equal(f.spawns(), 2);
     assert.deepEqual(f.context.database.authority.runs.listByWorkflow(input.workflowId), runs);
   } finally {
@@ -109,4 +112,21 @@ for (const input of [
     assert.deepEqual(db.authority.runs.listByWorkflow(input.workflowId), []);
     assert.equal(f.spawns(), 0);
   } finally { await f.close(); }
+});
+
+it("stops the dashboard while a Start's worker preflight is pending: the preflight aborts and the startup settles, reported once, before the stop returns", async () => {
+  const f = await fixture(false, { holdWorkerPreflight: true });
+  const input = { workflowId: "person-lookup", submissions: [{ emplId: "10873698" }], dryRun: false };
+  try {
+    const plan = StartPlanWireSchema.parse(await (await f.post("start-plans", input)).json());
+    const command = { commandId: randomUUID(), family: "start", type: "start-run", requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "run-start",
+      target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints };
+    const result = CommandResultSchema.parse(await (await f.post("commands", command)).json());
+    assert.equal(result.state, "applied");
+    await vi.waitFor(() => assert.equal(f.workerPreflightsHeld(), 1));
+    assert.equal(f.startupFaults().length, 0);
+  } catch (error) { await f.close(); throw error; }
+  await f.close();
+  assert.equal(f.startupFaults().length, 1);
+  assert.equal(f.spawns(), 0);
 });
