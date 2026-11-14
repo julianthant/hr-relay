@@ -5,17 +5,11 @@ import type { DuoCeremonyGate, DuoCeremonyLeaseToken } from "../../../workflow-k
 import type { Config } from "../../../models/config/schema.js";
 import type { RuntimeInstance } from "../../../models/config/instance.js";
 import type { BrowserSystemId } from "../../../rules/identity/ids.js";
+import type { SignInCheck, SignInStep } from "../../../models/trust/failure.js";
 import type { LoginResult } from "../../../models/sessions/session.js";
 
 /** The bounded step vocabulary a login failure can name. */
-export type BrowserLoginStep =
-  | "navigate-login-entry"
-  | "campus-discovery"
-  | "sso-form"
-  | "credential-fill"
-  | "sso-submit"
-  | "duo-clearance"
-  | "verify-landing";
+export type BrowserLoginStep = SignInStep;
 
 
 type BrowserSignInCode = Extract<ErrorCatalogCode, `${string}_SIGN_IN_FAILED`>;
@@ -50,6 +44,7 @@ export class BrowserLoginError extends Error {
     readonly observedUrl: string,
     options?: ErrorOptions,
     readonly code: BrowserLoginFailureCode = SIGN_IN_CODES[system],
+    readonly check?: SignInCheck,
   ) {
     super(ERROR_CATALOG[code].text, options);
     this.name = "BrowserLoginError";
@@ -94,10 +89,11 @@ export class BrowserLandingStallError extends BrowserLoginError {
 
   constructor(system: BrowserSystemId, code: BrowserLandingStallCode,
     page: Readonly<{ host: string; path: string; title: string }>, options?: ErrorOptions) {
-    super(system, "duo-clearance", ERROR_CATALOG[code].text, "", options, code);
+    const url = URL.parse(`https://${page.host}${page.path}`);
+    const observedUrl = url === null || url.origin === "null" ? "" : `${url.origin}${url.pathname}`;
+    super(system, "duo-clearance", ERROR_CATALOG[code].text, observedUrl, options, code);
     this.name = "BrowserLandingStallError";
     this.code = code;
-    const url = URL.parse(`https://${page.host}${page.path}`);
     this.host = url?.hostname ?? "unknown";
     this.path = url?.pathname ?? "unknown";
     this.title = page.title.replace(/https?:\/\/\S+/giu, "[URL]").slice(0, 200);
@@ -116,7 +112,7 @@ export interface AuthenticatedApplicationEvidence {
 // An unprovable probe is unauthenticated with its own reason, never an inferred session.
 export type AuthenticationProbe =
   | Readonly<{ authenticated: true; evidence: AuthenticatedApplicationEvidence }>
-  | Readonly<{ authenticated: false; reason: string }>;
+  | Readonly<{ authenticated: false; reason: string; check: SignInCheck }>;
 
 
 export interface AuthenticationVerificationContext {
