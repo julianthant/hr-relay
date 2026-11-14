@@ -1,4 +1,4 @@
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument } from "@cantoo/pdf-lib";
 import { OnbaseImportError, OnbaseTargetSchema } from "../../../../models/systems/onbase/import-document.js";
 import { OnbaseReadSourcePage } from "../../../../models/systems/onbase/read-source-page.js";
 import { createHash } from "node:crypto";

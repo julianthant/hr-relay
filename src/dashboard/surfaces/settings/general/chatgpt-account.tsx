@@ -9,7 +9,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
   const contextPort = useContext(ChatGptAccountContext);
   const port = override ?? contextPort;
   const account = useChatGptAccount(port);
-  const [pending, setPending] = useState<"sign-in" | "sign-out" | "forget" | "cancel">();
+  const [pending, setPending] = useState<"sign-in" | "cancel">();
   const [error, setError] = useState<string>();
   const mounted = useRef(false);
   const locked = useRef(false);
@@ -31,7 +31,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
       setPending(undefined);
     }
   }, [account.state]);
-  const perform = async (action: "sign-in" | "sign-out" | "forget" | "cancel") => {
+  const perform = async (action: "sign-in" | "cancel") => {
     if (locked.current) return;
     locked.current = true;
     const request = ++actionEpoch.current;
@@ -41,15 +41,11 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
     setError(undefined);
     try {
       if (action === "sign-in") await port.signIn({ usePlan: true });
-      else if (action === "cancel") await port.cancelSignIn();
-      else if (action === "forget") await port.forgetAccount();
-      else await port.signOut();
+      else await port.cancelSignIn();
     } catch {
       if (mounted.current && request === actionEpoch.current) setError(action === "cancel"
         ? "Sign-in cancellation could not be confirmed. Try again."
-        : action === "sign-in"
-        ? "ChatGPT sign-in could not be completed. Try again."
-        : "Sign-out could not be confirmed. Try again.");
+        : "ChatGPT sign-in could not be completed. Try again.");
     } finally {
       if (request === actionEpoch.current) {
         locked.current = false;
@@ -82,11 +78,9 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
               <Button variant="ghost" disabled={pending !== undefined} loading={pending === "cancel"} onClick={() => { void perform("cancel"); }}>Cancel</Button>
             </>}
             {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : displayed.state === "expired" ? "Reconnect" : "Connect ChatGPT"}</Button>}
-            {(connected || displayed.state === "expired") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => { void perform("sign-out"); }}>Disconnect</Button>}
           </div>} />}
-      {account.state !== "loading" && (connected || displayed.state === "expired" || displayed.state === "signed-out" && displayed.account !== undefined) && <ResultRow controlWidth="wide" label="Manage" value={<div className="flex items-center justify-end gap-2">
-        {connected && plan !== "disabled" && <ButtonLink variant={plan === "limit-reached" ? "primary" : "secondary"} href={CHATGPT_USAGE_URL} target="_blank" rel="noopener noreferrer" iconAfter={<ExternalLink aria-hidden className={dsIcon.sm} />}>Manage usage</ButtonLink>}
-        <Button variant="ghost" disabled={pending !== undefined} loading={pending === "forget"} onClick={() => { void perform("forget"); }}>Use a different account</Button>
+      {account.state !== "loading" && connected && plan !== "disabled" && <ResultRow controlWidth="wide" label="Manage" value={<div className="flex items-center justify-end gap-2">
+        <ButtonLink variant={plan === "limit-reached" ? "primary" : "secondary"} href={CHATGPT_USAGE_URL} target="_blank" rel="noopener noreferrer" iconAfter={<ExternalLink aria-hidden className={dsIcon.sm} />}>Manage usage</ButtonLink>
       </div>} />}
     </div></FormGroup>
   </BodySection>;

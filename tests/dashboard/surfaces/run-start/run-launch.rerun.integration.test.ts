@@ -29,7 +29,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     h.registerDescriptor(launchDescriptor("reject-active", { fingerprint: "b".repeat(64),
       ...(change === "version" ? { version: 2 } : {}), ...(change === "steps" ? { stepPrefix: "current-" } : {}) }));
     await mount(h, source);
-    for (const label of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(label).getAttribute("aria-checked"), "true");
+    for (const label of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(label).matches(":checked"), true);
     await press("Continue"); assert.match(text(), /already submitted/u);
     await press("Confirm"); assert.equal(field("Employee ID").value, "10812345");
   });
@@ -40,7 +40,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const source = h.fresh(queued);
     h.registerDescriptor(launchDescriptor("reject-active", { fingerprint: "b".repeat(64) }));
     await mount(h, source);
-    for (const label of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(label).getAttribute("aria-checked"), "true");
+    for (const label of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(label).matches(":checked"), true);
     await press("Continue"); assert.equal(field("Employee ID").value, "10812345");
   });
   it("submits an earlier source as a new current run with repeat consent and fresh evidence", async () => {
@@ -68,6 +68,19 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(sourceBytes(h, source), bytes);
   });
 
+  it("Enter acknowledges the repeat warning, advances to Values and enqueues nothing", async () => {
+    const h = await setup(); const source = await h.completeSource();
+    h.registerDescriptor(launchDescriptor("reject-active", { version: 2, fingerprint: "b".repeat(64) }));
+    await mount(h, source); await press("Continue");
+    assert.match(text(), /already submitted/u); assert.match(text(), /Enter to continue/u);
+    await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+    assert.equal(field("Employee ID").value, "10812345"); assert.doesNotMatch(text(), /already submitted/u);
+    assert.equal(h.finalCommands.length, 0);
+    await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
+    assert.ok(StartPlanRequestSchema.parse(h.submissions.at(-1)).warningAcknowledgment);
+    assert.equal(h.finalCommands.length, 0);
+  });
+
   it("submits Rerun without offering or retaining a worker choice", async () => {
     const h = await setup();
     const selectedStepKeys = h.descriptor.timeline.map(step => step.key);
@@ -84,7 +97,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
   it("warns before Values exist, Cancel returns to Steps and Confirm only advances; final dry run executes fresh work", async () => {
     const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);
     await mount(h, source);
-    for (const name of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(name).getAttribute("aria-checked"), "true");
+    for (const name of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(name).matches(":checked"), true);
     assert.equal(checkbox("Read employee").disabled, true); assert.match(text(), /Completed in the source; this workflow requires it to run again/u);
     const before = h.authoritySnapshot(); await press("Continue");
     assert.match(text(), /already submitted/u); assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);

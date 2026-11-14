@@ -6,7 +6,7 @@ import { afterEach, it, vi } from "vitest";
 import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { SessionPanel } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 
 const catalog = buildWorkflowCatalog([], true, servedFixtureSources([]));
 let root: Root | undefined;

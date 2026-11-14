@@ -35,7 +35,7 @@ import { fictionalSeparationDocument as fictionalSeparationDocument_m5,reconcile
 import { mappedTransactionHarness as mappedTransactionHarness_m3,rerunValuesDeps as rerunValuesDeps_m3,rerunValuesHarness as rerunValuesHarness_m3 } from "../../support/fixtures/rerun-values-fixtures.js";
 import { absentProbeEvidence as absentProbeEvidence_m3 } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { makeWorld as makeWorld_m3 } from "../../support/helpers/backend/dashboard-harness.js";
-import { PARITY_DIST_DIR as PARITY_DIST_DIR_m1 } from "../../support/helpers/dashboard/served-fixtures/bundle.js";
+import { MOCK_DIST_DIR as MOCK_DIST_DIR_m1 } from "../../support/helpers/dashboard/served-fixtures/bundle.js";
 import { diagnosticGalleryOrigin as diagnosticGalleryOrigin_m2 } from "../../support/helpers/dashboard/served-fixtures/diagnostic-gallery-origin.js";
 import { createFixtureBff as createFixtureBff_m0,createFixtureBff as createFixtureBff_m1,createFixtureBff as createFixtureBff_m2,startFixtureServer as startFixtureServer_m1,type FixtureServer as FixtureServer_m1 } from "../../support/helpers/dashboard/served-fixtures/fixture-bff.js";
 
@@ -186,9 +186,9 @@ const BUNDLE_PATH = `/api/v1/diagnostic-bundles/${FIXTURE_DIAGNOSTIC_BUNDLE_m1.b
 
 async function withFixture(diagnosticFixture: "restricted-jpeg" | undefined, check: (server: FixtureServer_m1) => Promise<void>): Promise<void> {
   // API-only unit evidence, never browser or build clearance. No static request
-  // is made. The parity spec separately requires the real working-tree stamp.
+  // is made. The mock spec separately requires the real working-tree stamp.
   const options = {
-    distDir: PARITY_DIST_DIR_m1,
+    distDir: MOCK_DIST_DIR_m1,
     bundle: { proof: "unverified", reason: "diagnostic API-only unit test; no static bundle is requested or rendered" } as const,
     diagnosticFixture,
   };
