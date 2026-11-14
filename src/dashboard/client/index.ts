@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { ReopenProfileOnboardingBrowserRequestSchema, type ReopenProfileOnboardingBrowserRequest, DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfilePasswordChangeRequestSchema, ProfileUsernameChangeRequestSchema, ProfileLoginChangeResultSchema, ProfileDetailsChangeRequestSchema, ProfileDetailsChangeResultSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
+import { ReopenProfileOnboardingBrowserRequestSchema, type ReopenProfileOnboardingBrowserRequest, DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfilePasswordChangeRequestSchema, ProfileUsernameChangeRequestSchema, ProfileLoginChangeResultSchema, ProfileDetailsChangeRequestSchema, ProfileDetailsChangeResultSchema, DuoReenrolStateSchema, PublicProfileStateSchema, type DuoReenrolState, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
 type ProfilePasswordChangeRequest = z.infer<typeof ProfilePasswordChangeRequestSchema>;
 type ProfileUsernameChangeRequest = z.infer<typeof ProfileUsernameChangeRequestSchema>;
 type ProfileLoginChangeResult = z.infer<typeof ProfileLoginChangeResultSchema>;
@@ -22,7 +22,7 @@ import { OcrSourceUploadSchema } from "../../models/ocr/review.js";
 import { RunIdSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
 import { OcrCommandResultWireSchema } from "../../models/dashboard/run-detail.js";
 import { WorkerCommandResultWireSchema, type WorkerCommandResultWire } from "../../models/dashboard/worker-command-result.js";
-import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
+import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../models/failures/error-catalog.js";
 
 export type { ApplicationLifecycle } from "../../models/dashboard/application-lifecycle.js";
 export { DashboardClientError };
@@ -61,6 +61,16 @@ export interface DashboardClient extends DashboardQueries, DashboardCommands {
   openProfileOnboardingPortal(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
   startProfileOnboardingDuo(request: StartProfileOnboardingDuoRequest): Promise<PublicProfileState>;
   confirmProfileOnboardingDuo(request: ConfirmProfileOnboardingDuoRequest): Promise<PublicProfileState>;
+  beginProfileDuoReenrol(): Promise<DuoReenrolState>;
+  readProfileDuoReenrol(request: CompleteProfileOnboardingRequest): Promise<DuoReenrolState>;
+  showProfileDuoReenrolBrowser(request: CompleteProfileOnboardingRequest): Promise<DuoReenrolState>;
+  reopenProfileDuoReenrolBrowser(request: ReopenProfileOnboardingBrowserRequest): Promise<DuoReenrolState>;
+  openProfileDuoReenrolPortal(request: CompleteProfileOnboardingRequest): Promise<DuoReenrolState>;
+  startProfileDuoReenrol(request: StartProfileOnboardingDuoRequest): Promise<DuoReenrolState>;
+  confirmProfileDuoReenrol(request: ConfirmProfileOnboardingDuoRequest): Promise<DuoReenrolState>;
+  cancelProfileDuoReenrolAttempt(request: CancelProfileOnboardingDuoRequest): Promise<DuoReenrolState>;
+  cancelProfileDuoReenrol(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
+  commitProfileDuoReenrol(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
   reportError(report: DashboardErrorReport): Promise<void>;
   subscribeDay(
     input: Omit<DashboardDaySubscriptionDeps, "transport">,
@@ -104,6 +114,19 @@ export function createDashboardClient(input: Readonly<{
   };
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
+  const acceptReenrol = (response: { status: number; body: unknown }, operationId?: string): DuoReenrolState => {
+    const failure = codedReenrolFailure(response.status, response.body);
+    if (failure !== undefined) throw failure;
+    const state = parseOrThrow(DuoReenrolStateSchema, "POST /api/v1/profile/duo/reenrol", response.body);
+    if (operationId !== undefined && state.operationId !== operationId) throw schemaError("POST /api/v1/profile/duo/reenrol", "re-enrolment operation identity mismatch");
+    if (profileAuthority !== undefined && state.profileId !== profileAuthority.profileId) throw schemaError("POST /api/v1/profile/duo/reenrol", "re-enrolment profile identity mismatch");
+    return state;
+  };
+  const acceptProfileCompletion = (body: unknown): PublicProfileState => {
+    const state = parseProfileState(body);
+    if (profileAuthority !== undefined && state.state === "active" && state.profileId !== profileAuthority.profileId) throw schemaError("POST /api/v1/profile/duo/reenrol", "re-enrolment profile identity mismatch");
+    return state;
+  };
   const client: DashboardClient = {
     subscribeProfileSessionStale(listener) {
       const recipient = { listener };
@@ -222,6 +245,61 @@ export function createDashboardClient(input: Readonly<{
         method: "POST", body: JSON.stringify(ConfirmProfileOnboardingDuoRequestSchema.parse(request)),
       })).body);
     },
+    async beginProfileDuoReenrol() {
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/begin", { method: "POST", body: "{}" }));
+    },
+    async readProfileDuoReenrol(request) {
+      const parsed = CompleteProfileOnboardingRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/read", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
+    },
+    async showProfileDuoReenrolBrowser(request) {
+      const parsed = CompleteProfileOnboardingRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/browser", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
+    },
+    async reopenProfileDuoReenrolBrowser(request) {
+      const parsed = ReopenProfileOnboardingBrowserRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/reopen", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
+    },
+    async openProfileDuoReenrolPortal(request) {
+      const parsed = CompleteProfileOnboardingRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/portal", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
+    },
+    async startProfileDuoReenrol(request) {
+      const parsed = StartProfileOnboardingDuoRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/start", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
+    },
+    async confirmProfileDuoReenrol(request) {
+      const parsed = ConfirmProfileOnboardingDuoRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/confirm", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
+    },
+    async cancelProfileDuoReenrolAttempt(request) {
+      const parsed = CancelProfileOnboardingDuoRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/cancel-attempt", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
+    },
+    async cancelProfileDuoReenrol(request) {
+      return acceptProfileCompletion((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/cancel", {
+        method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
+      })).body);
+    },
+    async commitProfileDuoReenrol(request) {
+      return acceptProfileCompletion((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/commit", {
+        method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
+      })).body);
+    },
     async reportError(report: DashboardErrorReport) {
       if (profileAuthority === undefined) return;
       const runId = report.runId ?? input.runId?.();
@@ -286,4 +364,19 @@ function parseDetailsChange(body: unknown): ProfileDetailsChangeResult {
 function parseProfileState(body: unknown): PublicProfileState {
   const wire = WIRE_ERROR_BODY.safeParse(body);
   return PublicProfileStateSchema.parse(wire.success ? { state: "refused", code: wire.data.code } : body);
+}
+function codedReenrolFailure(status: number, body: unknown): DashboardClientError | undefined {
+  const wire = WIRE_ERROR_BODY.safeParse(body);
+  if (wire.success) {
+    const code = ErrorCatalogCodeSchema.safeParse(wire.data.code);
+    if (!code.success) return undefined;
+    return new DashboardClientError({ kind: "http", status, code: code.data, message: wire.data.message, retryable: wire.data.retryable });
+  }
+  const parsed = PublicProfileStateSchema.safeParse(body);
+  if (!parsed.success) return undefined;
+  if (parsed.data.state === "refused") return new DashboardClientError({ kind: "http", status, code: parsed.data.code, message: ERROR_CATALOG[parsed.data.code].text });
+  if (parsed.data.state !== "error") return undefined;
+  const code = ErrorCatalogCodeSchema.safeParse(parsed.data.code);
+  if (!code.success) return undefined;
+  return new DashboardClientError({ kind: "http", status, code: code.data, message: ERROR_CATALOG[code.data].text });
 }

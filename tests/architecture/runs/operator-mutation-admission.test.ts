@@ -111,7 +111,9 @@ describe("operator mutation admission", () => {
   it("admits the public profile routes before request-body effects", () => {
     const publicSource = readFileSync(resolve(REPO_ROOT, "src/backend/app/composition/dashboard/profile-session-routes.ts"), "utf8");
     const table = Object.fromEntries(["sign-in", "resume", "sign-up", "logout", "delete-account", "onboarding/duo/browser", "onboarding/duo/reopen", "onboarding/duo/portal", "onboarding/duo/start", "onboarding/duo/confirm",
-      "onboarding/duo/cancel", "onboarding/cancel", "onboarding/complete", "account/password", "account/username", "account/details"].map(path => [`/api/v1/profile/${path}`, { guard: "operatorMutationIngressGuard" as const }]));
+      "onboarding/duo/cancel", "onboarding/cancel", "onboarding/complete", "account/password", "account/username", "account/details",
+      "duo/reenrol/begin", "duo/reenrol/read", "duo/reenrol/browser", "duo/reenrol/reopen", "duo/reenrol/portal", "duo/reenrol/start", "duo/reenrol/confirm",
+      "duo/reenrol/cancel-attempt", "duo/reenrol/cancel", "duo/reenrol/commit"].map(path => [`/api/v1/profile/${path}`, { guard: "operatorMutationIngressGuard" as const }]));
     assert.deepEqual(auditOperatorMutationAdmission(publicSource, table).violations, []);
   });
 

@@ -9,7 +9,7 @@ import { assertNoMigratedEnvironmentKeys,hostAwareResolutionEnvironment } from "
 import {
 CancelProfileOnboardingDuoRequestSchema,
 CancelProfileOnboardingRequestSchema,
-CompleteProfileOnboardingRequestSchema, ReopenProfileOnboardingBrowserRequestSchema,
+CompleteProfileOnboardingRequestSchema, DuoReenrolStateSchema, ReopenProfileOnboardingBrowserRequestSchema,
 ConfirmProfileOnboardingDuoRequestSchema,DeleteProfileAccountRequestSchema,PROFILE_ONBOARDING_STATE,
 ProfileDetailsChangeRequestSchema,
 ProfileDetailsChangeResultSchema,
@@ -190,6 +190,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.use("/api/v1/profile/delete-account", operatorMutationIngressGuard);
   app.use("/api/v1/profile/onboarding/*", operatorMutationIngressGuard);
   app.use("/api/v1/profile/account/*", operatorMutationIngressGuard);
+  app.use("/api/v1/profile/duo/reenrol/*", operatorMutationIngressGuard);
   const activeState = (profileId: string, epoch: number) => {
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === profileId);
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
@@ -364,6 +365,8 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     transitioning = true;
     try {
       if (active !== undefined) {
+        // Abandon an open re-enrolment before revocation. An unproved close throws and leaves the session in place.
+        await profileRuntime.session.closeDuoReenrol(active.profileId);
         await profileRuntime.drainForLogout(active.token);
         const result = profileRuntime.session.logOut(active.token, { at: clock.now().toISOString() });
         if (result.state !== "cancelling" || result.operationId === undefined) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
@@ -409,6 +412,52 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     const result = profileRuntime.session.changeDetails(current(c.req.raw).token, request);
     return c.json(ProfileDetailsChangeResultSchema.parse(result.state === "changed" ? result : { state: "refused", code: result.code }));
   });
+  const serveDuoReenrol = async (c: Context, respond: (token: string, body: unknown) => unknown) => {
+    const token = current(c.req.raw).token;
+    return c.json(await respond(token, await c.req.json()));
+  };
+  app.post("/api/v1/profile/duo/reenrol/begin", c => serveDuoReenrol(c, (token, body) => {
+    z.strictObject({}).parse(body);
+    return DuoReenrolStateSchema.parse(profileRuntime.session.beginDuoReenrol(token));
+  }));
+  app.post("/api/v1/profile/duo/reenrol/read", c => serveDuoReenrol(c, (token, body) => {
+    const request = CompleteProfileOnboardingRequestSchema.parse(body);
+    return DuoReenrolStateSchema.parse(profileRuntime.session.readDuoReenrol(token, request.operationId));
+  }));
+  app.post("/api/v1/profile/duo/reenrol/browser", c => serveDuoReenrol(c, async (token, body) => {
+    const request = CompleteProfileOnboardingRequestSchema.parse(body);
+    return DuoReenrolStateSchema.parse(await profileRuntime.session.showDuoReenrolBrowser(token, request.operationId));
+  }));
+  app.post("/api/v1/profile/duo/reenrol/reopen", c => serveDuoReenrol(c, async (token, body) => {
+    const request = ReopenProfileOnboardingBrowserRequestSchema.parse(body);
+    return DuoReenrolStateSchema.parse(await profileRuntime.session.reopenDuoReenrolBrowser(token, request.operationId, request.generation));
+  }));
+  app.post("/api/v1/profile/duo/reenrol/portal", c => serveDuoReenrol(c, async (token, body) => {
+    const request = CompleteProfileOnboardingRequestSchema.parse(body);
+    return DuoReenrolStateSchema.parse(await profileRuntime.session.openDuoReenrolPortal(token, request.operationId));
+  }));
+  app.post("/api/v1/profile/duo/reenrol/start", c => serveDuoReenrol(c, async (token, body) => {
+    const request = StartProfileOnboardingDuoRequestSchema.parse(body);
+    return DuoReenrolStateSchema.parse(await profileRuntime.session.startDuoReenrol(token, request.operationId, request.method));
+  }));
+  app.post("/api/v1/profile/duo/reenrol/confirm", c => serveDuoReenrol(c, (token, body) => {
+    const request = ConfirmProfileOnboardingDuoRequestSchema.parse(body);
+    return DuoReenrolStateSchema.parse(profileRuntime.session.confirmDuoReenrol(token, request.operationId, request.method, request.attemptId));
+  }));
+  app.post("/api/v1/profile/duo/reenrol/cancel-attempt", c => serveDuoReenrol(c, async (token, body) => {
+    const request = CancelProfileOnboardingDuoRequestSchema.parse(body);
+    return DuoReenrolStateSchema.parse(await profileRuntime.session.cancelDuoReenrolAttempt(token, request.operationId, request.method, request.attemptId));
+  }));
+  app.post("/api/v1/profile/duo/reenrol/cancel", c => serveDuoReenrol(c, async (token, body) => {
+    const request = CompleteProfileOnboardingRequestSchema.parse(body);
+    const result = await profileRuntime.session.cancelDuoReenrol(token, request.operationId);
+    return PublicProfileStateSchema.parse(activeState(result.profileId, result.epoch));
+  }));
+  app.post("/api/v1/profile/duo/reenrol/commit", c => serveDuoReenrol(c, async (token, body) => {
+    const request = CompleteProfileOnboardingRequestSchema.parse(body);
+    const result = await profileRuntime.session.commitDuoReenrol(token, request.operationId);
+    return PublicProfileStateSchema.parse(activeState(result.profileId, result.epoch));
+  }));
   app.post("/api/v1/profile/logout", c => endSession(c, false));
   app.post("/api/v1/profile/delete-account", c => endSession(c, true));
   if (bundle !== undefined) app.use("*", staticBundleHandler(bundle));
