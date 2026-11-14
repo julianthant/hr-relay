@@ -149,6 +149,18 @@ async function discoverTimings(workflows: { id: number; path: string }[], emptyH
 }
 
 describe("separate event and admitted proof workflows", () => {
+  it("pins every setup-node step to the Node 26 version file", () => {
+    expect(readFileSync(new URL("../../../.node-version", import.meta.url), "utf8")).toBe("26\n");
+    for (const name of readdirSync(new URL("../../../.github/workflows/", import.meta.url))) {
+      if (!name.endsWith(".yml")) continue;
+      const body = readFileSync(new URL(`../../../.github/workflows/${name}`, import.meta.url), "utf8");
+      const uses = body.match(/uses: actions\/setup-node@/gu)?.length ?? 0;
+      const pins = body.match(/node-version-file: \.node-version/gu)?.length ?? 0;
+      expect(pins, name).toBe(uses);
+      expect(body, name).not.toContain("node-version-file: package.json");
+    }
+  });
+
   it("defines two triggered workflows, each ending in one gate job", () => {
     const stagingTrigger = staging.split("\npermissions:\n")[0];
     const productionTrigger = production.split("\npermissions:\n")[0];
@@ -194,7 +206,7 @@ describe("separate event and admitted proof workflows", () => {
     expect(body).toContain("runs-on: ubuntu-latest");
     expect(body).toContain("needs: changes");
     expect(body).toContain("timeout-minutes: 20");
-    for (const setup of ["actions/checkout@v7", "actions/setup-node@v7", "node-version-file: package.json",
+    for (const setup of ["actions/checkout@v7", "actions/setup-node@v7", "node-version-file: .node-version",
       "cache: npm", "run: npm ci", "run: npm run build:observer-policy", "actions/cache@v6",
       "path: ~/.cache/ms-playwright", "key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}",
       "run: npx playwright install chromium", "run: npm run web:build", "mktemp -d /dev/shm/relay-tmp.XXXXXX",
