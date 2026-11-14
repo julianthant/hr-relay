@@ -1,7 +1,7 @@
 import { z } from "zod";
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { createDashboardClient } from "../../../src/dashboard/client/index.js";
+import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
 import { DuoReenrolStateSchema, type DeleteProfileAccountRequest } from "../../../src/models/profiles/public-profile.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { healthyDashboardPreflightReport } from "../../support/fixtures/preflight-seams.js";
@@ -165,14 +165,84 @@ it("posts Duo re-enrolment commands to their routes and parses only a served re-
     { state: "duo-reenrol" },
     { ...served, extra: true },
     { ...served, step: "ready" },
-    { state: "refused", code: "PROFILE_SESSION_STALE" },
-    { state: "error", code: "SCHEMA_INVALID", message: "no", retryable: false },
+    { state: "refused", code: "NOT_A_CATALOG_CODE" },
+    { state: "error", code: "NOT_A_CATALOG_CODE", message: "no", retryable: false },
   ]) {
     const refusing = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => Response.json(malformed) });
-    await assert.rejects(refusing.readProfileDuoReenrol({ operationId }));
+    await assert.rejects(refusing.readProfileDuoReenrol({ operationId }), (error: unknown) => {
+      assert.ok(error instanceof DashboardClientError);
+      assert.equal(error.kind, "schema");
+      assert.equal(error.code, undefined);
+      assert.equal(error.status, undefined);
+      return true;
+    });
   }
   await assert.rejects(client.readProfileDuoReenrol({ operationId: "not-a-uuid" }));
   assert.equal(calls.length, 8);
+});
+
+it("keeps a served re-enrolment refusal's code and status", async () => {
+  const operationId = "00000000-0000-4000-8000-000000000001";
+  const refusals = [
+    { status: 409, body: { state: "refused", code: "PROFILE_SESSION_STALE" } },
+    { status: 409, body: { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" } },
+    { status: 500, body: { state: "error", code: "BROWSER_CLOSURE_UNPROVED", message: "closure unproved", retryable: false } },
+  ] as const;
+  for (const refusal of refusals) {
+    const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => Response.json(refusal.body, { status: refusal.status }) });
+    await assert.rejects(client.readProfileDuoReenrol({ operationId }), (error: unknown) => {
+      assert.ok(error instanceof DashboardClientError);
+      assert.equal(error.kind, "http");
+      assert.equal(error.status, refusal.status);
+      assert.equal(error.code, refusal.body.code);
+      return true;
+    });
+  }
+});
+
+it("binds a served re-enrolment to the requested operation and the selected profile", async () => {
+  const operationId = "00000000-0000-4000-8000-000000000001", attemptId = "00000000-0000-4000-8000-000000000002";
+  const otherOperation = "00000000-0000-4000-8000-000000000009";
+  const profileId = "00000000-0000-4000-8000-000000000003", otherProfile = "00000000-0000-4000-8000-000000000004";
+  const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+  const served = (operation: string, profile: string) => DuoReenrolStateSchema.parse({ state: "duo-reenrol", operationId: operation, profileId: profile, step: "duo",
+    methods: { key: idle, touch: idle }, browser: { state: "checking", generation: 0 } });
+  const responses: unknown[] = [];
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => Response.json(responses.shift()) });
+  const mismatch = async (call: () => Promise<unknown>) => {
+    await assert.rejects(call, (error: unknown) => {
+      assert.ok(error instanceof DashboardClientError);
+      assert.equal(error.kind, "schema");
+      return true;
+    });
+  };
+  responses.push(served(otherOperation, profileId));
+  await mismatch(() => client.readProfileDuoReenrol({ operationId }));
+  responses.push({ state: "active", profileId, epoch: 2, duoState: "ready" });
+  const signedIn = await client.signInProfile({ email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
+  assert.equal(signedIn.state, "active");
+  for (const call of [
+    () => client.readProfileDuoReenrol({ operationId }),
+    () => client.showProfileDuoReenrolBrowser({ operationId }),
+    () => client.reopenProfileDuoReenrolBrowser({ operationId, generation: 1 }),
+    () => client.openProfileDuoReenrolPortal({ operationId }),
+    () => client.startProfileDuoReenrol({ operationId, method: "key" }),
+    () => client.confirmProfileDuoReenrol({ operationId, method: "key", attemptId, operatorConfirmed: true }),
+    () => client.cancelProfileDuoReenrolAttempt({ operationId, method: "key", attemptId }),
+  ]) {
+    responses.push(served(otherOperation, profileId));
+    await mismatch(call);
+  }
+  responses.push(served(operationId, otherProfile));
+  await mismatch(() => client.readProfileDuoReenrol({ operationId }));
+  responses.push(served(otherOperation, otherProfile));
+  await mismatch(() => client.beginProfileDuoReenrol());
+  const matching = served(operationId, profileId);
+  responses.push(matching);
+  assert.deepEqual(await client.readProfileDuoReenrol({ operationId }), matching);
+  const begun = served(otherOperation, profileId);
+  responses.push(begun);
+  assert.deepEqual(await client.beginProfileDuoReenrol(), begun);
 });
 
 it("parses commit and cancel as the active profile, including a served refusal", async () => {

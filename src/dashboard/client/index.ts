@@ -22,7 +22,7 @@ import { OcrSourceUploadSchema } from "../../models/ocr/review.js";
 import { RunIdSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
 import { OcrCommandResultWireSchema } from "../../models/dashboard/run-detail.js";
 import { WorkerCommandResultWireSchema, type WorkerCommandResultWire } from "../../models/dashboard/worker-command-result.js";
-import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
+import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../models/failures/error-catalog.js";
 
 export type { ApplicationLifecycle } from "../../models/dashboard/application-lifecycle.js";
 export { DashboardClientError };
@@ -114,6 +114,14 @@ export function createDashboardClient(input: Readonly<{
   };
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
+  const acceptReenrol = (response: { status: number; body: unknown }, operationId?: string): DuoReenrolState => {
+    const failure = codedReenrolFailure(response.status, response.body);
+    if (failure !== undefined) throw failure;
+    const state = parseOrThrow(DuoReenrolStateSchema, "POST /api/v1/profile/duo/reenrol", response.body);
+    if (operationId !== undefined && state.operationId !== operationId) throw schemaError("POST /api/v1/profile/duo/reenrol", "re-enrolment operation identity mismatch");
+    if (profileAuthority !== undefined && state.profileId !== profileAuthority.profileId) throw schemaError("POST /api/v1/profile/duo/reenrol", "re-enrolment profile identity mismatch");
+    return state;
+  };
   const client: DashboardClient = {
     subscribeProfileSessionStale(listener) {
       const recipient = { listener };
@@ -233,42 +241,49 @@ export function createDashboardClient(input: Readonly<{
       })).body);
     },
     async beginProfileDuoReenrol() {
-      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/begin", { method: "POST", body: "{}" })).body);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/begin", { method: "POST", body: "{}" }));
     },
     async readProfileDuoReenrol(request) {
-      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/read", {
-        method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
-      })).body);
+      const parsed = CompleteProfileOnboardingRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/read", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
     },
     async showProfileDuoReenrolBrowser(request) {
-      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/browser", {
-        method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
-      })).body);
+      const parsed = CompleteProfileOnboardingRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/browser", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
     },
     async reopenProfileDuoReenrolBrowser(request) {
-      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/reopen", {
-        method: "POST", body: JSON.stringify(ReopenProfileOnboardingBrowserRequestSchema.parse(request)),
-      })).body);
+      const parsed = ReopenProfileOnboardingBrowserRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/reopen", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
     },
     async openProfileDuoReenrolPortal(request) {
-      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/portal", {
-        method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
-      })).body);
+      const parsed = CompleteProfileOnboardingRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/portal", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
     },
     async startProfileDuoReenrol(request) {
-      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/start", {
-        method: "POST", body: JSON.stringify(StartProfileOnboardingDuoRequestSchema.parse(request)),
-      })).body);
+      const parsed = StartProfileOnboardingDuoRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/start", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
     },
     async confirmProfileDuoReenrol(request) {
-      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/confirm", {
-        method: "POST", body: JSON.stringify(ConfirmProfileOnboardingDuoRequestSchema.parse(request)),
-      })).body);
+      const parsed = ConfirmProfileOnboardingDuoRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/confirm", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
     },
     async cancelProfileDuoReenrolAttempt(request) {
-      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/cancel-attempt", {
-        method: "POST", body: JSON.stringify(CancelProfileOnboardingDuoRequestSchema.parse(request)),
-      })).body);
+      const parsed = CancelProfileOnboardingDuoRequestSchema.parse(request);
+      return acceptReenrol(await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/cancel-attempt", {
+        method: "POST", body: JSON.stringify(parsed),
+      }), parsed.operationId);
     },
     async cancelProfileDuoReenrol(request) {
       return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/cancel", {
@@ -345,6 +360,18 @@ function parseProfileState(body: unknown): PublicProfileState {
   const wire = WIRE_ERROR_BODY.safeParse(body);
   return PublicProfileStateSchema.parse(wire.success ? { state: "refused", code: wire.data.code } : body);
 }
-function parseDuoReenrolState(body: unknown): DuoReenrolState {
-  return parseOrThrow(DuoReenrolStateSchema, "POST /api/v1/profile/duo/reenrol", body);
+function codedReenrolFailure(status: number, body: unknown): DashboardClientError | undefined {
+  const wire = WIRE_ERROR_BODY.safeParse(body);
+  if (wire.success) {
+    const code = ErrorCatalogCodeSchema.safeParse(wire.data.code);
+    if (!code.success) return undefined;
+    return new DashboardClientError({ kind: "http", status, code: code.data, message: wire.data.message, retryable: wire.data.retryable });
+  }
+  const parsed = PublicProfileStateSchema.safeParse(body);
+  if (!parsed.success) return undefined;
+  if (parsed.data.state === "refused") return new DashboardClientError({ kind: "http", status, code: parsed.data.code, message: ERROR_CATALOG[parsed.data.code].text });
+  if (parsed.data.state !== "error") return undefined;
+  const code = ErrorCatalogCodeSchema.safeParse(parsed.data.code);
+  if (!code.success) return undefined;
+  return new DashboardClientError({ kind: "http", status, code: code.data, message: ERROR_CATALOG[code.data].text });
 }
