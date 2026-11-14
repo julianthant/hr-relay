@@ -18,7 +18,8 @@ export const sendShortcutLabel = (shortcut: SendShortcut, mac: boolean) => short
 /** Whether a composer key press sends under the person's send shortcut; IME composition never sends. */
 export function sendsMessage(shortcut: SendShortcut, key: Pick<KeyboardEvent, "key" | "shiftKey" | "metaKey" | "ctrlKey" | "isComposing">, mac: boolean): boolean {
   if (key.key !== "Enter" || key.isComposing || key.shiftKey) return false;
-  return shortcut === "enter" || (mac ? key.metaKey : key.ctrlKey);
+  const mod = mac ? key.metaKey : key.ctrlKey;
+  return shortcut === "enter" ? !mod : mod;
 }
 
 export function preferencesFromSettings(document: EditableSettingsWire) {

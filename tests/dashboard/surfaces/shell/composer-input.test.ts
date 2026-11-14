@@ -59,6 +59,9 @@ describe('assistant composer send shortcut', () => {
     expect(await press('enter', {})).toEqual({ sent: ['Hello'], newLine: false });
     expect(await press('enter', { shiftKey: true })).toEqual({ sent: [], newLine: true });
   });
+  it('does not send on Ctrl+Enter off macOS while Enter is the chosen key', async () => {
+    expect(await press('enter', { ctrlKey: true })).toEqual({ sent: [], newLine: true });
+  });
   it('sends on Ctrl+Enter off macOS when the person picked it, and plain Enter is a new line', async () => {
     expect(await press('mod-enter', {})).toEqual({ sent: [], newLine: true });
     expect(await press('mod-enter', { ctrlKey: true })).toEqual({ sent: ['Hello'], newLine: false });
