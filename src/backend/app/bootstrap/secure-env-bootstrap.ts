@@ -1,3 +1,4 @@
+import { serializeErrorCauses } from "../../../models/failures/error-origins.js";
 import { fileURLToPath } from "node:url";
 import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
 import { acquireRuntimeLifetimeLock,receiveRuntimeLifetimeLock,RuntimeLifetimeLock,WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
@@ -15,6 +16,7 @@ import { AutomaticPersonRepairRefusedError,RegisteredPersonUpgradeRefusedError,R
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { probePrimaryDisplay } from "../host/primary-display.js";
 import { WORKER_GRACEFUL_STOP_TIMEOUT_MS, WorkerPoolError } from "../../runtime/workers/worker-pool.js";
+import { installProcessCrashHandlers } from "./process-crash.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
@@ -24,6 +26,7 @@ export interface RuntimeLifetime {
 }
 
 export interface SecureEnvironmentBootstrapDependencies {
+  readonly installCrashHandlers?: typeof installProcessCrashHandlers;
   readonly assertEnvironment?: () => void;
   readonly runCli?: (admission: RuntimeAdmission, acceptDashboardAdmission: (() => void) | undefined, lifetime: RuntimeLifetime) => Promise<void>;
   readonly acquireLifetimeLock?: (port: number) => Promise<RuntimeLifetimeLock>;
@@ -76,7 +79,8 @@ export async function runSecureEnvironmentBootstrap(
     // The child never closes its listener copy: the OS releases it at exit, after cleanup, so the port proves this process is gone.
     try { await runAdmittedEnvironmentBootstrap(args, dependencies, { lock, parentSignal: controller.signal }); }
     catch (error) {
-      process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+      // Class names and codes of the whole cause tree only: messages and stack paths can carry person data or the account name.
+      process.stderr.write(`${JSON.stringify({ code: "WORKER_EXIT_FAILED", causes: serializeErrorCauses(error).map(({ name, code }) => ({ name, code })) })}\n`);
       return exit(1);
     }
     return exit(typeof process.exitCode === "number" ? process.exitCode : 0);
@@ -172,6 +176,9 @@ async function runAdmittedEnvironmentBootstrap(
   let shutdown: "release" | "retain" = "release";
   let dashboardOwnsAdmission = false;
   try {
+  if (entrypoint === "cli" && (entrypointArgs[0] === "dashboard" || entrypointArgs[0] === "worker")) {
+    (dependencies.installCrashHandlers ?? installProcessCrashHandlers)({ stateRoot: admission.stateRoot, processKind: entrypointArgs[0] });
+  }
   if (!bootDiagnostics && !(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
     (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();
 

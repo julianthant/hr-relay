@@ -74,6 +74,7 @@ async function reviewFixture(pageCount = 3) {
   return { ...fixture, source, review, seed, outcomes, recorded: recorded.recorded };
 }
 
+/** Bytes of the data.observed timeline record for one recorded batch, with one origin per scalar leaf as task provenance assigns them. */
 function observedEventBytes(nodeId: string, points: readonly unknown[]) {
   const node = nodes.find(entry => entry.id === nodeId);
   assert.ok(node?.kind === "task");

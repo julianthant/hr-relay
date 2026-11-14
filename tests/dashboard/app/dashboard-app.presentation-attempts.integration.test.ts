@@ -14,8 +14,8 @@ import { createRunQueueProjectionTestWorld } from "../../support/helpers/backend
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { seedPersonLookupPresentation } from "../../support/fixtures/person-lookup-presentation.js";
 import { uuidOf } from "../../support/helpers/backend/dashboard-harness.js";
-import { FIXTURE_BOOTSTRAP } from "../../parity/helpers/fixture-bootstrap.js";
-import { PARITY_WORKFLOW_COMPOSITION } from "../../parity/helpers/workflow-composition.js";
+import { FIXTURE_BOOTSTRAP } from "../../mocks/helpers/fixture-bootstrap.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -68,7 +68,7 @@ it("shows the selected day's runs by start time and keeps that day when an attem
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
+    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
     const trigger = host.querySelector<HTMLButtonElement>('button[aria-label^="Attempts for"]'); assert.ok(trigger);
     assert.equal(host.querySelectorAll("[data-demo-row-id]").length, 1);
     assert.equal(host.querySelector("[data-demo-row-id]")?.getAttribute("data-demo-row-id"), chronologicalRunIds[chronologicalRunIds.length - 1]);

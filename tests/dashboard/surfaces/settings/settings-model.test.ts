@@ -10,13 +10,13 @@ import { DashboardClientProvider } from "../../../../src/dashboard/state/client-
 import { DASHBOARD_MAIN_REGION_ID, SETTINGS_GEAR_ID, SETTINGS_KEYBOARD_SECTION_ID, buildSettingsNav, resolveSettingsSection, settingsCloseFocusTargetId } from "../../../../src/dashboard/surfaces/settings/settings-model.js";
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../../src/models/dashboard/settings.js";
-import { fixtureSettingsDocument } from "../../../parity/helpers/fixture-settings.js";
+import { fixtureSettingsDocument } from "../../../mocks/helpers/fixture-settings.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
 
 const APPROVED_NAV = [
-  ["Personal", ["general", "account"]],
+  ["Personal", ["general", "account", "subscription"]],
   ["Data", ["spreadsheets", "explorer", "activity"]],
   ["Help", ["keyboard"]],
 ];
@@ -110,7 +110,7 @@ describe("canonical Settings navigation", () => {
 
   it("shows the read refusal without hiding tabs while an independent page is open", async () => {
     const page = await mountFailedRead("keyboard");
-    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 6);
+    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 7);
     assert.ok(page.textContent?.includes("Settings unavailable"), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Reopen Settings to try again."), page.textContent ?? "");

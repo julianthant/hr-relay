@@ -41,7 +41,7 @@ const NOTES: Readonly<Record<string, string>> = {
   "features.debugScreenshots": "Capture extra diagnostic images.",
   "features.duoWebAuthn": "Use WebAuthn for Duo sign-in.",
   "paths.reportsDir": "CSV and XLSX exports.",
-  "paths.downloadsDir": "Files downloaded during runs.",
+  "paths.downloadsDir": "Onboarding documents, run downloads and exports.",
   "paths.onboardingDocsDir": "Onboarding documents.",
   "paths.i9CheckTrackerPath": "Workbook used to track I-9 checks.",
   "paths.browserProfileRoot": "Fresh folder for browser sessions in new runs.",

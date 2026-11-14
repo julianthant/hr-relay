@@ -13,8 +13,8 @@ import { RunDetailWireSchema, NotePageSchema } from '../../../src/models/dashboa
 import { queueParentFixture } from '../../support/helpers/dashboard/queue-parent-fixture.js';
 import { FrontendBootstrapWireSchema } from '../../../src/models/dashboard/bootstrap.js';
 import { FIXTURE_NOW } from '../../support/fixtures/dashboard/fixture-identity.js';
-import { FIXTURE_DAY_WIRE } from '../../parity/helpers/fixture-queue.js';
-import { PARITY_WORKFLOW_COMPOSITION } from '../../parity/helpers/workflow-composition.js';
+import { FIXTURE_DAY_WIRE } from '../../mocks/helpers/fixture-queue.js';
+import { MOCK_WORKFLOW_COMPOSITION } from '../../mocks/helpers/workflow-composition.js';
 import { createFixtureBff } from '../../support/helpers/dashboard/fixture-bff.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
@@ -41,7 +41,7 @@ it('opens a linked child using its own partition day and exact run identity', as
   window.history.replaceState(null, '', `/?day=${parentWire.day}`);
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
   const chip = host.querySelector<HTMLButtonElement>('button[aria-label^="Next day child —"]'); assert(chip);
   await act(async () => { chip.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
@@ -107,16 +107,18 @@ it.each(['ready','read-failed'] as const)('leaves a new dirty Settings draft unt
   await vi.waitFor(() => assert.ok(f.reads.includes(`day:${f.childDay}`)));
   const settings = f.host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]');assert.ok(settings);
   await act(async () => settings.click());
-  await vi.waitFor(() => assert.ok(f.host.querySelector('[data-settings-path="browser.headless"] .ds-switch-control')));
-  const control = f.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] .ds-switch-control');assert.ok(control);
-  await act(async () => control.click());
+  await vi.waitFor(() => assert.ok(f.host.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')));
+  const select = f.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');assert.ok(select);
+  await act(async () => select.click());
+  const option = document.querySelector<HTMLElement>('[role="option"][data-value="Small"]');assert.ok(option);
+  await act(async () => option.click());
   const before = window.location.search,preference = f.preferences.snapshot().value.selectedWorkflowId;
-  assert.equal(f.host.querySelector<HTMLInputElement>('input[name="browser.headless"]')?.checked,false);
+  assert.equal(f.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value,'Small');
   await act(async () => { release();await pending; });
   if (outcome === 'ready') await vi.waitFor(() => assert.ok(f.reads.includes(`run:${f.child.runId}`)));
   assert.equal(window.location.search,before);
   assert.equal(f.preferences.snapshot().value.selectedWorkflowId,preference);
-  assert.equal(f.host.querySelector<HTMLInputElement>('input[name="browser.headless"]')?.checked,false);
+  assert.equal(f.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value,'Small');
   assert.equal(f.host.textContent?.includes('Discard unsaved settings?'),false);
   assert.equal(f.host.textContent?.includes('Workflow unavailable'),false);
 });
@@ -172,7 +174,7 @@ async function relatedFixture(options: Readonly<{ failure?: 'missing' | 'wrong-p
   window.history.replaceState(null,'',`/?day=${parentDay}`);
   const preferences = createPersonPreferences('preview',{ ...NEUTRAL_PERSON_PREFERENCES,workflowPanelMode: 'sidebar' });
   const host = document.createElement('div');document.body.append(host);root = createRoot(host);
-  await act(async () => root?.render(createElement(DashboardClientProvider,{ client,children: createElement(DashboardApp,{ workflowComposition: workflows => { const composition = PARITY_WORKFLOW_COMPOSITION(workflows);return { ...composition,logsSources: composition.sources }; },
+  await act(async () => root?.render(createElement(DashboardClientProvider,{ client,children: createElement(DashboardApp,{ workflowComposition: workflows => { const composition = MOCK_WORKFLOW_COMPOSITION(workflows);return { ...composition,logsSources: composition.sources }; },
     previewPreferences: preferences }) })));
   const chip = () => { const chip = host.querySelector<HTMLButtonElement>(`[data-demo-row-id="${parent.runId}"] button[data-demo-row-link]`);assert.ok(chip);return chip; };
   await vi.waitFor(() => assert.ok(chip()));

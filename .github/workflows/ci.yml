@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
     branches: [staging]
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft]
 
 permissions:
   contents: read
@@ -15,7 +15,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  names:
+    name: names
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Check the pull request name
+        env:
+          NAMES_BASE: ${{ github.base_ref }}
+          NAMES_HEAD: ${{ github.head_ref }}
+          NAMES_TITLE: ${{ github.event.pull_request.title }}
+        run: npm run names:check -- --branch "$NAMES_HEAD" --base "$NAMES_BASE" --title "$NAMES_TITLE"
+
   checks:
+    needs: names
     concurrency:
       group: ci-runners
       queue: max
@@ -24,7 +40,7 @@ jobs:
 
   static:
     name: static
-    needs: checks
+    needs: [names, checks]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -34,7 +50,7 @@ jobs:
 
   privacy:
     name: privacy
-    needs: checks
+    needs: [names, checks]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -44,7 +60,7 @@ jobs:
 
   unit:
     name: unit
-    needs: checks
+    needs: [names, checks]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -57,7 +73,7 @@ jobs:
 
   integration:
     name: integration
-    needs: checks
+    needs: [names, checks]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -67,7 +83,7 @@ jobs:
 
   architecture:
     name: architecture
-    needs: checks
+    needs: [names, checks]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -75,18 +91,11 @@ jobs:
           RESULT: ${{ needs.checks.outputs.architecture }}
         run: test "$RESULT" = success
 
-  parity:
-    name: parity
-    needs: checks
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Desktop parity is verified during full releases."
 
   train:
     name: merge train
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.base_ref == 'staging' && github.event.pull_request.head.repo.full_name == github.repository }}
-    needs: [static, unit, integration, architecture, parity, privacy]
+    needs: [names, static, unit, integration, architecture, privacy]
     uses: ./.github/workflows/merge-train.yml
     with:
       pr: ${{ github.event.pull_request.number }}

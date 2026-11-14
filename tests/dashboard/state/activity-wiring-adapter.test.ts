@@ -97,11 +97,10 @@ it("combines failure codes across workflows for the global most common failure",
   assert.deepEqual(selected.report.failures.map(row => [row.workflowId, row.code, row.runs]), [["one", "A", 3], ["two", "A", 2], ["three", "B", 4]]);
   const host = document.createElement("div"); const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(ActivityView, { data: { state: "loaded", report: projected }, range: projected.range, today: selected.report.to, period: "custom", onPreset: () => {}, onRange: () => {} })));
-    const common = [...host.querySelectorAll('table[aria-label="Run performance"] tr')].find(row => row.querySelector("th span")?.textContent === "Most common failure");
-    assert.ok(common);
-    assert.equal(common.querySelector("td")?.textContent, "A");
-    assert.equal(common.querySelectorAll("th span")[1]?.textContent, "5 runs");
+    await act(async () => root.render(createElement(ActivityView, { data: { state: "loaded", report: projected }, range: projected.range, today: selected.report.to, onRange: () => {} })));
+    assert.deepEqual(projected.analytics.reasons.map(row => [row.label, row.runs]), [["Synthetic failure A", 3], ["Synthetic failure A", 2], ["Synthetic failure B", 4]]);
+    assert.equal(projected.analytics.typicalSeconds, selected.report.typicalMedian.medianMs.state === "present" ? selected.report.typicalMedian.medianMs.value / 1000 : null);
+    assert.match(host.textContent ?? "", /Why runs failed/); assert.match(host.textContent ?? "", /Synthetic failure B/);
   } finally { await act(async () => root.unmount()); }
 });
 it("uses authoritative page rows once and refuses fixture logs for served identities", async () => {
@@ -127,7 +126,7 @@ it("retains search focus and stale rows while superseding browse requests, guard
   function Scene() {
     const [browse, setBrowse] = useState<import("../../../src/dashboard/surfaces/activity/activity-drilldown-model.js").ActivityBrowse | null>({ metric: "completed", page: 0 });
     state = useActivityWiring(client, selected.report, browse, sources, true);
-    return createElement(ActivityView, { data: state.data, browse: state.browse, pending: state.pending, notice: state.notice, selection: browse, onSelection: setBrowse, range: selected.report, today: selected.report.to, period: "custom", onPreset: () => {}, onRange: () => {} });
+    return createElement(ActivityView, { data: state.data, browse: state.browse, pending: state.pending, notice: state.notice, selection: browse, onSelection: setBrowse, range: selected.report, today: selected.report.to, onRange: () => {} });
   }
   try {
     await act(async () => root.render(createElement(Scene)));
@@ -185,9 +184,11 @@ it("uses the served calendar for the product producer and never substitutes work
   try {
     await act(async () => root.render(createElement(ActivityReport, { client, today: "2026-08-07", range: "", onRange: () => {}, workflowSources: sources })));
     assert.deepEqual(vi.mocked(client.activityPopulation).mock.calls[0]?.slice(0, 2), ["2026-08-01", "2026-08-07"]);
-    assert.match(host.textContent ?? "", /1 runs in this period/);
-    const completed = host.querySelector<HTMLButtonElement>('button[aria-label="View completed runs (1)"]'); assert.ok(completed);
-    await act(async () => completed.click());
+    assert.match(host.textContent ?? "", /1 finished runs/);
+    const details = host.querySelector<HTMLButtonElement>('button[aria-label^="Show "]'); assert.ok(details);
+    await act(async () => details.click());
+    const openRuns = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Open runs"); assert.ok(openRuns);
+    await act(async () => openRuns.click());
     const run = host.querySelector<HTMLButtonElement>('button[aria-label^="Open logs for"]'); assert.ok(run);
     await act(async () => run.click());
     assert.match(host.textContent ?? "", /Logs unavailable/);
@@ -233,7 +234,7 @@ it("never paints unknown or warning completion evidence as verified", async () =
     const run = report.runs?.[0]; assert.ok(run);
     const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
     try {
-      await act(async () => root.render(createElement(ActivityView, { data: { state: "loaded", report }, range: report.range, today: selected.report.to, period: "custom", onPreset: () => {}, onRange: () => {}, selection: { metric: "outstanding", page: 0 }, onSelection: () => {}, browse: { state: "loaded", total: 1, totalMatches: 1, start: 0, rows: [run] } })));
+      await act(async () => root.render(createElement(ActivityView, { data: { state: "loaded", report }, range: report.range, today: selected.report.to, onRange: () => {}, selection: { metric: "outstanding", page: 0 }, onSelection: () => {}, browse: { state: "loaded", total: 1, totalMatches: 1, start: 0, rows: [run] } })));
       const statusTitles = [...host.querySelectorAll<HTMLElement>("[title]")].map(element => element.title);
       assert.equal(statusTitles.includes(DS_STATUS.verifiedDone.meaning), false);
       assert.equal(statusTitles.includes(DS_STATUS.doneWarnings.meaning), true);
@@ -274,7 +275,7 @@ it("keeps the exact report rendered while the first browse is held and gates exp
   let state: ReturnType<typeof useActivityWiring>;
   function Scene() {
     state = useActivityWiring(client, selected.report, { metric: "completed", page: 0 }, sources, true);
-    return createElement(ActivityView, { data: state.data, browse: state.browse, pending: state.pending, notice: state.notice, selection: { metric: "completed", page: 0 }, onSelection: () => {}, range: selected.report, today: selected.report.to, period: "custom", onPreset: () => {}, onRange: () => {} });
+    return createElement(ActivityView, { data: state.data, browse: state.browse, pending: state.pending, notice: state.notice, selection: { metric: "completed", page: 0 }, onSelection: () => {}, range: selected.report, today: selected.report.to, onRange: () => {} });
   }
   try {
     await act(async () => root.render(createElement(Scene)));
@@ -338,7 +339,7 @@ it("retains a coherent completed report and browse across population refresh, fa
   let state: ReturnType<typeof useActivityWiring>;
   function Probe() {
     state = useActivityWiring(client, a.report, browse, sources, true);
-    return createElement(ActivityView, { data: state.data, browse: state.browse, pending: state.pending, blocked: !state.exportReady, notice: state.notice, selection: browse, onSelection: () => {}, range: a.report, today: a.report.to, period: "custom", onPreset: () => {}, onRange: () => {} });
+    return createElement(ActivityView, { data: state.data, browse: state.browse, pending: state.pending, blocked: !state.exportReady, notice: state.notice, selection: browse, onSelection: () => {}, range: a.report, today: a.report.to, onRange: () => {} });
   }
   const render = (show: boolean, nowIso = "2026-08-07T12:00:00.000Z") => createElement(DashboardClientProvider, { client: client as DashboardClient, children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso, children: show ? createElement(Probe) : null }) });
   try {

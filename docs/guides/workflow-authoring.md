@@ -7,7 +7,7 @@ Activation order and operator acceptance are in
 Read [workflow-model](../reference/workflow-model.md),
 [task-contract](../reference/task-contract.md), [write-safety](../reference/write-safety.md) and
 [guards-and-tests](../reference/guards-and-tests.md) for their contracts. The internal
-[checklist](../../.agents/skill-library/workflow-authoring/REFERENCE.md) adds no policy.
+[checklist](../../.agents/skills/hr-workflow/references/workflow-authoring-checklist.md) adds no policy.
 
 ## 1 · What you author and what is derived
 
@@ -360,9 +360,8 @@ Check `auditImplBindings`
 consumers when their inputs change.
 
 Before proposing integration, run `npm run typecheck`, `npm run lint`, `npm run web:build`,
-`npm run test:parity`, then `npm run test:coverage` alone. Coverage runs unit, integration and
+then `npm run test:coverage` alone. Coverage runs unit, integration and
 architecture suites. Preserve assertions, membership, isolation, coverage floors and timeouts.
-Parity uses the fixed desktop presentation contract; do not update references to make wiring pass.
 Follow the assigned brief's additional checks and resource limits.
 
 Use the signed-in dashboard Run surface for workflow execution. Select Dry Run only where the
@@ -381,7 +380,7 @@ do not substitute a fixture or another subject.
 - `npm run cli -- storage` inspects storage health. `npm run dashboard` starts the local dashboard.
   Diagnostics do not prove a transaction completed.
 - Selector and page-state failures belong to the system driver. Use the internal
-  `.agents/skill-library/hr-debug/REFERENCE.md` and the repository's playwright-cli procedure
+  `.agents/skills/hr-debug/references/debugging.md` and the repository's playwright-cli procedure
   within the authorized scope; snapshot before choosing locators.
 
 Keep actual commands, results and unrun obligations in the brief's evidence. Do not treat a fixture

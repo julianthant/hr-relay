@@ -19,7 +19,7 @@ const policies = {
   "gate-opened": { trigger: "gate-waiting", tone: "warning", detail: "This run is waiting for your review." },
   "write-parked": { trigger: "write-parked", tone: "warning", detail: "A write is parked. Review its evidence before continuing." },
   "repeating-failure": { trigger: "repeating", tone: "danger", detail: "A failure crossed its repetition threshold. Review the failure." },
-  "storage-degraded": { trigger: "storage", tone: "warning", detail: "Review Storage in Settings before starting more work." },
+  "storage-degraded": { trigger: "storage", tone: "warning", detail: "Relay could not save everything. Reopen Relay before starting more work." },
   "verified-done": { trigger: "verified-done", tone: "positive", detail: "Completed with the required verification evidence." },
   "backfill-gap": { trigger: "backfill-gap", tone: "warning", detail: "Notification history is incomplete. Reconcile the affected work." },
   "command-refused": { trigger: "command", tone: "warning", detail: "Relay did not do this, so nothing changed." },
@@ -52,6 +52,14 @@ export function notificationTargetMatches(row: NotificationWire, target: Notific
   return false;
 }
 
+const WEEKDAY = new Intl.DateTimeFormat("en-US", { weekday: "long" }), MONTH_DAY = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric" });
+const dayStart = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+/** Day group once out of Priority: Today, Yesterday, the weekday within a week, else the date. */
+export function notificationDay(occurredAt: string, nowIso: string): string {
+  const when = new Date(occurredAt), ago = Math.round((dayStart(new Date(nowIso)) - dayStart(when)) / 86_400_000);
+  return ago <= 0 ? "Today" : ago === 1 ? "Yesterday" : ago < 7 ? WEEKDAY.format(when) : MONTH_DAY.format(when);
+}
+
 function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" }>, nowIso: string): NotificationItem {
   const policy = notificationPolicy(row);
   const elapsed = Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(row.occurredAt)) / 60000));
@@ -68,7 +76,8 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
         ? row.summary
         : policy?.detail ?? inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"),
       age: elapsed < 1 ? "Just now" : elapsed < 60 ? `${elapsed} min ago` : elapsed < 1440 ? `${Math.floor(elapsed / 60)} hr ago` : `${Math.floor(elapsed / 1440)} days ago`,
-      read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "Open Storage" : "Open log",
+      day: notificationDay(row.occurredAt, nowIso),
+      read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "" : "Open log",
       destination: { kind: "refused", reason: "target-unavailable" },
     };
 }

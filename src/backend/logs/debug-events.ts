@@ -43,12 +43,12 @@ export function createDebugEventWriter(deps: { repository: TimelineRepository; c
 }
 
 /** Emits one fault event plus one closed cause row per cause (its closed reason), sharing its correlation; stderr gets the same value-free rows. */
-export function emitFaultWithCauses(debugEvents: Readonly<{ emit(input: unknown): unknown }>, faultSink: ((line: string) => void) | undefined, error: unknown,
-  fault: Readonly<{ category: "worker" | "http"; area: string; code: string; reason: string }>): void {
+export function emitFaultWithCauses(debugEvents: Readonly<{ emit(input: unknown, scope?: TimelineAppend["scope"]): unknown }>, faultSink: ((line: string) => void) | undefined, error: unknown,
+  fault: Readonly<{ category: "worker" | "http"; area: string; code: string; reason: string; message?: string }>, scope?: TimelineAppend["scope"]): void {
   const correlationId = randomUUID(), causes = serializeErrorCauses(error);
   const event = { ...fault, phase: "failed", correlationId };
-  debugEvents.emit(event);
+  debugEvents.emit(event, scope);
   for (const cause of causes) debugEvents.emit({ category: fault.category, phase: "failed", correlationId, area: fault.area,
-    reason: cause.reason, code: cause.code, message: cause.name, stack: cause.stack });
+    reason: cause.reason, code: cause.code, message: cause.name, stack: cause.stack }, scope);
   faultSink?.(JSON.stringify({ ...event, causes: causes.map(({ name, code, reason }) => ({ name, code, reason })) }));
 }

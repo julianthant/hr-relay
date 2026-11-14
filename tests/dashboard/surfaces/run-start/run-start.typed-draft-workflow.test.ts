@@ -1,3 +1,4 @@
+import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -7,7 +8,7 @@ import { projectStartSteps } from "../../../../src/backend/runs/start/step-selec
 import { ViewNavigationContext } from "../../../../src/dashboard/app/navigation/view-route-model.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -28,10 +29,10 @@ const onboarding: RunStartWorkflow = { ...personLookup, workflowId: onboardingDe
 describe("typed draft belongs to its workflow", () => {
   it("Person Lookup default with restored Onboarding selection renders Onboarding's unchosen Hire mode", async () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-    await act(async () => root?.render(createElement(DashboardClientProvider, { client: h.stubClient({}),
+    await act(async () => root?.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client: h.stubClient({}),
       children: createElement(ViewNavigationContext.Provider, { value: { view: { launchServed: "onboarding" }, start: true, setStart() {}, update() {} },
         children: createElement(RunStartDialog, { open: true, onOpenChange() {}, catalog: buildWorkflowCatalog([personLookup, onboarding], false, servedFixtureSources([personLookup, onboarding])),
-          panelWorkflowId: personLookup.workflowId, actorId: h.ACTOR_ID, onApplied() {}, onOpenIntake() {} }) }) })));
+          panelWorkflowId: personLookup.workflowId, actorId: h.ACTOR_ID, onApplied() {}, onOpenIntake() {} }) }) }) })));
     const dialog = document.body.querySelector('[role="dialog"]'); assert.ok(dialog);
     assert.ok(dialog.textContent?.includes("Hire mode"));
     assert.equal(document.body.querySelector<HTMLInputElement>('input[type="radio"][value="new-hire"]')?.checked, false);

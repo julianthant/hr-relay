@@ -26,6 +26,7 @@ import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import {
   executeClaimedRun,
+  RunControlAbortError,
   RunExecutionOutcomeSchema,
   type ChildRunExecutor,
   type RunArtifactProjector,
@@ -130,6 +131,8 @@ export interface WorkerLoopDependencies {
   readonly configFingerprint?: string;
   /** The standing refusal the parent shows on the worker card. Cleared with `undefined`. */
   readonly onStanding?: (refusal: WorkerRefusalStanding | undefined) => void;
+  /** Receives the closure error behind an unproved report, so the worker exit can name its causes. */
+  readonly onClosureUnproved?: (error: WorkerSessionClosureUnprovedError) => void;
   /** Production claim gate comparing the exact boot/current epochs inside one SQLite transaction. */
   readonly claimNext: (
     input: WorkerClaimRequest,
@@ -289,6 +292,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
   let stopped: WorkerLoopReport["stopped"] = "stop-signal";
   let preflightRefusal: WorkerPreflightRefusal | undefined;
   try {
+    const parksWhenIdle = descriptorRuntimeNodes(deps.descriptor).some(node => node.kind === "child-run");
     let refusalStreak = 0;
     const clearRefusal = (): void => {
       refusalStreak = 0;
@@ -308,7 +312,6 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       }
       let idleDelayMs: number | undefined;
       try {
-      if (descriptorRuntimeNodes(deps.descriptor).some(node => node.kind === "child-run")) await sessions.closeAll("parked");
       const claimRequest = {
         commandId: lifecycleCommandId("claim", { workerId, nonce: deps.ids.uuid() }),
         workflow: workflowId,
@@ -346,6 +349,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           stopped = "idle";
           break;
         }
+        // No browser stays open while a parent waits on a gate or on its children.
+        if (parksWhenIdle) await sessions.closeAll("parked");
         idleDelayMs = decision.delayMs;
         continue;
       }
@@ -371,7 +376,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         try {
           const current = deps.authority.authority.runs.get(run.envelope.runId);
           if (current?.pause?.state === "requested" || current?.cancelRequested === true) {
-            runController.abort(new Error("worker-run-control-current-work"));
+            runController.abort(new RunControlAbortError());
             return;
           }
         } catch (error) { runController.abort(error); return; }
@@ -397,6 +402,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         if (execution === undefined || execution.descriptor.id !== run.envelope.workflow
           || execution.descriptor.version !== run.envelope.descriptorVersion
           || execution.descriptor.contractFingerprint !== run.envelope.contractFingerprint) throw new Error("worker-execution-descriptor-unavailable");
+        await sessions.parkForExecution(run.envelope.workflow, execution.stores);
         sessions.configureExecution(run.envelope.workflow, execution.stores);
         const resources = deps.resourcesForRun?.(run);
         if (resources !== undefined) sessions.configureRunResources(resources);
@@ -452,6 +458,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
   } finally {
     closure = await sessions.closeAll("worker-stop").then(() => "proved" as const, (error: unknown) => {
       if (!(error instanceof WorkerSessionClosureUnprovedError)) throw error;
+      deps.onClosureUnproved?.(error);
       return "unproved" as const;
     });
     emit({ t: "span.ended", kind: "worker", workerId, spanPath: workerPath,

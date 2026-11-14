@@ -2,13 +2,12 @@ import { captureSelectedProfileStorage } from "./storage-compose.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
 
-import { join } from "node:path";
 import type { z } from "zod";
-import { TimelinePageRequestSchema, TimelineEventRecordSchema, debugEventLevel, type TimelineAppend } from "../../../models/events/timeline.js";
+import { TimelinePageRequestSchema, TimelineEventRecordSchema, debugEventLevel, type TimelineAppend, type TimelineCheckpointReferenceSchema } from "../../../models/events/timeline.js";
 import { readLocalDebugLog } from "../../storage/events/local-debug-log.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
-import { CHILD_ONLY_WORKFLOW_MODULES, DESCRIPTORS } from "../registries/workflow-registry.js";
-import { STEP_PROOF_DESCRIPTORS, stepProofDescriptorOf } from "../registries/step-proof-modules.js";
+import { READABLE_WORKFLOW_MODULES } from "../registries/workflow-registry.js";
+import { STEP_PROOF_DESCRIPTORS } from "../registries/step-proof-modules.js";
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import { descriptorRuntimeNodes } from "../../../workflow-kit/workflow.js";
 import { RunIdSchema, TraceIdSchema } from "../../../rules/identity/ids.js";
@@ -20,6 +19,7 @@ import { requireTrustRun, listLiveTrustRuns, assertTrustEvidenceIdentity } from 
 import { createReceiptService } from "../../runs/trust/receipt-service.js";
 import {
   buildExplainRunView,
+  debugRecordForOperator,
   renderExplainRun,
   type ExplainRunEvidence,
 } from "../../runs/explain/explain-run.js";
@@ -31,6 +31,11 @@ export interface ExplainComposeInput {
   readonly repoRoot?: string;
   readonly clock?: Clock;
 }
+
+const EXPLAIN_DESCRIPTORS = Object.freeze([
+  ...READABLE_WORKFLOW_MODULES.map(module => module.descriptor),
+  ...STEP_PROOF_DESCRIPTORS,
+]);
 
 const SUBJECT_HELP = "usage: cli explain run <traceId|runId> [--json] [--bundle <dir>]";
 
@@ -54,8 +59,9 @@ export function parseDiagnosticArgs(args: readonly string[]) {
 }
 
 function debugRecordView<T extends Pick<TimelineAppend, "payload">>(record: T) {
-  return record.payload.kind === "debug" ? { ...record,
-    payload: { ...record.payload, event: { ...record.payload.event, level: debugEventLevel(record.payload.event) } } } : record;
+  const safe = debugRecordForOperator(record);
+  return safe.payload.kind === "debug" ? { ...safe,
+    payload: { ...safe.payload, event: { ...safe.payload.event, level: debugEventLevel(safe.payload.event) } } } : safe;
 }
 
 function renderDebugRecords(records: readonly z.infer<typeof TimelineEventRecordSchema>[]) {
@@ -74,9 +80,15 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
       return options.json ? JSON.stringify(report, null, 2) : report.state === "absent" ? `boot diagnostics: absent (${report.reason})`
         : report.records.map(record => `${record.occurredAt} ${JSON.stringify(record.payload)}`).join("\n");
     }
-    const stored = AuthorityDatabase.inspectTimelinePageReadOnly(admission, join(admission.stateRoot, "state.db"), options.request);
+    const selected = captureSelectedProfileStorage(admission);
+    const person = admission.admitProfile(selected.profileId);
+    let stored: ReturnType<typeof AuthorityDatabase.inspectTimelinePageReadOnly>;
+    try {
+      stored = AuthorityDatabase.inspectTimelinePageReadOnly(person, selected.authorityPath, options.request);
+      selected.assertCurrent();
+    } finally { person.release(); }
     const page = { ...stored, records: stored.records.map(debugRecordView) };
-    return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
+    return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}${page.failureCauses.map(entry => `\nfailure ${entry.failureId} causes: ${[...entry.codes, ...entry.classes].join(", ") || "(none)"}`).join("")}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
   }
   if (subject !== "run") {
     throw new Error(
@@ -158,8 +170,7 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
   if (runId === undefined) throw new Error(`no run matches "${identity}" in this authority database`);
   const run = requireTrustRun(runReader, runId);
 
-  const descriptor = DESCRIPTORS.find((entry) => entry.id === run.envelope.workflow)
-    ?? stepProofDescriptorOf(run.envelope.workflow);
+  const descriptor = EXPLAIN_DESCRIPTORS.find((entry) => entry.id === run.envelope.workflow);
   if (descriptor === undefined) {
     throw new Error(
       `run ${run.envelope.runId} is workflow ${run.envelope.workflow}, which this build does not register`,
@@ -174,12 +185,29 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
   if (result !== undefined && result.runId !== run.envelope.runId) throw new Error("TRUST_EVIDENCE_IDENTITY_MISMATCH: Explain result");
   const settled = run.lifecycle.state === "terminal" && run.lifecycle.outcome !== "interrupted";
   const receipt = settled
-    ? createReceiptService({ database, descriptors: [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...STEP_PROOF_DESCRIPTORS], runReader }).ensureReceipt(run.envelope.runId)
+    ? createReceiptService({ database, descriptors: EXPLAIN_DESCRIPTORS, runReader }).ensureReceipt(run.envelope.runId)
     : undefined;
+
+  const replayedCheckpoints = authority.timelineEvents.withReadSnapshot(() => {
+    const references: z.infer<typeof TimelineCheckpointReferenceSchema>[] = [];
+    const through = authority.timelineEvents.highWaterMark();
+    let after = 0;
+    while (after < through) {
+      const page = authority.timelineEvents.page({ runId, workflow: run.envelope.workflow, after, through, limit: 1000 });
+      for (const record of page) {
+        if (record.payload.kind === "checkpoint-replayed") references.push(record.payload.checkpoint);
+      }
+      const last = page.at(-1);
+      if (last === undefined) break;
+      after = last.cursor;
+    }
+    return references;
+  });
 
   const evidence: ExplainRunEvidence = {
     run,
     checkpoints: authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId),
+    replayedCheckpoints,
     writes: authority.writeIntents.listByRun(run.envelope.runId),
     ...(failure === undefined
       ? {}

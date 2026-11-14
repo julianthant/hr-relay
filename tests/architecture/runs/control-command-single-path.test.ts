@@ -443,12 +443,43 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     while (callback !== undefined && !ts.isArrowFunction(callback)) callback = callback.parent;
     if (callback === undefined || !ts.isArrowFunction(callback) || !ts.isCallExpression(callback.parent)
       || callback.parent.expression.getText(kernel) !== "dependencies.authority.withAuthorityTransaction") return content;
-    // executeSync admits the command in its own transaction, returns a replay when it is settled, then runs the scope before the audit.
+    // Shared admission returns terminal replays before either caller can reach canonical application.
     const effect = callback.parent;
     let owner: ts.Node | undefined = effect.parent;
     while (owner !== undefined && !ts.isArrowFunction(owner)) owner = owner.parent;
     if (owner === undefined || !ts.isArrowFunction(owner) || !ts.isVariableDeclaration(owner.parent)
-      || owner.parent.name.getText(kernel) !== "executeSync") return content;
+      || owner.parent.name.getText(kernel) !== "applyCommand") return content;
+    const helpers: ts.VariableDeclaration[] = [], starts: ts.MethodDeclaration[] = [];
+    const helperCalls: ts.CallExpression[] = [];
+    let escapedHelper = false;
+    function sharedPaths(node: ts.Node): void {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)
+        && ["admitCommand", "executeSync"].includes(node.name.text)) helpers.push(node);
+      if (ts.isMethodDeclaration(node) && node.name.getText(kernel) === "executeStart") starts.push(node);
+      if (ts.isIdentifier(node) && ["admitCommand", "applyCommand"].includes(node.text)) {
+        if (ts.isCallExpression(node.parent) && node.parent.expression === node) helperCalls.push(node.parent);
+        else if (!ts.isVariableDeclaration(node.parent) || node.parent.name !== node) escapedHelper = true;
+      }
+      ts.forEachChild(node, sharedPaths);
+    }
+    sharedPaths(kernel);
+    const admissionOwner = helpers.find(node => node.name.getText(kernel) === "admitCommand")?.initializer;
+    const syncOwner = helpers.find(node => node.name.getText(kernel) === "executeSync")?.initializer;
+    if (helpers.length !== 2 || starts.length !== 1 || escapedHelper || helperCalls.length !== 4
+      || admissionOwner === undefined || !ts.isArrowFunction(admissionOwner)
+      || syncOwner === undefined || !ts.isArrowFunction(syncOwner) || starts[0].body === undefined) return content;
+    const syncText = syncOwner.body.getText(kernel).replace(/\s+/gu, ""), startText = starts[0].body.getText(kernel).replace(/\s+/gu, "");
+    if (!syncText.includes("constreplayed=admitCommand(request,parentCommandId,preferenceCurrent);if(replayed!==undefined)returnreplayed;")
+      || !syncText.endsWith("returnapplyCommand(request,parentCommandId,preferenceCurrent);}")
+      || !startText.includes("constreplayed=admitCommand(request,undefined,assertEffectCurrent);if(replayed!==undefined)returnreplayed;admitted=true;")
+      || !startText.includes("returnapplyCommand(request,undefined,assertEffectCurrent);")
+      || startText.indexOf("awaitdependencies.preflight.prepare(scope,newAbortController().signal)") <= startText.indexOf("admitted=true;")
+      || startText.indexOf("returnapplyCommand(") <= startText.indexOf("awaitdependencies.preflight.prepare(")) return content;
+    const expectedCalls = ["request,parentCommandId,preferenceCurrent", "request,undefined,assertEffectCurrent"];
+    for (const name of ["admitCommand", "applyCommand"]) {
+      const actual = helperCalls.filter(call => call.expression.getText(kernel) === name).map(argumentsOf).sort();
+      if (JSON.stringify(actual) !== JSON.stringify([...expectedCalls].sort())) return content;
+    }
     const transactions: ts.CallExpression[] = [], inserts: ts.CallExpression[] = [], audits: ts.CallExpression[] = [];
     function journal(node: ts.Node): void {
       if (ts.isCallExpression(node)) {
@@ -459,6 +490,7 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
       }
       ts.forEachChild(node, journal);
     }
+    journal(admissionOwner.body);
     journal(owner.body);
     const admission = transactions[0];
     if (transactions.length !== 2 || transactions[1] !== effect || inserts.length !== 1 || audits.length !== 1
@@ -466,7 +498,8 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
       || calls[0].end >= audits[0].getStart(kernel) || audits[0].end >= effect.end) return content;
     const admissionText = admission.getText(kernel).replace(/\s+/gu, "");
     if (!admissionText.includes("repositories.commands.assertIdentity(request,parentCommandId);repositories.commands.insert(request,parentCommandId);if(repositories.commandAudits.findByCommand(request.commandId)===undefined)returnundefined;if(request.family===\"assistant-model-preference\")repositories.assistantModelPreference.get();returnreplay(dependencies,repositories,request,")
-      || !owner.body.getText(kernel).replace(/\s+/gu, "").includes("constreplayed=" + admissionText + ";if(replayed!==undefined)returnreplayed;admitted=true;constresult=dependencies.authority.withAuthorityTransaction(")) return content;
+      || !admissionOwner.body.getText(kernel).replace(/\s+/gu, "").startsWith("{return" + admissionText)
+      || !owner.body.getText(kernel).replace(/\s+/gu, "").includes("constresult=dependencies.authority.withAuthorityTransaction(")) return content;
   }
   if (path === "src/backend/runs/commands/ocr-source-service.ts") {
     const owner = source.statements.filter(ts.isFunctionDeclaration).find(node => node.name?.text === "readOcrCommandResult");
@@ -631,6 +664,12 @@ describe("finite native delegation audit read ownership", () => {
           kernel.replace("repositories.commands.insert(cancel);", ""),
           kernel.replace("repositories.commands.insert(request, parentCommandId);", ""),
           kernel.replace("if (replayed !== undefined) return replayed;", ""),
+          kernel.replace("const replayed = admitCommand(request, parentCommandId, preferenceCurrent);", "const replayed = undefined;"),
+          kernel.replace("const replayed = admitCommand(request, undefined, assertEffectCurrent);", "const replayed = undefined;"),
+          kernel.replace("if (replayed !== undefined) return replayed;\n          admitted = true;", "admitted = true;"),
+          kernel.replace("return applyCommand(request, undefined, assertEffectCurrent);", "return applyCommand(otherRequest, undefined, assertEffectCurrent);"),
+          kernel.replace("await dependencies.preflight.prepare(scope, new AbortController().signal);", "dependencies.preflight.assertReady(scope);"),
+          `${kernel}\nconst escapedApplication = applyCommand;`,
           ...stopHeldCancelMutants(kernel),
           kernel.replace("const journaledResetCancel =", "const resetCancel ="),
           kernel.replace("const application = withCanonicalRunCommandScope(repositories, cancel,", "repositories.commandAudits.findByCommand(cancel.commandId); const application = withCanonicalRunCommandScope(repositories, cancel,"),

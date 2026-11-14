@@ -191,7 +191,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     const path = blurredSettingsPath(event);
     if (path === undefined) return;
     if (path.startsWith("protected.")) {
-      if (protectedEditor.save.state === "idle") protectedEditor.submit();
+      if (protectedEditor.save.state === "idle" && !protectedEditor.explicitSave) protectedEditor.submit();
     } else if (save.state === "idle" && Object.keys(draft).some(key => path === key || path.startsWith(`${key}.`))) submit();
   };
   const reload = (): void => { void refresh().catch(() => undefined); };

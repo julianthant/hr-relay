@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Checkbox, SearchInput, Popover, PopoverContent, PopoverTrigger, Tooltip, useToasts } from '../../../ds/ui.js';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../../../ds/primitives/dropdown-menu.js';
-import { FIELDS, samplesOf, type Cell, type Dataset, type Field, type FieldKey, type Mapping } from './sheets-v2-model.js';
+import { samplesOf, type Cell, type Dataset, type Field, type Mapping } from './sheets-v2-model.js';
 import { Grey, Picker, V2Button } from './sheets-v2-ui.js';
 import { MENU } from './sheets-v2-menu.js';
 
 type Range = { r0: number; c0: number; r1: number; c1: number };
-type Patch = Partial<Record<FieldKey, string | null>>;
+type Patch = Record<string, string | null>;
 const esc = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-const style = (cell: Cell) => `${cell.bold ? 'font-weight:700;' : ''}${cell.fill ? `background:${cell.fill};` : ''}${cell.align ? `text-align:${cell.align};` : ''}`;
+const style = (cell: Cell) => `${cell.fill ? `background:${cell.fill};` : ''}${cell.align ? `text-align:${cell.align};` : ''}`;
 
 /** One field row in the Columns popover: field name left, a column picker right. Unmapped reads "Choose column" in grey with a dashed border. */
 function FieldRow({ field, dataset, value, onChange, onPicking }: { field: Field; dataset: Dataset; value: string | null; onChange: (header: string | null) => void; onPicking: (picking: boolean) => void }) {
@@ -48,8 +48,8 @@ const Highlight = ({ text, query }: { text: string; query: string }) => {
 };
 
 /** The sheet read through its own mapping; `worksheets` adds the dropdown that switches the view. */
-export function MappingGrid({ dataset, mapping, onMap, worksheets, columnsOpen = false, maxHeight = 'max-h-[min(58vh,440px)]' }: { dataset: Dataset; mapping: Mapping; onMap: (patch: Patch) => void; worksheets?: WorksheetControl; columnsOpen?: boolean; maxHeight?: string }) {
-  const unmapped = FIELDS.filter(field => field.required && !mapping[field.key]);
+export function MappingGrid({ fields, dataset, mapping, onMap, worksheets, columnsOpen = false, maxHeight = 'max-h-[min(58vh,440px)]' }: { fields: readonly Field[]; dataset: Dataset; mapping: Mapping; onMap: (patch: Patch) => void; worksheets?: WorksheetControl; columnsOpen?: boolean; maxHeight?: string }) {
+  const unmapped = fields.filter(field => !mapping[field.key]);
   const [columns, setColumns] = useState(columnsOpen && unmapped.length > 0);
   // Escape in a field's column list closes that list only: the popover ignores a close while one is open.
   const [picking, setPicking] = useState(false);
@@ -60,7 +60,7 @@ export function MappingGrid({ dataset, mapping, onMap, worksheets, columnsOpen =
   const [extra, setExtra] = useState<readonly string[]>([]);
   const [selection, setSelection] = useState<Range>();
   const [dragging, setDragging] = useState(false);
-  const mappedOrder = [...new Set(FIELDS.map(field => mapping[field.key]).filter((header): header is string => !!header && dataset.headers.includes(header)))];
+  const mappedOrder = [...new Set(fields.map(field => mapping[field.key]).filter((header): header is string => !!header && dataset.headers.includes(header)))];
   const shown = [...mappedOrder, ...dataset.headers.filter(header => extra.includes(header) && !mappedOrder.includes(header))].map(header => ({ header, index: dataset.headers.indexOf(header) }));
   const others = dataset.headers.filter(header => !mappedOrder.includes(header));
   const unseen = others.filter(header => !extra.includes(header)).length;
@@ -84,13 +84,13 @@ export function MappingGrid({ dataset, mapping, onMap, worksheets, columnsOpen =
       {box && <V2Button onClick={() => void copy()}>Copy</V2Button>}
       {worksheets && worksheets.names.length > 1 && <WorksheetPicker control={worksheets} />}
       <Popover open={columns} onOpenChange={next => { if (!(picking && !next)) setColumns(next); }}>
-        <Tooltip open={columns || !unmapped.length ? false : undefined} content={`${unmapped.map(field => field.label).join(' and ')} ${unmapped.length > 1 ? "aren't" : "isn't"} mapped`}>
+        <Tooltip open={columns || !unmapped.length ? false : undefined} content={unmapped.length > 2 ? `${unmapped.length} fields aren't mapped` : `${unmapped.map(field => field.label).join(' and ')} ${unmapped.length > 1 ? "aren't" : "isn't"} mapped`}>
           <PopoverTrigger asChild><Picker aria-label="Columns">{unmapped.length > 0 && <span aria-hidden className="mr-1.5 inline-block size-1.5 rounded-full align-middle bg-[var(--warning)]" />}Columns{unseen ? ` · ${unseen} more` : ''}</Picker></PopoverTrigger>
         </Tooltip>
         <PopoverContent title="Columns" hideTitle hideClose align="end" width="md" className="!w-[360px]">
           <section aria-label="Fields">
             <h3 className="ds-menu-label m-0">Fields</h3>
-            {FIELDS.map(field => <FieldRow key={field.key} field={field} dataset={dataset} value={mapping[field.key]} onPicking={setPicking}
+            {fields.map(field => <FieldRow key={field.key} field={field} dataset={dataset} value={mapping[field.key]} onPicking={setPicking}
               onChange={header => { setSelection(undefined); onMap({ [field.key]: header }); }} />)}
           </section>
           <div className="ds-menu-separator" />
@@ -106,7 +106,7 @@ export function MappingGrid({ dataset, mapping, onMap, worksheets, columnsOpen =
         <thead className="sticky top-0 bg-ui-table"><tr><th className="w-9 px-2 py-1.5" />{shown.map(({ header }) => <th key={header} className="whitespace-nowrap px-2.5 py-1.5 text-left text-[11px] font-medium text-ui-muted">{header}</th>)}</tr></thead>
         <tbody>{view.length === 0 && <tr><td /><td colSpan={Math.max(shown.length, 1)} className="px-2.5 py-2 text-ui-muted">No rows match.</td></tr>}{view.map(({ row, i }, r) => <tr key={i} className="border-t border-ui-stroke"><td className="px-2 py-1 text-right text-[11px] tabular-nums text-ui-muted">{i + 1}</td>
           {shown.map(({ index }, c) => { const cell = row[index], on = inside(r, c); return <td key={c} onMouseDown={event => { setDragging(true); setSelection(event.shiftKey && selection ? { ...selection, r1: r, c1: c } : { r0: r, c0: c, r1: r, c1: c }); }} onMouseEnter={() => { if (dragging) setSelection(current => current && { ...current, r1: r, c1: c }); }}
-            style={on ? { boxShadow: edge(r, c) } : { background: cell.fill, color: cell.fill ? 'rgb(31 41 55)' : undefined }} data-selected={on || undefined} className={`whitespace-nowrap px-2.5 py-1 ${cell.bold ? 'font-bold' : ''} ${cell.align === 'right' ? 'text-right tabular-nums' : ''}`}><Highlight text={cell.text} query={q} /></td>; })}</tr>)}</tbody>
+            style={on ? { boxShadow: edge(r, c) } : { background: cell.fill, color: cell.fill ? 'rgb(31 41 55)' : undefined }} data-selected={on || undefined} className={`whitespace-nowrap px-2.5 py-1 ${cell.align === 'right' ? 'text-right tabular-nums' : ''}`}><Highlight text={cell.text} query={q} /></td>; })}</tr>)}</tbody>
       </table>
     </div>
   </section>;

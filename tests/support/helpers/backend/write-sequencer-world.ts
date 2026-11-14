@@ -98,7 +98,7 @@ export function createWriteSequencerTestWorld() {
         const throwOnVerifyStart = options.emitterThrowsOn === "verify-start"
           && event.t === "span.started"
           && event.kind === "task"
-          && event.spanPath.endsWith("/verify");
+          && event.spanPath.includes("/verify#");
         const throwOnEventArm = options.emitterThrowsOn !== undefined
           && options.emitterThrowsOn !== "failed-task-span"
           && options.emitterThrowsOn !== "verify-start"

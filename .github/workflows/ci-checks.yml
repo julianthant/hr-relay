@@ -13,8 +13,6 @@ on:
         value: ${{ jobs.integration.result }}
       architecture:
         value: ${{ jobs.architecture.result }}
-      parity:
-        value: ${{ jobs.parity.result }}
 
 permissions:
   contents: read
@@ -34,7 +32,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version-file: package.json
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
       - name: Find the latest successful file timings
@@ -87,13 +85,12 @@ jobs:
               - '**'
               - '!**/*.md'
               - '!tests/**/*.test.ts'
-              - '!tests/parity/references/**'
             unit:
               - 'tests/**/*.test.ts'
               - '!tests/**/*.integration.test.ts'
               - '!tests/**/*.local.test.ts'
               - '!tests/architecture/**'
-              - '!tests/parity/**'
+              - '!tests/mocks/**'
               - '!tests/perf/**'
             integration:
               - 'tests/**/*.integration.test.ts'
@@ -101,9 +98,6 @@ jobs:
               - '!tests/perf/**'
             architecture:
               - '**'
-              - '!**/*.md'
-            parity:
-              - 'tests/parity/**'
               - '!**/*.md'
       - uses: actions/github-script@v9
         id: select
@@ -128,7 +122,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version-file: package.json
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
       - run: npm run typecheck
@@ -150,7 +144,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version-file: package.json
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
       - run: npm run privacy:check
@@ -168,7 +162,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version-file: package.json
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
       - run: npm run build:observer-policy
@@ -242,22 +236,16 @@ jobs:
             test "$UBUNTU_RESULT" = success
           fi
 
-  parity:
-    name: parity
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Desktop parity is verified during full releases."
 
   timings:
-    needs: [changes, static, privacy, ubuntu, integration, architecture, parity]
+    needs: [changes, static, privacy, ubuntu, integration, architecture]
     if: ${{ !cancelled() && needs.changes.result == 'success' && fromJSON(needs.changes.outputs.plan).testJobs > 0 }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version-file: package.json
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
       - env:
@@ -282,14 +270,14 @@ jobs:
 
   unit:
     name: unit
-    needs: [changes, static, privacy, ubuntu, integration, architecture, parity, timings]
+    needs: [changes, static, privacy, ubuntu, integration, architecture, timings]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version-file: package.json
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
       - env:

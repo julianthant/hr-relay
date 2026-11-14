@@ -1,4 +1,4 @@
-import { authenticateDelegationGroup, childTerminalSettlement, delegationCancellationAvailability, currentDelegationManifests } from "./delegation-authority.js";
+import { authenticateDelegationGroup, childTerminalSettlement, delegationCancellationAvailability, currentDelegationManifests, readDelegationScopeEvidence } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema } from "./delegation-contracts.js";
 import { DelegationTerminalEvidenceSchema } from "../../../models/run/result.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
@@ -94,12 +94,23 @@ export class AuthenticatedRunContinuation {
   }
 
   delegation(nodeId: string, edgeId: string) {
+    const group = this.retainedDelegation(nodeId, edgeId);
+    if (group !== undefined) return this.repositories.dependencies.evidence(group.manifest.parentRunId, nodeId);
+    return undefined;
+  }
+
+  /** The rows the retained delegation was admitted from, read back through its authenticated invocation. */
+  delegationScope(nodeId: string, edgeId: string) {
+    const group = this.retainedDelegation(nodeId, edgeId);
+    if (group === undefined) throw new RunContinuationRefusedError("run-continuation-delegation-scope-unavailable");
+    return readDelegationScopeEvidence(this.repositories, group.group.parent, group.group.invocation.scopeEvidence);
+  }
+
+  private retainedDelegation(nodeId: string, edgeId: string) {
     const selected = continuationDelegationGroups(this.repositories, this.envelope)
       .filter(({ manifest, group }) => manifest.edgeId === edgeId && group.invocation.nodeId === nodeId);
     if (selected.length > 1) throw new RunContinuationRefusedError("run-continuation-delegation-ambiguous");
-    const group = selected[0];
-    if (group !== undefined) return this.repositories.dependencies.evidence(group.manifest.parentRunId, nodeId);
-    return undefined;
+    return selected[0];
   }
 
   permitsDelegation(evidence: Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>): boolean {

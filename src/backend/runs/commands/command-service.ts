@@ -48,7 +48,9 @@ const SPANLESS_RUN_TYPES = new Set([
 
 export function createDashboardCommandService(deps: DashboardCommandServiceDeps): DashboardCommandService {
   function executeOne(input: unknown, parentCommandId?: string): CommandResult {
-      const result = deps.kernel.execute(input, parentCommandId);
+      return projectResult(input, deps.kernel.execute(input, parentCommandId));
+  }
+  function projectResult(input: unknown, result: CommandResult): CommandResult {
       if (result.state !== "applied") return result;
       // The kernel already validated the request exhaustively; this re-parse
       // only recovers the typed view the emission step dispatches on.
@@ -114,12 +116,17 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       if (result.state === "applied" && parsed.data.type === "pause-all-and-quit") deps.quitAccepted?.();
       return result;
     }
-    if (!parsed.success || !needsWorkerCapacity(parsed.data) || deps.startWorkerCapacity === undefined) return executeOne(input);
-    const request = parsed.data, capacity = deps.startWorkerCapacity;
+    if (!parsed.success) return executeOne(input);
+    const request = parsed.data;
+    const executeRequest = async (): Promise<CommandResult> => request.family === "start"
+      ? projectResult(request, await deps.kernel.executeStart(request)) : executeOne(request);
+    if (!needsWorkerCapacity(request) || deps.startWorkerCapacity === undefined) return executeRequest();
+    const capacity = deps.startWorkerCapacity;
     const key = capacity.workflowOf(request);
-    if (key === undefined) return executeOne(input);
+    if (key === undefined) return executeRequest();
     return inWorkflowLane(key, async () => {
-      const result = executeOne(request);
+      const result = await executeRequest();
+      if (result.state !== "applied" && result.state !== "already-applied") return result;
       const workerStartup = await ensureCapacity(capacity, request, result);
       return workerStartup === undefined ? result : CommandResultSchema.parse({ ...result, workerStartup });
     });
@@ -213,7 +220,10 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
         }
       }
       if (results.length < request.targets.length || results.some(result => result.outcome !== "applied")) {
-        deps.commandNotices?.record({ kind: "bulk-incomplete", bulkCommandId: request.bulkCommandId });
+        const count = (outcome: string) => results.filter(result => result.outcome === outcome).length;
+        const parts = [[count("applied"), "applied"], [count("conflict"), count("conflict") === 1 ? "conflict" : "conflicts"], [count("refused"), "refused"], [count("errored"), "failed"],
+          [request.targets.length - results.length, "not attempted"]].filter(([n]) => n !== 0).map(([n, label]) => `${n} ${label}`);
+        deps.commandNotices?.record({ kind: "bulk-incomplete", bulkCommandId: request.bulkCommandId, summary: parts.join(" · ") });
       }
       return BulkRunCommandResponseSchema.parse({
         state: "vector",

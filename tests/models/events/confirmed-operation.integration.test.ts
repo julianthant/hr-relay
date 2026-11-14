@@ -70,16 +70,16 @@ describe("the seven-beat happy path", () => {
     assert.deepEqual(
       h.emitter.events().map((event) => [event.t, event.spanPath]),
       [
-        ["span.started", "wf-090000-2222/submit-write/probe"],
-        ["data.observed", "wf-090000-2222/submit-write/probe"],
-        ["span.ended", "wf-090000-2222/submit-write/probe"],
-        ["span.started", "wf-090000-2222/submit-write/prepare"],
-        ["data.observed", "wf-090000-2222/submit-write/prepare"],
-        ["span.ended", "wf-090000-2222/submit-write/prepare"],
-        ["span.started", "wf-090000-2222/submit-write/commit"],
-        ["transaction.fenced", "wf-090000-2222/submit-write/commit"],
-        ["data.observed", "wf-090000-2222/submit-write/commit"],
-        ["span.ended", "wf-090000-2222/submit-write/commit"],
+        ["span.started", "wf-090000-2222/submit-write/probe#1"],
+        ["data.observed", "wf-090000-2222/submit-write/probe#1"],
+        ["span.ended", "wf-090000-2222/submit-write/probe#1"],
+        ["span.started", "wf-090000-2222/submit-write/prepare#1"],
+        ["data.observed", "wf-090000-2222/submit-write/prepare#1"],
+        ["span.ended", "wf-090000-2222/submit-write/prepare#1"],
+        ["span.started", "wf-090000-2222/submit-write/commit#1"],
+        ["transaction.fenced", "wf-090000-2222/submit-write/commit#1"],
+        ["data.observed", "wf-090000-2222/submit-write/commit#1"],
+        ["span.ended", "wf-090000-2222/submit-write/commit#1"],
       ],
     );
   });

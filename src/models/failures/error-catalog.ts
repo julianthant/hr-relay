@@ -13,6 +13,7 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  DELEGATION_CONFIG_UNAVAILABLE: catalogEntry("Relay could not verify this run's saved settings, so the child workflow did not start. Review the run evidence before continuing.", EmptyParametersSchema),
   AMBIGUOUS_ACTION_LIST_MATCH: catalogEntry("More than one Kuali Action List item matched this document. Review the list and confirm the intended item.", EmptyParametersSchema),
   BLANK_TERMINATION_TYPE: catalogEntry("The separation document does not show a termination type. Review the document before continuing.", EmptyParametersSchema),
   COMMENTS_CHANGED_SINCE_READ: catalogEntry("The Kuali comments changed after they were read. Review the current document before continuing.", EmptyParametersSchema),
@@ -241,6 +242,22 @@ export const ERROR_CATALOG = Object.freeze({
     "Preflight report is stale or empty. Re-check readiness.",
     EmptyParametersSchema,
   ),
+  RUN_START_PLAN_EXPIRED: catalogEntry(
+    "This plan expired. Review a fresh plan before starting again.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_READINESS_BLOCKED: catalogEntry(
+    "Readiness checks failed. Review Settings before starting again.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_READINESS_UNAVAILABLE: catalogEntry(
+    "Readiness could not be checked. Try Start again.",
+    EmptyParametersSchema,
+  ),
+  RUN_START_READINESS_CHANGED: catalogEntry(
+    "Readiness changed during the check. Review the plan and try Start again.",
+    EmptyParametersSchema,
+  ),
   PREFLIGHT_EVIDENCE_EXPIRED: catalogEntry(
     "Preflight evidence expired; re-check readiness.",
     EmptyParametersSchema,
@@ -465,6 +482,7 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   SEARCH_LOADING: catalogEntry("Loading runs…", EmptyParametersSchema),
   SEARCH_UNAVAILABLE: catalogEntry("Search is unavailable. Reopen search and try again.", EmptyParametersSchema),
+  SEARCH_LIBRARY_UNAVAILABLE: catalogEntry("Spreadsheets are unavailable. Reopen search and try again.", EmptyParametersSchema),
   SEARCH_SUBJECT_UNAVAILABLE: catalogEntry("Subject unavailable", EmptyParametersSchema),
   NOTIFICATION_SOURCE_UNAVAILABLE: catalogEntry("Notification source evidence is unavailable. Review the inbox before relying on this update.", EmptyParametersSchema),
   NOTIFICATION_HISTORY_INCOMPLETE: catalogEntry("Notification history is incomplete. Reconcile the affected work before relying on it.", EmptyParametersSchema),
@@ -670,6 +688,14 @@ export const ERROR_CATALOG = Object.freeze({
     "That name cannot be used as the timekeeper name.",
     EmptyParametersSchema,
   ),
+  PROFILE_DISPLAY_NAME_REFUSED: catalogEntry(
+    "That name cannot be used. Use a first and last name that each start with a letter.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_INITIALS_REFUSED: catalogEntry(
+    "Initials must be 1 to 8 letters A to Z.",
+    EmptyParametersSchema,
+  ),
   PROFILE_SIGN_IN_REFUSED: catalogEntry(
     "That email and password did not match a profile on this computer.",
     EmptyParametersSchema,
@@ -710,8 +736,28 @@ export const ERROR_CATALOG = Object.freeze({
     "Saved work email and password were removed, but a backup still has a copy.",
     EmptyParametersSchema,
   ),
-  PROFILE_VERIFIER_UNAVAILABLE: catalogEntry(
-    "A password change waits for a live sign-in that proves the new password.",
+  PROFILE_CURRENT_PASSWORD_REFUSED: catalogEntry(
+    "The current password was not accepted. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_USERNAME_TAKEN: catalogEntry(
+    "Another profile on this computer already uses that email. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_USERNAME_REFUSED: catalogEntry(
+    "Enter a different @ucsd.edu email with no spaces around it. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_UNKNOWN: catalogEntry(
+    "Relay could not confirm whether your sign-in changed, and nothing will be undone. Try your new username and password first, then your current ones.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_UNSETTLED: catalogEntry(
+    "Your sign-in change did not finish. Try it again; until it finishes, your current username and password still sign you in.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_BUSY: catalogEntry(
+    "Another save was in progress, so your sign-in was not changed. Try again.",
     EmptyParametersSchema,
   ),
   PROFILE_FLAT_STORE_MIGRATION_FAILED: catalogEntry("Relay could not verify the old store backup and start a clean profile installation. Startup is stopped; remaining data is preserved.", EmptyParametersSchema),
@@ -749,9 +795,6 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   PROFILE_RESTORE_ADMISSION_REQUIRED: catalogEntry(
     "Log out cannot finish until restore admission accepts the machine erasure journal.",
-    EmptyParametersSchema,
-  ),  CHATGPT_REVOCATION_UNCONFIRMED: catalogEntry(
-    "Your ChatGPT account is signed out locally. Remote revocation could not be confirmed.",
     EmptyParametersSchema,
   ),
   CHATGPT_AUTH_BUSY: catalogEntry(

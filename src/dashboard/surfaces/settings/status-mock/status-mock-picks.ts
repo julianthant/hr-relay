@@ -1,4 +1,4 @@
-import { initialSheets, missingRequired, type Sheet, type Worksheet } from "../../spreadsheets/design/sheets-v2-model.js";
+import { initialSheets, missingRequired, type Sheet, type Worksheet } from "./status-mock-sheets.js";
 
 /** The ticked worksheets (`<spreadsheet id>/<worksheet>`), the version picked per spreadsheet and the library as the run dialog sees it, so a column chosen in a fix row reaches the workbook's other worksheets. */
 export interface StatusMockPicks { readonly keys: readonly string[]; readonly versions: Readonly<Record<string, number>>; readonly sheets: readonly Sheet[] }

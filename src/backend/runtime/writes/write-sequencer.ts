@@ -857,7 +857,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   }) });
 
   function transactionTaskSpanPath(context: WriteSequencerContext, role: TransactionTaskRole): string {
-    return `${TraceIdSchema.parse(context.run.envelope.traceId)}/${String(context.node.id)}/${role}`;
+    // The claim generation lets a resumed claim in the same process open its own span (as executor task spans do).
+    return `${TraceIdSchema.parse(context.run.envelope.traceId)}/${String(context.node.id)}/${role}#${String(context.claim.claimGeneration)}`;
   }
 
   function emitObservedBatch(

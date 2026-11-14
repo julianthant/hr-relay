@@ -2,7 +2,7 @@
 
 Start with the [codebase map](reference/codebase-structure.md) to find source, test, and documentation owners. For workflow changes, use the [workflow authoring guide](guides/workflow-authoring.md).
 
-Read the [root instructions](../AGENTS.md) for task rules. Use the [repository operating reference](../.agents/skill-library/repository-work/REFERENCE.md) for environment, porting, and conventions.
+Read the [root instructions](../AGENTS.md) for task rules. Use the [repository operating reference](../.agents/skills/hr-manage/references/operating-reference.md) for environment, porting, and conventions.
 
 ## Folder map
 

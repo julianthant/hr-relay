@@ -28,8 +28,8 @@ export function retainPublicFailureCustody(error: Error, retainedCustodyFailures
   return custodyUnproved;
 }
 
-export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver"> & { timelineTimer: ReturnType<typeof setInterval>; hub: ReturnType<typeof composeShell>["hub"]; stopWorkerControl: StartupCleanup; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
-  const { profile, selected, requireProducerClosure, notificationObserver, timelineTimer, hub, stopWorkerControl, assistantAuthorization, shutdownRequested, noteWriter, server, gateParkTimer, custody } = input;
+export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver" | "loopDelayMonitor"> & { timelineTimer: ReturnType<typeof setInterval>; diagnosticRetentionTimer: ReturnType<typeof setInterval>; hub: ReturnType<typeof composeShell>["hub"]; stopWorkerControl: StartupCleanup; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
+  const { profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, timelineTimer, diagnosticRetentionTimer, hub, stopWorkerControl, assistantAuthorization, shutdownRequested, noteWriter, server, gateParkTimer, custody } = input;
   let producerClosure: Promise<void> | undefined, producersClosed = false;
   const closeProducers = (): Promise<void> => {
     producerClosure ??= (async () => {
@@ -38,7 +38,9 @@ export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDa
         try { await server.close(); custody.transportClosed = true; } catch (error) { failures.push(error); }
       })();
       clearInterval(timelineTimer);
+      clearInterval(diagnosticRetentionTimer);
       clearInterval(gateParkTimer);
+      try { loopDelayMonitor.stop(); } catch (error) { failures.push(error); }
       const notificationClosure = (async () => {
         try { await notificationObserver.stop(); } catch (error) { failures.push(error); }
       })();
@@ -104,8 +106,12 @@ export function composeApplicationStop(resources: {
   return (): Promise<void> => {
     if (stopping !== undefined) return stopping;
     beginTransition();
+    const phase = (name: "closing transport" | "stopping workers" | "closing store" | "backing up" | "done"): void => {
+      process.stdout.write(`${JSON.stringify({ ts: clock.now().toISOString(), level: "info", message: "dashboard shutdown", phase: name })}\n`);
+    };
     const failures: unknown[] = [];
     try { profileRuntime?.beginClose("shutdown"); } catch (error) { failures.push(error); }
+    phase("closing transport");
     const transportClosure = listener.close();
     stopping = (async () => {
       try { await transportClosure; } catch (error) { failures.push(error); }
@@ -125,17 +131,21 @@ export function composeApplicationStop(resources: {
       }
       const selectedRuntime = readSelectedRuntime();
       if (selectedRuntime !== undefined) {
+        phase("stopping workers");
         try { await selectedRuntime.detach(); } catch (error) { failures.push(error); }
       }
       try { await profileRuntime?.session.closeOnboarding(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
+      phase("closing store");
       try { await profileRuntime?.close("shutdown"); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
       try { machine.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      phase("backing up");
       try { await backupRegisteredPeopleAtCleanShutdown(installation.workspace, input.lifetimeLock, clock); }
       catch (error) {
         if (error instanceof StorageMaintenanceCustodyUnavailableError && error.constructor === StorageMaintenanceCustodyUnavailableError && error.cause === undefined && !hasUnprovedSourceClosure(error)) throw error;
         throw new RuntimeCustodyUncertainError([error]);
       }
+      phase("done");
     })();
     return stopping;
   };

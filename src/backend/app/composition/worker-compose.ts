@@ -66,7 +66,7 @@ import { createDiagnosticCaptureService } from "../../logs/diagnostics/diagnosti
 import { createRunBrowserScreenshotCapture, createRunDiagnosticCapture } from "../../logs/diagnostics/run-diagnostic-capture.js";
 import { withCurrentSettings, readAdmittedProfileIdentity, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../../runtime/settings/settings-runtime.js";
 import { createTimelineEmitter } from "../../storage/events/timeline-emitter.js";
-import { createDebugEventWriter } from "../../logs/debug-events.js";
+import { createDebugEventWriter, emitFaultWithCauses } from "../../logs/debug-events.js";
 import { createNoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
 
 
@@ -79,11 +79,16 @@ export const WORKER_HEARTBEAT_INTERVAL_MS = 5_000;
 
 export { createTimeoutDeadlineScheduler };
 
+// Worker stdout carries ids, states, codes and counts only; every other task field stays in the run log.
+const STDOUT_LOG_FIELDS: ReadonlySet<string> = new Set(["runId", "workerId", "nodeId", "taskId", "requestId", "writeIntentId", "attempt",
+  "state", "status", "code", "capability", "method", "boundary", "errorName", "HDH department",
+  "candidates", "rosterRows", "subjects", "eidCellsUnusable", "nameCellsUnusable"]);
+
 /** Structured stdout logging for the worker CLI process (never `console.*`). */
 export function lineTaskLogger(write: (line: string) => void, clock: Clock): TaskLogger {
   const emit = (level: "debug" | "info" | "warn") =>
     (message: string, fields?: Readonly<Record<string, string | number | boolean>>): void => {
-      const safeFields = Object.fromEntries(Object.entries(fields ?? {}).filter(([key]) => !/password|token|cookie|authorization|privatekey|challenge|signature/iu.test(key))
+      const safeFields = Object.fromEntries(Object.entries(fields ?? {}).filter(([key]) => STDOUT_LOG_FIELDS.has(key))
         .map(([key, value]) => [key, typeof value === "string" ? sanitizeDebugText(value) : value]));
       write(JSON.stringify({ ts: clock.now().toISOString(), level, message: sanitizeDebugText(message), ...safeFields }));
     };
@@ -372,7 +377,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     }
   })();
   const { database, workerId } = bound;
-  let runtimeError: unknown;
+  let runtimeError: unknown, closureFailure: unknown;
   const cleanupErrors: unknown[] = [];
   let runtimeReport: WorkerLoopReport | undefined;
   let bootRefusal: PreflightAdmissionRefusal | undefined;
@@ -628,14 +633,17 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         browserObservation: observation => { channel?.browser(observation); },
         configFingerprint: resolved.fingerprint,
         onStanding: refusal => { standing = refusal; publish(activityNow()); },
+        onClosureUnproved: error => { closureFailure = error; },
         // The SQLite claim transaction fences settings and runtime tokens; the filesystem check fences its inode.
         claimNext: (request, sessions) => {
           assertCurrent();
           return claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
           onObservationChanged: attempt => { log.warn("preflight observation changed during claim; re-preparing", { workerId, attempt }); },
+          candidateCurrent: run => database.authority.runs.get(run.envelope.runId)?.version === run.version,
           prepareRun: async (run, signal) => {
             const target = executionDescriptor(run.envelope.workflow);
             if (target === undefined) throw new Error("worker-execution-descriptor-unavailable");
+            await sessions.parkForExecution(run.envelope.workflow, stores);
             sessions.configureExecution(run.envelope.workflow, stores);
             sessions.configureRunResources(ownedResources.forRun(run));
             const contracts = new Set(workflowProjections(target).contracts.map(contract => contract.id));
@@ -695,7 +703,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       router?.close();
     }
     if (channelFailure !== undefined) throw channelFailure instanceof Error ? channelFailure : new Error("worker-ipc-channel-failed", { cause: channelFailure });
-    if (report.closure === "unproved") debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(),
+    if (report.closure === "unproved") emitFaultWithCauses(debugEvents, undefined, closureFailure, { category: "worker",
       area: "browser-session", code: "WORKER_SESSION_CLOSURE_UNPROVED", reason: "browser-closure-unproved" }, { kind: "worker", workerId });
   } catch (error) {
     const refusal = bootRefusal !== undefined && error === bootRefusal ? workerPreflightRefusal(error) : undefined;
@@ -705,10 +713,10 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         preflightRefusal: refusal });
     } else runtimeError = error;
     try {
-      debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-runtime",
-        code: refusal?.code ?? "WORKER_RUNTIME_FAILED", ...(refusal?.summary === undefined ? {} : { message: refusal.summary }),
-        reason: refusedBeforeEffects ? "operation-refused"
-          : hasUncertainBrowserLaunch(error) ? "browser-closure-unproved" : "worker-failed" }, { kind: "worker", workerId });
+      if (refusal !== undefined) debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-runtime",
+        code: refusal.code, ...(refusal.summary === undefined ? {} : { message: refusal.summary }), reason: "operation-refused" }, { kind: "worker", workerId });
+      else emitFaultWithCauses(debugEvents, undefined, error, { category: "worker", area: "worker-runtime", code: "WORKER_RUNTIME_FAILED",
+        reason: hasUncertainBrowserLaunch(error) ? "browser-closure-unproved" : "worker-failed" }, { kind: "worker", workerId });
     } catch (loggingError) { cleanupErrors.push(loggingError); }
   } finally {
     try { await resources?.stop(); } catch (error) { cleanupErrors.push(error); }
@@ -717,7 +725,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     removeStopListeners?.();
   }
   if (cleanupErrors.length > 0) {
-    try { debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-cleanup",
+    try { emitFaultWithCauses(debugEvents, undefined, new AggregateError(cleanupErrors, "worker cleanup failed"), { category: "worker", area: "worker-cleanup",
       code: "WORKER_CLEANUP_FAILED", reason: "resource-closure-unproved" }, { kind: "worker", workerId }); }
     catch (loggingError) { cleanupErrors.push(loggingError); }
   }
@@ -739,7 +747,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     }
   }
   if (!databaseClosureProven || browserClosureUnproved || cleanupErrors.length > 0) {
-    const errors = runtimeError === undefined ? cleanupErrors : [runtimeError, ...cleanupErrors];
+    const errors = [...(runtimeError === undefined ? [] : [runtimeError]), ...(closureFailure === undefined ? [] : [closureFailure]), ...cleanupErrors];
     if (launchUncertain) throw new WorkerLaunchUncertainError(workerId, workflowId, errors);
     throw new RuntimeCustodyUncertainError(errors);
   }

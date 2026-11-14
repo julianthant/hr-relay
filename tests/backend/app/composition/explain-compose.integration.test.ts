@@ -3,10 +3,27 @@ import { createProfileFixtureSet, installationAdmission, profileFixtureStorageAd
 import { afterAll } from "vitest";
 import { TargetNotFoundError } from "../../../../src/backend/runs/commands/refusals.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, READABLE_WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { runSettlementColumns } from "../../../../src/backend/storage/sqlite/run-settlement-row.js";
+import { completionFromAuthorization } from "../../../../src/models/run/completion.js";
+import { FailureTerminalAuthorizationRecordSchema } from "../../../../src/models/run/terminal-authorization.js";
+import { createRunTerminalEvidenceResult, deriveTerminalFailureDigest } from "../../../../src/models/run/result.js";
+import { canonicalInputSamples } from "../../../../src/models/workflow/canonical-input.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
 import { z } from "zod";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { DatabaseSync } from "node:sqlite";
+import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
+import { failureDebugDetails } from "../../../../src/backend/runtime/execution/run-failure.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { randomUUID } from "node:crypto";
+import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
+import { requireTrustRun } from "../../../../src/backend/runs/trust/run-reader.js";
 import { mkdtempSync,lstatSync,readFileSync,readdirSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,10 +33,11 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
 import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
-import { renderExplainRun } from "../../../../src/backend/runs/explain/explain-run.js";
+import { buildExplainRunView, renderExplainRun } from "../../../../src/backend/runs/explain/explain-run.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import type { TimelineAppend } from "../../../../src/models/events/timeline.js";
+import { timelineCheckpointReference, type TimelineAppend } from "../../../../src/models/events/timeline.js";
+import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { RunIdSchema,WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import {
@@ -55,10 +73,213 @@ async function seeded(): Promise<AuthorityDatabase> {
   return database;
 }
 
+function failedFollowup(database: AuthorityDatabase, attempt: number, retryOf?: string) {
+  const source = requireTrustRun(createTrustRunReader(database), EXIT_RUN_ID);
+  const runId = randomUUID();
+  const now = source.updatedAt;
+  database.authority.runs.enqueue({
+    envelope: { ...source.envelope, runId, traceId: `pl-001113-${runId.slice(0, 4)}`, attempt,
+      enqueuedAt: now, ...(retryOf === undefined ? {} : { retryOf }) },
+    input: source.input, lifecycle: { state: "queued" }, claimGeneration: 0, version: 1,
+    createdAt: now, updatedAt: now,
+  });
+  const slot = database.authority.workerSlots.list(personLookupDescriptor.id).find(entry => entry.poolIndex === 1);
+  assert.ok(slot);
+  const claimed = database.authority.runs.claimNext({ workflow: personLookupDescriptor.id, workerId: slot.workerId, now });
+  assert.equal(claimed.state, "claimed");
+  if (claimed.state !== "claimed") throw new Error("followup run was not claimed");
+  let run = claimed.run;
+  const claim = { workerId: slot.workerId, claimGeneration: run.claimGeneration };
+  for (const state of ["validating", "running"] as const) {
+    const changed = database.authority.runs.transition({ runId, expectedVersion: run.version, claim, now,
+      lifecycle: { state, workerId: slot.workerId, claimedAt: now, heartbeatAt: now } });
+    assert.equal(changed.state, "applied");
+    if (changed.state !== "applied") throw new Error("followup run did not advance");
+    run = changed.run;
+  }
+  const sourceCheckpoint = database.authority.runCheckpoints.listByItem(source.envelope.workflow, source.envelope.itemId)
+    .find(entry => entry.runId === (retryOf ?? EXIT_RUN_ID) && entry.nodeId === "searching");
+  assert.ok(sourceCheckpoint);
+  if (retryOf === undefined) {
+    database.authority.runCheckpoints.insert(RunCheckpointRecordSchema.parse({ ...sourceCheckpoint,
+      runId, attempt, claimGeneration: run.claimGeneration, writtenAt: now }));
+  } else {
+    const writer = createDebugEventWriter({ repository: database.authority.timelineEvents,
+      clock: manualClock(new Date(now)), build: "fixture" });
+    for (let index = 0; index < 1001; index += 1) {
+      writer.emit({ category: "worker", phase: "started", correlationId: `padding-${String(index)}` },
+        { kind: "run", runId: run.envelope.runId }, run.envelope.workflow);
+    }
+    database.authority.timelineEvents.append({ schemaVersion: 1, eventId: randomUUID(), workflow: run.envelope.workflow,
+      scope: { kind: "run", runId }, occurredAt: now, recordedAt: now, retentionDate: "2026-08-03", source: { kind: "native" },
+      payload: { kind: "checkpoint-replayed", runId, workflow: run.envelope.workflow, attempt,
+        claimGeneration: run.claimGeneration, checkpoint: timelineCheckpointReference(sourceCheckpoint) } });
+  }
+  const failure = FailureRecordSchema.parse({ failureId: randomUUID(), fingerprint: "f".repeat(64),
+    runId, traceId: run.envelope.traceId, attempt, workflowId: run.envelope.workflow,
+    code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", transient: false, writeState: "not-attempted",
+    causeChain: [{ code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", role: "primary", transient: false }],
+    remediation: [{ kind: "operator-action", message: "fixture" }], occurredAt: now });
+  return database.terminalizeFailure(personLookupDescriptor, { failure,
+    authorization: { kind: "failed", runId, workflowId: run.envelope.workflow, attempt,
+      descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint,
+      expectedVersion: run.version, claim, authorizedAt: now, failureId: failure.failureId } }).run;
+}
+
+async function failedChild(descriptor: AnyWorkflowDescriptor) {
+  const database = await seeded();
+  const source = requireTrustRun(createTrustRunReader(database), EXIT_RUN_ID);
+  const profile = heldProfiles.at(-1); assert.ok(profile);
+  const now = source.updatedAt;
+  const runId = randomUUID();
+  const traceId = `${descriptor.code}-001113-${runId.slice(0, 4)}`;
+  const canonical = descriptor.canonicalInput.parse(canonicalInputSamples(descriptor.canonicalInput)[0]);
+  const failure = FailureRecordSchema.parse({ failureId: randomUUID(), fingerprint: "f".repeat(64),
+    runId, traceId, attempt: 1, workflowId: descriptor.id,
+    code: "RUN_INTERRUPTED_BY_CRASH", summary: "Synthetic child failure", transient: false, writeState: "not-attempted",
+    causeChain: [{ code: "RUN_INTERRUPTED_BY_CRASH", summary: "Synthetic child failure", role: "primary", transient: false }],
+    remediation: [{ kind: "operator-action", message: "Inspect child failure" }], occurredAt: now });
+  const authorization = FailureTerminalAuthorizationRecordSchema.parse({ kind: "failed", runId, workflowId: descriptor.id, attempt: 1,
+    descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
+    expectedVersion: 4, claim: { workerId: "fixture-child-worker", claimGeneration: 1 }, authorizedAt: now, failureId: failure.failureId });
+  const terminal = RunRecordSchema.parse({ ...source,
+    envelope: { ...source.envelope, runId, workflow: descriptor.id, itemId: randomUUID(), traceId,
+      descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, dryRun: true, enqueuedAt: now,
+      parent: { runId: EXIT_RUN_ID, tracePrefix: EXIT_TRACE_ID, edgeId: "fixture-child" } },
+    input: { ...source.input, raw: canonical, parsed: { protectedBindings: [],
+      schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value: canonical } },
+    lifecycle: { state: "terminal", outcome: "failed", endedAt: now, failureId: failure.failureId, errorSummary: failure.summary },
+    completion: completionFromAuthorization(authorization), claimGeneration: 1, version: 5, createdAt: now, updatedAt: now,
+  });
+  const result = createRunTerminalEvidenceResult(terminal, { kind: "failed-evidence", authorization,
+    failureDigest: deriveTerminalFailureDigest(failure) });
+  // Insert a retained child snapshot without executing a workflow or changing immutable evidence.
+  const raw = new DatabaseSync(join(profile.stateRoot, "state.db"));
+  try {
+    const runColumns = runRecordColumns(terminal);
+    raw.prepare(`INSERT INTO runs (${Object.keys(runColumns).join(",")}) VALUES (${Object.keys(runColumns).map(() => "?").join(",")})`)
+      .run(...Object.values(runColumns));
+    raw.prepare("INSERT INTO run_failures (id, run_id, fingerprint, code, resolution_json, resolution_version, payload_json, created_at) VALUES (?, ?, ?, ?, '{\"status\":\"unresolved\",\"version\":1}', 1, ?, ?)")
+      .run(failure.failureId, runId, failure.fingerprint, failure.code, canonicalJsonStringify(failure), now);
+    const resultColumns = runSettlementColumns(terminal, result);
+    raw.prepare(`INSERT INTO run_results (${Object.keys(resultColumns).join(",")}) VALUES (${Object.keys(resultColumns).map(() => "?").join(",")})`)
+      .run(...Object.values(resultColumns));
+  } finally { raw.close(); }
+  assert.equal(requireTrustRun(createTrustRunReader(database), runId).envelope.parent?.runId, EXIT_RUN_ID);
+  return { database, runId, failure };
+}
+
 describe("explain run", () => {
+  it("explains a failed I-9 Lookup child with its own timeline, failure and receipt", async () => {
+    const module = CHILD_ONLY_WORKFLOW_MODULES.find(entry => entry.descriptor.id === "i9-lookup");
+    assert.ok(module);
+    const { database, runId, failure } = await failedChild(module.descriptor);
+    const view = explainRunFrom(database, runId);
+    assert.equal(view.workflowId, "i9-lookup");
+    assert.deepEqual(view.timeline.map(entry => entry.nodeId), ["lookup-source", "lookup"]);
+    assert.ok(view.timeline.every(entry => entry.disposition === "no-record"));
+    assert.deepEqual(view.outcome, { state: "present", value: "failed" });
+    assert.equal(view.failure.state, "present");
+    if (view.failure.state !== "present") throw new Error("child failure missing");
+    assert.equal(view.failure.value.failureId, failure.failureId);
+    assert.equal(view.failure.value.code, "RUN_INTERRUPTED_BY_CRASH");
+    assert.equal(view.receipt.state, "present");
+    if (view.receipt.state !== "present") throw new Error("child receipt missing");
+    assert.equal(view.receipt.value.result, "failed");
+    assert.deepEqual(explainRunFrom(database, view.traceId), view);
+  });
+
+  it.each(READABLE_WORKFLOW_MODULES.map(module => [String(module.descriptor.id), module.descriptor] as const))(
+    "resolves the timeline of registered %s before settlement", async (workflowId, descriptor) => {
+      const database = await seeded();
+      const source = requireTrustRun(createTrustRunReader(database), EXIT_RUN_ID);
+      const runId = randomUUID();
+      const now = source.updatedAt;
+      const canonical = descriptor.canonicalInput.parse(canonicalInputSamples(descriptor.canonicalInput)[0]);
+      database.authority.runs.enqueue({
+        envelope: { ...source.envelope, runId, workflow: descriptor.id, itemId: randomUUID(),
+          traceId: `${descriptor.code}-001113-${runId.slice(0, 4)}`, descriptorVersion: descriptor.version,
+          contractFingerprint: descriptor.contractFingerprint, dryRun: true, enqueuedAt: now,
+          parent: { runId: EXIT_RUN_ID, tracePrefix: EXIT_TRACE_ID, edgeId: "fixture-child" } },
+        input: { ...source.input, raw: canonical, parsed: {
+          protectedBindings: (descriptor.protectedInputs ?? []).map(binding => ({ ...binding, kind: "protected-store", valueId: randomUUID() })),
+          schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value: canonical } },
+        lifecycle: { state: "queued" }, claimGeneration: 0, version: 1, createdAt: now, updatedAt: now,
+      });
+      const view = explainRunFrom(database, runId);
+      assert.equal(view.workflowId, workflowId);
+      assert.equal(view.state, "queued");
+      assert.ok(view.timeline.length > 0);
+      assert.deepEqual(view.timeline.map(entry => entry.nodeId), descriptorRuntimeNodes(descriptor).map(node => String(node.id)));
+      assert.ok(view.timeline.every(entry => entry.disposition === "no-record"));
+      assert.equal(view.failure.state, "absent");
+      assert.equal(view.receipt.state, "absent");
+      assert.deepEqual(explainRunFrom(database, view.traceId), view);
+    },
+  );
+
+  it.each(CHILD_ONLY_WORKFLOW_MODULES.map(module => [String(module.descriptor.id), module.descriptor] as const))(
+    "explains a failed child snapshot for registered %s", async (workflowId, descriptor) => {
+      const { database, runId, failure } = await failedChild(descriptor);
+      const view = explainRunFrom(database, runId);
+      assert.equal(view.workflowId, workflowId);
+      assert.deepEqual(view.outcome, { state: "present", value: "failed" });
+      assert.ok(view.timeline.length > 0);
+      assert.deepEqual(view.timeline.map(entry => entry.nodeId), descriptorRuntimeNodes(descriptor).map(node => String(node.id)));
+      assert.ok(view.timeline.every(entry => entry.disposition === "no-record"));
+      assert.equal(view.failure.state, "present");
+      if (view.failure.state !== "present") throw new Error("child failure missing");
+      assert.equal(view.failure.value.failureId, failure.failureId);
+      assert.equal(view.failure.value.code, "RUN_INTERRUPTED_BY_CRASH");
+      assert.equal(view.receipt.state, "present");
+      if (view.receipt.state !== "present") throw new Error("child receipt missing");
+      assert.equal(view.receipt.value.result, "failed");
+      assert.deepEqual(explainRunFrom(database, view.traceId), view);
+    },
+  );
+
+  it("still refuses a stored run whose workflow is not registered in this build", async () => {
+    const database = await seeded();
+    const source = requireTrustRun(createTrustRunReader(database), EXIT_RUN_ID);
+    const runId = randomUUID();
+    const now = source.updatedAt;
+    database.authority.runs.enqueue({
+      envelope: { ...source.envelope, runId, workflow: "unknown-workflow", itemId: randomUUID(),
+        traceId: `unk-001113-${runId.slice(0, 4)}`, enqueuedAt: now },
+      input: source.input, lifecycle: { state: "queued" }, claimGeneration: 0, version: 1, createdAt: now, updatedAt: now,
+    });
+    assert.throws(() => explainRunFrom(database, runId), {
+      message: `run ${runId} is workflow unknown-workflow, which this build does not register`,
+    });
+  });
+
+  it("shows only this failed run's observed steps when an earlier run reached further", async () => {
+    const database = await seeded();
+    const run = failedFollowup(database, 2);
+    const view = explainRunFrom(database, run.envelope.runId);
+    const timeline = new Map(view.timeline.map(entry => [entry.nodeId, entry]));
+
+    assert.deepEqual(view.outcome, { state: "present", value: "failed" });
+    assert.equal(timeline.get("searching")?.disposition, "observed-this-attempt");
+    assert.equal(timeline.get("cross-verify")?.disposition, "no-record");
+    assert.equal(timeline.get("active-status")?.disposition, "no-record");
+  });
+
+  it("attributes a Retry's replay beyond the first event page without borrowing the source's other steps", async () => {
+    const database = await seeded();
+    const source = failedFollowup(database, 2);
+    const retry = failedFollowup(database, 3, source.envelope.runId);
+    const timeline = new Map(explainRunFrom(database, retry.envelope.runId).timeline.map(entry => [entry.nodeId, entry]));
+
+    assert.equal(timeline.get("searching")?.disposition, "replayed-from-checkpoint");
+    assert.match(timeline.get("searching")?.detail ?? "", new RegExp(`run ${source.envelope.runId} attempt 2`, "u"));
+    assert.equal(timeline.get("cross-verify")?.disposition, "no-record");
+  });
+
   it("reads bounded persisted debug categories without attributing global events to a run or changing source inventory", async () => {
     const database = await seeded();
-    const root = heldProfiles.at(-1)?.stateRoot; assert.ok(root);
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    const root = profile.stateRoot;
     const writer = createDebugEventWriter({ repository: database.authority.timelineEvents, clock: manualClock(new Date("2026-08-04T00:11:13.500Z")), build: "fixture" });
     for (const category of ["session", "duo", "worker", "http", "sse", "client", "boot"] as const) {
       writer.emit({ category, phase: "failed", correlationId: category, code: "FIXTURE" }, { kind: "transport", connectionId: "fixture" });
@@ -74,14 +295,14 @@ describe("explain run", () => {
     const path = join(root, "state.db");
     const admission = profileFixtureStorageAdmission(path);
     const before = readFileSync(path); const inventory = readdirSync(root, { recursive: true, encoding: "utf8" }).sort();
-    const sourceBytes = inventory.filter(name => lstatSync(join(root, name)).isFile()).map(name => [name, readFileSync(join(root, name))] as const);
-    const output = composeExplainRuntime({ admission, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] });
+    const sourceBytes = inventory.filter(name => !name.endsWith("-shm") && lstatSync(join(root, name)).isFile()).map(name => [name, readFileSync(join(root, name))] as const);
+    const output = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] });
     assert.match(output, /nextCursor/u);
     let after = 0; const categories = new Set<string>();
     for (;;) {
       const page = AuthorityDatabase.inspectTimelinePageReadOnly(admission, path, { after, limit: 2 });
       assert.ok(page.records.length <= 2);
-      const rendered = composeExplainRuntime({ admission, isolation: rebuildRuntimeIsolation,
+      const rendered = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation,
         args: ["diagnostics", "--after", String(after), "--limit", "2", "--json"] });
       const view = z.object({ records: z.array(z.object({ eventId: z.string(),
         payload: z.object({ kind: z.literal("debug"), event: z.object({ level: z.literal("error") }) }) })) }).parse(JSON.parse(rendered));
@@ -94,11 +315,52 @@ describe("explain run", () => {
       if (!page.hasMore) break;
     }
     assert.equal(categories.size, 7);
-    assert.deepEqual(readFileSync(path), before); assert.deepEqual(readdirSync(root, { recursive: true, encoding: "utf8" }).sort(), inventory);
-    for (const [name, bytes] of sourceBytes) assert.deepEqual(readFileSync(join(root, name)), bytes);
+    assert.deepEqual(readFileSync(path), before, "state.db"); assert.deepEqual(readdirSync(root, { recursive: true, encoding: "utf8" }).sort(), inventory);
+    for (const [name, bytes] of sourceBytes) assert.deepEqual(readFileSync(join(root, name)), bytes, name);
     assert.throws(() => parseDiagnosticArgs(["--limit", "1001"]));
     assert.throws(() => parseDiagnosticArgs(["--after", "-1"]));
     assert.throws(() => parseDiagnosticArgs(["--boot", "--run", EXIT_RUN_ID]));
+  });
+
+  it("keeps a cause's code and class name and drops its stack, path and free text", async () => {
+    const database = await seeded();
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    const writer = createDebugEventWriter({ repository: database.authority.timelineEvents, clock: manualClock(new Date("2026-08-04T00:11:13.500Z")), build: "fixture" });
+    const runScope: TimelineAppend["scope"] = { kind: "run", runId: RunIdSchema.parse(EXIT_RUN_ID) };
+    writer.emit({ category: "worker", phase: "failed", correlationId: "cause", area: "worker-loop", reason: "step-failed", code: "ECONNRESET",
+      message: "TypeError", stack: "TypeError: boom\n    at run (/Users/someone/Projects/hr-relay/src/x.ts:1:1)" }, runScope, WorkflowIdSchema.parse("person-lookup"));
+    writer.emit({ category: "worker", phase: "failed", correlationId: "free", message: "open https://example.test/p?eid=123" }, runScope, WorkflowIdSchema.parse("person-lookup"));
+    const explained = JSON.stringify(explainRunFrom(database, EXIT_RUN_ID).debugEvents);
+    const diagnostics = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID, "--json"] });
+    for (const text of [explained, diagnostics]) {
+      assert.match(text, /ECONNRESET/u); assert.match(text, /TypeError/u);
+      for (const leaked of ["/Users/", "someone", "boom", "example.test", "eid=123", "stack"]) assert.equal(text.includes(leaked), false, leaked);
+    }
+  });
+
+  it("shows a stored failure's nested causes as codes and class names in explain run and diagnostics", async () => {
+    const database = await seeded();
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    class BrowserLoginError extends Error { constructor(message: string) { super(message); this.name = "BrowserLoginError"; } }
+    const error = new Error("outer https://example.test/p?eid=123", { cause: new BrowserLoginError("at /Users/someone/Projects/x.ts eid 123") });
+    const run = requireTrustRun(createTrustRunReader(database), EXIT_RUN_ID);
+    const failure = FailureRecordSchema.parse({ diagnosticSafetyVersion: 1, failureId: randomUUID(), fingerprint: "f".repeat(64),
+      runId: run.envelope.runId, traceId: run.envelope.traceId, attempt: run.envelope.attempt, workflowId: run.envelope.workflow,
+      code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", transient: false, writeState: "not-attempted",
+      causeChain: [{ code: "RUN_INTERRUPTED_BY_CRASH", summary: "fixture", role: "primary", transient: false }],
+      debug: failureDebugDetails(error), remediation: [{ kind: "operator-action", message: "fixture" }], occurredAt: run.createdAt });
+    const protectedRun = RunRecordSchema.parse({ ...run, input: { ...run.input, parsed: { ...run.input.parsed, protectedBindings: [{ kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "10000000-0000-4000-8000-000000000099" }] } } });
+    const view = buildExplainRunView({ run: { ...protectedRun, lifecycle: { state: "terminal", outcome: "failed", endedAt: run.createdAt, errorSummary: "fixture", failureId: failure.failureId } },
+      checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure });
+    const raw = new DatabaseSync(join(profile.stateRoot, "state.db"));
+    raw.prepare("INSERT INTO run_failures (id, run_id, fingerprint, code, resolution_json, resolution_version, payload_json, created_at) VALUES (?, ?, ?, ?, '{\"status\":\"unresolved\",\"version\":1}', 1, ?, ?)")
+      .run(failure.failureId, failure.runId, failure.fingerprint, failure.code, canonicalJsonStringify(failure), failure.occurredAt);
+    raw.close();
+    const diagnostics = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID] });
+    for (const text of [renderExplainRun(view), diagnostics]) {
+      assert.match(text, /BrowserLoginError/u); assert.match(text, /RUN_INTERRUPTED_BY_CRASH/u);
+      for (const leaked of ["/Users/", "someone", "example.test", "eid", "at run"]) assert.equal(text.includes(leaked), false, leaked);
+    }
   });
 
   it("reads stopped boot faults without a database and refuses unsafe or incomplete spool bytes", () => {
@@ -180,6 +442,21 @@ describe("explain run", () => {
     assert.equal(reuse.get("searching")?.kind, "checkpoint");
     assert.equal(reuse.get("cross-verify")?.kind, "fresh-live");
     assert.ok((reuse.get("searching")?.ageMs ?? 0) > 0);
+  });
+
+  it("says a paused run needs Resume or Cancel, for a parent and a child alike", async () => {
+    const run = requireTrustRun(createTrustRunReader(await seeded()), EXIT_RUN_ID);
+    for (const shape of ["operation", "operation-member"] as const) {
+      const paused = { ...run, envelope: { ...run.envelope, shape }, lifecycle: { state: "queued" as const },
+        pause: { state: "paused" as const, commandId: randomUUID(), requestedAt: run.createdAt, pausedAt: run.createdAt } };
+      const view = buildExplainRunView({ run: paused, checkpoints: [], writes: [], nodeIds: [], dependencies: [] });
+      assert.equal(view.pause, "paused");
+      assert.match(view.nextSafeAction, /does not resume by itself.*Resume or Cancel it from Logs/u);
+      assert.doesNotMatch(view.nextSafeAction, /A worker will claim/u);
+      assert.match(renderExplainRun(view), /queued \(paused\)/u);
+    }
+    const unpaused = buildExplainRunView({ run: { ...run, lifecycle: { state: "queued" } }, checkpoints: [], writes: [], nodeIds: [], dependencies: [] });
+    assert.match(unpaused.nextSafeAction, /A worker will claim/u);
   });
 
   it("names every absence instead of rendering an empty section", async () => {

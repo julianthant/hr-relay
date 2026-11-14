@@ -2,11 +2,13 @@
 name: verify
 description: >-
   Drive Relay's dashboard (BFF :3938, Vite :5174) in a visible browser to prove a workflow or dashboard feature works, ending in a live dry run with evidence. Use before a workflow PR merges, for "verify X", "do the dry run", "prove it in the app", or "run the sign-off walkthrough". The operator does the login and Duo; the run is dryRun=true only.
+metadata:
+  exposed: "true"
 ---
 
 # /verify — live dry run of Relay through the dashboard
 
-Proves a change the way the operator uses it: sign in, Run, read Logs, check the result. Read-only and `dryRun=true` only. Start and stop through `.agents/skills/hr-manage/SKILL.md`; browser commands follow `~/.agents/skill-library/playwright-cli/REFERENCE.md`. Features and their passing states: [features/README.md](features/README.md).
+Proves a change the way the operator uses it: sign in, Run, read Logs, check the result. Read-only and `dryRun=true` only. Start and stop through `.agents/skills/hr-manage/SKILL.md`; browser commands follow `~/.agents/skills/playwright-cli/SKILL.md`. Features and their passing states: [features/README.md](features/README.md).
 
 ## Rules
 

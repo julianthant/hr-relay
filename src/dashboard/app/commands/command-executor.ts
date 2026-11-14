@@ -189,8 +189,12 @@ export class CommandExecutor {
         case "applied": break;
       }
     } else {
-      const code = request.family === "worker-browser" && (reply.state === "rejected" || reply.state === "conflict")
-        ? ErrorCatalogCodeSchema.safeParse(reply.message).data : undefined;
+      const startCode = request.family === "start" && reply.state === "rejected"
+        && (reply.code === "RUN_START_PLAN_EXPIRED" || reply.code === "RUN_START_READINESS_BLOCKED"
+          || reply.code === "RUN_START_READINESS_UNAVAILABLE" || reply.code === "RUN_START_READINESS_CHANGED"
+          || reply.code === "PREFLIGHT_EVIDENCE_EXPIRED" || reply.code === "PREFLIGHT_TIMEOUT") ? reply.code : undefined;
+      const code = startCode ?? (request.family === "worker-browser" && (reply.state === "rejected" || reply.state === "conflict")
+        ? ErrorCatalogCodeSchema.safeParse(reply.message).data : undefined);
       const refusal = code !== undefined && ERROR_CATALOG[code].parameters.safeParse({}).success
         ? formatErrorCatalogFailure(createErrorCatalogFailure(code, {})) : undefined;
       switch (reply.state) {

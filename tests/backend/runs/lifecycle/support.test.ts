@@ -36,6 +36,7 @@ describe("task span node identity", () => {
   });
   it.each(["probe", "prepare", "commit", "verify"])("resolves the transaction %s role", role => {
     assert.equal(nodeIdOfTaskSpanPath(`${trace}/submit-write/${role}`), "submit-write");
+    assert.equal(nodeIdOfTaskSpanPath(`${trace}/submit-write/${role}#2`), "submit-write");
   });
   it.each([
     "", "submit-write", `${trace}/submit-write`, `${trace}/submit-write/task`,
@@ -43,6 +44,7 @@ describe("task span node identity", () => {
     `${trace}/submit-write/probe/extra`, `prefix/${trace}/submit-write/probe`,
     `${trace}//probe`, `/submit-write/probe`, `${trace}/submit-write/`,
     "invalid-trace/submit-write/probe", `${trace}/InvalidNode/probe`, `${trace}/node:name/probe`,
+    `${trace}/InvalidNode/probe#2`,
   ])("leaves a malformed or unknown role path unresolved: %s", path => {
     assert.equal(nodeIdOfTaskSpanPath(path), undefined);
   });
