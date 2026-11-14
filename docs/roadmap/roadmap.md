@@ -12,7 +12,7 @@ One line per feature branch. Merged features are in staging; the rest say what t
 - [now] Work Study workflow — its pull request waits on one failing unit test whose expected sentence changed; the CI-fix ticket is in review, and the live PayPath dry run follows.
 - [now] I-9 served data — its pull request waits on a storage-doctor test that sees no worker commit during its pass (the test baseline ticket); the live dry run and sign-off follow.
 - [now] Emergency Contact served data — its pull request waits on a failing Run dialog test (the reference spreadsheet control is missing); typed Employee ID lookup is in review, and the full dry run and sign-off follow.
-- [now] Assistant agent — checks are green; it waits on the operator's browser check and on proof that a copy of the real store upgrades to schema 29.
+- [now] Assistant agent — checks are green; it waits only on proof that a copy of the real store upgrades to schema 29, which is running now. The browser check runs on staging after it merges.
 - [now] Spreadsheets pin and tags — sits on the Assistant agent pull request, and merges after it; its staging sync is in review.
 - [now] CI pipeline — its pull request has a required check cancelled by a newer run; two tickets are left, both waiting on later releases.
 - [now] Storage read speed — no pull request yet; the change-log ticket is in review, then planner statistics, the store-copy proof and slow-read events.
