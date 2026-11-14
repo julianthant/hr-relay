@@ -57,8 +57,15 @@ export class ApplicationAdmissionRefusedError extends Error {
   }
 }
 
-export const ApplicationAdmissionRequestSchema = z.strictObject({ commandId: CommandIdSchema,
+export const ApplicationAdmissionHoldSchema = z.strictObject({ commandId: CommandIdSchema,
   runtimeGeneration: PositiveIntSchema, reason: z.enum(["update", "shutdown", "logout"]) });
+/** Ends one Pause all and quit hold of the same runtime generation, so a quit that does not complete leaves admission open. */
+export const ApplicationAdmissionReleaseSchema = z.strictObject({ commandId: CommandIdSchema,
+  runtimeGeneration: PositiveIntSchema, releases: CommandIdSchema });
+export const ApplicationAdmissionRequestSchema = z.union([ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema]);
+/** Whether runs may be admitted; a hold names the command that closed admission and why. */
+export type RunAdmission = Readonly<{ state: "open" } | { state: "draining"; commandId: string; hold: "quit" | ApplicationAdmissionHold["reason"] }>;
+type ApplicationAdmissionHold = z.infer<typeof ApplicationAdmissionHoldSchema>;
 
 export const CanonicalPauseRequestSchema = z.strictObject({ commandId: CommandIdSchema, runId: RunIdSchema,
   expectedVersion: PositiveIntSchema });
