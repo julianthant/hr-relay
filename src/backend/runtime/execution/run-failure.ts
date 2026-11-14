@@ -1,4 +1,5 @@
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
+import { browserLoginFailure } from "../../systems/browser-shared/login-contract.js";
 import { hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 
 import { TaskError } from "../../../workflow-kit/errors.js";
@@ -23,6 +24,7 @@ import {
   CURRENT_DIAGNOSTIC_SAFETY_VERSION,
   FailureRecordSchema,
   settledWriteState,
+  signInPage,
   type FailureRecord,
 } from "../../../models/trust/failure.js";
 
@@ -192,6 +194,29 @@ export function buildEntryValidationFailureRecord(input: EntryValidationFailureI
   });
 }
 
+const DEBUG_TEXT_BUDGET = 96 * 1024;
+
+function signInRefusalFrom(error: Error) {
+  const login = browserLoginFailure(error);
+  if (login === undefined) return undefined;
+  return {
+    system: login.system,
+    step: login.step,
+    ...(login.check === undefined ? {} : { check: login.check }),
+    ...signInPage(login.observedUrl),
+  };
+}
+
+/** Keep a whole UTF-8 character or none of it. The caller spends only the bytes actually kept. */
+function takeDebugText(text: string, remaining: { bytes: number }): string {
+  const encoded = Buffer.from(text);
+  let end = Math.min(encoded.byteLength, remaining.bytes);
+  while (end > 0 && ((encoded[end] ?? 0) & 0xc0) === 0x80) end -= 1;
+  const result = encoded.subarray(0, end).toString("utf8");
+  remaining.bytes -= Buffer.byteLength(result);
+  return result;
+}
+
 export function failureDebugDetails(error: Error) {
   const texts = [error.stack ?? error.message];
   const seen = new Set<unknown>([error]);
@@ -200,14 +225,13 @@ export function failureDebugDetails(error: Error) {
     seen.add(cause); texts.push(`${cause.name}: ${cause.stack ?? cause.message}`); cause = cause.cause;
   }
   const safe = texts.map(sanitizeDebugText);
+  const signInRefusal = signInRefusalFrom(error);
   const originalBytes = safe.reduce((total, text) => total + Buffer.byteLength(text), 0);
-  let remaining = 96 * 1024;
-  const bounded = safe.map(text => {
-    const bytes = Buffer.from(text);
-    const result = bytes.subarray(0, remaining).toString("utf8");
-    remaining = Math.max(0, remaining - bytes.byteLength);
-    return result;
-  });
+  const remaining = { bytes: DEBUG_TEXT_BUDGET };
+  const bounded = safe.map(text => takeDebugText(text, remaining));
+  const retainedBytes = Buffer.byteLength(bounded[0] ?? "")
+    + bounded.slice(1).reduce((total, text) => total + Buffer.byteLength(text), 0);
   return { stack: bounded[0] ?? "", causes: bounded.slice(1), originalBytes,
-    omittedBytes: Math.max(0, originalBytes - 96 * 1024) };
+    omittedBytes: Math.max(0, originalBytes - retainedBytes),
+    ...(signInRefusal === undefined ? {} : { signInRefusal }) };
 }
