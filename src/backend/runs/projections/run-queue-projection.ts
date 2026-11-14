@@ -1278,7 +1278,7 @@ export class RunQueueProjection {
     const pauseUnavailable = interruptTransition(authority, { kind: "pause" }).state === "refused";
     const pauseControl: NonNullable<QueueSurfaceWire["pauseControl"]> = { expectedVersion: authority.version,
       state: pauseUnavailable ? "unavailable" : pending === "pause-requested" ? "pause-pending" : pending === "paused" ? "paused" : "running",
-      ...(pauseUnavailable || pending === "pause-requested" ? {} : { command: pending === "paused" ? "resume" as const : "pause" as const }) };
+      ...(pauseUnavailable ? {} : { command: pending === "none" ? "pause" as const : "resume" as const }) };
     const claim = runClaim(authority);
     const interrupt = claim === undefined ? undefined : stepInterruptOf(authority, this.#deps.authority.writeInFlight?.(queued.runId) === true);
     const notStarting = this.#notStarting(queued.workflow, status);
