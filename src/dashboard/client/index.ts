@@ -1,8 +1,10 @@
 import type { z } from "zod";
-import { ReopenProfileOnboardingBrowserRequestSchema, type ReopenProfileOnboardingBrowserRequest, DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfilePasswordChangeRequestSchema, ProfileUsernameChangeRequestSchema, ProfileLoginChangeResultSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
+import { ReopenProfileOnboardingBrowserRequestSchema, type ReopenProfileOnboardingBrowserRequest, DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfilePasswordChangeRequestSchema, ProfileUsernameChangeRequestSchema, ProfileLoginChangeResultSchema, ProfileDetailsChangeRequestSchema, ProfileDetailsChangeResultSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
 type ProfilePasswordChangeRequest = z.infer<typeof ProfilePasswordChangeRequestSchema>;
 type ProfileUsernameChangeRequest = z.infer<typeof ProfileUsernameChangeRequestSchema>;
 type ProfileLoginChangeResult = z.infer<typeof ProfileLoginChangeResultSchema>;
+type ProfileDetailsChangeRequest = z.infer<typeof ProfileDetailsChangeRequestSchema>;
+type ProfileDetailsChangeResult = z.infer<typeof ProfileDetailsChangeResultSchema>;
 import { DASHBOARD_REQUEST_REPORT_MESSAGE, debugFailureOutcome, DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
 import { parseOrThrow } from "./queries/query-parse.js";
 import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
@@ -49,6 +51,7 @@ export interface DashboardClient extends DashboardQueries, DashboardCommands {
   logOutProfile(): Promise<PublicProfileState>;
   changeProfilePassword(request: ProfilePasswordChangeRequest): Promise<ProfileLoginChangeResult>;
   changeProfileUsername(request: ProfileUsernameChangeRequest): Promise<ProfileLoginChangeResult>;
+  changeProfileDetails(request: ProfileDetailsChangeRequest): Promise<ProfileDetailsChangeResult>;
   deleteProfileAccount(request: DeleteProfileAccountRequest): Promise<PublicProfileState>;
   completeProfileOnboarding(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
   cancelProfileOnboardingDuo(request: CancelProfileOnboardingDuoRequest): Promise<PublicProfileState>;
@@ -174,6 +177,11 @@ export function createDashboardClient(input: Readonly<{
         method: "POST", body: JSON.stringify(ProfileUsernameChangeRequestSchema.parse(request)),
       })).body);
     },
+    async changeProfileDetails(request) {
+      return parseDetailsChange((await transport.requestJsonResponse("/api/v1/profile/account/details", {
+        method: "POST", body: JSON.stringify(ProfileDetailsChangeRequestSchema.parse(request)),
+      })).body);
+    },
     async completeProfileOnboarding(request) {
       return activateProfile("/api/v1/profile/onboarding/complete", {
         method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
@@ -270,6 +278,10 @@ export type { AssistantModelPreferenceView, AssistantRequest, AssistantResult } 
 function parseLoginChange(body: unknown): ProfileLoginChangeResult {
   const wire = WIRE_ERROR_BODY.safeParse(body);
   return ProfileLoginChangeResultSchema.parse(wire.success ? { state: "refused", code: wire.data.code } : body);
+}
+function parseDetailsChange(body: unknown): ProfileDetailsChangeResult {
+  const wire = WIRE_ERROR_BODY.safeParse(body);
+  return ProfileDetailsChangeResultSchema.parse(wire.success ? { state: "refused", code: wire.data.code } : body);
 }
 function parseProfileState(body: unknown): PublicProfileState {
   const wire = WIRE_ERROR_BODY.safeParse(body);

@@ -7,7 +7,7 @@ import { buildNodeFailureRecord } from "../../../../src/backend/runtime/executio
 import { buildExplainRunView, renderExplainRun } from "../../../../src/backend/runs/explain/explain-run.js";
 import { NodeIdSchema, TaskIdSchema } from "../../../../src/rules/identity/ids.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
-import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { RunLifecycleSchema, RunPauseSchema, RunRecordSchema } from "../../../../src/models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { timelineCheckpointReference, TimelineCheckpointReferenceSchema } from "../../../../src/models/events/timeline.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
@@ -185,4 +185,19 @@ it("explains every probe without copying its text", () => {
     const rendered = renderRefusal(row.detail, row.observedUrl, undefined, true);
     for (const canary of row.canaries) assert.equal(rendered.includes(canary), false, `${row.name} ${canary}`);
   }
+});
+
+describe("explain run next safe action", () => {
+  it("explains a run that is both pausing and stopping by its stop, as every other reader does", async () => {
+    const fixture = await omittedStepFixture();
+    const at = fixture.run.lifecycle.state === "terminal" ? fixture.run.lifecycle.endedAt : fixture.run.updatedAt;
+    const { completion: _completion, ...unsettled } = fixture.run;
+    const running = { ...unsettled, lifecycle: RunLifecycleSchema.parse({ state: "running", workerId: "person-lookup-worker-1", claimedAt: at, heartbeatAt: at }) };
+    const pause = RunPauseSchema.parse({ state: "requested", commandId: "a1000000-0000-4000-8000-000000000090", requestedAt: at });
+    const nextOf = (run: typeof running) => buildExplainRunView({ run, checkpoints: fixture.checkpoints, writes: [],
+      nodeIds: [], dependencies: [] }).nextSafeAction;
+    assert.match(nextOf({ ...running, pause }), /A pause is requested/u);
+    assert.equal(nextOf({ ...running, pause, cancelRequested: true }), nextOf({ ...running, cancelRequested: true }));
+    assert.doesNotMatch(nextOf({ ...running, pause, cancelRequested: true }), /pause/u);
+  });
 });
