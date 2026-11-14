@@ -164,6 +164,14 @@ Its `tasks/read-worksheet-archives.ts` verifies retained PDFs and creates the ar
 reference reads live in `backend/workbooks/` and the `workbooks.library` provider; tasks accept
 lookup keys while the native run owner supplies the exact retained library and named version.
 
+`src/workflows/work-study/` opens UCPath PayPath Actions for one Employee ID, plans the work-study
+transaction (effective date, reason JRL, pool F, matching comments) and files it through one stop-after-prepare
+Save transaction; the plan rule lives in `src/rules/work-study/plan.ts` and the duplicate and receipt verdict over
+SS Smart HR transaction findings in `src/rules/work-study/transaction-verdict.ts`. `src/models/ui/ucpath-paypath.ts`
+owns the PayPath read, staging, Save driver surface and refusals; the four Save contracts live in
+`src/models/systems/ucpath/{stage,submit,match,verify}-paypath-work-study.ts`.
+`backend/systems/ucpath/driver/paypath-operation.ts` and `paypath-ui-registry.ts` own the PayPath browser family.
+
 `src/workflows/onbase/` registers a child-only per-person Emergency Contact PDF import with source-page and import-document step proofs. Its system store and semantic driver live in `src/backend/systems/onbase/`; `src/backend/storage/sqlite/exclusive-session-leases.ts` owns the durable identity-session lease and its migration. The browser factory holds that lease through proven browser closure; uncertainty and process loss do not expire it.
 Its task implementations live in `tasks/read-source-page.ts`, `stage-import.ts`, `match-import.ts`, `upload-import.ts` and `verify-import.ts`, matching each contract's task ID for implementation fingerprints.
 The corresponding contract files live under `src/models/systems/onbase/` with those same task names;

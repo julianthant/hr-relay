@@ -88,6 +88,7 @@ describe("workflow descriptor registry", () => {
       "person-lookup",
       "separations",
       "onboarding",
+      "work-study",
       "i9-check-start",
       "crm-doc-download",
       "emergency-contact",
@@ -96,11 +97,12 @@ describe("workflow descriptor registry", () => {
       "person-lookup",
       "separations",
       "onboarding",
+      "work-study",
       "i9-check-start",
       "crm-doc-download",
       "emergency-contact",
     ]);
-    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations", "onboarding", "i9-check-start", "crm-doc-download", "emergency-contact"]);
+    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations", "onboarding", "work-study", "i9-check-start", "crm-doc-download", "emergency-contact"]);
     for (const descriptor of STEP_PROOF_DESCRIPTORS) {
       expect(() => workflowModuleOf(descriptor.id)).toThrow(/not registered/u);
     }

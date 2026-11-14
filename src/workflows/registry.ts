@@ -11,12 +11,14 @@ import { registration as onbase } from "./onbase/index.js";
 import { registration as onboarding } from "./onboarding/index.js";
 import { registration as personLookup } from "./person-lookup/index.js";
 import { registration as separations } from "./separations/index.js";
+import { registration as workStudy } from "./work-study/index.js";
 
 /** Workflows the operator starts, in Run picker order. */
 export const PUBLIC_WORKFLOWS = Object.freeze([
   personLookup,
   separations,
   onboarding,
+  workStudy,
   i9CheckStart,
   crmDocDownload,
   emergencyContact,
