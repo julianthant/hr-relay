@@ -147,6 +147,16 @@ describe("worker composition helpers", () => {
       runId: RUN_ID,
     });
   });
+
+  it("keeps task fields outside the stdout allowlist off worker stdout", () => {
+    const clock = manualClock(new Date(NOW));
+    const lines: string[] = [];
+    lineTaskLogger((line) => lines.push(line), clock).info("Employment status", {
+      status: "active", "HDH department": "No", department: "Engineering", reason: "Ada Lovelace left", error: "page text",
+    });
+    assert.deepEqual(JSON.parse(lines[0] ?? ""), { ts: NOW, level: "info", message: "Employment status", status: "active", "HDH department": "No" });
+    assert.doesNotMatch(lines[0] ?? "", /Engineering|Lovelace|page text/u);
+  });
 });
 
 

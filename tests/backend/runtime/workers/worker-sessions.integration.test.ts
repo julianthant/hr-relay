@@ -462,6 +462,37 @@ describe("bounded browser-session acquisition", () => {
     assert.deepEqual(sessions.activeSystems(), []);
   });
 
+  it("closes a pending login's context on stop instead of waiting for it, with closure proved", async () => {
+    const base = sessionFactory();
+    let rejectLogin: (error: unknown) => void = () => assert.fail("login has not started");
+    let loginStarted: () => void = () => undefined;
+    const started = new Promise<void>(resolve => { loginStarted = resolve; });
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry,
+      factory: { probeProfile: async () => undefined, open: async input => {
+        const resource = await base.factory.open(input);
+        // Like a real browser login: it only ends when its context closes.
+        return { ...resource,
+          authentication: { authenticate: () => new Promise<never>((_resolve, reject) => { rejectLogin = reject; loginStarted(); }) },
+          close: async closeInput => { rejectLogin(new Error("browser context closed")); return resource.close(closeInput); } };
+      } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: await fixtureDuoCeremonyGates(clock, undefined, profileFixtures.create),
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    const acquisition = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => assert.fail("a stopped login must not run its work"));
+    const rejected = assert.rejects(acquisition);
+    await started;
+    let closure: unknown = "pending";
+    const closing = sessions.closeAll("worker-stop").then(() => { closure = "proved"; }, (error: unknown) => { closure = error; });
+    for (let tick = 0; tick < 50 && closure === "pending"; tick += 1) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(closure, "proved");
+    await closing;
+    await rejected;
+    assert.equal(base.closes(), 1);
+    assert.deepEqual(sessions.activeSystems(), []);
+  });
+
   it("awaits failed acquisition cleanup before closeAll returns", async () => {
     const base = sessionFactory({ loginHangs: true });
     let releaseCleanup: (() => void) | undefined;

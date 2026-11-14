@@ -3,6 +3,9 @@ import { previewPdfRun } from "../../../../src/dashboard/surfaces/run-start/run-
 import { I9CheckStartInput, I9_CHECK_START_EXAMPLE } from "../../../../src/models/workflows/i9-check/start.js";
 import { i9CheckStartWorkflow } from "../../../../src/workflows/i9-check-start/workflow.js";
 import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
+import { EmergencyContactInputSchema } from "../../../../src/models/workflows/emergency-contact/input.js";
+import { OCR_INPUT_EXAMPLE } from "../../../../src/models/workflows/ocr/input.js";
+import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-contact/workflow.js";
 
 it("plans all attached PDFs as one strict parent input and retains their reading identities across confirmation", () => {
   const surface = i9CheckStartWorkflow.surfaces?.uploadRun;
@@ -22,4 +25,16 @@ it("plans all attached PDFs as one strict parent input and retains their reading
   expect(previewPdfRun(surface, structuredClone(draft))).toEqual(preview);
   expect(previewPdfRun(surface, null).submissions).toHaveLength(0);
   expect(previewPdfRun(surface, { ...draft, files: [] }).entries).toHaveLength(0);
+});
+
+it("plans one strict Emergency Contact input per attached PDF with its stable reading identity", () => {
+  const surface = emergencyContactWorkflow.surfaces?.uploadRun;
+  if (surface === undefined) throw new Error("PDF start not declared");
+  const files = [["first.pdf", "a", "00000000-0000-4000-8000-000000000011"], ["second.pdf", "c", "00000000-0000-4000-8000-000000000012"]].map(([fileName, digit, readingId]) => ({ readingId,
+    source: OcrSourceUploadSchema.parse({ artifact: { ...OCR_INPUT_EXAMPLE.document, sha256: digit.repeat(64) }, fileName, uploadedAt: "2026-11-03T00:00:00.000Z", uploadedBy: "local-operator" }) }));
+  const preview = previewPdfRun(surface, { files, asOf: "2026-11-03", reviewer: "Example Reviewer" });
+  expect(preview.entries.map(entry => entry.sourceText)).toEqual(["first.pdf", "second.pdf"]);
+  expect(preview.submissions.map(submission => EmergencyContactInputSchema.parse(submission)))
+    .toMatchObject(files.map(file => ({ fileName: file.source.fileName, readingId: file.readingId, roster: null, reading: { kind: "subscription" } })));
+  expect(previewPdfRun(surface, null).submissions).toHaveLength(0);
 });

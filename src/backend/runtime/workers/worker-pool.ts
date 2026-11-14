@@ -67,7 +67,11 @@ export const WORKER_SIGTERM_TIMEOUT_MS = 30_000;
 export const WORKER_EXIT_OBSERVATION_TIMEOUT_MS = 5_000;
 
 export class WorkerPoolError extends Error {
-  constructor(readonly code: ErrorCatalogCode, options?: ErrorOptions) { super(ERROR_CATALOG[code].text, options); this.name = "WorkerPoolError"; }
+  /** Value-free supervisor facts for the fault line: the child pid and, for an identity mismatch, the first field that differed. */
+  readonly detail: Readonly<{ pid?: number; field?: string }>;
+  constructor(readonly code: ErrorCatalogCode, options?: ErrorOptions & { detail?: Readonly<{ pid?: number; field?: string }> }) {
+    super(ERROR_CATALOG[code].text, options); this.name = "WorkerPoolError"; this.detail = options?.detail ?? {};
+  }
 }
 
 export interface WorkerPoolDependencies {
@@ -82,7 +86,7 @@ export interface WorkerPoolDependencies {
   readonly ids: Readonly<{ uuid(): string }>;
   readonly timeouts?: Partial<Readonly<{ readyMs: number; gracefulMs: number; sigtermMs: number; exitObservationMs: number }>>;
   readonly onChange?: (view: WorkerMemberView) => void;
-  readonly onFault?: (member: WorkerPoolMember, error: unknown) => void;
+  readonly onFault?: (member: WorkerPoolMember, error: unknown, pid?: number) => void;
   /** A stop send that failed only because the member's channel had closed and its exit was observed. */
   readonly onStopChannelClosed?: (member: WorkerPoolMember, error: unknown) => void;
 }
@@ -140,7 +144,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   });
   const changed = (record: MemberRecord): void => {
     record.version += 1;
-    try { deps.onChange?.(view(record)); } catch (error) { deps.onFault?.(record.member, error); }
+    try { deps.onChange?.(view(record)); } catch (error) { deps.onFault?.(record.member, error, record.port.pid); }
   };
   const cancelTimers = (record: MemberRecord): void => { for (const timer of record.timers) timer.cancel(); record.timers = []; };
 
@@ -155,7 +159,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     rejectPending(record, new WorkerPoolError("WORKER_EXITED"));
     record.ready?.(new WorkerPoolError("WORKER_EXITED"));
     try { await deps.settleExit(record.member, fact); record.exit = { ...fact, settlement: "settled" }; }
-    catch (error) { record.settlementFailure = error; record.exit = { ...fact, settlement: "failed" }; deps.onFault?.(record.member, error); }
+    catch (error) { record.settlementFailure = error; record.exit = { ...fact, settlement: "failed" }; deps.onFault?.(record.member, error, record.port.pid); }
     changed(record);
     record.resolveSettled();
     record.resolveExited();
@@ -181,7 +185,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       if (reported) return;
       reported = true;
       if (isChannelClosed(error) && record.state === "exited") deps.onStopChannelClosed?.(record.member, error);
-      else deps.onFault?.(record.member, error);
+      else deps.onFault?.(record.member, error, record.port.pid);
     };
     if (!isChannelClosed(error) || record.state === "exited") { report(); return; }
     const window = after(timeouts.exitObservationMs, report);
@@ -206,7 +210,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   };
 
   const fault = (record: MemberRecord, error: unknown, immediate = record.state === "starting"): void => {
-    deps.onFault?.(record.member, error);
+    deps.onFault?.(record.member, error, record.port.pid);
     if (immediate && record.stopping !== undefined && record.state !== "exited") { kill(record, "SIGKILL"); observeExit(record); return; }
     void escalate(record, "fault", immediate);
   };
@@ -220,9 +224,11 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     }
     const message = parsed.data;
     if (message.kind === "worker-ready") {
-      if (record.state !== "starting" || message.workerId !== record.member.workerId || message.pid !== record.port.pid
-        || message.profileId !== deps.profileId || message.sessionGeneration !== deps.sessionGeneration) {
-        const error = new WorkerPoolError("WORKER_IDENTITY_MISMATCH");
+      const field = record.state !== "starting" ? "state" : message.workerId !== record.member.workerId ? "workerId"
+        : message.pid !== record.port.pid ? "pid" : message.profileId !== deps.profileId ? "profileId"
+          : message.sessionGeneration !== deps.sessionGeneration ? "sessionGeneration" : undefined;
+      if (field !== undefined) {
+        const error = new WorkerPoolError("WORKER_IDENTITY_MISMATCH", { detail: { ...(record.port.pid === undefined ? {} : { pid: record.port.pid }), field } });
         record.ready?.(error); record.ready = undefined;
         fault(record, error);
         return;
@@ -244,7 +250,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       record.failureCode = message.code;
     } else {
       const pending = record.pending.get(message.requestId);
-      if (pending === undefined) { deps.onFault?.(record.member, new WorkerPoolError("WORKER_REQUEST_TIMED_OUT")); return; }
+      if (pending === undefined) { deps.onFault?.(record.member, new WorkerPoolError("WORKER_REQUEST_TIMED_OUT"), record.port.pid); return; }
       record.pending.delete(message.requestId); pending.timer.cancel();
       if (message.outcome.state === "done") {
         const directive = directiveOf(message.outcome.result);
@@ -333,7 +339,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       port.onWorkerMessage(raw => { receive(record, raw); });
       record.timers.push(after(timeouts.readyMs, () => {
         if (record.state !== "starting") return;
-        const error = new WorkerPoolError("WORKER_START_TIMED_OUT");
+        const error = new WorkerPoolError("WORKER_START_TIMED_OUT", { detail: record.port.pid === undefined ? {} : { pid: record.port.pid } });
         record.ready?.(error); record.ready = undefined;
         void escalate(record, "fault", true);
       }));

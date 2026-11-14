@@ -80,7 +80,7 @@ export function ocrChildRetryAvailable(repositories: AuthorityRepositories, read
     || parent.lifecycle.state === "terminal" && parent.lifecycle.outcome === "done") || parent.cancelRequested === true
     || parent.pause !== undefined || ocrRetryParentInFlight(repositories, parent, child) || repositories.ocrReviews.snapshots(parent.envelope.runId).length > 0
     || repositories.gateResults.get(`${parent.envelope.runId}:approve-records`) !== undefined
-    || repositories.runtimeConfig.get()?.configSnapshotId !== child.envelope.configSnapshotId
+    || repositories.runtimeConfig.get()?.configFingerprint !== child.envelope.configFingerprint
     || [parent, child].some(run => repositories.writeIntents.listByRun(run.envelope.runId).length > 0)) return false;
   if (parent.lifecycle.state !== "queued" || parent.delegationRefresh !== undefined) {
     const descriptor = resolveDescriptor(parent.envelope.workflow);

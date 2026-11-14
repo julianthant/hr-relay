@@ -4,6 +4,7 @@ import { EmergencyContactInputSchema, EmergencyContactCanonicalInput } from "../
 import { OCR_ROSTER_TYPE_ID, OCR_ROSTER_FIELDS } from "../../models/workflows/ocr/roster.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
+import { PositiveIntSchema } from "../../rules/identity/ids.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { EMERGENCY_CONTACT_SCENARIOS } from "../emergency-contact-member/workflow.js";
 
@@ -14,7 +15,10 @@ export const emergencyContactWorkflow = defineWorkflow({
   summary: "Reads and releases a PDF, then delegates exactly its approved records for primary contact previews.",
   requiredWorkbookFields: [...OCR_ROSTER_FIELDS], workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] }, input: EmergencyContactInputSchema, canonicalInput: EmergencyContactCanonicalInput,
   inputSubject: "document", surface: { shape: "operation" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
-  surfaces: {}, details: [], role: defineWorkflowRole({ kind: "composition" }),
+  surfaces: { uploadRun: { title: { segments: [{ kind: "literal", text: "Emergency Contact PDFs" }] }, fields: [],
+    pdfInput: { documentField: "document", fileNameField: "fileName", readingIdField: "readingId", fixed: { roster: null, reading: { kind: "subscription" } } },
+    accepts: [{ mediaType: "application/pdf", extensions: [".pdf"], maxBytes: PositiveIntSchema.parse(25 * 1024 * 1024) }],
+    successMessage: { segments: [{ kind: "literal", text: "PDFs attached for Emergency Contact runs." }] } } }, details: [], role: defineWorkflowRole({ kind: "composition" }),
   identity: { matchKey: input => `${input.document.sha256}:${input.readingId}` },
   presentation: { title: input => input.fileName ?? UNNAMED_PDF_TITLE, subtitle: () => "Approved PDF records" },
   scenarios: EMERGENCY_CONTACT_SCENARIOS,

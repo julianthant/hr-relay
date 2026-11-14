@@ -6,6 +6,7 @@ import { createSpreadsheetWiringAdapter } from '../../../src/dashboard/state/spr
 import { newEditableWorkbook, spreadsheetValuesOnly } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { closeDraft, editMapping, importWorkbook } from '../../../src/dashboard/surfaces/spreadsheets/design/sheets-v2-writes.js';
 import { datasetOf } from '../../../src/dashboard/surfaces/spreadsheets/design/sheets-v2-model.js';
+import { prepareSpreadsheetColumns } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.js';
 import { DashboardClientError } from '../../../src/dashboard/client/errors.js';
 import type { WorkbookLibraryQueries } from '../../../src/dashboard/client/queries/workbook-library-queries.js';
 import { SavedWorkbookSchema, encodeEditableWorkbook, type SavedWorkbook } from '../../../src/models/dashboard/workbooks.js';
@@ -292,6 +293,17 @@ describe('spreadsheet page writes', () => {
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...first, libraryId: 'generated' }));
     assert.equal((await importWorkbook(adapter, edited)).state, 'added');
     assert.equal(client.workbookCreate.mock.calls.length, 1);
+  });
+  it('counts rows without a usable Employee ID on the import it confirms, not on a later dialog document', async () => {
+    const { client, adapter } = setup();
+    const roster = (ids: readonly string[]) => { const blank = newEditableWorkbook(); return prepareSpreadsheetColumns({ ...blank, name: 'Roster.csv', sheets: [{ ...blank.sheets[0], width: 2, hidden: [], rows: [['UCPath ID', 'Legal Name'], ...ids.map(id => [id, 'Example, Avery'])].map((cells, index) => ({ id: `row-${index}`, cells: cells.map(value => ({ value })) })) }] }); };
+    const missing = roster(['10000001', 'pending', '']), valid = roster(['10000001', '10000006', '10000001']);
+    client.workbookOpen.mockRejectedValueOnce(new Error('lost'));
+    assert.equal((await importWorkbook(adapter, missing)).state, 'pending');
+    client.workbookOpen.mockResolvedValueOnce(saved(1, { ...missing, libraryId: 'generated' }));
+    assert.deepEqual(await importWorkbook(adapter, valid), { state: 'added', name: 'Roster.csv', rowsWithoutEid: 2 });
+    client.workbookOpen.mockResolvedValueOnce(saved(1, { ...valid, libraryId: 'generated' }));
+    assert.deepEqual(await importWorkbook(adapter, valid), { state: 'added', name: 'Roster.csv', rowsWithoutEid: 0 });
   });
   it('joins an import that is still saving instead of creating again', async () => {
     const { client, adapter } = setup(); const document = newEditableWorkbook();

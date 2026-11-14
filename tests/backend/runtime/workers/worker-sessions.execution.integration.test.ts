@@ -76,6 +76,23 @@ describe("worker execution session identity", () => {
     ]);
   });
 
+  it("keeps open sessions for the same execution workflow and parks them before a workflow change", async () => {
+    const world = createWorkerSessionManagerTestWorld();
+    const harness = world.sessionFactory();
+    const manager = await world.manager(harness);
+    await manager.withDriver(need, "prod", new AbortController().signal, async () => undefined);
+    manager.releaseRunConfigFingerprint();
+    await manager.parkForExecution(world.WORKFLOW_ID, taskStoreRegistry);
+    manager.configureExecution(world.WORKFLOW_ID, taskStoreRegistry);
+    assert.equal(harness.closes(), 0);
+    assert.deepEqual(manager.activeSystems(), ["ucpath"]);
+    await manager.parkForExecution(childWorkflow, taskStoreRegistry);
+    assert.doesNotThrow(() => manager.configureExecution(childWorkflow, taskStoreRegistry));
+    assert.equal(harness.opens(), 1);
+    assert.equal(harness.closes(), 1);
+    assert.deepEqual(manager.activeSystems(), []);
+  });
+
   it("refuses an execution switch while a run or retained parent session is owned", async () => {
     const world = createWorkerSessionManagerTestWorld();
     const harness = world.sessionFactory();

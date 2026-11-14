@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { createWorkerPool, requireStoppedPool, type WorkerExitFact, type WorkerMemberView, type WorkerPoolDependencies, type WorkerPoolMember, type WorkerProcessPort } from "../../../../src/backend/runtime/workers/worker-pool.js";
+import { createWorkerPool, requireStoppedPool, WorkerPoolError, type WorkerExitFact, type WorkerMemberView, type WorkerPoolDependencies, type WorkerPoolMember, type WorkerProcessPort } from "../../../../src/backend/runtime/workers/worker-pool.js";
 import type { WorkerParentMessage } from "../../../../src/backend/runtime/workers/worker-messages.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { BrowserSessionIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -44,6 +44,7 @@ function world(options: Partial<Pick<WorkerPoolDependencies, "platform" | "onCha
   const ports: ReturnType<typeof fakePort>[] = [];
   const settled: WorkerExitFact[] = [];
   const faults: unknown[] = [];
+  const faultOrigins: (Readonly<{ workerId: string; pid?: number }>)[] = [];
   const closedStops: unknown[] = [];
   let nextPid: number | undefined = 4242;
   const pool = createWorkerPool({ profileId: PROFILE, sessionGeneration: 3, clock, platform: options.platform ?? "darwin", ids: { uuid: randomUUID },
@@ -51,8 +52,8 @@ function world(options: Partial<Pick<WorkerPoolDependencies, "platform" | "onCha
     scheduler: { schedule(at, run) { const timer = { at, run, cancelled: false }; timers.push(timer); return { cancel() { timer.cancelled = true; } }; } },
     spawn: () => { const port = fakePort(nextPid); ports.push(port); return port.port; },
     settleExit: async (_member, exit) => { settled.push(exit); await options.settle?.(exit); },
-    onFault: (_member, error) => { faults.push(error); }, onStopChannelClosed: (_member, error) => { closedStops.push(error); }, onChange: view => { options.onChange?.(view); } });
-  return { pool, ports, settled, faults, closedStops, clock,
+    onFault: (faulted, error, pid) => { faults.push(error); faultOrigins.push({ workerId: faulted.workerId, ...(pid === undefined ? {} : { pid }) }); }, onStopChannelClosed: (_member, error) => { closedStops.push(error); }, onChange: view => { options.onChange?.(view); } });
+  return { pool, ports, settled, faults, faultOrigins, closedStops, clock,
     set nextPid(value: number | undefined) { nextPid = value; },
     async advance(ms: number) {
       clock.advanceMonotonic(ms);
@@ -86,6 +87,28 @@ describe("worker pool", () => {
     port.exit(null, "SIGKILL");
     await assert.rejects(started, { code: "WORKER_IDENTITY_MISMATCH" });
     assert.equal(w.settled.length, 1);
+  });
+
+  it("names the worker, its pid and the first mismatching field on an identity-mismatch fault", async () => {
+    const w = world(), started = assert.rejects(w.pool.start(member), { code: "WORKER_IDENTITY_MISMATCH" }); await flush();
+    w.ports[0]?.ready({ profileId: "00000000-0000-4000-8000-000000000000", sessionGeneration: 2 });
+    await flush();
+    w.ports[0]?.exit(null, "SIGKILL");
+    await started;
+    const error = w.faults[0];
+    assert.ok(error instanceof WorkerPoolError);
+    assert.deepEqual(error.detail, { pid: 4242, field: "profileId" });
+    assert.deepEqual(w.faultOrigins[0], { workerId: member.workerId, pid: 4242 });
+  });
+
+  it("names the pid on a start that never reports ready", async () => {
+    const w = world(), started = w.pool.start(member).catch((error: unknown) => error); await flush();
+    await w.advance(1_000);
+    w.ports[0]?.exit(null, "SIGKILL");
+    const error = await started;
+    assert.ok(error instanceof WorkerPoolError);
+    assert.equal(error.code, "WORKER_START_TIMED_OUT");
+    assert.deepEqual(error.detail, { pid: 4242 });
   });
 
   it("stops a child that never reports ready and holds it when no exit is observed", async () => {

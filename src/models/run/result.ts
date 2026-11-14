@@ -469,6 +469,14 @@ export const DelegationPreviewOutputSchema = z.strictObject({
 export type DelegationEvidenceResolution = Readonly<{ kind: "ordinary"; output: unknown }>
   | Readonly<{ kind: "preview"; output: z.infer<typeof DelegationPreviewOutputSchema> }>;
 
+export class DelegationOutcomePolicyUnsatisfiedError extends Error {
+  readonly code = "DELEGATION_OUTCOME_POLICY_UNSATISFIED";
+  constructor() {
+    super("delegation-outcome-policy-unsatisfied");
+    this.name = "DelegationOutcomePolicyUnsatisfiedError";
+  }
+}
+
 export function resolveDelegationEvidenceOutput(evidence: Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>, schema: z.ZodType, schemaReader?: EvidenceSchemaReader): DelegationEvidenceResolution {
   const { manifest } = evidence;
   if (manifest.parentRunId !== evidence.parentRunId || manifest.edgeId !== evidence.edgeId) throw new Error("delegation-outcome-manifest-mismatch");
@@ -498,7 +506,7 @@ export function resolveDelegationEvidenceOutput(evidence: Extract<TerminalDepend
     if (run.lifecycle.outcome === "cancelled" && terminal?.kind === "lifecycle-evidence" && terminal.outcome === "cancelled" && cancellation !== undefined) return childRunOutcomeSchema(schema).parse({ state: "cancelled", ...identity, ...cancellation });
     throw new Error("delegation-outcome-terminal-proof-unavailable");
   });
-  if (delegationJoinDisposition(manifest, outcomes.map(outcome => outcome.state === "previewed" ? "done" : outcome.state)) !== "satisfied") throw new Error("delegation-outcome-policy-unsatisfied");
+  if (delegationJoinDisposition(manifest, outcomes.map(outcome => outcome.state === "previewed" ? "done" : outcome.state)) !== "satisfied") throw new DelegationOutcomePolicyUnsatisfiedError();
   if (outcomes.some(outcome => outcome.state === "previewed")) {
     if (evidence.children.some(child => !child.run.envelope.dryRun)) throw new Error("delegation-preview-dry-run-required");
     return { kind: "preview", output: DelegationPreviewOutputSchema.parse({ state: "delegation-preview", nodeId: evidence.nodeId,

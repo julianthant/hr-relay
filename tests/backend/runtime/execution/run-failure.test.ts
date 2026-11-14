@@ -11,6 +11,7 @@ import {
 buildNodeFailureRecord, buildEntryValidationFailureRecord
 } from "../../../../src/backend/runtime/execution/run-failure.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
+import { DelegationOutcomePolicyUnsatisfiedError } from "../../../../src/models/run/result.js";
 import { NodeIdSchema,TaskIdSchema } from "../../../../src/rules/identity/ids.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 const NODE_ID = NodeIdSchema.parse("searching");
@@ -47,6 +48,7 @@ describe("node failure code selection", () => {
   it.each([
     { error: new TaskError(TASK_ID, "crm-unavailable", "Synthetic failure"), expected: "CRM_UNAVAILABLE" },
     { error: Object.assign(new Error("Synthetic failure"), { code: "custom-code" }), expected: "CUSTOM_CODE" },
+    { error: new DelegationOutcomePolicyUnsatisfiedError(), expected: "DELEGATION_OUTCOME_POLICY_UNSATISFIED" },
     { error: new Error("Synthetic failure"), expected: "UNHANDLED" },
     { error: "Synthetic non-Error failure", expected: "UNHANDLED" },
   ])("maps $expected while preserving task and coded-error selection", ({ error, expected }) => {

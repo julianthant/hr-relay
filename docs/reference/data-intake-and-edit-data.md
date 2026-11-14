@@ -269,7 +269,7 @@ and the mandatory `ucpath/verify-emergency-contact-plan` verifier confirms it. P
 parks as `UNKNOWN` without automatic retry. Dry runs create no write intent and never click Save.
 The [write-safety contract](write-safety.md#current-write-keys) owns the detailed Save and verification rules.
 
-Emergency Contact remains on its mock dashboard source. The first live Save requires the operator
+Emergency Contact is a served dashboard workflow. The first live Save requires the operator
 present and separate authorization. Live acceptance is outstanding for success and error UI,
 settlement and network completion, persisted reload, `UNKNOWN` handling, multi-row expansion,
 typing postbacks, and preservation of Address 3, County, and Same Phone as Employee.

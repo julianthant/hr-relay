@@ -14,7 +14,7 @@ import { z } from "zod";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
 import { ENTRY_PATTERNS } from "../../../src/models/workflow/ingress.js";
 import { ENTRY_PATTERN_NOUNS } from "../../../src/models/workflow/ingress.js";
-import { InputRunSurfaceSchema } from "../../../src/models/workflow/ingress.js";
+import { InputRunSurfaceSchema, UploadRunSurfaceSchema } from "../../../src/models/workflow/ingress.js";
 import { inputRunParserLabel } from "../../../src/models/workflow/ingress.js";
 import { inputRunSeparatorLabel } from "../../../src/models/workflow/ingress.js";
 import { inputRunValueNoun } from "../../../src/models/workflow/ingress.js";
@@ -402,3 +402,16 @@ describe("a declared input-run example", () => {
   });
 });
 }
+
+describe("PDF start declarations", () => {
+  const surface = { title: { segments: [{ kind: "literal", text: "PDFs" }] }, fields: [], successMessage: { segments: [{ kind: "literal", text: "Queued" }] },
+    accepts: [{ mediaType: "application/pdf", extensions: [".pdf"], maxBytes: 1_000_000 }] };
+  const batch = { documentsField: "documents", asOfField: "asOf", reviewerField: "reviewerName" };
+  const single = { documentField: "document", fileNameField: "fileName", readingIdField: "readingId", fixed: { reading: { kind: "subscription" } } };
+  it("accepts the batch declaration and the per-document declaration, and nothing mixed", () => {
+    assert.ok(UploadRunSurfaceSchema.safeParse({ ...surface, pdfInput: batch }).success);
+    assert.ok(UploadRunSurfaceSchema.safeParse({ ...surface, pdfInput: single }).success);
+    assert.ok(!UploadRunSurfaceSchema.safeParse({ ...surface, pdfInput: { ...batch, ...single } }).success);
+    assert.ok(!UploadRunSurfaceSchema.safeParse({ ...surface, pdfInput: { documentField: "document" } }).success);
+  });
+});

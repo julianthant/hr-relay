@@ -108,6 +108,7 @@ export const ERROR_CATALOG = Object.freeze({
   ONBOARDING_MATCH_INVALID: catalogEntry("UCPath duplicate search returned inconsistent identity evidence.", EmptyParametersSchema),
   ONBOARDING_EXISTING_PERSON_REQUIRED: catalogEntry("Concurrent hire requires an existing UCPath person. Review the hire mode and source identity.", EmptyParametersSchema),
   ONBOARDING_I9_LOOKUP_UNRESOLVED: catalogEntry("The delegated I-9 lookup did not establish a result for this hire. No profile will be created.", EmptyParametersSchema),
+  DELEGATION_OUTCOME_POLICY_UNSATISFIED: catalogEntry("A step this run depends on did not finish, so the run stopped. Open that step for the reason.", EmptyParametersSchema),
   RUN_CONTINUATION_REFUSED: catalogEntry("Saved completed steps could not be authenticated for recovery. No saved result was reused; review the source run before starting work.", EmptyParametersSchema),
   APPLICATION_ADMISSION_REFUSED: catalogEntry("Relay could not secure idle update or shutdown admission. Work remains held; restart Relay after resolving the retained failure.", EmptyParametersSchema),
   UNEXPECTED_CONTACT_PAGE: catalogEntry("UCPath did not show the expected Emergency Contact page.", EmptyParametersSchema),
