@@ -224,7 +224,7 @@ describe('named library actions', () => {
   const entry = () => WorkbookLibraryEntrySchema.parse({ libraryId: 'saved', version: 3, name: 'Roster.xlsx', updatedAt: '2026-11-01T00:00:00Z', rowCount: 0,
     worksheets: [{ id: 'sheet', name: 'People' }], metadata: { typeId: 'roster', sharePoint: null },
     type: { id: 'roster', name: 'Roster', fields: ['eid'], keyFieldId: 'eid', defaultWorkbookId: null },
-    state: { libraryId: 'saved', revision: 1, selectedVersionId: 'original', removed: false, origin: { kind: 'local' },
+    state: { libraryId: 'saved', revision: 1, selectedVersionId: 'original', removed: false, pinned: false, tags: [], origin: { kind: 'local' },
       versions: [{ id: 'original', name: 'Original', snapshotId: 'original', version: 3, savedAt: '2026-11-01T00:00:00Z', source: 'import' }] } });
   it('saves a dirty values-only draft once and confirms only its exact named snapshot after response loss', async () => {
     const { client, adapter } = setup(), file = entry(), document = spreadsheetValuesOnly(book());

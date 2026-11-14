@@ -868,14 +868,15 @@ const LIBRARY_VERSION_ORIGINS: readonly Readonly<{ path: string; origin: LeafOri
 const LIBRARY_STATE_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }>[] = [
   ...['libraryId', 'selectedVersionId', 'origin.workflowLabel'].map(path => ({ path, origin: 'repository-authored' as const })),
   ...LIBRARY_VERSION_ORIGINS.map(entry => ({ ...entry, path: `versions[].${entry.path}` })),
+  { path: 'tags[]', origin: 'operator-authored' },
 ];
 const LIBRARY_ACTION_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }>[] = [
   ...['operationId', 'change.from.versionId', 'change.versionId'].map(path => ({ path, origin: 'repository-authored' as const })),
-  { path: 'change.name', origin: 'operator-authored' }, { path: 'change.metadata.typeId', origin: 'captured-hr-value' },
+  { path: 'change.name', origin: 'operator-authored' }, { path: 'change.tags[]', origin: 'operator-authored' }, { path: 'change.metadata.typeId', origin: 'captured-hr-value' },
   ...WORKBOOK_VALUE_ORIGINS.map(entry => ({ ...entry, path: `change.from.workbook.${entry.path}` })),
 ];
 const PLANNED_OUTPUT_ORIGINS = ['name', 'sheetId', 'worksheetName', 'folderName', 'archiveName', 'people[].rowId', 'people[].label'] as const;
-const LIBRARY_NAME_RETENTION = 'Operator-approved named workbook and version management retains entered names in the local library state and its immutable action journal (docs/reference/data-intake-and-edit-data.md, Saved workbook reference data). This permits local authority retention only, with no process or OS notification egress.';
+const LIBRARY_NAME_RETENTION = 'Operator-approved named workbook and version management retains entered names and manual tags in the local library state and its immutable action journal (docs/reference/data-intake-and-edit-data.md, Saved workbook reference data). This permits local authority retention only, with no process or OS notification egress.';
 
 const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }>[] = [
   { path: "approvedSnapshots[].records[].fields.answers[].raw", origin: "captured-hr-value" },

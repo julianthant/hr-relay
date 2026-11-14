@@ -9,6 +9,7 @@ export interface VersionEntry { readonly id: string; readonly n: number; readonl
 /** One library entry as the list and detail pages show it. */
 export interface Sheet {
   readonly id: string; readonly name: string; readonly sharePoint: string | null;
+  readonly pinned: boolean; readonly tags: readonly string[];
   readonly workflow?: string; readonly run?: { readonly id: string; readonly day: string };
   readonly updatedAt: string; readonly version: number; readonly currentVersionId: string; readonly versions: readonly VersionEntry[];
 }
@@ -21,18 +22,26 @@ const stampFormat = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'num
 export const stamp = (iso: string): string => stampFormat.format(new Date(iso)).replace(' at ', ', ');
 
 export const sheetOf = (entry: WorkbookLibraryEntry): Sheet => ({
-  id: entry.libraryId, name: entry.name, sharePoint: entry.metadata.sharePoint?.url ?? null,
+  id: entry.libraryId, name: entry.name, sharePoint: entry.metadata.sharePoint?.url ?? null, pinned: entry.state.pinned, tags: entry.state.tags,
   workflow: entry.state.origin.kind === 'workflow' ? entry.state.origin.workflowLabel : undefined,
   run: entry.state.origin.kind === 'workflow' ? { id: entry.state.origin.runId, day: entry.state.origin.partitionDay } : undefined,
   updatedAt: entry.updatedAt, version: entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.version ?? entry.version, currentVersionId: entry.state.selectedVersionId,
   versions: entry.state.versions.map(version => ({ id: version.id, n: version.version, at: version.savedAt, note: version.name })).toSorted((a, b) => b.n - a.n),
 });
 
-export const tableOf = (sheet: Sheet): 'SharePoint' | 'Created' => sheet.sharePoint ? 'SharePoint' : 'Created';
+export const tableOf = (sheet: Sheet): 'Pinned' | 'SharePoint' | 'Created' => sheet.pinned ? 'Pinned' : sheet.sharePoint ? 'SharePoint' : 'Created';
 export const newestFirst = (sheets: readonly Sheet[]): readonly Sheet[] => sheets.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-/** A run's workflow is an automatic tag. */
-export const tagsOf = (sheet: Sheet): readonly string[] => sheet.workflow ? [sheet.workflow] : [];
-export const workflowTags = (sheets: readonly Sheet[]): readonly string[] => [...new Set(sheets.flatMap(tagsOf))].toSorted();
+/** A run's workflow is an automatic tag, always first; the operator's own tags follow. */
+export const tagsOf = (sheet: Sheet): readonly string[] => sheet.workflow ? [sheet.workflow, ...sheet.tags] : sheet.tags;
+export const workflowTags = (sheets: readonly Sheet[]): readonly string[] => [...new Set(sheets.flatMap(sheet => sheet.workflow ? [sheet.workflow] : []))].toSorted();
+export const operatorTags = (sheets: readonly Sheet[]): readonly string[] => [...new Set(sheets.flatMap(sheet => sheet.tags))].toSorted();
+export const MAX_TAGS = 20, MAX_TAG_LENGTH = 40;
+/** The list with `text` added, or undefined when the library would refuse it: blank, too long, a duplicate (any case) or past 20 tags. */
+export function addTag(tags: readonly string[], text: string): readonly string[] | undefined {
+  const tag = text.trim();
+  if (!tag || tag.length > MAX_TAG_LENGTH || tags.length >= MAX_TAGS || tags.some(item => item.toLowerCase() === tag.toLowerCase())) return undefined;
+  return [...tags, tag];
+}
 
 /** The fields the workflows read from a spreadsheet, in the order the workflows declare them. */
 export const fieldsOf = (compatibility: WorkbookCompatibility): readonly Field[] =>
