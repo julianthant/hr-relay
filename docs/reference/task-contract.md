@@ -484,8 +484,10 @@ and refusal when closure is uncertain.
 `dryRun` belongs to the run envelope, never task input or context.
 `workflowDryRunSupport` in `src/workflow-kit/workflow.ts` derives support from local transactions
 and registered descendants. All reachable transaction nodes must declare `stop-after-prepare`.
-A graph containing only reads has no standalone preview option; delegated read-only children keep
-ordinary typed output under the parent's dry-run flag.
+A task node whose contract declares a provider may declare `dryRun: "stop-before-publish"`: a dry
+run binds and parses its input, records `publication-preview`, calls no provider and marks its
+dependents unavailable. A graph with neither boundary has no standalone preview option; delegated
+read-only children keep ordinary typed output under the parent's dry-run flag.
 
 `executeDryRun` in `src/backend/runtime/writes/write-sequencer.ts` probes before staging.
 An already-present probe produces an honest preview without a prepare or subject observation.

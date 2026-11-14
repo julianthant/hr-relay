@@ -60,7 +60,7 @@ import { buildRunPreviewResult, buildRunResult } from "../../runs/lifecycle/run-
 import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath, type SpanEmitter } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
 import { createTaskProvenanceCollector } from "../../runs/provenance/task-provenance.js";
-import { RunResultRecordSchema, RunPreviewStepSchema, delegationEvidenceOutput, resolveDelegationEvidenceOutput, type RunPreviewStep, terminalGateDependencyRecord } from "../../../models/run/result.js";
+import { RunResultRecordSchema, AnyRunPreviewStepSchema, delegationEvidenceOutput, resolveDelegationEvidenceOutput, type RunPreviewStep, terminalGateDependencyRecord } from "../../../models/run/result.js";
 import { buildTerminalAuthorization } from "../../runs/lifecycle/terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type RunMutationOutcome, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
 import { WorkerSessionClosureUnprovedError, type WorkerSessionManager } from "../workers/worker-sessions.js";
@@ -776,6 +776,10 @@ export async function executeClaimedRun(
       && !omissionPlan.omitted.has(String(node.id)) && !omissionPlan.asserted.has(String(node.id))).map(node => node.id);
     // An explicit start node requires every ancestor to resolve without executing it.
     let ancestorRegionOpen = canonicalInput !== undefined;
+    const publicationRegion = new Set<string>();
+    if (envelope.dryRun) for (const node of nodes) {
+      if (node.kind === "task" && node.dryRun === "stop-before-publish" || node.dependsOn.some(id => publicationRegion.has(String(id)))) publicationRegion.add(String(node.id));
+    }
     for (const [index, node] of nodes.entries()) {
 
       if (omissionPlan.omitted.has(String(node.id))) {
@@ -792,6 +796,11 @@ export async function executeClaimedRun(
           ? ownRecord
           : undefined;
         plan.set(String(node.id), replay === undefined ? { mode: "asserted" } : { mode: "asserted", replay });
+        continue;
+      }
+      // A dry run re-derives a publication boundary and everything behind it; stored state never stands in.
+      if (publicationRegion.has(String(node.id))) {
+        plan.set(String(node.id), { mode: "execute" });
         continue;
       }
       const retainedAccounting = accounting?.plan.retain.includes(String(node.id)) === true;
@@ -1376,6 +1385,8 @@ export async function executeClaimedRun(
 
     const projectionsFor = (nodeId: string) =>
       (descriptor.artifactProjections ?? []).filter((spec) => String(spec.source.nodeId) === nodeId);
+    const dryRunProjectionRefusal = (node: TaskRuntimeNode) =>
+      new Error(`node "${node.id}" declares a durable artifact projection, which a dry run must never reach`);
 
     // Only the exact source checkpoint may acknowledge its retained output updates.
     const resumePendingProjections = async (
@@ -1384,6 +1395,7 @@ export async function executeClaimedRun(
     ): Promise<RunExecutionOutcome | undefined> => {
       const specs = projectionsFor(String(node.id));
       if (specs.length === 0) return undefined;
+      if (envelope.dryRun) return await failNode(node, node.uses.id, dryRunProjectionRefusal(node));
       try {
         const withTransaction = deps.authority.withAuthorityTransaction?.bind(deps.authority);
         if (withTransaction === undefined) throw new Error("generated-artifact-replay-requires-transaction");
@@ -1448,6 +1460,7 @@ export async function executeClaimedRun(
       });
 
       const declaredProjections = projectionsFor(String(node.id));
+      if (envelope.dryRun && declaredProjections.length > 0) return await failNode(node, contract.id, dryRunProjectionRefusal(node));
       if (declaredProjections.length > 0 && deps.artifactProjector === undefined) {
         return await failNode(node, contract.id, new Error(
           `node "${node.id}" declares a durable artifact projection, and this composition wires no `
@@ -1834,6 +1847,20 @@ export async function executeClaimedRun(
               continue;
             }
           }
+          if (envelope.dryRun && node.dryRun === "stop-before-publish") {
+            try {
+              node.uses.input.parse(node.bind(scope));
+            } catch (error) {
+              return await failNode(node, node.uses.id, wrapUnhandledTaskError(node.uses.id, error));
+            }
+            previewOnly.add(String(node.id));
+            dryRunSteps.set(String(node.id), { nodeId: node.id, state: "publication-preview" });
+            deps.taskNotes?.emitRunLog({ workflow: descriptor.id,
+              address: { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath: `${envelope.traceId}/${node.id}` },
+              level: "step", message: "Dry run: this save was prepared and checked. Nothing was saved.",
+            }, getRun());
+            continue;
+          }
           const outcome = await executeTaskNode(node, scope);
           if (outcome !== undefined) return outcome;
           continue;
@@ -2184,7 +2211,7 @@ export async function executeClaimedRun(
     if (envelope.dryRun) {
       const support = workflowDryRunSupport(descriptor);
       if (support.state === "supported") {
-        const steps = RunPreviewStepSchema.array().parse(nodes.map(node => dryRunSteps.get(String(node.id))));
+        const steps = AnyRunPreviewStepSchema.array().parse(nodes.map(node => dryRunSteps.get(String(node.id))));
         return settleSuccess(getRun(), buildRunPreviewResult(descriptor, getRun(), steps,
           dependencyEvidenceFor(workflowPreviewDependencyIds(descriptor, steps), "dry-run preview"), clock, deps.authority.evidenceSchemaHash?.bind(deps.authority)));
       }
