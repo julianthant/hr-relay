@@ -6,6 +6,7 @@ import { parseBackupManifestFile, verifyBackupBytesAtPath } from "../../../stora
 import { authoritySourceDatabaseIdentity } from "../../../storage/sqlite/database-identity.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import type { NotificationInbox } from "../../../runs/notifications/inbox.js";
+import { followOwnedWrite } from "./notification-sources.js";
 import { StorageHealthConcernSchema } from "../../../../rules/notifications/notification-triggers.js";
 import { listCanonicalRuns } from "../../../runs/queries/canonical-runs.js";
 import type { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
@@ -15,14 +16,16 @@ export interface NotificationHealthReading { freeBytes: number; walBytes: number
 type ChangeKey = ReturnType<AuthorityDatabase["changeKey"]>;
 const inspected = new WeakMap<AuthorityDatabase, { key: ChangeKey; integrityFailed: boolean }>();
 const sameKey = (a: ChangeKey, b: ChangeKey) => a.authorityGeneration === b.authorityGeneration && a.dataVersion === b.dataVersion && a.totalChanges === b.totalChanges;
-/** Runs a synchronous write this observer owns; the remembered key follows it only when nothing else moved it before or during the write. */
+/** Runs a synchronous write this observer owns that touches no notification source; remembered keys follow it only when nothing else moved them before or during the write. */
 function ownWrite<T>(database: AuthorityDatabase, write: () => T): T {
   const before = database.changeKey();
   const result = write();
   const entry = inspected.get(database);
   const after = database.changeKey();
   // A changed dataVersion means another connection committed, which this observer does not own.
-  if (entry !== undefined && sameKey(entry.key, before) && after.dataVersion === before.dataVersion) inspected.set(database, { key: after, integrityFailed: entry.integrityFailed });
+  if (after.dataVersion !== before.dataVersion) return result;
+  if (entry !== undefined && sameKey(entry.key, before)) inspected.set(database, { key: after, integrityFailed: entry.integrityFailed });
+  followOwnedWrite(database, before, after);
   return result;
 }
 /** A stall line is this process's own diagnostic append; letting it move the key would re-inspect the store, stall again and loop. */
