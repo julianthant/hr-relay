@@ -2,11 +2,47 @@ import type { ChildProcess } from "node:child_process";
 import { z } from "zod";
 import { systemClock, machineMonotonicMs, type Clock } from "../../../rules/time/clock.js";
 import { ProviderAdapterOutcomeSchema, ProviderRequestEnvelopeSchema, type ProviderAdapterOutcome } from "../../../models/providers/providers.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import type { ProviderAdapter, ProviderCallOptions } from "../../../workflow-kit/providers.js";
 
 const RequestSchema = z.strictObject({ kind: z.literal("nominatim-request"), requestId: z.uuid(), deadlineMs: z.number().positive(), request: ProviderRequestEnvelopeSchema });
 const CancelSchema = z.strictObject({ kind: z.literal("nominatim-cancel"), requestId: z.uuid() });
 const ReplySchema = z.strictObject({ kind: z.literal("nominatim-reply"), requestId: z.uuid(), outcome: ProviderAdapterOutcomeSchema });
+
+/** Today's geocode-owner lifecycle. Pacing stays on the machine clock; closure follows the service clock. */
+const NOMINATIM_OWNER_STATES = deepFreeze(["running", "stopping", "stopped", "stop-failed"] as const);
+export type NominatimOwnerState = (typeof NOMINATIM_OWNER_STATES)[number];
+export type NominatimOwnerEvent =
+  | { readonly type: "request" }
+  | { readonly type: "attach" }
+  | { readonly type: "stop" }
+  | { readonly type: "drained" }
+  | { readonly type: "drain-timeout" };
+type NominatimOwnerRefusal = "not-stopping" | "adapter-unavailable" | "channel-unavailable";
+type NominatimOwnerTransition = { readonly state: NominatimOwnerState } | { readonly refused: NominatimOwnerRefusal };
+type OwnerState =
+  | { phase: "running" }
+  | { phase: "stopping"; done: Promise<void> }
+  | { phase: "stopped"; done: Promise<void> }
+  | { phase: "stop-failed"; done: Promise<void>; error: Error };
+
+const NOT_STOPPING = { refused: "not-stopping" } as const;
+const UNAVAILABLE = { refused: "adapter-unavailable" } as const;
+const CHANNEL = { refused: "channel-unavailable" } as const;
+const NOMINATIM_OWNER_TRANSITIONS = deepFreeze({
+  running: { request: { state: "running" }, attach: { state: "running" }, stop: { state: "stopping" }, drained: NOT_STOPPING, "drain-timeout": NOT_STOPPING },
+  stopping: { request: UNAVAILABLE, attach: CHANNEL, stop: { state: "stopping" }, drained: { state: "stopped" }, "drain-timeout": { state: "stop-failed" } },
+  stopped: { request: UNAVAILABLE, attach: CHANNEL, stop: { state: "stopped" }, drained: NOT_STOPPING, "drain-timeout": NOT_STOPPING },
+  "stop-failed": { request: UNAVAILABLE, attach: CHANNEL, stop: { state: "stop-failed" }, drained: NOT_STOPPING, "drain-timeout": NOT_STOPPING },
+} as const satisfies Record<NominatimOwnerState, Record<NominatimOwnerEvent["type"], NominatimOwnerTransition>>);
+
+function transitionNominatimOwner(phase: NominatimOwnerState, event: NominatimOwnerEvent): NominatimOwnerTransition {
+  return NOMINATIM_OWNER_TRANSITIONS[phase][event.type];
+}
+
+for (const phase of NOMINATIM_OWNER_STATES) {
+  if (NOMINATIM_OWNER_TRANSITIONS[phase] === undefined) throw new Error(`nominatim-owner-table-incomplete:${phase}`);
+}
 
 function unavailable(clock: Clock, code: "aborted" | "timeout" | "adapter-unavailable"): ProviderAdapterOutcome {
   const messages = { aborted: "Nominatim request was cancelled.", timeout: "Nominatim request deadline elapsed.", "adapter-unavailable": "Nominatim parent is unavailable; the request was not retried." };
@@ -26,14 +62,17 @@ export function createNominatimService(input: Readonly<{
   const detachments = new Set<() => void>();
   let nextStart: number | undefined;
   let tail = Promise.resolve();
-  let stopped = false;
-  let stopping: Promise<void> | undefined;
+  let state: OwnerState = { phase: "running" };
   let adapter: ProviderAdapter<"geocode.nominatim"> | undefined;
+  const requestQueued = (): boolean => {
+    const cell = transitionNominatimOwner(state.phase, { type: "request" });
+    return "state" in cell && cell.state === "running";
+  };
 
   async function invoke(requestInput: unknown, options: ProviderCallOptions): Promise<ProviderAdapterOutcome> {
     const request = ProviderRequestEnvelopeSchema.parse(requestInput);
     if (request.capability !== "geocode.nominatim") throw new Error("nominatim-capability-mismatch");
-    if (stopped || options.signal.aborted) return unavailable(clock, stopped ? "adapter-unavailable" : "aborted");
+    if (!requestQueued() || options.signal.aborted) return unavailable(clock, requestQueued() ? "aborted" : "adapter-unavailable");
     const remaining = options.deadlineMonotonicMs - clock.monotonicMs();
     if (remaining <= 0 || remaining > 2_147_483_647) return unavailable(clock, "timeout");
     const controller = new AbortController();
@@ -41,9 +80,9 @@ export function createNominatimService(input: Readonly<{
     const abort = () => controller.abort();
     options.signal.addEventListener("abort", abort, { once: true });
     const timer = setTimeout(abort, remaining);
-    const cancelled = () => unavailable(clock, stopped ? "adapter-unavailable" : options.signal.aborted ? "aborted" : "timeout");
+    const cancelled = () => unavailable(clock, requestQueued() ? (options.signal.aborted ? "aborted" : "timeout") : "adapter-unavailable");
     const work = tail.then(async () => {
-      if (controller.signal.aborted || stopped) return cancelled();
+      if (controller.signal.aborted || !requestQueued()) return cancelled();
       nextStart ??= machineMonotonicMs() + 1000;
       const waitMs = nextStart - machineMonotonicMs();
       if (waitMs > 0) await new Promise<void>(done => {
@@ -51,7 +90,7 @@ export function createNominatimService(input: Readonly<{
         const wait = setTimeout(() => { controller.signal.removeEventListener("abort", wake); done(); }, Math.ceil(waitMs));
         controller.signal.addEventListener("abort", wake, { once: true });
       });
-      if (controller.signal.aborted || stopped || clock.monotonicMs() >= options.deadlineMonotonicMs) return cancelled();
+      if (controller.signal.aborted || !requestQueued() || clock.monotonicMs() >= options.deadlineMonotonicMs) return cancelled();
       try {
         adapter ??= input.adapter((...args) => {
           try { return (input.fetchFn ?? fetch)(...args); }
@@ -78,7 +117,8 @@ export function createNominatimService(input: Readonly<{
 
   /** The child pipe's router owns the `message` listener; this family answers `nominatim-request` and `nominatim-cancel`. */
   function attach(child: ChildProcess, router: IpcFamilyRegistry): void {
-    if (stopped || !child.connected) throw new Error("nominatim-parent-channel-unavailable");
+    const attached = transitionNominatimOwner(state.phase, { type: "attach" });
+    if (!("state" in attached) || attached.state !== "running" || !child.connected) throw new Error("nominatim-parent-channel-unavailable");
     const requests = new Map<string, AbortController>();
     const receive = (value: unknown) => {
       const cancellation = CancelSchema.safeParse(value);
@@ -108,18 +148,45 @@ export function createNominatimService(input: Readonly<{
 
   return Object.freeze({ invoke, attach,
     stop(): Promise<void> {
-      return stopping ??= (async () => {
-        stopped = true;
-        for (const controller of controllers) controller.abort();
-        const deadline = machineMonotonicMs() + 5000;
-        let drained = false;
-        void tail.then(() => { drained = true; });
-        while (!drained) {
-          if (machineMonotonicMs() >= deadline) throw new Error("nominatim-owner-closure-unproven");
-          await new Promise<void>(done => setTimeout(done, 1));
+      const cell = transitionNominatimOwner(state.phase, { type: "stop" });
+      if ("refused" in cell) throw new Error(`nominatim-owner-${cell.refused}`);
+      if (cell.state === state.phase && state.phase !== "running") return state.done;
+      if (cell.state !== "stopping" || state.phase !== "running") throw new Error("nominatim-owner-not-stopping");
+      let resolveDone: () => void = () => {};
+      let rejectDone: (error: Error) => void = () => {};
+      const done = new Promise<void>((resolve, reject) => { resolveDone = resolve; rejectDone = reject; });
+      state = { phase: "stopping", done };
+      const fail = (error: Error) => {
+        const failure = state.phase === "stop-failed" ? state.error : error;
+        state = { phase: "stop-failed", done, error: failure };
+        rejectDone(failure);
+      };
+      void (async () => {
+        try {
+          for (const controller of controllers) controller.abort();
+          const deadline = clock.monotonicMs() + 5000;
+          let drained = false;
+          void tail.then(() => { drained = true; });
+          while (!drained) {
+            if (clock.monotonicMs() >= deadline) {
+              const timeout = transitionNominatimOwner(state.phase, { type: "drain-timeout" });
+              if (!("state" in timeout) || timeout.state !== "stop-failed") throw new Error("nominatim-owner-not-stopping");
+              const error = new Error("nominatim-owner-closure-unproven");
+              state = { phase: "stop-failed", done, error };
+              throw error;
+            }
+            await new Promise<void>(wake => setTimeout(wake, 1));
+          }
+          const drainedCell = transitionNominatimOwner(state.phase, { type: "drained" });
+          if (!("state" in drainedCell) || drainedCell.state !== "stopped") throw new Error("nominatim-owner-not-stopping");
+          state = { phase: "stopped", done };
+          for (const detach of detachments) detach();
+          resolveDone();
+        } catch (caught) {
+          fail(caught instanceof Error ? caught : new Error("nominatim-owner-closure-unproven"));
         }
-        for (const detach of detachments) detach();
       })();
+      return done;
     },
   });
 }
