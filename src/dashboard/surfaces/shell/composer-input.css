@@ -13,9 +13,6 @@
 #hub-panel-assistant #hub-send{flex:none;width:28px;min-width:28px;height:28px;padding:0;border-radius:50%;background:var(--ui-primary);color:var(--ui-panel);border:0}
 #hub-panel-assistant .hub-toolbar .hub-input-button:has(.hub-effort){margin-left:auto}
 #hub-panel-assistant .hub-toolbar .hub-effort{color:var(--ui-secondary)}
-#hub-panel-assistant .hub-toolbar .hub-full-access{color:var(--hub-full-access)!important}
-#hub-panel-assistant{--hub-full-access:#b4561a}
-html[data-demo-theme=dark] #hub-panel-assistant{--hub-full-access:#e58a4f}
 #hub-panel-assistant #hub-send:enabled:not([aria-disabled]):hover{opacity:.85}
 #hub-panel-assistant #hub-send[aria-disabled]{cursor:default}
 #hub-panel-assistant #hub-send:focus-visible{background:var(--ui-primary)!important;color:var(--ui-panel)!important}

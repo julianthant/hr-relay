@@ -36,8 +36,7 @@ const FRAMES: Frame[] = [
   { id: "r2-history-hover", query: "assistantOpen=1", view: RUN, keepHover: true, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); await page.locator(".hub-chat-row").nth(1).hover(); } },
   { id: "r2-history-activity", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); await page.getByRole("radio", { name: "Activity" }).check({ force: true }); } },
   { id: "r2-new-chat", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "New chat", exact: true }).click(); } },
-  { id: "r2-approval-menu", query: "assistantOpen=1&assistantFullAccess=1", view: RUN, act: async page => { await page.getByRole("button", { name: "Ask before every action" }).click(); } },
-  { id: "r2-full-access", query: "assistantOpen=1&assistantFullAccess=1", view: RUN, act: async page => { await page.getByRole("button", { name: "Ask before every action" }).click(); await page.getByRole("menuitemradio", { name: /Full access/u }).click(); } },
+  { id: "r2-approval-menu", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "Ask before every action" }).click(); } },
   { id: "dock-closed", query: "assistantOpen=0", view: RUN },
   { id: "dock-open", query: "assistantOpen=0", view: { ...RUN, sessions: true } },
   { id: "dock-open-assistant", query: "assistantOpen=1&assistantMock=01-chat-basics", view: { ...RUN, sessions: true } },
@@ -203,27 +202,15 @@ for (const theme of THEMES) test(`assistant panel header, History and composer @
   expect(errors).toEqual([]);
 });
 
-for (const theme of THEMES) test(`assistant full access and Ask mark @ ${theme} ${WIDTH}`, async ({ page }) => {
+for (const theme of THEMES) test(`assistant approval menu and Ask mark @ ${theme} ${WIDTH}`, async ({ page }) => {
   test.setTimeout(300_000); page.setDefaultTimeout(20_000);
   await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: 720 });
-  await page.goto(url("assistantOpen=1&assistantFullAccess=1&assistantMock=01-chat-basics"));
+  await page.goto(url("assistantOpen=1&assistantMock=01-chat-basics"));
   await page.getByRole("button", { name: "Ask before every action" }).click();
-  await expect(page.getByRole("menuitemradio")).toHaveCount(2);
+  await expect(page.getByRole("menuitemradio")).toHaveCount(1);
   await page.screenshot({ path: join(OUT, `approval-menu-${theme}.png`) });
-  await page.getByRole("menuitemradio", { name: /Full access/u }).click();
-  const full = page.getByRole("button", { name: "Full access", exact: true });
-  await expect(full).toHaveText("Full access");
-  await expect(full).toHaveCSS("color", theme === "dark" ? "rgb(229, 138, 79)" : "rgb(180, 86, 26)");
-  await page.mouse.move(1, 1);
-  await page.screenshot({ path: join(OUT, `composer-full-access-${theme}.png`) });
-
-  // The Settings toggle turns the option off again.
-  await page.goto(url("assistantOpen=0&assistantFullAccess=1&settings=general"));
-  await expect(page.getByRole("switch", { name: "Full access" })).toBeChecked();
-  await page.screenshot({ path: join(OUT, `settings-assistant-${theme}.png`) });
-  await page.getByText("Full access", { exact: true }).click();
-  await expect(page.getByRole("switch", { name: "Full access" })).not.toBeChecked();
+  await page.keyboard.press("Escape");
 
   // The Orbit mark circles slowly at idle and faster while hovered.
   await page.goto(url("assistantOpen=0"));

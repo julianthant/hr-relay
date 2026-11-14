@@ -1,11 +1,10 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import { ArrowUp, ChevronDown, Hand, Paperclip, Mic, Plus, ShieldAlert, X } from 'lucide-react';
+import { useId, useRef, useState } from 'react';
+import { ArrowUp, ChevronDown, Hand, Paperclip, Mic, Plus, X } from 'lucide-react';
 import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, DropdownMenu, DropdownMenuTrigger,
   DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuItem, DropdownMenuRadioGroup,
   DropdownMenuRadioItem, DropdownMenuSeparator } from '../../ds/ui.js';
-import { ASSISTANT_APPROVALS, ASSISTANT_EFFORTS, ASSISTANT_MODEL, FULL_ACCESS, useComposer, type ComposerMenu, type ComposerValue, type ComposerDraftPort } from './composer-model.js';
+import { ASSISTANT_APPROVALS, ASSISTANT_EFFORTS, ASSISTANT_MODEL, useComposer, type ComposerMenu, type ComposerValue, type ComposerDraftPort } from './composer-model.js';
 import { readAssistantAttachment, type AssistantFile, type AssistantPorts } from './assistant-panel-model.js';
-import { useFullAccessAllowed } from './assistant-approval-model.js';
 import './composer-input.css';
 import type { AssistantModelCatalog, AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModelLabel, type AssistantModelPreference } from '../../../models/config/assistant-model-preference.js';
@@ -27,15 +26,11 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not attach the file. Try again.'); }
     finally { setAttaching(false); composer.textarea.current?.focus(); }
   }
-  const fullAccessAllowed = useFullAccessAllowed();
-  const approvals = fullAccessAllowed ? ASSISTANT_APPROVALS : ASSISTANT_APPROVALS.slice(0, 1);
   const { approval, setApproval } = composer;
-  useEffect(() => { if (!fullAccessAllowed && approval === FULL_ACCESS) setApproval(ASSISTANT_APPROVALS[0].label); }, [fullAccessAllowed, approval, setApproval]);
-  const full = approval === FULL_ACCESS;
   const servedChoice = !preview && modelPreference !== undefined && onModelChoice !== undefined;
   function menu(kind: ComposerMenu, label: string, trigger: React.ReactNode, children: React.ReactNode, size: 'sm' | 'icon-sm' = 'icon-sm', className?: string) {
     return <DropdownMenu open={composer.menu === kind} onOpenChange={open => { if (open) focusMessageOnClose.current = false; composer.setMenu(open ? kind : null); }}>
-      <DropdownMenuTrigger asChild><InputGroupButton id={`hub-${kind}-trigger`} size={size} className={className} aria-label={label} title={label} disabled={disabled || attaching || !preview && kind !== 'attach' && !(kind === 'model' && servedChoice)}>{trigger}</InputGroupButton></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><InputGroupButton id={`hub-${kind}-trigger`} size={size} className={className} aria-label={label} title={label} disabled={disabled || attaching || !preview && kind === 'voice' || !preview && kind === 'model' && !servedChoice}>{trigger}</InputGroupButton></DropdownMenuTrigger>
       <DropdownMenuContent ref={composer.popup} finalFocus={() => kind === 'voice' && focusMessageOnClose.current ? composer.textarea.current : true} side="top" align="start" sideOffset={8} collisionAvoidance={{ side: 'none', align: 'shift' }} collisionPadding={8} className="hub-assistant-menu hub-menu" data-menu={kind}>
         <DropdownMenuGroup>{children}</DropdownMenuGroup>
       </DropdownMenuContent>
@@ -52,9 +47,9 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
       <InputGroupAddon aria-label="Message controls">
         {menu('attach', 'Add files', <Plus aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">Add to this chat</DropdownMenuLabel>
           <DropdownMenuItem className="hub-menu-option" onSelect={() => composer.fileInput.current?.click()}><Plus aria-hidden /><span className="hub-option-copy"><span>Attach file</span><small>Images, spreadsheets and documents</small></span></DropdownMenuItem></>)}
-        {menu('approval', approval, full ? <><ShieldAlert aria-hidden /><span>{FULL_ACCESS}</span></> : <Hand aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">How should Relay actions be approved?</DropdownMenuLabel><DropdownMenuRadioGroup value={approval} onValueChange={setApproval}>
-          {approvals.map(item => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={item.label} value={item.label}><span className="hub-option-copy"><span>{item.label}</span><small>{item.description}</small></span></DropdownMenuRadioItem>)}
-        </DropdownMenuRadioGroup></>, full ? 'sm' : 'icon-sm', full ? 'hub-full-access' : undefined)}
+        {menu('approval', approval, <Hand aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">How should Relay actions be approved?</DropdownMenuLabel><DropdownMenuRadioGroup value={approval} onValueChange={setApproval}>
+          {ASSISTANT_APPROVALS.map(item => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={item.label} value={item.label}><span className="hub-option-copy"><span>{item.label}</span><small>{item.description}</small></span></DropdownMenuRadioItem>)}
+        </DropdownMenuRadioGroup></>)}
         {menu('model', `Model: ${displayedModel}${displayedEffort === undefined ? '' : `, ${displayedEffort} effort`}`, <><span>{displayedModel}</span>{displayedEffort !== undefined && <span className="hub-effort">{displayedEffort}</span>}<ChevronDown aria-hidden /></>, servedChoice ? <>
           {models !== undefined && <><DropdownMenuLabel className="hub-menu-title">Select model</DropdownMenuLabel><DropdownMenuRadioGroup value={modelPreference.slug} onValueChange={slug => { if (slug !== modelPreference.slug) onModelChoice({ slug, effort: modelPreference.effort }); }}>
             {models.map(model => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={model.slug} value={model.slug}><span className="hub-option-copy">{assistantModelLabel(model.slug)}</span></DropdownMenuRadioItem>)}

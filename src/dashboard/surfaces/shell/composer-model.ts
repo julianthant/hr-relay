@@ -3,11 +3,7 @@ import type { AssistantFile } from './assistant-panel-model.js';
 
 export const ASSISTANT_MODEL = 'GPT-6.1 Sol';
 export const ASSISTANT_EFFORTS = ['Light', 'Medium', 'High', 'xHigh', 'Max'] as const;
-export const ASSISTANT_APPROVALS = [
-  { label: 'Ask before every action', description: 'Confirm each proposed change.' },
-  { label: 'Full access', description: 'Relay acts without asking each time.' },
-] as const;
-export const FULL_ACCESS = ASSISTANT_APPROVALS[1].label;
+export const ASSISTANT_APPROVALS = [{ label: 'Ask before every action', description: 'Confirm each proposed change.' }] as const;
 export type ComposerMenu = 'attach' | 'approval' | 'model' | 'voice';
 export interface ComposerValue { readonly text: string; readonly files: readonly AssistantFile[]; readonly model: string; readonly effort: string; readonly approval: string }
 export interface ComposerDraft { readonly text: string; readonly files: readonly AssistantFile[] }
