@@ -471,6 +471,10 @@ export const ERROR_CATALOG = Object.freeze({
     "The task stopped with an unclassified failure. Review local diagnostic evidence.",
     EmptyParametersSchema,
   ),
+  CAPABILITY_UNAVAILABLE: catalogEntry(
+    "Relay stopped before this step because a capability it needs is not available. Review local diagnostic evidence.",
+    EmptyParametersSchema,
+  ),
   BROWSER_SESSION_ACQUISITION_TIMEOUT: catalogEntry(
     "Sign-in took too long. Run it again; if it repeats, check the system's sign-in in Sessions.",
     EmptyParametersSchema,
