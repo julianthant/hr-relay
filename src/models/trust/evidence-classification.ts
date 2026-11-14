@@ -1066,7 +1066,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
 
     /* The executor's own fixture contracts: test-local shapes that must name a manifest-known task, DECLARED rather than exempted, so the undeclared-leaf refusal stays exercised by a composed run. */
   ...person(OCR_FORM_PAGE, "subject", "eid"),
-  ...open(OCR_FORM_PAGE, "disposition", "providerState", "artifactSha", "artifactBytes"),
+  ...open(OCR_FORM_PAGE, "disposition", "providerState", "artifactSha", "artifactBytes", "value"),
 
   // Private Plan 1 form fixtures wrap their output in a namespace absent from active contracts.
   ...[KUALI_SEPARATION, OCR_FORM_PAGE, SEARCH, KUALI_MATCH_FINALIZATION, KUALI_VERIFY_FINALIZATION].flatMap((scope) => [

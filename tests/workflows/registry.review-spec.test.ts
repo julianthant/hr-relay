@@ -65,3 +65,11 @@ it("keeps review presentation out of execution fingerprints, task identities and
     assert.deepEqual(stripped.contracts, original.contracts, definition.id);
   }
 });
+
+it("offers the dry-run preview outcome on I-9 Check Start's save-workbook step", () => {
+  const wire = buildWorkflowExplorer(explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("d".repeat(64))));
+  const workflow = wire.workflows.find(candidate => candidate.id === "i9-check-start"); assert.ok(workflow);
+  const outcome = workflow.reviewSpec.steps.flatMap(step => step.decisions).find(decision => decision.nodeId === "save-workbook" && decision.outcome === "dry-run");
+  assert.deepEqual(outcome?.action, "continue");
+  assert.deepEqual(outcome?.label, { state: "authored", text: "Preview the prepared output without saving it." });
+});

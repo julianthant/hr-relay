@@ -93,6 +93,7 @@ export interface StepOpts<
   readonly when?: NodeConditionSpec;
   /** REQUIRED — no default (ref workflow-model ). */
   readonly replay: "checkpoint" | "always-rerun";
+  readonly dryRun?: "stop-before-publish";
 }
 
 export interface TransactionOpts<
@@ -525,6 +526,7 @@ function makeBuilder(state: MutableFlowState): unknown {
       bind: (scope: never) => unknown;
       when?: NodeConditionSpec;
       replay: "checkpoint" | "always-rerun";
+      dryRun?: "stop-before-publish";
     }): unknown {
       push({
         kind: "task",
@@ -535,6 +537,7 @@ function makeBuilder(state: MutableFlowState): unknown {
         bind: opts.bind,
         ...(opts.when === undefined ? {} : { when: parseNodeCondition(opts.when) }),
         replay: opts.replay,
+        ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
       } as GraphNodeBase);
       return builder;
     },

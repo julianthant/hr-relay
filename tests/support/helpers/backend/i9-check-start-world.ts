@@ -49,7 +49,8 @@ import type { z } from "zod";
 
 export function createI9CheckStartWorld() {
   const world = createRunExecutorTestWorld();
-  return { cleanup: world.cleanup, async fixture() {
+  return { cleanup: world.cleanup, async fixture(options: Readonly<{ dryRun?: boolean }> = {}) {
+    const publishCalls: string[] = [], projections: (readonly string[])[] = [];
     const pages = new Map<string, z.output<typeof ExtractPdfPagesOutputSchema>>();
     const renderer = defineTask(ExtractPdfPages, { sessions: [], async run({ input, ctx }) {
       const output = pages.get(input.document.id); assert.ok(output);
@@ -109,13 +110,13 @@ export function createI9CheckStartWorld() {
     const projector = composeWorkerArtifactProjector({ admission, database, artifacts, clock });
     const resolve = (id: string) => (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
     const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve, createOcrCheckpointPublication, { workbooks: library,
-      resources: (reader, run) => ({ artifactProjector: projector, providers: { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
+      resources: (reader, run) => ({ artifactProjector: { projectOutbox: ids => { projections.push(ids); return projector.projectOutbox(ids); } }, providers: { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
         adapters: { "ocr.review": createOcrReviewAdapter({ reader: createApprovedOcrRecordReader({ database, reader, run, resolveDescriptor: resolve, assertCurrent: () => admission.assertProfileRuntime() }), clock }),
-          "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
+          "workbooks.library": countPublishes(createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
             publicationSource: () => { const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
               return { workflowId: descriptor.id, workflowLabel: descriptor.label, partitionDay: searchPartitionDay(new Date(run.envelope.enqueuedAt)) }; },
             references: { runId: run.envelope.runId, write: () => { throw new Error("I-9 fixture must not patch a reference"); }, read: request => {
-              assert.equal(request.typeId, I9_CHECK_REFERENCE.typeId); assert.deepEqual(request.keys, candidates.map(candidate => candidate.emplId));
+              assert.equal(request.typeId, I9_CHECK_REFERENCE.typeId); assert.deepEqual(request.keys, [...expected.values()]);
               for (const [name, captured] of [
                 ["missing run", { ...run, envelope: { ...run.envelope, runId: randomUUID() } }],
                 ["foreign claim", { ...run, claimGeneration: Number(run.claimGeneration) + 1 }],
@@ -127,9 +128,15 @@ export function createI9CheckStartWorld() {
               assert.equal(WorkbookReferenceReadRequestSchema.safeParse({ ...request, fields: [...I9_CHECK_REFERENCE.fields].toReversed() }).success, false);
               readRefusals.add("altered fields");
               return runWorkbooks.read(run, request);
-            } } }),
+            } } })),
         } } }),
     });
+    function countPublishes(adapter: ReturnType<typeof createWorkbookLibraryAdapter>) {
+      return { ...adapter, invoke: (...args: Parameters<typeof adapter.invoke>) => {
+        if (args[0].payload.schemaHash !== deriveSchemaHash(WorkbookReferenceReadRequestSchema, "output")) publishCalls.push(args[0].capability);
+        return adapter.invoke(...args);
+      } };
+    }
     const sources = createOcrSourceService({ database, reader: canonical.lifecycle, clock, artifacts, artifactReader, assertCurrent: () => admission.assertProfileRuntime() });
     const image = await artifacts.put(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGvwAAAAASUVORK5CYII=", "base64"), { mediaType: "image/png" });
     const documents = [], expected = new Map<string, string>();
@@ -146,7 +153,7 @@ export function createI9CheckStartWorld() {
       expected.set(upload.artifact.sha256, candidate.emplId);
     }
     const input = I9CheckStartInput.parse({ documents, asOf: "2026-11-01", reviewerName: "Example Reviewer" });
-    const run = canonical.start(root.descriptor, input, { dryRun: false, workbookReferences: [{ entry: 1,
+    const run = canonical.start(root.descriptor, input, { dryRun: options.dryRun ?? false, workbookReferences: [{ entry: 1,
       libraryId: saved.libraryId, versionId: selectedReference.versionId, sheetId: "history",
       expectedVersion: library.read(saved.libraryId).version }] });
     const changeReference = async () => {
@@ -191,6 +198,6 @@ export function createI9CheckStartWorld() {
       return child.envelope.runId;
     };
     return { harness, database, clock, admission, artifacts, canonical, run, input, root, library, referenceId: saved.libraryId,
-      selectedReference, changeReference, readRefusals, approveNext };
+      selectedReference, changeReference, readRefusals, approveNext, publishCalls, projections, plan: canonical.plans.at(-1) };
   } };
 }
