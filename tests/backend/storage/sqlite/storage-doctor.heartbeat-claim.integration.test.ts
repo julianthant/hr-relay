@@ -131,13 +131,22 @@ async function claimWhilePeerHeartbeats(mode: HeartbeatMode) {
         check: spec.id, kind: spec.runner,
         async run(check) {
           if (spec.id !== "authority.health") return { check: spec.id, state: "healthy", summary: "Fixture healthy" };
-          counts.observations++;
-          const startedAt = a.database.getMeta().authorityGeneration;
-          const checking = doctor.run(check);
-          if (mode === "during") renew();
-          const observation = await checking;
-          // A peer process must have committed while this pass read its owner image.
-          if (a.database.getMeta().authorityGeneration > startedAt) counts.passesWithPeerCommits++;
+          // The child commits on its own loop. Count passes until one holds a commit; one pass overlaps only by timing.
+          const peerOverlapPassLimit = mode === "process" || mode === "work" ? 32 : 1;
+          let observation: Awaited<ReturnType<AuthorityHealthPreflightRunner["run"]>> | undefined;
+          for (let pass = 0; pass < peerOverlapPassLimit; pass += 1) {
+            counts.observations++;
+            const startedAt = a.database.getMeta().authorityGeneration;
+            const checking = doctor.run(check);
+            if (mode === "during") renew();
+            observation = await checking;
+            // A peer process must have committed while this pass read its owner image.
+            if (a.database.getMeta().authorityGeneration > startedAt) {
+              counts.passesWithPeerCommits++;
+              break;
+            }
+          }
+          if (observation === undefined) throw new Error("storage doctor produced no observation");
           return observation;
         },
       })),
