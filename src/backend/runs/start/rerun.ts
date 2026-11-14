@@ -51,6 +51,22 @@ function isRetiredRunInput(descriptor: AnyWorkflowDescriptor, run: RunRecord, sc
     && schemaReader({ kind: "run-input", id: run.envelope.runId }, run.input, stored, current) === stored;
 }
 
+/**
+ * The natural key a transaction binds. A retired input only names the key its permanent write already used: the
+ * write values rebound from it are never validated as a fresh write, and the key must still match that write exactly.
+ */
+function boundNaturalKey(node: Extract<RuntimeFlowNode, { kind: "transaction" }>, input: JsonValue, outputs: Readonly<Record<string, JsonValue>>, retired: boolean) {
+  const system = BrowserSystemIdSchema.parse(node.commit.uses.id.split("/")[0]);
+  const keyOf = (commitInput: unknown) => IdempotencyKeySchema.parse(Reflect.apply(node.commit.uses.writeSafety.idempotency.key, undefined, [commitInput]));
+  let key: string;
+  if (!retired) key = keyOf(node.commit.uses.input.parse(node.commit.bind({ input, outputs })));
+  else {
+    try { key = keyOf(node.commit.bind({ input, outputs })); }
+    catch { throw new RerunRefusedError("schema-mismatch", "Rerun transaction source input is invalid"); }
+  }
+  return { system, key, digest: deriveIdempotencyKeyDigest(system, key) };
+}
+
 export function validateRerunTransactionEvidence(input: Readonly<{
   repositories: AuthorityRepositories; descriptor: AnyWorkflowDescriptor; run: RunRecord;
   node: Extract<RuntimeFlowNode, { kind: "transaction" }>; checkpoint: RunCheckpointRecord;
@@ -58,8 +74,9 @@ export function validateRerunTransactionEvidence(input: Readonly<{
 }>) {
   const { repositories, descriptor, run, node, checkpoint, checkpoints, gates, schemaReader } = input;
   const currentInputHash = deriveSchemaHash(descriptor.canonicalInput, "output");
-  // A retired input stays history: it is bound below only to name the natural key, and every accepted write must carry this checkpoint's exact proof.
-  if (!isRetiredRunInput(descriptor, run, schemaReader) && ((schemaReader?.({ kind: "run-input", id: run.envelope.runId }, run.input, run.input.parsed.schemaHash, currentInputHash) ?? run.input.parsed.schemaHash) !== currentInputHash
+  // A retired input stays history: it only names the natural key, and every accepted write must carry this checkpoint's exact proof.
+  const retired = isRetiredRunInput(descriptor, run, schemaReader);
+  if (!retired && ((schemaReader?.({ kind: "run-input", id: run.envelope.runId }, run.input, run.input.parsed.schemaHash, currentInputHash) ?? run.input.parsed.schemaHash) !== currentInputHash
     || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success)) throw new RerunRefusedError("schema-mismatch", "Rerun transaction source input is invalid");
   try { projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Rerun transaction source", { checkpoint, schemaReader }); }
   catch { throw new RerunRefusedError("schema-mismatch", "Rerun transaction proof is invalid"); }
@@ -83,9 +100,7 @@ export function validateRerunTransactionEvidence(input: Readonly<{
       outputs[id] = gate.result.value;
     }
   }
-  const commitInput = node.commit.uses.input.parse(node.commit.bind({ input: run.input.parsed.value, outputs }));
-  const key = IdempotencyKeySchema.parse(Reflect.apply(node.commit.uses.writeSafety.idempotency.key, undefined, [commitInput]));
-  const system = BrowserSystemIdSchema.parse(node.commit.uses.id.split("/")[0]), digest = deriveIdempotencyKeyDigest(system, key);
+  const { system, key, digest } = boundNaturalKey(node, run.input.parsed.value, outputs, retired);
   const intents = repositories.writeIntents.listByBusinessKey(system, digest).filter(intent => {
     if (intent.taskId !== node.commit.uses.id || intent.workflowId !== descriptor.id || intent.itemId !== run.envelope.itemId
       || intent.system !== system || (("occurrence" in intent ? intent.occurrence?.businessKeyDigest : undefined) ?? intent.idempotencyKeyDigest) !== digest
@@ -271,10 +286,9 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
       }
       continue;
     }
-    const commitInput = node.commit.uses.input.parse(node.commit.bind({ input: entry?.input.value ?? run.input.parsed.value, outputs }));
-    const key = IdempotencyKeySchema.parse(Reflect.apply(node.commit.uses.writeSafety.idempotency.key, undefined, [commitInput]));
-    const system = BrowserSystemIdSchema.parse(node.commit.uses.id.split("/")[0]);
-    const digest = deriveIdempotencyKeyDigest(system, key);
+    const { system, key, digest } = entry === undefined
+      ? boundNaturalKey(node, run.input.parsed.value, outputs, isRetiredRunInput(descriptor, run, schemaReader))
+      : boundNaturalKey(node, entry.input.value, outputs, false);
     for (const intent of repositories.writeIntents.listByBusinessKey(system, digest)) {
       if (intent.status !== "committed" && intent.status !== "observed-present") continue;
       if (intent.taskId !== node.commit.uses.id || intent.system !== system || (("occurrence" in intent ? intent.occurrence?.businessKeyDigest : undefined) ?? intent.idempotencyKeyDigest) !== digest

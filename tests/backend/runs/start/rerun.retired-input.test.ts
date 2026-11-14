@@ -13,6 +13,7 @@ import { derivePlannedInputFingerprint, StartPlanRecordSchema } from "../../../.
 import { StartCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import type { EvidenceSchemaReader } from "../../../../src/models/storage/evidence-schema-admission.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { KualiFinalizationTargetSchema, KualiSavedFinalizationProofSchema, kualiFinalizationFields } from "../../../../src/models/ui/kuali-separation-finalization.js";
 import { RunCheckpointRecordSchema, type RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
 import { deriveIdempotencyKeyDigest, deriveWriteBindingProofDigest, WriteIntentRecordSchema, type WriteIntentRecord } from "../../../../src/rules/write-safety/write-safety.js";
 import { TransactionOutcomeSchema } from "../../../../src/rules/write-safety/write-safety-primitives.js";
@@ -22,7 +23,7 @@ import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js
 import { kualiReceiptEvidence } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { HASH_A, NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { PRE_INITIALS_CANONICAL_INPUT_HASH, preInitialsSeparationsRun } from "../../../support/fixtures/storage/pre-initials-separations.js";
+import { PRE_INITIALS_CANONICAL_INPUT_HASH, PRE_INITIALS_TIMEKEEPER_INITIALS, preInitialsSeparationsRun, preInitialsSignedComment } from "../../../support/fixtures/storage/pre-initials-separations.js";
 import { FINALIZATION_SCOPE_OUTPUTS } from "../../../support/helpers/kuali-finalization-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
@@ -75,6 +76,49 @@ function retainedAsPreInitials(source: Source): Source {
   const run = RunRecordSchema.parse({ ...preInitialsSeparationsRun(source.run, "pre-initials"),
     envelope: { ...source.run.envelope, contractFingerprint: OLD_CONTRACT_FINGERPRINT } });
   return { ...source, run, checkpoints: source.checkpoints.map(checkpoint => RunCheckpointRecordSchema.parse({ ...checkpoint, contractFingerprint: OLD_CONTRACT_FINGERPRINT })) };
+}
+
+const COMMENT_LIMIT = 4000;
+
+/** The old build's own history at the comment limit: existing Kuali text long enough that its "-DT" filing comment is exactly 4000 characters. */
+function signedAtCommentLimit(source: Source): Source {
+  const finalize = descriptorRuntimeNodes(descriptor).find(node => node.id === FINALIZE_NODE);
+  assert.ok(finalize?.kind === "transaction");
+  const run = RunRecordSchema.parse({ ...source.run, input: { ...source.run.input, parsed: { ...source.run.input.parsed,
+    value: { ...z.record(z.string(), z.unknown()).parse(source.run.input.parsed.value), timekeeperInitials: PRE_INITIALS_TIMEKEEPER_INITIALS } } } });
+  const outputs = (points: readonly RunCheckpointRecord[]) => Object.fromEntries(points.filter(point => point.nodeId !== FINALIZE_NODE).map(point => [point.nodeId, point.output.value]));
+  const commentOf = (points: readonly RunCheckpointRecord[]) => KualiFinalizationTargetSchema.parse(finalize.commit.bind({ input: run.input.parsed.value, outputs: outputs(points) }));
+  const rewrite = (points: readonly RunCheckpointRecord[], nodeId: string, change: (value: Record<string, unknown>) => unknown) => points.map(point => {
+    if (point.nodeId !== nodeId) return point;
+    const node = descriptorRuntimeNodes(descriptor).find(candidate => candidate.id === nodeId);
+    assert.ok(node?.kind === "task");
+    const value = JsonValueSchema.parse(node.uses.output.parse(change(z.record(z.string(), z.unknown()).parse(point.output.value))));
+    return RunCheckpointRecordSchema.parse({ ...point, output: { ...point.output, value },
+      provenance: evidenceLeaves(value).map(({ path }) => ({ path, source: "live", observedAt: point.writtenAt, originalObservedAt: point.writtenAt })) });
+  });
+  const signed = rewrite(source.checkpoints, "dates", dates => ({ ...dates, dateChangeComments: preInitialsSignedComment(z.string().parse(dates.dateChangeComments)) }));
+  const padding = "A".repeat(COMMENT_LIMIT - commentOf(signed).variables.timekeeperComments.length - 1);
+  const padded = rewrite(signed, "document", document => {
+    const timekeeper = z.record(z.string(), z.unknown()).parse(document.timekeeper);
+    return { ...document, timekeeper: { ...timekeeper, comments: { state: "present", value: padding } } };
+  });
+  const target = commentOf(padded);
+  assert.equal(target.variables.timekeeperComments.length, COMMENT_LIMIT);
+  assert.match(target.variables.timekeeperComments, new RegExp(`-${PRE_INITIALS_TIMEKEEPER_INITIALS} `, "u"));
+  const recorded = source.intent;
+  assert.ok(recorded.status === "committed");
+  const proof = KualiSavedFinalizationProofSchema.parse({ ...z.record(z.string(), z.unknown()).parse(recorded.completionProof.value), actionId: target.actionId,
+    documentNumber: target.documentNumber, observedEid: target.emplId, fields: kualiFinalizationFields(target.variables) });
+  const intent = WriteIntentRecordSchema.parse({ ...recorded, completionProof: { ...recorded.completionProof, value: proof } });
+  const checkpoints = padded.map(point => {
+    if (point.nodeId !== FINALIZE_NODE) return point;
+    const committed = TransactionOutcomeSchema.parse(point.output.value);
+    assert.ok(committed.disposition === "committed");
+    const value = JsonValueSchema.parse(TransactionOutcomeSchema.parse({ ...committed, proof: { ...committed.proof, value: proof }, output: { ...committed.output, value: { savedState: proof } } }));
+    return RunCheckpointRecordSchema.parse({ ...point, output: { ...point.output, value },
+      provenance: evidenceLeaves(value).map(({ path }) => ({ path, source: "live", observedAt: point.writtenAt, originalObservedAt: point.writtenAt })) });
+  });
+  return { run, checkpoints, intent };
 }
 
 /** The checkpoint settled already-present from a durable write another run committed. */
@@ -253,6 +297,20 @@ describe("Rerun of a retained pre-initials Separations run with a completed Kual
     assert.equal(created.length, 1);
     assert.equal(z.record(z.string(), z.unknown()).parse(created[0]?.input.parsed.value).timekeeperInitials, CURRENT_INITIALS);
     assert.equal(created[0]?.sourceBound?.warningDigest, rerun.warningDigest);
+  });
+  it("previews and reads the Rerun values of a retired source whose signed comment is at the 4000-character limit", () => {
+    const current = signedAtCommentLimit(currentSource()), retained = retainedAsPreInitials(current);
+    const control = previewRerunWarnings(repositoriesOf(current), descriptor, sourceOf(current.run), retiredReader);
+    assert.deepEqual(control.warnings.map(warning => warning.writeIntentId), [current.intent.writeIntentId]);
+    const preview = previewRerunWarnings(repositoriesOf(retained), descriptor, sourceOf(retained.run), retiredReader);
+    assert.deepEqual(preview.warnings, control.warnings);
+    assert.equal(preview.warningDigest, control.warningDigest);
+    const response = readRerunValues({ database: { authority: repositoriesOf(retained), withAuthorityReadSnapshot: work => work(), evidenceSchemaHash: retiredReader },
+      reader: { read: () => ({ state: "present", disposition: "live", run: retained.run }) }, descriptors: { resolve: () => descriptor } },
+    { runId: retained.run.envelope.runId, expectedVersion: retained.run.version });
+    assert.equal(response.state, "available");
+    if (response.state !== "available") return;
+    assert.deepEqual(response.snapshot.transactions.map(transaction => transaction.writeIntentId), [current.intent.writeIntentId]);
   });
   for (const [label, history] of [["a durable write another run committed", inheritedFromForeignRun], ["a live-probe observation owned by no run", observedByLiveProbe]] as const) {
     it(`previews the same warnings for an already-present step settled from ${label}`, () => {
