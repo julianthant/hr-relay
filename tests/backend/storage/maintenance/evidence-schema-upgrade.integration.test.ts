@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { predecessorSeparationsRerun } from "../../../support/helpers/backend/predecessor-separations-rerun.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import type { EvidenceSchemaAdmission } from "../../../../src/models/storage/evidence-schema-admission.js";
 
 const tables = ["runs", "run_results", "run_checkpoints", "write_intents", "write_attempts", "gate_results", "run_delegations", "commands", "command_audits", "run_receipts", "timeline_events", "delegation_dependencies", "run_failures"] as const;
 async function assertConversionRefused(workspace: string, lifetime: RuntimeLifetimeLock) {
@@ -110,9 +111,11 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
         const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse(JSON.parse(String(journal[0]?.payload_json)));
         assert.throws(() => admission.assertEvidenceSchemaConversion({ ...record, evidenceSchemaMac: "0".repeat(64) }), /seal-invalid/u);
         assert.throws(() => admission.assertEvidenceSchemaConversion({ ...record, evidenceSchemas: { ...record.evidenceSchemas, profileId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }), /foreign/u);
+        const certified = record.evidenceSchemas;
+        if (certified.id !== "profile-name-domain") throw new Error("profile-name-domain-record-required");
         for (const intent of f.writes) {
           if (intent.status !== "committed") throw new Error("fixture-completion-proof-required");
-          const certificate = record.evidenceSchemas.admissions.find(entry => entry.owner.kind === "write-proof" && entry.owner.id === intent.writeIntentId);
+          const certificate: EvidenceSchemaAdmission | undefined = certified.admissions.find(entry => entry.owner.kind === "write-proof" && entry.owner.id === intent.writeIntentId);
           assert.ok(certificate);
           assert.throws(() => database.evidenceSchemaHash(certificate.owner, { ...intent, bindingProofDigest: "f".repeat(64) }, certificate.sourceSchemaHash, certificate.currentSchemaHash), /source-changed/u);
         }

@@ -9,6 +9,7 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/app/composition/dashboard/profile-session-routes.restart.integration.test.ts",
   "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
   "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
+  "tests/backend/storage/maintenance/evidence-schema-upgrade.retired-generation.integration.test.ts",
   "tests/backend/storage/maintenance/protected-settings-upgrade.integration.test.ts",
   "tests/scripts/dev/relay.windows-native.integration.test.ts",
   "tests/backend/storage/maintenance/custody-availability.windows-native.integration.test.ts",

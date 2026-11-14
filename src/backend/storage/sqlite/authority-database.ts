@@ -1,7 +1,7 @@
 import { createWorkerSlotRepository, workerSlotFromRow } from "./worker-slots.js";
 import { stoppedProfileOwnsCredentialCommand } from "../configuration/protected-settings-upgrade.js";
 import { collectEvidenceSchemaAdmissions } from "./evidence-schema-upgrade.js";
-import { evidenceSchemaSourceDigest, type EvidenceSchemaOwner } from "../../../models/storage/evidence-schema-admission.js";
+import { evidenceSchemaSourceDigest, type EvidenceSchemaConversion, type EvidenceSchemaOwner } from "../../../models/storage/evidence-schema-admission.js";
 import { artifactReferencesIn, deletionArtifactReferenceMatcher } from "./artifact-references.js";
 import { fileStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
@@ -1648,6 +1648,29 @@ function readAuthorityUpgradeRecords(database: DatabaseSync) {
     .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
 }
 
+type AuthorityEvidenceSchemaUpgradeRecord = z.infer<typeof AuthorityEvidenceSchemaUpgradeRecordSchema>;
+
+function evidenceSchemaPlanDigest(upgradeId: string, conversion: EvidenceSchemaConversion): string {
+  return sha256Hex(`relay:evidence-schema-conversion:v1\0${upgradeId}\0${canonicalJsonStringify(conversion)}`);
+}
+
+/** Each conversion id is recorded at most once, sealed for this profile, settled at the current schema version. */
+function verifiedEvidenceSchemaRecords(database: DatabaseSync, admission: RuntimeAdmission,
+  binding: Readonly<{ installationId?: string; profileId?: string }>): ReadonlyMap<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord> {
+  const records = new Map<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord>();
+  for (const stored of readAuthorityUpgradeRecords(database)) {
+    if (!("evidenceSchemas" in stored) || stored.evidenceSchemas === undefined) continue;
+    admission.assertEvidenceSchemaConversion(stored);
+    const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse(stored), conversion = record.evidenceSchemas;
+    if (records.has(conversion.id)) throw new Error("evidence-schema-conversion-duplicate");
+    if (record.phase !== "settled" || record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+      || record.planDigest !== evidenceSchemaPlanDigest(record.upgradeId, conversion)) throw new Error("evidence-schema-conversion-unproved");
+    if (conversion.installationId !== binding.installationId || conversion.profileId !== binding.profileId) throw new Error("evidence-schema-conversion-foreign");
+    records.set(conversion.id, record);
+  }
+  return records;
+}
+
 const startupLogoutConversionBrand: unique symbol = Symbol("startup-logout-conversion");
 export type StartupLogoutConversion = Readonly<{ [startupLogoutConversionBrand]: true }>;
 const startupLogoutConversions = new WeakMap<StartupLogoutConversion, {
@@ -2743,26 +2766,28 @@ export class AuthorityDatabase implements Disposable {
     admission.assertStoppedProtectedSettingsUpgrade();
     return withAuthorityDatabaseReadOnly(admission, join(admission.stateRoot, "state.db"), database => {
       const inspection = inspectNativeAuthority(database);
-      const admissions = collectEvidenceSchemaAdmissions({ descriptors,
+      const plan = collectEvidenceSchemaAdmissions({ descriptors,
         runs: database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow),
         writes: database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row))),
         results: database.prepare("SELECT * FROM run_results ORDER BY run_id").all().map(row => RunResultRecordSchema.parse(nativeOrdinaryRecordFromRow("run_results", row))),
         gates: database.prepare("SELECT * FROM gate_results ORDER BY run_id,node_id").all().map(row => GateResultRecordSchema.parse(nativeOrdinaryRecordFromRow("gate_results", row))),
         delegations: database.prepare("SELECT * FROM run_delegations ORDER BY id").all().map(row => DelegationManifestSchema.parse(nativeOrdinaryRecordFromRow("run_delegations", row))),
         checkpoints: database.prepare("SELECT * FROM run_checkpoints ORDER BY run_id,node_id").all().map(row => RunCheckpointRecordSchema.parse(nativeOrdinaryRecordFromRow("run_checkpoints", row))) });
-      const records = readAuthorityUpgradeRecords(database).filter(record => "evidenceSchemas" in record && record.evidenceSchemas !== undefined);
-      if (records.length > 1) throw new Error("evidence-schema-conversion-duplicate");
-      const record = records[0];
-      if (record !== undefined && "evidenceSchemas" in record) {
-        admission.assertEvidenceSchemaConversion(record);
-        const conversion = record.evidenceSchemas;
-        if (conversion === undefined || record.phase !== "settled" || record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
-          || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || conversion.installationId !== inspection.installationId
-          || conversion.profileId !== inspection.profileId || record.planDigest !== sha256Hex(`relay:evidence-schema-conversion:v1\0${record.upgradeId}\0${canonicalJsonStringify(conversion)}`)
-          || admissions.some(admission => !conversion.admissions.some(existing => canonicalJsonStringify(existing) === canonicalJsonStringify(admission))))
-          throw new Error("evidence-schema-conversion-source-changed");
-      }
-      return { inspection, admissions, record };
+      const records = verifiedEvidenceSchemaRecords(database, admission, { installationId: inspection.installationId, profileId: inspection.profileId });
+      const pending: EvidenceSchemaConversion[] = [];
+      const recorded = (id: EvidenceSchemaConversion["id"], fresh: readonly unknown[], entries: (conversion: EvidenceSchemaConversion) => readonly unknown[]) => {
+        const record = records.get(id);
+        if (record === undefined) return fresh.length === 0;
+        const existing = entries(record.evidenceSchemas).map(entry => canonicalJsonStringify(entry));
+        if (fresh.some(entry => !existing.includes(canonicalJsonStringify(entry)))) throw new Error("evidence-schema-conversion-source-changed");
+        return true;
+      };
+      const binding = { installationId: admission.profileBinding.installationId, profileId: admission.profileBinding.profileId };
+      if (!recorded("profile-name-domain", plan.admissions, conversion => conversion.id === "profile-name-domain" ? conversion.admissions : []))
+        pending.push({ id: "profile-name-domain", ...binding, admissions: [...plan.admissions] });
+      if (!recorded("retired-input-generation", plan.retirements, conversion => conversion.id === "retired-input-generation" ? conversion.retirements : []))
+        pending.push({ id: "retired-input-generation", ...binding, retirements: [...plan.retirements] });
+      return { inspection, admissions: plan.admissions, retirements: plan.retirements, records: [...records.values()], pending };
     });
   }
 
@@ -2772,17 +2797,18 @@ export class AuthorityDatabase implements Disposable {
     const path = join(admission.stateRoot, "state.db");
     requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
     const plan = AuthorityDatabase.inspectEvidenceSchemaUpgrade(admission, descriptors);
-    if (plan.record !== undefined || plan.admissions.length === 0 || plan.inspection.authorityContentFingerprint !== expectedFingerprint)
+    // One record per backed source: the journal keys a settled upgrade by its source fingerprint.
+    const conversion = plan.pending[0];
+    if (conversion === undefined || plan.inspection.authorityContentFingerprint !== expectedFingerprint)
       throw new Error("evidence-schema-conversion-source-changed");
     const verified = verifyBackup(admission, backup.manifestPath), binding = admission.profileBinding;
     if (canonicalJsonStringify(verified) !== canonicalJsonStringify(backup) || verified.manifest.installationId !== binding.installationId
       || verified.manifest.profileId !== binding.profileId || verified.manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
       || verified.manifest.authorityContentFingerprint !== expectedFingerprint || verified.manifest.authorityGeneration !== plan.inspection.authorityGeneration)
       throw new Error("evidence-schema-conversion-backup-changed");
-    const conversion = { id: "profile-name-domain", ...binding, admissions: plan.admissions };
     const statement = AuthorityEvidenceSchemaUpgradeRecordSchema.omit({ evidenceSchemaMac: true }).parse({ recordKey: randomUUID(), upgradeId: expectedFingerprint, phase: "settled",
       fromSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
-      planDigest: sha256Hex(`relay:evidence-schema-conversion:v1\0${expectedFingerprint}\0${canonicalJsonStringify(conversion)}`),
+      planDigest: evidenceSchemaPlanDigest(expectedFingerprint, conversion),
       evidenceSchemas: conversion, backup: { manifestPath: backup.manifestPath, sha256: backup.manifest.sha256, authorityGeneration: plan.inspection.authorityGeneration },
       by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: clock.now().toISOString() });
     const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse({ ...statement, evidenceSchemaMac: admission.sealStoppedEvidenceSchemaConversion(statement) });
@@ -2812,17 +2838,18 @@ export class AuthorityDatabase implements Disposable {
     this.#assertOpen();
     if (sourceSchemaHash === currentSchemaHash) return sourceSchemaHash;
     return this.#withReadSnapshot(() => {
-      const records = readAuthorityUpgradeRecords(this.#database).filter(record => "evidenceSchemas" in record && record.evidenceSchemas !== undefined);
-      if (records.length > 1) throw new Error("evidence-schema-conversion-duplicate");
-      const record = records[0], conversion = record !== undefined && "evidenceSchemas" in record ? record.evidenceSchemas : undefined;
-      if (conversion === undefined) return sourceSchemaHash;
-      this.#admission.assertEvidenceSchemaConversion(record);
-      if (record === undefined || !("planDigest" in record) || record.phase !== "settled"
-        || record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
-        || record.planDigest !== sha256Hex(`relay:evidence-schema-conversion:v1\0${record.upgradeId}\0${canonicalJsonStringify(conversion)}`)) throw new Error("evidence-schema-conversion-unproved");
-      if (conversion.installationId !== this.#admission.profileBinding.installationId || conversion.profileId !== this.#admission.profileBinding.profileId)
-        throw new Error("evidence-schema-conversion-foreign");
-      const certificate = conversion.admissions.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner));
+      const records = verifiedEvidenceSchemaRecords(this.#database, this.#admission, this.#admission.profileBinding);
+      const retired = records.get("retired-input-generation")?.evidenceSchemas;
+      const retirement = retired?.id === "retired-input-generation"
+        ? retired.retirements.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner)) : undefined;
+      if (retirement !== undefined) {
+        if (retirement.sourceSchemaHash !== sourceSchemaHash || retirement.sourceDigest !== evidenceSchemaSourceDigest(owner, source))
+          throw new Error("evidence-schema-admission-source-changed");
+        return sourceSchemaHash;
+      }
+      const conversion = records.get("profile-name-domain")?.evidenceSchemas;
+      const certificate = conversion?.id === "profile-name-domain"
+        ? conversion.admissions.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner)) : undefined;
       if (certificate === undefined) return sourceSchemaHash;
       if (certificate.sourceSchemaHash !== sourceSchemaHash || certificate.currentSchemaHash !== currentSchemaHash
         || certificate.sourceDigest !== evidenceSchemaSourceDigest(owner, source)) throw new Error("evidence-schema-admission-source-changed");

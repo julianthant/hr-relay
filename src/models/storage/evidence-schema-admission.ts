@@ -16,14 +16,30 @@ export const EvidenceSchemaAdmissionSchema = z.strictObject({
   sourceDigest: FingerprintSchema,
 });
 export type EvidenceSchemaAdmission = z.infer<typeof EvidenceSchemaAdmissionSchema>;
-export const EvidenceSchemaConversionSchema = z.strictObject({
-  id: z.literal("profile-name-domain"),
-  installationId: z.uuid(), profileId: z.uuid(),
-  admissions: z.array(EvidenceSchemaAdmissionSchema).min(1),
-}).superRefine((value, context) => {
-  if (new Set(value.admissions.map(entry => canonicalJsonStringify(entry.owner))).size !== value.admissions.length)
-    context.addIssue({ code: "custom", message: "evidence-schema-admission-owner-duplicate" });
+/** A stored run input whose canonical-input generation this build no longer parses; it stays readable history, never current input. */
+export const EvidenceSchemaRetirementSchema = z.strictObject({
+  owner: z.strictObject({ kind: z.literal("run-input"), id: z.uuid() }),
+  workflowId: z.string().min(1).max(128),
+  sourceSchemaHash: FingerprintSchema,
+  sourceDigest: FingerprintSchema,
 });
+export type EvidenceSchemaRetirement = z.infer<typeof EvidenceSchemaRetirementSchema>;
+export const EvidenceSchemaConversionSchema = z.discriminatedUnion("id", [
+  z.strictObject({
+    id: z.literal("profile-name-domain"),
+    installationId: z.uuid(), profileId: z.uuid(),
+    admissions: z.array(EvidenceSchemaAdmissionSchema).min(1),
+  }),
+  z.strictObject({
+    id: z.literal("retired-input-generation"),
+    installationId: z.uuid(), profileId: z.uuid(),
+    retirements: z.array(EvidenceSchemaRetirementSchema).min(1),
+  }),
+]).superRefine((value, context) => {
+  const owners = (value.id === "profile-name-domain" ? value.admissions : value.retirements).map(entry => canonicalJsonStringify(entry.owner));
+  if (new Set(owners).size !== owners.length) context.addIssue({ code: "custom", message: "evidence-schema-admission-owner-duplicate" });
+});
+export type EvidenceSchemaConversion = z.infer<typeof EvidenceSchemaConversionSchema>;
 export function evidenceSchemaSourceDigest(owner: EvidenceSchemaOwner, source: unknown): string {
   return sha256Hex(`relay:evidence-schema-source:v1\0${canonicalJsonStringify({ owner: EvidenceSchemaOwnerSchema.parse(owner), source: JsonValueSchema.parse(source) })}`);
 }

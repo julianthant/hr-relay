@@ -17,7 +17,7 @@ it("persists predecessor input, completed Kuali proof, linked result and receipt
     const { collectEvidenceSchemaAdmissions } = await import("../../../../src/backend/storage/sqlite/evidence-schema-upgrade.js");
     const { evidenceSchemaSourceDigest } = await import("../../../../src/models/storage/evidence-schema-admission.js");
     const { canonicalJsonStringify } = await import("../../../../src/rules/validation/canonical-json.js");
-    const admissions = collectEvidenceSchemaAdmissions({ descriptors: [descriptor, separationsDescriptor], runs: [f.run, f.separationsRun], writes: f.writes.map(write => write.intent),
+    const { admissions } = collectEvidenceSchemaAdmissions({ descriptors: [descriptor, separationsDescriptor], runs: [f.run, f.separationsRun], writes: f.writes.map(write => write.intent),
       checkpoints: f.checkpoints, results: [f.result], gates: f.gates });
     const schemaReader: import("../../../../src/models/storage/evidence-schema-admission.js").EvidenceSchemaReader = (owner, source, oldHash, currentHash) => {
       if (oldHash === currentHash) return oldHash;
