@@ -8,7 +8,7 @@ import { DuoAssertionRequestSchema } from "../../storage/configuration/duo-signi
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
 import { lstatSync, mkdirSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
-import { submitPinnedUcsdSsoCredentials, waitForUcsdDuoSignIn } from "../../systems/browser-shared/ucsd-sso.js";
+import { waitForUcsdDuoSignIn } from "../../systems/browser-shared/ucsd-sso.js";
 import type { BrowserContext, Page, Worker } from "playwright";
 import { z } from "zod";
 import { BrowserDocumentIdSchema, PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../models/config/duo-credential-store.js";
@@ -65,6 +65,12 @@ function trustedPortalUrl(value: string): boolean {
   return url !== null && url.protocol === "https:" && !url.port && !url.username && !url.password
     && (url.hostname === "a5.ucsd.edu" && url.pathname.startsWith("/tritON/")
       || url.hostname === "duo.ucsd.edu" || url.hostname === "duosecurity.com" || url.hostname.endsWith(".duosecurity.com"));
+}
+
+function duoSignInHost(value: string): boolean {
+  const url = URL.parse(value);
+  return url !== null && url.protocol === "https:" && url.port === "" && url.username === "" && url.password === ""
+    && (url.hostname === "duo.ucsd.edu" || url.hostname === "duosecurity.com" || url.hostname.endsWith(".duosecurity.com"));
 }
 
 export interface OnboardingDuoProviderOptions {
@@ -485,6 +491,21 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     try { await reopening; }
     finally { reopening = undefined; reopeningGeneration = undefined; reopeningOwner = undefined; }
   }
+  async function waitForManualUcsdSignIn(page: Page, session: OwnedBrowser): Promise<void> {
+    const attempt = active !== undefined && sameOwner(session.owner, active.attempt) ? active : undefined;
+    // shortcut: same 10-minute sign-up attempt window as profile-onboarding start, including when the portal opens before a method starts
+    const deadline = attempt === undefined ? options.clock.nowMs() + 600_000 : Date.parse(attempt.attempt.expiresAt);
+    while (options.clock.nowMs() < deadline) {
+      browserCurrent(session);
+      if (duoSignInHost(page.url())) return;
+      const remaining = deadline - options.clock.nowMs();
+      await new Promise(resolve => setTimeout(resolve, Math.min(20, Math.max(1, remaining))));
+    }
+    if (duoSignInHost(page.url())) return;
+    const cause = new Error("sign-in wait");
+    cause.name = "TimeoutError";
+    throw new Error("UCSD_SSO_SUBMIT_TIMEOUT", { cause });
+  }
   async function openPortal(session: OwnedBrowser): Promise<void> {
     browserCurrent(session);
     const context = session.context;
@@ -503,10 +524,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         browserCurrent(session);
         const landing = await waitForUcsdDuoSignIn(page, () => browserCurrent(session), options.closeProofMs);
         browserCurrent(session);
-        if (landing === "sso-form") await submitPinnedUcsdSsoCredentials(page, () => session.owner.acquireCredentials(), () => browserCurrent(session), options.closeProofMs, "/tritON/profile/SAML2/Redirect/SSO").catch((cause: unknown) => {
-          if (cause instanceof Error && cause.name === "TimeoutError") throw new Error("UCSD_SSO_SUBMIT_TIMEOUT", { cause });
-          throw cause;
-        });
+        if (landing === "sso-form") await waitForManualUcsdSignIn(page, session);
         browserCurrent(session);
       } catch (error) {
         try { reportDuoEvent(session.owner, failureEvent(error, "portal-open", Math.max(0, options.clock.monotonicMs() - started))); }

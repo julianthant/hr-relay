@@ -321,7 +321,7 @@ function fenceAndParkWrite(world: SeedWorld, run: RunRecord): void {
     expectedVersion: fenced.intent.version,
     code: "unknown",
     message: "the UCPath write outcome could not be observed",
-    authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "parity seeded park"),
+    authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "mock seeded park"),
     now: SEEDED_NOW,
   });
 }

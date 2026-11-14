@@ -33,12 +33,14 @@ export interface BulkVerbPlan {
   readonly eligible: readonly BulkTarget[];
   /** selected rows this verb will NOT be sent for, named rather than dropped */
   readonly skipped: readonly { readonly runId: string; readonly title: string }[];
+  /** Why `skipped` rows were left out, when it is not "not offered" (a stored result's unattempted rows were offered). */
+  readonly skippedReason?: string;
   /** Selected ids the current day serves NO row for — a filter changed or the
  * day rolled under an open selection. They are a THIRD bucket on purpose */
   readonly unavailable: readonly string[];
 }
 
-const VERB_LABEL: Record<BulkVerb, string> = { cancel: "Cancel", retry: "Retry", resume: "Resume" };
+export const BULK_VERB_LABEL: Record<BulkVerb, string> = { cancel: "Cancel", retry: "Retry", resume: "Resume" };
 
 function commandFor(
   row: BulkCandidateRow,
@@ -86,10 +88,10 @@ export function planBulkVerb(
       continue;
     }
     // Conflicting served labels use the shared verb label, never the first row’s wording.
-    servedLabel = servedLabel === undefined || servedLabel === action.label ? action.label : VERB_LABEL[verb];
+    servedLabel = servedLabel === undefined || servedLabel === action.label ? action.label : BULK_VERB_LABEL[verb];
     eligible.push({ runId: row.runId, title: row.title, expectedVersion: action.expectedVersion });
   }
-  return { verb, label: servedLabel ?? VERB_LABEL[verb], eligible, skipped, unavailable };
+  return { verb, label: servedLabel ?? BULK_VERB_LABEL[verb], eligible, skipped, unavailable };
 }
 
 /** Unavailable selections need their own count even when no served row offers a verb. */
@@ -107,6 +109,8 @@ export interface BulkBatchOutcome {
   /** runId → the row's own name, frozen from the plan that was sent */
   readonly subjects: ReadonlyMap<string, string>;
   readonly response: BulkRunCommandResponse;
+  /** runId → partition day, for a stored result opened from another day */
+  readonly days?: ReadonlyMap<string, string>;
 }
 
 /** Show zero outcome buckets too; aggregate success cannot describe every refusal arm. */

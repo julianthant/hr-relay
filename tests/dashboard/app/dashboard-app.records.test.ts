@@ -13,7 +13,7 @@ import { RunDetailWireSchema, NotePageSchema } from "../../../src/models/dashboa
 import { parseViewRoute } from "../../../src/dashboard/app/navigation/view-route-model.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
-import { PARITY_WORKFLOW_COMPOSITION } from "../../parity/helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
 import { queueParentFixture } from "../../support/helpers/dashboard/queue-parent-fixture.js";
 import { ocrReviewPageFixture } from "../../support/fixtures/dashboard/ocr-review.js";
 
@@ -63,7 +63,7 @@ it("opens shared-lookup records through real routes and keyboard selection witho
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, {
-      workflowComposition: PARITY_WORKFLOW_COMPOSITION, previewPreferences: createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" }),
+      workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" }),
     }) })));
     await vi.waitFor(() => assert.ok(host.querySelector(`[data-queue-record-id="${records[0].recordId}"]`)));
     await act(async () => host.querySelector<HTMLElement>(`[data-queue-record-id="${records[0].recordId}"]`)?.click());

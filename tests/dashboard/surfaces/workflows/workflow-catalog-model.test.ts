@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { buildWorkflowCatalog as buildWorkflowCatalog_m0 } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 // @vitest-environment jsdom
 import assert_m0 from "node:assert/strict";
@@ -15,8 +15,8 @@ import { parseWorkflows as parseWorkflows_m1 } from "../../../../src/dashboard/s
 import { WorkflowRail as WorkflowRail_m1 } from "../../../../src/dashboard/surfaces/shell/workflow-rail.js";
 import { MOCK_WORKFLOW_CATALOG as MOCK_WORKFLOW_CATALOG_m1 } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { buildWorkflowCatalog as buildWorkflowCatalog_m1,servedLaunchWorkflows as servedLaunchWorkflows_m1 } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP as FIXTURE_START_PICKER_BOOTSTRAP_m1 } from "../../../parity/helpers/fixture-start.js";
-import { PARITY_WORKFLOW_COMPOSITION, servedFixtureSources as servedFixtureSources_m1 } from "../../../parity/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as FIXTURE_START_PICKER_BOOTSTRAP_m1 } from "../../../mocks/helpers/fixture-start.js";
+import { MOCK_WORKFLOW_COMPOSITION, servedFixtureSources as servedFixtureSources_m1 } from "../../../mocks/helpers/workflow-composition.js";
 
 
 {
@@ -128,7 +128,7 @@ describe_m1("frontend workflow catalog", () => {
   it_m1("retains custom served bootstrap workflows in Explorer and Logs preview catalogs", () => {
     const custom = { ...served[0], workflowId: "launch-proof", label: "Launch proof" };
     const bootstrap = [...served, custom];
-    const composition = PARITY_WORKFLOW_COMPOSITION(bootstrap);
+    const composition = MOCK_WORKFLOW_COMPOSITION(bootstrap);
     for (const policy of [composition.explorerSources, composition.logsSources]) {
       expect_m1(() => buildWorkflowCatalog_m1(bootstrap, true, policy)).not.toThrow();
       const entries = buildWorkflowCatalog_m1(bootstrap, true, policy);

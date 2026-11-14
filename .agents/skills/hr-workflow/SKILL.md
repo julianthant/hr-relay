@@ -47,7 +47,7 @@ source and compiled projections; this skill still produces a `hr-manage` runbook
    findings into "Known failure modes".
 7. `config/test-data.json` (`subjects`; D341) for public canary labels. Private values resolve
    only through the typed reader and ignored `config/test-data.local.json`; never read or print
-   them. Desktop parity lives under `tests/parity/`. Declared `scenarios` are contract data, not test evidence. Find current checks
+   them. Declared `scenarios` are contract data, not test evidence. Find current checks
    in active suite roots and use `ref guards-and-tests` §10.5 for
    canary availability and acceptance status.
 8. The platform-wide rails live in `.agents/skills/hr-manage/SKILL.md` and
@@ -103,7 +103,7 @@ Stop when you can fill every template section from evidence. A section you canno
 ## Current verification and gate status
 - Focused tests, lint, and affected static/generated checks: <existing paths and verified outcomes from the owning task>
 - Phase-exit gates: <only the gates required by the active phase plan, with actual outcomes or not run>
-- Do not infer test execution from declared scenario ids. Keep desktop parity obligations. Follow root `AGENTS.md` and
+- Do not infer test execution from declared scenario ids. Follow root `AGENTS.md` and
   `ref guards-and-tests` for cadence.
 
 ## Known failure modes (from the owning reference and nearest module AGENTS.md)
