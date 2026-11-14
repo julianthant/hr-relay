@@ -7,7 +7,7 @@ import type { WorkbookLibraryAction } from '../../../../models/dashboard/workboo
 import type { EditableWorkbook } from '../../../../rules/spreadsheets/workbook-io.js';
 import { saveSpreadsheetDownload, spreadsheetDownload } from '../spreadsheet-chat-registration-model.js';
 import { TagFilter } from './sheets-v2-tagfilter.js';
-import { fieldsOf, newestFirst, sheetOf, tableOf, tagsOf, workflowTags } from './sheets-v2-model.js';
+import { fieldsOf, newestFirst, operatorTags, sheetOf, tableOf, tagsOf, workflowTags } from './sheets-v2-model.js';
 import { SheetDialog, type DialogKind } from './sheets-v2-dialogs.js';
 import { SheetDetail } from './sheets-v2-detail.js';
 import { ImportDialog } from './sheets-v2-import.js';
@@ -52,6 +52,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     if (!sheet) return;
     if (action === 'sync') void change(id, { kind: 'sync' }, `Synced ${sheet.name}`);
     else if (action === 'download') void download(id);
+    else if (action === 'pin') void change(id, { kind: sheet.pinned ? 'unpin' : 'pin' });
     else setDialog({ kind: action, id });
   };
   const rows: RowActions = { open: setOpenId, version: id => setDialog({ kind: 'rollback', id }), menu, logs: sheet => { if (sheet.run) onOpenRun?.(sheet.run.id, sheet.run.day); } };
@@ -84,9 +85,9 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     toast(result.state === 'confirmed' ? { tone: 'success', title: 'The change went through' } : { tone: 'danger', title: 'The change is not confirmed yet', description: result.message });
   };
 
-  const groups = { workflows: workflowTags(sheets), tags: [] };
+  const groups = { workflows: workflowTags(sheets), tags: operatorTags(sheets) };
   const visible = useMemo(() => newestFirst(sheets).filter(sheet => (!filter.length || filter.some(tag => tagsOf(sheet).includes(tag))) && sheet.name.toLowerCase().includes(query.trim().toLowerCase())), [sheets, filter, query]);
-  const tables = (['SharePoint', 'Created'] as const).map(title => ({ title, items: visible.filter(sheet => tableOf(sheet) === title) })).filter(table => table.items.length);
+  const tables = (['Pinned', 'SharePoint', 'Created'] as const).map(title => ({ title, items: visible.filter(sheet => tableOf(sheet) === title) })).filter(table => table.items.length);
   const target = dialog && get(dialog.id);
   const open = openId ? get(openId) : undefined;
 
@@ -96,7 +97,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     {openId && open ? (draft ? <SheetDetail key={openId} sheet={open} document={draft.document} fields={fields} onBack={back} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'rollback', id: openId })} onMap={(worksheet, patch) => void saveMapping(worksheet, patch)} />
       : <Grey className="text-[13px]">{openError ? "This spreadsheet couldn't be opened." : 'Opening…'} <V2Button look="plain" onClick={back}>Back</V2Button></Grey>) : <>
       <PageHeading title="Spreadsheets" description="Reference lists your runs look people up in." actions={<V2Button disabled={catalogLoading || !!catalogError} onClick={() => setImporting(true)}>Import</V2Button>} />
-      <div className="ds-toolbar-row mb-5 flex items-center gap-2"><SearchInput aria-label="Search spreadsheets" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} className="w-[260px]" />{groups.workflows.length > 0 && <TagFilter groups={groups} value={filter} onChange={setFilter} />}</div>
+      <div className="ds-toolbar-row mb-5 flex items-center gap-2"><SearchInput aria-label="Search spreadsheets" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} className="w-[260px]" />{(groups.workflows.length > 0 || groups.tags.length > 0) && <TagFilter groups={groups} value={filter} onChange={setFilter} />}</div>
       <div ref={listRef}>{catalogError ? <Grey className="text-[13px]">Spreadsheets couldn't be loaded. <V2Button look="plain" onClick={() => void adapter.refreshCatalog()}>Check again</V2Button></Grey>
         : catalogLoading ? <Grey className="text-[13px]">Loading spreadsheets…</Grey>
         : tables.length ? tables.map(table => <SheetTable key={table.title} title={table.title} sheets={table.items} narrow={narrow} actions={rows} limit={table.title === 'Created' ? CREATED_ROWS : undefined} />)
@@ -104,6 +105,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     </>}
     {dialog && target && <SheetDialog kind={dialog.kind} sheet={target} onClose={() => setDialog(undefined)} actions={{
       rename: name => void change(target.id, { kind: 'rename', name }), link: url => void change(target.id, { kind: 'link', url }, `Linked ${target.name}`),
+      tags: tags => void change(target.id, { kind: 'set-tags', tags: [...tags] }),
       rollback: versionId => void change(target.id, { kind: 'use-version', versionId }),
       remove: () => void change(target.id, { kind: 'remove' }).then(removed => { if (removed && openId === target.id) setOpenId(undefined); }),
     }} />}

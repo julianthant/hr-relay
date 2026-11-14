@@ -432,6 +432,32 @@ Sign-in authenticates a current profile through the ordinary endpoint and sessio
 not dispatch storage maintenance or restart the app. Pending onboarding and logout continue through
 their existing recovery boundaries.
 
+The Relay login is the work email and password saved as the profile's UCPath sign-in.
+`POST /api/v1/profile/account/password` `{currentPassword, newPassword}` and
+`POST /api/v1/profile/account/username` `{currentPassword, newUsername}` change it for the current
+session cookie only. They return `{state: "changed"}`, `{state: "unknown", code}` or
+`{state: "refused", code}`. A wrong current password counts toward the sign-in lockout. A new
+username must be a plain `@ucsd.edu` address the sign-in form accepts, must change the verifier key
+and must not be taken; a new username or password longer than the form's 160 characters, or a
+password with a line break the form's single-line input would remove, is refused. Refusals leave the saved login unchanged.
+
+The change saves both UCPath entries in one marked write, then swaps that profile's verifier row as
+its commit point, and only once the entries are proved durable. If it stops between them, it
+answers `PROFILE_LOGIN_CHANGE_UNSETTLED` and the session stays signed in: its next change writes the
+proved old login back first, and after a restart resume is refused until a sign-in with the old
+login writes it back. Recovery reads the credential store's own history (`lastEntryWriters`) and
+writes back only while a marked login write was the last to set both entries, so it survives
+unrelated protected saves and never overwrites a later Settings set, clear or erase. Neither path
+needs a logout, so parked writes stay held. A swap that landed is never undone: if only its flush
+or directory close failed, the result is `{state: "changed", durability: "unconfirmed"}`, the
+failure is logged and an unclosed descriptor stays held by its owner. If the verifier cannot be read
+back after a failed swap, the result is `PROFILE_LOGIN_CHANGE_UNKNOWN`, nothing is undone and
+neither login is promised. A change that settled keeps its result when only the profile lock's
+release fails; that failure is logged and any unclosed descriptor stays held. A changed or unknown
+result whose fault cannot be written still answers its outcome, marked `diagnostics: "unrecorded"`. An old-login restore
+that cannot prove its write durable fails the sign-in or change that ran it, which may then be
+retried. The epoch, Duo material and other profiles are unchanged.
+
 ### Profile onboarding boundary
 
 Details returns canonical `onboarding` state and a limited HttpOnly cookie scoped to profile routes.

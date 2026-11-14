@@ -85,6 +85,15 @@ export const WORKBOOK_LIBRARY_CATALOG_MIGRATION = Object.freeze({ statements: [
   ...['UPDATE', 'DELETE'].map(operation => `CREATE TRIGGER workbook_library_snapshots_${operation.toLowerCase()} BEFORE ${operation} ON workbook_library_snapshots BEGIN SELECT RAISE(ABORT,'workbook-library-snapshot-immutable'); END`),
 ] });
 
+const ACTION_UPDATE_GUARD = `CREATE TRIGGER workbook_library_actions_update BEFORE UPDATE ON workbook_library_actions BEGIN SELECT RAISE(ABORT,'workbook-library-action-immutable'); END`;
+/** Schema 30: every library state and recorded action result starts unpinned with no manual tags. */
+export const WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION = Object.freeze({ version: 30, statements: Object.freeze([
+  `UPDATE workbook_library_state SET payload_json=json_set(payload_json,'$.pinned',json('false'),'$.tags',json('[]'))`,
+  'DROP TRIGGER workbook_library_actions_update',
+  `UPDATE workbook_library_actions SET payload_json=json_set(payload_json,'$.result.pinned',json('false'),'$.result.tags',json('[]'))`,
+  ACTION_UPDATE_GUARD,
+]) });
+
 const RowSchema = z.object({ id: z.string(), version: z.number().int().positive(), created_at: z.string(), saved_at: z.string(), payload_json: z.string() });
 function selectionFromRow(value: unknown) {
   const row = z.object({ workflow_id: z.string(), revision: z.number(), accepted_command_id: z.string(), used_at: z.string(), payload_json: z.string() }).parse(value);
@@ -116,8 +125,16 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   database: DatabaseSync;
   mutate<T>(work: () => Readonly<{ result: T; changes: number }>): T;
   read<T>(work: () => T): T;
+  /** Reads a store from before schema 30, whose states carry no pin or tags yet. */
+  beforePinTags?: boolean;
 }>): WorkbookLibraryRepository {
   const { database } = deps;
+  const withPinTags = (state: unknown) => {
+    if (deps.beforePinTags !== true) return state;
+    // A predecessor state is strict: a pin or tags already present is not schema-29 data.
+    if (typeof state !== 'object' || state === null || 'pinned' in state || 'tags' in state) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    return { ...state, pinned: false, tags: [] };
+  };
   const lastUsed = (workflowId: string) => stored(() => {
     const id = WorkflowIdSchema.parse(workflowId);
     const row = database.prepare('SELECT * FROM workflow_workbook_selections WHERE workflow_id=?').get(id);
@@ -135,7 +152,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   const metadata = (id: string) => stored(() => WorkbookMetadataSchema.parse(JSON.parse(z.object({ metadata_json: z.string() }).parse(database.prepare('SELECT metadata_json FROM workbook_library WHERE id=?').get(id)).metadata_json)));
   const libraryState = (id: string): WorkbookLibraryState => stored(() => {
     const row = z.strictObject({ payload_json: z.string() }).parse(database.prepare('SELECT payload_json FROM workbook_library_state WHERE id=?').get(id));
-    const state = WorkbookLibraryStateSchema.parse(JSON.parse(row.payload_json));
+    const state = WorkbookLibraryStateSchema.parse(withPinTags(JSON.parse(row.payload_json)));
     if (state.libraryId !== id) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     return state;
   });
@@ -321,7 +338,8 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     if (raw === undefined) return undefined;
     return stored(() => {
       const row = z.strictObject({ id: z.string(), workbook_id: z.string(), operation_id: z.string(), digest: z.string(), payload_json: z.string() }).parse(raw);
-      const record = WorkbookLibraryActionRecordSchema.parse(JSON.parse(row.payload_json));
+      const payload = z.looseObject({ result: z.looseObject({}) }).parse(JSON.parse(row.payload_json));
+      const record = WorkbookLibraryActionRecordSchema.parse({ ...payload, result: withPinTags(payload.result) });
       if (record.libraryId !== row.workbook_id || record.action.operationId !== row.operation_id
         || row.id !== JSON.stringify([record.libraryId, record.action.operationId])
         || sha256Hex(canonicalJsonStringify(record.action)) !== row.digest) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
@@ -459,6 +477,10 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
         } else if (change.kind === 'metadata') {
           apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
             change: { kind: 'metadata', expectedVersion: before.version, metadata: change.metadata } });
+        } else if (change.kind === 'pin' || change.kind === 'unpin') {
+          next.pinned = change.kind === 'pin';
+        } else if (change.kind === 'set-tags') {
+          next.tags = change.tags;
         } else if (change.kind === 'link' || change.kind === 'unlink') {
           apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
             change: { kind: 'metadata', expectedVersion: before.version, metadata: { ...metadata(id), sharePoint: change.kind === 'unlink' ? null : { url: change.url, verifiedAt: at } } } });
@@ -485,7 +507,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       const json = serializeSavedWorkbook(record);
       database.prepare('INSERT INTO workbook_library(id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(record.libraryId, record.version, record.createdAt, record.savedAt, json);
       database.prepare('INSERT INTO workbook_creations(id,payload_json) VALUES(?,?)').run(record.libraryId, json);
-      const state = WorkbookLibraryStateSchema.parse({ libraryId: record.libraryId, revision: 1, selectedVersionId: 'original', removed: false, origin,
+      const state = WorkbookLibraryStateSchema.parse({ libraryId: record.libraryId, revision: 1, selectedVersionId: 'original', removed: false, pinned: false, tags: [], origin,
         versions: [{ id: 'original', snapshotId: JSON.stringify([record.libraryId, 'original']), name: 'Original version', version: 1, savedAt: record.savedAt, source: 'import' }] });
       database.prepare('INSERT INTO workbook_library_state(id,payload_json) VALUES(?,?)').run(record.libraryId, canonicalJsonStringify(state));
       putLibrarySnapshot(record.libraryId, 'original', encodeSavedWorkbook(record).workbook);
@@ -566,7 +588,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   return repository;
 }
 
-export function validateWorkbookLibrary(database: DatabaseSync, master = true, catalog = true): number {
+export function validateWorkbookLibrary(database: DatabaseSync, master = true, catalog = true, pinTags = true): number {
   if (!master) {
     const records = database.prepare('SELECT * FROM workbook_library').all().map(fromRow);
     return records.reduce((total, record) => {
@@ -575,7 +597,7 @@ export function validateWorkbookLibrary(database: DatabaseSync, master = true, c
       return total + 1 + history.length;
     }, 0);
   }
-  const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: () => { throw new Error('workbook-validation-read-only'); } });
+  const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: () => { throw new Error('workbook-validation-read-only'); }, beforePinTags: !pinTags });
   let count = repository.types().length;
   const records = database.prepare('SELECT * FROM workbook_library ORDER BY id').all().map(fromRow);
   for (const record of records) {

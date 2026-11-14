@@ -1,5 +1,6 @@
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { CHANGE_LOG_OBJECTS } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -7,8 +8,26 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
+/** Steps a current authority back to schema 30: the change log, its run references, its triggers and indexes did not exist. */
+export function removeSchema31ChangeLog(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 31);
+  const objects = z.array(z.object({ type: z.string(), name: z.string() })).parse(database.prepare("SELECT type,name FROM sqlite_schema").all())
+    .filter(({ name }) => CHANGE_LOG_OBJECTS.includes(name));
+  for (const type of ["trigger", "index", "table"]) for (const object of objects) if (object.type === type) database.exec(`DROP ${type} ${object.name}`);
+  database.exec("DELETE FROM sqlite_sequence WHERE name='authority_changes'; UPDATE database_states SET schema_version=30; PRAGMA user_version=30");
+}
+
+/** Steps an authority with no library state or action back to schema 29: migration 30 only converts those rows and keeps the schema. */
+export function regressEmptySchema30PinTags(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 31) removeSchema31ChangeLog(database);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 30);
+  for (const table of ["workbook_library_state", "workbook_library_actions"]) assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
+  database.exec("UPDATE database_states SET schema_version=29; PRAGMA user_version=29");
+}
+
 /** Steps an empty current authority back to schema 28: the empty operator grant table still existed. */
 export function restoreSchema28AssistantGrants(database: DatabaseSync): void {
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 30) regressEmptySchema30PinTags(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 29);
   const ddl = SQLITE_MIGRATIONS.find(migration => migration.version === 8)?.statements.join("\n");
   const table = ddl?.match(/CREATE TABLE assistant_grants \([\s\S]*?\n\) STRICT;/u)?.[0], trigger = ddl?.match(/CREATE TRIGGER assistant_grants_revision[\s\S]*?END;/u)?.[0];
@@ -19,7 +38,7 @@ export function restoreSchema28AssistantGrants(database: DatabaseSync): void {
 
 /** Steps an empty schema-28 authority back to schema 27: the attachments table did not exist yet. */
 export function removeEmptySchema28Attachments(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 29) restoreSchema28AssistantGrants(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 29) restoreSchema28AssistantGrants(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 28);
   assert.equal(database.prepare("SELECT count(*) AS count FROM assistant_attachments").get()?.count, 0);
   database.exec("DROP TABLE assistant_attachments");

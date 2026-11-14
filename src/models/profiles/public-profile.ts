@@ -8,6 +8,22 @@ export const ProfileLoginRequestSchema = z.strictObject({ email: z.string().min(
 export const ProfileSignUpRequestSchema = ProfileLoginRequestSchema.extend({ firstName: z.string().min(1).max(64), lastName: z.string().min(1).max(64) });
 export type ProfileLoginRequest = z.infer<typeof ProfileLoginRequestSchema>;
 export type ProfileSignUpRequest = z.infer<typeof ProfileSignUpRequestSchema>;
+/**
+ * Relay login changes for the signed-in profile; the current password proves the caller. A replacement must be enterable in the
+ * sign-in form: at most its inputs' 160 characters, and no line break, which its single-line password input removes.
+ */
+export const RELAY_SIGN_IN_FIELD_MAX = 160;
+export const ProfilePasswordChangeRequestSchema = z.strictObject({ currentPassword: ProfileLoginRequestSchema.shape.password,
+  newPassword: z.string().min(1).max(RELAY_SIGN_IN_FIELD_MAX).regex(/^[^\r\n]*$/u) });
+export const ProfileUsernameChangeRequestSchema = z.strictObject({ currentPassword: ProfileLoginRequestSchema.shape.password,
+  newUsername: z.string().min(1).max(RELAY_SIGN_IN_FIELD_MAX) });
+export const ProfileLoginChangeResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("changed"), durability: z.literal("unconfirmed").optional(), diagnostics: z.literal("unrecorded").optional() }),
+  z.strictObject({ state: z.literal("unknown"), code: z.literal("PROFILE_LOGIN_CHANGE_UNKNOWN"), diagnostics: z.literal("unrecorded").optional() }),
+  z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
+]);
+/** A Relay username the dashboard sign-in form accepts: one UCSD work email with no surrounding spaces. */
+export function isRelayUsername(value: string): boolean { return /^[^\s@]+@ucsd\.edu$/iu.test(value); }
 export const DeleteProfileAccountRequestSchema = z.strictObject({ confirmed: z.literal(true),
   expectedProfileId: ProfileIdSchema, expectedEpoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) });
 export type DeleteProfileAccountRequest = z.infer<typeof DeleteProfileAccountRequestSchema>;

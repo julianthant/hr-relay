@@ -18,6 +18,8 @@ export interface StorageReadFixture {
   readonly reader: AuthorityDatabase;
   /** A second connection whose commits move the reader's `PRAGMA data_version`. */
   readonly writer: AuthorityDatabase;
+  /** Seeds through the second connection, so its runs, heartbeats and completions are peer commits to the reader. */
+  readonly writerContext: SeedContext;
   readonly runCount: number;
   readonly seedMs: number;
   close(): Promise<void>;
@@ -56,8 +58,11 @@ export async function seedStorageReadFixture(runCount: number): Promise<StorageR
       }
     });
     const seedMs = systemClock.monotonicMs() - started;
+    const writerContext: SeedContext = { workers: new Map(), path, database: writer, clock,
+      spans: createTimelineEmitter({ repository: writer.authority.timelineEvents, clock, pid: 4343 }),
+      notes: createNoteTimelineWriter({ repository: writer.authority.timelineEvents, clock, pid: 4343 }) };
     return Object.freeze({
-      path, clock, reader, writer, runCount, seedMs,
+      path, clock, reader, writer, writerContext, runCount, seedMs,
       close: async (): Promise<void> => {
         for (const database of opened) database.close();
         await profile.close();

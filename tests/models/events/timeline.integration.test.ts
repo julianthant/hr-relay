@@ -1,5 +1,5 @@
 import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
-import { AUTHORITY_TABLE_REGISTRY } from "../../../src/models/config/authority.js";
+import { AUTHORITY_DERIVED_TABLES, AUTHORITY_TABLE_REGISTRY } from "../../../src/models/config/authority.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -122,7 +122,7 @@ function rows(path: string) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
-    assert.deepEqual(tables.map(row => row.name), AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort());
+    assert.deepEqual(tables.map(row => row.name), [...AUTHORITY_TABLE_REGISTRY.map(({ name }) => name), ...AUTHORITY_DERIVED_TABLES].sort());
     return Object.fromEntries(tables.map(row => {
       assert.equal(typeof row.name, "string");
       return [String(row.name), raw.prepare(`SELECT * FROM "${String(row.name)}" ORDER BY rowid`).all()];
@@ -160,7 +160,7 @@ afterEach(_afterEachFixture0);
       finally { reopened.close(); }
     } finally { await f.dispose(); }
   });
-  it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1, 29, 46, 999])("refuses schema %s without conversion or source I/O repair", async version => {
+  it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1, 46, 999])("refuses schema %s without conversion or source I/O repair", async version => {
     const f = await fresh(); await f.run();
     const raw = new DatabaseSync(f.path);
     try { raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`); }

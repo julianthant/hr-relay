@@ -19,7 +19,7 @@ describe("assistant model preference additive schema", () => {
       for (const statement of ninth.statements) database.exec(statement);
       for (const value of prior) { assert.ok(typeof value.name === "string"); assert.deepEqual(database.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name=?").get(value.name), value); }
       assert.deepEqual(tables.map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), rows);
-      assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 29);
+      assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 31);
       assert.deepEqual(migrationTableNames(9).filter(table => !tables.includes(table)), ["assistant_model_preference"]);
       assert.equal(tableClassification("assistant_model_preference"), 'authority');
       assert.deepEqual(database.prepare("SELECT * FROM assistant_model_preference").all(), []);
@@ -38,7 +38,7 @@ describe("assistant model preference additive schema", () => {
     assert.notEqual(deriveAuthorityUpgradePlanDigest(7, fingerprint, 18), deriveAuthorityUpgradePlanDigest(7, fingerprint));
   });
 
-  it.each([[7, 8], [7, 9], [8, 9], [9, 10], [10, 11], [11, 12], [12, 13], [13, 14], [14, 15], [15, 16], [16, 17], [17, 18], [18, 19], [19, 20], [20, 21], [21, 22], [22, 23], [23, 24], [24, 25], [25, 26], [26, 27], [27, 28]] as const)("retains the exact historical %s-to-%s upgrade digest", (from, to) => {
+  it.each([[7, 8], [7, 9], [8, 9], [9, 10], [10, 11], [11, 12], [12, 13], [13, 14], [14, 15], [15, 16], [16, 17], [17, 18], [18, 19], [19, 20], [20, 21], [21, 22], [22, 23], [23, 24], [24, 25], [25, 26], [26, 27], [27, 28], [28, 29], [29, 30]] as const)("retains the exact historical %s-to-%s upgrade digest", (from, to) => {
     const fingerprint = "1".repeat(64);
     const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > from && migration.version <= to).flatMap(migration => migration.statements);
     const expected = createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion: from, toSchemaVersion: to, sourceContentFingerprint: fingerprint, statements })).digest("hex");

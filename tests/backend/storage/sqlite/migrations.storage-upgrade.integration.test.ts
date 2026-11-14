@@ -1,3 +1,4 @@
+import { AUTHORITY_DERIVED_TABLES } from "../../../../src/models/config/authority.js";
 import assert from "node:assert/strict";
 import { existsSync,readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
@@ -16,7 +17,7 @@ function rows(path: string) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
-    assert.equal(tables.length, 49);
+    assert.equal(tables.length, 49 + AUTHORITY_DERIVED_TABLES.length);
     return Object.fromEntries(tables.map(row => {
       assert.equal(typeof row.name, "string");
       return [String(row.name), raw.prepare(`SELECT * FROM "${String(row.name)}" ORDER BY rowid`).all()];

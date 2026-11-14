@@ -24,7 +24,7 @@ const versions = ['Reviewed roster', 'Delayed roster', 'New roster', 'Empty rost
 }));
 const catalog = WorkbookLibraryCatalogSchema.parse([{ libraryId, version: 5, name: 'Onboarding.xlsx', updatedAt: versions[0].savedAt, rowCount: 4,
   worksheets: [{ id: 'people', name: 'People' }], metadata: { typeId: type.id, sharePoint: null }, type,
-  state: { libraryId, revision: 1, selectedVersionId: versions[0].id, origin: { kind: 'local' }, removed: false, versions },
+  state: { libraryId, revision: 1, selectedVersionId: versions[0].id, origin: { kind: 'local' }, removed: false, pinned: false, tags: [], versions },
 }]);
 const workflow = (() => {
   const value = FIXTURE_START_PICKER_BOOTSTRAP.workflows.map(entry => WorkflowBootstrapPrimitiveSchema.parse(entry)).find(entry => entry.id === 'onboarding');

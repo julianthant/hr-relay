@@ -14,12 +14,13 @@ import type { ChildProcess } from "node:child_process";
 import { createHash,randomUUID } from "node:crypto";
 import { existsSync,statSync } from "node:fs";
 import { basename,dirname,join } from "node:path";
-import { DatabaseSync,backup as sqliteBackup } from "node:sqlite";
+import { DatabaseSync,backup as sqliteBackup,type SQLInputValue } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { ArtifactRefSchema,type ArtifactRef } from "../../../models/artifacts/artifacts.js";
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
-import { AUTHORITY_TABLE_REGISTRY,AuthorityTableNameSchema,AuthorityEvidenceSchemaUpgradeRecordSchema,AuthorityUpgradeRecordSchema,ProjectionTableNameSchema,type AuthorityTableName,type RunRecordRefusal,type TableName } from "../../../models/config/authority.js";
+import { CHANGE_LOG_SCHEMA_VERSION, ChangeEntrySchema, RUN_REFERENCE_SOURCES, RunReferenceSourceSchema, SingletonImageSchema, currentRowKey, expectedRunReferences, singletonChangeKeys, sourceRowWhere, type ChangeEntry, type DependencyKey, type RunReferenceSource, type SingletonImage } from "./authority-change-log.js";
+import { AUTHORITY_DERIVED_TABLES,AUTHORITY_TABLE_REGISTRY,AuthorityTableNameSchema,CHANGE_LOG_TABLE,RUN_REFERENCES_TABLE,AuthorityEvidenceSchemaUpgradeRecordSchema,AuthorityUpgradeRecordSchema,ProjectionTableNameSchema,type AuthorityTableName,type RunRecordRefusal,type TableName } from "../../../models/config/authority.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { type ActiveRuntimeConfigRecord,type RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
@@ -102,7 +103,7 @@ import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } fro
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { selectTransactions } from "./transaction-selection.js";
-import { createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,validateWorkbookLibrary } from "./workbook-library-repository.js";
+import { createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,validateWorkbookLibrary,WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION } from "./workbook-library-repository.js";
 
 import { DryRunScenarioResultSchema,type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
@@ -114,7 +115,6 @@ import { ActorIdSchema,ArtifactIdSchema,BrowserSystemIdSchema,CommandAuditIdSche
 import { DuoCeremonyLeaseAcquireRequestSchema,DuoCeremonyLeaseRecordSchema,DuoCeremonyLeaseReleaseOutcomeSchema,DuoCeremonyLeaseTakeoverSchema,isDuoCeremonyLeaseLive,type DuoCeremonyLeaseAcquireRequest,type DuoCeremonyLeaseRecord,type DuoCeremonyLeaseReleaseOutcome } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { localDatePart,systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { IdempotencyKeySchema,WriteAttemptRecordSchema,WriteIntentRecordSchema,type WriteAttemptRecord,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import type { WriteEvent } from "../../../rules/write-safety/write-transitions.js";
 import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeaseToken,type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
@@ -682,7 +682,7 @@ function errorMessage(error: unknown): string {
 
 function readIntPragma(
   database: DatabaseSync,
-  name: "application_id" | "user_version" | "foreign_keys" | "synchronous" | "busy_timeout" | "data_version",
+  name: "application_id" | "user_version" | "foreign_keys" | "synchronous" | "busy_timeout" | "data_version" | "schema_version",
 ): number {
   const row = IntPragmaRowSchema.parse(database.prepare(`PRAGMA ${name}`).get());
   const value = row[name === "busy_timeout" ? "timeout" : name];
@@ -704,9 +704,11 @@ function readTextPragma(database: DatabaseSync, name: "journal_mode"): string {
   return value;
 }
 
+/** The registry tables present; the change log's derived tables are checked as schema objects and against their sources instead. */
 function inspectionTableNames(database: DatabaseSync): string[] {
+  const derived = readIntPragma(database, "user_version") >= CHANGE_LOG_SCHEMA_VERSION ? AUTHORITY_DERIVED_TABLES : [];
   return database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
-    .all().map(row => TableNameRowSchema.parse(row).name);
+    .all().map(row => TableNameRowSchema.parse(row).name).filter(name => !derived.some(table => table === name));
 }
 
 function tableNames(database: DatabaseSync): TableName[] {
@@ -729,8 +731,10 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION, scop
     sql: `SELECT count(*) AS count FROM runs AS run
       WHERE ${only("run.id")} AND json_type(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion') IS 'object'
         AND run.version - json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.expectedVersion') - 1 <> (
-          SELECT count(DISTINCT json_extract(audit.payload_json, '$.result.appliedVersion')) FROM command_audits AS audit
-          WHERE json_extract(audit.payload_json, '$.kind') = 'run-lifecycle'
+          SELECT count(DISTINCT json_extract(audit.payload_json, '$.result.appliedVersion')) FROM ${schemaVersion >= CHANGE_LOG_SCHEMA_VERSION
+            ? `${RUN_REFERENCES_TABLE} AS reference JOIN command_audits AS audit ON audit.id = json_extract(reference.row_key, '$[0]')
+          WHERE reference.run_id = run.id AND reference.table_name = 'command_audits' AND`
+            : "command_audits AS audit WHERE"} json_extract(audit.payload_json, '$.kind') = 'run-lifecycle'
             AND json_extract(audit.payload_json, '$.result.kind') = 'run'
             AND json_extract(audit.payload_json, '$.result.runId') = run.id
             AND json_extract(audit.payload_json, '$.request.operation') IN ('transition')
@@ -897,17 +901,25 @@ function invariantViolations(database: DatabaseSync, scope?: InvariantScope): re
     const { count } = CountRowSchema.parse(scope === undefined ? statement.get() : statement.get(JSON.stringify([...scope[kind]])));
     return count === 0 ? [] : [`${name} failed for ${String(count)} row(s)`];
   });
-  return [...violations, ...commandGroupLinkViolations(database, scope?.command)];
+  return [...violations, ...commandGroupLinkViolations(database, scope)];
 }
 
-/** Validate both declared links and missing links from each immutable parent selection; `commands` limits the links checked. */
-function commandGroupLinkViolations(database: DatabaseSync, commands?: ReadonlySet<string>): readonly string[] {
-  if (commands?.size === 0) return [];
+/**
+ * Validate both declared links and missing links from each immutable parent selection; `scope` limits the links checked to its
+ * commands. A child's request names the run its parent targets, so the parents that could claim a scoped command are the bulk
+ * parents referencing a scoped run, and the scope's runs include every run a scoped command referenced before or after.
+ */
+function commandGroupLinkViolations(database: DatabaseSync, scope?: Readonly<{ command: ReadonlySet<string>; run: ReadonlySet<string> }>): readonly string[] {
+  if (scope?.command.size === 0) return [];
+  const commands = scope?.command;
   const rowSchema = z.strictObject({ id: z.string(), request_json: z.string(), parent_id: z.string().nullable() });
-  const rows = commands === undefined
+  const rows = scope === undefined
     ? database.prepare("SELECT id, request_json, parent_id FROM commands ORDER BY id").all().map((row) => rowSchema.parse(row))
-    : database.prepare("SELECT id, request_json, parent_id FROM commands WHERE id IN (SELECT value FROM json_each(?)) OR parent_id IN (SELECT value FROM json_each(?)) OR family='bulk-parent' ORDER BY id")
-      .all(JSON.stringify([...commands]), JSON.stringify([...commands])).map((row) => rowSchema.parse(row));
+    : database.prepare(`SELECT id, request_json, parent_id FROM commands WHERE id IN (SELECT value FROM json_each(?1)) OR parent_id IN (SELECT value FROM json_each(?1))
+        OR id IN (SELECT parent_id FROM commands WHERE id IN (SELECT value FROM json_each(?1)))
+      UNION SELECT parent.id, parent.request_json, parent.parent_id FROM ${RUN_REFERENCES_TABLE} AS reference JOIN commands AS parent ON parent.id = json_extract(reference.row_key, '$[0]')
+        WHERE reference.run_id IN (SELECT value FROM json_each(?2)) AND reference.table_name = 'commands' AND parent.family = 'bulk-parent'
+      ORDER BY id`).all(JSON.stringify([...scope.command]), JSON.stringify([...scope.run])).map((row) => rowSchema.parse(row));
   const byId = new Map(rows.map((row) => [row.id, row]));
   const checked = (id: string) => commands === undefined || commands.has(id) || commands.has(byId.get(id)?.parent_id ?? "");
   const expected = new Map<string, string>();
@@ -1146,17 +1158,11 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
 
 
 function nativeTableKey(table: AuthorityTableName | "explorer_overrides" | typeof WORKER_CUSTODY_DROPPED_TABLES[number] | typeof RETIRED_ASSISTANT_GRANT_TABLE, database: DatabaseSync): string {
-  if (table === "run_results") return readIntPragma(database,"user_version") >= 20 ? "id" : "run_id";
-  if (table === "deleted_runs" || table === "run_search") return "run_id";
-  if (table === "worker_pools") return "workflow";
-  if (table === "workflow_workbook_selections") return "workflow_id";
-  if (table === "workbook_library_history") return readIntPragma(database, "user_version") >= 13
-    ? "workbook_id,version,name" : "workbook_id,version,payload_json";
-  if (table === "workbook_operations") return "sequence";
+  if (table === "run_results" && readIntPragma(database, "user_version") < 20) return "run_id";
+  if (table === "workbook_library_history" && readIntPragma(database, "user_version") < 13) return "workbook_id,version,payload_json";
   if (table === "worker_controls") return "command_id";
-  if (table === "auth_leases") return "credential_key";
-  if (table === "timeline_events") return "cursor";
-  return "id";
+  const current = AuthorityTableNameSchema.safeParse(table);
+  return current.success ? currentRowKey(current.data).join(",") : "id";
 }
 
 function authenticateStoredWriteResolution(database: DatabaseSync, input: unknown, read: StoredReaders = CURRENT_READERS): void {
@@ -1352,7 +1358,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
 function validateAuthorityFamilies(context: StoredRowContext, workbookPayloads = true, families: ReadonlySet<AuthorityFamily> = ALL_AUTHORITY_FAMILIES): number {
   const { database, expectedSchemaVersion, convertPreferences } = context;
   let validated = 0;
-  if (families.has("workbook") && workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18);
+  if (families.has("workbook") && workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18,
+    expectedSchemaVersion >= WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version);
   // Below schema 27 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
   if (families.has("assistant-preference") && expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   if (families.has("settings")) try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
@@ -1437,51 +1444,18 @@ type AuthorityFamily = "workbook" | "assistant-preference" | "settings";
 const ALL_AUTHORITY_FAMILIES: ReadonlySet<AuthorityFamily> = new Set(["workbook", "assistant-preference", "settings"]);
 type StoredRow = Record<string, unknown>;
 
-/**
- * A key a stored row image emits. Re-validating every unit keyed by the keys of a change's old and new images gives the
- * same verdict as the whole-store check: `run`, `worker`, `snapshot` and `intent` scope the invariants and search coverage,
- * `item` reaches every run of one work item, whose replays read each other's checkpoints; the others find the rows whose
- * validator reads the changed row.
- */
-export type DependencyKey = `${"run" | "item" | "worker" | "snapshot" | "intent" | "command" | "chat" | "family"}:${string}` | "profile" | "search-publication";
-
-/** One table's part of the closure: the keys an image emits, and the rows of this table whose validator reads a row emitting a key. */
-type TableChangePolicy = Readonly<{ keys: (row: StoredRow) => readonly DependencyKey[];
-  dependents: (database: DatabaseSync, key: DependencyKey) => readonly StoredRow[] }>;
+type Dependents = (database: DatabaseSync, key: DependencyKey) => readonly StoredRow[];
 
 const RowsSchema = z.array(z.record(z.string(), z.unknown()));
-function selectRows(database: DatabaseSync, sql: string, ...values: string[]): readonly StoredRow[] {
+function selectRows(database: DatabaseSync, sql: string, ...values: SQLInputValue[]): readonly StoredRow[] {
   return RowsSchema.parse(database.prepare(sql).all(...values));
 }
 
 const COLUMN_KEY_KINDS = ["run", "worker", "snapshot", "intent", "command", "chat"] as const;
 type ColumnKeys = Readonly<Partial<Record<typeof COLUMN_KEY_KINDS[number], string>>>;
 
-/** Keys from columns, e.g. `{ run: "run_id" }`; a null column emits nothing. */
-function columnKeys(row: StoredRow, columns: ColumnKeys): DependencyKey[] {
-  return COLUMN_KEY_KINDS.flatMap(kind => {
-    const value = columns[kind] === undefined ? undefined : row[columns[kind]];
-    return typeof value === "string" ? [`${kind}:${value}` as const] : [];
-  });
-}
-
-/** Every `runId` string anywhere in a JSON column: the journal names runs only inside its payloads. */
-function jsonRunKeys(row: StoredRow, columns: readonly string[]): DependencyKey[] {
-  const keys: DependencyKey[] = [];
-  const visit = (value: unknown): void => {
-    if (Array.isArray(value)) { for (const entry of value) visit(entry); return; }
-    if (value === null || typeof value !== "object") return;
-    for (const [name, entry] of Object.entries(value)) {
-      if (name === "runId" && typeof entry === "string") keys.push(`run:${entry}`);
-      else visit(entry);
-    }
-  };
-  for (const column of columns) { const text = row[column]; if (typeof text === "string") visit(JSON.parse(text)); }
-  return keys;
-}
-
 /** Rows of `table` whose column equals the key's value, for each key kind listed. */
-function byColumn(table: AuthorityTableName, columns: ColumnKeys): TableChangePolicy["dependents"] {
+function byColumn(table: AuthorityTableName, columns: ColumnKeys): Dependents {
   return (database, key) => {
     const kind = COLUMN_KEY_KINDS.find(candidate => key.startsWith(`${candidate}:`));
     const column = kind === undefined ? undefined : columns[kind];
@@ -1489,106 +1463,27 @@ function byColumn(table: AuthorityTableName, columns: ColumnKeys): TableChangePo
   };
 }
 
-/** A superset of the rows whose JSON names the run: the quoted id appears in the text of any JSON string holding it. */
-function byJsonRun(table: AuthorityTableName, columns: readonly string[]): TableChangePolicy["dependents"] {
+/** Rows of a run reference source whose JSON names the key's run, found through `run_references`. */
+function byRunReference(table: RunReferenceSource): Dependents {
+  const join = currentRowKey(table).map((column, index) => `source.${column}=json_extract(reference.row_key,'$[${String(index)}]')`).join(" AND ");
   return (database, key) => key.startsWith("run:")
-    ? selectRows(database, `SELECT * FROM ${table} WHERE ${columns.map(column => `instr(${column},?)>0`).join(" OR ")}`, ...columns.map(() => JSON.stringify(key.slice(4))))
+    ? selectRows(database, `SELECT source.* FROM ${RUN_REFERENCES_TABLE} AS reference JOIN ${table} AS source ON ${join} WHERE reference.run_id=? AND reference.table_name='${table}'`, key.slice(4))
     : [];
 }
 
-function commandFamilies(record: unknown): DependencyKey[] {
-  const parsed = z.object({ family: z.string().optional(), kind: z.string().optional() }).safeParse(record);
-  if (!parsed.success) return [];
-  return [
-    ...(parsed.data.family === "settings" || parsed.data.kind === "settings-initialization" ? ["family:settings" as const] : []),
-    ...(parsed.data.family === "assistant-model-preference" ? ["family:assistant-preference" as const] : []),
-  ];
-}
-
-const NO_DEPENDENTS: TableChangePolicy["dependents"] = () => [];
-const selfOnly = (keys: TableChangePolicy["keys"] = () => []): TableChangePolicy => ({ keys, dependents: NO_DEPENDENTS });
-const workbookFamily = selfOnly(() => ["family:workbook"]);
-
 /**
- * The closure policy for every registry table. Most validators read only their own row; the rest read rows owned by the
- * same run, a command's audit, a chat, the published search state or a whole family.
+ * The rows of `table` whose validator reads a row emitting `key`. Most validators read only their own row; the rest read rows
+ * owned by the same run, a command's audit or a chat. The keys each row emits are generated SQL in the capture triggers.
  */
-const TABLE_CHANGE_POLICIES = deepFreeze<Record<AuthorityTableName, TableChangePolicy>>({
-  assistant_model_preference: selfOnly(() => ["family:assistant-preference"]),
-  // The singleton is special-cased in `changeKeys`: only a changed search publication or profile reaches other rows.
-  database_states: selfOnly(),
-  database_upgrades: selfOnly(),
-  settings_snapshots: selfOnly(() => ["family:settings"]),
-  commands: selfOnly(row => [`command:${String(row.id)}`, ...columnKeys(row, { run: "target_id" }), ...jsonRunKeys(row, ["request_json", "outcome_json"]),
-    ...commandFamilies(JSON.parse(String(row.request_json)))]),
-  command_audits: { keys: row => [...columnKeys(row, { command: "command_id" }), ...jsonRunKeys(row, ["payload_json"]),
-    ...commandFamilies(z.object({ request: z.unknown() }).safeParse(JSON.parse(String(row.payload_json))).data?.request)],
-  dependents: (database, key) => [...byColumn("command_audits", { command: "command_id" })(database, key), ...byJsonRun("command_audits", ["payload_json"])(database, key)] },
-  settings: selfOnly(() => ["family:settings"]),
-  assistant_chats: { keys: row => columnKeys(row, { chat: "id" }), dependents: (database, key) => key === "profile" ? selectRows(database, "SELECT * FROM assistant_chats") : [] },
-  assistant_actions: { keys: row => columnKeys(row, { chat: "chat_id" }), dependents: byColumn("assistant_actions", { chat: "chat_id" }) },
-  assistant_conversations: selfOnly(),
-  assistant_messages: selfOnly(),
-  assistant_attachments: selfOnly(),
-  run_batches: selfOnly(),
-  deleted_runs: selfOnly(row => columnKeys(row, { run: "run_id", command: "command_id" })),
-  runs: selfOnly(row => columnKeys(row, { run: "id", worker: "owner_worker_id" })),
-  run_requests: selfOnly(),
-  run_delegations: selfOnly(row => columnKeys(row, { run: "parent_run_id" })),
-  delegation_dependencies: selfOnly(),
-  run_checkpoints: selfOnly(row => [...columnKeys(row, { run: "run_id" }), `item:${JSON.stringify([row.workflow, row.item_id])}`]),
-  gate_results: selfOnly(row => columnKeys(row, { run: "run_id" })),
-  run_results: { keys: row => columnKeys(row, { run: "run_id" }), dependents: byColumn("run_results", { run: "run_id" }) },
-  run_failures: selfOnly(row => columnKeys(row, { run: "run_id" })),
-  run_receipts: { keys: row => columnKeys(row, { run: "run_id" }), dependents: byColumn("run_receipts", { run: "run_id" }) },
-  write_intents: { keys: row => [...columnKeys(row, { run: "run_id", intent: "id" }), ...jsonRunKeys(row, ["publication_json"])],
-    dependents: (database, key) => [...byColumn("write_intents", { run: "run_id", intent: "id" })(database, key), ...byJsonRun("write_intents", ["publication_json"])(database, key)] },
-  write_attempts: selfOnly(row => columnKeys(row, { run: "run_id", intent: "intent_id" })),
-  worker_pools: selfOnly(),
-  worker_slots: selfOnly(),
-  auth_leases: selfOnly(),
-  exclusive_session_leases: selfOnly(),
-  ocr_review_revisions: selfOnly(row => columnKeys(row, { run: "run_id" })),
-  ocr_source_uploads: selfOnly(),
-  ocr_approved_snapshots: selfOnly(row => columnKeys(row, { run: "run_id" })),
-  notifications: selfOnly(),
-  notification_states: selfOnly(),
-  artifacts: selfOnly(),
-  timeline_events: { keys: row => columnKeys(row, { run: "run_id", intent: "operation_id" }), dependents: byColumn("timeline_events", { run: "run_id" }) },
-  diagnostic_snapshots: selfOnly(row => columnKeys(row, { run: "run_id", snapshot: "id" })),
-  diagnostic_files: selfOnly(row => columnKeys(row, { snapshot: "snapshot_id" })),
-  dryrun_results: selfOnly(row => columnKeys(row, { run: "run_id" })),
-  run_search: { keys: row => columnKeys(row, { run: "run_id" }),
-    dependents: (database, key) => key === "search-publication" ? selectRows(database, "SELECT * FROM run_search") : byColumn("run_search", { run: "run_id" })(database, key) },
-  workflow_workbook_selections: selfOnly(),
-  workbook_creations: workbookFamily,
-  workbook_types: workbookFamily,
-  workbook_operations: selfOnly(row => ["family:workbook", ...jsonRunKeys(row, ["request_json", "receipt_json"])]),
-  workbook_library: workbookFamily,
-  workbook_library_history: workbookFamily,
-  workbook_library_state: workbookFamily,
-  workbook_library_actions: workbookFamily,
-  workbook_library_snapshots: workbookFamily,
-});
-
-const DatabaseStateKeysSchema = z.object({ search_state: z.string(), search_generation: z.number().nullable(), profile_id: z.string() });
-
-/** The keys of one change: both images' keys, with the singleton reaching other rows only through what its readers read. */
-function changeKeys(change: AuthorityRowChange): DependencyKey[] {
-  if (change.table !== "database_states") {
-    const policy = TABLE_CHANGE_POLICIES[change.table];
-    return [...(change.before === undefined ? [] : policy.keys(change.before)), ...(change.after === undefined ? [] : policy.keys(change.after))];
+function tableDependents(database: DatabaseSync, table: AuthorityTableName, key: DependencyKey): readonly StoredRow[] {
+  switch (table) {
+    case "command_audits": return [...byColumn(table, { command: "command_id" })(database, key), ...byRunReference(table)(database, key)];
+    case "write_intents": return [...byColumn(table, { run: "run_id", intent: "id" })(database, key), ...byRunReference(table)(database, key)];
+    case "assistant_actions": return byColumn(table, { chat: "chat_id" })(database, key);
+    case "run_results": case "run_receipts": case "timeline_events": case "run_search": return byColumn(table, { run: "run_id" })(database, key);
+    default: return [];
   }
-  if (change.before === undefined || change.after === undefined) return ["search-publication", "profile", "family:assistant-preference"];
-  const before = DatabaseStateKeysSchema.parse(change.before), after = DatabaseStateKeysSchema.parse(change.after);
-  return [
-    ...(before.search_state !== after.search_state || (after.search_state !== "ready" && before.search_generation !== after.search_generation) ? ["search-publication" as const] : []),
-    ...(before.profile_id !== after.profile_id ? ["profile" as const, "family:assistant-preference" as const] : []),
-  ];
 }
-
-/** One stored row another connection inserted (`after` only), changed (both) or deleted (`before` only). */
-export type AuthorityRowChange = Readonly<{ table: AuthorityTableName; before?: StoredRow; after?: StoredRow }>;
 
 /** Parent runs read their delegated children's settlements, so a run key also reaches every ancestor. */
 function withAncestorRuns(database: DatabaseSync, runs: Set<string>): void {
@@ -1599,16 +1494,88 @@ function withAncestorRuns(database: DatabaseSync, runs: Set<string>): void {
   }
 }
 
+const SourceKeySchema = z.tuple([RunReferenceSourceSchema, z.string()]);
+const RunIdRowsSchema = z.array(z.object({ run_id: z.string() }));
+const ReferenceRowsSchema = z.array(z.object({ run_id: z.string(), table_name: z.string(), row_key: z.string() }));
+
+/** The runs one source row references: its stored links must equal what its current image implies, or the store is refused. */
+function sourceRowRuns(database: DatabaseSync, table: RunReferenceSource, rowKey: string): readonly string[] {
+  const stored = RunIdRowsSchema.parse(database.prepare(`SELECT run_id FROM ${RUN_REFERENCES_TABLE} WHERE table_name=? AND row_key=? ORDER BY run_id`).all(table, rowKey));
+  const members = z.array(z.union([z.string(), z.number()])).parse(JSON.parse(rowKey));
+  const expected = RunIdRowsSchema.parse(database.prepare(`SELECT DISTINCT run_id FROM (${expectedRunReferences(table, sourceRowWhere(table))}) ORDER BY run_id`)
+    .all(...RUN_REFERENCE_SOURCES[table].flatMap(() => members)));
+  if (canonicalJsonStringify(stored) !== canonicalJsonStringify(expected)) throw new Error(`run-references-mismatch: ${table} ${rowKey}`);
+  return stored.map(({ run_id }) => run_id);
+}
+
+/** Every stored link must equal the set the source rows imply. */
+function assertRunReferences(database: DatabaseSync): void {
+  // Each side is a subquery: a bare `a EXCEPT b UNION c` groups as `(a EXCEPT b) UNION c`.
+  const expected = `SELECT * FROM (${RunReferenceSourceSchema.options.map(table => expectedRunReferences(table)).join(" UNION ")})`;
+  const stored = `SELECT * FROM (SELECT run_id,table_name,row_key FROM ${RUN_REFERENCES_TABLE})`;
+  const differing = ReferenceRowsSchema.parse(database.prepare(`SELECT * FROM (${stored} EXCEPT ${expected}) UNION ALL SELECT * FROM (${expected} EXCEPT ${stored}) LIMIT 1`).all());
+  if (differing.length > 0) throw new Error("run-references-mismatch");
+}
+
+/** The logged changes after `after`, strictly parsed, in commit order. */
+export function readAuthorityChanges(database: DatabaseSync, after: number): readonly ChangeEntry[] {
+  return z.array(ChangeEntrySchema).parse(database.prepare(`SELECT seq,table_name,row_key,op,keys_json FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq`).all(after));
+}
+
+/** The singleton fields a reader compares with the image it last validated; a missing singleton is refused. */
+export function readSingletonImage(database: DatabaseSync): SingletonImage {
+  return SingletonImageSchema.parse(database.prepare("SELECT search_state,search_generation,profile_id FROM database_states WHERE id=1").get());
+}
+
+/** The newest sequence number the change log ever issued; entries above a reader's cursor must run contiguously up to it. */
+function changeLogHighWater(database: DatabaseSync): number {
+  return z.object({ seq: z.number().int().nonnegative() }).optional().parse(database.prepare("SELECT seq FROM sqlite_sequence WHERE name=?").get(CHANGE_LOG_TABLE))?.seq ?? 0;
+}
+
+/** Entries kept for readers that fall behind; older ones are pruned, and a reader below the floor runs the whole-store check. */
+const CHANGE_LOG_RETAINED_ENTRIES = 100_000;
+const CHANGE_LOG_PRUNE_INTERVAL_MS = 60_000;
+
 /**
- * Re-validates exactly the units a set of row changes can affect: each changed row's current image, every row whose
- * validator reads a changed row, the families they belong to, the invariants and search coverage of their keys. Throws
- * whenever the whole-store check (`validateAuthorityStore`) would throw for the same store.
+ * One connection's position in the change log. Every entry at or below `cursor` is validated or the connection's own;
+ * `wholeStore` is set after a schema move or a gap, until a whole-store check passes; `failed` records the last refusal;
+ * `settled` is the position a passing search-`none` admit reached, which a restart rebuild's commit settles to.
  */
-export function validateAuthorityChanges(database: DatabaseSync, changes: readonly AuthorityRowChange[], search: "all" | "progress" | "none" = "all"): void {
+type ChangeLogReader = { cursor: number; schemaCookie: number; singleton: SingletonImage; wholeStore: boolean;
+  failed: "authority" | "projection-only" | undefined; settled: Readonly<{ cursor: number; dataVersion: number }> | undefined };
+
+function changeLogBaseline(database: DatabaseSync): ChangeLogReader {
+  return { cursor: changeLogHighWater(database), schemaCookie: readIntPragma(database, "schema_version"), singleton: readSingletonImage(database),
+    wholeStore: false, failed: undefined, settled: undefined };
+}
+
+/**
+ * How a reader re-validated a set of changes: `scoped` checked only their closure; `whole` ran the whole-store check because a
+ * change reaches every row of a kind (a completed search publication or a profile change).
+ */
+export type AuthorityChangeRoute = "scoped" | "whole";
+
+/**
+ * Re-validates exactly the units a set of logged changes can affect: each changed row's current image, every row whose
+ * validator reads a changed row, the families they belong to, the invariants and search coverage of their keys. Throws
+ * whenever the whole-store check (`validateAuthorityStore`) would throw for the same store. `singletonKeys` are the keys of
+ * the singleton's change since the reader last validated it (`singletonChangeKeys`).
+ */
+export function validateAuthorityChanges(database: DatabaseSync, entries: readonly ChangeEntry[], singletonKeys: readonly DependencyKey[],
+  search: "all" | "progress" | "none" = "all"): AuthorityChangeRoute {
+  const keys = new Set<DependencyKey>([...entries.flatMap(entry => entry.keys), ...singletonKeys]);
+  const searchReady = z.object({ search_state: z.string() }).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
+  if (keys.has("profile") || (keys.has("search-publication") && searchReady)) {
+    validateAuthorityStore(database, search);
+    return "whole";
+  }
   const context = storedRowContext(database, CURRENT_AUTHORITY_SCHEMA_VERSION);
-  const keys = new Set(changes.flatMap(changeKeys));
   const ofKind = (kind: string) => new Set([...keys].flatMap(key => key.startsWith(`${kind}:`) ? [key.slice(kind.length + 1)] : []));
   const runs = ofKind("run");
+  for (const source of ofKind("source")) {
+    const [table, rowKey] = SourceKeySchema.parse(JSON.parse(source));
+    for (const run of sourceRowRuns(database, table, rowKey)) runs.add(run);
+  }
   for (const item of ofKind("item")) {
     const [workflow, itemId] = z.tuple([z.string(), z.string()]).parse(JSON.parse(item));
     for (const { id } of z.array(z.object({ id: z.string() })).parse(database.prepare("SELECT id FROM runs WHERE workflow=? AND item_id=?").all(workflow, itemId))) runs.add(id);
@@ -1618,37 +1585,38 @@ export function validateAuthorityChanges(database: DatabaseSync, changes: readon
   const units = new Map<AuthorityTableName, Map<string, StoredRow>>();
   const addUnit = (table: AuthorityTableName, row: StoredRow) => {
     const rows = units.get(table) ?? new Map<string, StoredRow>();
-    units.set(table, rows.set(canonicalJsonStringify(nativeTableKey(table, database).split(",").map(column => row[column])), row));
+    units.set(table, rows.set(canonicalJsonStringify(currentRowKey(table).map(column => row[column])), row));
   };
-  for (const change of changes) {
-    if (change.after === undefined || !validatedRowByRow(change.table)) continue;
-    const columns = nativeTableKey(change.table, database).split(",");
-    const after = change.after;
-    const current = database.prepare(`SELECT * FROM ${change.table} WHERE ${columns.map(column => `${column}=?`).join(" AND ")}`)
-      .get(...columns.map(column => z.union([z.string(), z.number()]).parse(after[column])));
-    if (current !== undefined) addUnit(change.table, current);
+  // The singleton has no capture triggers, since every write moves it: its one row is re-validated on every admit.
+  const singleton = database.prepare("SELECT * FROM database_states WHERE id=1").get();
+  if (singleton === undefined) throw new Error("authority-singleton-missing");
+  addUnit("database_states", singleton);
+  for (const entry of entries) {
+    if (entry.op === "delete" || entry.table === RUN_REFERENCES_TABLE || !validatedRowByRow(entry.table)) continue;
+    const current = database.prepare(`SELECT * FROM ${entry.table} WHERE ${currentRowKey(entry.table).map(column => `${column}=?`).join(" AND ")}`).get(...entry.rowKey);
+    if (current !== undefined) addUnit(entry.table, current);
   }
   for (const key of keys) for (const table of AuthorityTableNameSchema.options) {
-    if (validatedRowByRow(table)) for (const row of TABLE_CHANGE_POLICIES[table].dependents(database, key)) addUnit(table, row);
+    if (validatedRowByRow(table)) for (const row of tableDependents(database, table, key)) addUnit(table, row);
   }
-  const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const [table, rows] of units) {
     if (table === "run_search" && (search !== "all" || !searchReady)) continue;
     for (const row of rows.values()) validateStoredRow(context, table, row);
   }
   validateAuthorityFamilies(context, true, new Set([...ofKind("family")].map(family => z.enum(["workbook", "assistant-preference", "settings"]).parse(family))));
-  const violations = invariantViolations(database, { run: runs, worker: ofKind("worker"), snapshot: ofKind("snapshot"), intent: ofKind("intent"),
-    command: new Set([...ofKind("command"), ...changes.flatMap(change => change.table === "commands" ? [change.before?.id, change.after?.id].filter(id => typeof id === "string") : [])]) });
+  const violations = invariantViolations(database, { run: runs, worker: ofKind("worker"), snapshot: ofKind("snapshot"), intent: ofKind("intent"), command: ofKind("command") });
   if (violations.length > 0) throw new Error("current composite authority is invalid");
-  if (search === "none") return;
+  if (search === "none") return "scoped";
   const index = createRunSearchIndex(database);
-  if (keys.has("search-publication") || (index.publication().state === "building" && changes.some(change => change.table === "run_search"))) index.validateCoverage();
-  else index.validateCoverageOf(runs);
+  if (keys.has("search-publication")) index.validateCoverage();
+  else index.validateCoverageOf(runs, new Set(entries.flatMap(entry => entry.table === "run_search" ? [String(entry.rowKey[0])] : [])));
+  return "scoped";
 }
 
 /** The whole-store check a reader runs after another connection commits. */
 export function validateAuthorityStore(database: DatabaseSync, search: "all" | "progress" | "none" = "all"): void {
   validateAuthorityRecordSchemas(database, search === "all");
+  if (readIntPragma(database, "user_version") >= CHANGE_LOG_SCHEMA_VERSION) assertRunReferences(database);
   const violations = invariantViolations(database);
   if (violations.length > 0) throw new Error("current composite authority is invalid");
   if (search !== "none") createRunSearchIndex(database).validateCoverage();
@@ -1857,6 +1825,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     throw new Error(`authority schema metadata ${String(meta.schema_version)} disagrees with user_version ${String(schemaVersion)}`);
   }
   validateAuthorityRecordSchemas(database, !missingRunSearch, expectedSchemaVersion, workbookPayloads);
+  if (schemaVersion >= CHANGE_LOG_SCHEMA_VERSION) assertRunReferences(database);
   validateNotificationMetadata(database);
   const violations = invariantViolations(database);
   if (violations.length > 0) throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
@@ -1873,7 +1842,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   const tables = predecessorTables.length === 0 ? currentTables : z.array(z.union([currentTables.element,
     z.strictObject({ name: z.enum(predecessorTables), classification: z.literal("authority") }),
   ]));
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(30), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -2377,6 +2346,9 @@ export class AuthorityDatabase implements Disposable {
   #logoutBatch: Readonly<{ admission: RuntimeAdmission }> | undefined;
   #validatedExternalDataVersion: number | undefined;
   #snapshotExternalDataVersion: number | undefined;
+  /** Absent below schema 31, whose readers run the whole-store check after every peer commit. */
+  #changeReader: ChangeLogReader | undefined;
+  #lastChangePruneMs: number | undefined;
   #pageCacheChanges = 0;
   #transactionDepth = 0;
   #savepointSequence = 0;
@@ -2491,6 +2463,7 @@ export class AuthorityDatabase implements Disposable {
       if (readOnlyNoMigrate) this.#validateReadOnlyNoMigrateDatabase(existingVersion);
       else this.#validateDatabase();
       readAppSettings(this.#database);
+      if (readIntPragma(this.#database, "user_version") >= CHANGE_LOG_SCHEMA_VERSION) this.#changeReader = changeLogBaseline(this.#database);
       this.#database.exec("COMMIT");
       this.#credentialCommandIds = commandId => {
         if (purpose === "stopped-startup-recovery") return stoppedProfileOwnsCredentialCommand(this.#admission, "startup-recovery", commandId);
@@ -4735,20 +4708,82 @@ export class AuthorityDatabase implements Disposable {
     return this.#clock.now().toISOString();
   }
 
-  /** Whole-store validation never runs under the write lock. */
+  /**
+   * Admits what other connections committed since this connection last validated, before a read or a projection write:
+   * the closure of the logged changes from schema 31, the whole-store check below it or after a schema move or log gap.
+   * Nothing here runs under the write lock.
+   */
   #validateExternalQuerySources(mode: "selector" | "mutation" = "selector", searchValidation: "all" | "progress" | "none" = "all"): void {
     if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return;
     const observed = readIntPragma(this.#database, "data_version");
-    if (observed === this.#validatedExternalDataVersion && observed === this.#snapshotExternalDataVersion) return;
+    const reader = this.#changeReader;
+    if (observed === this.#validatedExternalDataVersion && observed === this.#snapshotExternalDataVersion && reader?.failed === undefined) return;
     this.#validatedExternalDataVersion = undefined;
     try {
-      validateAuthorityStore(this.#database, searchValidation);
+      if (reader === undefined) validateAuthorityStore(this.#database, searchValidation);
+      else this.#admitChanges(reader, searchValidation, observed);
     } catch (error) {
       if (mode === "mutation") throw error;
       throw new Error("run-search-index-rebuild-required", { cause: error });
     }
-    this.#validatedExternalDataVersion = searchValidation !== "none" && observed === this.#snapshotExternalDataVersion
-      && readIntPragma(this.#database, "data_version") === observed ? observed : undefined;
+    const stable = observed === this.#snapshotExternalDataVersion && readIntPragma(this.#database, "data_version") === observed;
+    if (stable && (reader === undefined ? searchValidation !== "none" : searchValidation === "all")) this.#validatedExternalDataVersion = observed;
+  }
+
+  #admitChanges(reader: ChangeLogReader, search: "all" | "progress" | "none", observed: number): void {
+    const database = this.#database, cookie = readIntPragma(database, "schema_version"), schemaMoved = cookie !== reader.schemaCookie;
+    // Entries may be missing while the schema differed, so a schema move is checked whole.
+    if (schemaMoved) reader.wholeStore = true;
+    const high = changeLogHighWater(database);
+    const entries = reader.wholeStore ? [] : readAuthorityChanges(database, reader.cursor);
+    if (!reader.wholeStore && !(entries.length === high - reader.cursor && entries.every((entry, index) => entry.seq === reader.cursor + 1 + index))) reader.wholeStore = true;
+    const singleton = readSingletonImage(database);
+    const check = reader.wholeStore
+      ? (value: typeof search) => { validateAuthorityStore(database, value); }
+      : (value: typeof search) => { validateAuthorityChanges(database, entries, singletonChangeKeys(reader.singleton, singleton), value); };
+    try { check(search); }
+    catch (error) {
+      reader.failed = search !== "none" && (() => { try { check("none"); return true; } catch { return false; } })() ? "projection-only" : "authority";
+      throw error;
+    }
+    if (schemaMoved) {
+      // After the rows: a bad row reports its own refusal. Any schema difference refuses even when every row is valid, now and on
+      // every later read, since the cookie is recorded only once the whole schema matches.
+      try { assertNativeSchema(database, CURRENT_AUTHORITY_SCHEMA_VERSION); }
+      catch (error) { reader.failed = "authority"; throw error; }
+      reader.schemaCookie = cookie;
+    }
+    if (search === "none") {
+      if (reader.failed === "authority") reader.failed = "projection-only";
+      reader.settled = { cursor: high, dataVersion: observed };
+      return;
+    }
+    if (search === "progress") return;
+    Object.assign(reader, { cursor: high, singleton, wholeStore: false, failed: undefined, settled: undefined });
+  }
+
+  /**
+   * Inside this connection's write, before COMMIT: when no peer committed since the reader was current, every entry above
+   * its cursor is this connection's own, so the cursor can follow its commit. Also prunes the log at most once a minute.
+   */
+  #prepareChangeLogCommit(mode: "authority" | "projection", searchValidation: "all" | "progress" | "none", insideDataVersion: number): (() => void) | undefined {
+    const reader = this.#changeReader;
+    if (reader === undefined) return undefined;
+    const nowMs = this.#clock.now().getTime();
+    if (mode === "authority" && this.#authorityDirty && (this.#lastChangePruneMs === undefined || nowMs - this.#lastChangePruneMs >= CHANGE_LOG_PRUNE_INTERVAL_MS)) {
+      this.#database.prepare(`DELETE FROM ${CHANGE_LOG_TABLE} WHERE seq<=?`).run(changeLogHighWater(this.#database) - CHANGE_LOG_RETAINED_ENTRIES);
+      this.#lastChangePruneMs = nowMs;
+    }
+    const restart = mode === "projection" && searchValidation === "none" ? reader.settled : undefined;
+    const current = restart === undefined ? reader.failed === undefined && !reader.wholeStore && insideDataVersion === this.#validatedExternalDataVersion
+      : insideDataVersion === restart.dataVersion;
+    const high = changeLogHighWater(this.#database), singleton = readSingletonImage(this.#database);
+    return () => {
+      // A restart rebuild replaced the whole projection, so it settles a projection-only failure at the position validated before the lock.
+      if (restart !== undefined) Object.assign(reader, { cursor: restart.cursor, failed: undefined, wholeStore: false, settled: undefined });
+      if (current) Object.assign(reader, { cursor: high, singleton });
+      if (restart !== undefined && current) this.#validatedExternalDataVersion = insideDataVersion;
+    };
   }
 
   #withTransaction<Result>(mode: "authority" | "projection", work: () => Result, searchValidation: "all" | "progress" | "none" = "all"): Result {
@@ -4794,6 +4829,7 @@ export class AuthorityDatabase implements Disposable {
       try {
         const search = createRunSearchIndex(this.#database);
         const priorSearch = search.publication();
+        const insideDataVersion = readIntPragma(this.#database, "data_version");
         if (this.#logoutBatch !== undefined) {
           const operation = this.#logoutBatch.admission.assertPendingLogoutSettlementDatabase(this.#path), settlement = operation.settlement;
           const before = inspectNativeAuthority(this.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint;
@@ -4816,8 +4852,10 @@ export class AuthorityDatabase implements Disposable {
           else if (settlement.phase !== "commit-intent" || settlement.after !== after) throw new Error("profile-logout-settlement-postimage-changed");
           this.#assertOpen();
         }
+        const settleChangeLog = this.#prepareChangeLogCommit(mode, searchValidation, insideDataVersion);
         this.#database.exec("COMMIT");
-        if (searchValidation === "none") this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
+        if (searchValidation === "none" && this.#changeReader === undefined) this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
+        settleChangeLog?.();
       } catch (error) {
         try { this.#database.exec("ROLLBACK"); }
         catch (rollback) { this.#failNativeClosure([error, rollback]); }
@@ -6581,7 +6619,7 @@ export class AuthorityDatabase implements Disposable {
       listPage: (input: Readonly<{ workflow?: string; offset: number; limit: number }>) => {
         const { workflow, offset, limit } = z.strictObject({ workflow: z.string().optional(),
           offset: z.number().int().nonnegative(), limit: z.number().int().min(1).max(1001) }).parse(input);
-        this.#validateExternalQuerySources();
+        this.#withReadSnapshot(() => { this.#validateExternalQuerySources(); });
         this.#database.exec(`CREATE TEMP TABLE IF NOT EXISTS canonical_run_page(position INTEGER PRIMARY KEY,run_id TEXT NOT NULL UNIQUE);
           CREATE TEMP TABLE IF NOT EXISTS canonical_run_page_state(id INTEGER PRIMARY KEY CHECK(id=1),generation INTEGER NOT NULL,
             data_version INTEGER NOT NULL,source_changes INTEGER NOT NULL,workflow TEXT);`);

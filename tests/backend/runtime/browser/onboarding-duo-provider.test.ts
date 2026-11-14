@@ -43,6 +43,9 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   let portalFailure = new Error("synthetic navigation failure");
   let portalLanding: string | undefined;
   let portalSubmitFailure: Error | undefined;
+  let typedCount = 0;
+  let portalUrl = "";
+  let setPortalUrl: (next: string) => void = () => undefined;
   let nativeProbeHold: Promise<void> | undefined, releaseNativeProbe: (() => void) | undefined, nativeProbeEntered: (() => void) | undefined;
   let installFailure: Error | undefined, installDurationMs = 0;
   let closed = false, closing = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
@@ -96,14 +99,14 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     let url = initialUrl;
     const frame = { url: () => url, evaluate: async () => true };
     return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : [frame], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => url,
-      goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://") && !destination.startsWith("about:blank")) { portalPages++; if (portalLanding === undefined) throw portalFailure; url = portalLanding; } else url = destination; },
+      goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://") && !destination.startsWith("about:blank")) { portalPages++; if (portalLanding === undefined) throw portalFailure; url = portalLanding; portalUrl = url; setPortalUrl = (next: string) => { url = next; portalUrl = next; }; } else url = destination; },
       waitForURL: async (matches: string | ((candidate: URL) => boolean)) => { assert.ok(typeof matches === "string" ? url === matches : matches(new URL(url))); },
       waitForLoadState: async () => undefined, on: () => undefined,
       waitForFunction: async () => ({ dispose: async () => undefined }),
       locator: () => ({ count: async () => 1, elementHandle: async () => ({
         isVisible: async () => true, isEditable: async () => true, isEnabled: async () => true,
-        evaluate: async () => true, fill: async () => undefined, dispose: async () => undefined,
-        click: async () => { if (portalSubmitFailure) throw portalSubmitFailure; throw new Error("unexpected synthetic submit"); },
+        evaluate: async () => true, fill: async () => { typedCount++; }, dispose: async () => undefined,
+        click: async () => { typedCount++; if (portalSubmitFailure) throw portalSubmitFailure; throw new Error("unexpected synthetic submit"); },
       }) }),
       close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
   }
@@ -151,7 +154,6 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   });
   const owner: DraftDuoBrowserOwner = { ...attempt, assertCurrent() { if (!current) throw new Error("synthetic revoked"); },
     reportEvent(event) { events.push(event); },
-    async acquireCredentials() { throw new Error("unexpected credential acquisition"); },
     readState() { throw new Error("unexpected UI state"); }, async start() { throw new Error("unexpected UI start"); },
     async cancel() { throw new Error("unexpected UI cancel"); }, confirm() { throw new Error("unexpected UI confirmation"); } };
   const provider = { ...realProvider,
@@ -197,6 +199,9 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     refusePortal(error: Error) { portalFailure = error; },
     refuseSubmit(error: Error) { portalSubmitFailure = error; },
     landPortal(url: string) { portalLanding = url; },
+    reachDuo(next: string) { setPortalUrl(next); },
+    typed: () => typedCount,
+    portalUrl: () => portalUrl,
     blockNativeProbe() { nativeProbeHold = new Promise(resolve => { releaseNativeProbe = resolve; }); return new Promise<void>(resolve => { nativeProbeEntered = resolve; }); },
     releaseNativeProbe() { releaseNativeProbe?.(); },
     refuseCapture(error: Error) { captureFailure = error; },
@@ -559,16 +564,36 @@ describe("draft Duo provider", () => {
 
   for (const url of ["https://duosecurity.com/", "https://test.duosecurity.com/"]) it(`opens a direct Duo landing at ${url} without acquiring or submitting credentials`, async () => {
     const w = world();
-    let acquisitions = 0;
-    w.owner.acquireCredentials = async () => { acquisitions++; throw new Error("must not acquire credentials on a Duo landing"); };
     w.landPortal(url);
     try {
       await w.provider.openPortal(w.owner);
       await w.provider.openPortal(w.owner);
       assert.equal(w.portalPages(), 1);
-      assert.equal(acquisitions, 0);
+      assert.equal(w.typed(), 0);
       assert.equal(w.failures.length, 0);
       assert.deepEqual(w.calls, []);
+    } finally { await w.cleanup(); }
+  });
+
+  it("leaves the UCSD sign-in form empty and continues when the page reaches Duo", async () => {
+    const w = world();
+    const form = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
+    Object.assign(w.attempt, { expiresAt: new Date(w.clock.nowMs() + 5_000).toISOString() });
+    w.landPortal(form);
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      let settled = false;
+      const opening = w.provider.openPortal(w.owner).finally(() => { settled = true; });
+      opening.catch(() => undefined);
+      await new Promise(resolve => setTimeout(resolve, 80));
+      assert.equal(settled, false);
+      assert.equal(w.typed(), 0);
+      assert.equal(w.portalUrl(), form);
+      w.reachDuo("https://duosecurity.com/");
+      await opening;
+      assert.equal(w.typed(), 0);
+      assert.equal(w.selectedPages.at(-1), "https://duosecurity.com/");
+      assert.equal(w.failures.length, 0);
     } finally { await w.cleanup(); }
   });
 
@@ -649,21 +674,17 @@ describe("draft Duo provider", () => {
     });
   }
 
-  for (const phase of ["navigation", "submit"] as const) it(`gives a ${phase} timeout its closed code and preserves the original cause`, async () => {
+  it("gives a navigation timeout its closed code and preserves the original cause", async () => {
     const w = world();
     const original = new Error("synthetic secret person@example.edu");
     original.name = "TimeoutError";
-    const code = phase === "navigation" ? "UCSD_DUO_NAVIGATION_TIMEOUT" : "UCSD_SSO_SUBMIT_TIMEOUT";
-    let acquisitions = 0;
-    w.owner.acquireCredentials = async () => { assert.equal(w.selectedPages.at(-1), "about:blank"); acquisitions++; return { userId: "synthetic-user", password: "synthetic-password" }; };
-    if (phase === "navigation") w.refusePortal(original);
-    else { w.landPortal("https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO"); w.refuseSubmit(original); }
+    w.refusePortal(original);
     try {
       await assert.rejects(w.provider.openPortal(w.owner), error => error instanceof ProfileOnboardingDuoProviderError
-        && error.cause instanceof Error && error.cause.message === code && error.cause.cause === original);
-      assert.equal(acquisitions, phase === "navigation" ? 0 : 1);
+        && error.cause instanceof Error && error.cause.message === "UCSD_DUO_NAVIGATION_TIMEOUT" && error.cause.cause === original);
+      assert.equal(w.typed(), 0);
       const event = w.events.find(event => event.operation === "portal-open");
-      assert.equal(event?.code, code);
+      assert.equal(event?.code, "UCSD_DUO_NAVIGATION_TIMEOUT");
       assert.doesNotMatch(JSON.stringify(w.events), /synthetic secret|person@example|synthetic-password|stack|message/);
     } finally { await w.cleanup(); }
   });
@@ -671,8 +692,6 @@ describe("draft Duo provider", () => {
   for (const url of ["https://foreign.invalid/", "http://duo.ucsd.edu/", "https://duo.ucsd.edu:444/", "https://wrong@duo.ucsd.edu/", "https://a5.ucsd.edu/idp/"]) {
     it(`refuses manual sign-in advice for the untrusted portal URL ${url}`, async () => {
       const w = world();
-      let acquisitions = 0;
-      w.owner.acquireCredentials = async () => { acquisitions++; throw new Error("must not acquire credentials on an untrusted page"); };
       w.landPortal(url);
       try {
         await w.provider.showBrowser(w.owner);
@@ -680,24 +699,31 @@ describe("draft Duo provider", () => {
         const activations = w.osFocuses();
         assert.deepEqual(await w.sendBrowser("portal-show"), { ok: false });
         assert.equal(w.osFocuses(), activations);
-        assert.equal(acquisitions, 0); assert.deepEqual(w.calls, []);
+        assert.equal(w.typed(), 0); assert.deepEqual(w.calls, []);
       } finally { await w.cleanup(); }
     });
   }
-  for (const code of ["TimeoutError", "synthetic refusal"] as const) it(`offers manual sign-in only for a trusted-page submission timeout (${code})`, async () => {
-    const w = world(), error = new Error("synthetic refusal"); error.name = code;
-    let acquisitions = 0;
-    w.owner.acquireCredentials = async () => { acquisitions++; return { userId: "synthetic-user", password: "synthetic-password" }; };
-    w.landPortal("https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO"); w.refuseSubmit(error);
+  it("offers manual sign-in when the sign-in form is still open at attempt expiry", async () => {
+    const w = world();
+    const form = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
+    Object.assign(w.attempt, { expiresAt: new Date(w.clock.nowMs() + 5_000).toISOString() });
+    w.landPortal(form);
     try {
-      await w.provider.showBrowser(w.owner);
-      assert.deepEqual(await w.sendBrowser("portal"), { ok: false, ...(code === "TimeoutError" ? { portalFailure: "sign-in" } : {}) });
-      assert.equal(acquisitions, 1);
-      assert.equal(w.selectedPages.at(-1), "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO");
-      const idle = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
-      w.owner.readState = () => ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId, step: "duo", browser: { state: "open", generation: 1 }, methods: { key: idle, touch: idle } });
-      assert.deepEqual(await w.sendBrowser("portal-show"), { ok: true, value: w.owner.readState() });
-      assert.equal(w.selectedPages.at(-1), "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO");
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      const started = Date.now();
+      let settled = false;
+      const opening = w.sendBrowser("portal").finally(() => { settled = true; });
+      opening.catch(() => undefined);
+      await new Promise(resolve => setTimeout(resolve, 80));
+      assert.equal(settled, false);
+      assert.equal(w.typed(), 0);
+      assert.equal(w.portalUrl(), form);
+      w.clock.setWall(new Date(w.attempt.expiresAt));
+      assert.deepEqual(await opening, { ok: false, portalFailure: "sign-in" });
+      const elapsed = Date.now() - started;
+      assert.ok(elapsed >= 80 && elapsed < 1_000);
+      assert.equal(w.typed(), 0);
+      assert.equal(w.portalUrl(), form);
     } finally { await w.cleanup(); }
   });
 

@@ -130,6 +130,8 @@
   "src/dashboard/surfaces/shell/search/navbar-view.tsx",
   "src/dashboard/surfaces/shell/search/search-palette.css",
   "src/dashboard/surfaces/shell/search/search-palette.tsx",
+  "src/dashboard/surfaces/shell/startup-loading.css",
+  "src/dashboard/surfaces/shell/startup-loading.tsx",
   "src/dashboard/surfaces/shell/workflow-navigation.tsx",
   "src/dashboard/surfaces/shell/workflow-rail.tsx",
   "src/dashboard/surfaces/shell/workspace-rail.tsx",

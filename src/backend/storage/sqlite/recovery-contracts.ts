@@ -11,7 +11,7 @@ import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./mi
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const SafeFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-const BackupSchemaVersionSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]);
+const BackupSchemaVersionSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(30), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]);
 
 export const AuthorityPendingCountsSchema = z.strictObject({
   pendingCommands: NonNegativeIntSchema,
@@ -94,7 +94,7 @@ function requireObservedBackupIdentity(
 /** DB-only current writer shape. Credentials have no backup representation. */
 export const AuthorityBackupManifestV4Schema = AuthorityBackupManifestBaseSchema.extend({
   manifestVersion: z.literal(4),
-  schemaVersion: z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  schemaVersion: z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(30), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   installationId: z.uuid(),
   profileId: z.uuid(),
   verification: BackupVerificationSchema.extend({ installationId: z.uuid(), profileId: z.uuid() }),

@@ -166,7 +166,6 @@ describe("profile session", () => {
     assert.equal(sam.state, "active");
     if (sam.state !== "active") return;
     assert.throws(() => session.readFile(sam.token, join("..", alex.profileId, "state.db")));
-    assert.equal(session.changePassword().code, "PROFILE_VERIFIER_UNAVAILABLE");
   });
 
 

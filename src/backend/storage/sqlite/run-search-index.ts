@@ -1,5 +1,7 @@
 import { AssistantM1NativeCommandAuditSchema, convertAssistantCommandPairToM1 } from "./command-record-row.js";
 import { CURRENT_RUN_SETTLEMENT_SQL } from "./run-settlement-row.js";
+import { CHANGE_LOG_SCHEMA_VERSION } from "./authority-change-log.js";
+import { RUN_REFERENCES_TABLE } from "../../../models/config/authority.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -94,14 +96,22 @@ export function createRunSearchIndex(database: DatabaseSync) {
     database.exec("CREATE TEMP TABLE IF NOT EXISTS search_declarations(id TEXT PRIMARY KEY,json TEXT NOT NULL) WITHOUT ROWID");
   };
   const count = () => CountSchema.parse(database.prepare("SELECT count(*) AS count FROM run_search").get()).count;
-  const publication = () => {
+  /** The publication without its row count, which coverage checks do not need and which reads every index row. */
+  const publicationState = () => {
     const row = z.strictObject({authority_generation:z.number().int(),search_generation:z.number().int().nullable(),search_state:z.enum(["unbuilt","ready","invalid"])}).parse(
       database.prepare("SELECT authority_generation,search_generation,search_state FROM database_states WHERE id=1").get());
     if (row.search_state === "invalid" && row.search_generation !== null) {
-      const progress = z.strictObject({count:z.number().int().nonnegative(),after_run:z.string().nullable()}).parse(database.prepare("SELECT count(*) AS count,max(run_id) AS after_run FROM run_search WHERE json_extract(metadata_json,'$.buildGeneration')=?").get(row.search_generation));
-      return RunSearchPublicationSchema.parse({state:"building",sourceGeneration:row.search_generation,afterRun:progress.after_run,rowCount:progress.count});
+      const progress = z.strictObject({after_run:z.string().nullable()}).parse(database.prepare("SELECT max(run_id) AS after_run FROM run_search WHERE json_extract(metadata_json,'$.buildGeneration')=?").get(row.search_generation));
+      return {state:"building" as const,sourceGeneration:row.search_generation,afterRun:progress.after_run};
     }
-    return RunSearchPublicationSchema.parse({state:row.search_state === "ready" ? "published" : "invalid",sourceGeneration:row.search_generation ?? row.authority_generation,afterRun:null,rowCount:count()});
+    return {state:row.search_state === "ready" ? "published" as const : "invalid" as const,sourceGeneration:row.search_generation ?? row.authority_generation,afterRun:null};
+  };
+  const publication = () => {
+    const current = publicationState();
+    const rowCount = current.state === "building"
+      ? CountSchema.parse(database.prepare("SELECT count(*) AS count FROM run_search WHERE json_extract(metadata_json,'$.buildGeneration')=?").get(current.sourceGeneration)).count
+      : count();
+    return RunSearchPublicationSchema.parse({...current,rowCount});
   };
   const publish = (value: z.input<typeof RunSearchPublicationSchema>, _now: string) => {
     const parsed = RunSearchPublicationSchema.parse(value);
@@ -112,7 +122,11 @@ export function createRunSearchIndex(database: DatabaseSync) {
     const id = run.envelope.runId;
     const sources: z.infer<typeof ActorSourcesSchema> = [];
     for (const raw of database.prepare("SELECT payload_json FROM timeline_events WHERE run_id=? AND json_extract(payload_json,'$.payload.event.t')='run.queued' ORDER BY cursor").all(id)) sources.push({kind:"queued",event:parse(TimelineEventRecordSchema,raw)});
-    for (const raw of database.prepare("SELECT payload_json FROM command_audits WHERE json_extract(payload_json,'$.request.family')='start' AND json_extract(payload_json,'$.result.state') IN ('applied','already-applied') AND EXISTS(SELECT 1 FROM json_each(payload_json,'$.result.affectedTargets') target WHERE json_extract(target.value,'$.family')='run' AND json_extract(target.value,'$.runId')=?) ORDER BY id").all(id)) sources.push({kind:"start-audit",audit:parse(CommandAuditRecordSchema,raw)});
+    // From schema 31 the audits naming the run are found through its references rather than by reading every audit.
+    const audits = schemaVersion >= CHANGE_LOG_SCHEMA_VERSION
+      ? `SELECT audit.payload_json FROM ${RUN_REFERENCES_TABLE} AS reference JOIN command_audits AS audit ON audit.id=json_extract(reference.row_key,'$[0]') WHERE reference.run_id=? AND reference.table_name='command_audits' AND`
+      : "SELECT payload_json FROM command_audits AS audit WHERE";
+    for (const raw of database.prepare(`${audits} json_extract(audit.payload_json,'$.request.family')='start' AND json_extract(audit.payload_json,'$.result.state') IN ('applied','already-applied') AND EXISTS(SELECT 1 FROM json_each(audit.payload_json,'$.result.affectedTargets') target WHERE json_extract(target.value,'$.family')='run' AND json_extract(target.value,'$.runId')=?) ORDER BY audit.id`).all(...(schemaVersion >= CHANGE_LOG_SCHEMA_VERSION ? [id, id] : [id]))) sources.push({kind:"start-audit",audit:parse(CommandAuditRecordSchema,raw)});
     sourceActors(sources,run);
     return sources;
   };
@@ -139,7 +153,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
           WHERE receipt.run_id=? AND ${CURRENT_RUN_SETTLEMENT_SQL} LIMIT 1`).get(id) !== undefined, failure: failure !== null, diagnostic: exists("diagnostic_snapshots") } });
   };
   const validateCoverage = (readRun: (raw: unknown) => PredecessorRunRecord = runRecordFromRow) => {
-    const current = publication();
+    const current = publicationState();
     if (current.state === "invalid") return;
     if (current.state === "building") {
       if (database.prepare("SELECT 1 FROM runs r LEFT JOIN run_search s ON s.run_id=r.id AND json_extract(s.metadata_json,'$.buildGeneration')=? WHERE r.id<=? AND s.run_id IS NULL LIMIT 1").get(current.sourceGeneration,current.afterRun) !== undefined) throw new Error("run-search-build-prefix-invalid");
@@ -159,10 +173,20 @@ export function createRunSearchIndex(database: DatabaseSync) {
     validateActorSources(run,sources);
     if (canonicalJsonStringify(record.metadata) !== canonicalJsonStringify(metadataFor(run, declaration, sources))) throw new Error("run-search-source-metadata-invalid");
   };
-  /** `validateCoverage` limited to the given runs: the same rules, applied to their runs and index rows only. */
-  const validateCoverageOf = (runIds: ReadonlySet<string>) => {
-    const current = publication();
+  /**
+   * `validateCoverage` limited to the given runs: the same rules, applied to their runs and index rows only. While a build is in
+   * progress, `changedRows` names the index rows that changed: a build row added above the old prefix end moves `afterRun`, so
+   * every run between the highest unchanged build row and the new end must have a build row too.
+   */
+  const validateCoverageOf = (runIds: ReadonlySet<string>, changedRows: ReadonlySet<string> = new Set()) => {
+    const current = publicationState();
     if (current.state === "invalid") return;
+    if (current.state === "building" && changedRows.size > 0 && current.afterRun !== null) {
+      const unchanged = z.strictObject({run_id:z.string()}).optional().parse(database.prepare("SELECT run_id FROM run_search WHERE json_extract(metadata_json,'$.buildGeneration')=? AND run_id NOT IN (SELECT value FROM json_each(?)) ORDER BY run_id DESC LIMIT 1")
+        .get(current.sourceGeneration, JSON.stringify([...changedRows])))?.run_id ?? "";
+      if (database.prepare("SELECT 1 FROM runs r LEFT JOIN run_search s ON s.run_id=r.id AND json_extract(s.metadata_json,'$.buildGeneration')=? WHERE r.id>? AND r.id<=? AND s.run_id IS NULL LIMIT 1")
+        .get(current.sourceGeneration, unchanged, current.afterRun) !== undefined) throw new Error("run-search-build-prefix-invalid");
+    }
     for (const id of runIds) {
       const run = database.prepare("SELECT 1 FROM runs WHERE id=?").get(id) !== undefined;
       if (current.state === "building") {
@@ -218,6 +242,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
   };
   return {
     publication,
+    publicationState,
     validateCoverage,
     validateCoverageOf,
     initialize(sourceGeneration: number, now: string) { return publish({ state: "published", sourceGeneration, afterRun: null, rowCount: 0 }, now); },

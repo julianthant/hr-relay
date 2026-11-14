@@ -1,3 +1,4 @@
+import { AUTHORITY_DERIVED_TABLES } from "../../../../src/models/config/authority.js";
 import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
@@ -485,7 +486,8 @@ export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot"
   const raw = new DatabaseSync(join(h.stateRoot, "state.db"), { readOnly: true });
   try {
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events') ORDER BY name").all()
-      .filter(row => typeof row.name !== "string" || !history.tables.includes(row.name));
+      // The change log and run references are derived from the rows compared here, and log the permitted timeline writes too.
+      .filter(row => typeof row.name !== "string" || (!history.tables.includes(row.name) && !AUTHORITY_DERIVED_TABLES.some(table => table === row.name)));
     const rows = tables.map(row => {
       if (typeof row.name !== "string" || !/^[a-z_]+$/u.test(row.name)) throw new Error("fixture table identity invalid");
       return { table: row.name, rows: raw.prepare(`SELECT * FROM ${row.name} ORDER BY rowid`).all() };
