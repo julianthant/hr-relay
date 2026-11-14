@@ -70,7 +70,7 @@ it("keeps combined operator sources open when only one source has a finite vocab
 
 it("serves every readable definition with exact ordered steps and declared failure outcomes", () => {
   const entries = workflows();
-  assert.equal(entries.length, 12);
+  assert.equal(entries.length, 13);
   assert.deepEqual(entries.map(entry => entry.id), READABLE_WORKFLOW_MODULES.map(module => module.descriptor.id));
   for (const entry of entries) {
     const review = entry.reviewSpec;

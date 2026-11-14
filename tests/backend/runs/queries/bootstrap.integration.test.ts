@@ -110,6 +110,7 @@ describe("bootstrap start-surface block", () => {
         "emergency-contact": { "read-document": [], members: [] },
         "emergency-contact-member": { "contact-plan": ["ucpath"], "contact-preview": ["ucpath"] },
         "i9-check-start": { documents: [], "roster-reference": [], retention: [] },
+        "work-study": { "ucpath-auth": ["ucpath"], transaction: ["ucpath"] },
       };
       for (const descriptor of DESCRIPTORS) {
         expect(served.get(String(descriptor.id)), String(descriptor.id)).toEqual({

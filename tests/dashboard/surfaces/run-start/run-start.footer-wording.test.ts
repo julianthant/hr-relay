@@ -23,7 +23,7 @@ const STARTABLE = PICKER.filter(flow => flow.inputRun.state === "present");
 
 describe("Run dialog footer and priority wording", () => {
   it("names the opened workflow in the footer, for every served workflow", async () => {
-    assert.deepEqual(STARTABLE.map(flow => flow.label).sort(), ["CRM Document Download", "Onboarding", "Person Lookup", "Separations"]);
+    assert.deepEqual(STARTABLE.map(flow => flow.label).sort(), ["CRM Document Download", "Onboarding", "Person Lookup", "Separations", "Work-Study"]);
     for (const workflow of STARTABLE) {
       const dialog = await h.openDialog(h.stubClient({}), { workflows: PICKER, panelWorkflowId: workflow.workflowId });
       assert.match(dialog.text(), new RegExp(`${workflow.label} · \\d+ of \\d+ steps`), workflow.workflowId);
