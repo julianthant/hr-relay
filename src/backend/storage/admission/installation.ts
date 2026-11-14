@@ -1666,7 +1666,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       const next = ProfileRegistryDocumentSchema.parse(document);
       if (next.profiles.length !== before.profiles.length || next.profiles.some(row => {
         const original = before.profiles.find(prior => prior.profileId === row.profileId);
-        return original === undefined || canonicalJsonStringify({ ...row, lifecycle: original.lifecycle, lastSignedInAt: original.lastSignedInAt }) !== canonicalJsonStringify(original);
+        return original === undefined || canonicalJsonStringify({ ...row, lifecycle: original.lifecycle, lastSignedInAt: original.lastSignedInAt,
+          firstName: original.firstName, lastName: original.lastName, initials: original.initials, timekeeperName: original.timekeeperName }) !== canonicalJsonStringify(original);
       })) fail("profile-registry-registration-required");
       if (expected !== undefined && canonicalJsonStringify(before) !== canonicalJsonStringify(expected)
         || next.installationId !== before.installationId || next.revision !== before.revision + 1 || next.sessionGeneration < before.sessionGeneration) fail("profile-registry-publication-conflict");

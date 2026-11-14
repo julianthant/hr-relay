@@ -38,6 +38,7 @@ import type { TaskId } from "../../../rules/identity/ids.js";
 import { GateIdSchema, IsoInstantSchema, ProviderCapabilityIdSchema, TaskIdSchema } from "../../../rules/identity/ids.js";
 import type { Fingerprint, IsoInstant, NodeId, ProviderCapabilityId } from "../../../rules/identity/ids.js";
 import { RunLifecycleSchema, RunRecordSchema, runClaim, type RunLifecycle, type RunRecord } from "../../../models/run/record.js";
+import { pendingInterruptOf } from "../../../rules/runs/run-interrupt.js";
 import type { RunResultRecord, TerminalDependencyEvidence } from "../../../models/run/result.js";
 import type { SessionNeed } from "../../../models/sessions/session.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
@@ -250,6 +251,14 @@ class RunAbandonedError extends Error {
 
 class RunPauseRequestedError extends RunAbandonedError {}
 
+/** The worker's abort of the current step for a pause or stop request it read from the run. */
+export class RunControlAbortError extends Error {
+  constructor() {
+    super("worker-run-control-current-work");
+    this.name = "RunControlAbortError";
+  }
+}
+
 class RunTerminalAdmissionLostError extends RunLifecycleRefusedError {
   constructor(outcome: RunMutationOutcome, readonly admissionVersion: number) { super(outcome); }
 }
@@ -381,7 +390,7 @@ export async function executeClaimedRun(
   };
 
   const checkPause = (current: RunRecord): void => {
-    if (current.pause?.state === "requested") {
+    if (pendingInterruptOf(current) === "pause-requested") {
       requireOriginalClaim(current);
       throw new RunPauseRequestedError("paused");
     }
@@ -455,7 +464,7 @@ export async function executeClaimedRun(
 
   const checkCancellation = (): void => {
     const current = getRun();
-    if (current.cancelRequested !== true) return;
+    if (pendingInterruptOf(current) !== "stop-requested") return;
     requireLifecycleApplied(deps.lifecycle.terminalize({
       kind: "cancelled", commandId: lifecycleCommandId("cancel", { runId, generation: claim.claimGeneration }),
       runId, expectedVersion: current.version, claim, endedAt: instant(),
@@ -481,10 +490,10 @@ export async function executeClaimedRun(
     const settle = (repositories?: AuthorityRepositories): "held" | "settled" | RunTerminalAdmissionLostError => {
       const current = getRun();
       requireOriginalClaim(current);
-      if (repositories !== undefined && current.pause?.state === "requested" && current.cancelRequested !== true
+      if (repositories !== undefined && pendingInterruptOf(current) === "pause-requested"
         && authenticateDelegationRetryPause(repositories, descriptor, current, initial.version)) {
         requireLifecycleApplied(deps.lifecycle.acknowledgePause({
-          commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, commandId: current.pause.commandId }),
+          commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, commandId: current.pause?.commandId }),
           runId, claim,
         }));
         return "held";
@@ -2120,7 +2129,7 @@ export async function executeClaimedRun(
               if (entry.mode === "replay-child") throw new RunContinuationRefusedError("run-gate-resume-child-unsettled");
               const released = getRun();
               if (pending.data.runId !== runId || released.lifecycle.state !== "queued" || runClaim(released) !== undefined
-                || released.cancelRequested === true || Number(released.claimGeneration) !== Number(claim.claimGeneration)) throw new Error("delegation-release-unproved");
+                || pendingInterruptOf(released) === "stop-requested" || Number(released.claimGeneration) !== Number(claim.claimGeneration)) throw new Error("delegation-release-unproved");
               const manifest = deps.authority.withAuthorityTransaction?.(repositories => {
                 const wait = repositories.dependencies.wait(runId, descriptor);
                 if (wait?.admissionCommandId !== pending.data.admissionCommandId || wait.nodeId !== owner.id
@@ -2197,8 +2206,11 @@ export async function executeClaimedRun(
     let failure = error;
     // An aborted run settles a requested pause or cancellation from durable state; any other abort abandons.
     if (input.signal.aborted && failure instanceof RunAbandonedError && !(failure instanceof RunPauseRequestedError)) {
-      try { const current = getRun(); requireOriginalClaim(current); checkCancellation(); checkPause(current); }
-      catch (control) { failure = control; }
+      try {
+        const current = getRun(); requireOriginalClaim(current); checkCancellation(); checkPause(current);
+        // Resume withdrew the pause that stopped this step: release the run to continue from its checkpoint.
+        if (input.signal.reason instanceof RunControlAbortError) throw new RunPauseRequestedError("resumed");
+      } catch (control) { failure = control; }
     }
     if (failure instanceof RunTerminalAdmissionLostError) {
       const admissionVersion = failure.admissionVersion;
@@ -2207,7 +2219,7 @@ export async function executeClaimedRun(
         const acknowledged = deps.authority.withAuthorityTransaction?.(repositories => {
           const current = getRun();
           requireOriginalClaim(current);
-          if (current.cancelRequested === true || !authenticateDelegationRetryPause(repositories, descriptor, current, admissionVersion)) return false;
+          if (pendingInterruptOf(current) === "stop-requested" || !authenticateDelegationRetryPause(repositories, descriptor, current, admissionVersion)) return false;
           requireLifecycleApplied(deps.lifecycle.acknowledgePause({
             commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, commandId: current.pause?.commandId }),
             runId, claim,
@@ -2222,11 +2234,11 @@ export async function executeClaimedRun(
         checkCancellation();
         const current = getRun();
         requireOriginalClaim(current);
-        requireLifecycleApplied(deps.lifecycle.acknowledgePause({
-          commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, commandId: current.pause?.commandId }),
+        const released = requireLifecycleApplied(deps.lifecycle.acknowledgePause({
+          commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, ...(current.pause === undefined ? {} : { commandId: current.pause.commandId }) }),
           runId, claim,
         }));
-        return { state: "handled", outcome: RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: "paused" }) };
+        return { state: "handled", outcome: RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: released.pause === undefined ? "resumed" : "paused" }) };
       } catch (pauseFailure) { failure = pauseFailure; }
     }
     // A command can commit cancellation between a boundary read and terminal admission.

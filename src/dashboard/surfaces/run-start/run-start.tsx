@@ -330,7 +330,7 @@ export function RunStartDialog({
   const selectedWorkflowRef = useRef(previewSelection?.workflowId ?? workflowId);
   useEffect(() => { selectedWorkflowRef.current = previewSelection?.workflowId ?? workflowId; }, [previewSelection, workflowId]);
   const [currentStage, setCurrentStage] = useViewState("launchStage", "Input");
-  const [selectedWorkbookRows, setSelectedWorkbookRows] = useState<{ authority: object; choices: readonly WorkbookRowChoice[] }>();
+  const [selectedWorkbookRows, setSelectedWorkbookRows] = useState<{ source: string; choices: readonly WorkbookRowChoice[] }>();
   const [referenceSelections, setReferenceSelections] = useState<Record<string, { libraryId: string; versionId: string; sheetId: string }>>({});
   const [referenceDrafts, setReferenceDrafts] = useState<Record<string, { libraryId: string; versionId?: string }>>({});
   const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && workflow.workbookReference !== undefined), null, true);
@@ -353,8 +353,16 @@ export function RunStartDialog({
     selectedWorkflow?.requiredWorkbookFields ?? [], referenceSources);
   const initialWorkflow = workflows.find((entry) => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId));
   const [customizeSteps, setCustomizeSteps] = useViewState("launchCustomize", false);
-  const [selectedStepKeys, setSelectedStepKeys] = useState<string[]>(() =>
-    initialWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
+  const stepContext = useRef({ workflowId, workflows });
+  stepContext.current = { workflowId, workflows };
+  const defaultStepKeys = (forWorkflow: string, from = stepContext.current.workflows): string[] =>
+    from.find((entry) => entry.workflowId === forWorkflow)?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? [];
+  /** A selection belongs to the workflow that made it; the workflow shown falls back to its own defaults. */
+  const [stepSelection, setStepSelection] = useState<Readonly<{ workflowId: string; keys: readonly string[] }>>();
+  const selectedStepKeys = useMemo(() => stepSelection?.workflowId === workflowId ? [...stepSelection.keys] : defaultStepKeys(workflowId, workflows), [stepSelection, workflowId, workflows]);
+  const setSelectedStepKeys = useCallback((next: string[] | ((current: string[]) => string[]), forWorkflow: string = stepContext.current.workflowId) =>
+    setStepSelection((previous) => ({ workflowId: forWorkflow, keys: typeof next === "function"
+      ? next(previous?.workflowId === forWorkflow ? [...previous.keys] : defaultStepKeys(forWorkflow)) : next })), []);
   /** Keep drafts across checkbox toggles, but clear them across workflow or customization exits. */
   const [stepDrafts, setStepDrafts] = useState<Readonly<Record<string, StepOmissionDraft>>>({});
   const [touchedFacts, setTouchedFacts] = useState<ReadonlySet<string>>(() => new Set());
@@ -389,8 +397,7 @@ export function RunStartDialog({
     // Reset start method with workflow; unavailable spreadsheet declarations must not leave a selected hidden tab.
     setReferenceSelections({});
     setSelectedWorkbookRows(undefined);
-    const nextWorkflow = workflows.find((entry) => entry.workflowId === next);
-    setSelectedStepKeys(nextWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
+    setStepSelection(undefined);
     setStepDrafts({});
     setTouchedFacts(new Set());
     setFactsAttempted(false);
@@ -423,12 +430,12 @@ export function RunStartDialog({
         const sourceWorkflow = workflows.find((entry) => entry.workflowId === response.snapshot.source.workflow);
         if (sourceWorkflow === undefined) throw new Error("RERUN_WORKFLOW_UNAVAILABLE");
         const selection = defaultRerunSteps(response.snapshot, sourceWorkflow);
-        setWorkflowId(sourceWorkflow.workflowId); setSelectedStepKeys(selection); setSnapshot(response.snapshot);
+        setWorkflowId(sourceWorkflow.workflowId); setSelectedStepKeys(selection, sourceWorkflow.workflowId); setSnapshot(response.snapshot);
         setValueDrafts(initialRerunValueDrafts(response.snapshot, sourceWorkflow));
         if (rerunInputText !== undefined) {
           if (sourceWorkflow.inputRun.state !== "present" || sourceWorkflow.inputRun.surface.typedInput !== undefined
             || response.snapshot.source.outcome !== "failed" || response.snapshot.transactions.length !== 0) throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text);
-          setText(rerunInputText); setValueDrafts({}); setSelectedStepKeys(sourceWorkflow.steps.map(step => step.key));
+          setText(rerunInputText); setValueDrafts({}); setSelectedStepKeys(sourceWorkflow.steps.map(step => step.key), sourceWorkflow.workflowId);
           setCurrentStage("Values");
         }
         if (sourceWorkflow.inputRun.state === "present" && sourceWorkflow.inputRun.surface.typedInput !== undefined) {
@@ -441,7 +448,7 @@ export function RunStartDialog({
           setText(partial?.text ?? typedInputText(declaration, input));
           setSourceInputUnchanged(partial === undefined || response.snapshot.sourceInput.state === "partial" && response.snapshot.sourceInput.identityCopied);
           setSelectedStepKeys(sourceWorkflow.steps.filter(step => step.control.state !== "selectable"
-            || restored[step.control.inputField] === true).map(step => step.key));
+            || restored[step.control.inputField] === true).map(step => step.key), sourceWorkflow.workflowId);
           setValueDrafts({});
         } else if (sourceWorkflow.inputRun.state === "present" && rerunInputText === undefined) {
           setText(plainRerunInputText(sourceWorkflow.inputRun.surface, response.snapshot.sourceInput));
@@ -451,7 +458,7 @@ export function RunStartDialog({
       });
     }
     return () => { launchInstance.current = instance + 1; };
-  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, actorId, launchService, previewLaunch, routed, setCurrentStage, setCustomizeSteps, setWorkflowId, resetPdfs]);
+  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, actorId, launchService, previewLaunch, routed, setCurrentStage, setCustomizeSteps, setWorkflowId, setSelectedStepKeys, resetPdfs]);
 
   const pickWorkflow = useCallback((id: string) => {
     if (selectedWorkflowRef.current === id || sending.current) return;
@@ -493,7 +500,8 @@ export function RunStartDialog({
   const rowIdentity = canonicalJsonStringify([actorId, workflowId, workflow?.version ?? null, inputRun, rowReference ?? null, rowLibrary?.state.revision ?? null]);
   const workbookRows = useWorkbookRows(client, rowIdentity, commandBinding?.authority.epoch ?? client, open && rowCapability !== undefined,
     rowReadReady, rowReference?.libraryId ?? "", rowVersion, workbookReference?.keyFieldId, rowReference?.sheetId);
-  const rowSelectionFresh = selectedWorkbookRows === undefined || selectedWorkbookRows.authority === workbookRows.authority;
+  const rowSource = canonicalJsonStringify([rowReference?.libraryId ?? null, rowReference?.versionId ?? null, rowReference?.sheetId ?? null]);
+  const rowSelectionFresh = selectedWorkbookRows === undefined || selectedWorkbookRows.source === rowSource;
   const rowChoices = rowSelectionFresh ? workbookRows.choices : selectedWorkbookRows?.choices ?? [];
   const supportsDryRun = inputRun.state === "present" && inputRun.surface.supportsDryRun === true;
   const dryRun = supportsDryRun && dryRunRequested;
@@ -761,12 +769,12 @@ export function RunStartDialog({
     } else if (currentStage === "Confirm") {
       setCurrentStage("Steps");
     }
-  }, [currentStage, workflow, setCurrentStage, setCustomizeSteps, declaredInput, typedDeclaration, typedValues]);
+  }, [currentStage, workflow, setCurrentStage, setCustomizeSteps, declaredInput, typedDeclaration, typedValues, setSelectedStepKeys]);
 
   /** Use the shared cascade; locked omissions cannot be changed by another checkbox path. */
   const toggleStep = useCallback((key: string, next: boolean) => {
     setSelectedStepKeys((current) => [...toggleStepSelection(workflow?.steps ?? EMPTY_STEPS, current, key, next)]);
-  }, [workflow]);
+  }, [workflow, setSelectedStepKeys]);
 
   const changeFact = useCallback(
     (step: string, form: StepOmissionForm, field: string, next: StepOmissionFactDraft) => {
@@ -908,7 +916,8 @@ export function RunStartDialog({
             {isRerun && snapshot === null && sourceError === null && <p role="status">Loading source…</p>}
             {sourceError !== null && <Banner tone="danger" title="Rerun unavailable">{sourceError}</Banner>}
             {recoveryError !== null && <Banner tone="danger" title="Submission recovery unavailable">{recoveryError}</Banner>}
-            {recovery !== null && result === null && (
+            {/* While the Start is in flight its outcome is not unknown yet; only a settled, unresolved command needs readback. */}
+            {recovery !== null && result === null && !busy && (
               <Banner tone="warning" title="A previous submission needs readback">
                 <MetaLine items={[recovery.commandId, recovery.target.workflowId]} />
                 <Button disabled={busy} onClick={() => void sendFinal(recovery, requestFingerprint)}>Replay exact submission</Button>
@@ -954,7 +963,7 @@ export function RunStartDialog({
                           const label = `${choice.sourceLabel}: ${choice.key.state === "available" ? choice.key.value : WORKBOOK_ROW_UNAVAILABLE_TEXT[choice.key.reason]}`;
                           return <TR key={JSON.stringify([choice.sheetId, choice.rowId])} selected={selected}><TD><Checkbox label={<span className="sr-only">{`Select ${label}`}</span>} checked={selected}
                             disabled={workbookRows.state !== "ready" || !rowSelectionFresh || choice.key.state === "unavailable" || recovery !== null}
-                            onCheckedChange={checked => setSelectedWorkbookRows(current => ({ authority: workbookRows.authority,
+                            onCheckedChange={checked => setSelectedWorkbookRows(current => ({ source: rowSource,
                               choices: resolveWorkbookRowSelection(workbookRows.choices, checked === true ? [...(current?.choices ?? []), choice] : (current?.choices ?? []).filter(row => row.sheetId !== choice.sheetId || row.rowId !== choice.rowId)) }))} /></TD>
                             <TD>{choice.sourceLabel}</TD><TD className="break-all">{choice.key.state === "available" ? choice.key.value : WORKBOOK_ROW_UNAVAILABLE_TEXT[choice.key.reason]}</TD></TR>;
                         })}</TBody></Table>}

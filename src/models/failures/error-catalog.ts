@@ -707,6 +707,14 @@ export const ERROR_CATALOG = Object.freeze({
     "That name cannot be used as the timekeeper name.",
     EmptyParametersSchema,
   ),
+  PROFILE_DISPLAY_NAME_REFUSED: catalogEntry(
+    "That name cannot be used. Use a first and last name that each start with a letter.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_INITIALS_REFUSED: catalogEntry(
+    "Initials must be 1 to 8 letters A to Z.",
+    EmptyParametersSchema,
+  ),
   PROFILE_SIGN_IN_REFUSED: catalogEntry(
     "That email and password did not match a profile on this computer.",
     EmptyParametersSchema,
@@ -806,9 +814,6 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   PROFILE_RESTORE_ADMISSION_REQUIRED: catalogEntry(
     "Log out cannot finish until restore admission accepts the machine erasure journal.",
-    EmptyParametersSchema,
-  ),  CHATGPT_REVOCATION_UNCONFIRMED: catalogEntry(
-    "Your ChatGPT account is signed out locally. Remote revocation could not be confirmed.",
     EmptyParametersSchema,
   ),
   CHATGPT_AUTH_BUSY: catalogEntry(
