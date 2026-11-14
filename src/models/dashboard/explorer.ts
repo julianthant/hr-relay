@@ -210,6 +210,7 @@ export const ExplorerNodeShapeWireSchema = z.discriminatedUnion("kind", [
     replay: z.enum(["checkpoint", "always-rerun"]),
       /* The node's `when`, served as the DECLARATION the executor evaluates; the client renders it through the one projection of that declaration. */
     condition: NodeConditionSchema.optional(),
+    dryRun: z.literal("stop-before-publish").optional(),
   }),
   z.strictObject({
     kind: z.literal("transaction"),

@@ -809,6 +809,7 @@ export function deriveRunEvidenceReceipt(
     });
 
     const reached = preview.steps.flatMap(step => step.state === "delegation-preview" ? [`child stage "${step.nodeId}" previewed changes without saving`]
+      : step.state === "publication-preview" ? [`publication node "${step.nodeId}" prepared its output without saving`]
       : step.state !== "transaction-preview" ? [] : [
       `transaction node "${step.nodeId}" ${step.preview.outcome.state === "would-prepare"
         ? `staged its page and observed subject ${step.preview.outcome.subject.state}`
