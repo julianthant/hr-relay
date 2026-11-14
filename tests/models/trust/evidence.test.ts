@@ -240,6 +240,7 @@ describe("the write-proof redaction table (declared, never guessed)", () => {
       "ucpath/create-hire",
       "ucpath/create-termination",
       "ucpath/delete-pending-terminations",
+      "ucpath/submit-paypath-work-study",
     ]);
   });
 });

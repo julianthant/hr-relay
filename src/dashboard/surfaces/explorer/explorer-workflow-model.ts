@@ -110,7 +110,7 @@ export function workflowContractSource(id: MockWorkflowId, values: WorkflowChoic
     const node = workflowNodes(id, values)[Number(operation[1])], run = previewRun(id, values), definition = node && operationStep(run, node);
     const group = definition && mockOperations(run, definition)[Number(operation[2])], row = group?.fields?.[Number(operation[3])];
     if (!row) throw new Error(`EXPLORER_OPERATION_SOURCE_MISSING: ${id}:${field.source}`);
-    return { origin: id === "work-study" && row[0] === "Effective date" ? "Operator effective date" : `${node.system ? systems[node.system] ?? node.system : "Local"} · ${group.label}`, detail: node.purpose,
+    return { origin: `${node.system ? systems[node.system] ?? node.system : "Local"} · ${group.label}`, detail: node.purpose,
       ...(group.verify ? { chain: [{ step, title: "Verify the result", detail: group.verify }] } : {}) };
   }
   const match = /^contract:(\d+):(\d+)$/u.exec(field.source ?? "");
@@ -118,7 +118,7 @@ export function workflowContractSource(id: MockWorkflowId, values: WorkflowChoic
   const nodes = workflowNodes(id, values), nodeIndex = Number(match[1]), node = nodes[nodeIndex], row = node?.contract[Number(match[2])];
   if (!row) throw new Error(`EXPLORER_SOURCE_MISSING: ${id}:${field.source}`);
   const readIndex = nodes.findIndex((item, index) => index < nodeIndex && item.contract.some(candidate => candidate.dir === "read" && candidate.field === row.field));
-  return { origin: readIndex < 0 ? id === "work-study" && row.field === "Effective date" ? "Operator effective date" : `${systems[row.system] ?? row.system} · ${node.id}` : undefined,
+  return { origin: readIndex < 0 ? `${systems[row.system] ?? row.system} · ${node.id}` : undefined,
     detail: `${node.purpose}${row.when ? ` Condition: ${row.when}.` : ""}`,
     ...(readIndex >= 0 ? { reads: [{ system: systems[nodes[readIndex].system ?? row.system] ?? "Local", page: nodes[readIndex].id, field: row.field, step: readIndex + 2, fieldId: `contract-${readIndex}-${nodes[readIndex].contract.findIndex(candidate => candidate.dir === "read" && candidate.field === row.field)}` }] } : {}),
     ...(row.proof ? { chain: [{ step, title: "Verify the result", detail: row.proof }] } : {}) };
