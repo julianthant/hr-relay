@@ -6,7 +6,7 @@ const WHOLE_ROUTE = ["j", "k"];
 
 describe("scoped check plan", () => {
   let audit: PlanAudit;
-  beforeAll(async () => { audit = await auditScopedPlans(); }, 120_000);
+  beforeAll(async () => { audit = await auditScopedPlans(); });
 
   it("runs every change kind through the capture triggers", () => {
     expect(audit.routes.size).toBeGreaterThan(40);

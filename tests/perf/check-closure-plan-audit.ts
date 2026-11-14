@@ -101,7 +101,7 @@ export interface PlanScan { readonly kinds: readonly string[]; readonly table: s
 export interface PlanAudit { readonly scans: readonly PlanScan[]; readonly routes: ReadonlyMap<string, AuthorityChangeRoute>; readonly timings: readonly string[] }
 type ScanTally = Map<string, { scan: Omit<PlanScan, "kinds">; kinds: string[] }>;
 
-function auditStore(path: string, kinds: readonly ChangeKind[], scans: ScanTally, routes: Map<string, AuthorityChangeRoute>, timings: string[]): void {
+function auditStore(path: string, kinds: readonly ChangeKind[], scans: ScanTally, routes: Map<string, AuthorityChangeRoute>, timings: string[], compareWholeStore: boolean): void {
   const database = new DatabaseSync(path);
   try {
     // Another process's raw writer, inside a transaction rolled back at the end: guard triggers dropped, capture triggers kept.
@@ -123,10 +123,13 @@ function auditStore(path: string, kinds: readonly ChangeKind[], scans: ScanTally
         const traced = traceSqliteStatements(() => validateAuthorityChanges(database, entries, singletonKeys));
         const scopedMs = systemClock.monotonicMs() - scopedStart;
         routes.set(kind.code, traced.value);
-        const wholeStart = systemClock.monotonicMs();
-        const whole = traceSqliteStatements(() => { validateAuthorityStore(database); });
-        const wholeMs = systemClock.monotonicMs() - wholeStart;
-        timings.push(`${kind.kind} [${String(entries.length)} entries, ${traced.value}]: ${String(traced.statements.length)} statements ${scopedMs.toFixed(1)} ms; whole-store ${String(whole.statements.length)} statements ${wholeMs.toFixed(1)} ms`);
+        let comparison = "";
+        if (compareWholeStore) {
+          const wholeStart = systemClock.monotonicMs();
+          const whole = traceSqliteStatements(() => { validateAuthorityStore(database); });
+          comparison = `; whole-store ${String(whole.statements.length)} statements ${(systemClock.monotonicMs() - wholeStart).toFixed(1)} ms`;
+        }
+        timings.push(`${kind.kind} [${String(entries.length)} entries, ${traced.value}]: ${String(traced.statements.length)} statements ${scopedMs.toFixed(1)} ms${comparison}`);
         tallyScans(database, kind.code, traced.statements, scans);
       } finally { database.exec("ROLLBACK TO plan_case; RELEASE plan_case"); }
     }
@@ -190,15 +193,18 @@ function auditBuilding(fixture: StorageReadFixture, scans: ScanTally, routes: Ma
   } finally { database.close(); }
 }
 
-/** Seeds both stores, applies every change kind and returns each scan the scoped check's statements plan, with each kind's route. */
-export async function auditScopedPlans(): Promise<PlanAudit> {
+/**
+ * Seeds both stores, applies every change kind and returns each scan the scoped check's statements plan, with each kind's route.
+ * `compareWholeStore` also times the whole-store check after each kind, for the report only.
+ */
+export async function auditScopedPlans(compareWholeStore = false): Promise<PlanAudit> {
   const scans: ScanTally = new Map(), routes = new Map<string, AuthorityChangeRoute>(), timings: string[] = [];
   const fixture = await seedStorageReadFixture(RUNS);
   const closure = await seedCheckClosureStore({ activeRuns: true });
   try {
     closure.closeDatabase();
-    auditStore(fixture.path, KINDS.filter(kind => kind.store === "runs"), scans, routes, timings);
-    auditStore(closure.databasePath, KINDS.filter(kind => kind.store === "closure"), scans, routes, timings);
+    auditStore(fixture.path, KINDS.filter(kind => kind.store === "runs"), scans, routes, timings, compareWholeStore);
+    auditStore(closure.databasePath, KINDS.filter(kind => kind.store === "closure"), scans, routes, timings, compareWholeStore);
     auditBuilding(fixture, scans, routes, timings);
   } finally {
     await closure.cleanup();
@@ -209,7 +215,7 @@ export async function auditScopedPlans(): Promise<PlanAudit> {
 
 export async function runCheckClosurePlanAudit(): Promise<void> {
   const started = systemClock.monotonicMs();
-  const audit = await auditScopedPlans();
+  const audit = await auditScopedPlans(true);
   const order = (scan: PlanScan) => (scan.growth === "GROWING" ? 0 : 1);
   const lines = [...audit.scans].sort((a, b) => order(a) - order(b))
     .map(scan => `| ${scan.kinds.join(", ")} | ${scan.table} | ${scan.growth} | \`${scan.plan}\` | \`${scan.sql.slice(0, 160)}\` |`);
