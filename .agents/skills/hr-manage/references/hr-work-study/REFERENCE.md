@@ -18,7 +18,7 @@
 - Choices: none declared.
 
 ## Inputs & subjects
-- Run modal / `surfaces.inputRun`: Employee IDs separated by commas, semicolons or new lines (placeholder `10000001, 10000002`), plus one required Effective date control typed MM/DD/YYYY, refused with "Choose a valid effective date." The input is `{ emplId, effectiveDate }`; the start plan stores the date as ISO.
+- Run modal / `surfaces.inputRun`: Employee IDs separated by commas, semicolons or new lines, plus one required Effective date control typed MM/DD/YYYY, refused with "Choose a valid effective date." The input is `{ emplId, effectiveDate }`; the start plan stores the date as ISO.
 - Canary subjects: UNKNOWN — none declared in `config/test-data.json`; a missing subject is `blocked: needs work-study canary`, never `failed`.
 - Subjects that must NOT be used / are burnt: UNKNOWN — read the work-study evidence folder under `.work/`.
 
