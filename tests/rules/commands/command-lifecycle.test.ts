@@ -5,6 +5,7 @@ import { SettingsInitializationAuditSchema,SettingsInitializationCommandSchema }
 import {
 COMMAND_EFFECTS,
 COMMAND_ROW_STATES,
+CommandRowInvalidError,
 CommandRowStateSchema,
 UNKNOWN_EFFECT_CODES,
 bulkChildClass,
@@ -42,7 +43,7 @@ const RESULTS = {
 const rejected = (code: string) => CommandResultSchema.parse({ state: "rejected", commandId: UUID_1, code, message: "Refused" });
 
 describe("command lifecycle vocabulary", () => {
-  it("names three effects and four row states, with executing removed and uncertain kept", () => {
+  it("names three effects and four row states, with no executing state", () => {
     assert.deepEqual([...COMMAND_EFFECTS], ["landed", "none", "unknown"]);
     assert.deepEqual([...COMMAND_ROW_STATES], ["admitted", "succeeded", "refused", "uncertain"]);
     assert.deepEqual(CommandRowStateSchema.options, ["admitted", "succeeded", "refused", "uncertain"]);
@@ -188,7 +189,10 @@ describe("commandRowTransition: the row table", () => {
 
   it("refuses to step a stored row that breaks (state = admitted) = (no outcome)", () => {
     for (const current of [row("admitted", true), row("succeeded", false), row("refused", false), row("uncertain", false)]) {
-      assert.throws(() => commandRowTransition(current, settle("landed", true)), /command-row-invalid/u, JSON.stringify(current));
+      if (current.kind !== "present") continue;
+      assert.throws(() => commandRowTransition(current, settle("landed", true)), (error: unknown) => error instanceof CommandRowInvalidError
+        && error.name === "CommandRowInvalidError" && error.state === current.state && error.settled === current.settled
+        && error.message === `command-row-invalid: state ${current.state} with settled=${String(current.settled)}`, JSON.stringify(current));
     }
   });
 
@@ -200,7 +204,6 @@ describe("commandRowTransition: the row table", () => {
   });
 });
 
-// The Start reply path recorded by run-dialog-readback-02 (decisions 5262 and 5370 on that ticket).
 describe("Start: reply after commit, capacity after the reply", () => {
   const startRow = (state: CommandRowState, settled: boolean): CommandRowCurrent => ({ kind: "present", state, settled, bulkParent: false });
 

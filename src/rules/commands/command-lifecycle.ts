@@ -51,7 +51,7 @@ export function bulkChildEffect(outcome: BulkChildClass): CommandEffect {
   }
 }
 
-/** Row vocabulary: `executing` removed; `uncertain` kept and now written. */
+/** Row vocabulary. `uncertain` is a settled row whose effect is unknown. */
 export const COMMAND_ROW_STATES = deepFreeze(["admitted", "succeeded", "refused", "uncertain"] as const);
 export const CommandRowStateSchema = z.enum(COMMAND_ROW_STATES);
 export type CommandRowState = z.infer<typeof CommandRowStateSchema>;
@@ -86,6 +86,14 @@ export type CommandRowStep =
   | { readonly write: "none" }
   | { readonly refused: "command-identity-conflict" | "command-audit-request-mismatch" | "command-audit-outcome-conflict" | "commands-bulk-immutable" };
 
+/** A stored non-bulk row must be `admitted` exactly when it has no outcome. */
+export class CommandRowInvalidError extends Error {
+  constructor(readonly state: CommandRowState, readonly settled: boolean) {
+    super(`command-row-invalid: state ${state} with settled=${String(settled)}`);
+    this.name = "CommandRowInvalidError";
+  }
+}
+
 /** The row transition function both row writers call. The writers keep their guards and pass the verdicts in. */
 export function commandRowTransition(current: CommandRowCurrent, event: CommandRowEvent): CommandRowStep {
   if (event.type === "admit") {
@@ -94,7 +102,7 @@ export function commandRowTransition(current: CommandRowCurrent, event: CommandR
   }
   if (current.kind === "absent") return { refused: "command-audit-request-mismatch" };
   if (current.bulkParent) return { refused: "commands-bulk-immutable" };
-  if (current.settled === (current.state === "admitted")) throw new Error("command-row-invalid");
+  if (current.settled === (current.state === "admitted")) throw new CommandRowInvalidError(current.state, current.settled);
   if (!current.settled) return { write: "update", state: commandRowStateOf(event.effect) };
   return event.sameOutcome ? { write: "none" } : { refused: "command-audit-outcome-conflict" };
 }
