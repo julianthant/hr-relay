@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { createPersonPreferences, sendShortcutLabel, sendsMessage } from "../../../src/dashboard/state/person-preferences-model.js";
+import { createPersonPreferences, insertsNewLine, sendShortcutLabel, sendsMessage } from "../../../src/dashboard/state/person-preferences-model.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { SettingsCommandRequestSchema, CommandResultSchema } from "../../../src/rules/commands/commands.js";
 import { mergeSettingsPatch } from "../../../src/models/config/settings.js";
@@ -122,6 +122,11 @@ it("sends only on the chosen key: the other key is a new line and IME compositio
   assert.equal(sendsMessage("enter", key({ key: "a" }), true), false);
   assert.equal(sendsMessage("enter", key({ metaKey: true }), true), false);
   assert.equal(sendsMessage("enter", key({ ctrlKey: true }), false), false);
+  assert.equal(insertsNewLine("enter", key({ metaKey: true }), true), true);
+  assert.equal(insertsNewLine("enter", key({ ctrlKey: true }), false), true);
+  assert.equal(insertsNewLine("enter", key(), true), false);
+  assert.equal(insertsNewLine("enter", key({ metaKey: true, isComposing: true }), true), false);
+  assert.equal(insertsNewLine("mod-enter", key({ metaKey: true }), true), false);
   assert.equal(sendsMessage("mod-enter", key(), true), false);
   assert.equal(sendsMessage("mod-enter", key({ metaKey: true }), true), true);
   assert.equal(sendsMessage("mod-enter", key({ ctrlKey: true }), true), false);

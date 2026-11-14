@@ -21,6 +21,10 @@ export function sendsMessage(shortcut: SendShortcut, key: Pick<KeyboardEvent, "k
   const mod = mac ? key.metaKey : key.ctrlKey;
   return shortcut === "enter" ? !mod : mod;
 }
+/** Under Enter, the platform chord adds the new line itself; textareas insert nothing for it. Plain Enter under mod-enter keeps the native new line. */
+export function insertsNewLine(shortcut: SendShortcut, key: Pick<KeyboardEvent, "key" | "shiftKey" | "metaKey" | "ctrlKey" | "isComposing">, mac: boolean): boolean {
+  return shortcut === "enter" && key.key === "Enter" && !key.isComposing && !key.shiftKey && (mac ? key.metaKey : key.ctrlKey);
+}
 
 export function preferencesFromSettings(document: EditableSettingsWire) {
   const patch = Object.fromEntries(document.sections.flatMap(section => section.leaves)
