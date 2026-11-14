@@ -3,9 +3,25 @@ import { afterEach, describe, it, vi } from "vitest";
 import { createDashboardPoolTestWorld } from "../../../support/helpers/backend/dashboard-pool-world.js";
 import { createOperatorCommandIngress } from "../../../../src/backend/runs/commands/operator-command-ingress.js";
 import { RunWorkerStartupError } from "../../../../src/backend/runs/commands/run-worker-capacity.js";
+import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
+import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { stoppedWorkerToasts } from "../../../../src/dashboard/app/commands/worker-startup-toast.js";
+import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import type { ControlHarness } from "../../../support/helpers/backend/dashboard-pool-world.js";
 
 const { WORKFLOW, WORKER_1, openControlHarness, dashboardLaunch, launchCommands, planWorkers, nextCommandId, settleMicrotasks, view, cleanup } = createDashboardPoolTestWorld();
 afterEach(cleanup);
+
+/** What the dashboard serves for the fixture workflow: its worker cards, its queued rows' no-worker flag, and the sticky queued-run notices. */
+function served(h: ControlHarness, startupPending: (workflowId: string) => boolean) {
+  const projection = createOperatorProjection({ database: h.database, reader: h.lifecycle, workerMembers: () => h.workers.pool.snapshot(), workerStartupPending: startupPending,
+    descriptors: { resolve: workflowId => DESCRIPTORS.find(descriptor => descriptor.id === workflowId) },
+    stateRoot: h.stateRoot, clock: h.clock, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
+    ledger: { foldActivityRange: () => { throw new Error("unrequested activity"); } } });
+  const day = projection.buildDashboardDayWire(h.clock.now().toISOString().slice(0, 10));
+  return { cards: day.workerCards.map(card => card.state), notStarting: day.queueSurfaces.flatMap(row => row.status === "queued" && row.notStarting !== undefined ? [row.notStarting.code] : []),
+    notices: stoppedWorkerToasts(day, workflowId => workflowId).length };
+}
 
 describe("automatic Run capacity", () => {
   it("starts exactly one worker for a run with no member and replays without another", async () => {
@@ -151,5 +167,55 @@ describe("automatic Run capacity", () => {
     assert.equal(h.children.length, 1);
     assert.equal(h.database.authority.workerSlots.active(WORKFLOW).length, 1);
     assert.deepEqual([h.faults, h.detachedStartupFailures], [[], []]);
+  });
+
+  it("serves a first Start's pending worker as starting, with no queued-run notice, until it runs", async () => {
+    const h = await openControlHarness({}, undefined, { holdPreflight: true });
+    const commands = launchCommands(h);
+    const reply = await Promise.race([commands.submit(dashboardLaunch(h).request), settleMicrotasks(20).then(() => undefined)]);
+    assert.equal(reply?.state, "applied");
+    await vi.waitFor(() => assert.equal(h.preflight.entered(), 1));
+    assert.deepEqual(served(h, commands.startupPending), { cards: ["starting"], notStarting: [], notices: 0 });
+    h.preflight.release(); await settleMicrotasks();
+    assert.deepEqual(served(h, commands.startupPending), { cards: ["idle"], notStarting: [], notices: 0 });
+    assert.deepEqual([h.startupPending, h.faults, h.detachedStartupFailures], [[true, false], [], []]);
+  });
+
+  it("serves a restarted worker as starting until its startup fails, then raises the queued-run notice once", async () => {
+    const h = await openControlHarness({ ready: false }, undefined, { holdPreflight: true });
+    const planned = planWorkers(h, 1);
+    await vi.waitFor(() => assert.equal(h.preflight.entered(), 1));
+    h.preflight.release(); await vi.waitFor(() => assert.equal(h.children.length, 1));
+    h.children[0]?.ready(); await planned;
+    h.children[0]?.exit(null, "SIGKILL"); await settleMicrotasks();
+    const commands = launchCommands(h);
+    const reply = await Promise.race([commands.submit(dashboardLaunch(h).request), settleMicrotasks(20).then(() => undefined)]);
+    assert.equal(reply?.state, "applied");
+    await vi.waitFor(() => assert.equal(h.preflight.entered(), 2));
+    const phases = [served(h, commands.startupPending)];
+    h.preflight.release(); await vi.waitFor(() => assert.equal(h.children.length, 2));
+    phases.push(served(h, commands.startupPending));
+    h.clock.advanceMonotonic(60_000);
+    for (const entry of h.scheduler.pending()) entry.fire();
+    await settleMicrotasks();
+    h.children[1]?.exit(null, "SIGKILL"); await settleMicrotasks();
+    phases.push(served(h, commands.startupPending));
+    assert.deepEqual(phases, [{ cards: ["starting"], notStarting: [], notices: 0 }, { cards: ["starting"], notStarting: [], notices: 0 },
+      { cards: ["failed"], notStarting: ["NO_WORKER"], notices: 1 }]);
+    assert.equal(h.detachedStartupFailures.length, 1);
+  });
+
+  it("closes a pending worker preflight when the pool stops after Start, and settles the detached startup before the stop returns", async () => {
+    const h = await openControlHarness({}, undefined, { holdPreflight: true });
+    const commands = launchCommands(h);
+    const reply = await Promise.race([commands.submit(dashboardLaunch(h).request), settleMicrotasks(20).then(() => undefined)]);
+    assert.equal(reply?.state, "applied");
+    await vi.waitFor(() => assert.equal(h.preflight.entered(), 1));
+    await h.workers.pool.stopAll("shutdown");
+    assert.deepEqual(h.detachedStartupFailures.map(error => error instanceof RunWorkerStartupError ? error.failure.state : error), ["refused"]);
+    assert.equal(h.startupPending.at(-1), false);
+    h.preflight.release(); await settleMicrotasks();
+    assert.equal(h.children.length, 0, "no member starts once the pool has stopped");
+    assert.equal(h.database.authority.runs.listByWorkflow(WORKFLOW)[0]?.lifecycle.state, "queued");
   });
 });

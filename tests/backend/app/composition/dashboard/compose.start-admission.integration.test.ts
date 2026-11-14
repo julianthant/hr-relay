@@ -113,3 +113,20 @@ for (const input of [
     assert.equal(f.spawns(), 0);
   } finally { await f.close(); }
 });
+
+it("stops the dashboard while a Start's worker preflight is pending: the preflight aborts and the startup settles, reported once, before the stop returns", async () => {
+  const f = await fixture(false, { holdWorkerPreflight: true });
+  const input = { workflowId: "person-lookup", submissions: [{ emplId: "10873698" }], dryRun: false };
+  try {
+    const plan = StartPlanWireSchema.parse(await (await f.post("start-plans", input)).json());
+    const command = { commandId: randomUUID(), family: "start", type: "start-run", requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "run-start",
+      target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints };
+    const result = CommandResultSchema.parse(await (await f.post("commands", command)).json());
+    assert.equal(result.state, "applied");
+    await vi.waitFor(() => assert.equal(f.workerPreflightsHeld(), 1));
+    assert.equal(f.startupFaults().length, 0);
+  } catch (error) { await f.close(); throw error; }
+  await f.close();
+  assert.equal(f.startupFaults().length, 1);
+  assert.equal(f.spawns(), 0);
+});

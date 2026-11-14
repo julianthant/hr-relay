@@ -26,8 +26,9 @@ function memberView(input: Partial<WorkerMemberView> = {}): WorkerMemberView {
     activity: { state: "idle" }, browsers: [], exit: undefined, held: undefined, ...input };
 }
 function card(input: Readonly<{ view?: WorkerMemberView | undefined; slot?: typeof slot; foldRevision?: number; resolveRun?: (runId: string) => typeof running | undefined;
-  duoSystems?: readonly string[]; lastRun?: Parameters<typeof workerCardOf>[0]["lastRun"]; writeInFlight?: (runId: string) => boolean }> = {}) {
+  duoSystems?: readonly string[]; lastRun?: Parameters<typeof workerCardOf>[0]["lastRun"]; writeInFlight?: (runId: string) => boolean; startupPending?: boolean }> = {}) {
   return workerCardOf({ slot: input.slot ?? slot, view: "view" in input ? input.view : memberView(), foldRevision: input.foldRevision ?? 0, resolveRun: input.resolveRun ?? (() => undefined),
+    ...(input.startupPending === undefined ? {} : { startupPending: input.startupPending }),
     ...(input.duoSystems === undefined ? {} : { duoSystems: input.duoSystems }), ...(input.lastRun === undefined ? {} : { lastRun: input.lastRun }),
     ...(input.writeInFlight === undefined ? {} : { writeInFlight: input.writeInFlight }) });
 }
@@ -123,6 +124,18 @@ describe("the worker card from the pool member and its slot", () => {
     }
     assert.equal(workerDirectiveNote(card()), undefined);
     assert.equal(canStopWorker(card()), true);
+  });
+
+  it("serves a member whose startup is still pending as starting, not failed", () => {
+    const planned = card({ view: undefined, startupPending: true, foldRevision: 4 });
+    assert.deepEqual([planned.state, planned.stopReason, planned.endedAt, planned.startedAt, planned.revision], ["starting", undefined, undefined, slot.createdAt, 5]);
+    assert.deepEqual(planned.controls, { basis: { state: "present", value: { lifetimeId: null, version: 0 } } });
+    const exited = memberView({ state: "exited", version: 3, exit: { code: 1, signal: null, at: STARTED, outcome: "crashed", settlement: "settled" } });
+    const restarting = card({ view: exited, startupPending: true });
+    assert.deepEqual([restarting.state, restarting.stopReason, restarting.lastBrowsers], ["starting", undefined, undefined]);
+    assert.deepEqual(restarting.controls, { basis: { state: "present", value: { lifetimeId: LIFETIME, version: 3 } } });
+    assert.equal(card({ view: memberView(), startupPending: true }).state, "idle");
+    assert.equal(card({ view: exited, startupPending: false }).state, "failed");
   });
 
   it("serves a slot with no process this boot as not started, with the null-lifetime fence Retry cites", () => {

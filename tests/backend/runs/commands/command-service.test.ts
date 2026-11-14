@@ -44,19 +44,19 @@ for (const capacityMode of ["absent", "workflow", "unknown-workflow"] as const) 
       ...(capacityMode === "absent" ? {} : { startWorkerCapacity: {
         workflowOf: () => capacityMode === "unknown-workflow" ? undefined : "person-lookup",
         ensure: async (_request, settlement) => { assert.deepEqual(settlement, result); events.push("capacity"); await capacityHeld; events.push("capacity settled"); },
-        reportDetachedFailure: unexpected,
+        detach: () => { events.push("detached"); }, startupPending: () => false,
       } }) });
       assert.deepEqual(await service.submit(request), result);
       events.push("replied");
       finishCapacity(); await new Promise(resolve => { setImmediate(resolve); });
       const capacity = capacityMode === "workflow" && state !== "rejected";
-      assert.deepEqual(events, ["start", "settled", ...(state === "applied" ? ["projection"] : []), ...(capacity ? ["capacity"] : []),
+      assert.deepEqual(events, ["start", "settled", ...(state === "applied" ? ["projection"] : []), ...(capacity ? ["capacity", "detached"] : []),
         "replied", ...(capacity ? ["capacity settled"] : [])]);
     });
   }
 }
 
-it("reports a Start's worker capacity failure once, after the reply", async () => {
+it("hands a Start's failing capacity step to its owner, which settles it after the reply", async () => {
   const commandId = "a1000000-0000-4000-8000-000000000001", fingerprint = "a".repeat(64);
   const request = CommandRequestSchema.parse({ commandId, family: "start", type: "start-run", requestedBy: "local-operator",
     source: "dashboard", requestedAt: "2026-11-02T12:00:00.000Z",
@@ -66,15 +66,14 @@ it("reports a Start's worker capacity failure once, after the reply", async () =
   const result = CommandResultSchema.parse({ state: "applied", commandId, affectedTargets: [{ family: "start", workflowId: "person-lookup",
     startPlanId: "a1000000-0000-4000-8000-000000000002", expectedVersion: 1 }] });
   const unexpected = (): never => { throw new Error("unexpected kernel route"); };
-  const closed = new Error("pool authority closed"), reported: Error[] = [];
+  const closed = new Error("pool authority closed"), detached: Promise<void>[] = [];
   const service = createDashboardCommandService({ kernel: { execute: unexpected, executeStart: () => Promise.resolve(result),
     assistantAvailability: unexpected, assistantManifest: unexpected, executeWorkerPool: unexpected, executeAssistantModelPreference: unexpected },
   projection: { ingestFromTimeline: () => undefined, refreshRun: unexpected },
-  startWorkerCapacity: { workflowOf: () => "person-lookup", ensure: () => Promise.reject(closed), reportDetachedFailure: error => { reported.push(error); } } });
+  startWorkerCapacity: { workflowOf: () => "person-lookup", ensure: () => Promise.reject(closed), detach: work => { detached.push(work); }, startupPending: () => false } });
   assert.deepEqual(await service.submit(request), result);
-  assert.deepEqual(reported, []);
-  await new Promise(resolve => { setImmediate(resolve); });
-  assert.deepEqual(reported, [closed]);
+  assert.equal(detached.length, 1);
+  await assert.rejects(detached[0] ?? Promise.resolve(), closed);
 });
 
 it("admits Starts of one workflow one at a time without waiting for the first Start's worker capacity", async () => {
@@ -92,7 +91,7 @@ it("admits Starts of one workflow one at a time without waiting for the first St
   }, assistantAvailability: unexpected, assistantManifest: unexpected, executeWorkerPool: unexpected, executeAssistantModelPreference: unexpected },
   projection: { ingestFromTimeline: () => undefined, refreshRun: unexpected },
   startWorkerCapacity: { workflowOf: () => "person-lookup", ensure: async request => { events.push(`capacity ${request.commandId.slice(-1)}`); await new Promise(() => undefined); },
-    reportDetachedFailure: unexpected } });
+    detach: () => undefined, startupPending: () => false } });
   const replies = await Promise.all([service.submit(start("1")), service.submit(start("2"))]);
   assert.deepEqual(replies.map(reply => reply.state), ["applied", "applied"]);
   // The second Start admits after the first commits; its capacity queues behind the first one's, which stays open.

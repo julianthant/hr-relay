@@ -11,7 +11,8 @@ import { hostedOcrRun, readQueueRecordMembers } from "../../../runs/queries/ocr-
 import { readOcrReviewAuthority } from "../../../runs/lifecycle/ocr-review-authority.js";
 import { workflowQueueCapabilities } from "../../registries/workflow-registry.js";
 
-export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[]; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> }) {
+export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[];
+  workerStartupPending?: (workflowId: string) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
   return createRunQueueProjection({
     timeline: database.authority.timelineEvents,
@@ -42,6 +43,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       listWorkerSlots: () => database.authority.workerSlots.list(),
       listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
       ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
+      ...(input.workerStartupPending === undefined ? {} : { workerStartupPending: input.workerStartupPending }),
       heldDuoSystems: workerId => database.heldDuoSystems(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),

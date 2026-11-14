@@ -813,7 +813,12 @@ Created workers remain in the pool, idle after their work finishes.
 Start replies once its enqueue commits; its capacity step runs after the reply, so the response
 never waits for preflight or a member's ready handshake. A startup that then fails leaves the
 workflow with failed worker cards or no worker, which the dashboard's sticky queued-run notice reports,
-and reaches the supervisor fault log through the capacity's detached-failure report.
+and reaches the supervisor fault log through the capacity's detached-failure report. While any capacity
+step for a workflow is unsettled, that workflow's members that are not live are served as starting and
+its queued rows carry no no-worker flag, so the notice appears only once startup has settled as failed.
+The worker pool owns the detached step: stopping the pool for shutdown or logout closes starts, aborting a
+pending worker preflight and refusing any later member start, and waits for the step to settle before
+it returns.
 Resume, Retry and Recover, single or bulk, still wait for capacity. Their response remains `applied` or
 `already-applied` with the queued run targets when startup fails, and `workerStartup` carries
 `RUN_QUEUED_WORKER_UNAVAILABLE`, the retained child command when available, and a distinct `refused`

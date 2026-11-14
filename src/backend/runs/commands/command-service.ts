@@ -126,9 +126,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       const result = key === undefined ? await start() : await inWorkflowLane(`start:${key}`, start);
       if (capacity === undefined || key === undefined || (result.state !== "applied" && result.state !== "already-applied")) return result;
       // Start replies once its run is committed; a startup that fails later shows on the workflow's worker cards.
-      void inWorkflowLane(key, () => capacity.ensure(request, result)).catch((error: unknown) => {
-        capacity.reportDetachedFailure(error instanceof Error ? error : new Error("worker capacity failed", { cause: error }));
-      });
+      capacity.detach(inWorkflowLane(key, () => capacity.ensure(request, result)));
       return result;
     }
     if (capacity === undefined || key === undefined || !needsWorkerCapacity(request)) return executeOne(request);
