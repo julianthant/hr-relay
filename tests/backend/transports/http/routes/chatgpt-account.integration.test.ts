@@ -8,6 +8,7 @@ import { registerChatGptAccountRoutes, type ChatGptAccountRouteDeps } from "../.
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { operatorMutationIngressGuard } from "../../../../../src/backend/transports/http/routes/operator-mutation-ingress.js";
 import { ChatGptAccountStatusSchema, ChatGptSignInCompletionSchema, ChatGptSignInStartSchema, ChatGptAccountStateSchema, type ChatGptAccountState } from "../../../../../src/models/dashboard/chatgpt-account.js";
+import { chatGptStatusFixture } from "../../../../support/helpers/chatgpt-status-fixture.js";
 import { ChatGptResourceClosureUnprovedError } from "../../../../../src/backend/accounts/chatgpt-account-service.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { WireErrorSchema } from "../../../../../src/models/dashboard/primitives.js";
@@ -21,7 +22,7 @@ it("preserves the original typed closure refusal even when the current account i
   registerChatGptAccountRoutes(app, { clock: manualClock(new Date("2026-10-12T12:00:00.000Z")), chatGptAccount: {
     readStatus: async () => { throw new Error("unexpected status read"); },
     refreshAccount: async () => { reads++; return ChatGptAccountStateSchema.parse({ state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" }); },
-    signIn: async () => ({ authorizationUrl: "https://auth.openai.com/api/accounts/authorize", expiresAt: "2099-01-01T00:00:00.000Z", completion: completion.promise, cancel: async () => {} }),
+    signIn: async () => ({ authorizationUrl: "https://auth.openai.com/api/accounts/authorize", expiresAt: "2099-01-01T00:00:00.000Z", completion: completion.promise, cancel: async () => {}, signingIn: true }),
   } });
   const started = ChatGptSignInStartSchema.parse(await (await app.request(`http://127.0.0.1${path}/sign-in`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"usePlan":true}' })).json());
   completion.reject(new ChatGptResourceClosureUnprovedError(new Error("PRIVATE_CLOSURE_CANARY")));
@@ -30,6 +31,30 @@ it("preserves the original typed closure refusal even when the current account i
     assert.deepEqual(result, { state: "uncertain", attemptId: started.attemptId, code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text });
     assert.equal(reads, 0);
   }
+});
+
+it("D3: status and cancel read signing-in from the service attempt, not from its unsettled completion", async () => {
+  const completion = Promise.withResolvers<ChatGptAccountState>();
+  const app: DashboardApp = new Hono();
+  let signingIn = true, cancels = 0;
+  registerChatGptAccountRoutes(app, { clock: manualClock(new Date("2026-10-12T12:00:00.000Z")), chatGptAccount: {
+    readStatus: async () => chatGptStatusFixture({ state: "signed-out" }),
+    refreshAccount: async () => { throw new Error("unexpected refresh"); },
+    signIn: async () => ({ authorizationUrl: "https://auth.openai.com/api/accounts/authorize", expiresAt: "2099-01-01T00:00:00.000Z", completion: completion.promise,
+      cancel: async () => { cancels++; }, get signingIn() { return signingIn; } }),
+  } });
+  const post = (suffix: string, body: string) => app.request(`http://127.0.0.1${path}${suffix}`, { method: "POST", headers: { "content-type": "application/json" }, body });
+  const started = ChatGptSignInStartSchema.parse(await (await post("/sign-in", '{"usePlan":true}')).json());
+  const status = async () => ChatGptAccountStatusSchema.parse(await (await app.request(`http://127.0.0.1${path}`)).json()).account.state;
+  assert.equal(await status(), "signing-in");
+  signingIn = false;
+  assert.equal(await status(), "signed-out");
+  assert.equal((await (await post(`/sign-in/${started.attemptId}/cancel`, "{}")).json() as { code: string }).code, "CHATGPT_AUTH_INVALID");
+  assert.equal(cancels, 0);
+  signingIn = true;
+  assert.equal((await (await post(`/sign-in/${started.attemptId}/cancel`, "{}")).json() as { state: string }).state, "cancelled");
+  assert.equal(cancels, 1);
+  completion.resolve({ state: "signed-out" });
 });
 
 async function setup(debugEvents?: ChatGptAccountRouteDeps["debugEvents"]) {
