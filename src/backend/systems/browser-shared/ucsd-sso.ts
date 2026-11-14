@@ -152,9 +152,9 @@ export async function submitPinnedUcsdSsoCredentials(page: Page,
   const passwords = await password.count(); check();
   const buttons = await submit.count(); check();
   if (users !== 1 || passwords !== 1 || buttons !== 1) throw new Error("UCSD_SSO_FIELDS");
-  let user: Awaited<ReturnType<typeof username.elementHandle>> = null;
-  let secret: Awaited<ReturnType<typeof password.elementHandle>> = null;
-  let button: Awaited<ReturnType<typeof submit.elementHandle>> = null;
+  let user: Awaited<ReturnType<typeof username.elementHandle>> | null = null;
+  let secret: Awaited<ReturnType<typeof password.elementHandle>> | null = null;
+  let button: Awaited<ReturnType<typeof submit.elementHandle>> | null = null;
   let failure: { error: unknown } | undefined;
   const cleanup: unknown[] = [];
   try {

@@ -1676,6 +1676,7 @@ th.ds-text-caps {
   width: var(--ds-size-switch-thumb);
   height: var(--ds-size-switch-thumb);
 }
+.ds-switch-control .ds-switch-thumb.ds-switch-thumb { inset-inline-start: 0; }
 .ds-switch-control .ds-switch-thumb { margin-inline-start: var(--ds-switch-thumb-off-x); }
 .ds-switch-control .ds-switch-thumb-checked { margin-inline-start: var(--ds-switch-thumb-on-x); }
 
