@@ -23,6 +23,7 @@ REBUILD_TEST_PROJECTS,
 REBUILD_TEST_REPORTERS,
 REBUILD_UNIT_TEST_EXCLUDE,
 REBUILD_UNIT_TEST_INCLUDE,
+nativeRunExcludes,
 } from "../../../vitest.config.js";
 import { REPO_ROOT,walkFiles } from "../support/helpers/guard-files.js";
 import {
@@ -146,14 +147,19 @@ export function architectureProjectViolations({
     "tests/architecture/**",
     "tests/mocks/**",
     "tests/perf/**",
+    ...nativeRunExcludes(process.env.RELAY_TEST_NATIVE),
   ])) {
-    violations.push("unit project must exclude integration suffixes, operator-machine markers, architecture, mocks, and perf");
+    violations.push("unit project must exclude integration suffixes, operator-machine markers, architecture, mocks, perf, and local native files unless RELAY_TEST_NATIVE=1");
   }
   if (JSON.stringify(integrationInclude) !== JSON.stringify(["tests/**/*.integration.test.ts"])) {
     violations.push("integration project must include every recursive tests/**/*.integration.test.ts file");
   }
-  if (JSON.stringify(integrationExclude) !== JSON.stringify(["tests/**/*.local.integration.test.ts", "tests/perf/**"])) {
-    violations.push("integration project must exclude operator-machine markers and tests/perf/**");
+  if (JSON.stringify(integrationExclude) !== JSON.stringify([
+    "tests/**/*.local.integration.test.ts",
+    "tests/perf/**",
+    ...nativeRunExcludes(process.env.RELAY_TEST_NATIVE),
+  ])) {
+    violations.push("integration project must exclude operator-machine markers, tests/perf/**, and local native files unless RELAY_TEST_NATIVE=1");
   }
   if (
     JSON.stringify(architectureInclude) !==
@@ -200,8 +206,9 @@ export function testProjectTopologyViolations(
   const mocks = all.filter((path) => path.startsWith("tests/mocks/"));
   const runtime = all.filter((path) => !path.startsWith("tests/mocks/"));
   const cloud = projects.filter((project) => project.name !== "local");
+  const optedOut = new Set(nativeRunExcludes(process.env.RELAY_TEST_NATIVE));
   const violations = projectOwnershipViolations(
-    runtime.filter((path) => !OPERATOR_LOCAL_TEST.test(path)),
+    runtime.filter((path) => !OPERATOR_LOCAL_TEST.test(path) && !optedOut.has(path)),
     cloud.map((project) => ({
       ...project,
       files: project.files.filter((path) => !path.startsWith("tests/mocks/") && !OPERATOR_LOCAL_TEST.test(path)),

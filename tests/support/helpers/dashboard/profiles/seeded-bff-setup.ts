@@ -13,6 +13,7 @@ import { SEEDED_DAY } from "../served-fixtures/seeded-identity.js";
 import { WORKFLOW_ID } from "../served-fixtures/seeded-identity.js";
 import { seed } from "../served-fixtures/seeded-lifecycle.js";
 
+import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
 import { join } from "node:path";
@@ -100,7 +101,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
   }
 
   async function startSeededServer(
-    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
+    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; /** Opt-in: serve the production workflow catalog and a signed-in, Duo-ready profile session. */ productApp?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
   ): Promise<SeededServer> {
     // Ref frontend-backend-integration: the same working-tree proof the fixture adapter demands —
     // asserted before any temp root, database or port exists.
@@ -188,13 +189,20 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     }
 
     const selectionServices = await input.prepareSelection?.({database,clock,root});
-    const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices});
+    const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true});
     held.services = services;
     const { app, hub } = services;
 
     const server: Server = createServer((req, res) => {
       void (async (): Promise<void> => {
         const url = new URL(req.url ?? "/", "http://127.0.0.1");
+        // The real session needs a profile registry, keychain and Duo; the product app is served a fixed signed-in state.
+        if (input.productApp === true && url.pathname === "/api/v1/profile/state") {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify(PublicProfileStateSchema.parse({ state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready",
+            account: { name: "Smoke Test", initials: "ST", timekeeper: "Smoke Test", lastSignedInAt: "2026-11-10T08:30:00-08:00" } })));
+          return;
+        }
         if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/events/")) {
           await bridge(app, req, res, url);
           return;

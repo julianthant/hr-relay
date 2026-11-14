@@ -1,0 +1,84 @@
+name: Production
+
+run-name: ${{ github.event.pull_request.title || inputs.title }}
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      title:
+        description: Run title
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    if: ${{ github.event_name != 'push' }}
+    concurrency:
+      group: release-runners
+      queue: max
+      cancel-in-progress: false
+    uses: ./.github/workflows/checks.yml
+    with:
+      kind: release
+
+  codeql:
+    if: ${{ github.event_name != 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:javascript-typescript
+
+  dependencies:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - run: npm audit --omit=dev --audit-level=high
+
+  production:
+    name: production
+    needs: [checks, codeql, dependencies]
+    if: ${{ always() && github.event_name != 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          EVENT: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          PIPELINE: ${{ needs.checks.result }}
+          CODEQL: ${{ needs.codeql.result }}
+          DEPENDENCIES: ${{ needs.dependencies.result }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            case "$HEAD_REF" in staging | hotfix/*) ;; *) exit 1 ;; esac
+            test "$CODEQL" = success
+            test "$DEPENDENCIES" = success
+          else
+            test "$EVENT" = workflow_dispatch
+          fi
+          test "$PIPELINE" = success

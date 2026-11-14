@@ -11,11 +11,12 @@ const matrixSchema = z.object({ include: z.array(z.object({
   shard: z.number().int().positive(), shards: z.number().int().positive(),
 })) });
 export const ciPlanSchema = z.object({
-  workflow: z.enum(["portable", "release"]), fullRelease: z.boolean(), releaseBatch: z.boolean(),
+  workflow: z.enum(["portable", "release"]), fullRelease: z.boolean(),
+  perf: z.boolean(), smoke: z.boolean(),
   unit: z.boolean(), integration: z.boolean(), architecture: z.boolean(),
-  ubuntu: matrixSchema, macos: matrixSchema, windows: matrixSchema,
+  ubuntu: matrixSchema, macos: matrixSchema,
   testJobs: z.number().int().nonnegative(),
-}).refine(plan => plan.testJobs === plan.ubuntu.include.length + plan.macos.include.length + plan.windows.include.length,
+}).refine(plan => plan.testJobs === plan.ubuntu.include.length + plan.macos.include.length,
   "CI matrix count is inconsistent.");
 export type CiPlan = z.infer<typeof ciPlanSchema>;
 
@@ -31,7 +32,7 @@ export function createCiPlan(input: unknown): CiPlan {
   if (!manual && ["shared", ...suiteNames].some(name => !["true", "false"].includes(context.filters[name]))) {
     throw new Error("Path-filter outputs are incomplete or invalid.");
   }
-  const fullRelease = context.workflow === "release" && (manual || context.head === "staging");
+  const fullRelease = context.workflow === "release" && (manual || context.head === "staging" || context.head.startsWith("hotfix/"));
   const enabled = (suite: typeof suiteNames[number]) =>
     manual || context.filters.shared === "true" || context.filters[suite] === "true";
   const selected = { unit: enabled("unit"), integration: enabled("integration"), architecture: enabled("architecture") };
@@ -42,17 +43,16 @@ export function createCiPlan(input: unknown): CiPlan {
   const jobs = (suite: z.infer<typeof matrixSchema>["include"][number]["suite"], shards: number) =>
     Array.from({ length: shards }, (_, i) => ({ suite, shard: i + 1, shards }));
   const ubuntu = [
-    ...(selected.unit ? jobs("unit", selected.integration ? 2 : 3) : []),
+    ...(selected.unit ? jobs("unit", 3) : []),
     ...(selected.architecture ? jobs("architecture", 2) : []),
-    ...(selected.integration ? jobs("integration", 14) : []),
+    ...(selected.integration ? jobs("integration", 30) : []),
   ];
   const nativeShards = selected.integration ? 5 : selected.unit ? 1 : 0;
   const macos = fullRelease ? jobs("native", nativeShards) : [];
-  const windows = fullRelease ? jobs("native", selected.integration ? 5 : selected.unit ? 1 : 0) : [];
   return ciPlanSchema.parse({ ...selected, workflow: context.workflow, fullRelease,
-    releaseBatch: !manual && fullRelease && selected.architecture,
-    ubuntu: { include: ubuntu }, macos: { include: macos }, windows: { include: windows },
-    testJobs: ubuntu.length + macos.length + windows.length,
+    perf: !manual && !context.draft, smoke: !manual && !context.draft,
+    ubuntu: { include: ubuntu }, macos: { include: macos },
+    testJobs: ubuntu.length + macos.length,
   });
 }
 
@@ -70,7 +70,6 @@ export function verifyUnitProof(input: unknown, outcomes: unknown): void {
     requireResult(results, "ubuntu", "success");
     if (plan.workflow === "release") {
       requireResult(results, "macos", plan.fullRelease ? "success" : "skipped");
-      requireResult(results, "windows", plan.fullRelease ? "success" : "skipped");
     }
   }
 }
@@ -78,14 +77,13 @@ export function verifyUnitProof(input: unknown, outcomes: unknown): void {
 export function verifyProofs(input: unknown, outcomes: unknown): void {
   const plan = ciPlanSchema.parse(input);
   const results = resultsSchema.parse(outcomes);
-  for (const job of ["changes", "static", "privacy", "integration", "architecture"]) requireResult(results, job, "success");
+  for (const job of ["changes", "lint", "static", "privacy", "integration", "architecture"]) requireResult(results, job, "success");
   requireResult(results, "ubuntu", plan.unit || plan.integration || plan.architecture ? "success" : "skipped");
   if (plan.workflow === "release") {
     requireResult(results, "unit-proofs", "success");
     requireResult(results, "macos", plan.fullRelease && (plan.unit || plan.integration) ? "success" : "skipped");
-    requireResult(results, "windows", plan.fullRelease && (plan.unit || plan.integration) ? "success" : "skipped");
-    requireResult(results, "release-batch", plan.releaseBatch ? "success" : "skipped");
   }
+  for (const job of ["perf", "smoke"] as const) requireResult(results, job, plan[job] ? "success" : "skipped");
   verifyUnitProof(plan, results);
 }
 
@@ -93,13 +91,24 @@ export function verifyCiResults(input: unknown, outcomes: unknown): void {
   const plan = ciPlanSchema.parse(input);
   const results = resultsSchema.parse(outcomes);
   verifyProofs(plan, results);
-  requireResult(results, "timings", plan.testJobs > 0 ? "success" : "skipped");
+}
+
+export function publishTimings(input: unknown, outcomes: unknown): boolean {
+  const plan = ciPlanSchema.parse(input);
+  const results = resultsSchema.parse(outcomes);
+  try {
+    verifyProofs(plan, results);
+  } catch (error) {
+    if (error instanceof Error && /^CI \S+ must be (?:success|skipped)\.$/u.test(error.message)) return false;
+    throw error;
+  }
+  return plan.testJobs > 0;
 }
 
 const workflowsSchema = z.array(z.object({ id: z.number().int().positive(), path: z.string() }));
 export function registeredTimingWorkflows(input: unknown): number[] {
   return workflowsSchema.parse(input).filter(workflow =>
-    [".github/workflows/ci.yml", ".github/workflows/release.yml"].includes(workflow.path)).map(workflow => workflow.id);
+    [".github/workflows/staging.yml", ".github/workflows/production.yml"].includes(workflow.path)).map(workflow => workflow.id);
 }
 
 const historySchema = z.object({ currentRunId: z.number().int().positive(), runs: z.array(z.object({
@@ -124,6 +133,7 @@ if (isDirectExecution(import.meta.url)) {
   else if (command === "workflows") result = registeredTimingWorkflows(input);
   else if (command === "history") result = timingRunIds(input);
   else if (command === "artifact") result = hasTimingArtifact(input);
+  else if (command === "publish") result = publishTimings(input, JSON.parse(outcomes ?? ""));
   else if (command === "unit-proof" || command === "proofs" || command === "verify") {
     const plan = input;
     const results: unknown = JSON.parse(outcomes ?? "");

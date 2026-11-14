@@ -21,7 +21,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. `relay.ts` owns the Windows production launcher and private loopback stop broker; `relay-backend.ts` reports shutdown only after bootstrap releases its lifetime. Root `relay.cmd` selects portable Node. `tests/support/processes/relay-drain-child.ts` supplies the controlled write-drain proof. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
 | `scripts/test/` | Shared typed CI selection/proof/timing-history policy (`ci-plan.ts`), duration-balanced CI file selection, shared full-Chromium installation preflight (`chromium-preflight.ts`), direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |
-| `.github/workflows/ci.yml`, `release.yml`, `ci-checks.yml`, `release-checks.yml` | Disjoint event entries and per-PR supersession; separately admitted portable-only and full-release check pipelines, stable required summaries and timing publication. |
+| `.github/workflows/staging.yml`, `production.yml`, `checks.yml`, `merge-train.yml` | `Staging` and `Production` are the triggered workflows, each ending in one gate job (`staging`, `production`) and sharing per-PR supersession; both call the one `checks.yml` with their kind, which plans portable or full-release (macOS native) pipelines and timing publication; `merge-train.yml` is called from `staging.yml`. |
 | `scripts/verify/` | Repository privacy and test-target verification. |
 | `src/` | Application source. |
 | `tests/` | Tests, fixtures, helpers, and process entrypoints. |

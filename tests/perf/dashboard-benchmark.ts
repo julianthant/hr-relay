@@ -453,7 +453,7 @@ function markdownTable(report: Report): string {
   return lines.join("\n");
 }
 
-export function runDashboardBenchmark(): void {
+export async function runDashboardBenchmark(): Promise<void> {
   const argv = process.argv.slice(2);
   const iterationsFlag = argv.indexOf("--iterations");
   const iterations = iterationsFlag === -1
@@ -463,7 +463,7 @@ export function runDashboardBenchmark(): void {
   const jsonPath = jsonFlag === -1 ? undefined : z.string().min(1).parse(argv[jsonFlag + 1]);
 
   const seedStarted = performance.now();
-  const fixture = seedDashboardPerfFixture();
+  const fixture = await seedDashboardPerfFixture();
   const seedMs = round(performance.now() - seedStarted);
   try {
     // Finding 1: the counter must prove it can see a statement BEFORE this
@@ -526,12 +526,12 @@ export function runDashboardBenchmark(): void {
     }
     assertDashboardPerformanceStructuralBounds(structuralCounters(report.measurements));
   } finally {
-    fixture.close();
+    await fixture.close();
   }
 }
 
 const entryPath = process.argv[1];
 if (entryPath !== undefined
   && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(resolve(entryPath))) {
-  runDashboardBenchmark();
+  await runDashboardBenchmark();
 }

@@ -222,12 +222,12 @@ function branchProblem(branch: string, origin: readonly string[]): string | unde
   if (matches(`design/${KEBAB}`, branch)) return undefined;
   if (matches(`fix/${KEBAB}-${KEBAB}`, branch)) return undefined;
   if (matches(`chore/${KEBAB}-${KEBAB}`, branch)) return undefined;
-  if (matches(`scratch/${KEBAB}-[0-9]+`, branch)) return undefined;
+  if (matches(`hotfix/${KEBAB}-${KEBAB}`, branch)) return undefined;
   if (matches(`task/${KEBAB}/${KEBAB}`, branch)) return undefined;
   // An origin task branch keeps an older lane segment. A new lane stays kebab-case.
   const legacy = new RegExp(`^task/(${KEBAB})/([A-Za-z0-9][A-Za-z0-9._-]*)$`, "u").exec(branch);
   if (legacy && origin.includes(branch)) return undefined;
-  return report(branch, "branch name is outside main, staging, dependabot/*, feature/<kebab>, task/<kebab>/<kebab>, fix/<kebab>-<kebab>, chore/<kebab>-<kebab>, design/<kebab>, and scratch/<kebab>-<digits>");
+  return report(branch, "branch name is outside main, staging, dependabot/*, feature/<kebab>, task/<kebab>/<kebab>, fix/<kebab>-<kebab>, chore/<kebab>-<kebab>, hotfix/<kebab>-<kebab>, and design/<kebab>");
 }
 
 function stagingHeadProblem(branch: string): string | undefined {

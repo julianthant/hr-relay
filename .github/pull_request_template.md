@@ -6,7 +6,7 @@ Package ID / linked brief or issue:
 
 ## Verification
 
-- [ ] Focused tests
+- [ ] `npm run test:pc`
 - [ ] Typecheck and lint
 - [ ] Manifest, store catalog and roadmap checks
 - [ ] Unit, integration and architecture CI checks
