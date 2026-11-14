@@ -87,6 +87,7 @@ function decisions(node: ExplorerNodeWire, labels: readonly { nodeId: string; ou
   switch (node.shape.kind) {
     case "task":
       add("succeeded", "continue", "The step finishes successfully; continue.");
+      if (node.shape.dryRun === "stop-before-publish") add("dry-run", "continue", "Preview the prepared output without saving it.");
       if (node.shape.condition !== undefined) outcomes.push({ id: `${node.id}/skipped`, nodeId: node.id, kind: "condition",
         outcome: "skipped", action: "continue", label: { state: "authored", text: "This step does not apply; continue." } });
       break;
