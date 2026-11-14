@@ -14,7 +14,8 @@ import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 
 export interface NotificationHealthReading { freeBytes: number; walBytes: number; integrityFailed: boolean; backupFailed: boolean; leaseExpired: boolean }
 type ChangeKey = ReturnType<AuthorityDatabase["changeKey"]>;
-const inspected = new WeakMap<AuthorityDatabase, { key: ChangeKey; integrityFailed: boolean }>();
+/** Integrity and live-run heartbeats both hold until the store changes; lease age is re-judged against the clock on every pass. */
+const inspected = new WeakMap<AuthorityDatabase, { key: ChangeKey; integrityFailed: boolean; heartbeats: readonly number[] }>();
 const sameKey = (a: ChangeKey, b: ChangeKey) => a.authorityGeneration === b.authorityGeneration && a.dataVersion === b.dataVersion && a.totalChanges === b.totalChanges;
 /** Runs a synchronous write this observer owns that touches no notification source; remembered keys follow it only when nothing else moved them before or during the write. */
 function ownWrite<T>(database: AuthorityDatabase, write: () => T): T {
@@ -24,7 +25,7 @@ function ownWrite<T>(database: AuthorityDatabase, write: () => T): T {
   const after = database.changeKey();
   // A changed dataVersion means another connection committed, which this observer does not own.
   if (after.dataVersion !== before.dataVersion) return result;
-  if (entry !== undefined && sameKey(entry.key, before)) inspected.set(database, { key: after, integrityFailed: entry.integrityFailed });
+  if (entry !== undefined && sameKey(entry.key, before)) inspected.set(database, { ...entry, key: after });
   followOwnedWrite(database, before, after);
   return result;
 }
@@ -54,16 +55,17 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
   const { stateRoot, clock } = input;
   const filesystem = statfsSync(stateRoot, { bigint: true });
   const wal = join(stateRoot, "state.db-wal");
-  const leaseExpired = listCanonicalRuns(input.reader, "live").some(run => "heartbeatAt" in run.lifecycle && clock.nowMs() - Date.parse(run.lifecycle.heartbeatAt) > 60_000);
   const opening = input.database.changeKey();
   const prior = inspected.get(input.database);
-  let integrityFailed: boolean;
-  if (prior !== undefined && sameKey(prior.key, opening)) integrityFailed = prior.integrityFailed;
+  let integrityFailed: boolean, heartbeats: readonly number[];
+  if (prior !== undefined && sameKey(prior.key, opening)) ({ integrityFailed, heartbeats } = prior);
   else {
+    heartbeats = listCanonicalRuns(input.reader, "live").flatMap(run => "heartbeatAt" in run.lifecycle ? [Date.parse(run.lifecycle.heartbeatAt)] : []);
     integrityFailed = false;
     try { AuthorityDatabase.inspectExistingReadOnly(input.admission, join(stateRoot, "state.db")); } catch { integrityFailed = true; }
-    inspected.set(input.database, { key: opening, integrityFailed });
+    inspected.set(input.database, { key: opening, integrityFailed, heartbeats });
   }
+  const leaseExpired = heartbeats.some(heartbeatAt => clock.nowMs() - heartbeatAt > 60_000);
   let backupFailed = false;
   const backupRoot = join(stateRoot, "backups", "authority");
   const remembered = checkedBackups.get(input.database), current = new Map<string, CheckedBackup>();
