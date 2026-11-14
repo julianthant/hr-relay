@@ -126,9 +126,9 @@ function expectedIdentity(userId: string): string {
 
 async function verify(context: SystemLoginContext, target: SharePointWorkbookTarget, expected: string, transport: SharePointBrowserTransport): Promise<AuthenticationProbe> {
   current(context);
-  if (URL.parse(context.page.url())?.origin !== target.origin) return { authenticated: false, reason: "SharePoint origin is absent" };
+  if (URL.parse(context.page.url())?.origin !== target.origin) return { authenticated: false, reason: "SharePoint origin is absent", check: "application-route" };
   try {
-    if (await context.page.locator(LOGIN_CONTROLS).count() !== 0) return { authenticated: false, reason: "Sign-in controls are present" };
+    if (await context.page.locator(LOGIN_CONTROLS).count() !== 0) return { authenticated: false, reason: "Sign-in controls are present", check: "sign-in-form-absent" };
     const bytes = await transfer(context, target, `${target.siteUrl}/_api/web/currentuser?$select=Id,LoginName`, "json", transport);
     const value: unknown = JSON.parse(bytes.toString("utf8"));
     const record = typeof value === "object" && value !== null && "d" in value ? value.d : value;

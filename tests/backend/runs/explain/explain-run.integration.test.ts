@@ -2,11 +2,16 @@ import { createStepOmissionTestWorld } from "../../../support/helpers/backend/st
 import assert from "node:assert/strict";
 
 import { afterEach, describe, it } from "vitest";
+import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { buildNodeFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
 import { buildExplainRunView, renderExplainRun } from "../../../../src/backend/runs/explain/explain-run.js";
+import { NodeIdSchema, TaskIdSchema } from "../../../../src/rules/identity/ids.js";
+import { TaskError } from "../../../../src/workflow-kit/errors.js";
 import { RunLifecycleSchema, RunPauseSchema, RunRecordSchema } from "../../../../src/models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { timelineCheckpointReference, TimelineCheckpointReferenceSchema } from "../../../../src/models/events/timeline.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { SIGN_IN_REFUSAL_PROBES } from "../../../support/fixtures/sign-in-refusal-probes.js";
 
 const {STEP, TYPED_FACT, omittedStepFixture, cleanup } = createStepOmissionTestWorld();
 
@@ -107,6 +112,79 @@ describe("explain run under step omission", () => {
     assert.match(rendered, /omitted steps\n\s+crm-read — omitted at start/u);
     assert.equal(rendered.includes(TYPED_FACT), false);
   });
+});
+
+function refusedFailure(detail: string, observedUrl: string, check?: "application-route") {
+  const login = new BrowserLoginError("ucpath", "verify-landing", detail, observedUrl, undefined, undefined, check);
+  const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+  return buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+    failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+    error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: QUEUED_RUN.createdAt });
+}
+
+function renderRefusal(detail: string, observedUrl: string, check?: "application-route", protectedRun = false) {
+  const failure = refusedFailure(detail, observedUrl, check);
+  const run = protectedRun ? RunRecordSchema.parse({
+    ...QUEUED_RUN,
+    input: { ...QUEUED_RUN.input, parsed: { ...QUEUED_RUN.input.parsed, protectedBindings: [{
+      kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "00000000-0000-4000-8000-000000000099",
+    }] } },
+  }) : RunRecordSchema.parse(QUEUED_RUN);
+  return renderExplainRun(buildExplainRunView({ run, checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure }));
+}
+
+it("explains a refused sign-in with the check and the registry page", () => {
+  const rendered = renderRefusal("the check saw employee 10456712", "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO?EMPLID=10456712#frag-canary", "application-route");
+  assert.match(rendered, /UCPath sign-in failed\./);
+  assert.match(rendered, /sign-in check verify-landing: application-route/);
+  assert.match(rendered, /page https:\/\/a5\.ucsd\.edu\/tritON\/profile\/SAML2\/Redirect\/SSO/);
+  assert.equal(rendered.includes("10456712"), false);
+  assert.equal(rendered.includes("frag-canary"), false);
+});
+
+it("explains a sign-in step when the verifier named no check", () => {
+  const rendered = renderRefusal("the check saw employee 10456712", "https://a5.ucsd.edu/sso");
+  assert.match(rendered, /sign-in step verify-landing/);
+  assert.match(rendered, /page https:\/\/a5\.ucsd\.edu \(path not listed\)/);
+  assert.equal(rendered.includes("sign-in check"), false);
+  assert.equal(rendered.includes("10456712"), false);
+});
+
+it("explains an unlisted, unread, or unreadable page", () => {
+  assert.match(renderRefusal("the check refused", "https://example.test/read?token=QUERY_CANARY"), /page not listed/);
+  assert.match(renderRefusal("the check refused", ""), /page not read/);
+  assert.match(renderRefusal("the check refused", "not a url"), /page unreadable/);
+  for (const rendered of [
+    renderRefusal("the check refused", "https://example.test/read?token=QUERY_CANARY"),
+    renderRefusal("the check refused", ""),
+    renderRefusal("the check refused", "not a url"),
+  ]) {
+    assert.equal(rendered.includes("QUERY_CANARY"), false);
+    assert.equal(rendered.includes("not a url"), false);
+  }
+});
+
+it("explains a protected run's refused sign-in from the closed leaves", () => {
+  const rendered = renderRefusal(
+    "the check saw employee 10456712 password=SECRET_CANARY",
+    "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app?EMPLID=10456712#frag-canary",
+    "application-route",
+    true,
+  );
+  assert.match(rendered, /UCPath sign-in failed\./);
+  assert.match(rendered, /sign-in check verify-landing: application-route/);
+  assert.match(rendered, /page https:\/\/ucphrprdpub\.universityofcalifornia\.edu\/psc\/ucphrprd\/EMPLOYEE\/HRMS\//);
+  assert.equal(rendered.includes("10456712"), false);
+  assert.equal(rendered.includes("frag-canary"), false);
+  assert.equal(rendered.includes("SECRET_CANARY"), false);
+  assert.equal(rendered.includes("EMPLID"), false);
+});
+
+it("explains every probe without copying its text", () => {
+  for (const row of SIGN_IN_REFUSAL_PROBES) {
+    const rendered = renderRefusal(row.detail, row.observedUrl, undefined, true);
+    for (const canary of row.canaries) assert.equal(rendered.includes(canary), false, `${row.name} ${canary}`);
+  }
 });
 
 describe("explain run next safe action", () => {
