@@ -55,11 +55,21 @@ export function interruptTransition(run: RunInterruptFacts, event: InterruptEven
   if (pending === "stop-requested") return refused("stop-pending");
   switch (event.kind) {
     case "pause": return applied(pending !== "none" ? pending : claimed ? "pause-requested" : "paused");
-    case "resume": return pending === "paused" ? applied("none") : refused("not-paused");
+    // Resume before a requested pause takes effect withdraws it.
+    case "resume": return pending === "paused" || pending === "pause-requested" ? applied("none") : refused("not-paused");
     case "acknowledge-pause":
+      // A worker that stopped for a pause Resume has since withdrawn releases the run with nothing pending.
+      if (pending === "none" && claimed) return applied("none");
       if (pending !== "pause-requested") return refused("not-pause-requested");
       return claimed ? applied("paused") : refused("no-worker");
   }
+}
+
+/** The served application pause over the runs that can still take one: any unpaused run means running, then a pending pause means pause-pending. */
+export function applicationPauseOf(runs: readonly RunInterruptFacts[]): ApplicationLifecycle["pause"] {
+  const pausable = runs.filter(run => interruptTransition(run, { kind: "pause" }).state === "applied").map(pendingInterruptOf);
+  if (pausable.length === 0 || pausable.includes("none")) return "running";
+  return pausable.includes("pause-requested") ? "pause-pending" : "paused";
 }
 
 /** The served application state: a quit in progress wins, then a held admission reads as pausing. */
