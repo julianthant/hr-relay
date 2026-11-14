@@ -89,6 +89,8 @@ export interface TaskStepNode<Scope, C extends AnyReadTaskContract> extends Grap
   readonly when?: NodeCondition;
   /** Resume policy — REQUIRED, no default (ref workflow-model ). */
   readonly replay: "checkpoint" | "always-rerun";
+  /** A dry run binds and checks this local publication, then stops before its provider call. */
+  readonly dryRun?: "stop-before-publish";
 }
 
 /** Contract-typed downstream values project the durable outcome without minting another schema. */

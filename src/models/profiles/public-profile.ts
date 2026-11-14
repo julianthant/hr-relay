@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { ErrorCodeSchema } from "../../rules/identity/ids.js";
-import { ProfileIdSchema, ProfileRegistryRowSchema } from "./profile.js";
+import { ProfileIdSchema, ProfileRegistryRowSchema, type ProfileRegistryRow } from "./profile.js";
 import { PreflightReportWireSchema } from "../preflight/preflight-contract.js";
 
 export const ProfileLoginRequestSchema = z.strictObject({ email: z.string().min(1).max(254), password: z.string().min(1).max(1024) });
@@ -20,6 +20,23 @@ export const ProfileUsernameChangeRequestSchema = z.strictObject({ currentPasswo
 export const ProfileLoginChangeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("changed"), durability: z.literal("unconfirmed").optional(), diagnostics: z.literal("unrecorded").optional() }),
   z.strictObject({ state: z.literal("unknown"), code: z.literal("PROFILE_LOGIN_CHANGE_UNKNOWN"), diagnostics: z.literal("unrecorded").optional() }),
+  z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
+]);
+/** The signed-in person's account values; Timekeeper initials are not a value of their own but `profileInitials(timekeeper)`. */
+export const ProfileAccountSchema = z.strictObject({ name: z.string(), initials: ProfileRegistryRowSchema.shape.initials,
+  timekeeper: ProfileRegistryRowSchema.shape.timekeeperName, lastSignedInAt: ProfileRegistryRowSchema.shape.lastSignedInAt });
+export type ProfileAccount = z.infer<typeof ProfileAccountSchema>;
+export function profileAccount(row: ProfileRegistryRow): ProfileAccount {
+  return ProfileAccountSchema.parse({ name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName, lastSignedInAt: row.lastSignedInAt });
+}
+/** A details change names at least one value; each value is checked by `profileDetailsPatch`, whose refusal states the reason. */
+export const ProfileDetailsChangeRequestSchema = z.strictObject({
+  name: z.strictObject({ firstName: z.string().max(64), lastName: z.string().max(64) }).optional(),
+  initials: z.string().max(64).optional(),
+  timekeeperName: z.string().max(256).optional(),
+}).refine(value => value.name !== undefined || value.initials !== undefined || value.timekeeperName !== undefined, "profile-details-change-empty");
+export const ProfileDetailsChangeResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("changed"), account: ProfileAccountSchema }),
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
 ]);
 /** A Relay username the dashboard sign-in form accepts: one UCSD work email with no surrounding spaces. */
@@ -98,8 +115,7 @@ export const PublicProfileStateSchema = z.discriminatedUnion("state", [
     resumable: z.literal(true).optional(), logoutIncomplete: z.literal(true).optional() }),
   z.strictObject({ state: z.literal("error"), code: ErrorCodeSchema, firstRunCheck: ProfileFirstRunCheckSchema.optional() }),
   z.strictObject({ state: z.literal("active"), profileId: ProfileIdSchema, duoState: ProfileRegistryRowSchema.shape.duoState, epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), firstRunCheck: ProfileFirstRunCheckSchema.optional(),
-    account: z.strictObject({ name: z.string(), initials: ProfileRegistryRowSchema.shape.initials, timekeeper: ProfileRegistryRowSchema.shape.timekeeperName,
-      lastSignedInAt: ProfileRegistryRowSchema.shape.lastSignedInAt }).optional() }),
+    account: ProfileAccountSchema.optional() }),
   z.strictObject({ state: z.literal("cancelling"), operationId: z.uuid() }),
   ProfileOnboardingStateSchema,
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema, firstRunCheck: ProfileFirstRunCheckSchema.optional() }),

@@ -11,8 +11,11 @@ CancelProfileOnboardingDuoRequestSchema,
 CancelProfileOnboardingRequestSchema,
 CompleteProfileOnboardingRequestSchema, ReopenProfileOnboardingBrowserRequestSchema,
 ConfirmProfileOnboardingDuoRequestSchema,DeleteProfileAccountRequestSchema,PROFILE_ONBOARDING_STATE,
+ProfileDetailsChangeRequestSchema,
+ProfileDetailsChangeResultSchema,
 ProfileLoginChangeResultSchema,
 ProfileLoginRequestSchema,
+profileAccount,
 ProfilePasswordChangeRequestSchema,
 ProfileFirstRunCheckSchema,
 ProfileOnboardingStateSchema,
@@ -191,7 +194,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === profileId);
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     return { state: "active" as const, profileId, epoch, duoState: row.duoState,
-      account: { name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName, lastSignedInAt: row.lastSignedInAt } };
+      account: profileAccount(row) };
   };
   const mountActive = async (result: ActiveProfileSession, onInitialPreflight = input.onInitialPreflight): Promise<PublicProfileState> => {
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
@@ -400,6 +403,11 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.post("/api/v1/profile/account/username", async c => {
     const request = ProfileUsernameChangeRequestSchema.parse(await c.req.json());
     return changeLogin(c, (token, at) => profileRuntime.session.changeUsername(token, { ...request, at }));
+  });
+  app.post("/api/v1/profile/account/details", async c => {
+    const request = ProfileDetailsChangeRequestSchema.parse(await c.req.json());
+    const result = profileRuntime.session.changeDetails(current(c.req.raw).token, request);
+    return c.json(ProfileDetailsChangeResultSchema.parse(result.state === "changed" ? result : { state: "refused", code: result.code }));
   });
   app.post("/api/v1/profile/logout", c => endSession(c, false));
   app.post("/api/v1/profile/delete-account", c => endSession(c, true));
