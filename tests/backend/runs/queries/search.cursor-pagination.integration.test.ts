@@ -150,12 +150,58 @@ describe("cross-date search service", () => {
 
       insertMeasuredSearchRun(database, { authorityPath: profile.path,
         seed: 13,
-        enqueuedAt: "2026-08-26T15:00:00.000Z",
+        enqueuedAt: "2026-08-28T13:00:00.000Z",
       });
       assert.throws(
         () => search.search({ ...baseQuery, cursor: cursorValue }),
         /cursor names authority generation .*current snapshot is generation/,
       );
+    } finally {
+      database.close();
+      await profile.close();
+    }
+  });
+
+  it("continues a cursor across authority writes that leave the matched runs unchanged", async () => {
+    const profile = await createBoundProfileFixture();
+    const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
+    const database = AuthorityDatabase.open(
+      { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-cursor-unrelated-write-test" },
+      clock,
+    );
+    try {
+      const runs = [15, 14, 13].map((hour, index) => insertMeasuredSearchRun(database, {
+        authorityPath: profile.path, seed: 21 + index, enqueuedAt: `2026-08-28T${String(hour)}:00:00.000Z`,
+      }));
+      const search = measuredSearchService(database, {
+        clock,
+        sourceIdentity: database.getSourceDatabaseIdentity(),
+        cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
+        descriptors: { resolve: resolveMeasuredSearchDescriptor },
+      });
+      const query = { q: "separations", scope: "all", facets: { day: "2026-08-28" }, limit: 1 };
+      const toggleWorkerPause = () => {
+        const slot = database.authority.workerSlots.list("separations").find(row => row.retiredAt === null);
+        if (slot === undefined) throw new Error("search fixture worker slot missing");
+        const before = database.getMeta().authorityGeneration;
+        database.authority.workerSlots.setPaused({ workerId: slot.workerId, paused: !slot.paused, now: clock.now().toISOString() });
+        assert.ok(database.getMeta().authorityGeneration > before, "the unrelated write must advance the authority generation");
+      };
+
+      const pages = [search.search(query)];
+      for (;;) {
+        const previous = pages.at(-1);
+        if (previous?.nextCursor.state !== "present") break;
+        toggleWorkerPause();
+        pages.push(search.search({ ...query, cursor: previous.nextCursor.value }));
+      }
+
+      assert.deepEqual(pages.flatMap(page => page.results.map(row => row.runId)), runs.map(run => run.envelope.runId));
+      for (const page of pages) {
+        assert.deepEqual(page.snapshot, pages[0]?.snapshot);
+        assert.equal(page.totalMatches, 3);
+        assert.equal(page.generatedAt, pages[0]?.generatedAt);
+      }
     } finally {
       database.close();
       await profile.close();

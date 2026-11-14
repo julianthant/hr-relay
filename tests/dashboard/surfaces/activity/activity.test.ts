@@ -7,8 +7,6 @@ import { createRoot as createRoot_m0 } from 'react-dom/client';
 import { renderToStaticMarkup as renderToStaticMarkup_m1 } from "react-dom/server";
 import { TooltipProvider as TooltipProvider_m1 } from "../../../../src/dashboard/ds/ui.js";
 import { afterEach as afterEach_m0,beforeEach as beforeEach_m0,describe as describe_m0,describe as describe_m1,it as it_m0,it as it_m1 } from 'vitest';
-import { ACTIVITY_SAMPLE_TODAY as ACTIVITY_SAMPLE_TODAY_m0 } from '../../../../src/dashboard/surfaces/activity/activity-fixture.js';
-import { activityPresetRange as activityPresetRange_m0,activityRangeValue as activityRangeValue_m0 } from '../../../../src/dashboard/surfaces/activity/activity-model.js';
 import { ActivityReport as ActivityReport_m0,ActivityReport as ActivityReport_m1 } from '../../../../src/dashboard/surfaces/activity/activity.js';
 import { WorkflowExplorer as WorkflowExplorer_m1 } from "../../../../src/dashboard/surfaces/explorer/explorer.js";
 import { LogSample as LogSample_m1 } from "../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
@@ -55,37 +53,15 @@ afterEach_m0(_afterEachFixture1);
       assert_m0(host.querySelector('button[aria-label="Show Separations details"]'));
     } finally { await act_m0(async () => root.unmount()); host.remove(); }
   });
-  it_m0('applies a hand-picked range that equals a preset exactly', async () => {
+  it_m0('opens served Analytics on the 7-day preset with no custom range or date fields', async () => {
     const host = document.createElement('div'); document.body.append(host);
     const root = createRoot_m0(host);
-    const changes: string[] = [];
-    const preset = activityPresetRange_m0('this-week', ACTIVITY_SAMPLE_TODAY_m0);
-    const applied = activityRangeValue_m0(preset);
-    const fullDayLabel = (day: string) => new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-    }).format(new Date(`${day}T00:00:00Z`));
-    const rangeCell = (day: string) => {
-      const label = fullDayLabel(day);
-      const cells = [...document.body.querySelectorAll<HTMLElement>('[aria-label]')].filter(element =>
-        element.getAttribute('aria-label')?.includes(label) === true && element.textContent?.trim() === String(Number(day.slice(8))));
-      assert_m0.equal(cells.length, 1, `expected one range cell for "${label}", found ${String(cells.length)}`);
-      const found = cells[0];
-      assert_m0.ok(found, `no range cell for "${label}"`);
-      return found;
-    };
     try {
-      await act_m0(async () => { root.render(createElement_m0(ActivityReport_m0, { source: "mock", range: applied, onRange: next => { changes.push(next); } })); });
-      const chooseDates = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.startsWith('Custom…')); assert_m0(chooseDates);
-      await act_m0(async () => { chooseDates.click(); });
-      const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(node => node.textContent?.trim() === 'Choose dates…');
-      assert_m0.ok(item, 'the period menu offers Choose dates');
-      await act_m0(async () => { item.click(); });
-      assert_m0.deepEqual(changes, [], 'choosing dates edits no range on its own');
-      const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Choose start date range"]');
-      assert_m0.ok(trigger, 'the range control owns its calendar trigger');
-      await act_m0(async () => { trigger.click(); });
-      for (const day of [preset.from, preset.to]) await act_m0(async () => { rangeCell(day).click(); });
-      assert_m0.deepEqual(changes, [applied], 'the applied range is exactly the preset it equals');
+      await act_m0(async () => { root.render(createElement_m0(TooltipProvider_m1, null, createElement_m0(ActivityReport_m0, { source: "served", today: "2026-09-10", range: '', onRange: () => {} }))); });
+      const period = host.querySelector<HTMLInputElement>('fieldset input[type="radio"]:checked');
+      assert_m0.equal(period?.value, '7d', 'the 7d preset is pressed');
+      assert_m0.equal([...host.querySelectorAll('button')].filter(button => /Custom/.test(button.textContent ?? '')).length, 0, 'no Custom range menu');
+      assert_m0.equal(host.querySelector('[aria-label="Report date range"], input[type="date"], [aria-label^="Choose start date"]'), null, 'no date fields');
     } finally { await act_m0(async () => root.unmount()); host.remove(); }
   });
 });
