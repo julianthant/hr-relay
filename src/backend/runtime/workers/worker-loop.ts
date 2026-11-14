@@ -26,6 +26,7 @@ import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import {
   executeClaimedRun,
+  RunControlAbortError,
   RunExecutionOutcomeSchema,
   type ChildRunExecutor,
   type RunArtifactProjector,
@@ -375,7 +376,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         try {
           const current = deps.authority.authority.runs.get(run.envelope.runId);
           if (current?.pause?.state === "requested" || current?.cancelRequested === true) {
-            runController.abort(new Error("worker-run-control-current-work"));
+            runController.abort(new RunControlAbortError());
             return;
           }
         } catch (error) { runController.abort(error); return; }

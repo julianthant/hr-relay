@@ -7,7 +7,7 @@ import { draftError as draftError_m1,patchFromSettingsDraft as patchFromSettings
 import { performancePresentation as performancePresentation_m1,performanceSectionGroups as performanceSectionGroups_m1 } from "../../../../../src/dashboard/surfaces/settings/general/settings-performance-model.js";
 import { settingNote as settingNote_m1,settingTitle as settingTitle_m1 } from "../../../../../src/dashboard/surfaces/settings/settings-presentation.js";
 import type { EditableSettingsLeafWire as EditableSettingsLeafWire_m1 } from "../../../../../src/models/dashboard/settings-editor.js";
-import { fixtureSettingsDocument as fixtureSettingsDocument_m1 } from "../../../../parity/helpers/fixture-settings.js";
+import { fixtureSettingsDocument as fixtureSettingsDocument_m1 } from "../../../../mocks/helpers/fixture-settings.js";
 import { mountSettingsHarness as mountSettingsHarness_m0,syntheticSettingsAuthority as syntheticSettingsAuthority_m0 } from '../../../../support/helpers/dashboard/settings-harness.js';
 
 {

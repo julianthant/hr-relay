@@ -10,9 +10,9 @@ import { FIXTURE_IDENTITY_GATE } from '../../support/fixtures/dashboard/run-deta
 import { DashboardClientProvider } from '../../../src/dashboard/state/client-context.js';
 import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatalogFailure } from '../../../src/models/failures/error-catalog.js';
 import { RowRevisionSchema } from '../../../src/models/dashboard/primitives.js';
-import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from '../../parity/helpers/fixture-queue.js';
+import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from '../../mocks/helpers/fixture-queue.js';
 import { DashboardCommandRequestSchema, type DashboardCommandRequest } from '../../../src/rules/commands/commands.js';
-import { PARITY_WORKFLOW_COMPOSITION } from '../../parity/helpers/workflow-composition.js';
+import { MOCK_WORKFLOW_COMPOSITION } from '../../mocks/helpers/workflow-composition.js';
 import { createFixtureBff } from '../../support/helpers/dashboard/fixture-bff.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
@@ -34,7 +34,7 @@ it('shows the day-loading failure for a selected run instead of calling the run 
   } };
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}&run=${run.runId}&section=logs`);
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION }) })));
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION }) })));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
   const panel = host.querySelector('.dashboard-log-column');
   assert(panel);
@@ -59,7 +59,7 @@ for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps
     executeCommand: async (raw: unknown) => { sent.push(DashboardCommandRequestSchema.parse(raw)); return transport.executeCommand(raw); } };
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}&run=${run.runId}&section=logs`);
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  const servedLogs = (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => { const composition = PARITY_WORKFLOW_COMPOSITION(workflows); return Object.freeze({ ...composition, logsSources: composition.sources }); };
+  const servedLogs = (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => { const composition = MOCK_WORKFLOW_COMPOSITION(workflows); return Object.freeze({ ...composition, logsSources: composition.sources }); };
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: servedLogs }) })));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
   const block = host.querySelector('form[aria-label="Is this the right person?"]');
@@ -124,8 +124,8 @@ for (const catchesUp of [false, true]) it(`retains stale Logs during a day refre
   };
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}&run=${run.runId}&section=logs`);
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  const servedLogs = (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => {
-    const composition = PARITY_WORKFLOW_COMPOSITION(workflows);
+  const servedLogs = (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => {
+    const composition = MOCK_WORKFLOW_COMPOSITION(workflows);
     return Object.freeze({ ...composition, logsSources: composition.sources });
   };
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: servedLogs }) })));
