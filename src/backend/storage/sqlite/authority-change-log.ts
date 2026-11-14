@@ -235,15 +235,13 @@ export const CHANGE_LOG_MIGRATION = deepFreeze({ version: CHANGE_LOG_SCHEMA_VERS
   "CREATE INDEX assistant_actions_chat_idx ON assistant_actions(chat_id)",
   "CREATE INDEX workbook_library_snapshots_workbook_idx ON workbook_library_snapshots(workbook_id,id)",
   "CREATE INDEX commands_request_family_idx ON commands(json_extract(request_json,'$.family'))",
+  "CREATE INDEX run_search_build_idx ON run_search(json_extract(metadata_json,'$.buildGeneration'),run_id)",
   ...AuthorityTableNameSchema.options.flatMap(table => table === "database_states" ? [] : captureTriggers(table)),
   ...runReferenceCaptureTriggers(),
   ...SOURCES.flatMap(runReferenceTriggers),
 ] });
 
-/**
- * Every schema object migration 31 creates. The log is complete only while these are exactly as created, so a reader attests
- * them after every schema move; the rest of the schema is attested at open.
- */
+/** Every schema object migration 31 creates, by name. */
 export const CHANGE_LOG_OBJECTS: readonly string[] = deepFreeze(CHANGE_LOG_MIGRATION.statements.flatMap(statement => {
   const name = /^CREATE (?:TABLE|INDEX|TRIGGER) (\w+)/u.exec(statement)?.[1];
   return name === undefined ? [] : [name];

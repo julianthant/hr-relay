@@ -101,14 +101,17 @@ export function createRunSearchIndex(database: DatabaseSync) {
     const row = z.strictObject({authority_generation:z.number().int(),search_generation:z.number().int().nullable(),search_state:z.enum(["unbuilt","ready","invalid"])}).parse(
       database.prepare("SELECT authority_generation,search_generation,search_state FROM database_states WHERE id=1").get());
     if (row.search_state === "invalid" && row.search_generation !== null) {
-      const progress = z.strictObject({count:z.number().int().nonnegative(),after_run:z.string().nullable()}).parse(database.prepare("SELECT count(*) AS count,max(run_id) AS after_run FROM run_search WHERE json_extract(metadata_json,'$.buildGeneration')=?").get(row.search_generation));
-      return {state:"building" as const,sourceGeneration:row.search_generation,afterRun:progress.after_run,rowCount:progress.count};
+      const progress = z.strictObject({after_run:z.string().nullable()}).parse(database.prepare("SELECT max(run_id) AS after_run FROM run_search WHERE json_extract(metadata_json,'$.buildGeneration')=?").get(row.search_generation));
+      return {state:"building" as const,sourceGeneration:row.search_generation,afterRun:progress.after_run};
     }
     return {state:row.search_state === "ready" ? "published" as const : "invalid" as const,sourceGeneration:row.search_generation ?? row.authority_generation,afterRun:null};
   };
   const publication = () => {
     const current = publicationState();
-    return RunSearchPublicationSchema.parse(current.state === "building" ? current : {...current,rowCount:count()});
+    const rowCount = current.state === "building"
+      ? CountSchema.parse(database.prepare("SELECT count(*) AS count FROM run_search WHERE json_extract(metadata_json,'$.buildGeneration')=?").get(current.sourceGeneration)).count
+      : count();
+    return RunSearchPublicationSchema.parse({...current,rowCount});
   };
   const publish = (value: z.input<typeof RunSearchPublicationSchema>, _now: string) => {
     const parsed = RunSearchPublicationSchema.parse(value);
@@ -170,10 +173,20 @@ export function createRunSearchIndex(database: DatabaseSync) {
     validateActorSources(run,sources);
     if (canonicalJsonStringify(record.metadata) !== canonicalJsonStringify(metadataFor(run, declaration, sources))) throw new Error("run-search-source-metadata-invalid");
   };
-  /** `validateCoverage` limited to the given runs: the same rules, applied to their runs and index rows only. */
-  const validateCoverageOf = (runIds: ReadonlySet<string>) => {
+  /**
+   * `validateCoverage` limited to the given runs: the same rules, applied to their runs and index rows only. While a build is in
+   * progress, `changedRows` names the index rows that changed: a build row added above the old prefix end moves `afterRun`, so
+   * every run between the highest unchanged build row and the new end must have a build row too.
+   */
+  const validateCoverageOf = (runIds: ReadonlySet<string>, changedRows: ReadonlySet<string> = new Set()) => {
     const current = publicationState();
     if (current.state === "invalid") return;
+    if (current.state === "building" && changedRows.size > 0 && current.afterRun !== null) {
+      const unchanged = z.strictObject({run_id:z.string()}).optional().parse(database.prepare("SELECT run_id FROM run_search WHERE json_extract(metadata_json,'$.buildGeneration')=? AND run_id NOT IN (SELECT value FROM json_each(?)) ORDER BY run_id DESC LIMIT 1")
+        .get(current.sourceGeneration, JSON.stringify([...changedRows])))?.run_id ?? "";
+      if (database.prepare("SELECT 1 FROM runs r LEFT JOIN run_search s ON s.run_id=r.id AND json_extract(s.metadata_json,'$.buildGeneration')=? WHERE r.id>? AND r.id<=? AND s.run_id IS NULL LIMIT 1")
+        .get(current.sourceGeneration, unchanged, current.afterRun) !== undefined) throw new Error("run-search-build-prefix-invalid");
+    }
     for (const id of runIds) {
       const run = database.prepare("SELECT 1 FROM runs WHERE id=?").get(id) !== undefined;
       if (current.state === "building") {

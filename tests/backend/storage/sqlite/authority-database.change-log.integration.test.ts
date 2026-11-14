@@ -111,6 +111,25 @@ describe("authority change log reader", () => {
     } finally { await f.close(); }
   });
 
+  it("refuses every read after any other schema object changes while every row stays valid, until the schema matches again", async () => {
+    const f = await store();
+    try {
+      assert.equal(refusal(() => f.peer.summaryWorkflows()), undefined);
+      const database = new DatabaseSync(f.path, { readOnly: true });
+      const guard = z.object({ sql: z.string() }).parse(database.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='command_audits_immutable'").get()).sql;
+      database.close();
+      f.raw("DROP TRIGGER command_audits_immutable");
+      for (const reader of f.readers()) for (let attempt = 0; attempt < 2; attempt += 1) {
+        assert.match(refusal(() => reader.summaryWorkflows()) ?? "", /run-search-index-rebuild-required <- authority-native-schema-shape-mismatch/u);
+      }
+      f.raw("CREATE TRIGGER extra_runtime_trigger BEFORE INSERT ON notifications BEGIN SELECT 1; END");
+      f.raw(guard);
+      assert.match(refusal(() => f.peer.summaryWorkflows()) ?? "", /authority-native-schema-shape-mismatch/u);
+      f.raw("DROP TRIGGER extra_runtime_trigger");
+      for (const reader of f.readers()) assert.equal(refusal(() => reader.summaryWorkflows()), undefined);
+    } finally { await f.close(); }
+  });
+
   it("runs the whole-store check when entries above the cursor are missing, and the scoped check otherwise", async () => {
     const f = await store();
     try {

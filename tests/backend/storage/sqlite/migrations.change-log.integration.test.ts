@@ -46,7 +46,7 @@ describe("change log migration 31", () => {
       assert.deepEqual(schemaObjects(database).filter(object => object.type === "table" && !prior.some(value => value.name === object.name)).map(object => object.name),
         ["authority_changes", "run_references"]);
       assert.deepEqual(schemaObjects(database).filter(object => object.type === "index" && !prior.some(value => value.name === object.name)).map(object => object.name), [
-        "assistant_actions_chat_idx", "commands_request_family_idx", "dryrun_results_run_idx", "run_references_row_idx", "runs_owner_idx", "workbook_library_snapshots_workbook_idx"]);
+        "assistant_actions_chat_idx", "commands_request_family_idx", "dryrun_results_run_idx", "run_references_row_idx", "run_search_build_idx", "runs_owner_idx", "workbook_library_snapshots_workbook_idx"]);
     } finally { database.close(); }
   });
 

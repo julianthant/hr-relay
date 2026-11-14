@@ -19,7 +19,7 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { ArtifactRefSchema,type ArtifactRef } from "../../../models/artifacts/artifacts.js";
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
-import { CHANGE_LOG_OBJECTS, CHANGE_LOG_SCHEMA_VERSION, ChangeEntrySchema, RUN_REFERENCE_SOURCES, RunReferenceSourceSchema, SingletonImageSchema, currentRowKey, expectedRunReferences, singletonChangeKeys, sourceRowWhere, type ChangeEntry, type DependencyKey, type RunReferenceSource, type SingletonImage } from "./authority-change-log.js";
+import { CHANGE_LOG_SCHEMA_VERSION, ChangeEntrySchema, RUN_REFERENCE_SOURCES, RunReferenceSourceSchema, SingletonImageSchema, currentRowKey, expectedRunReferences, singletonChangeKeys, sourceRowWhere, type ChangeEntry, type DependencyKey, type RunReferenceSource, type SingletonImage } from "./authority-change-log.js";
 import { AUTHORITY_DERIVED_TABLES,AUTHORITY_TABLE_REGISTRY,AuthorityTableNameSchema,CHANGE_LOG_TABLE,RUN_REFERENCES_TABLE,AuthorityEvidenceSchemaUpgradeRecordSchema,AuthorityUpgradeRecordSchema,ProjectionTableNameSchema,type AuthorityTableName,type RunRecordRefusal,type TableName } from "../../../models/config/authority.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { type ActiveRuntimeConfigRecord,type RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
@@ -1608,8 +1608,8 @@ export function validateAuthorityChanges(database: DatabaseSync, entries: readon
   if (violations.length > 0) throw new Error("current composite authority is invalid");
   if (search === "none") return "scoped";
   const index = createRunSearchIndex(database);
-  if (keys.has("search-publication") || (index.publicationState().state === "building" && entries.some(entry => entry.table === "run_search"))) index.validateCoverage();
-  else index.validateCoverageOf(runs);
+  if (keys.has("search-publication")) index.validateCoverage();
+  else index.validateCoverageOf(runs, new Set(entries.flatMap(entry => entry.table === "run_search" ? [String(entry.rowKey[0])] : [])));
   return "scoped";
 }
 
@@ -1736,23 +1736,10 @@ function pendingCounts(database: DatabaseSync) {
 }
 
 const expectedNativeSchemas = new Map<string, string>();
-function normalizedNativeSchema(database: DatabaseSync, only?: readonly string[]): string {
+function normalizedNativeSchema(database: DatabaseSync): string {
   const schema = z.strictObject({type:z.string(),name:z.string(),table:z.string(),sql:z.string()});
   return canonicalJsonStringify(database.prepare("SELECT type,name,tbl_name AS 'table',sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").all()
-    .map(raw => { const row = schema.parse(raw); return {...row,sql:row.sql.trim().replace(/\s+/gu," ")}; })
-    .filter(row => only === undefined || only.includes(row.name)));
-}
-let expectedChangeLogSchema: string | undefined;
-/** The change log's own objects exactly as migration 31 creates them; see `CHANGE_LOG_OBJECTS`. */
-function assertChangeLogSchema(database: DatabaseSync): void {
-  if (expectedChangeLogSchema === undefined) {
-    const expected = new DatabaseSync(":memory:");
-    try {
-      for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) execMigrationStatement(expected, statement);
-      expectedChangeLogSchema = normalizedNativeSchema(expected, CHANGE_LOG_OBJECTS);
-    } finally { expected.close(); }
-  }
-  if (normalizedNativeSchema(database, CHANGE_LOG_OBJECTS) !== expectedChangeLogSchema) throw new Error("authority-change-log-schema-mismatch");
+    .map(raw => { const row = schema.parse(raw); return {...row,sql:row.sql.trim().replace(/\s+/gu," ")}; }));
 }
 function expectedNativeSchema(version: number, withoutRunSearch: boolean): string {
   const key = `${String(version)}:${String(withoutRunSearch)}`;
@@ -4760,9 +4747,9 @@ export class AuthorityDatabase implements Disposable {
       throw error;
     }
     if (schemaMoved) {
-      // After the rows: a bad row reports its own refusal. A changed log object refuses even when every row is valid, now and on
-      // every later read, since the cookie is recorded only once those objects match.
-      try { assertChangeLogSchema(database); }
+      // After the rows: a bad row reports its own refusal. Any schema difference refuses even when every row is valid, now and on
+      // every later read, since the cookie is recorded only once the whole schema matches.
+      try { assertNativeSchema(database, CURRENT_AUTHORITY_SCHEMA_VERSION); }
       catch (error) { reader.failed = "authority"; throw error; }
       reader.schemaCookie = cookie;
     }

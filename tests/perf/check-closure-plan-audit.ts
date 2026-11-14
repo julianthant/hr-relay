@@ -15,7 +15,8 @@ import { systemClock } from "../../src/rules/time/clock.js";
 import { seedCheckClosureStore } from "../support/fixtures/storage/check-closure-store.js";
 import { dropGuardTriggers, logCursor } from "../support/fixtures/storage/raw-authority-writer.js";
 import { traceSqliteStatements } from "./sqlite-statement-counter.js";
-import { seedStorageReadFixture } from "./storage-read-fixture.js";
+import { seedStorageReadFixture, type StorageReadFixture } from "./storage-read-fixture.js";
+import { createDebugEventWriter } from "../../src/backend/logs/debug-events.js";
 
 const RUNS = 1_000;
 /**
@@ -126,27 +127,67 @@ function auditStore(path: string, kinds: readonly ChangeKind[], scans: ScanTally
         const whole = traceSqliteStatements(() => { validateAuthorityStore(database); });
         const wholeMs = systemClock.monotonicMs() - wholeStart;
         timings.push(`${kind.kind} [${String(entries.length)} entries, ${traced.value}]: ${String(traced.statements.length)} statements ${scopedMs.toFixed(1)} ms; whole-store ${String(whole.statements.length)} statements ${wholeMs.toFixed(1)} ms`);
-        const seen = new Set<string>();
-        for (const { sql } of traced.statements) {
-          const key = cell(sql);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          for (const plan of explain(database, sql)) {
-            const table = scanTable(plan, key);
-            if (table === undefined) continue;
-            const scan = { table, growth: classify(table), plan: cell(plan), sql: key };
-            const id = JSON.stringify(scan);
-            const tally = scans.get(id) ?? { scan, kinds: [] };
-            tally.kinds.push(kind.code);
-            scans.set(id, tally);
-          }
-        }
+        tallyScans(database, kind.code, traced.statements, scans);
       } finally { database.exec("ROLLBACK TO plan_case; RELEASE plan_case"); }
     }
     database.exec("ROLLBACK");
   } finally {
     database.close();
   }
+}
+
+/** Records the plan of every statement one traced check prepared, under the change kind's code. */
+function tallyScans(database: DatabaseSync, code: string, statements: readonly { sql: string }[], scans: ScanTally): void {
+  const seen = new Set<string>();
+  for (const { sql } of statements) {
+    const key = cell(sql);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    for (const plan of explain(database, sql)) {
+      const table = scanTable(plan, key);
+      if (table === undefined) continue;
+      const scan = { table, growth: classify(table), plan: cell(plan), sql: key };
+      const id = JSON.stringify(scan);
+      const tally = scans.get(id) ?? { scan, kinds: [] };
+      tally.kinds.push(code);
+      scans.set(id, tally);
+    }
+  }
+}
+
+/**
+ * Commits that need the real write path while a search rebuild is in progress: (m) the peer's next build step, then (l) an
+ * unrelated peer commit; (l) moves the authority generation, so no build step can follow it without a restart. Each is
+ * committed by the second connection and checked from a read connection, as a reader would.
+ */
+const BUILDING_KINDS = Object.freeze([
+  { code: "m", kind: "(m) search rebuild continuation step", commit: (fixture: StorageReadFixture) => {
+    if (fixture.writer.rebuildRunSearchIndex({ limit: 100 }).state !== "building") throw new Error("the continuation finished the rebuild, so the store left the building state");
+  } },
+  { code: "l", kind: "(l) debug event appended during a search rebuild", commit: (fixture: StorageReadFixture) => {
+    createDebugEventWriter({ repository: fixture.writer.authority.timelineEvents, clock: fixture.clock, build: "0.1.0" })
+      .emit({ category: "http", phase: "failed", correlationId: "plan-audit-building" });
+  } },
+]);
+
+function auditBuilding(fixture: StorageReadFixture, scans: ScanTally, routes: Map<string, AuthorityChangeRoute>, timings: string[]): void {
+  if (fixture.writer.rebuildRunSearchIndex({ restart: true, limit: 100 }).state !== "building") throw new Error("the restart did not leave a build in progress");
+  const database = new DatabaseSync(fixture.path, { readOnly: true });
+  try {
+    for (const kind of BUILDING_KINDS) {
+      const cursor = logCursor(database), singleton = readSingletonImage(database);
+      kind.commit(fixture);
+      database.exec("BEGIN");
+      try {
+        const entries = readAuthorityChanges(database, cursor), singletonKeys = singletonChangeKeys(singleton, readSingletonImage(database));
+        const started = systemClock.monotonicMs();
+        const traced = traceSqliteStatements(() => validateAuthorityChanges(database, entries, singletonKeys));
+        routes.set(kind.code, traced.value);
+        timings.push(`${kind.kind} [${String(entries.length)} entries, ${traced.value}]: ${String(traced.statements.length)} statements ${(systemClock.monotonicMs() - started).toFixed(1)} ms`);
+        tallyScans(database, kind.code, traced.statements, scans);
+      } finally { database.exec("COMMIT"); }
+    }
+  } finally { database.close(); }
 }
 
 /** Seeds both stores, applies every change kind and returns each scan the scoped check's statements plan, with each kind's route. */
@@ -158,6 +199,7 @@ export async function auditScopedPlans(): Promise<PlanAudit> {
     closure.closeDatabase();
     auditStore(fixture.path, KINDS.filter(kind => kind.store === "runs"), scans, routes, timings);
     auditStore(closure.databasePath, KINDS.filter(kind => kind.store === "closure"), scans, routes, timings);
+    auditBuilding(fixture, scans, routes, timings);
   } finally {
     await closure.cleanup();
     await fixture.close();
@@ -174,7 +216,7 @@ export async function runCheckClosurePlanAudit(): Promise<void> {
   const whole = [...audit.routes].filter(([, route]) => route === "whole").map(([code]) => code);
   process.stdout.write([
     `# Scoped check plan audit (${String(RUNS)}-run store plus the all-tables closure store; ${((systemClock.monotonicMs() - started) / 1000).toFixed(1)} s)`, "",
-    "Change kinds: (a) runs update, (b) timeline_events append, (c) commands + audits append, (d) run_search update, (e) write_intents + attempts, (f) database_states, (g) workbook_operations, (h) settings_snapshots, (i) database_states search publication change, (j) database_states profile change, (k) a completed search rebuild; a table name is a same-image update of one row of that table in the closure store (an active run for runs).", "",
+    "Change kinds: (a) runs update, (b) timeline_events append, (c) commands + audits append, (d) run_search update, (e) write_intents + attempts, (f) database_states, (g) workbook_operations, (h) settings_snapshots, (i) database_states search publication change, (j) database_states profile change, (k) a completed search rebuild, (l) a peer commit during a rebuild, (m) a rebuild continuation step; a table name is a same-image update of one row of that table in the closure store (an active run for runs).", "",
     `Whole-store route: ${whole.length === 0 ? "none" : whole.join(", ")}.`, "",
     "| Change kinds | Table scanned | Growth | Plan line | Statement (first 160 chars) |", "|---|---|---|---|---|",
     ...lines, "", "## Timings (one cold run each, not a benchmark)", "", ...audit.timings.map(line => `- ${line}`), "",

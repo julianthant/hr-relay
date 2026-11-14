@@ -474,18 +474,19 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const runE = await startRun("10873702", "1a000000-0000-4000-8000-000000000006");
     const runF = await startRun("10873703", "1a000000-0000-4000-8000-000000000007");
     const failureBody = { ...envelope, commandId: "1a000000-0000-4000-8000-00000000000e", bulkCommandId: "1a000000-0000-4000-8000-00000000000e", targets: [runD, runE, runF].map((runId) => ({ runId, expectedVersion: versionOf(runId) })) };
-    const failId = deriveBulkChildCommandId(failureBody.bulkCommandId, runE);
+    const children = failureBody.targets.map(({ runId }) => deriveBulkChildCommandId(failureBody.bulkCommandId, runId));
     const raw = new DatabaseSync(join(h.stateRoot, "state.db"));
     try {
-      raw.exec(`CREATE TRIGGER synthetic_child_failure BEFORE INSERT ON command_audits WHEN NEW.command_id = '${failId}' BEGIN SELECT RAISE(ABORT, 'synthetic-child-audit-failure'); END`);
-      const failure = await postBulk(failureBody);
-      assert.equal(failure.payload.requestedCount, 3);
-      assert.deepEqual((failure.payload.results as Record<string, unknown>[]).map(({ outcome }) => outcome), ["applied", "errored"]);
-      // The trigger also blocks the errored-child audit, so the child stays admitted and the resumed bulk applies it.
-      assert.equal(h.database.authority.commands.get(failId)?.commandId, failId);
-      assert.equal(h.database.authority.commandAudits.findByCommand(failId), undefined);
-      assert.equal(h.database.authority.commands.get(deriveBulkChildCommandId(failureBody.bulkCommandId, runF)), undefined);
-      assert.equal(versionOf(runE), failureBody.targets[1].expectedVersion);
+      // Any schema object the store did not create refuses every read until the schema matches again. The first child's cancel
+      // commits before the read that follows it refuses, so the bulk stops there and reports that child errored.
+      raw.exec(`CREATE TRIGGER synthetic_child_failure BEFORE INSERT ON command_audits WHEN NEW.command_id = '${children[1]}' BEGIN SELECT RAISE(ABORT, 'synthetic-child-audit-failure'); END`);
+      const refused = await postBulk(failureBody);
+      assert.equal(refused.payload.requestedCount, 3);
+      assert.deepEqual((refused.payload.results as Record<string, unknown>[]).map(({ outcome, detail }) => ({ outcome, detail })),
+        [{ outcome: "errored", detail: "run-search-index-rebuild-required" }]);
+      assert.deepEqual(children.map(id => [h.database.authority.commands.get(id) !== undefined, h.database.authority.commandAudits.findByCommand(id) !== undefined]),
+        [[true, true], [false, false], [false, false]]);
+      assert.deepEqual(failureBody.targets.map(({ runId }) => versionOf(runId)), failureBody.targets.map(({ expectedVersion }, index) => expectedVersion + (index === 0 ? 1 : 0)));
       raw.exec("DROP TRIGGER synthetic_child_failure");
       const resumed = await postBulk(failureBody);
       const outcomes = resumed.payload.results as Record<string, unknown>[];
