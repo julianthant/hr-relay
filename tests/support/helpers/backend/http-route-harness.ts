@@ -154,6 +154,42 @@ export const disposeHttpRouteHarness = async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 };
 
+/** A test arms this so one command's audit inserts throw inside the kernel's authority transactions. */
+export type CommandAuditInsertFault = {
+  commandId: string;
+  armed: boolean;
+  /** Command ids whose `commandAudits.insert` threw, in call order. */
+  failures: string[];
+};
+
+function auditInsertCommandId(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null || !("request" in input)) return undefined;
+  const request = input.request;
+  if (typeof request !== "object" || request === null || !("commandId" in request)) return undefined;
+  return typeof request.commandId === "string" ? request.commandId : undefined;
+}
+
+function installCommandAuditInsertFault(database: AuthorityDatabase, fault: CommandAuditInsertFault): void {
+  const real = database.authority;
+  const commandAudits: AuthorityRepositories["commandAudits"] = Object.freeze({
+    ...real.commandAudits,
+    insert: (input: unknown) => {
+      const commandId = auditInsertCommandId(input);
+      if (fault.armed === true && commandId === fault.commandId) {
+        fault.failures.push(commandId);
+        throw new Error("synthetic-child-audit-failure");
+      }
+      return real.commandAudits.insert(input);
+    },
+  });
+  // One bag for every authority transaction. Nested work compares that object
+  // by identity, and the frozen original cannot swap commandAudits in place.
+  const authority: AuthorityRepositories = Object.freeze({ ...real, commandAudits });
+  Object.defineProperty(database, "authority", {
+    value: authority, writable: true, configurable: true, enumerable: true,
+  });
+}
+
 export async function harness(options: {
   readonly workbookWorkflows?: readonly import("../../../../src/backend/workbooks/workbook-library-service.js").WorkbookReferenceWorkflow[];
   readonly profileFixture?: () => Promise<BoundProfileStorageFixture>;
@@ -180,6 +216,12 @@ export async function harness(options: {
   readonly commandJournal?: (
     real: DashboardAppDeps["commandJournal"],
   ) => DashboardAppDeps["commandJournal"];
+  /**
+   * While armed, the command authority handed to the kernel throws from
+   * `commandAudits.insert` for this command id. The throw runs inside that
+   * authority transaction. Every other repository method passes through.
+   */
+  readonly commandAuditInsertFault?: CommandAuditInsertFault;
 } = {}): Promise<Harness> {
   const profile = await (options.profileFixture ?? createBoundProfileFixture)();
   const root = profile.workspace, stateRoot = profile.stateRoot;
@@ -298,6 +340,7 @@ export async function harness(options: {
       return { record, activeConfig: activeSettings.config, activePreferences: activeSettings.preferences, runtimeStatus: { state: "restart-required" as const, active: activeSettingsIdentity, persisted } };
     },
   };
+  if (options.commandAuditInsertFault !== undefined) installCommandAuditInsertFault(database, options.commandAuditInsertFault);
   const kernel = createCommandKernel({
     lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: (run, publication) => {
       if (publication === undefined) throw new Error("command-created run lacks queue presentation");
