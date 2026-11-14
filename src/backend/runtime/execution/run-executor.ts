@@ -251,6 +251,14 @@ class RunAbandonedError extends Error {
 
 class RunPauseRequestedError extends RunAbandonedError {}
 
+/** The worker's abort of the current step for a pause or stop request it read from the run. */
+export class RunControlAbortError extends Error {
+  constructor() {
+    super("worker-run-control-current-work");
+    this.name = "RunControlAbortError";
+  }
+}
+
 class RunTerminalAdmissionLostError extends RunLifecycleRefusedError {
   constructor(outcome: RunMutationOutcome, readonly admissionVersion: number) { super(outcome); }
 }
@@ -2198,8 +2206,11 @@ export async function executeClaimedRun(
     let failure = error;
     // An aborted run settles a requested pause or cancellation from durable state; any other abort abandons.
     if (input.signal.aborted && failure instanceof RunAbandonedError && !(failure instanceof RunPauseRequestedError)) {
-      try { const current = getRun(); requireOriginalClaim(current); checkCancellation(); checkPause(current); }
-      catch (control) { failure = control; }
+      try {
+        const current = getRun(); requireOriginalClaim(current); checkCancellation(); checkPause(current);
+        // Resume withdrew the pause that stopped this step: release the run to continue from its checkpoint.
+        if (input.signal.reason instanceof RunControlAbortError) throw new RunPauseRequestedError("resumed");
+      } catch (control) { failure = control; }
     }
     if (failure instanceof RunTerminalAdmissionLostError) {
       const admissionVersion = failure.admissionVersion;
@@ -2223,11 +2234,11 @@ export async function executeClaimedRun(
         checkCancellation();
         const current = getRun();
         requireOriginalClaim(current);
-        requireLifecycleApplied(deps.lifecycle.acknowledgePause({
-          commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, commandId: current.pause?.commandId }),
+        const released = requireLifecycleApplied(deps.lifecycle.acknowledgePause({
+          commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, ...(current.pause === undefined ? {} : { commandId: current.pause.commandId }) }),
           runId, claim,
         }));
-        return { state: "handled", outcome: RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: "paused" }) };
+        return { state: "handled", outcome: RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: released.pause === undefined ? "resumed" : "paused" }) };
       } catch (pauseFailure) { failure = pauseFailure; }
     }
     // A command can commit cancellation between a boundary read and terminal admission.

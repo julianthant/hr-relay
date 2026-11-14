@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
 import { RunStateSchema, type RunState } from "../../../src/models/run/record.js";
-import { applicationStateOf, interruptTransition, pendingInterruptOf, type InterruptRefusal, type InterruptTransition, type PendingInterrupt } from "../../../src/rules/runs/run-interrupt.js";
+import { applicationPauseOf, applicationStateOf, interruptTransition, pendingInterruptOf, type InterruptRefusal, type InterruptTransition, type PendingInterrupt } from "../../../src/rules/runs/run-interrupt.js";
 
 const RUN_STATES = RunStateSchema.options;
 const PAUSES = ["absent", "requested", "paused"] as const;
@@ -44,10 +44,11 @@ const OPERATOR_EVENTS: Record<"pause" | "resume" | "stop" | "acknowledge-pause",
     "parked-write": ["!write-parked", "!write-parked", "!write-parked", "!write-parked"],
     terminal: ["!settled", "!settled", "!settled", "!settled"],
   },
+  // Resume before a requested pause takes effect withdraws it.
   resume: {
-    queued: ["!not-paused", "!not-paused", "none", "!stop-pending"],
-    ...CLAIMED_ROW(["!not-paused", "!not-paused", "none", "!stop-pending"]),
-    "parked-gate": ["!not-paused", "!not-paused", "none", "!stop-pending"],
+    queued: ["!not-paused", "none", "none", "!stop-pending"],
+    ...CLAIMED_ROW(["!not-paused", "none", "none", "!stop-pending"]),
+    "parked-gate": ["!not-paused", "none", "none", "!stop-pending"],
     "parked-write": ["!write-parked", "!write-parked", "!write-parked", "!write-parked"],
     terminal: ["!settled", "!settled", "!settled", "!settled"],
   },
@@ -60,7 +61,8 @@ const OPERATOR_EVENTS: Record<"pause" | "resume" | "stop" | "acknowledge-pause",
   },
   "acknowledge-pause": {
     queued: ["!not-pause-requested", "!no-worker", "!not-pause-requested", "!stop-pending"],
-    ...CLAIMED_ROW(["!not-pause-requested", "paused", "!not-pause-requested", "!stop-pending"]),
+    // A worker that stopped for a pause Resume has since withdrawn releases the run with nothing pending.
+    ...CLAIMED_ROW(["none", "paused", "!not-pause-requested", "!stop-pending"]),
     "parked-gate": ["!not-pause-requested", "!no-worker", "!not-pause-requested", "!stop-pending"],
     "parked-write": ["!write-parked", "!write-parked", "!write-parked", "!write-parked"],
     terminal: ["!settled", "!settled", "!settled", "!settled"],
@@ -126,5 +128,25 @@ it("produces every declared application state", () => {
   for (const [input, state] of answers) assert.equal(applicationStateOf(input), state, JSON.stringify(input));
   const declared: readonly string[] = ApplicationLifecycleSchema.shape.state.options;
   const produced = new Set<string>(answers.map(([, state]) => state));
+  assert.deepEqual([...declared].sort(), [...produced].sort());
+});
+
+it("serves one application pause from the runs that can still pause", () => {
+  const run = (state: RunState, interrupt: PendingInterrupt) => factsOf(state, interrupt);
+  const answers = [
+    [[], "running"],
+    [[run("running", "none"), run("queued", "paused")], "running"],
+    [[run("running", "pause-requested"), run("queued", "paused")], "pause-pending"],
+    [[run("running", "pause-requested"), run("queued", "none")], "running"],
+    [[run("running", "paused"), run("parked-gate", "paused")], "paused"],
+    // A run that cannot take a pause (a parked write, a pending stop) neither holds nor completes it.
+    [[run("parked-write", "none"), run("running", "stop-requested"), run("queued", "paused")], "paused"],
+    [[run("parked-write", "none"), run("running", "pause-requested")], "pause-pending"],
+    [[run("parked-write", "paused"), run("running", "stop-requested")], "running"],
+    [[run("terminal", "none")], "running"],
+  ] as const;
+  for (const [runs, pause] of answers) assert.equal(applicationPauseOf(runs), pause, JSON.stringify(runs));
+  const declared: readonly string[] = ApplicationLifecycleSchema.shape.pause.options;
+  const produced = new Set<string>(answers.map(([, pause]) => pause));
   assert.deepEqual([...declared].sort(), [...produced].sort());
 });
