@@ -1,6 +1,6 @@
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../models/dashboard/settings-editor.js";
-import { PersonPreferencesSchema, NEUTRAL_PERSON_PREFERENCES, resolvePersonPreferences } from "../../models/config/person-preferences.js";
+import { PersonPreferencesSchema, NEUTRAL_PERSON_PREFERENCES, resolvePersonPreferences, type PersonPreferences } from "../../models/config/person-preferences.js";
 import { deriveSettingsPatchFingerprint, mergeSettingsPatch, type SettingsPatch } from "../../models/config/settings.js";
 import { SettingsCommandRequestSchema } from "../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -11,6 +11,15 @@ import { ordinaryReadbackState, checkedSettingsResult } from "../surfaces/settin
 import { clearSettingsReads, settingsReadResource } from "./settings-read-model.js";
 
 type PreferencesBinding = Pick<DashboardCommandBinding, "scope" | "executor"> & { authority: Pick<DashboardCommandBinding["authority"], "epoch" | "nowIso"> };
+
+type SendShortcut = PersonPreferences["sendShortcut"];
+export const isMacPlatform = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+export const sendShortcutLabel = (shortcut: SendShortcut, mac: boolean) => shortcut === "enter" ? "Enter" : mac ? "⌘Enter" : "Ctrl+Enter";
+/** Whether a composer key press sends under the person's send shortcut; IME composition never sends. */
+export function sendsMessage(shortcut: SendShortcut, key: Pick<KeyboardEvent, "key" | "shiftKey" | "metaKey" | "ctrlKey" | "isComposing">, mac: boolean): boolean {
+  if (key.key !== "Enter" || key.isComposing || key.shiftKey) return false;
+  return shortcut === "enter" || (mac ? key.metaKey : key.ctrlKey);
+}
 
 export function preferencesFromSettings(document: EditableSettingsWire) {
   const patch = Object.fromEntries(document.sections.flatMap(section => section.leaves)

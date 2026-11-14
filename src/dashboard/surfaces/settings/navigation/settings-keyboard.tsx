@@ -3,7 +3,8 @@ import '../reference-settings.css';
 import { Fragment, useState } from 'react';
 import { Pencil, Trash2, Undo2 } from 'lucide-react';
 import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, PageHeading, SearchInput, Select } from '../../../ds/ui.js';
-import { statusMock } from "../status-mock/status-mock-model.js";
+import { usePersonPreferences } from "../../../lib/person-preferences.js";
+import { isMacPlatform, sendShortcutLabel } from "../../../state/person-preferences-model.js";
 import type { SettingsSaveListener } from "../editor/settings-attempt-model.js";
 import { DEFAULT_SHORTCUT_PREFERENCES, SHORTCUT_ACTIONS, useSaveShortcutPreferences, shortcutChord, shortcutLabel, useShortcutPreferences, type ShortcutAction } from './keyboard-preferences-model.js';
 
@@ -14,7 +15,8 @@ export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener })
   const [editing, setEditing] = useState<{ id: ShortcutAction; index: number } | null>(null);
   const [captured, setCaptured] = useState('');
   const [error, setError] = useState('');
-  const [send, setSend] = useState('Enter');
+  const person = usePersonPreferences();
+  const sendShown = 'send shortcut choose which keys send a message in the assistant'.includes(query.toLowerCase());
   const actions = SHORTCUT_ACTIONS.filter(action => `${action.title} ${action.description} ${preferences.bindings[action.id].join(' ')}`.toLowerCase().includes(query.toLowerCase()));
   const edit = (id: ShortcutAction, index: number) => { setEditing({ id, index }); setCaptured(preferences.bindings[id][index] ?? ''); setError(''); };
   const save = async () => {
@@ -46,9 +48,9 @@ export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener })
           </Fragment>)}
         </div>;
       })}
-      {statusMock() !== undefined && 'send shortcut choose which keys send a message in the assistant'.includes(query.toLowerCase()) && <div className="shortcut-reference-row"><div className="shortcut-reference-copy"><p>Send shortcut</p><span>Choose which keys send a message in the assistant.</span></div>
-        <div className="shortcut-reference-binding" style={{ gridColumn: 2 }}><Select aria-label="Send shortcut" className="w-[150px]" value={send} onChange={event => setSend(event.target.value)}>{['Enter', '⌘Enter'].map(option => <option key={option} value={option}>{option}</option>)}</Select></div></div>}
-      {actions.length === 0 && !(statusMock() !== undefined && 'send shortcut'.includes(query.toLowerCase())) && <p role="status" className="p-5 text-ui-muted">No shortcuts match your search.</p>}
+      {sendShown && <div className="shortcut-reference-row"><div className="shortcut-reference-copy"><p>Send shortcut</p><span>Choose which keys send a message in the assistant.</span></div>
+        <div className="shortcut-reference-binding" style={{ gridColumn: 2 }}><Select aria-label="Send shortcut" className="w-[150px]" value={person.value.sendShortcut} disabled={person.change === undefined || person.state === 'saving'} onChange={event => { void person.change?.({ 'preferences.sendShortcut': { set: event.target.value } }).then(saved => { if (saved) onSaved?.({ title: 'Saved Send shortcut' }); }); }}>{(['enter', 'mod-enter'] as const).map(option => <option key={option} value={option}>{sendShortcutLabel(option, isMacPlatform())}</option>)}</Select></div></div>}
+      {actions.length === 0 && !sendShown && <p role="status" className="p-5 text-ui-muted">No shortcuts match your search.</p>}
     </div>
     <p className="m-0 text-caption text-ui-muted">Shortcuts pause in text fields and dialogs. Changes are saved in this browser.</p>
     <Dialog open={editing !== null} onOpenChange={open => { if (!open) setEditing(null); }}><DialogContent title="Edit shortcut" description="Press a key or key combination, then save." size="sm"><DialogBody>{error && <Banner className="mb-[var(--ds-space-heading-content)]" tone="danger" title="Shortcut unavailable">{error}</Banner>}<Input name="shortcutKeys" autoComplete="off" autoFocus readOnly aria-label="Shortcut keys" value={captured ? shortcutLabel(captured) : ''} placeholder="Press shortcut…" onKeyDown={event => { if (event.key === 'Escape' || event.key === 'Tab') return; event.preventDefault(); const chord = shortcutChord(event.nativeEvent); if (chord) { setCaptured(chord); setError(''); } }} /></DialogBody><DialogFooter><Button variant="muted" onClick={() => setEditing(null)}>Cancel</Button><Button disabled={!captured} onClick={save}>Save shortcut</Button></DialogFooter></DialogContent></Dialog>

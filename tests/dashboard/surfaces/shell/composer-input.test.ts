@@ -5,6 +5,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { MOCK_SURFACES_FLAG } from '../../../../src/dashboard/app/mock-surfaces.js';
 import { ComposerInput } from '../../../../src/dashboard/surfaces/shell/composer-input.js';
+import { PersonPreferencesContext } from '../../../../src/dashboard/lib/person-preferences.js';
+import { createPersonPreferences } from '../../../../src/dashboard/state/person-preferences-model.js';
+import { NEUTRAL_PERSON_PREFERENCES } from '../../../../src/models/config/person-preferences.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 
@@ -34,5 +37,33 @@ describe('assistant composer approval control', () => {
       Reflect.deleteProperty(window, MOCK_SURFACES_FLAG);
       window.history.replaceState(null, '', '/');
     }
+  });
+});
+
+describe('assistant composer send shortcut', () => {
+  async function press(sendShortcut: 'enter' | 'mod-enter', init: KeyboardEventInit) {
+    const sent: string[] = [];
+    const port = createPersonPreferences('preview', { ...NEUTRAL_PERSON_PREFERENCES, sendShortcut });
+    const host = document.body.appendChild(document.createElement('div'));
+    const root = createRoot(host);
+    try {
+      await act(async () => root.render(createElement(PersonPreferencesContext.Provider, { value: port },
+        createElement(ComposerInput, { initialText: 'Hello', onSend: async value => { sent.push(value.text); return true; } }))));
+      const textarea = host.querySelector('textarea')!;
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...init });
+      await act(async () => { textarea.dispatchEvent(event); });
+      return { sent, newLine: !event.defaultPrevented };
+    } finally { act(() => root.unmount()); host.remove(); }
+  }
+  it('sends on Enter and keeps Shift+Enter as a new line by default', async () => {
+    expect(await press('enter', {})).toEqual({ sent: ['Hello'], newLine: false });
+    expect(await press('enter', { shiftKey: true })).toEqual({ sent: [], newLine: true });
+  });
+  it('sends on Ctrl+Enter off macOS when the person picked it, and plain Enter is a new line', async () => {
+    expect(await press('mod-enter', {})).toEqual({ sent: [], newLine: true });
+    expect(await press('mod-enter', { ctrlKey: true })).toEqual({ sent: ['Hello'], newLine: false });
+  });
+  it('never sends while an IME composition is open', async () => {
+    expect(await press('enter', { isComposing: true })).toEqual({ sent: [], newLine: true });
   });
 });
