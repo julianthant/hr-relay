@@ -33,7 +33,7 @@ it("walks every lifecycle phase and event against the design table", () => {
   } satisfies Record<string, ChatGptLifecycleEvent>;
   const table: Record<ChatGptLifecycle["phase"], Record<keyof typeof events, Expected>> = {
     idle: { "sign-in": { phase: "signing-in", epoch: 6 }, release: "same", "release-other": "same",
-      // The design's cell says not-signing-in; the old generation rule still fences a settled attempt whose generation is current.
+      // Cancelling a settled attempt whose generation is still current fences in-flight work.
       cancel: { phase: "idle", epoch: 6 }, "cancel-stale": "same",
       "sign-out": { phase: "signing-out", epoch: 6 }, "sign-out-done": "same", "sign-out-done-other": "same", close: { phase: "closed", epoch: 6 } },
     "signing-in": { "sign-in": "CHATGPT_AUTH_BUSY", release: { phase: "idle", epoch: 5 }, "release-other": "same",
@@ -43,7 +43,7 @@ it("walks every lifecycle phase and event against the design table", () => {
       "sign-out": "CHATGPT_AUTH_BUSY", "sign-out-done": { phase: "idle", epoch: 5 }, "sign-out-done-other": "same", close: { phase: "closed", epoch: 6 } },
     closed: { "sign-in": "CHATGPT_SERVICE_CLOSED", release: "same", "release-other": "same", cancel: "same", "cancel-stale": "same",
       "sign-out": "same", "sign-out-done": "same", "sign-out-done-other": "same",
-      // The design's cell says closed; the old generation rule bumps on every close.
+      // Every close advances the epoch.
       close: { phase: "closed", epoch: 6 } },
   };
   for (const [phase, row] of Object.entries(table) as [ChatGptLifecycle["phase"], Record<keyof typeof events, Expected>][])
@@ -93,7 +93,7 @@ it("bumps the exported attempt generation exactly at sign-in, cancel, sign-out a
     await assert.rejects(f.service.signIn({ usePlan: true }), { code: "CHATGPT_AUTH_BUSY" });
     await f.callback(first); assert.equal((await first.completion).state, "connected");
     assert.equal(await generation(), 1); assert.equal(await availability(), "available");
-    // A settled attempt whose generation is still current fences in-flight work when cancelled (the old generation rule).
+    // Cancelling a settled attempt whose generation is still current fences in-flight work; cancelling it again does not.
     await first.cancel(); assert.equal(await generation(), 2); await first.cancel(); assert.equal(await generation(), 2);
     const cancelled = await f.service.signIn({ usePlan: true }); assert.equal(await generation(), 3);
     await cancelled.cancel(); assert.equal(await generation(), 4); assert.equal(await availability(), "available");
@@ -183,16 +183,38 @@ it("close during a sign-out that drains a sign-in waits for both and stays close
   } finally { await f.cleanup(); }
 });
 
-it("D2: the sign-in timer cannot fail an attempt after its session is stored", async () => {
-  const f = await chatGptFixture(), realSetTimeout = globalThis.setTimeout;
-  let expire: (() => void) | undefined, exchanged = false, fired = false;
+const captureSignInTimer = () => {
+  const realSetTimeout = globalThis.setTimeout, timer: { expire?: () => void } = {};
   vi.spyOn(globalThis, "setTimeout").mockImplementation(((handler: () => void, ms?: number, ...rest: unknown[]) => {
-    if (ms === 300_000) expire = handler;
+    if (ms === 300_000) timer.expire = handler;
     return realSetTimeout(handler, ms, ...rest);
   }) as typeof setTimeout);
+  return timer;
+};
+
+it("the real sign-in timer expires a listening attempt with no callback, closes its server and releases admission", async () => {
+  const f = await chatGptFixture(), timer = captureSignInTimer();
+  try {
+    const attempt = await f.service.signIn({ usePlan: true });
+    assert.ok(timer.expire); assert.equal(attempt.signingIn, true);
+    timer.expire();
+    await assert.rejects(attempt.completion, { code: "CHATGPT_AUTH_EXPIRED" });
+    assert.equal(attempt.signingIn, false);
+    assert.equal((await f.service.readAuthority()).availability, "signed-out");
+    await assert.rejects(f.callback(attempt));
+    assert.equal(f.calls.length, 0);
+    assert.equal(f.repository.read()?.session, null);
+    const next = await f.service.signIn({ usePlan: true });
+    await next.cancel();
+  } finally { await f.cleanup(); }
+});
+
+it("D2: the sign-in timer cannot fail an attempt after its session is stored", async () => {
+  const f = await chatGptFixture(), timer = captureSignInTimer();
+  let exchanged = false, fired = false;
   // The timer fires in the first turn after the session file is replaced, before the attempt finishes.
   const service = createChatGptAccountService({ admission: f.admission, stateRoot: f.root, clock: f.clock, fetch: f.transport,
-    credentialHooks: { afterRename: () => { if (exchanged && !fired && expire !== undefined) { fired = true; queueMicrotask(expire); } } } });
+    credentialHooks: { afterRename: () => { if (exchanged && !fired && timer.expire !== undefined) { fired = true; queueMicrotask(timer.expire); } } } });
   f.setTokenHook(async () => { exchanged = true; });
   try {
     const attempt = await service.signIn({ usePlan: true });
