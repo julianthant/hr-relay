@@ -19,7 +19,8 @@ import { parseDryRunScenarioManifest } from "./models/trust/dry-run-scenario.js"
 import { composeTestDataCommand } from "./backend/app/test-data/compose.js";
 import { composeExplainRuntime } from "./backend/app/composition/explain-compose.js";
 import { composeOcrCommand } from "./backend/transports/cli/ocr.js";
-import { composeStorageCommand } from "./backend/app/composition/storage-compose.js";
+import { composeStorageCommand, detachedShutdownBackup } from "./backend/app/composition/storage-compose.js";
+import { productionWorkerLaunch } from "./backend/app/composition/dashboard/worker-process.js";
 import { composeWorkerRuntime } from "./backend/app/composition/worker-compose.js";
 import type { RuntimeAdmission } from "./backend/storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "./backend/storage/admission/lifetime-lock.js";
@@ -43,7 +44,7 @@ export async function runCli(admission: RuntimeAdmission, acceptDashboardAdmissi
   registerDashboardComposer(async (runtimeIsolation, options) => {
     if (!(lifetime.lock instanceof RuntimeLifetimeLock)) throw new Error("dashboard-runtime-lifetime-lock-required");
     const application = await composeDashboardApplication({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, frontend: options.frontend,
-      lifetimeLock: lifetime.lock });
+      lifetimeLock: lifetime.lock, shutdownBackup: detachedShutdownBackup(productionWorkerLaunch(REPOSITORY_ROOT, process.env, options.frontend === "vite-dev")) });
     acceptDashboardAdmission?.();
     return application;
   });

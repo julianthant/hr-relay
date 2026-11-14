@@ -133,7 +133,7 @@ export function composeApplicationStop(resources: {
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       try { await profileRuntime?.close("shutdown"); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
       try { machine.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
-      try { await backupRegisteredPeopleAtCleanShutdown(installation.workspace, input.lifetimeLock, clock); }
+      try { await (input.shutdownBackup ?? backupRegisteredPeopleAtCleanShutdown)(installation.workspace, input.lifetimeLock, clock); }
       catch (error) {
         if (error instanceof StorageMaintenanceCustodyUnavailableError && error.constructor === StorageMaintenanceCustodyUnavailableError && error.cause === undefined && !hasUnprovedSourceClosure(error)) throw error;
         throw new RuntimeCustodyUncertainError([error]);

@@ -29,8 +29,10 @@ import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { composeProfileSettings } from "./dashboard/settings.js";
 import { assertProfileBrowserRoot,composeProfileClosureInventory } from "./profile-credential-inventory.js";
 
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync,readdirSync,readFileSync } from "node:fs";
+import { once } from "node:events";
+import { closeSync,existsSync,mkdirSync,openSync,readdirSync,readFileSync } from "node:fs";
 import { appendEmergencyFault } from "../../logs/emergency-faults.js";
 import { join,resolve } from "node:path";
 import { z } from "zod";
@@ -255,17 +257,26 @@ async function recoverRegisteredPersonCrash(workspace: string, lifetime: Runtime
   });
 }
 
+/** The storage command a detached quit-time backup finisher runs: `storage finish-shutdown-backup <workspace> <profileId>...`. */
+export const FINISH_SHUTDOWN_BACKUP = "finish-shutdown-backup";
+
+export type ShutdownBackup = (workspace: string, lifetime: RuntimeLifetimeLock, clock: Clock) => Promise<void>;
+
+function shutdownBackupPeople(machine: RuntimeAdmission, lifetime: RuntimeLifetimeLock) {
+  // A person held at startup was never opened this run and keeps their pre-upgrade backup; their store may still be at an older schema.
+  const held = heldPeople.get(lifetime);
+  return machine.readProfileRegistry().profiles.filter(profile => profile.lifecycle === "ready" && profile.credentialState === "saved" && held?.has(profile.profileId) !== true);
+}
+
+/** `only` limits the backup to the people a stopping dashboard handed to its finisher. */
 export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, lifetime: RuntimeLifetimeLock,
-  clock: Clock = systemClock): Promise<void> {
+  clock: Clock = systemClock, only?: ReadonlySet<string>): Promise<void> {
   lifetime.assertHeld();
   if (!existsSync(join(workspace, ".tracker", "control", "installation.json"))) throw new Error("shutdown-backup-installation-missing");
   try {
     await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
       const operation = machine.maintenanceOperation(); operation.consume();
-      const registry = machine.readProfileRegistry();
-      // A person held at startup was never opened this run and keeps their pre-upgrade backup; their store may still be at an older schema.
-      const held = heldPeople.get(lifetime);
-      const ready = registry.profiles.filter(profile => profile.lifecycle === "ready" && profile.credentialState === "saved" && held?.has(profile.profileId) !== true);
+      const ready = shutdownBackupPeople(machine, lifetime).filter(profile => only === undefined || only.has(profile.profileId));
       if (ready.length !== 0) assertMaintenanceCustodyAvailable("backup");
       for (const row of ready) {
         if (hasPendingShutdownBackupRetirement(join(machine.stateRoot, "profiles", row.profileId))) {
@@ -289,6 +300,35 @@ export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, l
     if (error instanceof StorageMaintenanceCustodyUnavailableError && error.constructor === StorageMaintenanceCustodyUnavailableError && error.cause === undefined && !hasUnprovedSourceClosure(error)) throw error;
     throw new AutomaticShutdownBackupError(error);
   }
+}
+
+/**
+ * The quit-time backup of the stopped store runs in a detached process so the dashboard exits at once. The finisher takes the
+ * lifetime lock this process releases, so it never runs beside a dashboard; a killed finisher leaves no manifest, so nothing counts.
+ */
+export function detachedShutdownBackup(launch: Readonly<{ command: string; prefixArgs: readonly string[]; environment: NodeJS.ProcessEnv; cwd: string }>,
+  spawnProcess: typeof spawn = spawn): ShutdownBackup {
+  return async (workspace, lifetime) => {
+    lifetime.assertHeld();
+    if (!existsSync(join(workspace, ".tracker", "control", "installation.json"))) throw new Error("shutdown-backup-installation-missing");
+    try {
+      const people = await withStoppedMachineStorage(workspace, lifetime, machine => Promise.resolve(shutdownBackupPeople(machine, lifetime).map(profile => profile.profileId)));
+      if (people.length === 0) return;
+      assertMaintenanceCustodyAvailable("backup");
+      const logDirectory = join(workspace, rebuildRuntimeIsolation.stateRoot, "logs");
+      mkdirSync(logDirectory, { recursive: true, mode: 0o700 });
+      const log = openSync(join(logDirectory, "shutdown-backup.log"), "a", 0o600);
+      try {
+        const child = spawnProcess(launch.command, [...launch.prefixArgs, "storage", FINISH_SHUTDOWN_BACKUP, workspace, ...people],
+          { cwd: launch.cwd, env: launch.environment, detached: true, stdio: ["ignore", log, log] });
+        await once(child, "spawn");
+        child.unref();
+      } finally { closeSync(log); }
+    } catch (error) {
+      if (error instanceof StorageMaintenanceCustodyUnavailableError && error.constructor === StorageMaintenanceCustodyUnavailableError && error.cause === undefined && !hasUnprovedSourceClosure(error)) throw error;
+      throw new AutomaticShutdownBackupError(error);
+    }
+  };
 }
 
 export class AutomaticShutdownBackupError extends Error {
