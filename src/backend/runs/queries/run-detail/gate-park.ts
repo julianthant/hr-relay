@@ -208,7 +208,7 @@ export function hireReviewDecision(mode: "new-hire" | "rehire", match: z.infer<t
     + `Preferred name: ${nameParts(names.preferredFirstName, names.preferredMiddleName, names.preferredLastName)}.`
     + (unconfirmed ? ` UCPath returned ${String(count)} possible ${count === 1 ? "match" : "matches"} and Relay confirmed none. `
       + (names.ssn === null ? "Searched by name and date of birth." : "Searched by name, date of birth and SSN.") : "")
-    + (unpickable.length === 0 ? "" : ` Under another name: ${unpickable.map(hit => `${hit.name} (${maskedEid(hit.emplId)}): ${hit.reason}`).join("; ")}. `
+    + (unpickable.length === 0 ? "" : ` Under another name: ${unpickable.map(hit => `${hit.name} (${directIdentifierDisplay(maskedEid(hit.emplId))}): ${hit.reason}`).join("; ")}. `
       + "Relay cannot file a hire under another name. If one of them is this person, cancel this run and file the rehire by hand in UCPath.");
   // With no eligible arm (a concurrent hire whose hits are all under another name) the card still explains the manual rehire.
   return ordered.length === 0 && unpickable.length === 0 ? undefined : projectDecision("review-before-write", ordered, { context });
