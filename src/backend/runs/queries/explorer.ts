@@ -419,6 +419,7 @@ function nodeShape(node: RuntimeFlowNode): ExplorerNodeShapeWire {
         kind: "task",
         replay: node.replay,
         ...(node.when === undefined ? {} : { condition: node.when }),
+        ...(node.dryRun === undefined ? {} : { dryRun: node.dryRun }),
       };
     case "transaction":
       return {

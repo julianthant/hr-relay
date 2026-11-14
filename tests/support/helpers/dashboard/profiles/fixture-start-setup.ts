@@ -5,7 +5,7 @@ import { projectWorkbookCompatibility } from "../../../../../src/models/dashboar
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../../../src/models/dashboard/start-plan.js";
 import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
-import { WORKFLOW_MODULES, READABLE_WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import { WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import type * as BootstrapTypes from "../../../../../src/backend/runs/queries/bootstrap.js";
 import type * as FixtureBootstrapTypes from "../../../fixtures/dashboard/fixture-bootstrap.js";
 import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-identity.js";
@@ -13,7 +13,7 @@ import type * as FixtureQueueTypes from "../../../fixtures/dashboard/fixture-que
 
 
 export function createFixtureStartSetup({ projectFixtureSteps, FIXTURE_BOOTSTRAP, CONFIG_FINGERPRINT, CONTRACT_FINGERPRINT, uuidOf, WORKFLOW_ID, FIXTURE_DAY_WIRE }: {
-projectFixtureSteps: (module: (typeof READABLE_WORKFLOW_MODULES)[number]) => ReturnType<typeof BootstrapTypes.projectWorkflowStartSteps>;
+projectFixtureSteps: (module: (typeof WORKFLOW_MODULES)[number]) => ReturnType<typeof BootstrapTypes.projectWorkflowStartSteps>;
 FIXTURE_BOOTSTRAP: typeof FixtureBootstrapTypes.FIXTURE_BOOTSTRAP;
 CONFIG_FINGERPRINT: typeof FixtureIdentityTypes.CONFIG_FINGERPRINT;
 CONTRACT_FINGERPRINT: typeof FixtureIdentityTypes.CONTRACT_FINGERPRINT;
@@ -21,8 +21,6 @@ uuidOf: typeof FixtureIdentityTypes.uuidOf;
 WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
 FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
 }) {
-  const START_PICKER_MODULES = READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module)
-    || module.descriptor.capabilities?.review === true);
   const mockLookupStart = WorkflowBootstrapPrimitiveSchema.parse(FIXTURE_BOOTSTRAP.workflows[0]).start;
 
   const FIXTURE_START_PICKER_DESCRIPTOR_HASH = descriptorSetHash(
@@ -31,9 +29,9 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
 
   const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSchema.parse({
     ...FIXTURE_BOOTSTRAP,
-    workbookCompatibility: projectWorkbookCompatibility(START_PICKER_MODULES.map(module => module.descriptor), []),
+    workbookCompatibility: projectWorkbookCompatibility(WORKFLOW_MODULES.map(module => module.descriptor), []),
     descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
-    workflows: START_PICKER_MODULES.map((module) => ({
+    workflows: WORKFLOW_MODULES.map((module) => ({
       id: module.descriptor.id,
       code: module.descriptor.code,
       label: module.descriptor.label,
@@ -54,6 +52,7 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
         ...(module.descriptor.id === "person-lookup"
           ? { inputRun: mockLookupStart.inputRun, summary: mockLookupStart.summary }
           : module.descriptor.surfaces.inputRun === undefined ? {} : { inputRun: module.descriptor.surfaces.inputRun }),
+        ...(module.descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: module.descriptor.surfaces.uploadRun }),
 
         ...(module.descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: module.descriptor.surfaces.uploadRun }),
         spreadsheetIntake: "intake" in module && module.intake !== undefined, requiredWorkbookFields: [...module.descriptor.requiredWorkbookFields],

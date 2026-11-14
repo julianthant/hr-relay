@@ -346,12 +346,20 @@ wrong-attempt freshness overrides, duplicate patches, and a patch aimed at the e
 `nextAttemptEnvelope` removes `startAt`, `injected`, and `freshnessOverride`, and requires an
 authority-supplied attempt greater than the current attempt.
 
-`dryRun` is envelope state, not workflow input. `workflowDryRunSupport` derives support from all
-transaction nodes and the genuine descriptors bound by the workflow registry. A graph may prepare
-locally or delegate preparation to a registered descendant; `firstTransactionNodeId` or
-`firstDelegationNodeId` names that boundary. An unsupported transaction in the graph or its
-descendants refuses preview. A standalone graph containing only reads refuses as
-`no-transaction-node`. `supportsDryRun` on an input-run surface is derived and cannot be authored.
+`dryRun` is envelope state, not workflow input. `workflowDryRunSupport` derives support from the
+graph's preview boundaries and the genuine descriptors bound by the workflow registry. A boundary is
+a transaction node or a task node declaring `dryRun: "stop-before-publish"`, a local publication
+whose contract declares at least one provider. A graph may prepare locally, stop before a local
+publication or delegate preparation to a registered descendant; `firstTransactionNodeId`,
+`firstPublicationNodeId` or `firstDelegationNodeId` names the first boundary in node order. An
+unsupported transaction in the graph or its descendants refuses preview. A standalone graph with no
+boundary refuses as `no-transaction-node`. In a graph that supports preview, every artifact
+projection source must depend on a boundary with no `when` condition, and the executor fails a dry
+run at any projection source, so a dry run never reaches a sink. In a dry run, a publication
+boundary and every node that depends on it are always re-derived: the boundary is previewed again
+and its dependents are unavailable. A stored checkpoint, gate result or child result never stands in
+for them, on a fresh start, a resume, a retry or a recovery. `supportsDryRun` on the input-run and
+upload-run surfaces is derived and cannot be authored. A dry-run plan carries no planned outputs.
 
 A delegated child with no transaction inherits `dryRun: true` and executes its normal read-only
 graph, including its gates and nested delegation. It returns the normal typed observational result
@@ -363,8 +371,14 @@ and parent dry-run flags must match. This exception does not offer standalone re
 For a transaction preview, `executeClaimedRun` traverses the declared graph and stores
 `RunDryRunPreviewResult`, independently of the authored terminal derive. A parent aggregating
 delegated preparation stores `RunDelegatedDryRunPreviewResult` with a distinct kind and schema hash.
-Every node has exercised, transaction-preview, delegation-preview, unavailable or not-run accounting.
-Each transaction prepares, verifies and captures without invoking commit.
+A graph with a publication boundary stores `RunPublicationDryRunPreviewResult`
+(`publication-dry-run-preview`), and cannot combine it with a delegated preview.
+Every node has exercised, transaction-preview, delegation-preview, publication-preview, unavailable
+or not-run accounting.
+Each transaction prepares, verifies and captures without invoking commit. A publication node binds
+and parses its input against its contract, fails like an ordinary task when that input is invalid,
+and otherwise records `publication-preview` without calling its provider or writing a checkpoint;
+its dependents are unavailable.
 Existing completion may be observed at the durable lookup or read probe without restaging a form.
 
 An awaited preview child resolves through its authenticated native result, completion, manifest and

@@ -136,6 +136,10 @@ describe("settings facts — workflow capabilities", () => {
       state: "supported",
       firstTransactionNodeId: "clear-pending",
     });
+    assert.deepEqual(postures.get("i9-check-start"), {
+      state: "supported",
+      firstPublicationNodeId: "save-workbook",
+    });
   });
 
   it("names the offending node when a transaction declares no preview arm", () => {
