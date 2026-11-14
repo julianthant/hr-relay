@@ -67,7 +67,10 @@ describe("UCPath PayPath read on a fake page", () => {
     [{ missing: "empl-id-input" }, "paypath-search-not-shown"],
     [{ missing: "search" }, "paypath-search-not-shown"],
     [{ missing: "empl-id-display" }, "unexpected-page-state"],
+    [{ missing: "effective-date" }, "unexpected-page-state"],
+    [{ missing: "position-change-reason" }, "unexpected-page-state"],
     [{ missing: "position-pool" }, "unexpected-page-state"],
+    [{ missing: "position-change-reason-label" }, "unexpected-page-state"],
     [{ outcome: "alert", missing: "alert-text" }, "paypath-alert-shown"],
     [{ outcome: "nothing" }, "unexpected-page-state"],
     [{ ambiguousPositionNumber: true }, "unexpected-page-state"],
@@ -162,6 +165,12 @@ describe("UCPath PayPath subject name before the fence", () => {
     const h = world();
     await h.driver.stagePayPathWorkStudy(target);
     assert.equal(await h.driver.readPayPathSubject(), "Lee, Jordan");
+  });
+
+  it("lets a revoked owner's error through when no record header is shown", async () => {
+    const world = fakeUcpathPayPathPage();
+    const driver = createUcpathPayPathOperations(() => { throw new Error("owner-revoked"); }, world.page, manualClock(new Date("2026-08-03T18:00:00.000Z")));
+    await assert.rejects(driver.readPayPathSubject(), { message: "owner-revoked" });
   });
 
   it("refuses as unreadable when no record header is shown", async () => {

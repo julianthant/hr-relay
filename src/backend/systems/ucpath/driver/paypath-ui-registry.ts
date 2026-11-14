@@ -25,6 +25,7 @@ export const UCPATH_PAYPATH_UI = deepFreeze({
   nameDisplay: (frame: FrameLocator) => headerField(frame, "NAME_DISPLAY"),
   emplIdDisplay: (frame: FrameLocator) => headerField(frame, "EMPLID"),
   effectiveDateLabel: (frame: FrameLocator) => frame.getByText("Effective Date:", { exact: true }),
+  positionChangeReasonLabel: (frame: FrameLocator) => frame.getByText("Position Change Reason:", { exact: true }),
   effectiveDate: (frame: FrameLocator) => frame.getByRole("textbox", { name: "Effective Date:" }),
   positionChangeReason: (frame: FrameLocator) => frame.getByRole("textbox", { name: "Position Change Reason:" }),
   positionPool: (frame: FrameLocator) => frame.getByRole("textbox", { name: "Position Pool:" }),

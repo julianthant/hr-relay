@@ -109,17 +109,33 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
   /** The one header name the record shows; none, several or blank refuses as unreadable. */
   const headerName = async (frame: FrameLocator) => {
     const name = ui.nameDisplay(frame);
-    if (await name.count() !== 1) throw new UcpathPayPathRefusedError("paypath-identity-unreadable");
+    assertCurrent();
+    const count = await name.count();
+    assertCurrent();
+    if (count !== 1) throw new UcpathPayPathRefusedError("paypath-identity-unreadable");
     const text = await reached("paypath-identity-unreadable", () => textOf(name));
     if (text === "") throw new UcpathPayPathRefusedError("paypath-identity-unreadable");
     return text;
+  };
+  /** What a Position Data label points at through its `for`: an input box, display text, or nothing readable. */
+  const labelledField = async (label: Locator) => {
+    await shown(label);
+    const kind = await label.evaluate((node): "input" | "text" | "none" => {
+      const id = node.getAttribute("for");
+      const field = id === null ? null : node.ownerDocument.getElementById(id);
+      if (field === null) return "none";
+      if (["INPUT", "SELECT", "TEXTAREA"].includes(field.tagName)) return "input";
+      return field.textContent.trim() === "" ? "none" : "text";
+    }, undefined, { timeout: BOUND_MS });
+    assertCurrent();
+    return kind;
   };
   const stagedKey = (input: UcpathPayPathWorkStudyTarget) =>
     JSON.stringify([input.emplId, input.expectedName, input.effectiveDate, input.positionChangeReason, input.positionPool, input.comments]);
 
   /**
    * Opens exactly one PayPath record for the Empl ID and returns its frame and displayed name once the header proves the Empl ID
-   * and Position Data takes input; Position Data shown as display text is the already-dated record, which refuses by name.
+   * and Position Data is not the already-dated record: Effective Date and Position Change Reason both shown as display text, which refuses by name.
    */
   async function openRecord(emplId: UcpathPayPathWorkStudyTarget["emplId"]) {
     const frame = ui.frame(page);
@@ -159,8 +175,9 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
       const displayedName = await headerName(frame);
       const header = EidSchema.safeParse(await textOf(ui.emplIdDisplay(frame)));
       if (!header.success || header.data !== emplId) throw new UcpathPayPathRefusedError("subject-mismatch");
-      await shown(ui.effectiveDateLabel(frame));
-      if (await ui.effectiveDate(frame).count() === 0) throw new UcpathPayPathRefusedError("paypath-position-already-dated");
+      const effectiveDate = await labelledField(ui.effectiveDateLabel(frame));
+      const positionChangeReason = await labelledField(ui.positionChangeReasonLabel(frame));
+      if (effectiveDate === "text" && positionChangeReason === "text") throw new UcpathPayPathRefusedError("paypath-position-already-dated");
       return { frame, displayedName, emplId: header.data };
     });
   }

@@ -2,7 +2,7 @@ import type { Page } from "playwright";
 
 const HEADER = (field: string) => `[id*="${field}"]:not([id^="win0div"]):not(input):not(select):not(label):visible`;
 
-/** `already-dated` is the record run 92dd9da8 reached: header and tabs shown, Position Data as display text with no input boxes. */
+/** `already-dated` is the record run 92dd9da8 reached: header and tabs shown, Effective Date and Position Change Reason labels pointing at display text, no input boxes. */
 export type FakePayPathOutcome = "record" | "already-dated" | "alert" | "no-results" | "grid" | "nothing";
 
 /** Answers exactly the locators `UCPATH_PAYPATH_UI` builds and records every fill and click; waits reject at once when a control is not shown or is the one named in `missing`. Fills stick unless named in `revert`. */
@@ -25,7 +25,7 @@ export function fakeUcpathPayPathPage(options: Readonly<{
   function control(key: string) {
     const shown = () => {
       if (key === "busy" || key === options.missing) return false;
-      if (key === "name" || key === "empl-id-display" || key === "effective-date-label" || key in values || key.endsWith("-tab") || key === "save") {
+      if (key === "name" || key === "empl-id-display" || key.endsWith("-label") || key in values || key.endsWith("-tab") || key === "save") {
         return searched && (outcome === "record" || outcome === "already-dated" && !positionBoxes.has(key) || outcome === "alert" && key === "save");
       }
       if (key === "alert-ok" || key === "alert-text") return searched && outcome === "alert";
@@ -41,6 +41,12 @@ export function fakeUcpathPayPathPage(options: Readonly<{
           : key === "rows" ? (shown() ? 2 : 0) : shown() ? 1 : 0,
       isVisible: async () => shown(),
       isEnabled: async () => !(key === "save" && options.saveDisabled === true),
+      /** A label's `for` target: display text on the already-dated record, nothing when its box is `missing`, else an input box. */
+      evaluate: async () => {
+        if (!shown()) throw new Error(`Timeout waiting for ${key}`);
+        const box = key.replace(/-label$/u, "");
+        return outcome === "already-dated" ? "text" : options.missing === box ? "none" : "input";
+      },
       waitFor: async (wait?: { state?: string }) => {
         if (wait?.state === "detached") { if (!(key === "save" && saved && options.alertAfterSave === undefined && options.saveStays !== true)) throw new Error(`Timeout waiting for ${key} to detach`); return; }
         if (wait?.state === "hidden" ? shown() : !shown()) throw new Error(`Timeout waiting for ${key}`);
@@ -67,6 +73,7 @@ export function fakeUcpathPayPathPage(options: Readonly<{
     "Position Pool:": "position-pool", "Position Number:": "position-number",
     Comments: "job-data-comments", "Initiator's Comments": "initiator-comments",
   };
+  const labels: Record<string, string> = { "Effective Date:": "effective-date-label", "Position Change Reason:": "position-change-reason-label" };
   const tabs: Record<string, string> = { "Position Data": "position-data-tab", "Job Data": "job-data-tab", "Additional Pay Data": "additional-pay-tab" };
   const frameSelectors: Record<string, string> = {
     "body > *": "body", "#UC_E102_PP_SRCH_EMPLID": "empl-id-input", "#PTS_CFG_CL_WRK_PTS_SRCH_BTN": "search", 'tr[id^="trPTS_CFG_CL_STD_RSL"]': "rows",
@@ -86,7 +93,7 @@ export function fakeUcpathPayPathPage(options: Readonly<{
       return control(key);
     },
     getByText: (text: string | RegExp, input?: { exact?: boolean }) => {
-      if (text === "Effective Date:" && input?.exact === true) return control("effective-date-label");
+      if (input?.exact === true && typeof text === "string" && labels[text] !== undefined) return control(labels[text] ?? "");
       if (!(text instanceof RegExp) || !text.test("No matching values were found")) throw new Error("Unexpected PayPath text recipe");
       return control("no-results");
     },
