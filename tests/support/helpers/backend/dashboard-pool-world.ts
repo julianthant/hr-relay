@@ -34,6 +34,8 @@ export interface ControlHarness {
   readonly children: ScriptedWorkerChild[];
   readonly spawnRequests: WorkerSpawnRequest[];
   readonly faults: Error[];
+  /** Worker startup failures a command reported after its reply. */
+  readonly detachedStartupFailures: Error[];
   readonly settled: string[];
   readonly changes: WorkerMemberView[];
   readonly stateRoot: string;
@@ -59,6 +61,7 @@ export function createDashboardPoolTestWorld() {
     seedSyntheticRuntimeConfig(database);
     const scheduler = new ManualScheduler(clock, 0);
     const children: ScriptedWorkerChild[] = [], spawnRequests: WorkerSpawnRequest[] = [], faults: Error[] = [], settled: string[] = [];
+    const detachedStartupFailures: Error[] = [];
     const changes: WorkerMemberView[] = [];
     const spawnChild = scriptedWorkerSpawner(children, behavior);
     const lifecycle = new RunRecordService({ database, clock, ids: sequentialIdFactory("e"), publishQueued: () => {} });
@@ -91,7 +94,7 @@ export function createDashboardPoolTestWorld() {
         reconcileReplay: () => { throw new Error("worker-pool fixture has no persisted settings replay authority"); },
         applyOrdinary: command => ({ state: "applied", revision: command.target.expectedRevision + 1, settingsFingerprint: derivePersistedSettingsFingerprint({}), settings: {} }) },
     });
-    return { database, admission: profile.admission, profileRoot: join(root, "browsers"), stateRoot: root, lifecycle, clock, scheduler, kernel, workers, children, spawnRequests, faults, settled, changes };
+    return { database, admission: profile.admission, profileRoot: join(root, "browsers"), stateRoot: root, lifecycle, clock, scheduler, kernel, workers, children, spawnRequests, faults, detachedStartupFailures, settled, changes };
   }
 
   let commandSequence = 0;
@@ -142,7 +145,8 @@ export function createDashboardPoolTestWorld() {
 
   function launchCommands(harness: ControlHarness) {
     return createDashboardCommandService({ kernel: harness.kernel, projection: { ingestFromTimeline: () => {}, refreshRun: () => {} },
-      startWorkerCapacity: createRunWorkerCapacity({ kernel: harness.kernel, authority: harness.database.authority, running: harness.workers.running, ensureRunning: harness.workers.ensureRunning }) });
+      startWorkerCapacity: createRunWorkerCapacity({ kernel: harness.kernel, authority: harness.database.authority, running: harness.workers.running, ensureRunning: harness.workers.ensureRunning,
+        reportDetachedFailure: error => { harness.detachedStartupFailures.push(error); } }) });
   }
 
   const cleanup = async () => {

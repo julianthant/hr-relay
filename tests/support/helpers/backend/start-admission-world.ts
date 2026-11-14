@@ -9,7 +9,8 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture } from "../admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";
 
-/** A signed-in dashboard whose worker spawner counts and refuses every spawn; `realDoctor` lets a test race the authority doctor. */
+/** A signed-in dashboard whose worker spawner counts and refuses every spawn; `realDoctor` lets a test race the authority doctor.
+ * `startupFaults` lists each supervisor fault caused by a worker startup that failed after its command replied. */
 export async function startAdmissionFixture(realDoctor = false) {
   const profile = await createBoundProfileFixture();
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
@@ -22,6 +23,7 @@ export async function startAdmissionFixture(realDoctor = false) {
   let doctorRace = false;
   const detectorErrors: unknown[] = [];
   let spawns = 0;
+  const faults: string[] = [];
   try {
     const dashboard = await composeDashboardRuntime({ lifetimeLock: profile.lifetime, admission: profile.machine, profile: { runtime, token: active.token },
       repoRoot: profile.workspace, clock, isolation: rebuildRuntimeIsolation, env: {}, backendPortOverride: 0, frontendPortOverride: 0,
@@ -35,9 +37,10 @@ export async function startAdmissionFixture(realDoctor = false) {
           try { return await checking; } catch (error) { detectorErrors.push(error); throw error; }
         },
       }),
-      workerProcess: { spawn: () => { spawns += 1; throw new Error("refused start must not spawn a worker"); } } });
+      workerProcess: { spawn: () => { spawns += 1; throw new Error("refused start must not spawn a worker"); }, faultSink: line => { faults.push(line); } } });
     const origin = `http://127.0.0.1:${String(dashboard.port)}`;
-    return { profile, runtime, dashboard, token: active.token, clock, context, spawns: () => spawns, detectorErrors, armDoctorRace() { doctorRace = true; }, disarmDoctorRace() { doctorRace = false; },
+    return { profile, runtime, dashboard, token: active.token, clock, context, spawns: () => spawns, detectorErrors,
+      startupFaults: () => faults.filter(line => line.includes('"name":"RunWorkerStartupError"')), armDoctorRace() { doctorRace = true; }, disarmDoctorRace() { doctorRace = false; },
       post: (path: string, input: unknown) => fetch(`${origin}/api/v1/${path}`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(input) }),
       async close() { try { await dashboard.stop(); } finally { await profile.close(); } } };
   } catch (error) { await runtime.close(); await profile.close(); throw error; }

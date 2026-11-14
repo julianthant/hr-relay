@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it, vi } from "vitest";
 import { createDashboardPoolTestWorld } from "../../../support/helpers/backend/dashboard-pool-world.js";
 import { createOperatorCommandIngress } from "../../../../src/backend/runs/commands/operator-command-ingress.js";
+import { RunWorkerStartupError } from "../../../../src/backend/runs/commands/run-worker-capacity.js";
 
 const { WORKFLOW, WORKER_1, openControlHarness, dashboardLaunch, launchCommands, planWorkers, nextCommandId, settleMicrotasks, view, cleanup } = createDashboardPoolTestWorld();
 afterEach(cleanup);
@@ -37,6 +38,7 @@ describe("automatic Run capacity", () => {
     await settleMicrotasks();
     assert.equal(h.children.length, 2);
     assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 2);
+    assert.deepEqual(h.detachedStartupFailures, []);
   });
 
   it("replaces a crashed sole member once without expanding the pool", async () => {
@@ -96,17 +98,58 @@ describe("automatic Run capacity", () => {
     assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
   });
 
-  it("keeps the start applied and shows a member that never becomes ready as failed on its card", async () => {
+  for (const path of ["no worker slot", "a slot whose member is not live"] as const) {
+    it(`replies to Start once the run is created while the worker for ${path} is still starting`, async () => {
+      const h = await openControlHarness({ ready: false });
+      if (path === "a slot whose member is not live") {
+        const planned = planWorkers(h, 1);
+        await vi.waitFor(() => assert.equal(h.children.length, 1));
+        h.children[0]?.ready(); await planned;
+        h.children[0]?.exit(null, "SIGKILL"); await settleMicrotasks();
+      }
+      const before = h.children.length;
+      const submitted = launchCommands(h).submit(dashboardLaunch(h).request);
+      const reply = await Promise.race([submitted, settleMicrotasks(20).then(() => undefined)]);
+      assert.ok(reply !== undefined, "Start's reply waited for the worker's ready message");
+      assert.ok(reply.state === "applied", JSON.stringify(reply));
+      assert.equal(reply.workerStartup, undefined);
+      assert.equal(h.database.authority.runs.listByWorkflow(WORKFLOW).filter(run => run.lifecycle.state === "queued").length, 1);
+      await vi.waitFor(() => assert.equal(h.children.length, before + 1));
+      assert.equal(view(h).state, "starting");
+      h.children.at(-1)?.ready(); await settleMicrotasks();
+      assert.equal(view(h).state, "running");
+      assert.deepEqual(h.faults, []);
+    });
+  }
+
+  it("reports a member that never becomes ready once, after Start has replied, and shows it failed on its card", async () => {
     const h = await openControlHarness({ ready: false });
-    const pending = launchCommands(h).submit(dashboardLaunch(h).request);
+    const reply = await Promise.race([launchCommands(h).submit(dashboardLaunch(h).request), settleMicrotasks(20).then(() => undefined)]);
+    assert.ok(reply?.state === "applied" && reply.workerStartup === undefined, JSON.stringify(reply));
     await vi.waitFor(() => assert.equal(h.children.length, 1));
+    assert.equal(h.detachedStartupFailures.length, 0);
     h.clock.advanceMonotonic(60_000);
     for (const entry of h.scheduler.pending()) entry.fire();
     await settleMicrotasks();
     h.children[0]?.exit(null, "SIGKILL"); await settleMicrotasks();
-    assert.equal((await pending).state, "applied");
     assert.deepEqual(h.children[0]?.kills, ["SIGKILL"]);
     assert.deepEqual(h.faults.map(fault => "code" in fault ? fault.code : fault.message), ["WORKER_START_TIMED_OUT"]);
     assert.equal(view(h).state, "exited");
+    assert.deepEqual(h.detachedStartupFailures.map(error => error instanceof RunWorkerStartupError ? [error.failure.state, error.failure.detail] : error),
+      [["refused", "the planned worker did not start"]]);
+    assert.equal(h.database.authority.runs.listByWorkflow(WORKFLOW)[0]?.lifecycle.state, "queued");
+  });
+
+  it("keeps a second Start's reply off the first Start's worker startup, and starts one worker for both", async () => {
+    const h = await openControlHarness({ ready: false });
+    const commands = launchCommands(h);
+    const first = await Promise.race([commands.submit(dashboardLaunch(h, "10873690").request), settleMicrotasks(20).then(() => undefined)]);
+    const second = await Promise.race([commands.submit(dashboardLaunch(h, "10873691").request), settleMicrotasks(20).then(() => undefined)]);
+    assert.deepEqual([first?.state, second?.state], ["applied", "applied"]);
+    assert.equal(h.children.length, 1);
+    h.children[0]?.ready(); await settleMicrotasks();
+    assert.equal(h.children.length, 1);
+    assert.equal(h.database.authority.workerSlots.active(WORKFLOW).length, 1);
+    assert.deepEqual([h.faults, h.detachedStartupFailures], [[], []]);
   });
 });

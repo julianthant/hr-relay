@@ -221,7 +221,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     quitAccepted: applicationLifecycle.quitAccepted,
     kernel,
     projection,
-    startWorkerCapacity: createRunWorkerCapacity({ kernel, authority: database.authority, running: workers.running, ensureRunning: workers.ensureRunning }),
+    startWorkerCapacity: createRunWorkerCapacity({ kernel, authority: database.authority, running: workers.running, ensureRunning: workers.ensureRunning,
+      reportDetachedFailure: reportSupervisorFault }),
   });
 
   const startPlans = createStartPlanService({

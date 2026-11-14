@@ -7,10 +7,12 @@ import type { AuthorityRepositories } from "../../storage/sqlite/authority-datab
 export interface RunWorkerCapacity {
   workflowOf(request: CapacityRequest): string | undefined;
   ensure(request: CapacityRequest, result: CommandResult): Promise<void>;
+  /** A startup that failed after its command replied; the operator already sees it on the workflow's worker cards. */
+  reportDetachedFailure(error: Error): void;
 }
 
 export class RunWorkerStartupError extends Error {
-  constructor(readonly failure: RunWorkerStartupFailure) { super(failure.message); this.name = "RunWorkerStartupError"; }
+  constructor(readonly failure: RunWorkerStartupFailure, options?: ErrorOptions) { super(failure.message, options); this.name = "RunWorkerStartupError"; }
 }
 
 export function runCapacityCommandId(parentId: string, type: "plan-worker-count", index: number) {
@@ -23,14 +25,17 @@ export function createRunWorkerCapacity(deps: {
   authority: Pick<AuthorityRepositories, "runs" | "startPlans" | "workerPools" | "workerSlots">;
   running(workflowId: string): boolean;
   ensureRunning(workflowId: string): Promise<void>;
+  reportDetachedFailure: (error: Error) => void;
 }): RunWorkerCapacity {
   const workflowOf = (request: CapacityRequest) => request.family === "start" ? request.target.workflowId : deps.authority.runs.get(request.target.runId)?.envelope.workflow;
   return Object.freeze({
     workflowOf,
+    reportDetachedFailure: deps.reportDetachedFailure,
     async ensure(request: CapacityRequest, result: CommandResult): Promise<void> {
       if (result.state !== "applied" && result.state !== "already-applied") return;
-      const fail = (detail: string, state: RunWorkerStartupFailure["state"]): never => {
-        throw new RunWorkerStartupError({ state, code: "RUN_QUEUED_WORKER_UNAVAILABLE", message: ERROR_CATALOG.RUN_QUEUED_WORKER_UNAVAILABLE.text, detail });
+      const fail = (detail: string, state: RunWorkerStartupFailure["state"], cause?: unknown): never => {
+        throw new RunWorkerStartupError({ state, code: "RUN_QUEUED_WORKER_UNAVAILABLE", message: ERROR_CATALOG.RUN_QUEUED_WORKER_UNAVAILABLE.text, detail },
+          cause === undefined ? undefined : { cause });
       };
       const workflowId = workflowOf(request);
       if (workflowId === undefined) return fail("run is missing", "unknown");
@@ -49,7 +54,7 @@ export function createRunWorkerCapacity(deps: {
         return;
       }
       try { await deps.ensureRunning(workflowId); }
-      catch (error) { fail(error instanceof Error ? error.message : String(error), "refused"); }
+      catch (error) { fail(error instanceof Error ? error.message : String(error), "refused", error); }
     },
   });
 }
