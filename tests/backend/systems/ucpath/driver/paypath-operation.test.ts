@@ -38,6 +38,12 @@ describe("UCPath PayPath read on a fake page", () => {
     assert.deepEqual(h.actions, ["click:category", "click:actions", "fill:empl-id-input=10000001", "click:search"]);
   });
 
+  it("refuses the already-dated record run 92dd9da8 reached by its own reason, typing nothing after the search", async () => {
+    const { h, error } = await refusal({ outcome: "already-dated" });
+    assert.equal(error.code, "paypath-position-already-dated");
+    assert.deepEqual(h.actions, ["click:category", "click:actions", "fill:empl-id-input=10000001", "click:search"]);
+  });
+
   it("refuses on an alert, carries its text and never clicks OK", async () => {
     const { h, error } = await refusal({ outcome: "alert", alertText: " Synthetic alert text " });
     assert.equal(error.code, "paypath-alert-shown");
@@ -49,8 +55,12 @@ describe("UCPath PayPath read on a fake page", () => {
     [{ outcome: "no-results" }, "employee-not-found"],
     [{ outcome: "grid" }, "paypath-multiple-records"],
     [{ name: "   " }, "paypath-identity-unreadable"],
+    [{ missing: "name" }, "paypath-identity-unreadable"],
+    [{ nameCount: 2 }, "paypath-identity-unreadable"],
     [{ headerEmplId: "10000002" }, "subject-mismatch"],
     [{ headerEmplId: "not an id" }, "subject-mismatch"],
+    [{ missing: "job-data-tab" }, "unexpected-page-state"],
+    [{ missing: "effective-date-label" }, "unexpected-page-state"],
     [{ missing: "category" }, "paypath-hr-tasks-not-shown"],
     [{ missing: "actions" }, "paypath-hr-tasks-not-shown"],
     [{ missing: "body" }, "paypath-hr-tasks-not-shown"],
@@ -58,6 +68,9 @@ describe("UCPath PayPath read on a fake page", () => {
     [{ missing: "search" }, "paypath-search-not-shown"],
     [{ missing: "empl-id-display" }, "unexpected-page-state"],
     [{ missing: "effective-date" }, "unexpected-page-state"],
+    [{ missing: "position-change-reason" }, "unexpected-page-state"],
+    [{ missing: "position-pool" }, "unexpected-page-state"],
+    [{ missing: "position-change-reason-label" }, "unexpected-page-state"],
     [{ outcome: "alert", missing: "alert-text" }, "paypath-alert-shown"],
     [{ outcome: "nothing" }, "unexpected-page-state"],
     [{ ambiguousPositionNumber: true }, "unexpected-page-state"],
@@ -134,6 +147,7 @@ describe("UCPath PayPath work-study staging on a fake page", () => {
 
   it.each<[Parameters<typeof fakeUcpathPayPathPage>[0], UcpathPayPathRefusalCode]>([
     [{ outcome: "no-results" }, "employee-not-found"],
+    [{ outcome: "already-dated" }, "paypath-position-already-dated"],
     [{ headerEmplId: "10000002" }, "subject-mismatch"],
     [{ saveButtons: 2 }, "unexpected-page-state"],
     [{ saveDisabled: true }, "unexpected-page-state"],
@@ -143,6 +157,25 @@ describe("UCPath PayPath work-study staging on a fake page", () => {
     assert.ok(error instanceof UcpathPayPathRefusedError);
     assert.equal(error.code, code);
     assert.equal(h.actions.includes("click:save"), false);
+  });
+});
+
+describe("UCPath PayPath subject name before the fence", () => {
+  it("reads the one header name on the staged page", async () => {
+    const h = world();
+    await h.driver.stagePayPathWorkStudy(target);
+    assert.equal(await h.driver.readPayPathSubject(), "Lee, Jordan");
+  });
+
+  it("lets a revoked owner's error through when no record header is shown", async () => {
+    const world = fakeUcpathPayPathPage();
+    const driver = createUcpathPayPathOperations(() => { throw new Error("owner-revoked"); }, world.page, manualClock(new Date("2026-08-03T18:00:00.000Z")));
+    await assert.rejects(driver.readPayPathSubject(), { message: "owner-revoked" });
+  });
+
+  it("refuses as unreadable when no record header is shown", async () => {
+    const h = world();
+    await assert.rejects(h.driver.readPayPathSubject(), (error: unknown) => error instanceof UcpathPayPathRefusedError && error.code === "paypath-identity-unreadable");
   });
 });
 

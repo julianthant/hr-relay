@@ -106,10 +106,37 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
   const keepsTarget = (values: UcpathPayPathStagedValues, input: UcpathPayPathWorkStudyTarget) =>
     values.effectiveDate === input.effectiveDate && values.positionChangeReason === input.positionChangeReason && values.positionPool === input.positionPool
     && values.jobDataComments === input.comments && values.initiatorComments === input.comments;
+  /** The one header name the record shows; none, several or blank refuses as unreadable. */
+  const headerName = async (frame: FrameLocator) => {
+    const name = ui.nameDisplay(frame);
+    assertCurrent();
+    const count = await name.count();
+    assertCurrent();
+    if (count !== 1) throw new UcpathPayPathRefusedError("paypath-identity-unreadable");
+    const text = await reached("paypath-identity-unreadable", () => textOf(name));
+    if (text === "") throw new UcpathPayPathRefusedError("paypath-identity-unreadable");
+    return text;
+  };
+  /** What a Position Data label points at through its `for`: an input box, display text, or nothing readable. */
+  const labelledField = async (label: Locator) => {
+    await shown(label);
+    const kind = await label.evaluate((node): "input" | "text" | "none" => {
+      const id = node.getAttribute("for");
+      const field = id === null ? null : node.ownerDocument.getElementById(id);
+      if (field === null) return "none";
+      if (["INPUT", "SELECT", "TEXTAREA"].includes(field.tagName)) return "input";
+      return field.textContent.trim() === "" ? "none" : "text";
+    }, undefined, { timeout: BOUND_MS });
+    assertCurrent();
+    return kind;
+  };
   const stagedKey = (input: UcpathPayPathWorkStudyTarget) =>
     JSON.stringify([input.emplId, input.expectedName, input.effectiveDate, input.positionChangeReason, input.positionPool, input.comments]);
 
-  /** Opens exactly one PayPath record for the Empl ID and returns its frame and displayed name once the header proves the Empl ID. */
+  /**
+   * Opens exactly one PayPath record for the Empl ID and returns its frame and displayed name once the header proves the Empl ID
+   * and Position Data is not the already-dated record: Effective Date and Position Change Reason both shown as display text, which refuses by name.
+   */
   async function openRecord(emplId: UcpathPayPathWorkStudyTarget["emplId"]) {
     const frame = ui.frame(page);
     await reached("paypath-hr-tasks-not-shown", async () => {
@@ -134,20 +161,23 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
     });
 
     return reached("unexpected-page-state", async () => {
-      const alertOk = ui.alertOk(page), noResults = ui.noResults(frame), rows = ui.resultRows(frame), name = ui.nameDisplay(frame);
+      // The record's tab strip marks the record page; the search form it replaces has none.
+      const alertOk = ui.alertOk(page), noResults = ui.noResults(frame), rows = ui.resultRows(frame), record = ui.jobDataTab(frame);
       assertCurrent();
-      await Promise.any([alertOk, noResults, rows.first(), name].map(locator => locator.waitFor({ state: "visible", timeout: BOUND_MS })));
+      await Promise.any([alertOk, noResults, rows.first(), record].map(locator => locator.waitFor({ state: "visible", timeout: BOUND_MS })));
       assertCurrent();
       if (await alertOk.isVisible()) throw await alertShown();
       if (await noResults.isVisible()) throw new UcpathPayPathRefusedError("employee-not-found");
       if (await rows.count() > 0) throw new UcpathPayPathRefusedError("paypath-multiple-records");
       assertCurrent();
-      if (!await name.isVisible()) throw new UcpathPayPathRefusedError("unexpected-page-state");
+      if (!await record.isVisible()) throw new UcpathPayPathRefusedError("unexpected-page-state");
 
-      const displayedName = await reached("paypath-identity-unreadable", () => textOf(name));
-      if (displayedName === "") throw new UcpathPayPathRefusedError("paypath-identity-unreadable");
+      const displayedName = await headerName(frame);
       const header = EidSchema.safeParse(await textOf(ui.emplIdDisplay(frame)));
       if (!header.success || header.data !== emplId) throw new UcpathPayPathRefusedError("subject-mismatch");
+      const effectiveDate = await labelledField(ui.effectiveDateLabel(frame));
+      const positionChangeReason = await labelledField(ui.positionChangeReasonLabel(frame));
+      if (effectiveDate === "text" && positionChangeReason === "text") throw new UcpathPayPathRefusedError("paypath-position-already-dated");
       return { frame, displayedName, emplId: header.data };
     });
   }
@@ -196,9 +226,7 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
     },
 
     async readPayPathSubject() {
-      const name = await textOf(ui.nameDisplay(ui.frame(page)));
-      if (name === "") throw new UcpathPayPathRefusedError("paypath-identity-unreadable");
-      return name;
+      return headerName(ui.frame(page));
     },
 
     async submitPayPathWorkStudy(input, capability) {
