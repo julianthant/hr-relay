@@ -1,5 +1,5 @@
 import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
@@ -24,6 +24,11 @@ describe("canonical notification producers", () => {
       const files = readdirSync(directory);
       f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: false, occurrence: 0, observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), samples: [] }));
       expect((await read()).backupFailed).toBe(false); expect(readdirSync(directory)).toEqual(files);
+      const backupFile = join(directory, files.find(name => !name.endsWith(".manifest.json"))!), bytes = readFileSync(backupFile);
+      bytes[bytes.length - 1] ^= 0xff; writeFileSync(backupFile, bytes);
+      expect((await read()).backupFailed).toBe(true);
+      bytes[bytes.length - 1] ^= 0xff; writeFileSync(backupFile, bytes);
+      expect((await read()).backupFailed).toBe(false);
       writeFileSync(join(directory, "corrupt.manifest.json"), "not a manifest");
       expect((await read()).backupFailed).toBe(true);
     } finally { await f.close(); }
