@@ -7,6 +7,7 @@ import { QUEUED_RUN } from "../../../../support/fixtures/phase1f-run-fixtures.js
 import { describe, expect, it, vi } from "vitest";
 import { createNotificationHealthObserver, readNotificationHealth } from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import { parseBackupManifestFile } from "../../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityBackupService, syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { releaseSeededWriteOwners } from "../../../../support/helpers/timeline-write-fixture.js";
 
@@ -34,8 +35,8 @@ describe("canonical notification producers", () => {
       rmSync(`${backupFile}-wal`);
       expect((await read()).backupFailed).toBe(false);
       const manifestFile = join(directory, files.find(name => name.endsWith(".manifest.json"))!), manifestText = readFileSync(manifestFile, "utf8");
-      const disagreeing = JSON.parse(manifestText) as { pageCount: number; verification: { pageCount: number } };
-      disagreeing.pageCount += 1; disagreeing.verification.pageCount += 1; writeFileSync(manifestFile, JSON.stringify(disagreeing));
+      const seeded = parseBackupManifestFile(manifestFile);
+      writeFileSync(manifestFile, JSON.stringify({ ...seeded, pageCount: seeded.pageCount + 1, verification: { ...seeded.verification, pageCount: seeded.verification.pageCount + 1 } }));
       expect((await read()).backupFailed).toBe(true);
       writeFileSync(manifestFile, manifestText);
       expect((await read()).backupFailed).toBe(false);
