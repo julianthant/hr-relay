@@ -106,8 +106,8 @@ export async function retainCleanShutdownBackups(input: RuntimeAdmission, clock:
   admission.assertAuthorityBackupWrite(directory);
   await resumeShutdownBackupRetirement(admission, clock);
   assertMaintenanceCustodyAvailable("backup-retirement");
-  const freshFiles = [fresh.manifestPath, fresh.backupPath].map(inventoryFileIdentity);
-  const checked = await shutdownBackups(admission, clock, [{ ...fresh, files: freshFiles }]);
+  // The fresh backup is byte-checked again here: its files may have changed since the backup request verified them.
+  const checked = await shutdownBackups(admission, clock);
   if (checked[0]?.manifestPath !== fresh.manifestPath || canonicalJsonStringify(checked[0].manifest) !== canonicalJsonStringify(fresh.manifest)) throw new Error("shutdown-backup-retention-unproved");
   for (const previous of checked.slice(3)) {
     const target = `${previous.manifestPath}${Retiring}`;
