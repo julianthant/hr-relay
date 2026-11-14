@@ -60,7 +60,7 @@ it("rechecks root shape after a capability was issued", () => {
   const stateRoot = join(root, "state");
   const artifactRoot = join(root, "artifacts");
   mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
-  mkdirSync(artifactRoot);
+  mkdirSync(artifactRoot, { mode: 0o700 });
   const admission = RuntimeAdmission.syntheticRoots(stateRoot, artifactRoot);
   expect(() => admission.assertStorageRootsSafe()).not.toThrow();
   expect(() => admission.assertStateRoot(stateRoot)).not.toThrow();

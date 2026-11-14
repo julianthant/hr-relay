@@ -120,6 +120,7 @@ export interface TaskEntryIdentity<
   readonly label?: string;
   readonly replay: "checkpoint" | "always-rerun";
   readonly when?: NodeConditionSpec;
+  readonly dryRun?: "stop-before-publish";
 }
 
 export interface BranchEntryIdentity<
@@ -214,6 +215,7 @@ interface TaskEntry<Id extends string, Output, Conditional extends boolean>
   readonly label?: string;
   readonly replay: "checkpoint" | "always-rerun";
   readonly when?: NodeConditionSpec;
+  readonly dryRun?: "stop-before-publish";
   readonly bind: (scope: unknown) => unknown;
 }
 
@@ -420,6 +422,7 @@ function workflowAuthor<InputSchema extends z.ZodType>(delegationDisplay: ChildV
         ...(identity.label === undefined ? {} : { label: identity.label }),
         replay: identity.replay,
         ...(identity.when === undefined ? {} : { when: identity.when }),
+        ...(identity.dryRun === undefined ? {} : { dryRun: identity.dryRun }),
         bind: (scope) => bind(scope as never),
       };
       return Object.freeze(entry);
@@ -954,6 +957,7 @@ interface RuntimeFlowBuilder {
     bind: (scope: unknown) => unknown;
     when?: NodeConditionSpec;
     replay: "checkpoint" | "always-rerun";
+    dryRun?: "stop-before-publish";
   }>): RuntimeFlowBuilder;
   branch(id: string, opts: Readonly<{
     label?: string;
@@ -1035,6 +1039,7 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
         bind: entry.bind,
         ...(entry.when === undefined ? {} : { when: entry.when }),
         replay: entry.replay,
+        ...(entry.dryRun === undefined ? {} : { dryRun: entry.dryRun }),
       });
       continue;
     }
@@ -1347,7 +1352,7 @@ export function defineStepEntries<const Key extends string>(step: Readonly<{ key
     task<
       const Id extends string,
       Contract extends AnyReadTaskContract,
-      const Identity extends Readonly<{ label?: string; replay: "checkpoint" | "always-rerun"; when?: NodeConditionSpec }>,
+      const Identity extends Readonly<{ label?: string; replay: "checkpoint" | "always-rerun"; when?: NodeConditionSpec; dryRun?: "stop-before-publish" }>,
     >(
       id: Id,
       contract: Contract,
@@ -1360,6 +1365,7 @@ export function defineStepEntries<const Key extends string>(step: Readonly<{ key
         ...(identity.label === undefined ? {} : { label: identity.label }),
         replay: identity.replay,
         ...(identity.when === undefined ? {} : { when: identity.when }),
+        ...(identity.dryRun === undefined ? {} : { dryRun: identity.dryRun }),
       };
       return Object.freeze(value) as Omit<TaskEntryIdentity<Id, Contract>, "when"> & WithWhen<Identity>;
     },

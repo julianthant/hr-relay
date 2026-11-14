@@ -11,9 +11,11 @@ import { projectReceiptForOperator } from "../../../models/trust/evidence.js";
 import {
   projectFailureForOperator,
   failureCauseNames,
+  SignInRefusalSchema,
   type FailureRecord,
 } from "../../../models/trust/failure.js";
 import type { RunRecord } from "../../../models/run/record.js";
+import { pendingInterruptOf } from "../../../rules/runs/run-interrupt.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import type { RemediationActionSchema } from "../../../models/trust/failure.js";
@@ -76,6 +78,7 @@ const ExplainRunViewSchema = z.strictObject({
     sameFingerprintSeen: z.number().int().positive(),
     causeCodes: z.array(z.string().min(1)),
     causeClasses: z.array(z.string().min(1)),
+    signInRefusal: SignInRefusalSchema.optional(),
   })),
   lastSuccessfulAction: present(z.string().min(1)),
   openGate: present(z.string().min(1)),
@@ -139,8 +142,9 @@ function nextSafeAction(
   failure: readonly Remediation[],
 ): string {
   const { lifecycle } = run;
-  if (run.pause !== undefined && lifecycle.state !== "terminal" && lifecycle.state !== "parked-write") {
-    return run.pause.state === "paused"
+  const pending = pendingInterruptOf(run);
+  if ((pending === "paused" || pending === "pause-requested") && lifecycle.state !== "parked-write") {
+    return pending === "paused"
       ? "Paused (a shutdown pauses every unfinished run). It does not resume by itself, not even at the next start; Resume or Cancel it from Logs."
       : "A pause is requested; the worker stops it after the current step. Then Resume or Cancel it from Logs.";
   }
@@ -287,6 +291,10 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
           sameFingerprintSeen: Math.max(1, evidence.sameFingerprintSeen ?? 1),
           causeCodes: causes.codes,
           causeClasses: causes.classes,
+          // The protected projection drops debug. The refusal is closed vocabulary, so explain keeps it.
+          ...(evidence.failure?.debug?.signInRefusal === undefined
+            ? {}
+            : { signInRefusal: evidence.failure.debug.signInRefusal }),
         },
       },
     lastSuccessfulAction: lastSuccessful === undefined
@@ -371,6 +379,18 @@ function shown<Value>(
   return resource.state === "present" ? render(resource.value) : `— ${resource.reason}`;
 }
 
+function signInRefusalLines(refusal: z.infer<typeof SignInRefusalSchema>): string {
+  const check = refusal.check === undefined
+    ? `sign-in step ${refusal.step}`
+    : `sign-in check ${refusal.step}: ${refusal.check}`;
+  const page = refusal.pageOrigin === "not-read" ? "page not read"
+    : refusal.pageOrigin === "unreadable" ? "page unreadable"
+    : refusal.pageOrigin === "unlisted" ? "page not listed"
+    : refusal.pagePath === undefined ? `page ${refusal.pageOrigin} (path not listed)`
+    : `page ${refusal.pageOrigin}${refusal.pagePath}`;
+  return `\n    ${check}\n    ${page}`;
+}
+
 export function renderExplainRun(view: ExplainRunView): string {
   const instances = Object.entries(view.resolvedInstance)
     .map(([system, instance]) => `${system}=${instance}`)
@@ -395,7 +415,8 @@ export function renderExplainRun(view: ExplainRunView): string {
     ...section("failure", [shown(view.failure, (failure) =>
       `${failure.code} (${failure.writeState}) fingerprint ${failure.fingerprint}\n`
       + `    seen ${String(failure.sameFingerprintSeen)}× · ${failure.summary}\n`
-      + `    causes: ${[...failure.causeCodes, ...failure.causeClasses].join(", ") || "(none)"}`)]),
+      + `    causes: ${[...failure.causeCodes, ...failure.causeClasses].join(", ") || "(none)"}`
+      + (failure.signInRefusal === undefined ? "" : signInRefusalLines(failure.signInRefusal)))]),
     ...section("last successful action", [shown(view.lastSuccessfulAction, (value) => value)]),
     ...section("open gate", [shown(view.openGate, (value) => value)]),
     ...section("open dependency", [shown(view.openDependency, (value) => value)]),

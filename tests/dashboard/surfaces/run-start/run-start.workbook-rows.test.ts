@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { createElement } from "react";
 import { afterEach, it } from "vitest";
+import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
+import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
+import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
+import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { RunStartDialog } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
@@ -12,7 +20,8 @@ import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../../../s
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 
 const h = createRunStartDialogHarness();
-afterEach(h.cleanup);
+let reopenRoot: Root | undefined;
+afterEach(async () => { await act(async () => reopenRoot?.unmount()); reopenRoot = undefined; await h.cleanup(); });
 const descriptor = DESCRIPTORS.find(flow => flow.id === "onboarding"); assert.ok(descriptor?.surfaces.inputRun);
 const descriptorId = descriptor.id;
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
@@ -110,4 +119,16 @@ it("keeps earlier selected rows visible and disabled after a named-version chang
   await dialog.press("Clear previous row selection");
   assert.equal(checkboxRows().some(checkbox => checkbox.getAttribute("aria-checked") === "true"), false);
   await select(0); assert.equal(dialog.disabled("Continue"), false);
+});
+
+it("keeps the row selection silently when the dialog is reopened for the same spreadsheet and version", async () => {
+  const host = document.createElement("div"); document.body.append(host); reopenRoot = createRoot(host);
+  const client = h.stubClient({ ...libraryReads });
+  const render = (open: boolean) => act(async () => reopenRoot?.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client,
+    children: createElement(FixtureCommandBinding, { actorId: h.ACTOR_ID, children: createElement(RunStartDialog, { open, onOpenChange() {}, panelWorkflowId: descriptor.id, actorId: h.ACTOR_ID, onApplied() {}, onOpenIntake() {},
+      catalog: buildWorkflowCatalog([workflow], false, servedFixtureSources([workflow])) }) }) }) })));
+  await render(true); await h.settle(); await chooseCurrent(); await select(0);
+  await render(false); await h.settle(); await render(true); await h.settle();
+  assert.equal(document.body.textContent?.includes("Previous row selection"), false);
+  assert.equal(checkboxRows().filter(checkbox => checkbox.getAttribute("aria-checked") === "true").length, 1);
 });

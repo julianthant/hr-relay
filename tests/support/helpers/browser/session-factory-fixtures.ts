@@ -105,7 +105,7 @@ export function createBrowserSessionFactoryFixtures(
   }
 
 
-  function verifierFor(options: Readonly<{ authenticated?: boolean; reason?: string }> = {}) {
+  function verifierFor(options: Readonly<{ authenticated?: boolean; reason?: string; check?: "application-route" | "positive-evidence" | "sign-in-form-absent" | "evidence-system" }> = {}) {
     const seen: string[] = [];
     return {
       seen: () => Object.freeze([...seen]),
@@ -113,7 +113,7 @@ export function createBrowserSessionFactoryFixtures(
         const url = context.page.url();
         seen.push(url);
         if (options.authenticated === false) {
-          return { authenticated: false, reason: options.reason ?? "the fake verifier refused" };
+          return { authenticated: false, reason: options.reason ?? "the fake verifier refused", check: options.check ?? "application-route" };
         }
         return {
           authenticated: true,
