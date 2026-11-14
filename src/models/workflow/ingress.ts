@@ -425,6 +425,8 @@ export const UploadRunSurfaceSchema = z.strictObject({
   fields: z.array(UploadFieldSpecSchema),
   accepts: z.array(FileAcceptSpecSchema).min(1),
   successMessage: TextTemplateSchema,
+    /* DERIVED, never authored: stamped from the graph's preview boundary nodes, as on the input-run surface. */
+  supportsDryRun: z.boolean().optional(),
 });
 export type UploadRunSurface = z.infer<typeof UploadRunSurfaceSchema>;
 
