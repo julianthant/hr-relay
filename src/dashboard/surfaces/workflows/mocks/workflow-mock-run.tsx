@@ -96,7 +96,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           </RunList>}
           {workflowId === "work-study" && <RunList label="Dates"><RunListRow title="Effective date" description="The day the change takes effect."><div className="w-[200px]"><DateInput className="w-full" hideLabel label="Effective date" required value={draft.effectiveDate} onChange={effectiveDate => patch({ effectiveDate })} /></div></RunListRow></RunList>}
           {workflowId === "old-kronos-reports" && <RunList title="Report period"><RunListRow title="Report start" description="First day of the report."><div className="w-[200px]"><DateInput className="w-full" hideLabel label="Report start" required value={draft.startDate} onChange={startDate => patch({ startDate })} /></div></RunListRow><RunListRow title="Report end" description="Last day of the report."><div className="w-[200px]"><DateInput className="w-full" hideLabel label="Report end" required value={draft.endDate} onChange={endDate => patch({ endDate })} /></div></RunListRow></RunList>}
-          {draft.method === "typed" && (flow.typedInput ? <TypedInput presentation="mock" workflowId={workflowId}
+          {draft.method === "typed" && (flow.typedInput ? <TypedInput workflowId={workflowId}
             surface={{ typedInput: flow.typedInput, placeholder: flow.placeholder, parser: { split: { kind: "whole-text" }, rules: [{ when: { kind: "otherwise" }, emit: "value" }] } }}
             text={draft.text} onText={text => patch({ text })} draft={mockTypedInputValues(workflowId, draft)}
             onValue={(field, value) => patch(changeMockTypedInput(workflowId, draft, field, value))}

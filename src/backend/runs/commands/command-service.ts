@@ -220,7 +220,10 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
         }
       }
       if (results.length < request.targets.length || results.some(result => result.outcome !== "applied")) {
-        deps.commandNotices?.record({ kind: "bulk-incomplete", bulkCommandId: request.bulkCommandId });
+        const count = (outcome: string) => results.filter(result => result.outcome === outcome).length;
+        const parts = [[count("applied"), "applied"], [count("conflict"), count("conflict") === 1 ? "conflict" : "conflicts"], [count("refused"), "refused"], [count("errored"), "failed"],
+          [request.targets.length - results.length, "not attempted"]].filter(([n]) => n !== 0).map(([n, label]) => `${n} ${label}`);
+        deps.commandNotices?.record({ kind: "bulk-incomplete", bulkCommandId: request.bulkCommandId, summary: parts.join(" · ") });
       }
       return BulkRunCommandResponseSchema.parse({
         state: "vector",

@@ -16,6 +16,7 @@ import { AutomaticPersonRepairRefusedError,RegisteredPersonUpgradeRefusedError,R
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { probePrimaryDisplay } from "../host/primary-display.js";
 import { WORKER_GRACEFUL_STOP_TIMEOUT_MS, WorkerPoolError } from "../../runtime/workers/worker-pool.js";
+import { installProcessCrashHandlers } from "./process-crash.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
@@ -25,6 +26,7 @@ export interface RuntimeLifetime {
 }
 
 export interface SecureEnvironmentBootstrapDependencies {
+  readonly installCrashHandlers?: typeof installProcessCrashHandlers;
   readonly assertEnvironment?: () => void;
   readonly runCli?: (admission: RuntimeAdmission, acceptDashboardAdmission: (() => void) | undefined, lifetime: RuntimeLifetime) => Promise<void>;
   readonly acquireLifetimeLock?: (port: number) => Promise<RuntimeLifetimeLock>;
@@ -174,6 +176,9 @@ async function runAdmittedEnvironmentBootstrap(
   let shutdown: "release" | "retain" = "release";
   let dashboardOwnsAdmission = false;
   try {
+  if (entrypoint === "cli" && (entrypointArgs[0] === "dashboard" || entrypointArgs[0] === "worker")) {
+    (dependencies.installCrashHandlers ?? installProcessCrashHandlers)({ stateRoot: admission.stateRoot, processKind: entrypointArgs[0] });
+  }
   if (!bootDiagnostics && !(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
     (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();
 

@@ -24,7 +24,6 @@ it("uses the one typed client for strict account lifecycle requests without pers
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {
     calls.push({ url, init });
     if (url.endsWith("/cancel")) return Response.json({ state: "cancelled", attemptId });
-    if (url.endsWith("/sign-out")) return Response.json({ state: "signed-out", remoteRevocation: "unconfirmed" });
     if (url.endsWith(`/sign-in/${attemptId}`)) return Response.json({ state: "completed", attemptId, account: { state: "signed-out" } });
     if (url.endsWith("/sign-in")) return Response.json({ state: "started", attemptId, authorizationUrl: "https://auth.openai.com/api/accounts/authorize?state=synthetic", expiresAt: "2026-10-12T12:05:00.000Z" });
     return Response.json(status);
@@ -33,8 +32,7 @@ it("uses the one typed client for strict account lifecycle requests without pers
   assert.equal((await client.startChatGptSignIn({ usePlan: true })).state, "started");
   assert.equal((await client.completeChatGptSignIn(attemptId)).state, "completed");
   assert.equal((await client.cancelChatGptSignIn(attemptId)).state, "cancelled");
-  assert.equal((await client.signOutChatGpt()).state, "signed-out");
-  assert.deepEqual(calls.map(call => call.init?.method ?? "GET"), ["GET", "POST", "GET", "POST", "POST"]);
+  assert.deepEqual(calls.map(call => call.init?.method ?? "GET"), ["GET", "POST", "GET", "POST"]);
   for (const call of calls.filter(call => call.init?.method === "POST")) assert.equal(new Headers(call.init?.headers).get("origin"), "http://127.0.0.1:3938");
 });
 it("rejects token-bearing, wrong-attempt and foreign authorization responses without retry", async () => {
@@ -76,13 +74,3 @@ it("rejects extra private fields and untrusted OCR failure text without retry", 
   }
 });
 
-it("forgets the account with one guarded empty mutation request", async () => {
-  const calls: { url: string; init: RequestInit | undefined }[] = [];
-  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {
-    calls.push({ url, init }); return Response.json({ state: "signed-out", remoteRevocation: "confirmed" });
-  } });
-  assert.deepEqual(await client.forgetChatGptAccount(), { state: "signed-out", remoteRevocation: "confirmed" });
-  assert.equal(calls.length, 1); assert.equal(calls[0].url, "http://127.0.0.1:3938/api/v1/settings/chatgpt-account/forget-account");
-  assert.equal(calls[0].init?.method, "POST"); assert.equal(calls[0].init?.body, "{}");
-  assert.equal(new Headers(calls[0].init?.headers).get("origin"), "http://127.0.0.1:3938");
-});

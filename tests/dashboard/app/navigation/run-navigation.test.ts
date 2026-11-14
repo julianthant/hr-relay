@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveRunNavigation } from "../../../../src/dashboard/app/navigation/run-navigation.js";
 import { parseRoute, routeToSearch } from "../../../../src/dashboard/app/navigation/url-state.js";
 import { PRODUCT_WORKFLOW_COMPOSITION } from "../../../../src/dashboard/app/workflow-sources.js";
-import { PARITY_WORKFLOW_COMPOSITION } from "../../../parity/helpers/workflow-composition.js";
-import { FIXTURE_DAY_WIRE } from "../../../parity/helpers/fixture-queue.js";
-import { FIXTURE_RUN_DETAILS } from "../../../parity/helpers/fixture-detail.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE } from "../../../mocks/helpers/fixture-queue.js";
+import { FIXTURE_RUN_DETAILS } from "../../../mocks/helpers/fixture-detail.js";
 import { FIXTURE_FAILURE_SECTIONS } from "../../../support/fixtures/dashboard/run-detail/receipts-failures.js";
 import { FIXTURE_IDS } from "../../../support/fixtures/dashboard/fixture-queue.js";
 import { CommandIdSchema, FingerprintSchema, RunIdSchema, FailureIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -26,13 +26,14 @@ const clients = () => ({ dashboardDay: vi.fn(async () => FIXTURE_DAY_WIRE), runD
 const target: Extract<NotificationTarget, { kind: "run" }> = { kind: "run", runId, day };
 
 describe("notification composition and canonical navigation", () => {
-  it("selects served product and explicit mock parity inbox/search independently of workflows", () => {
+  it("selects served product and explicit mock inbox/search independently of workflows", () => {
     expect(PRODUCT_WORKFLOW_COMPOSITION.inbox).toBe("served");
     expect(PRODUCT_WORKFLOW_COMPOSITION.search).toBe("served");
     expect(PRODUCT_WORKFLOW_COMPOSITION.sources["onbase"]).toBe("mock");
-    const parity = PARITY_WORKFLOW_COMPOSITION([]);
-    expect(parity.inbox).toBe("mock");
-    expect(parity.search).toBe("mock");
+    expect(PRODUCT_WORKFLOW_COMPOSITION.sources["emergency-contact"]).toBe("served");
+    const mockComposition = MOCK_WORKFLOW_COMPOSITION([]);
+    expect(mockComposition.inbox).toBe("mock");
+    expect(mockComposition.search).toBe("mock");
   });
   it("freshly revalidates a historical run against its exact day and run detail", async () => {
     const client = clients();
@@ -93,7 +94,7 @@ describe("notification composition and canonical navigation", () => {
     const targets = [
       NotificationTargetSchema.parse({ kind: "recovery", commandId, request }),
       NotificationTargetSchema.parse({ kind: "command-result", commandId, request, result }),
-      NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId: commandId, type: "pause", requestedCount: 1, results: [], notAttempted: [] }),
+      NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId: commandId, type: "pause", requestedCount: 1, results: [], notAttempted: [], days: {} }),
     ];
     for (const commandTarget of targets) expect((await resolveRunNavigation(client, commandTarget, origin, () => true)).state).toBe("refused");
     expect(client.dashboardDay).not.toHaveBeenCalled();

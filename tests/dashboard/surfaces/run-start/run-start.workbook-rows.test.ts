@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { createElement } from "react";
 import { afterEach, it } from "vitest";
+import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
+import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
+import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
+import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { RunStartDialog } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
@@ -12,7 +20,8 @@ import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../../../s
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 
 const h = createRunStartDialogHarness();
-afterEach(h.cleanup);
+let reopenRoot: Root | undefined;
+afterEach(async () => { await act(async () => reopenRoot?.unmount()); reopenRoot = undefined; await h.cleanup(); });
 const descriptor = DESCRIPTORS.find(flow => flow.id === "onboarding"); assert.ok(descriptor?.surfaces.inputRun);
 const descriptorId = descriptor.id;
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
@@ -38,17 +47,7 @@ const libraryReads = { workbookList: async () => [], workbookCatalog: async () =
 const checkboxRows = () => [...document.querySelectorAll<HTMLButtonElement>('table[aria-label="Saved spreadsheet rows"] button[role="checkbox"]')];
 async function mode(value: string) { const radio = document.querySelector<HTMLInputElement>(`input[type="radio"][value="${value}"]`); assert.ok(radio); await act(async () => radio.click()); }
 async function select(index: number) { const checkbox = checkboxRows()[index]; assert.ok(checkbox); await act(async () => checkbox.click()); }
-async function pick(label: string, value: string) {
-  const picker = h.buttons().find(button => h.buttonName(button) === label); assert.ok(picker, label);
-  await act(async () => picker.click());
-  const option = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes(value)); assert.ok(option, value);
-  await act(async () => option.click()); await h.settle();
-}
-async function chooseCurrent() {
-  await pick('Choose a spreadsheet Reference spreadsheet', 'Roster');
-  await pick('Choose a version Reference version', 'Reviewed');
-  await pick('Choose a worksheet Reference worksheet', 'First');
-}
+async function chooseCurrent() { await h.chooseReference('Roster', 'Reviewed', 'First'); }
 function proposal(request: StartPlanRequest, partial = false) {
   return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), workflowId: descriptorId,
     ...(request.rerunSource ? { rerun: { source: request.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: request.warningAcknowledgment } } : {}),
@@ -101,7 +100,7 @@ it("keeps Rerun single-source with its restored mode and a fresh explicit refere
     submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return proposal(planned); },
   }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
   await dialog.press("Continue"); assert.equal(checkboxRows().length, 0); assert.equal(dialog.typedInput().value, "source@example.test");
-  await dialog.press("Continue"); await chooseCurrent(); await dialog.press("Back");
+  await chooseCurrent();
   assert.equal(document.querySelector<HTMLInputElement>('input[value="rehire"]')?.checked, true);
   await dialog.press("Continue"); await dialog.press("Continue"); assert.ok(planned);
   assert.deepEqual(planned.submissions, [{ email: "source@example.test", mode: "rehire" }]);
@@ -114,10 +113,22 @@ it("keeps earlier selected rows visible and disabled after a named-version chang
     workbook: versionId === 'alternate' ? { ...versionView.workbook, sheets: [{ ...versionView.workbook.sheets[0], id: 'former-sheet', name: 'Earlier People' }] } : versionView.workbook }) }),
     { workflows: [workflow], panelWorkflowId: descriptor.id });
   await h.settle(); await chooseCurrent(); await select(0); await mode("new-hire");
-  await pick('Reviewed · Current Reference version', 'Alternate'); await pick('Choose a worksheet Reference worksheet', 'Earlier People');
+  await h.chooseVersion('Alternate');
   assert.match(dialog.text(), /Previous row selection/u); assert.match(dialog.text(), /First · Row 2/u);
   assert.equal(checkboxRows().every(checkbox => checkbox.disabled), true); assert.equal(dialog.disabled("Continue"), true);
   await dialog.press("Clear previous row selection");
   assert.equal(checkboxRows().some(checkbox => checkbox.getAttribute("aria-checked") === "true"), false);
   await select(0); assert.equal(dialog.disabled("Continue"), false);
+});
+
+it("keeps the row selection silently when the dialog is reopened for the same spreadsheet and version", async () => {
+  const host = document.createElement("div"); document.body.append(host); reopenRoot = createRoot(host);
+  const client = h.stubClient({ ...libraryReads });
+  const render = (open: boolean) => act(async () => reopenRoot?.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client,
+    children: createElement(FixtureCommandBinding, { actorId: h.ACTOR_ID, children: createElement(RunStartDialog, { open, onOpenChange() {}, panelWorkflowId: descriptor.id, actorId: h.ACTOR_ID, onApplied() {}, onOpenIntake() {},
+      catalog: buildWorkflowCatalog([workflow], false, servedFixtureSources([workflow])) }) }) }) })));
+  await render(true); await h.settle(); await chooseCurrent(); await select(0);
+  await render(false); await h.settle(); await render(true); await h.settle();
+  assert.equal(document.body.textContent?.includes("Previous row selection"), false);
+  assert.equal(checkboxRows().filter(checkbox => checkbox.getAttribute("aria-checked") === "true").length, 1);
 });
