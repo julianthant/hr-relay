@@ -10,7 +10,7 @@ const wiring = vi.hoisted(() => ({ catalogLoading: false }));
 const entry = WorkbookLibraryEntrySchema.parse({ libraryId: 'roster', version: 1, name: 'Roster.xlsx', updatedAt: '2026-11-01T00:00:00Z', rowCount: 1,
   worksheets: [{ id: 'people', name: 'People' }], metadata: { typeId: 'roster-type', sharePoint: null },
   type: { id: 'roster-type', name: 'Roster', keyFieldId: 'email', fields: ['email'], defaultWorkbookId: 'roster' },
-  state: { libraryId: 'roster', revision: 1, selectedVersionId: 'current', removed: false, origin: { kind: 'local' },
+  state: { libraryId: 'roster', revision: 1, selectedVersionId: 'current', removed: false, pinned: false, tags: [], origin: { kind: 'local' },
     versions: [{ id: 'current', name: 'current', snapshotId: 'current', version: 1, savedAt: '2026-11-01T00:00:00Z', source: 'operator' }] } });
 vi.mock('../../../../../src/dashboard/state/spreadsheet-wiring-adapter.js', () => ({
   useSpreadsheetWiringAdapter: () => ({ adapter: {}, catalog: wiring.catalogLoading ? [] : [entry], compatibility: undefined, catalogLoading: wiring.catalogLoading,
