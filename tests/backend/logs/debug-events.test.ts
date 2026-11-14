@@ -5,7 +5,7 @@ import { createDebugEventWriter, emitFaultWithCauses } from "../../../src/backen
 import { mirrorDebugEvent } from "../../../src/backend/storage/events/local-debug-log.js";
 import { PreflightObservationChangedError } from "../../../src/rules/preflight/preflight-admission.js";
 import { debugTimelineFixture as fixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
-import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
+import { RunIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { debugEventLevel } from "../../../src/models/events/timeline.js";
 const AT = new Date("2026-10-10T12:00:00.000Z");
@@ -136,6 +136,18 @@ describe("bounded native debug events", () => {
     assert.throws(() => writer.emit(event, scope), /debug-report-identity-conflict/u);
     assert.equal(records.length, 1);
     assert.equal(records[0]?.workflow, "person-lookup");
+  });
+  it("mirrors a run-scoped worker failure value-free with only its closed fields", () => {
+    const { records, repository } = fixture(); const lines: string[] = [];
+    const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test", development: true,
+      writeStderr: line => { lines.push(line); } });
+    const scope = { kind: "run" as const, runId: RunIdSchema.parse("00000000-0000-4000-8000-0000000000a1") };
+    writer.emit({ category: "worker", phase: "failed", area: "run-execution", reason: "run-failed", code: "TASK_FAILED", correlationId: "failure-1" },
+      scope, WorkflowIdSchema.parse("person-lookup"));
+    assert.equal(records.length, 1);
+    assert.deepEqual(JSON.parse(lines[0]), { time: AT.toISOString(), level: "error", category: "worker", phase: "failed", code: "TASK_FAILED",
+      area: "run-execution", reason: "run-failed", correlationId: "failure-1", scope, workflow: "person-lookup" });
+    assert.equal(/message|stack|cause/u.test(lines[0]), false);
   });
   it.each(["session", "duo", "worker", "http", "sse", "client", "boot"] as const)("writes %s once with source/build/time", category => {
     const { records, repository } = fixture();

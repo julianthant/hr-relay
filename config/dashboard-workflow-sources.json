@@ -1,6 +1,6 @@
 {
   "separations": "served",
-  "onboarding": "mock",
+  "onboarding": "served",
   "person-lookup": "served",
   "i9-lookup": "hidden",
   "work-study": "mock",

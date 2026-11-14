@@ -13,8 +13,7 @@ export function onboardingMasterResults(plan: z.infer<typeof OnboardingWritePlan
   if (writePlan.hire.mode === "new-hire" && (remote === null || hire.profileId !== remote.profileId
     || remote.startDate !== hire.effectiveDate || remote.email.toLowerCase() !== hire.email.toLowerCase())) throw new Error("master-hire-i9-receipts-disagree");
   if (writePlan.hire.mode === "rehire" && (remote !== null || hire.profileId !== null)) throw new Error("master-concurrent-hire-has-i9-write");
-  const cells = OnboardingRosterCellsSchema.parse({ transactionNumber: hire.transactionId, transactionApprovalStatus: hire.approvalStatus,
-    ...(hire.emplId === null ? {} : { eid: hire.emplId }), ...(remote === null ? {} : { i9ProfileId: remote.profileId }) });
+  const cells = OnboardingRosterCellsSchema.parse({ transactionNumber: hire.transactionId, ...(hire.emplId === null ? {} : { eid: hire.emplId }) });
   return WorkbookReferenceWriteSchema.parse({ kind: "patch-reference", writeId: "onboarding-results", typeId: ONBOARDING_ROSTER_TYPE_ID,
     referenceDigest: writePlan.roster.referenceDigest, key: writePlan.roster.rowKey.email,
     values: Object.entries(cells).map(([fieldId, value]) => ({ fieldId, value })) });

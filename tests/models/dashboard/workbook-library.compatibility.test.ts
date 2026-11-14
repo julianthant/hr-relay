@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { it } from 'vitest';
 import { WorkbookCompatibilitySchema, projectWorkbookCompatibility } from '../../../src/models/dashboard/workbook-library.js';
+import { onboardingWorkflow } from '../../../src/workflows/onboarding/workflow.js';
 
 it('evaluates each selected worksheet independently of type, name, blank values, and unrelated sheets', () => {
   const workflows = [
@@ -46,4 +47,19 @@ it('retains the whole ordered last-used set and marks any lost source stale', ()
     ...workflow, selectionState: 'available' })) }).success, false);
   assert.equal(WorkbookCompatibilitySchema.safeParse({ ...report, workflows: report.workflows.map(workflow => ({
     ...workflow, staleSources: [] })) }).success, false);
+});
+
+it('admits roster sheets mapped like the real Onboarding roster and names a missing result column', () => {
+  const { id, label, requiredWorkbookFields, workbookReference } = onboardingWorkflow;
+  if (workbookReference === undefined) throw new Error('Onboarding declares no workbook reference');
+  const mapped = (fieldIds: readonly string[]) => fieldIds.map((fieldId, column) => ({ fieldId, column, basis: 'header' as const }));
+  const nov9 = ['email', 'fullName', 'livedName', 'eid', 'transactionNumber', 'roster.i9Status', 'roster.readyForPayrollApproval'];
+  const report = projectWorkbookCompatibility([{ id, label, requiredWorkbookFields: [...requiredWorkbookFields], workbookReference }], [
+    { libraryId: 'roster', versionId: 'v1', origin: { kind: 'local' }, removed: false, sheets: [
+      { id: 'nov-9', name: 'Nov 9', mappings: mapped(nov9) },
+      { id: 'nov-16', name: 'Nov. 16', mappings: mapped(nov9.filter(fieldId => fieldId !== 'transactionNumber')) }] }]);
+  const [nov9Coverage, nov16Coverage] = report.libraries[0].sheets.map(sheet => sheet.workflows[0]);
+  assert.equal(nov9Coverage.status, 'compatible');
+  assert.equal(nov16Coverage.status, 'missing-fields');
+  assert.deepEqual(nov16Coverage.missingFields, ['transactionNumber']);
 });

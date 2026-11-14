@@ -5,6 +5,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import JSZip from "jszip";
 import { it } from "vitest";
+import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveEvidenceEntryId } from "../../../src/models/trust/evidence-identity.js";
 import type { AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
@@ -28,7 +30,8 @@ import { decodeWorkbookReference } from "../../../src/models/processing/workbook
 import { ReadCrmDocumentRows, CrmDocumentRowsSchema, CrmDocumentRowChoiceSchema } from "../../../src/models/workflows/crm-doc-download/read-document-rows.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { deriveGateResultCheckpointFingerprint } from "../../../src/models/workflow/gates.js";
-import { ONBOARDING_ROSTER_TYPE_ID, ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_NAME_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
+import { ONBOARDING_ROSTER_TYPE_ID } from "../../../src/models/workflows/onboarding/roster.js";
+import { CRM_DOCUMENT_ROSTER_FIELDS } from "../../../src/models/workflows/crm-doc-download/documents.js";
 import { WorkerIdSchema, WorkflowIdSchema, ActorIdSchema, FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
@@ -43,7 +46,8 @@ import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-s
 import { importWorkbook } from "../../../src/rules/spreadsheets/workbook-io.js";
 import { CRM_DOCUMENT_RECORDS_FIXTURE, crmDocumentWorkbookFixture } from "../../support/fixtures/crm-doc-download.js";
 
-async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-failed" | "cancelled" | "split", descriptor: AnyWorkflowDescriptor = crmDocDownloadModule.descriptor) {
+async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-failed" | "cancelled" | "split", descriptor: AnyWorkflowDescriptor = crmDocDownloadModule.descriptor,
+  inspect?: (world: { f: Awaited<ReturnType<typeof foundationFixture>>; runId: string; itemId: string }) => void) {
   const f = await foundationFixture(), controller = new AbortController();
   const world = createCommandKernelTestWorld();
   let manager: WorkerSessionManager | undefined, resources: ReturnType<typeof createRunResourcesFactory> | undefined;
@@ -56,7 +60,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
     const library = createWorkbookLibraryService({ repository: h.database.authority.workbooks, clock: f.clock, sync: unexpectedWorkbookSync });
     let libraryId: string, workbookReferences: { entry: number; libraryId: string; versionId: string; sheetId: string; expectedVersion: number }[];
     if (mode === "split") {
-      const headers = [...ONBOARDING_ROSTER_NAME_FIELDS];
+      const headers = [...CRM_DOCUMENT_ROSTER_FIELDS];
       const csvLibrary = async (name: string, dataRows: readonly (readonly string[])[]) => {
         const csv = [headers.join(","), ...dataRows.map(row => [...row, "", "", ""].join(","))].join("\n");
         const imported = await importWorkbook(name, new TextEncoder().encode(csv).buffer);
@@ -82,7 +86,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       if (mode === "missing") { const row = workbook.sheets[0]?.rows[1]; assert.ok(row); row.cells[0] = { value: "missing@example.test" }; }
       const saved = library.create(workbook);
       libraryId = saved.libraryId;
-      library.putType({ id: ONBOARDING_ROSTER_TYPE_ID, name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
+      library.putType({ id: ONBOARDING_ROSTER_TYPE_ID, name: "Onboarding roster", keyFieldId: "email", fields: [...CRM_DOCUMENT_ROSTER_FIELDS], defaultWorkbookId: null });
       library.operatorOperation(libraryId, "type", { kind: "metadata", expectedVersion: saved.version, metadata: { typeId: ONBOARDING_ROSTER_TYPE_ID, sharePoint: null } });
       workbookReferences = [{ entry: 1, libraryId, versionId: "original", sheetId: selectedSheet.id, expectedVersion: library.read(libraryId).version }];
     }
@@ -320,6 +324,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       }
       assert.equal(f.db.authority.generatedArtifacts.get(`sink:documents-file-${runId}`)?.state, "ready");
       assert.equal(f.db.authority.artifactOutbox.listPending().length, 0); assert.equal(downloads, 2);
+      inspect?.({ f, runId, itemId: entry.itemId });
     } else {
       assert.notEqual(result.state, "done");
       const retained = f.db.authority.runResults.get(runId);
@@ -343,3 +348,17 @@ it("authenticates batch choices in the retained reference step proof", () => {
   const proof = STEP_PROOF_MODULES.find(module => module.descriptor.id === "crm-doc-download-reference"); assert.ok(proof);
   return runCrm("ambiguous", proof.descriptor);
 });
+
+it("cites the document-rows verification, not an input fact, for the not-taken row-choice gate", () => runCrm("complete", crmDocDownloadModule.descriptor, ({ f, runId, itemId }) => {
+  const descriptor = crmDocDownloadModule.descriptor;
+  const run = f.db.authority.runs.get(runId); assert.ok(run?.lifecycle.state === "terminal");
+  const result = f.db.authority.runResults.get(runId); assert.ok(result);
+  const receipt = buildRunEvidenceReceipt({ descriptor, run, result, checkpoints: f.db.authority.runCheckpoints.listByItem(descriptor.id, itemId),
+    writes: [], gateResults: f.db.authority.gateResults.listByRun(runId) });
+  const decision = receipt.decisions.find(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "decision", "not-run.document-row-choice"));
+  assert.ok(decision?.kind === "branch" && decision.outcome === "not-taken");
+  const verification = deriveEvidenceEntryId(receipt.receiptId, "verification", "node.document-rows");
+  assert.deepEqual(decision.evidence, [`observation:${verification}`]);
+  assert.ok(receipt.verification.some(entry => entry.id === verification));
+  assert.ok(!decision.evidence.some(reference => receipt.input.some(fact => reference === `observation:${fact.id}`)));
+}));

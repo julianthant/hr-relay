@@ -36,9 +36,11 @@ const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_START_PICKER_BO
 function versionView(id: string) {
   const version = versions.find(value => value.id === id);
   if (version === undefined) throw new Error(`unknown fixture version ${id}`);
-  const cells = (values: readonly (string | null)[]) => ONBOARDING_ROSTER_FIELDS.map((_, index) => ({ value: values[index] ?? null }));
-  const data = id === 'roster-4' ? [] : [...ROW_EMAILS.map((email, index) => ({ id: ROW_IDS[index], cells: cells([email, 'Person', `Example ${index + 1}`, '']) })),
-    { id: 'blank', cells: cells(['', 'Missing', 'Key', '']) }];
+  const cells = (email: string, firstName: string, lastName: string) => ONBOARDING_ROSTER_FIELDS.map(field => ({
+    value: field === 'email' ? email : field === 'fullName' ? `${firstName} ${lastName}` : null,
+  }));
+  const data = id === 'roster-4' ? [] : [...ROW_EMAILS.map((email, index) => ({ id: ROW_IDS[index], cells: cells(email, 'Person', `Example ${index + 1}`) })),
+    { id: 'blank', cells: cells('', 'Missing', 'Key') }];
   return WorkbookLibraryVersionViewSchema.parse({ libraryId, version, workbook: { libraryId, name: 'Onboarding.xlsx', hasFormulas: false, themes: [],
     sheets: [{ id: 'people', name: id === 'roster-3' ? 'New people' : 'People', width: ONBOARDING_ROSTER_FIELDS.length, hidden: [], headerRow: 1,
       columnBindings: ONBOARDING_ROSTER_FIELDS.map((fieldId, index) => ({ id: `column-${index}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: 'manual' })),

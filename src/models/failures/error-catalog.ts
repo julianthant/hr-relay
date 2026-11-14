@@ -105,6 +105,7 @@ export const ERROR_CATALOG = Object.freeze({
   UCPATH_HIRE_REFUSED: catalogEntry("UCPath hire could not be verified. Review the retained evidence before continuing.", EmptyParametersSchema),
   I9_WRITE_REFUSED: catalogEntry("I-9 did not prove the intended identity, form or saved record. Review the retained evidence; an uncertain submission must not be retried.", EmptyParametersSchema),
   ONBOARDING_DATA_INVALID: catalogEntry("CRM hire data failed validation. Review the source fields and run overrides.", EmptyParametersSchema),
+  ONBOARDING_NAME_UNRESOLVED: catalogEntry("Relay cannot tell the first, middle and last name apart in this person's roster Legal Name or Lived Name. Write it in the roster as Last, First Middle, or add the middle name to the CRM record, then run again.", EmptyParametersSchema),
   ONBOARDING_MATCH_INVALID: catalogEntry("UCPath duplicate search returned inconsistent identity evidence.", EmptyParametersSchema),
   ONBOARDING_EXISTING_PERSON_REQUIRED: catalogEntry("Concurrent hire requires an existing UCPath person. Review the hire mode and source identity.", EmptyParametersSchema),
   ONBOARDING_I9_LOOKUP_UNRESOLVED: catalogEntry("The delegated I-9 lookup did not establish a result for this hire. No profile will be created.", EmptyParametersSchema),

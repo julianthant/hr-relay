@@ -1,4 +1,6 @@
 import { afterAll } from "vitest";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { DiagnosticBundleSchema } from "../../../../src/models/trust/diagnostic.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { lifecycleCommandId, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -17,6 +19,14 @@ afterAll(() => profiles.close());
 const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld(profiles.create);
 
 afterEach(cleanup);
+
+const RAW_DIAGNOSTIC = "ucpath:termination|10812345|2026-08-29";
+const failingUcpath = () => sessionFactoryHarness({
+  ucpath: () => ({ ...healthyUcpathDriver(), searchPersonOrg: (): Promise<never> => Promise.reject(new Error(RAW_DIAGNOSTIC)) }),
+  crm: () => healthyCrmDriver(),
+});
+const runDebugRecords = (database: { authority: { timelineEvents: { page(query: object): readonly { scope: { kind: string }; workflow?: string; payload: { kind: string } }[] } } }) =>
+  database.authority.timelineEvents.page({}).filter((record) => record.payload.kind === "debug" && record.scope.kind === "run");
 
 describe("failure, retry, and resume", () => {
   it("keeps arbitrary task failure detail unstamped in authority and out of the admitted task span", async () => {
@@ -52,6 +62,82 @@ describe("failure, retry, and resume", () => {
       "task ucpath/search-person-org failed; inspect its structured failure record",
     );
     assert.equal(JSON.stringify(failedTaskSpan).includes(rawDiagnostic), false);
+  });
+
+  it("records one run-scoped failure debug event for an admitted task failure, free of diagnostic text", async () => {
+    const harness = await executorHarness({ sessions: failingUcpath(), stores: registryWithUcpathSearch(directUcpathSearchFixtureTask) });
+    const { database, clock } = harness.authority;
+    const debugEvents = createDebugEventWriter({ repository: database.authority.timelineEvents, clock, build: "test" });
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+
+    const outcome = await executeClaimedRun({ ...harness.deps, debugEvents }, { ...claimed, signal: SIGNAL });
+    assert.equal(outcome.state, "failed");
+    const run = database.authority.runs.get(RUN_ID);
+    assert.ok(run?.lifecycle.state === "terminal");
+    const failure = run.lifecycle.failureId === undefined ? undefined : database.authority.failures.get(run.lifecycle.failureId);
+    assert.ok(failure);
+
+    const records = runDebugRecords(database);
+    assert.equal(records.length, 1);
+    const [record] = records;
+    assert.deepEqual(record?.scope, { kind: "run", runId: RUN_ID });
+    assert.equal(record?.workflow, claimed.run.envelope.workflow);
+    assert.ok(record?.payload.kind === "debug");
+    const { event } = record.payload as unknown as { event: Record<string, unknown> };
+    assert.equal(event.category, "worker");
+    assert.equal(event.phase, "failed");
+    assert.equal(event.area, "run-execution");
+    assert.equal(event.reason, "run-failed");
+    assert.equal(event.code, failure.code);
+    assert.equal(event.correlationId, failure.failureId);
+    assert.equal(event.message, undefined);
+    assert.equal(event.stack, undefined);
+    assert.equal(JSON.stringify(records).includes(RAW_DIAGNOSTIC), false);
+  });
+
+  it("records no failure debug event when the failure admission is lost", async () => {
+    const harness = await executorHarness({ sessions: failingUcpath(), stores: registryWithUcpathSearch(directUcpathSearchFixtureTask) });
+    const { database, clock } = harness.authority;
+    const debugEvents = createDebugEventWriter({ repository: database.authority.timelineEvents, clock, build: "test" });
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+    const lifecycle = { ...harness.deps.lifecycle, terminalize: (): ReturnType<typeof harness.deps.lifecycle.terminalize> => ({ state: "refused", refusal: { reason: "lost" } }) };
+
+    const outcome = await executeClaimedRun({ ...harness.deps, lifecycle, debugEvents }, { ...claimed, signal: SIGNAL });
+    assert.equal(outcome.state, "abandoned");
+    assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "running");
+    assert.deepEqual(runDebugRecords(database), []);
+  });
+
+  it.each(["append", "mirror"] as const)("keeps the committed failure and its bundle when the failure event %s faults, then raises the fault", async (fault) => {
+    const harness = await executorHarness({ sessions: failingUcpath(), stores: registryWithUcpathSearch(directUcpathSearchFixtureTask) });
+    const { database, clock } = harness.authority;
+    const timeline = database.authority.timelineEvents;
+    const debugEvents = fault === "append"
+      ? createDebugEventWriter({ repository: { ...timeline, append: (input: unknown) => {
+        if ((input as { payload: { kind: string } }).payload.kind === "debug") throw new Error("debug-append-fault");
+        return timeline.append(input);
+      } }, clock, build: "test" })
+      : createDebugEventWriter({ repository: timeline, clock, build: "test", development: true,
+        writeStderr: () => { throw new Error("debug-mirror-fault"); } });
+    const bundles = { persisted: 0, discarded: 0 };
+    const bundleId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const diagnostics: NonNullable<Parameters<typeof executeClaimedRun>[0]["diagnostics"]> = {
+      captureForFailure: async (context) => DiagnosticBundleSchema.parse({ bundleId, runId: RUN_ID,
+        origin: { kind: "failure", failureId: context.failure.failureId }, createdAt: clock.now().toISOString(), contentDigest: "a".repeat(64),
+        configFingerprint: context.configFingerprint, descriptorFingerprint: context.descriptorFingerprint,
+        redaction: { fields: [], warnings: [] }, attachments: [], retention: { kind: "pinned", reason: "write-recovery" } }),
+      persist: (bundle) => { bundles.persisted += 1; return bundle; },
+      discard: () => { bundles.discarded += 1; },
+    };
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+
+    await assert.rejects(executeClaimedRun({ ...harness.deps, debugEvents, diagnostics }, { ...claimed, signal: SIGNAL }), new RegExp(`debug-${fault}-fault`, "u"));
+    const run = database.authority.runs.get(RUN_ID);
+    assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed" && run.lifecycle.failureId !== undefined);
+    assert.equal(database.authority.failures.get(run.lifecycle.failureId)?.diagnosticBundleId, bundleId);
+    assert.ok(database.authority.runResults.get(RUN_ID));
+    assert.deepEqual(bundles, { persisted: 1, discarded: 0 });
+    assert.equal(runDebugRecords(database).length, fault === "append" ? 0 : 1);
   });
 
   it("rolls back an ordinary checkpoint when its required timeline event cannot persist", async () => {

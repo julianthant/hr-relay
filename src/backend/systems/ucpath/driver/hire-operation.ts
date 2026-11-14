@@ -76,10 +76,10 @@ export function createUcpathHireOperations(assertCurrent: () => void, page: Page
     async scanHireTransactions(raw) {
       const input = UcpathHireIdentitySchema.parse({ employee: raw.employee, expectedName: raw.expectedName }); staged = undefined;
       assertCurrent(); await page.goto(ui.searchUrl, { waitUntil: "domcontentloaded", timeout: BOUND_MS }); requireApp("search");
-      await ui.clear(page).click({ timeout: BOUND_MS });
-      for (const filter of ui.searchFilters(page)) if ((await filter.inputValue()).trim() !== "") throw new Error("ucpath-hire-search-filter-not-cleared");
+      for (const filter of [...ui.searchFilters(page), ui.searchName(page)]) if ((await filter.inputValue()).trim() !== "") throw new Error("ucpath-hire-search-filter-not-cleared");
       if (normalize(await ui.nameOperator(page).locator("option:checked").innerText()) !== "begins with" || await ui.caseSensitive(page).isChecked()) throw new Error("ucpath-hire-search-operator-refused");
       const searchName = `${input.employee.firstName} ${input.employee.lastName}`;
+      const requireInKey = (name: string) => { if (!normalize(name).startsWith(normalize(searchName))) throw new Error("ucpath-hire-search-result-outside-key"); };
       await ui.searchName(page).fill(searchName, { timeout: BOUND_MS });
       if (await ui.searchName(page).inputValue() !== searchName) throw new Error("ucpath-hire-search-key-mismatch");
       if (await ui.rows(page).count() !== 0 || await ui.transactionId(page).count() !== 0 || await ui.empty(page).count() !== 0) throw new Error("ucpath-hire-stale-search-markers");
@@ -93,7 +93,7 @@ export function createUcpathHireOperations(assertCurrent: () => void, page: Page
         observedAt: clock.now().toISOString(), source: "ss-smart-hr-list-and-detail" });
       if (states[2]) return result([], "complete");
       if (states[1]) {
-        const only = await readDetail();
+        const only = await readDetail(); requireInKey(only.displayedName);
         await ui.back(page).click({ timeout: BOUND_MS });
         const counter = await visible(ui.counter(page));
         if (counter !== "1-1 of 1" || await ui.rows(page).count() !== 1 || await visible(ui.rowId(page, 0)) !== only.transactionId) throw new Error("ucpath-hire-single-detail-membership-unverified");
@@ -111,6 +111,7 @@ export function createUcpathHireOperations(assertCurrent: () => void, page: Page
         if (await ui.rows(page).count() !== count) throw new Error("ucpath-hire-list-incomplete");
       };
       await completeList();
+      for (let index = 0; index < count; index++) requireInKey(await visible(ui.rowName(page, index)));
       const ids: string[] = [];
       for (let index = 0; index < count; index++) ids.push(await visible(ui.rowId(page, index)));
       if (new Set(ids).size !== count) throw new Error("ucpath-hire-list-duplicate-id");

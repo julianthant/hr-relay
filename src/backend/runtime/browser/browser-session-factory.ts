@@ -89,7 +89,7 @@ export interface BrowserSessionFactoryOptions {
   readonly onAuthenticationEvidence?: (evidence: AuthenticatedApplicationEvidence) => void;
 
   readonly onNavigation?: (url: string) => void;
-  readonly onDebug?: (workerId: WorkerId, event: Pick<DebugEvent, "phase" | "correlationId"> & Partial<Pick<DebugEvent, "code" | "durationMs" | "pinned" | "message" | "stack" | "reason">>) => void;
+  readonly onDebug?: (workerId: WorkerId, event: Pick<DebugEvent, "phase" | "correlationId"> & Partial<Pick<DebugEvent, "code" | "durationMs" | "pinned" | "message" | "stack" | "reason" | "area">>) => void;
 }
 
 /** Resolved once per authentication; never logged, never interpolated. */
@@ -137,6 +137,19 @@ function bindingFor(bindings: BrowserSystemBindings, system: BrowserSystemId): B
     );
   }
   return binding;
+}
+
+// A Playwright message starts "<object>.<method>: [<Class>: ]", and the page chooses the class text; only these fixed names leave it.
+const PLAYWRIGHT_OBJECTS = new Set(["page", "frame", "locator", "elementHandle", "jsHandle", "browserContext"]);
+const PLAYWRIGHT_METHODS = new Set(["evaluate", "evaluateAll", "evaluateHandle", "screenshot", "setViewportSize", "waitForTimeout", "count",
+  "cookies", "isVisible", "waitFor", "inputValue", "textContent", "frameElement", "goto"]);
+const PAGE_ERROR_CLASSES = new Set(["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "EvalError", "URIError", "AggregateError"]);
+function playwrightCall(error: unknown): string | undefined {
+  const match = error instanceof Error ? /^([A-Za-z]+)\.([A-Za-z]+): (?:([A-Za-z]+): )?/u.exec(error.message) : null;
+  if (match === null) return undefined;
+  const [, object, method, errorClass] = match;
+  const call = PLAYWRIGHT_OBJECTS.has(object) && PLAYWRIGHT_METHODS.has(method) ? `${object}-${method}`.toLowerCase() : "unknown-call";
+  return errorClass === undefined ? call : `${call}-${PAGE_ERROR_CLASSES.has(errorClass) ? errorClass.toLowerCase() : "page-error"}`;
 }
 
 export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFactory {
@@ -329,11 +342,20 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             if (!proof.authenticated) return unavailable("authentication-unverified");
             const frames = page.frames();
             const secretControls = 'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete="current-password"], input[autocomplete="new-password"]';
+            // The capture observer watches only the light DOM, so an unpainted control is tolerated there alone.
+            const secretPresent = async (frame: Frame): Promise<boolean> => {
+              assertCurrent();
+              const painted = await frame.locator(secretControls).filter({ visible: true }).count();
+              assertCurrent();
+              if (painted > 0) return true;
+              const reachable = await frame.locator(secretControls).count();
+              assertCurrent();
+              const watched = await frame.evaluate(selector => document.querySelectorAll(selector).length, secretControls);
+              assertCurrent();
+              return reachable !== watched;
+            };
             for (const frame of frames) {
-              assertCurrent();
-              const count = await frame.locator(secretControls).count();
-              assertCurrent();
-              if (count > 0) return unavailable("secret-controls-present");
+              if (await secretPresent(frame)) return unavailable("secret-controls-present");
             }
             if (pageVersion !== version) return unavailable("page-changed");
             const capture = await captureFullPage(page, {
@@ -351,10 +373,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
                 assertCurrent();
                 if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
                 for (const frame of page.frames()) {
-                  assertCurrent();
-                  const count = await frame.locator(secretControls).count();
-                  assertCurrent();
-                  if (count > 0) throw new FullPageCaptureRefusedError("secret-controls-present");
+                  if (await secretPresent(frame)) throw new FullPageCaptureRefusedError("secret-controls-present");
                 }
                 if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
               },
@@ -362,10 +381,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             assertCurrent();
             if (pageVersion !== version) return unavailable("page-changed");
             for (const frame of frames) {
-              assertCurrent();
-              const count = await frame.locator(secretControls).count();
-              assertCurrent();
-              if (count > 0) return unavailable("secret-controls-present");
+              if (await secretPresent(frame)) return unavailable("secret-controls-present");
             }
             if (pageVersion !== version) return unavailable("page-changed");
             return Object.freeze({ ...identity, state: "available", ...capture, diagnosticAttachments: diagnostics.snapshot() });
@@ -374,9 +390,10 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             assertCurrent();
             if (error instanceof FullPageCaptureRefusedError) return unavailable(error.reason);
             if (pageVersion !== version) return unavailable("page-changed");
-            for (const cause of serializeErrorCauses(error)) {
+            const call = playwrightCall(error);
+            for (const [index, cause] of serializeErrorCauses(error).entries()) {
               this.#options.onDebug?.(workerId, { phase: "failed", correlationId: sessionId,
-                reason: "capture-cause", code: cause.code, message: cause.name, stack: cause.stack });
+                reason: "capture-cause", code: cause.code, message: cause.name, stack: cause.stack, ...(index === 0 && call !== undefined ? { area: call } : {}) });
             }
             return unavailable("verification-failed");
           }
@@ -427,7 +444,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         },
         reset: async (resetInput): Promise<void> => {
           assertCurrent();
-          await this.#resetToNeutralState(binding, page, instance, label, resetInput.signal, assertCurrent, recordEvidence);
+          try { await this.#resetToNeutralState(binding, page, instance, label, resetInput.signal, assertCurrent, recordEvidence); }
+          catch (error) { emit("failed", "session-reset-failed"); throw error; }
           emit("reset");
         },
         close: async (closeInput): Promise<BrowserSessionCloseProof> => {

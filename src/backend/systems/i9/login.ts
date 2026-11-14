@@ -50,6 +50,10 @@ async function dismissTraining(context: SystemLoginContext): Promise<void> {
     await run(() => ui.confirmTraining(page).click({ timeout: config.timeouts.navigationMs }));
     recordBrowserAction("clicked", "i9.training.confirm");
   }
+  // The training notice renders Search Options too, so only leaving its route proves the dismissal.
+  if (/training/iu.test(new URL(page.url()).pathname)) {
+    await run(() => page.waitForURL(url => isAuthenticatedI9Url(url.href), { timeout: config.timeouts.navigationMs }));
+  }
   await run(() => ui.searchOptions(page).waitFor({ state: "visible", timeout: config.timeouts.navigationMs }));
 }
 

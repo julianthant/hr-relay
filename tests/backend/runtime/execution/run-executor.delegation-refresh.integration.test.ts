@@ -161,6 +161,11 @@ for (const scenario of ["blank","group","replace","empty"] as const) it(`authent
   assert.equal(revised.children.length,scenario === "empty" ? 0 : 1);
   assert.notEqual(revised.invocationCommandId,original.invocationCommandId);
   assert.equal(revised.manifest.revision?.previousManifestId,original.manifest.manifestId);
+  const joinEnds = f.database.authority.timelineEvents.page({ runId: parent.envelope.runId, limit: 1000 }).flatMap(({ payload }) =>
+    payload.kind === "span" && payload.event.t === "span.ended" && payload.event.kind === "task" && payload.event.spanPath.startsWith(`${parent.envelope.traceId}/lookups#`) ? [payload.event] : []);
+  assert.deepEqual(joinEnds.map(end => end.outcome),["done",scenario === "empty" ? "skipped" : "done"],"each lookups manifest records its own settlement once");
+  assert.equal(joinEnds[0]?.ts,joinEnds[1]?.ts,"the refreshed manifest settles at the same instant as the earlier one");
+  assert.deepEqual(joinEnds.map(end => end.spanPath.slice(end.spanPath.lastIndexOf("#join-") + "#join-".length)),[original.manifest.manifestId,revised.manifest.manifestId]);
   if (scenario === "blank") {
     assert.equal(revised.manifest.manifestFingerprint,original.manifest.manifestFingerprint);
     assert.deepEqual(revised.children[0],previous);

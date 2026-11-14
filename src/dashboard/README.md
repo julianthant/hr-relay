@@ -48,7 +48,7 @@ from their subfolders. Canonical wire contracts live under `src/models/dashboard
 live under `src/rules/commands/`. Browser imports never reach backend composition or task registries.
 
 `app/workflow-sources.ts` reads `config/dashboard-workflow-sources.json`. Each workflow is explicitly
-`mock`, `served` or `hidden`. Person Lookup, Separations and the public I-9 Check PDF parent select `served`.
+`mock`, `served` or `hidden`. Person Lookup, Separations, Onboarding and the public I-9 Check PDF parent select `served`.
 OCR and I-9 Lookup are hidden children. The I-9 Check person child has no source entry.
 Other configured workflows select `mock`. An undeclared ID throws `WORKFLOW_SOURCE_UNDECLARED`.
 A served failure never falls back to a mock. I-9 Check's live acceptance is blocked pending the

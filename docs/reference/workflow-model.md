@@ -68,10 +68,13 @@ the approved EIDs. Its run-bound read uses those late keys against the captured 
 retaining the original version label and worksheet/row coordinates. Confirm lists every PDF and one
 results workbook with one row per person after review.
 
-Onboarding maps the exact requested email key and seven fields: `email`, `firstName`, `lastName`,
-`middleName`, `roster.livedFirstName`, `roster.livedLastName` and `roster.livedMiddleName`.
-All three lived-name cells must be null for explicit absence; otherwise all three must contain valid
-name strings. A single `livedName` cell is never split. The public planner refuses supplied roster
+Onboarding maps the exact requested email key and five required fields: `email`, `fullName` (Legal
+Name), `livedName` (Lived Name), `eid` and `transactionNumber`. It reads the two name cells as whole,
+whitespace-collapsed strings; a blank Lived Name means no lived name, and a blank Legal Name refuses
+the row. The `hire-plan` task splits both names against the CRM first, middle and last name and accepts
+only a split the roster's own `Last, First Middle` comma or a CRM name proves; any other name fails
+with `ONBOARDING_NAME_UNRESOLVED` before the UCPath search. Only `eid` and `transactionNumber` are
+written back; I-9 profile ID and approval status stay in the run result. The public planner refuses supplied roster
 values and builds required canonical roster input from the one captured reference. With `selectedRow`,
 the server derives and checks the email from that retained physical row and binds its typed names.
 Execution authentication rebinds from the selector in the retained reference request, never from the

@@ -10,7 +10,8 @@ import { readWorkbookReferenceTask } from "../../../src/backend/processing/workb
 import { ReadWorkbookReference, WorkbookReferenceReadRequestSchema, decodeWorkbookReference } from "../../../src/models/processing/workbooks/read-reference.js";
 import { RunWorkbookNamedReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
-import { ONBOARDING_ROSTER_NAME_FIELDS, ONBOARDING_ROSTER_TYPE_ID } from "../../../src/models/workflows/onboarding/roster.js";
+import { ONBOARDING_ROSTER_TYPE_ID } from "../../../src/models/workflows/onboarding/roster.js";
+import { CRM_DOCUMENT_ROSTER_FIELDS } from "../../../src/models/workflows/crm-doc-download/documents.js";
 import { crmDocumentReferenceKeys, resolveCrmDocumentRows } from "../../../src/rules/crm-doc-download/reference.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { createTaskProvenanceCollector } from "../../../src/backend/runs/provenance/task-provenance.js";
@@ -41,7 +42,7 @@ async function fixture(duplicate = false) {
   service.putType({ ...reference.snapshot.type, defaultWorkbookId: workbook.libraryId });
   await service.libraryAction(workbook.libraryId, { operationId: "older", expectedRevision: repository.libraryState(workbook.libraryId).revision,
     expectedVersion: service.read(workbook.libraryId).version, change: { kind: "create-version", name: "Earlier named roster", from: { kind: "version", versionId: "original" }, useNow: false } }, signal);
-  const request = { typeId: ONBOARDING_ROSTER_TYPE_ID, libraryId: workbook.libraryId, versionId: "older", keys: ["two@example.test"], fields: [...ONBOARDING_ROSTER_NAME_FIELDS] };
+  const request = { typeId: ONBOARDING_ROSTER_TYPE_ID, libraryId: workbook.libraryId, versionId: "older", keys: ["two@example.test"], fields: [...CRM_DOCUMENT_ROSTER_FIELDS] };
   const bound = { schemaHash: deriveSchemaHash(RunWorkbookNamedReferenceSchema, "output"), value: RunWorkbookNamedReferenceSchema.parse({ request, snapshot: repository.snapshot(request) }) };
   const command = { typeId: ONBOARDING_ROSTER_TYPE_ID, keys: crmDocumentReferenceKeys(CRM_DOCUMENT_RECORDS_FIXTURE) };
   return { database, repository, clock, service, workbook, bound, command };

@@ -28,7 +28,7 @@ function entryUrl(config: Config, system: BrowserSystemId): string {
     case "onbase": return config.urls.onbase.prod.entry;
     case "kuali": return config.urls.kuali.prod.entry;
     case "servicenow": return config.urls.servicenow.prod.entry;
-    case "i9": return config.urls.i9.prod.entry;
+    case "i9": return config.urls.i9.prod.app;
     case "new-kronos": return config.urls.newKronos.prod.entry;
     case "old-kronos": return config.urls.oldKronos.prod.entry;
     case "sharepoint": return config.urls.sharepoint.prod.entry;
@@ -55,7 +55,7 @@ export function resolveSystemEntryUrl(
   return entryUrl(config, system);
 }
 
-/** UCPath login enters through its portal before navigating a task route. */
+/** UCPath login enters through its portal and I-9 login through its UCOP launch page; each then works in its application. */
 export function resolveSystemLoginUrl(
   config: Config,
   system: BrowserSystemId,
@@ -63,7 +63,7 @@ export function resolveSystemLoginUrl(
   context: string,
 ): string {
   if (instance !== "prod") throw new Error(`${context} requested a retired test instance for ${system}`);
-  return system === "ucpath" ? config.urls.ucpath.prod.login : entryUrl(config, system);
+  return system === "ucpath" ? config.urls.ucpath.prod.login : system === "i9" ? config.urls.i9.prod.entry : entryUrl(config, system);
 }
 
 export function resolveInstances(

@@ -11,6 +11,7 @@ import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { i9LookupWorkflow } from "../../../i9-lookup/workflow.js";
 import { buildCrmData } from "../crm-data/step.js";
 import { buildUcpathSearch } from "../ucpath-search/step.js";
+import { hireReviewChoices } from "../../../../rules/onboarding/match-hire-subject.js";
 
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "i9-search", label: "Search I-9 profiles" }),
@@ -32,8 +33,9 @@ export function buildI9Search(author: WorkflowAuthor<typeof OnboardingInput>, cr
     step: group, id: "i9-lookup-child", target, edgeId: "onboarding-i9-lookup",
     cardinality: "many", await: "terminal", join: "all-settled",
     policy: { onChildFailed: "allow-partial", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" },
-  }, [crm.plan, ucpath.subject], {
-    bind: ({ outputs }) => outputs["hire-subject"].state === "new-hire" ? [i9LookupInput(outputs["hire-plan"])] : [],
+  }, [crm.plan, ucpath.matches, ucpath.subject], {
+    // Look up the I-9 profile whenever the operator may still choose a new hire.
+    bind: ({ input, outputs }) => hireReviewChoices(input.mode, outputs["ucpath-source"], outputs["hire-plan"].employee).newHire ? [i9LookupInput(outputs["hire-plan"])] : [],
     deriveChildItemId: input => i9LookupItemId(input),
   });
   const lookup = author.task(entries.task("i9-lookup", OnboardingReadI9Lookup, { replay: "checkpoint" }), [crm.plan, ucpath.subject, child], ({ outputs }) => ({

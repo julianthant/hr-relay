@@ -1,14 +1,12 @@
 import { z } from "zod";
 import { CANONICAL_FIELDS } from "../../fields/registry.js";
+import { collapseWhitespace } from "../../fields/cell-coercion.js";
 import { containsDryRunSample } from "../../workflow/dry-run.js";
 import { IsoInstantSchema, FingerprintSchema, RunIdSchema } from "../../../rules/identity/ids.js";
 import { WorkbookIdSchema } from "../../dashboard/workbooks.js";
 import { UcpathTransactionReceiptSchema } from "../../ui/ucpath-ss-smart-hr.js";
 
-const namePart = z.string().min(1).refine(value => value.trim() === value);
-const RosterPersonNameSchema = z.strictObject({
-  firstName: namePart, lastName: namePart, middleName: z.string().refine(value => value.trim() === value),
-});
+const RosterNameCellSchema = z.string().min(1).refine(value => collapseWhitespace(value) === value);
 
 export const OnboardingRosterRowKeySchema = z.strictObject({ email: z.email() });
 
@@ -24,14 +22,13 @@ export const OnboardingRosterBindingSchema = OnboardingRosterReferenceBindingSch
 
 export const ONBOARDING_ROSTER_TYPE_ID = "onboarding-roster";
 export const ONBOARDING_ROSTER_GATE_ID = "roster-choice";
-export const ONBOARDING_ROSTER_NAME_FIELDS = ["email", "firstName", "lastName", "middleName",
-  "roster.livedFirstName", "roster.livedLastName", "roster.livedMiddleName"] as const;
-export const ONBOARDING_ROSTER_OUTPUT_FIELDS = ["eid", "i9ProfileId", "transactionNumber", "transactionApprovalStatus"] as const;
+export const ONBOARDING_ROSTER_NAME_FIELDS = ["email", "fullName", "livedName"] as const;
+export const ONBOARDING_ROSTER_OUTPUT_FIELDS = ["eid", "transactionNumber"] as const;
 export const ONBOARDING_ROSTER_FIELDS = [...ONBOARDING_ROSTER_NAME_FIELDS, ...ONBOARDING_ROSTER_OUTPUT_FIELDS] as const;
 
 export const OnboardingRosterSnapshotRowSchema = z.strictObject({
   binding: OnboardingRosterBindingSchema,
-  references: z.strictObject({ legalName: RosterPersonNameSchema, livedName: RosterPersonNameSchema.nullable() }),
+  references: z.strictObject({ legalName: RosterNameCellSchema, livedName: RosterNameCellSchema.nullable() }),
 });
 
 export const OnboardingRosterChoiceSchema = z.strictObject({
@@ -51,10 +48,5 @@ export const OnboardingRosterReadOutputSchema = z.discriminatedUnion("state", [
 ]);
 
 export const OnboardingRosterCellsSchema = z.strictObject({
-  eid: CANONICAL_FIELDS.eid.schema.optional(), i9ProfileId: CANONICAL_FIELDS.i9ProfileId.schema.optional(),
-  transactionNumber: UcpathTransactionReceiptSchema.optional(),
-  transactionApprovalStatus: CANONICAL_FIELDS.transactionApprovalStatus.schema.optional(),
-}).refine(cells => Object.values(cells).some(value => value !== undefined), "a roster fill needs at least one result cell")
-  .refine(cells => (cells.transactionNumber === undefined) === (cells.transactionApprovalStatus === undefined),
-    "transaction number and approval status must be supplied together")
-  .refine(cells => !containsDryRunSample(cells), "Preview samples cannot fill a master cell");
+  eid: CANONICAL_FIELDS.eid.schema.optional(), transactionNumber: UcpathTransactionReceiptSchema,
+}).refine(cells => !containsDryRunSample(cells), "Preview samples cannot fill a master cell");

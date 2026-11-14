@@ -16,6 +16,9 @@ import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/br
 import { fixtureDuoSigningSource, fixtureWorkflowWorker } from "../../../support/helpers/browser/duo-signing.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 import { BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
+import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { debugTimelineFixture } from "../../../support/helpers/backend/debug-timeline-fixture.js";
 
 describe("browser current-owner fence", () => {
   const clock = manualClock(new Date("2026-11-01T12:00:00Z"));
@@ -57,6 +60,49 @@ describe("browser current-owner fence", () => {
           message: "TypeError", stack: "TypeError\n    at src/backend/systems/crm/session.ts:42:7" }]);
         assert.equal(/Quillan|Petra|private|fictional/u.test(JSON.stringify(debug)), false);
       } finally { await resource.close({ reason: "worker-stop" }); }
+    });
+  });
+
+  it("names the failed Playwright call and page error class on the capture cause from fixed names only", async () => {
+    for (const [message, area] of [
+      ["frame.evaluate: ReferenceError: __name is not defined", "frame-evaluate-referenceerror"],
+      ["frame.evaluate: QuillanPrivateError: synthetic private text", "frame-evaluate-page-error"],
+      ["quillanPrivate.petraCall: TypeError: synthetic private text", "unknown-call-typeerror"],
+      ["frame.evaluate: Execution context was destroyed by Quillan", "frame-evaluate"],
+    ] as const) {
+      await fixtures.withTempRuntime(async ({ config }) => {
+        const native = fixtures.fakeLauncher(), owner = epoch();
+        const { records, repository } = debugTimelineFixture();
+        const mirrored: string[] = [];
+        const writer = createDebugEventWriter({ repository, clock, build: "test", development: true, writeStderr: line => { mirrored.push(line); } });
+        const factory = new PlaywrightWorkerSessionFactory({ ...options(config, native, owner.assertCurrent),
+          bindings: fixtures.recordingBindings({ verify: async () => { throw new Error(message); } }),
+          onDebug: (debugWorkerId, event) => { writer.emit({ category: "session", ...event }, { kind: "worker", workerId: debugWorkerId }); } });
+        const resource = await factory.open(input);
+        try {
+          const capture = await resource.screenshot!();
+          assert.equal(capture.state === "unavailable" ? capture.reason : capture.state, "verification-failed");
+          const causes = records.flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "capture-cause" ? [record.payload.event] : []);
+          assert.deepEqual(causes.map(event => event.area), [area], message);
+          assert.equal(mirrored.some(line => line.includes(`"area":"${area}"`)), true, message);
+          assert.equal(/quillan|petra|private/iu.test(JSON.stringify(records) + mirrored.join("")), false, message);
+        } finally { await resource.close({ reason: "worker-stop" }); }
+      });
+    }
+  });
+
+  it("names a failed neutral reset apart from a failed sign-in", async () => {
+    await fixtures.withTempRuntime(async ({ config }) => {
+      const native = fixtures.fakeLauncher(), owner = epoch();
+      const debug: Array<{ phase: string; code?: string }> = [];
+      const factory = new PlaywrightWorkerSessionFactory({ ...options(config, native, owner.assertCurrent),
+        bindings: fixtures.recordingBindings({ verify: fixtures.verifierFor({ authenticated: false, reason: "the launch page is not the application" }).verify }),
+        onDebug: (_worker, event) => { debug.push(event); } });
+      const resource = await factory.open(input);
+      try {
+        await assert.rejects(resource.reset({ signal: new AbortController().signal }), BrowserLoginError);
+        assert.deepEqual(debug.filter(event => event.phase === "failed").map(event => event.code), ["session-reset-failed"]);
+      } finally { await resource.close({ reason: "poisoned" }); }
     });
   });
 

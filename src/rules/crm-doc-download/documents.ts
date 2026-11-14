@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { collapseWhitespace, titleCasePersonName } from "../../models/fields/cell-coercion.js";
 import { NamedArtifactFileNameSchema } from "../../models/artifacts/artifacts.js";
-import { OnboardingRosterSnapshotRowSchema } from "../../models/workflows/onboarding/roster.js";
+import { CrmRosterNamesSchema } from "../../models/workflows/crm-doc-download/documents.js";
 import type { CrmDocumentIdentity, CrmDocumentSubject } from "../../models/systems/crm/documents.js";
 
 export function matchesCrmDocumentSubject(subject: CrmDocumentSubject, identity: CrmDocumentIdentity): boolean {
@@ -9,8 +9,8 @@ export function matchesCrmDocumentSubject(subject: CrmDocumentSubject, identity:
     : [identity.workEmail, identity.personalEmail].some(email => email !== null && email.toLowerCase() === subject.value.toLowerCase());
 }
 
-export function crmDocumentFolderName(input: z.input<typeof OnboardingRosterSnapshotRowSchema.shape.references>): string {
-  const { legalName, livedName } = OnboardingRosterSnapshotRowSchema.shape.references.parse(input);
+export function crmDocumentFolderName(input: z.input<typeof CrmRosterNamesSchema>): string {
+  const { legalName, livedName } = CrmRosterNamesSchema.parse(input);
   let rawFirst = collapseWhitespace(legalName.firstName), rawMiddle = legalName.middleName;
   const space = rawFirst.indexOf(" ");
   if (rawMiddle === "" && space !== -1) { rawMiddle = rawFirst.slice(space + 1); rawFirst = rawFirst.slice(0, space); }

@@ -140,14 +140,15 @@ describe_m1("frontend workflow catalog", () => {
       expect_m1(entries.find(entry => entry.id === "person-lookup")?.source).toBe("preview");
     }
   });
-  it_m1("retains explicit mock fixtures while production serves I-9 Check and hides child workflows", () => {
+  it_m1("retains explicit mock fixtures while production serves Onboarding and I-9 Check and hides child workflows", () => {
     const listed = Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source !== "hidden").map(([id]) => id).sort();
     expect_m1(MOCK_WORKFLOW_CATALOG_m1.workflows.filter(flow => WORKFLOW_SOURCES_m1[flow.id] !== "hidden").map(flow => flow.id).sort()).toEqual(listed);
     expect_m1(listed).toEqual(catalog.map(entry => entry.id).sort());
-    expect_m1(Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source === "served").map(([id]) => id)).toEqual(["separations", "person-lookup", "i9-check-start"]);
+    expect_m1(Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source === "served").map(([id]) => id)).toEqual(["separations", "onboarding", "person-lookup", "i9-check-start"]);
     const product = buildWorkflowCatalog_m1(served, true);
     expect_m1(product.find(entry => entry.id === "separations")).toMatchObject({ source: "served" });
     expect_m1(product.find(entry => entry.id === "person-lookup")).toMatchObject({ source: "served" });
+    expect_m1(product.find(entry => entry.id === "onboarding")).toMatchObject({ source: "served", launch: { state: "served" } });
     expect_m1(product.find(entry => entry.id === "i9-check-start")).toMatchObject({ source: "served", launch: { state: "served" } });
     expect_m1(product.find(entry => entry.id === "i9-lookup")).toBeUndefined();
     expect_m1(product.find(entry => entry.id === "i9-check")).toBeUndefined();
@@ -157,7 +158,8 @@ describe_m1("frontend workflow catalog", () => {
     expect_m1(explorerRecoveryWorkflow_m1(product)).toBe("separations");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("separations", false)).toBe("served");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("separations", true)).toBe("served");
-    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("onboarding", false)).toBe("mock");
+    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("onboarding", false)).toBe("served");
+    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("onboarding", true)).toBe("served");
     for (const preview of [false, true]) {
       expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("i9-check-start", preview)).toBe("served");
       expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("i9-lookup", preview)).toBe("hidden");

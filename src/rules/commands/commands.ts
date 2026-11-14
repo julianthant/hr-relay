@@ -346,6 +346,16 @@ export const IdentityGateAnswerRequestSchema = z.strictObject({
 });
 export type IdentityGateAnswerRequest = z.infer<typeof IdentityGateAnswerRequestSchema>;
 
+/** The dashboard's answer to a served gate-arm decision: ingress composes the gate result from the run's own evidence. */
+export const GateArmAnswerRequestSchema = z.strictObject({
+  ...CommandEnvelopeFields,
+  family: z.literal("gate"),
+  type: z.literal("answer-gate-arm"),
+  target: GateCommandRequestSchema.shape.target,
+  payload: z.strictObject({ arm: z.string().min(1), rowId: z.string().min(1).optional() }),
+});
+export type GateArmAnswerRequest = z.infer<typeof GateArmAnswerRequestSchema>;
+
 export const OcrReviewCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("ocr-review"), type: z.literal("correct-ocr-record"),
     target: z.strictObject({ runId: RunIdSchema, expectedRevision: PositiveIntSchema }),
@@ -994,7 +1004,7 @@ export function commandAssistantAvailability(isActive: (family: string, action: 
 export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>;
 export type CommandRequest = z.infer<typeof CommandRequestSchema>;
 /** What the dashboard may send to `/api/v1/commands`: a kernel command, or an identity answer ingress resolves into one. */
-export const DashboardCommandRequestSchema = z.union([CommandRequestSchema, IdentityGateAnswerRequestSchema]);
+export const DashboardCommandRequestSchema = z.union([CommandRequestSchema, IdentityGateAnswerRequestSchema, GateArmAnswerRequestSchema]);
 export type DashboardCommandRequest = z.infer<typeof DashboardCommandRequestSchema>;
 /** Start, or a run command that leaves work queued for a worker of its workflow; only these may carry workerStartup. */
 export type CapacityRequest = Extract<CommandRequest, { family: "start" } | { family: "run" }>;

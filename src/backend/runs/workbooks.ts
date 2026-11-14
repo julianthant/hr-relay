@@ -505,7 +505,7 @@ function completeCrmReferenceChoice(data: CrmRows, selections: ReadonlyMap<strin
   }) });
 }
 
-const FIELD_LABELS: Readonly<Record<string, string>> = { email: "Email", firstName: "First name", lastName: "Last name", middleName: "Middle name",
+const FIELD_LABELS: Readonly<Record<string, string>> = { email: "Email", fullName: "Legal name", livedName: "Lived name", firstName: "First name", lastName: "Last name", middleName: "Middle name",
   "roster.livedFirstName": "Lived first name", "roster.livedLastName": "Lived last name", "roster.livedMiddleName": "Lived middle name" };
 
 type PickCandidate = Readonly<{ sheetId: string; rowId: string; label: string; rowNumber?: number;
@@ -639,17 +639,10 @@ function buildReferenceChoices(repositories: AuthorityRepositories, run: RunReco
   if (choice !== undefined) {
     const { row } = choice;
     const { legalName, livedName } = row.references;
-    const values = [
-      { fieldId: "email", value: row.binding.rowKey.email },
-      { fieldId: "firstName", value: legalName.firstName }, { fieldId: "lastName", value: legalName.lastName },
-      { fieldId: "middleName", value: legalName.middleName },
-      { fieldId: "roster.livedFirstName", value: livedName === null ? null : livedName.firstName },
-      { fieldId: "roster.livedLastName", value: livedName === null ? null : livedName.lastName },
-      { fieldId: "roster.livedMiddleName", value: livedName === null ? null : livedName.middleName },
-    ];
+    const values = [{ fieldId: "email", value: row.binding.rowKey.email }, { fieldId: "fullName", value: legalName }, { fieldId: "livedName", value: livedName }];
     const sheet = reference.value.snapshot.worksheets.find(sheet => sheet.sheetId === row.binding.sheetId);
     if (sheet === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
-    const label = `${sheet.name} · ${legalName.lastName}, ${legalName.firstName}`;
+    const label = `${sheet.name} · ${legalName}`;
     return [{ ...base, native: choice.gate.runId === run.envelope.runId ? choice.native : queuedReferenceNative(repositories, run),
       resolution: { state: "resolved", workbookVersion: row.binding.workbookVersion, resolvedAt: choice.gate.resolvedAt,
       selected: { sheetId: row.binding.sheetId, rowId: row.binding.rowId, label, values,

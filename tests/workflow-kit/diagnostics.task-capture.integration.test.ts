@@ -6,6 +6,7 @@ import { taskStoreRegistry } from "../../src/backend/app/registries/task-registr
 import type { WorkerBrowserSessionFactory, BrowserScreenshotEvidence } from "../../src/workflow-kit/session.js";
 import type { RunBrowserScreenshotCapture } from "../../src/workflow-kit/diagnostics.js";
 import { TaskError } from "../../src/workflow-kit/errors.js";
+import { failureDebugDetails } from "../../src/backend/runtime/execution/run-failure.js";
 import { BrowserSessionIdSchema, FingerprintSchema, WorkerIdSchema, WorkflowIdSchema, taskId } from "../../src/rules/identity/ids.js";
 import { manualClock } from "../../src/rules/time/clock.js";
 import { fixtureDuoCeremonyGates } from "../support/helpers/duo-ceremony-fixtures.js";
@@ -103,6 +104,8 @@ describe("task-owned screenshots", () => {
       assert.ok(primary instanceof TaskError);
       assert.equal(primary.code, "BROWSER_SCREENSHOT_CAPTURE_FAILED");
       assert.equal(primary.taskId, owner.taskId);
+      assert.match(failureDebugDetails(primary).causes.join("\n"), failure === "unavailable" ? /BrowserScreenshotUnavailableError: page-changed/
+        : failure === "missing" ? /no screenshot capability/ : failure === "persist" ? /fixture persistence failed/ : /fixture capture failed/);
       if (failure !== "unavailable") {
         assert.ok(error instanceof AggregateError);
         assert.equal(error.errors.length, 2);

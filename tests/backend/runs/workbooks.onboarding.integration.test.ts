@@ -6,6 +6,7 @@ import { TimelineEventRecordSchema, type TimelineEventRecord } from "../../../sr
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { redactEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
 import { GateIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
+import { deriveEvidenceEntryId } from "../../../src/models/trust/evidence-identity.js";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { runClaim } from "../../../src/models/run/record.js";
 import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding/result.js";
@@ -90,8 +91,8 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(f.repository.runOperations(running.envelope.runId).length, 1);
     const secondRows = f.library.read(f.secondId ?? "").workbook.sheets[0].rows;
     const firstRows = f.library.read(f.id).workbook.sheets[0].rows;
-    assert.equal(secondRows[1].cells[7].value, "10800000");
-    assert.equal(firstRows[1].cells[7].value, null);
+    assert.equal(secondRows[1].cells[3].value, "10800000");
+    assert.equal(firstRows[1].cells[3].value, null);
     const latest = f.database.authority.runs.get(running.envelope.runId); assert.ok(latest);
     assert.equal(lifecycle.requeue({ commandId: randomUUID(), runId: latest.envelope.runId,
       expectedVersion: latest.version, claim, cause: "recovery" }).state, "applied");
@@ -130,7 +131,7 @@ describe("Onboarding captured roster admission and row choice", () => {
       typeId: "onboarding-roster", referenceDigest: binding.referenceDigest, key: dry.key, values: [{ fieldId: "eid", value: "10800000" }] })),
       { code: "WORKBOOK_INVALID" });
     assert.deepEqual(dry.repository.runOperations(running.envelope.runId), []);
-    assert.equal(dry.library.read(binding.workbookId).workbook.sheets[0].rows[1].cells[7].value, null);
+    assert.equal(dry.library.read(binding.workbookId).workbook.sheets[0].rows[1].cells[3].value, null);
     const latest = dry.database.authority.runs.get(running.envelope.runId); assert.ok(latest);
     assert.equal(lifecycle.requeue({ commandId: randomUUID(), runId: latest.envelope.runId,
       expectedVersion: latest.version, claim, cause: "recovery" }).state, "applied");
@@ -162,7 +163,7 @@ describe("Onboarding captured roster admission and row choice", () => {
       resolveDescriptor: id => id === descriptor.id ? descriptor : undefined });
     assert.equal(workbooks.write(running, command).state, "applied");
     const rows = f.library.read(f.id).workbook.sheets[0].rows;
-    assert.equal(rows[1].cells[7].value, "10800000"); assert.equal(rows[2].cells[7].value, null);
+    assert.equal(rows[1].cells[3].value, "10800000"); assert.equal(rows[2].cells[3].value, null);
     assert.throws(() => workbooks.write(running, { ...command, referenceDigest: FingerprintSchema.parse("b".repeat(64)) }), { code: "WORKBOOK_INVALID" });
     const latest = f.database.authority.runs.get(running.envelope.runId); assert.ok(latest);
     assert.equal(lifecycle.requeue({ commandId: randomUUID(), runId: latest.envelope.runId,
@@ -286,7 +287,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.deepEqual(run.input.parsed.protectedBindings, []);
     const input = OnboardingCanonicalValueSchema.parse(run.input.parsed.value);
     assert.equal(input.roster.state, "resolved"); if (input.roster.state !== "resolved") throw new Error("missing row");
-    assert.deepEqual(input.roster.row.references, { legalName: { firstName: "Fixture", lastName: "Hire", middleName: "" }, livedName: null });
+    assert.deepEqual(input.roster.row.references, { legalName: "Fixture Hire", livedName: null });
     assert.equal(input.roster.row.binding.sheetId, "people"); assert.equal(input.roster.row.binding.rowId, "people-person");
     assert.equal(input.roster.row.binding.workbookId, f.id); assert.equal(f.snapshots(), 1);
     const before = canonicalJsonStringify(run.input);
@@ -313,9 +314,8 @@ describe("Onboarding captured roster admission and row choice", () => {
     for (const reference of [{ ...f.selection, typeId: "general" }, { ...f.selection, keys: ["other@example.test"] }, { ...f.selection, fields: ["email", "livedName"] }]) {
       assert.throws(() => f.plan({ ...f.request, workbookReferences: [reference] }));
     }
-    for (const values of [["", "Hire", "", null, null, null], ["Fixture", 4, "", null, null, null],
-      ["Fixture", "Hire", "", "Lived", null, null], ["Fixture", "Hire", "", "", "", ""]]) {
-      f.edit(workbook => { workbook.sheets[0].rows[1].cells = [f.key, ...values, null, null, null, null].map(value => ({ value })); });
+    for (const values of [["", null], [4, null], [null, "Lived Name"], ["   ", "Lived Name"]]) {
+      f.edit(workbook => { workbook.sheets[0].rows[1].cells = [f.key, ...values, null, null].map(value => ({ value })); });
       assert.equal(f.plan({ ...f.request, workbookReferences: [{ ...f.selection, expectedVersion: f.library.read(f.id).version,
         versionId: f.library.libraryVersion(f.id).version.id }] }).planned.length, 0);
     }
@@ -353,7 +353,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(canonicalJsonStringify(current.input), original);
     const gate = f.database.authority.gateResults.get(`${run.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(gate);
     const { row: chosen } = authenticateOnboardingRosterChoice(f.database.authority, current, gate);
-    assert.equal(chosen.references.legalName.firstName, "Second"); assert.equal(chosen.references.livedName, null);
+    assert.equal(chosen.references.legalName, "Second Hire"); assert.equal(chosen.references.livedName, null);
     assert.equal(chosen.binding.sheetId, "people"); assert.equal(chosen.binding.workbookVersion, command.target.workbookVersion);
     const hirePlan = descriptorRuntimeNodes(descriptor).find(node => node.id === "hire-plan"); assert.ok(hirePlan?.kind === "task");
     const bound = OnboardingReadHirePlan.input.parse(hirePlan.bind({ input: current.input.parsed.value,
@@ -407,13 +407,13 @@ describe("Onboarding captured roster admission and row choice", () => {
       if (change === "key") workbook.sheets[0].rows[1].cells[0].value = "other@example.test";
       if (change === "sheet") workbook.sheets[0].id = "replacement-sheet";
       if (change === "fields") {
-        const binding = workbook.sheets[0].columnBindings?.find(value => value.fieldId === "firstName"); assert.ok(binding);
+        const binding = workbook.sheets[0].columnBindings?.find(value => value.fieldId === "fullName"); assert.ok(binding);
         binding.fieldId = null;
       }
       if (change === "names") workbook.sheets[0].rows[1].cells[1].value = null;
     });
     const changed = f.library.read(f.id); assert.ok(changed);
-    if (change === "fields") assert.equal(changed.workbook.sheets[0].columnBindings?.some(value => value.fieldId === "firstName"), false);
+    if (change === "fields") assert.equal(changed.workbook.sheets[0].columnBindings?.some(value => value.fieldId === "fullName"), false);
     const candidate = change !== "revision" && command.type === "resolve-workbook-reference-row"
       ? { ...command, target: { ...command.target, workbookVersion: changed.version } } : command;
     assert.equal(f.kernel.execute(candidate).state, "rejected");
@@ -438,7 +438,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.throws(() => authenticateOnboardingRosterChoice(f.database.authority, current,
       { ...tampered, checkpointFingerprint: FingerprintSchema.parse(deriveGateResultCheckpointFingerprint(tampered.result)) }));
     const changedNames = { ...gate, result: { ...gate.result, value: { ...choice, row: { ...parsed,
-      references: { ...parsed.references, legalName: { ...parsed.references.legalName, firstName: "Injected" } } } } } };
+      references: { ...parsed.references, legalName: "Injected Hire" } } } } };
     assert.throws(() => authenticateOnboardingRosterChoice(f.database.authority, current,
       { ...changedNames, checkpointFingerprint: FingerprintSchema.parse(deriveGateResultCheckpointFingerprint(changedNames.result)) }));
     const repositories = f.database.authority;
@@ -643,9 +643,9 @@ describe("Onboarding captured roster admission and row choice", () => {
       }
       const receipt = receipts.ensureReceipt(recoveredId);
       const expected = redactEvidenceLeaf({ kind: "gate-result", workflowId: WorkflowIdSchema.parse(descriptor.id), gateId: GateIdSchema.parse(ONBOARDING_ROSTER_GATE_ID) },
-        { path: "row.references.legalName.firstName", field: "firstName", value: "Fixture" });
+        { path: "row.references.legalName", field: "legalName", value: "Fixture Hire" });
       const chosen = receipt.observations.find(fact => fact.state === "satisfied" && fact.source.kind === "continued-gate-result"
-        && fact.value.key === "row.references.legalName.firstName" && canonicalJsonStringify(fact.value) === canonicalJsonStringify(expected));
+        && fact.value.key === "row.references.legalName" && canonicalJsonStringify(fact.value) === canonicalJsonStringify(expected));
       assert.ok(chosen?.source.kind === "continued-gate-result");
       assert.equal(chosen.source.sourceRunId, root.envelope.runId); assert.equal(chosen.source.commandId, original.commandId);
       assert.equal(chosen.source.resolvedBy, original.resolvedBy); assert.equal(chosen.source.resolvedAt, original.resolvedAt);
@@ -722,6 +722,80 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(f.calls.filter(call => call.system === "i9").length, 0);
     assert.deepEqual(f.database.authority.runs.listChildren(candidate.envelope.runId), []);
     assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(candidate.envelope.runId), []);
+  });
+
+  describe("explain run on a failed run whose roster resolved", () => {
+    async function failedAtCrmSource() {
+      const f = await executionFixture(false, { match: "unique", dryRun: true, crmReadFails: true });
+      const root = f.start();
+      assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "failed");
+      assert.deepEqual(f.calls.map(call => call.system), ["crm"]);
+      const run = f.database.authority.runs.get(root.envelope.runId); assert.ok(run?.lifecycle.state === "terminal");
+      const failure = f.database.authority.failures.listByRun(run.envelope.runId).find(value => value.code === "ONBOARDING_CRM_READ_FAILED");
+      assert.ok(failure);
+      const result = f.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
+      const input = { descriptor, run, result, failure, checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId),
+        writes: [], gateResults: f.database.authority.gateResults.listByRun(run.envelope.runId) };
+      return { f, run, failure, result, input };
+    }
+
+    it("derives a failed unknown receipt whose not-run roster-choice cites the roster.state input fact", async () => {
+      const { f, run, input } = await failedAtCrmSource();
+      assert.equal(OnboardingCanonicalValueSchema.parse(run.input.parsed.value).roster.state, "resolved");
+      const receipt = buildRunEvidenceReceipt(input);
+      assert.equal(receipt.result, "failed"); assert.equal(receipt.confidence, "unknown");
+      const inputFact = receipt.input.find(fact => fact.id === deriveEvidenceEntryId(receipt.receiptId, "input", "roster.state"));
+      assert.ok(inputFact);
+      const decision = receipt.decisions.find(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`));
+      assert.ok(decision?.outcome === "not-taken" && decision.kind === "branch");
+      assert.deepEqual(decision.evidence, [`observation:${inputFact.id}`]);
+      const known = new Set([...receipt.input, ...receipt.observations, ...receipt.output, ...receipt.decisions, ...receipt.actions,
+        ...receipt.verification, ...receipt.reuse, ...receipt.warnings].map(entry => String(entry.id)));
+      const references = [...receipt.decisions.flatMap(entry => entry.evidence), ...receipt.verification.flatMap(entry => entry.evidence),
+        ...receipt.warnings.flatMap(entry => entry.evidence), ...receipt.reuse.map(entry => entry.source)];
+      for (const reference of references) {
+        assert.ok(reference.startsWith("observation:") && known.has(reference.slice("observation:".length)), reference);
+      }
+      assert.ok(receipt.verification.every(entry => entry.verdict !== "verified"), "no unexecuted work is verified");
+      assert.ok(receipt.actions.every(action => action.kind !== "commit" && action.writeState === "not-attempted"));
+      assert.ok(!receipt.actions.some(action => action.taskId !== "read-hire-data" && action.kind === "external-read"));
+      assert.deepEqual(f.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+    });
+
+    it("reports a missing required roster gate on a failed run as unknown, never verified or not-taken, and cites the taken gate otherwise", async () => {
+      const f = await executionFixture(false, { match: "duplicate", dryRun: true, crmReadFails: true });
+      const root = f.start(), runId = root.envelope.runId;
+      assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "parked-gate");
+      assert.equal(f.kernel.execute(f.choice(root)).state, "applied");
+      assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "failed");
+      const run = f.database.authority.runs.get(runId); assert.ok(run?.lifecycle.state === "terminal");
+      assert.equal(OnboardingCanonicalValueSchema.parse(run.input.parsed.value).roster.state, "resolve-required");
+      assert.deepEqual(f.database.authority.gateResults.listByRun(runId).map(gate => gate.gateId), [ONBOARDING_ROSTER_GATE_ID]);
+      const result = f.database.authority.runResults.get(runId); assert.ok(result);
+      const failure = run.lifecycle.failureId === undefined ? undefined : f.database.authority.failures.get(run.lifecycle.failureId); assert.ok(failure);
+      const taken = buildRunEvidenceReceipt({ descriptor, run, result, failure, writes: [],
+        checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId), gateResults: f.database.authority.gateResults.listByRun(runId) });
+      assert.ok(!taken.decisions.some(value => value.id === deriveEvidenceEntryId(taken.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`)));
+      assert.ok(taken.decisions.some(value => value.kind === "gate" && value.outcome === "taken"));
+      // A failed-evidence record binds no gates, so a missing gate result is reported unknown rather than refused (done runs refuse above).
+      const receipts = createReceiptService({ database: f.database, runReader: testRunService(f.database, f.clock), descriptors: [descriptor] });
+      f.setFault("gate-missing");
+      try {
+        const ensured = receipts.ensure(runId); assert.equal(ensured.state, "derived");
+        const receipt = ensured.receipt;
+        const gate = receipt.verification.find(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "verification", `node.${ONBOARDING_ROSTER_GATE_ID}`));
+        assert.equal(gate?.verdict, "unknown");
+        assert.ok(!receipt.decisions.some(value => value.kind === "gate"));
+        assert.ok(!receipt.decisions.some(value => value.id === deriveEvidenceEntryId(receipt.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`)));
+      } finally { f.setFault(undefined); }
+    });
+
+    it("refuses a corrupt failure digest and a result of another run or attempt", async () => {
+      const { failure, result, input } = await failedAtCrmSource();
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, failure: { ...failure, summary: `${failure.summary} altered` } }), /terminal-failure-result-mismatch/u);
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, result: { ...result, attempt: result.attempt + 1 } }), /identity[ -]mismatch/u);
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, result: { ...result, runId: randomUUID() } }), /identity[ -]mismatch/u);
+    });
   });
 
 });

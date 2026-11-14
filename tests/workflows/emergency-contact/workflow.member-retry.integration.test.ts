@@ -16,6 +16,7 @@ import { delegationEvidenceOutput, deriveRunResultDigest, deriveTerminalDependen
 import { contactSaveMember, createEmergencyContactRetryWorld } from "../../support/helpers/backend/emergency-contact-retry-world.js";
 import { authorizeWorkflowDelegationRefresh, workflowDelegationAccounting } from "../../../src/workflow-kit/workflow.js";
 import { runWorkerLoop } from "../../../src/backend/runtime/workers/worker-loop.js";
+import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.js";
 import { workerRunLifecyclePort } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createWriteSequencer } from "../../../src/backend/runtime/writes/write-sequencer.js";
 import { createOcrApprovedSnapshotAdapter } from "../../../src/backend/processing/providers/ocr-approved-snapshot-adapter.js";
@@ -611,9 +612,11 @@ it(`retries a member while its parent is ${boundary}`, async () => {
     try { return transaction(work); } finally { transactionDepth -= 1; }
   };
   const claimed: string[] = [];
+  const debugEvents = createDebugEventWriter({ repository: f.database.authority.timelineEvents, clock: f.clock, build: "test" });
+  const debugAfter = f.database.authority.timelineEvents.highWaterMark();
   let report: Awaited<ReturnType<typeof runWorkerLoop>>;
   try {
-    report = await runWorkerLoop({ ...f.harness.deps, ...(diagnostics === undefined ? {} : { diagnostics }), workflowId: f.root.descriptor.id, workerId: owner.workerId, lifecycle,
+    report = await runWorkerLoop({ ...f.harness.deps, debugEvents, ...(diagnostics === undefined ? {} : { diagnostics }), workflowId: f.root.descriptor.id, workerId: owner.workerId, lifecycle,
     sessionFactory: f.harness.sessions.factory, sessionAcquireMs: 20_000,
     browserScreenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } },
     duoCeremony: duoCeremonyGatesOver(f.database, f.clock, f.harness.scheduler),
@@ -652,6 +655,8 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   if (settlementRetry) assert.deepEqual(holdAcknowledged, { transactionDepth: 1, outerTransaction: 1 });
   if (diagnosticCapture) assert.deepEqual(f.database.authority.failures.listByRun(f.parentRun.envelope.runId), []);
   assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["abandoned", "done"]);
+  assert.deepEqual(f.database.authority.timelineEvents.page({ after: debugAfter, limit: 1000 }).filter(record => record.payload.kind === "debug"
+    && record.payload.event.reason === "run-failed"), [], "a held or lost failure settlement records no failure event");
   assert.equal(report.stopped, "idle"); assert.equal(report.closure, "proved");
   assert.equal(f.current().lifecycle.state, "queued");
   assert.equal(f.current().pause?.state, "paused");

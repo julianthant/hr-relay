@@ -9,8 +9,11 @@ import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 
 const key = "hire@example.test", capturedAt = "2026-10-31T01:02:03.000Z";
-const values = { email: key, firstName: "Legal", lastName: "Hire", middleName: "",
-  "roster.livedFirstName": null, "roster.livedLastName": null, "roster.livedMiddleName": null, eid: "10800000", i9ProfileId: "900001", transactionNumber: "T009000001", transactionApprovalStatus: "Pending" };
+const values = { email: key, fullName: "Legal Hire", livedName: null, eid: "10800000", transactionNumber: "T009000001" };
+const OLD_FIELDS = ["email", "firstName", "lastName", "middleName", "roster.livedFirstName", "roster.livedLastName", "roster.livedMiddleName",
+  "eid", "i9ProfileId", "transactionNumber", "transactionApprovalStatus"];
+const oldValues = { email: key, firstName: "Legal", lastName: "Hire", middleName: "", "roster.livedFirstName": null, "roster.livedLastName": null,
+  "roster.livedMiddleName": null, eid: "10800000", i9ProfileId: "900001", transactionNumber: "T009000001", transactionApprovalStatus: "Pending" };
 const reference = { request: { typeId: "onboarding-roster", keys: [key], fields: [...ONBOARDING_ROSTER_FIELDS] },
   snapshot: { libraryId: "roster", version: 1, worksheets: [{ sheetId: "people", name: "People" }],
     type: { id: "onboarding-roster", name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: "roster" },
@@ -23,18 +26,27 @@ const boundReference = (value: unknown = reference, selection?: { sheetId: strin
       snapshot: { ...parsed.snapshot, versionId: "selected", versionName: "Selected" } } };
 };
 const bind = (value: unknown = reference, selection?: { sheetId: string; rowId: string }) => bindOnboardingRoster(boundReference(value, selection), key, capturedAt);
+const withValues = (changed: Record<string, unknown>) => ({ ...reference, snapshot: { ...reference.snapshot,
+  rows: [{ ...reference.snapshot.rows[0], matches: [{ ...reference.snapshot.rows[0].matches[0], values: changed }] }] } });
+const resolvedReferences = (changed: Record<string, unknown>) => {
+  const output = bind(withValues(changed));
+  if (output.state !== "resolved") throw new Error("row not resolved");
+  return output.row.references;
+};
 
 describe("Onboarding roster reference mapping", () => {
-  it("retains exact reference authority and treats only a complete null lived-name triple as absence", () => {
+  it("retains exact reference authority and reads the legal and lived name cells whole", () => {
     const output = bind(); assert.equal(output.state, "resolved"); if (output.state !== "resolved") throw new Error("row not resolved");
     assert.equal(output.row.binding.workbookId, "roster"); assert.equal(output.row.binding.workbookVersion, 1);
     assert.equal(output.row.binding.sheetId, "people"); assert.equal(output.row.binding.rowId, "person");
     assert.equal(output.row.binding.capturedAt, capturedAt); assert.equal(output.row.binding.referenceDigest.length, 64);
-    assert.deepEqual(output.row.references, { legalName: { firstName: "Legal", lastName: "Hire", middleName: "" }, livedName: null });
-    for (const changed of [{ ...values, "roster.livedFirstName": "Lived" }, { ...values, middleName: null },
-      { ...values, firstName: " Legal" }, { ...values, email: key.toUpperCase() }]) {
-      assert.throws(() => bind({ ...reference, snapshot: { ...reference.snapshot,
-        rows: [{ ...reference.snapshot.rows[0], matches: [{ ...reference.snapshot.rows[0].matches[0], values: changed }] }] } }));
+    assert.deepEqual(output.row.references, { legalName: "Legal Hire", livedName: null });
+    assert.deepEqual(resolvedReferences({ ...values, fullName: "  Legal \t Middle   Hire ", livedName: " Lived   Name " }),
+      { legalName: "Legal Middle Hire", livedName: "Lived Name" });
+    assert.deepEqual(resolvedReferences({ ...values, livedName: "   " }), { legalName: "Legal Hire", livedName: null });
+    for (const changed of [{ ...values, fullName: null }, { ...values, fullName: "  " }, { ...values, fullName: 7 },
+      { ...values, email: key.toUpperCase() }]) {
+      assert.throws(() => bind(withValues(changed)));
     }
   });
 
@@ -47,7 +59,7 @@ describe("Onboarding roster reference mapping", () => {
       rows: [{ key, state: "ambiguous", matches: [...reference.snapshot.rows[0].matches, second] }] } };
     assert.equal(bind(ambiguous).state, "resolve-required");
     for (const candidate of [{ ...second, sheetId: "foreign" }, { ...second, rowId: "person" },
-      { ...second, values: { ...values, lastName: false } }]) {
+      { ...second, values: { ...values, fullName: false } }]) {
       assert.throws(() => bind({ ...ambiguous, snapshot: { ...ambiguous.snapshot,
         rows: [{ key, state: "ambiguous", matches: [...reference.snapshot.rows[0].matches, candidate] }] } }));
     }
@@ -59,7 +71,7 @@ describe("Onboarding roster reference mapping", () => {
     const matched = bind(reference, selection);
     assert.equal(matched.state, "resolved");
     const second = { ...reference.snapshot.rows[0].matches[0], sheetId: "other-people", values: { ...values,
-      firstName: "Second", "roster.livedFirstName": "Lived", "roster.livedLastName": "Name", "roster.livedMiddleName": "" } };
+      fullName: "Second Hire", livedName: "Lived Name" } };
     const ambiguous = { ...reference, snapshot: { ...reference.snapshot,
       worksheets: [...reference.snapshot.worksheets, { sheetId: "other-people", name: "Other people" }],
       rows: [{ key, state: "ambiguous", matches: [...reference.snapshot.rows[0].matches, second] }] } };
@@ -69,8 +81,7 @@ describe("Onboarding roster reference mapping", () => {
     assert.deepEqual(selected.row.binding, { ...matched.row.binding, sheetId: "other-people", referenceDigest: selected.row.binding.referenceDigest });
     assert.notEqual(selected.row.binding.referenceDigest, matched.row.binding.referenceDigest);
     assert.equal(selected.row.binding.referenceDigest, sha256Hex(canonicalJsonStringify(boundReference(ambiguous, { sheetId: "other-people", rowId: "person" }))));
-    assert.deepEqual(selected.row.references, { legalName: { firstName: "Second", lastName: "Hire", middleName: "" },
-      livedName: { firstName: "Lived", lastName: "Name", middleName: "" } });
+    assert.deepEqual(selected.row.references, { legalName: "Second Hire", livedName: "Lived Name" });
     assert.equal(bind(ambiguous).state, "resolve-required");
   });
 
@@ -89,9 +100,14 @@ describe("Onboarding roster reference mapping", () => {
         rows: reference.snapshot.rows.map(row => ({ ...row, matches: row.matches.map(match => ({ ...match,
           values: Object.fromEntries(ONBOARDING_ROSTER_NAME_FIELDS.map(field => [field, match.values[field]])),
         })) })) } };
+    const eleven = { request: { ...reference.request, fields: OLD_FIELDS },
+      snapshot: { ...reference.snapshot, type: { ...reference.snapshot.type, fields: OLD_FIELDS },
+        rows: [{ ...reference.snapshot.rows[0], matches: [{ ...reference.snapshot.rows[0].matches[0], values: oldValues }] }] } };
     for (const schema of [RunWorkbookReferenceSchema, RunWorkbookSelectedRowReferenceSchema]) {
-      const retained = { schemaHash: deriveSchemaHash(schema, "output"), value: schema.parse(names) };
-      assert.throws(() => bindOnboardingRoster(retained, key, capturedAt), /onboarding-roster-reference-invalid/u);
+      for (const retainedValue of [names, eleven]) {
+        const retained = { schemaHash: deriveSchemaHash(schema, "output"), value: schema.parse(retainedValue) };
+        assert.throws(() => bindOnboardingRoster(retained, key, capturedAt), /onboarding-roster-reference-invalid/u);
+      }
     }
   });
 
@@ -112,17 +128,17 @@ describe("Onboarding roster reference mapping", () => {
           values: { ...values, email: "other@example.test" } }] }] } },
       { ...reference, request: { ...reference.request, typeId: "other" }, snapshot: { ...reference.snapshot,
         type: { ...reference.snapshot.type, id: "other" } } },
-      { ...reference, snapshot: { ...reference.snapshot, type: { ...reference.snapshot.type, keyFieldId: "firstName" } } },
+      { ...reference, snapshot: { ...reference.snapshot, type: { ...reference.snapshot.type, keyFieldId: "fullName" } } },
       { ...reference, request: { ...reference.request, fields: ONBOARDING_ROSTER_FIELDS.slice(0, -1) } },
       { ...reference, snapshot: { ...reference.snapshot, worksheets: [{ sheetId: "foreign", name: "Foreign" }] } },
     ]) assert.throws(() => bind(changed, selection));
-    for (const changed of [{ ...values, email: "other@example.test" }, { ...values, firstName: " Legal" },
-      { ...values, lastName: "" }, { ...values, middleName: null }, { ...values, "roster.livedFirstName": "Lived" }]) {
+    for (const changed of [{ ...values, email: "other@example.test" }, { ...values, fullName: "" }, { ...values, fullName: null },
+      { ...values, livedName: false }]) {
       assert.throws(() => bind({ ...reference, snapshot: { ...reference.snapshot,
         rows: [{ key, state: "matched", matches: [{ ...reference.snapshot.rows[0].matches[0], values: changed }] }] } }, selection));
     }
     for (const candidate of [{ ...reference.snapshot.rows[0].matches[0] },
-      { ...reference.snapshot.rows[0].matches[0], rowId: "second", values: { ...values, firstName: false } }]) {
+      { ...reference.snapshot.rows[0].matches[0], rowId: "second", values: { ...values, fullName: false } }]) {
       assert.throws(() => bind({ ...reference, snapshot: { ...reference.snapshot,
         rows: [{ key, state: "ambiguous", matches: [...reference.snapshot.rows[0].matches, candidate] }] } }, selection));
     }

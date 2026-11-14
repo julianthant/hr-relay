@@ -10,7 +10,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { createDashboardClient,type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { failureDecision } from "../../../src/backend/runs/queries/run-detail/receipts-failures.js";
-import { parkedWriteDecision } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { hireReviewDecision, parkedWriteDecision } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { gateDecisionFor } from "../../../src/models/trust/gate-decisions.js";
+import { SearchPersonMatchOutputSchema } from "../../../src/models/systems/ucpath/search-person-match.js";
 import { projectRunLogs, readRunLogs, useRunWiring, type RunWiringConfirm } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
@@ -302,6 +304,41 @@ describe("served Logs decision authority", () => {
       assert.deepEqual(envelope.target, { runId: RUN, gateId: GATE_NODE, expectedVersion: 3 });
       assert.deepEqual(envelope.payload, { decision: "approved", gateRef: gate.gateRef, optionRef: gate.options[0].ref });
     }
+  });
+
+  it("answers a served hire-review arm with answer-gate-arm only after the operator confirms, carrying the picked row", async () => {
+    const dropped = ["10000001", "10000002"].map(emplId => ({ emplId, name: emplId === "10000002" ? "Person, Fixture" : "Other, Person" }));
+    const match = SearchPersonMatchOutputSchema.parse({ hits: dropped, confirmed: [], dropped: dropped.map(hit => ({ ...hit, reason: "Last name does not match" })) });
+    const names = { firstName: "Fixture", middleName: "", lastName: "Person", preferredFirstName: "", preferredMiddleName: "", preferredLastName: "", ssn: null };
+    const decision = hireReviewDecision("new-hire", match, names, gateDecisionFor("onboarding", "hire-review").arms, "hire-review", 3);
+    assert.ok(decision !== undefined);
+    const selected = selectionAt(3);
+    const open = detailAt(selected, 3, { gate: { state: "open", gateId: NOTE, nodeId: "hire-review", label: "Review the hire", openedAt: AT, revision: 1, decision } });
+    const [existing, newHire] = decision.options;
+    assert.ok(existing && newHire);
+    async function answer(option: NonNullable<typeof existing>, picked: { candidate?: string }) {
+      await act(async () => root?.unmount()); root = undefined;
+      const sent: DashboardCommandRequest[] = [], requested: { pending: PendingCommand; onConfirmed: () => void }[] = [];
+      const client = { runDetail: async () => open, artifactUrl: (id: string) => `/artifacts/${id}`, runSection: async () => logs(),
+        executeCommand: async (raw: unknown) => { const envelope = DashboardCommandRequestSchema.parse(raw); sent.push(envelope);
+          return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: "hire-review" }] }); },
+      } as unknown as DashboardClient;
+      const h = await harness(client, (pending, onConfirmed) => { requested.push({ pending, onConfirmed }); });
+      await h.render(selected);
+      await act(async () => h.state?.onDecision?.(NOTE, option, picked));
+      assert.equal(sent.length, 0, "nothing is sent before the confirmation");
+      if (requested.length === 0) return undefined;
+      assert.deepEqual(requested[0].pending.action.confirm, option.confirm);
+      await act(async () => { requested[0].onConfirmed(); await new Promise(resolve => setTimeout(resolve, 0)); });
+      assert.equal(sent.length, 1);
+      const [envelope] = sent;
+      assert.ok(envelope?.family === "gate" && envelope.type === "answer-gate-arm");
+      assert.deepEqual(envelope.target, { runId: RUN, gateId: "hire-review", expectedVersion: 3 });
+      return envelope.payload;
+    }
+    assert.equal(await answer(existing, {}), undefined, "Use existing employee needs a picked row");
+    assert.deepEqual(await answer(newHire, {}), { arm: "new-hire" });
+    assert.deepEqual(await answer(existing, { candidate: "10000002" }), { arm: "existing-person", rowId: "10000002" });
   });
 
   it("carries the chosen candidate through confirmation", async () => {
