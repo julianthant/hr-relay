@@ -277,10 +277,12 @@ export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, l
         const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
         const closure = await prepareStoppedBackupClosure(profileBrowserClosure, admission, operation, clock, processLockRoot);
         const { backupStoppedAuthority } = await import("../../storage/maintenance/upgrade.js");
-        await backupStoppedAuthority(closure, admission, admission.stateRoot, clock, processLockRoot, operation, "graceful-drain");
+        const report = await backupStoppedAuthority(closure, admission, admission.stateRoot, clock, processLockRoot, operation, "graceful-drain");
+        const manifest = report.manifests.at(-1); if (manifest === undefined) throw new Error("shutdown-backup-result-missing");
+        const backupPath = join(admission.stateRoot, "backups", "authority", manifest.backupFileName);
         assertStoppedProfileResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
         const { retainCleanShutdownBackups } = await import("../../storage/maintenance/clean-shutdown-backups.js");
-        await retainCleanShutdownBackups(admission, clock);
+        await retainCleanShutdownBackups(admission, clock, { manifestPath: `${backupPath}.manifest.json`, backupPath, manifest });
       }
     });
   } catch (error) {

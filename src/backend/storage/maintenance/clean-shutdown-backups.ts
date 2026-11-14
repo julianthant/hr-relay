@@ -3,14 +3,14 @@ import { assertMaintenanceCustodyAvailable } from "./custody-availability.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { inventoryFileIdentity } from "./profile-inventory.js";
 import { existsSync, readdirSync, renameSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Clock } from "../../../rules/time/clock.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { noSymlinkAncestry, readPrivateFile, removeExactPath } from "../configuration/credential-safe-file.js";
 import { fsyncPath, privatePathRejects } from "../private-path.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
+import { parseBackupManifestFile, verifyBackupBytesAtPath, type VerifiedBackup } from "../sqlite/backup-service.js";
 import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
 
 const ShutdownManifest = /^authority-g\d+-\d+-[0-9a-f-]{36}\.shutdown\.sqlite\.manifest\.json$/u;
@@ -34,27 +34,41 @@ function assertFilesUnchanged(files: readonly ReturnType<typeof inventoryFileIde
   if (files.some(file => canonicalJsonStringify(file) !== canonicalJsonStringify(inventoryFileIdentity(file.path)))) throw new Error("shutdown-backup-retirement-changed");
 }
 
-async function verifiedShutdownBackups(admission: RuntimeAdmission, clock: Clock) {
+type CheckedShutdownBackup = VerifiedBackup & { files: ReturnType<typeof inventoryFileIdentity>[] };
+
+// Bytes that match the manifest written after their one full inspection are the bytes that passed it; repair inspects again before use.
+async function checkedShutdownBackup(admission: RuntimeAdmission, manifestPath: string): Promise<VerifiedBackup> {
+  const manifest = parseBackupManifestFile(manifestPath), binding = admission.profileBinding;
+  if (manifest.installationId !== binding.installationId || manifest.profileId !== binding.profileId
+    || manifest.sourceDatabaseIdentity !== AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())) throw new Error("shutdown-backup-retention-foreign");
+  const backupPath = join(dirname(manifestPath), manifest.backupFileName);
+  await verifyBackupBytesAtPath(backupPath, manifest);
+  return { manifestPath, backupPath, manifest };
+}
+
+// `known` holds backups already checked in this same quit; an unchanged file identity lets them stand without another read.
+async function shutdownBackups(admission: RuntimeAdmission, clock: Clock, known: readonly CheckedShutdownBackup[] = []) {
   const directory = join(admission.stateRoot, "backups", "authority");
-  const verified = [];
+  const checked: CheckedShutdownBackup[] = [];
   for (const name of readdirSync(directory).filter(name => ShutdownManifest.test(name))) {
     const files = [join(directory, name), join(directory, name.slice(0, -".manifest.json".length))].map(inventoryFileIdentity);
-    const proof = await verifyBackupManifestAtPath(admission, join(directory, name));
+    const prior = known.find(value => value.manifestPath === join(directory, name) && canonicalJsonStringify(value.files) === canonicalJsonStringify(files));
+    const proof = prior ?? await checkedShutdownBackup(admission, join(directory, name));
     assertFilesUnchanged(files);
     if (name !== `${proof.manifest.backupFileName}.manifest.json` || Date.parse(proof.manifest.createdAt) > clock.nowMs()) throw new Error("shutdown-backup-retention-invalid");
-    verified.push({ ...proof, files });
+    checked.push({ ...proof, files });
   }
-  return verified.sort((left, right) => Date.parse(right.manifest.createdAt) - Date.parse(left.manifest.createdAt)
+  return checked.sort((left, right) => Date.parse(right.manifest.createdAt) - Date.parse(left.manifest.createdAt)
     || right.manifest.backupFileName.localeCompare(left.manifest.backupFileName));
 }
 
-export async function resumeShutdownBackupRetirement(input: RuntimeAdmission, clock: Clock): Promise<void> {
+export async function resumeShutdownBackupRetirement(input: RuntimeAdmission, clock: Clock, known: readonly CheckedShutdownBackup[] = []): Promise<void> {
   const admission = requireRuntimeAdmission(input), directory = join(admission.stateRoot, "backups", "authority");
   admission.assertAuthorityBackupWrite(directory);
   const pending = retirementPaths(admission.stateRoot);
   if (pending.length !== 0) assertMaintenanceCustodyAvailable("backup-retirement");
   for (const path of pending) {
-    const current = await verifiedShutdownBackups(admission, clock);
+    const current = await shutdownBackups(admission, clock, known);
     const file = readPrivateFile(path, { label: "lock", maxBytes: 64_000 });
     if (file === undefined) throw new Error("shutdown-backup-retirement-missing");
     const manifest = AuthorityBackupManifestSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
@@ -67,10 +81,10 @@ export async function resumeShutdownBackupRetirement(input: RuntimeAdmission, cl
     if (existsSync(backupPath)) {
       const before = inventoryFileIdentity(backupPath);
       if (before.directory) throw new Error("shutdown-backup-retirement-unsafe");
-      const verified = await verifyBackupManifestAtPath(admission, path);
+      const listed = known.find(value => value.backupPath === backupPath && canonicalJsonStringify(value.manifest) === canonicalJsonStringify(manifest));
+      if (listed === undefined || canonicalJsonStringify(listed.files[1]) !== canonicalJsonStringify(before)) await verifyBackupBytesAtPath(backupPath, manifest);
       const observed = readPrivateFile(path, { label: "lock", maxBytes: 64_000 });
-      if (verified.backupPath !== backupPath || canonicalJsonStringify(verified.manifest) !== canonicalJsonStringify(manifest)
-        || observed === undefined || !observed.bytes.equals(file.bytes)
+      if (observed === undefined || !observed.bytes.equals(file.bytes)
         || observed.identity.device !== file.identity.device || observed.identity.inode !== file.identity.inode) throw new Error("shutdown-backup-retirement-changed");
       assertFilesUnchanged([before]);
       for (const value of current) assertFilesUnchanged(value.files);
@@ -86,18 +100,21 @@ export async function resumeShutdownBackupRetirement(input: RuntimeAdmission, cl
   }
 }
 
-export async function retainCleanShutdownBackups(input: RuntimeAdmission, clock: Clock): Promise<void> {
+/** `fresh` is the backup this same quit created and verified; nothing older is removed without it. */
+export async function retainCleanShutdownBackups(input: RuntimeAdmission, clock: Clock, fresh: VerifiedBackup): Promise<void> {
   const admission = requireRuntimeAdmission(input), directory = join(admission.stateRoot, "backups", "authority");
   admission.assertAuthorityBackupWrite(directory);
   await resumeShutdownBackupRetirement(admission, clock);
   assertMaintenanceCustodyAvailable("backup-retirement");
-  const verified = await verifiedShutdownBackups(admission, clock);
-  for (const previous of verified.slice(3)) {
+  const freshFiles = [fresh.manifestPath, fresh.backupPath].map(inventoryFileIdentity);
+  const checked = await shutdownBackups(admission, clock, [{ ...fresh, files: freshFiles }]);
+  if (checked[0]?.manifestPath !== fresh.manifestPath || canonicalJsonStringify(checked[0].manifest) !== canonicalJsonStringify(fresh.manifest)) throw new Error("shutdown-backup-retention-unproved");
+  for (const previous of checked.slice(3)) {
     const target = `${previous.manifestPath}${Retiring}`;
     if (existsSync(target)) throw new Error("shutdown-backup-retirement-busy");
-    await verifyBackupManifestAtPath(admission, previous.manifestPath);
+    assertFilesUnchanged(previous.files);
     admission.assertAuthorityBackupWrite(directory);
     renameSync(previous.manifestPath, target); fsyncPath(directory);
-    await resumeShutdownBackupRetirement(admission, clock);
+    await resumeShutdownBackupRetirement(admission, clock, checked);
   }
 }
