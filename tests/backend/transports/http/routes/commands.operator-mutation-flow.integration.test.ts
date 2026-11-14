@@ -1,4 +1,4 @@
-import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
+import { BulkRunCommandResponseSchema, CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { singleAppliedRunId } from "../../../../support/fixtures/operator-command-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
 import { deriveBulkChildCommandId } from "../../../../../src/backend/runs/commands/command-service.js";
 import type { IntakeService } from "../../../../../src/backend/runs/commands/intake-service.js";
+import { StartPlanWireSchema } from "../../../../../src/models/dashboard/start-plan.js";
 import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
 import { UNWIRED_INTAKE_SERVICE } from "../../../../support/fixtures/intake-kernel-seams.js";
 import { UUID_4 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -509,8 +510,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid, mode: "read-only" }], dryRun: false }),
       });
       assert.equal(planResponse.status, 200);
-      const plan = await json(planResponse);
-      const fingerprints = plan.fingerprints as Record<string, string>;
+      const plan = StartPlanWireSchema.parse(await json(planResponse));
+      const fingerprints = plan.fingerprints;
       const started = await h.app.request("/api/v1/commands", {
         method: "POST",
         headers: OPERATOR_JSON_HEADERS,
@@ -556,32 +557,40 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const children = failureBody.targets.map(({ runId }) => deriveBulkChildCommandId(bulkCommandId, runId));
     fault.commandId = children[1];
     fault.armed = true;
-    const postBulk = async (body: unknown): Promise<{ status: number; payload: Record<string, unknown> }> => {
+    const postBulk = async (body: unknown) => {
       const response = await h.app.request("/api/v1/commands/bulk", {
         method: "POST",
         headers: OPERATOR_JSON_HEADERS,
         body: JSON.stringify(body),
       });
-      return { status: response.status, payload: await json(response) };
+      return { status: response.status, payload: BulkRunCommandResponseSchema.parse(await json(response)) };
     };
     const armed = await postBulk(failureBody);
     assert.equal(armed.status, 200);
     assert.equal(armed.payload.state, "vector");
+    if (armed.payload.state !== "vector") throw new Error("armed bulk was refused");
     assert.equal(armed.payload.requestedCount, 3);
-    const armedResults = armed.payload.results as Record<string, unknown>[];
+    const armedResults = armed.payload.results;
     assert.deepEqual(armedResults.map(({ outcome }) => outcome), ["applied", "errored"]);
-    assert.equal(armedResults[1].detail, `command ${children[1]} failed and its outcome could not be recorded`);
+    const erroredChild = armedResults[1];
+    if (erroredChild?.outcome !== "errored") throw new Error("middle child was not errored");
+    assert.equal(erroredChild.detail, `command ${children[1]} failed and its outcome could not be recorded`);
     assert.deepEqual(fault.failures, [children[1], children[1]]);
     assert.deepEqual(children.map(id => [h.database.authority.commands.get(id) !== undefined, h.database.authority.commandAudits.findByCommand(id) !== undefined]),
       [[true, true], [true, false], [false, false]]);
     assert.deepEqual(failureBody.targets.map(({ runId }) => versionOf(runId)), failureBody.targets.map(({ expectedVersion }, index) => expectedVersion + (index === 0 ? 1 : 0)));
     fault.armed = false;
     const resumed = await postBulk(failureBody);
-    const outcomes = resumed.payload.results as Record<string, unknown>[];
+    if (resumed.payload.state !== "vector") throw new Error("resumed bulk was refused");
+    const outcomes = resumed.payload.results;
     assert.deepEqual(outcomes.map(({ outcome }) => outcome), ["applied", "applied", "applied"]);
-    assert.equal(outcomes[0].replayed, true);
-    assert.equal(outcomes[1].replayed, false);
-    assert.equal(outcomes[2].replayed, false);
+    const [replayedChild, resumedMiddle, resumedLast] = outcomes;
+    if (replayedChild?.outcome !== "applied" || resumedMiddle?.outcome !== "applied" || resumedLast?.outcome !== "applied") {
+      throw new Error("resumed bulk was not three applied children");
+    }
+    assert.equal(replayedChild.replayed, true);
+    assert.equal(resumedMiddle.replayed, false);
+    assert.equal(resumedLast.replayed, false);
     assert.deepEqual(fault.failures, [children[1], children[1]]);
     assert.deepEqual(failureBody.targets.map(({ runId }) => versionOf(runId)), failureBody.targets.map(({ expectedVersion }) => expectedVersion + 1));
   });
