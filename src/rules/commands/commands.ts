@@ -2,7 +2,6 @@ import { z } from "zod";
 import { OcrReviewRecordSchema, OcrOperatorPagesSchema } from "../../models/ocr/review-record.js";
 import { AssistantModelPreferenceSchema } from "../../models/config/assistant-model-preference.js";
 import { NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
-import { StoredAssistantPermissionModeSchema } from "../../models/profiles/assistant-permission-mode.js";
 import { RunContinuationSchema } from "../../models/run/continuation.js";
 import { RunDisplayNameSchema } from "../../models/run/display-name.js";
 import { FailureResolutionActionSchema,FailureResolutionTargetSchema } from "../../models/trust/failure-resolution.js";
@@ -16,6 +15,15 @@ import { ActorIdSchema,BrowserSessionIdSchema,CommandAuditIdSchema,CommandIdSche
 import { JsonValueSchema,canonicalJsonStringify } from "../validation/canonical-json.js";
 import { deepFreeze } from "../validation/immutability.js";
 import { sha256Hex } from "../validation/sha256.js";
+
+export const AssistantActionBindingSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("proposal"), proposalId: z.uuid(), rowId: z.uuid() }),
+  z.strictObject({ kind: z.enum(["session", "local-edit"]), actionId: z.uuid() }),
+]);
+export const AssistantCommandAttributionSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("unrecorded") }),
+  z.strictObject({ kind: z.literal("assistant"), requestedBy: ActorIdSchema, profileId: z.uuid(), conversationId: z.uuid(), acceptedMessageId: z.uuid(), binding: AssistantActionBindingSchema }),
+]);
 
 /** A durable command identity cannot be reused by another command or authority. */
 export class CommandIdentityConflictError extends Error {
@@ -211,10 +219,6 @@ export const AssistantModelPreferenceCommandRequestSchema = z.strictObject({
   payload: AssistantModelPreferenceSchema,
 });
 
-export const AssistantPermissionChangeSchema = z.strictObject({
-  expectedPolicyRevision: NonNegativeIntSchema, mode: StoredAssistantPermissionModeSchema,
-});
-
 export const SettingsCommandRequestSchema = z.strictObject({
   ...CommandEnvelopeFields,
   family: z.literal("settings"),
@@ -224,12 +228,7 @@ export const SettingsCommandRequestSchema = z.strictObject({
     settingsSchemaHash: FingerprintSchema,
     patchFingerprint: FingerprintSchema,
     patch: z.record(z.string().min(1), SettingsLeafOperationSchema),
-    assistantPermission: AssistantPermissionChangeSchema.optional(),
   }).superRefine((payload, context) => {
-    if (payload.assistantPermission !== undefined) {
-      if (Object.keys(payload.patch).length !== 0) context.addIssue({ code: "custom", path: ["patch"], message: "permission command requires an empty ordinary patch" });
-      return;
-    }
     const ordinary = SettingsPatchSchema.safeParse(payload.patch);
     if (!ordinary.success) for (const issue of ordinary.error.issues) context.addIssue({ ...issue, path: ["patch", ...issue.path] });
   }),
@@ -975,18 +974,21 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   effects: entry.actions.map((action) => COMMAND_EFFECT_BY_ACTION[CommandActionSchema.parse(action)]),
 }))));
 
+/** Run actions the assistant proposes through its own confirmed card. */
+const assistantRunAction = (family: string, action: string) => family === "run" && (action === "pause" || action === "resume" || action === "cancel");
+
 export function commandAssistantAvailability(isActive: (family: string, action: string) => boolean) {
   return COMMAND_FAMILY_REGISTRY.flatMap(family => family.actions.map(action => {
     const active = isActive(family.family, action);
     return {
       family: family.family, action, summary: COMMAND_ASSISTANT_METADATA[action], classification: COMMAND_EFFECT_BY_ACTION[action],
     availability: !active ? "unavailable" as const
-      : family.family === "notification" ? "available" as const : "handoff" as const,
+      : family.family === "notification" || assistantRunAction(family.family, action) ? "available" as const : "handoff" as const,
     argumentProjection: family.family === "notification" ? ["reference"] : [],
     subject: family.family === "notification" || family.family === "workflow-batch" || family.family === "settings" || family.family === "worker-browser"
       ? "none" as const : "unbound" as const,
     reason: !active ? "owner-unavailable" as const
-      : family.family === "notification" ? "canonical-command" as const : "operator-interface-required" as const,
+      : family.family === "notification" || assistantRunAction(family.family, action) ? "canonical-command" as const : "operator-interface-required" as const,
     };
   }));
 }

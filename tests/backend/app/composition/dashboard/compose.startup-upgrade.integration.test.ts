@@ -88,9 +88,10 @@ function post(port: number) {
   }, body: JSON.stringify(login) });
 }
 function rows(path: string, version: number) {
+  // Schema 29 drops the empty assistant_grants table, so it is not part of the retained-row comparison.
   return withReadonlyAuthoritySnapshot(path, database => {
     const present = new Set(database.prepare("SELECT name FROM sqlite_schema WHERE type='table'").all().map(row => String(row.name)));
-    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && present.has(table))
+    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && table !== "assistant_grants" && present.has(table))
       .map(table => [table, database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
   });
 }

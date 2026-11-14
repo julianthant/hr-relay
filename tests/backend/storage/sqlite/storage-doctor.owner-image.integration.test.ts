@@ -119,7 +119,8 @@ it("reports the same invalid backup when the backup changes during its read with
 
 function corruptTablePage(path: string): void {
   const checkpoint = new DatabaseSync(path);
-  try { checkpoint.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } finally { checkpoint.close(); }
+  // VACUUM first: the forward migrations drop tables, and a corrupt freelist page is not a live page.
+  try { checkpoint.exec("VACUUM; PRAGMA wal_checkpoint(TRUNCATE)"); } finally { checkpoint.close(); }
   const fd = openSync(path, "r+");
   try {
     const header = Buffer.alloc(100);

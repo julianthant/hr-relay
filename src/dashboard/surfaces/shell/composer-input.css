@@ -47,7 +47,7 @@ html[data-demo-theme=dark] .hub-assistant-menu{box-shadow:0 10px 32px rgb(0 0 0 
 .hub-assistant-menu .hub-menu-option[data-disabled]{opacity:.45}
 .hub-assistant-menu .hub-menu-option[data-highlighted]:focus-visible{outline:1px solid var(--ui-secondary)!important;outline-offset:-1px}
 .hub-assistant-menu [data-slot=dropdown-menu-radio-item-indicator]{right:8px;width:16px;height:16px}
-#hub-panel-assistant .hub-composer textarea:focus{outline:none;box-shadow:none}
+#hub-panel-assistant .hub-composer textarea:is(:focus,:focus-visible){outline:none!important;box-shadow:none!important}
 #hub-panel-assistant .hub-composer textarea::placeholder{color:var(--ui-muted)}
 #hub-panel-assistant #hub-send:disabled{opacity:.45}
 #hub-panel-assistant .hub-composer-error{margin:6px 0 0;color:var(--ui-danger);font-size:12px}

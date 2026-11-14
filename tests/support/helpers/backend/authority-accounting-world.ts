@@ -7,7 +7,7 @@ import { timelineCheckpointReference } from "../../../../src/models/events/timel
 import type { DuoCeremonyLeaseToken } from "../../../../src/workflow-kit/duo-ceremony-lease.js";
 import type { ExclusiveSessionLease } from "../../../../src/models/sessions/exclusive-session-lease.js";
 import { createAssistantAuthorization } from "../../../../src/backend/assistant/authorization.js";
-import { createCommandKernel, executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
@@ -430,6 +430,8 @@ export function createAuthorityAccountingTestWorld() {
   return { ATOMIC_WRITE_COMMIT, roots, openDatabases, cleanup, databasePaths, CLOCK, BULK_COMMAND_ACCEPTANCE, OPERATOR_XLSX_EXPORT, FAILURE_RECORD, DIAGNOSTIC_BUNDLE, RUN_CHECKPOINT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, databasePath, openDatabase, claimedWorkerId, prepareWorkerSlot, prepareRunning, prepareDelegationOwners, terminalizeForTrust, terminalFailureRequest, terminalSuccessRequest, INTAKE_MANIFEST, OCR_EXTRACTION, DRY_RUN_SCENARIO_RESULT };
 }
 
+const ASSISTANT_CHAT_ID = "6f9c3b1e-2a4d-4c8e-9b7a-1d2e3f4a5b6c";
+
 export type MutationCase = Readonly<{
     table: Exclude<AuthorityTableName, "database_states" | "database_upgrades">;
     prepare?: (database: AuthorityDatabase) => void;
@@ -453,13 +455,7 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
       workerRuntime: { pool: unusedWorkerPool(unavailable) },
       prepareAssistantModelPreference: async () => () => true });
     const fixture = { profileId, kernel, authorization: createAssistantAuthorization({ database: db, kernel, clock: CLOCK,
-      current: () => ({ profileId, epoch: 1 }) }), grant() {
-      const result = executeSettingsCommand(dependencies, { family: "settings", type: "apply-settings", commandId: randomUUID(),
-        requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",
-        target: { expectedRevision: readSettings(db.authority).revision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-          patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } });
-      assert.equal(result.state, "applied");
-    } };
+      current: () => ({ profileId, epoch: 1 }) }) };
     return fixture;
   }
   const duoTokens = new WeakMap<AuthorityDatabase, DuoCeremonyLeaseToken>();
@@ -486,9 +482,8 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
       db.authority.commands.insert(COMMAND_FIXTURES[0]);
       db.authority.ocrReviews.append(review, 0);
     }, mutate: db => { db.authority.ocrReviews.approve(approval); } },
-    { table: "assistant_grants", mutate: db => { assistant(db).grant(); } },
     { table: "assistant_chats", mutate: db => { assistant(db).authorization.createChat(); } },
-    { table: "assistant_actions", prepare: db => { const fixture = assistant(db); fixture.grant(); assistantActions.set(db, { fixture, chat: fixture.authorization.createChat() }); }, mutate: db => {
+    { table: "assistant_actions", prepare: db => { const fixture = assistant(db); assistantActions.set(db, { fixture, chat: fixture.authorization.createChat() }); }, mutate: db => {
       const prepared = assistantActions.get(db); assert.ok(prepared);
       const { fixture: { authorization }, chat } = prepared;
       const patch = { "browser.headless": { set: false } };
@@ -501,6 +496,18 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
       assert.equal((await kernel.executeAssistantModelPreference({ family: "assistant-model-preference", type: "set-assistant-model-preference",
         commandId: randomUUID(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard", target: { profileId, epoch: 0, expectedRevision: 0 },
         payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } })).state, "applied");
+    } },
+    { table: "assistant_conversations", mutate: db => {
+      assert.equal(db.authority.assistantHistory.apply({ operation: "create", conversationId: ASSISTANT_CHAT_ID, title: "Chat" }, NOW).state, "saved");
+    } },
+    { table: "assistant_messages", prepare: db => { db.authority.assistantHistory.apply({ operation: "create", conversationId: ASSISTANT_CHAT_ID, title: "Chat" }, NOW); }, mutate: db => {
+      assert.equal(db.authority.assistantHistory.apply({ operation: "local", conversationId: ASSISTANT_CHAT_ID, expectedRevision: 1, messageId: randomUUID(), text: "Assistant verification completed." }, NOW).state, "saved");
+    } },
+    { table: "assistant_attachments", prepare: db => {
+      assert.equal(db.authority.assistantHistory.apply({ operation: "create", conversationId: ASSISTANT_CHAT_ID, title: "Attachment accounting" }, NOW).state, "saved");
+    }, mutate: db => {
+      db.authority.assistantHistory.stage({ id: randomUUID(), conversationId: ASSISTANT_CHAT_ID, mediaType: "text/plain", name: "accounting.txt",
+        bytes: new TextEncoder().encode("Synthetic attachment accounting"), now: NOW });
     } },
     { table: "runs", mutate: (db) => { db.authority.runs.enqueue(QUEUED_RUN); } },
     {

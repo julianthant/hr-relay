@@ -383,7 +383,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     }
   });
 
-  it.each([29, CURRENT_AUTHORITY_SCHEMA_VERSION + 1])("refuses unsupported selected-profile authority %s before acquiring a server process record", async version => {
+  it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1])("refuses unsupported selected-profile authority %s before acquiring a server process record", async version => {
     const controllerLock = await runtimeLifetimeLock();
     const repoRoot = await readyRoot(controllerLock);
     copyRuntimePackageFixture(repoRoot);
