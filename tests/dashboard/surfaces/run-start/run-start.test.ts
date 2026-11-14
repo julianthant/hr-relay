@@ -402,6 +402,27 @@ function separationsPlan(omittedSteps?: readonly string[]): StartPlanResponse {
   });
 }
 
+it("keeps staging's dry-run sentence for a typed workflow", async () => {
+  onTestFinished(cleanup);
+  const base = SEPARATIONS_WORKFLOWS.find(workflow => workflow.workflowId === "separations");
+  assert.ok(base?.inputRun.state === "present");
+  const typed = {
+    ...base,
+    inputRun: { state: "present" as const, surface: { ...base.inputRun.surface, supportsDryRun: true } },
+  };
+  const dialog = await openDialog(stubClient({}), {
+    workflows: SEPARATIONS_WORKFLOWS.map(workflow => workflow.workflowId === typed.workflowId ? typed : workflow),
+    panelWorkflowId: "separations",
+  });
+  await dialog.type(DOCUMENT);
+  await dialog.press("Continue");
+  assert.equal(dialog.stage(), "Options");
+  const row = [...document.querySelectorAll(".ds-run-row")].find(node => node.textContent?.includes("Dry run"));
+  assert.ok(row, "the typed dry-run row is missing");
+  assert.match(row.textContent ?? "", /Fill and check every step without submitting\./u);
+  assert.equal((row.textContent ?? "").includes("or saving"), false);
+});
+
 async function openSteps(client: DashboardClient, typed: string = DOCUMENT): Promise<OpenDialog> {
   const dialog = await openDialog(client, SEPARATIONS);
   await dialog.type(typed);

@@ -504,6 +504,9 @@ export function RunStartDialog({
   const rowSelectionFresh = selectedWorkbookRows === undefined || selectedWorkbookRows.source === rowSource;
   const rowChoices = rowSelectionFresh ? workbookRows.choices : selectedWorkbookRows?.choices ?? [];
   const supportsDryRun = (inputRun.state === "present" && inputRun.surface.supportsDryRun === true) || workflow?.uploadRun?.supportsDryRun === true;
+  const dryRunDescription = pdfSurface?.supportsDryRun === true
+    ? "Fill and check every step without submitting or saving."
+    : "Fill and check every step without submitting.";
   const dryRun = supportsDryRun && dryRunRequested;
   const launchStages = useMemo(() => runStartStages(customizeSteps, "typed", isRerun), [customizeSteps, isRerun]);
 
@@ -1038,7 +1041,7 @@ export function RunStartDialog({
                 <RunOptionsLayout priority={priority} onPriorityChange={setPriority} browserMode={browserMode} onBrowserModeChange={setBrowserMode}
                   flags={<>
                     {!isRerun && <RunListRow title="Customize steps" description="Choose optional steps."><Switch hideLabel label="Customize steps" checked={customizeSteps} onCheckedChange={next => changeCustomizeSteps(next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
-                    {supportsDryRun && <RunListRow title="Dry run" description="Fill and check every step without submitting or saving."><Switch hideLabel label="Dry run" checked={dryRun} onCheckedChange={next => setDryRunRequested(next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
+                    {supportsDryRun && <RunListRow title="Dry run" description={dryRunDescription}><Switch hideLabel label="Dry run" checked={dryRun} onCheckedChange={next => setDryRunRequested(next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
                     <RunListRow title="Screenshots" description="Required by this workflow."><span className="inline-flex items-center gap-1.5 text-[12px] text-ui-secondary"><Lock aria-hidden className="size-3" />Always on</span></RunListRow>
                   </>} />
               )}
