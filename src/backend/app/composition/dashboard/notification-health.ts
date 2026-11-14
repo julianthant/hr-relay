@@ -36,15 +36,15 @@ function fileIdentity(path: string): string {
   return stats === undefined ? "missing" : `${String(stats.dev)}:${String(stats.ino)}:${String(stats.size)}:${String(stats.mtimeNs)}:${String(stats.ctimeNs)}`;
 }
 /** A manifest is written only after its bytes passed full inspection, so a binding and checksum match proves the backup is still that verified copy. */
-async function assertBackupUnchanged(admission: RuntimeAdmission, manifestPath: string): Promise<string> {
+async function assertBackupUnchanged(admission: RuntimeAdmission, manifestPath: string): Promise<{ backupPath: string; backup: string }> {
   const expected = admission.authorityBackupExpectedSource();
   if (expected.kind !== "profile") throw new Error("profile-backup-binding-required");
   const manifest = parseBackupManifestFile(manifestPath);
   if (manifest.sourceDatabaseIdentity !== authoritySourceDatabaseIdentity(expected)
     || manifest.installationId !== expected.binding.installationId || manifest.profileId !== expected.binding.profileId) throw new Error("backup-profile-binding-mismatch");
-  const backupPath = join(dirname(manifestPath), manifest.backupFileName);
+  const backupPath = join(dirname(manifestPath), manifest.backupFileName), backup = fileIdentity(backupPath);
   await verifyBackupBytesAtPath(backupPath, manifest);
-  return backupPath;
+  return { backupPath, backup };
 }
 /** No backup writer, credential reader, or unrelated outbox is called by this observation. */
 export async function readNotificationHealth(input: { admission: RuntimeAdmission; database: AuthorityDatabase; reader: Pick<RunRecordService, "list">; stateRoot: string; clock: Clock }): Promise<NotificationHealthReading> {
@@ -68,12 +68,12 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
     for (const file of readdirSync(backupRoot).filter(name => name.endsWith(".manifest.json"))) {
       const manifestPath = join(backupRoot, file), prior = remembered?.get(manifestPath);
       let checked: CheckedBackup;
-      if (prior !== undefined && prior.manifest === fileIdentity(manifestPath) && prior.backup === fileIdentity(prior.backupPath)) checked = prior;
+      if (prior !== undefined && !prior.failed && prior.manifest === fileIdentity(manifestPath) && prior.backup === fileIdentity(prior.backupPath)) checked = prior;
       else {
         const manifest = fileIdentity(manifestPath);
-        let backupPath = manifestPath, failed = false;
-        try { backupPath = await assertBackupUnchanged(input.admission, manifestPath); } catch { failed = true; }
-        checked = { manifest, backupPath, backup: fileIdentity(backupPath), failed };
+        let verified = { backupPath: manifestPath, backup: manifest }, failed = false;
+        try { verified = await assertBackupUnchanged(input.admission, manifestPath); } catch { failed = true; }
+        checked = { manifest, ...verified, failed };
       }
       current.set(manifestPath, checked);
       backupFailed ||= checked.failed;
