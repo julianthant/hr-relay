@@ -1,7 +1,7 @@
 import type { ExplorerNodeWire } from "../../../models/dashboard/explorer.js";
 import { ExplorerReviewSpecSchema, type ExplorerReviewDecision, type ExplorerReviewSpec } from "../../../models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../models/failures/error-catalog.js";
-import { contractCollectionFieldOptions, contractSchemaLeavesForModes } from "../../../models/validation/contract-boundary.js";
+import { contractCollectionFieldOptions, contractSchemaLeaves, contractSchemaLeavesForModes } from "../../../models/validation/contract-boundary.js";
 import { WorkflowStepReviewSchema } from "../../../models/workflow/review-spec.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../workflow-kit/workflow.js";
 import type { ExplorerModuleView } from "./explorer.js";
@@ -14,11 +14,12 @@ function runOptions(module: ExplorerModuleView): ExplorerReviewSpec["runOptions"
   const controls: ExplorerReviewSpec["runOptions"]["controls"] = [];
   if (typed !== undefined) for (const control of typed.controls) {
     if (control.placement === "hidden") continue;
-    const leaves = contractSchemaLeavesForModes(descriptor.input, typed.modeField, control.modes);
+    const leaves = typed.submitsMode === false ? contractSchemaLeaves(descriptor.input)
+      : contractSchemaLeavesForModes(descriptor.input, typed.modeField, control.modes);
     const leaf = leaves.find(candidate => candidate.path === control.field);
     if (leaf === undefined) throw new Error(`workflow ${descriptor.id} review control names unknown input field ${control.field}`);
-    controls.push({ ...control, placement: control.placement, kind: leaf.kind,
-      ...(leaf.options === undefined ? {} : { options: [...leaf.options] }) });
+    controls.push({ field: control.field, label: control.label, placement: control.placement, modes: control.modes, requires: control.requires,
+      kind: leaf.kind, ...(leaf.options === undefined ? {} : { options: [...leaf.options] }) });
   }
   const visibleFields = new Set(controls.map(control => control.field));
   return {

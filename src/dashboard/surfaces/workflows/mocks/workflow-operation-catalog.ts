@@ -42,7 +42,6 @@ export const MOCK_OPERATION_CATALOG: Readonly<Record<MockWorkflowId, Readonly<Re
     ],
   },
   "i9-lookup": { lookup: [fill("Portal person search", [["Last name", "$lastName"], ["First name", "$firstName"], ["SSN", "•••-••-0001"]]), click("Search and open the matching profile"), read("Section 2", [["I-9 status", "Section 2 complete"], ["Authorized official signer", "Alex Morgan"], ["Profile ID", "DEMO-I9-001"]])] },
-  "work-study": { transaction: [click("HR Tasks → PayPath/Additional Pay → PayPath Actions"), fill("Employee search", [["Employee ID", "$employeeId"]]), click("Search"), read("Employee header", [["Employee", "$name"]]), fill("Position Data", [["Effective date", "$effectiveDate"], ["Position change reason", "JRL"], ["Position pool", "F"]]), click("Job Data"), fill("Job Data comments", [["Comments", "$workStudyComments"]]), click("Additional Pay Data"), fill("Initiator comments", [["Comments", "$workStudyComments"]]), click("Save and Submit", true), read("Transaction outcome", [["Outcome", "Submitted"]])] },
   "kronos-pay-rule": {
     "csv-lookup": [read("OT Elections Tracker", [["Employee", "$name"], ["Employee ID", "$employeeId"], ["Union code", "SX"], ["Current pay rule", "DEMO-CT-BASE"], ["Current election", "Compensatory time"], ["New election", "Cash"]])],
     "determine-action": [read("Election decision", [["Old code", "CT"], ["New code", "OT"], ["Current pay rule", "DEMO-CT-BASE"], ["New pay rule", "DEMO-OT-BASE"], ["Effective date", "07/01/2026"]])],
