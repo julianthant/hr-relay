@@ -19,7 +19,7 @@ describe("assistant model preference additive schema", () => {
       for (const statement of ninth.statements) database.exec(statement);
       for (const value of prior) { assert.ok(typeof value.name === "string"); assert.deepEqual(database.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name=?").get(value.name), value); }
       assert.deepEqual(tables.map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), rows);
-      assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 29);
+      assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 30);
       assert.deepEqual(migrationTableNames(9).filter(table => !tables.includes(table)), ["assistant_model_preference"]);
       assert.equal(tableClassification("assistant_model_preference"), 'authority');
       assert.deepEqual(database.prepare("SELECT * FROM assistant_model_preference").all(), []);

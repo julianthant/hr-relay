@@ -22,11 +22,13 @@ export const PersonPreferencesSchema = z.strictObject({
   workflowPanelMode: z.enum(["floating", "icon", "sidebar"]),
   selectedWorkflowId: z.string().max(120),
   shortcuts: ShortcutPreferencesSchema,
+  sendShortcut: z.enum(["enter", "mod-enter"]),
 });
 export type PersonPreferences = z.infer<typeof PersonPreferencesSchema>;
 export const NEUTRAL_PERSON_PREFERENCES = deepFreeze(PersonPreferencesSchema.parse({
   theme: "dark", animations: true, workflowPanelMode: "floating", selectedWorkflowId: "",
   shortcuts: { numberMode: "runs", bindings: { search: ["/"], start: ["r"], next: ["j", "ArrowDown"], previous: ["k", "ArrowUp"], attention: ["n"] } },
+  sendShortcut: "enter",
 }));
 export function derivePersonPreferencesFingerprint(input: unknown): string {
   return sha256Hex(canonicalJsonStringify(PersonPreferencesSchema.parse(input)));

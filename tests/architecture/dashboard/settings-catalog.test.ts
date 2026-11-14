@@ -183,12 +183,12 @@ describe("settings catalog", () => {
     assert.equal(SettingsOverrideSchema.safeParse({ urls: { kuali: { test: { entry: "https://example.invalid" } } } }).success, true);
     assert.throws(() => ordinarySettingsObject("actor", z.strictObject({ id: z.string() })), /actor.label is missing/u);
   });
-  it("pins the 72-row closed registry and refuses a missing or duplicated row", () => {
-    assert.equal(SETTINGS_CATALOG.length, 72);
+  it("pins the 73-row closed registry and refuses a missing or duplicated row", () => {
+    assert.equal(SETTINGS_CATALOG.length, 73);
     assert.deepEqual(Object.fromEntries([
       "ordinary-settings", "protected-store", "derived-host", "runtime-isolation",
     ].map((sourceClass) => [sourceClass, SETTINGS_CATALOG.filter((row) => row.sourceClass === sourceClass).length])), {
-      "ordinary-settings": 65,
+      "ordinary-settings": 66,
       "protected-store": 3,
       "derived-host": 1,
       "runtime-isolation": 3,

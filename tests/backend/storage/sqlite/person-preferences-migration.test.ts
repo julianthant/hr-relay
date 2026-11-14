@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { convertPersonPreferencesRow, PRE_PREFERENCES_SETTINGS_SCHEMA_HASH } from "../../../../src/backend/storage/sqlite/person-preferences-migration.js";
+import { convertPersonPreferencesRow, convertSendShortcutRow, PERSON_PREFERENCES_CONVERSION_ID, PRE_PREFERENCES_SETTINGS_SCHEMA_HASH, PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH } from "../../../../src/backend/storage/sqlite/person-preferences-migration.js";
+import { SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { createSettingsActivationRepositories } from "../../../../src/backend/storage/sqlite/settings-activation.js";
 import { commandFromRow } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { readAppSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
@@ -97,5 +98,72 @@ it.each(["fingerprint", "schema", "unexpected-preferences"])("refuses invalid pr
     database.exec("BEGIN EXCLUSIVE"); assert.throws(() => convert(database)); database.exec("ROLLBACK");
     assert.deepEqual(rows(database), before);
     assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 15);
+  } finally { database.close(); }
+});
+
+/** A schema-29 store: snapshots without sendShortcut and the initialization bound to the schema before it. */
+function sendShortcutPredecessor(hash: string = PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH) {
+  const database = fixture(); convert(database);
+  const triggers = database.prepare("SELECT name,sql FROM sqlite_schema WHERE name IN ('settings_snapshots_immutable','command_audits_immutable')").all();
+  for (const row of triggers) database.exec(`DROP TRIGGER ${String(row.name)}`);
+  for (const raw of database.prepare("SELECT id,payload_json FROM settings_snapshots").all()) {
+    const value = z.object({ preferences: z.record(z.string(), z.unknown()) }).passthrough().parse(JSON.parse(String(raw.payload_json)));
+    const { sendShortcut: _sendShortcut, ...preferences } = value.preferences;
+    database.prepare("UPDATE settings_snapshots SET payload_json=? WHERE id=?").run(canonicalJsonStringify({ ...value, preferences,
+      preferencesFingerprint: sha256Hex(canonicalJsonStringify(preferences)) }), String(raw.id));
+  }
+  const previous = (json: unknown) => String(json).replaceAll(SETTINGS_SCHEMA_HASH, hash);
+  database.prepare("UPDATE settings SET payload_json=?").run(previous(database.prepare("SELECT payload_json FROM settings").get()?.payload_json));
+  for (const row of database.prepare("SELECT id,request_json,outcome_json FROM commands").all()) {
+    const request = previous(row.request_json);
+    database.prepare("UPDATE commands SET request_json=?,request_digest=?,outcome_json=? WHERE id=?").run(request, sha256Hex(request), row.outcome_json === null ? null : previous(row.outcome_json), String(row.id));
+  }
+  database.exec(`UPDATE command_audits SET payload_json=replace(payload_json,'${SETTINGS_SCHEMA_HASH}','${hash}')`);
+  for (const row of triggers) database.exec(String(row.sql));
+  database.prepare("UPDATE database_states SET schema_version=29").run();
+  database.exec("PRAGMA user_version=29");
+  return database;
+}
+function convertFrom29(database: DatabaseSync) {
+  applyAuthorityMigrationsAfter(database, 29, { now: "2026-11-14T16:00:00.000Z", captureFile: () => { throw new Error("artifact-unexpected"); } });
+  database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
+  database.exec(`PRAGMA user_version=${CURRENT_AUTHORITY_SCHEMA_VERSION}`);
+}
+
+it("binds the predecessor schema hash and keeps migration 16's frozen conversion id", () => {
+  assert.equal(PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH, "39fde8a538405f533301def527db504117799174867cc4d93beb55310382f29a");
+  assert.notEqual(SETTINGS_SCHEMA_HASH, PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH);
+  assert.equal(PERSON_PREFERENCES_CONVERSION_ID, "72ab4370a7a2766b8b169abdf2d6725b1cece28ddcd1bae6b70d28ab43ff99b4");
+});
+it("opens a schema-29 store with every stored value kept and Send shortcut at Enter; rollback preserves the source", () => {
+  const database = sendShortcutPredecessor();
+  try {
+    const before = rows(database);
+    assert.throws(() => readAppSettings(database));
+    assert.equal(inspectNativeAuthority(database, 29).schemaVersion, 29);
+    database.exec("BEGIN EXCLUSIVE"); convertFrom29(database); database.exec("ROLLBACK");
+    assert.deepEqual(rows(database), before);
+    database.exec("BEGIN EXCLUSIVE"); convertFrom29(database); database.exec("COMMIT");
+    assert.equal(inspectNormalAuthority(database).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    const after = readAppSettings(database); assert.ok(after);
+    assert.equal(after.initialization.settings.settingsSchemaHash, SETTINGS_SCHEMA_HASH);
+    assert.deepEqual(after.initialization.settings.settings, {});
+    for (const [index, raw] of database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all().entries()) {
+      const original = before[0].rows[index];
+      assert.equal(raw.id, original.id); assert.equal(raw.fingerprint, original.fingerprint); assert.equal(raw.revision, original.revision);
+      const value = ConfigSnapshotRecordSchema.parse(JSON.parse(String(raw.payload_json)));
+      const prior = z.object({ config: z.unknown(), preferences: z.record(z.string(), z.unknown()) }).parse(JSON.parse(String(original.payload_json)));
+      assert.equal(canonicalJsonStringify(value.config), canonicalJsonStringify(prior.config));
+      assert.deepEqual(value.preferences, { ...prior.preferences, sendShortcut: "enter" });
+    }
+    assert.throws(() => database.exec("UPDATE settings_snapshots SET revision=revision+1"), /retained-evidence-immutable/);
+    assert.throws(() => database.exec("UPDATE command_audits SET code='changed'"), /retained-evidence-immutable/);
+  } finally { database.close(); }
+});
+it("still refuses a store bound to any other settings schema", () => {
+  const database = sendShortcutPredecessor(sha256Hex("another-settings-schema"));
+  try {
+    assert.throws(() => inspectNativeAuthority(database, 29));
+    assert.equal(convertSendShortcutRow("settings", database.prepare("SELECT * FROM settings").get()).payload_json, database.prepare("SELECT payload_json FROM settings").get()?.payload_json);
   } finally { database.close(); }
 });
