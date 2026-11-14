@@ -200,6 +200,7 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_UNAVAILABLE: catalogEntry("The assistant is unavailable.", EmptyParametersSchema),
   ASSISTANT_READ_UNAVAILABLE: catalogEntry("Run details are unavailable. Check the run in Logs.", EmptyParametersSchema),
   ASSISTANT_READ_STALE: catalogEntry("The run changed. Ask again.", EmptyParametersSchema),
+  ASSISTANT_USAGE_LOG_UNAVAILABLE: catalogEntry("Token usage could not be logged.", EmptyParametersSchema),
   ASSISTANT_HISTORY_UNAVAILABLE: catalogEntry("Chat history didn't load. Refresh to try again.", EmptyParametersSchema),
   ASSISTANT_HISTORY_UNSAVED: catalogEntry("Chat not saved. Sending is paused.", EmptyParametersSchema),
   ASSISTANT_CHAT_FULL: catalogEntry("This chat is too long. Start a new chat.", EmptyParametersSchema),
@@ -221,6 +222,12 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_SPREADSHEET_REFUSED: catalogEntry("The Spreadsheets library refused this change. Review the workbook in Spreadsheets.", EmptyParametersSchema),
   ASSISTANT_PROPOSAL_REFUSED: catalogEntry("The current planner refused this proposal. Review it in Run.", EmptyParametersSchema),
   ASSISTANT_PROPOSAL_EXPIRED: catalogEntry("This card expired. Ask again for a new one.", EmptyParametersSchema),
+  ASSISTANT_PROPOSAL_CHANGED: catalogEntry("This changed after you reviewed it. Ask again for a new proposal.", EmptyParametersSchema),
+  ASSISTANT_ROW_INVALID_STATE: catalogEntry("The run can't do this in its current state. Nothing was changed.", EmptyParametersSchema),
+  ASSISTANT_ROW_TARGET_GONE: catalogEntry("The run no longer exists. Nothing was changed.", EmptyParametersSchema),
+  ASSISTANT_ROW_POLICY_REFUSED: catalogEntry("Relay's safety rules refused this. Nothing was changed.", EmptyParametersSchema),
+  ASSISTANT_ROW_STORAGE_UNAVAILABLE: catalogEntry("Relay's storage could not take this right now. Nothing was changed.", EmptyParametersSchema),
+  ASSISTANT_ROW_UNAVAILABLE: catalogEntry("This action is not available yet. Nothing was changed.", EmptyParametersSchema),
 
   RUN_LOG_DISPLAY_VALUE_UNMAPPED: catalogEntry(
     "A retained value has no declared display text. Update the workflow declaration before reading these Logs.",
@@ -700,6 +707,14 @@ export const ERROR_CATALOG = Object.freeze({
     "That name cannot be used as the timekeeper name.",
     EmptyParametersSchema,
   ),
+  PROFILE_DISPLAY_NAME_REFUSED: catalogEntry(
+    "That name cannot be used. Use a first and last name that each start with a letter.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_INITIALS_REFUSED: catalogEntry(
+    "Initials must be 1 to 8 letters A to Z.",
+    EmptyParametersSchema,
+  ),
   PROFILE_SIGN_IN_REFUSED: catalogEntry(
     "That email and password did not match a profile on this computer.",
     EmptyParametersSchema,
@@ -740,8 +755,28 @@ export const ERROR_CATALOG = Object.freeze({
     "Saved work email and password were removed, but a backup still has a copy.",
     EmptyParametersSchema,
   ),
-  PROFILE_VERIFIER_UNAVAILABLE: catalogEntry(
-    "A password change waits for a live sign-in that proves the new password.",
+  PROFILE_CURRENT_PASSWORD_REFUSED: catalogEntry(
+    "The current password was not accepted. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_USERNAME_TAKEN: catalogEntry(
+    "Another profile on this computer already uses that email. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_USERNAME_REFUSED: catalogEntry(
+    "Enter a different @ucsd.edu email with no spaces around it. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_UNKNOWN: catalogEntry(
+    "Relay could not confirm whether your sign-in changed, and nothing will be undone. Try your new username and password first, then your current ones.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_UNSETTLED: catalogEntry(
+    "Your sign-in change did not finish. Try it again; until it finishes, your current username and password still sign you in.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_BUSY: catalogEntry(
+    "Another save was in progress, so your sign-in was not changed. Try again.",
     EmptyParametersSchema,
   ),
   PROFILE_FLAT_STORE_MIGRATION_FAILED: catalogEntry("Relay could not verify the old store backup and start a clean profile installation. Startup is stopped; remaining data is preserved.", EmptyParametersSchema),
@@ -779,9 +814,6 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   PROFILE_RESTORE_ADMISSION_REQUIRED: catalogEntry(
     "Log out cannot finish until restore admission accepts the machine erasure journal.",
-    EmptyParametersSchema,
-  ),  CHATGPT_REVOCATION_UNCONFIRMED: catalogEntry(
-    "Your ChatGPT account is signed out locally. Remote revocation could not be confirmed.",
     EmptyParametersSchema,
   ),
   CHATGPT_AUTH_BUSY: catalogEntry(

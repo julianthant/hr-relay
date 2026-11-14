@@ -16,6 +16,15 @@ import { JsonValueSchema,canonicalJsonStringify } from "../validation/canonical-
 import { deepFreeze } from "../validation/immutability.js";
 import { sha256Hex } from "../validation/sha256.js";
 
+export const AssistantActionBindingSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("proposal"), proposalId: z.uuid(), rowId: z.uuid() }),
+  z.strictObject({ kind: z.enum(["session", "local-edit"]), actionId: z.uuid() }),
+]);
+export const AssistantCommandAttributionSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("unrecorded") }),
+  z.strictObject({ kind: z.literal("assistant"), requestedBy: ActorIdSchema, profileId: z.uuid(), conversationId: z.uuid(), acceptedMessageId: z.uuid(), binding: AssistantActionBindingSchema }),
+]);
+
 /** A durable command identity cannot be reused by another command or authority. */
 export class CommandIdentityConflictError extends Error {
   constructor(message = "command-divergent: command identity belongs to a different command") {

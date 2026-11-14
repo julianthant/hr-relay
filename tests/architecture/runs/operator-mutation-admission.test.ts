@@ -39,8 +39,6 @@ const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
   "/api/v1/settings/chatgpt-account/sign-in": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/chatgpt-account/test-ocr": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/settings/chatgpt-account/sign-out": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/settings/chatgpt-account/forget-account": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/path-picker": { guard: "operatorMutationIngressGuard" },
 });
 
@@ -113,7 +111,7 @@ describe("operator mutation admission", () => {
   it("admits the public profile routes before request-body effects", () => {
     const publicSource = readFileSync(resolve(REPO_ROOT, "src/backend/app/composition/dashboard/profile-session-routes.ts"), "utf8");
     const table = Object.fromEntries(["sign-in", "resume", "sign-up", "logout", "delete-account", "onboarding/duo/browser", "onboarding/duo/reopen", "onboarding/duo/portal", "onboarding/duo/start", "onboarding/duo/confirm",
-      "onboarding/duo/cancel", "onboarding/cancel", "onboarding/complete"].map(path => [`/api/v1/profile/${path}`, { guard: "operatorMutationIngressGuard" as const }]));
+      "onboarding/duo/cancel", "onboarding/cancel", "onboarding/complete", "account/password", "account/username", "account/details"].map(path => [`/api/v1/profile/${path}`, { guard: "operatorMutationIngressGuard" as const }]));
     assert.deepEqual(auditOperatorMutationAdmission(publicSource, table).violations, []);
   });
 

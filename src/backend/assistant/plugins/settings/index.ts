@@ -15,7 +15,7 @@ export function settingsPlugin(deps: AssistantPluginDeps): AssistantPlugin {
   const parameters = z.strictObject({ key: z.enum(KEYS as [string, ...string[]]).nullable() });
   const Output = z.strictObject({ settings: z.array(z.strictObject({ key: z.enum(KEYS as [string, ...string[]]), value: z.union([z.boolean(), z.number(), z.enum(["set", "unset"])]) })) });
   return { domain: "settings", tools: [{
-    kind: "read", name: "read_settings",
+    kind: "read", tier: "read", name: "read_settings",
     description: "Read one ordinary setting by key, or all of them with key null: on/off and number values as they are, other values only as set or unset. Changes are made in Settings by the operator.",
     parameters, output: Output, privacy: [],
     async invoke(value, context) {

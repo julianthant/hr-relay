@@ -52,6 +52,18 @@ export function createAssistantReferenceTable(generation: number) {
   }
   return Object.freeze({
     generation, issue, resolve,
+    /** Strict segments for server reply construction; literal wording has no markup authority. */
+    segments(text: string): ({ kind: "text"; text: string } | { kind: "reference"; token: string; entry: AssistantReferenceEntry })[] {
+      const segments: ({ kind: "text"; text: string } | { kind: "reference"; token: string; entry: AssistantReferenceEntry })[] = [];
+      let at = 0;
+      for (const match of text.matchAll(TOKEN_SHAPED)) {
+        if (match.index > at) segments.push({ kind: "text", text: text.slice(at, match.index) });
+        segments.push({ kind: "reference", token: match[0], entry: resolve(match[0], ["P", "E", "R", "N", "S", "A", "T", "V"]) });
+        at = match.index + match[0].length;
+      }
+      if (at < text.length) segments.push({ kind: "text", text: text.slice(at) });
+      return segments;
+    },
     display: (text: string) => replace(text, entry => entry.display),
     /** A tool argument with every token-shaped part resolved strictly; an unknown, expired or wrong-kind reference refuses. */
     expandArgument: (text: string, kinds: readonly AssistantReferenceKind[]) => text.replace(TOKEN_SHAPED, token => resolve(token, kinds).expand),

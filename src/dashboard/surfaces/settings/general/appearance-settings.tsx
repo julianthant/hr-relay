@@ -11,7 +11,7 @@ export function AppearanceSettings({ theme, onToggleTheme }: { theme: DemoTheme;
   const disabled = preferences.state !== "ready";
   return <>
     <div data-settings-path="appearance.theme" className="settings-compact-row">
-      <ResultRow label="Theme" description="Light or dark." value={<SegmentedChoice hideLabel label="Theme" value={theme} disabled={disabled} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} onChange={next => { if (next !== theme) onToggleTheme(); }} />} />
+      <ResultRow label="Theme" value={<SegmentedChoice hideLabel label="Theme" value={theme} disabled={disabled} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} onChange={next => { if (next !== theme) onToggleTheme(); }} />} />
     </div>
     <div data-settings-path="appearance.animations" className="settings-compact-row">
       <Switch name="appearance.animations" label="Animations" disabled={disabled} checked={motion.enabled} onCheckedChange={motion.change} />

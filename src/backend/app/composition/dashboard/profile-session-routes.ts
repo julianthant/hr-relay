@@ -11,12 +11,18 @@ CancelProfileOnboardingDuoRequestSchema,
 CancelProfileOnboardingRequestSchema,
 CompleteProfileOnboardingRequestSchema, ReopenProfileOnboardingBrowserRequestSchema,
 ConfirmProfileOnboardingDuoRequestSchema,DeleteProfileAccountRequestSchema,PROFILE_ONBOARDING_STATE,
+ProfileDetailsChangeRequestSchema,
+ProfileDetailsChangeResultSchema,
+ProfileLoginChangeResultSchema,
 ProfileLoginRequestSchema,
+profileAccount,
+ProfilePasswordChangeRequestSchema,
 ProfileFirstRunCheckSchema,
 ProfileOnboardingStateSchema,
 ProfileSignUpRequestSchema,
 PublicProfileStateSchema,
 StartProfileOnboardingDuoRequestSchema,
+ProfileUsernameChangeRequestSchema,
 type PublicProfileState
 } from "../../../../models/profiles/public-profile.js";
 import { systemClock } from "../../../../rules/time/clock.js";
@@ -183,11 +189,12 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.use("/api/v1/profile/logout", operatorMutationIngressGuard);
   app.use("/api/v1/profile/delete-account", operatorMutationIngressGuard);
   app.use("/api/v1/profile/onboarding/*", operatorMutationIngressGuard);
+  app.use("/api/v1/profile/account/*", operatorMutationIngressGuard);
   const activeState = (profileId: string, epoch: number) => {
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === profileId);
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     return { state: "active" as const, profileId, epoch, duoState: row.duoState,
-      account: { name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName, lastSignedInAt: row.lastSignedInAt } };
+      account: profileAccount(row) };
   };
   const mountActive = async (result: ActiveProfileSession, onInitialPreflight = input.onInitialPreflight): Promise<PublicProfileState> => {
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
@@ -381,6 +388,32 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: machine.readProfileRegistry().profiles.length === 0 }));
     } finally { transitioning = false; }
   };
+  // A landed change whose flush or closure failed is reported as changed, and an unreadable outcome as unknown; each failure is logged and any custody retained here.
+  const changeLogin = (c: Context, change: (token: string, at: string) => ReturnType<typeof profileRuntime.session.changePassword>) => {
+    const result = change(current(c.req.raw).token, clock.now().toISOString());
+    if (result.state === "refused") return c.json(ProfileLoginChangeResultSchema.parse({ state: "refused", code: result.code }));
+    // Custody is retained before the fault is written; a fault that cannot be written is reported beside the settled outcome.
+    let diagnostics: { diagnostics: "unrecorded" } | undefined;
+    if (result.failure instanceof Error) {
+      try { publicFailure(result.failure); }
+      catch { diagnostics = { diagnostics: "unrecorded" }; }
+    }
+    if (result.state === "unknown") return c.json(ProfileLoginChangeResultSchema.parse({ state: "unknown", code: "PROFILE_LOGIN_CHANGE_UNKNOWN", ...diagnostics }));
+    return c.json(ProfileLoginChangeResultSchema.parse({ state: "changed", ...(result.durability === undefined ? {} : { durability: result.durability }), ...diagnostics }));
+  };
+  app.post("/api/v1/profile/account/password", async c => {
+    const request = ProfilePasswordChangeRequestSchema.parse(await c.req.json());
+    return changeLogin(c, (token, at) => profileRuntime.session.changePassword(token, { ...request, at }));
+  });
+  app.post("/api/v1/profile/account/username", async c => {
+    const request = ProfileUsernameChangeRequestSchema.parse(await c.req.json());
+    return changeLogin(c, (token, at) => profileRuntime.session.changeUsername(token, { ...request, at }));
+  });
+  app.post("/api/v1/profile/account/details", async c => {
+    const request = ProfileDetailsChangeRequestSchema.parse(await c.req.json());
+    const result = profileRuntime.session.changeDetails(current(c.req.raw).token, request);
+    return c.json(ProfileDetailsChangeResultSchema.parse(result.state === "changed" ? result : { state: "refused", code: result.code }));
+  });
   app.post("/api/v1/profile/logout", c => endSession(c, false));
   app.post("/api/v1/profile/delete-account", c => endSession(c, true));
   if (bundle !== undefined) app.use("*", staticBundleHandler(bundle));

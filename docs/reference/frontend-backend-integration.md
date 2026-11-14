@@ -68,6 +68,19 @@ the current served account binding once, without a polling or activation loop.
 owns durable preference and private account authority. Neither a mounted control nor source wiring
 establishes live model or operator acceptance.
 
+Structured reply source contracts live in `models/dashboard/assistant.ts`; `backend/assistant/replies.ts` resolves the existing literal model text and context-owned handles into server-authored parts. These source helpers are not the served response or history wire. Targets contain stable run/input, Queue query, workbook revision/location or attachment digest identities, never ephemeral reference tokens, URLs or commands. A value with no link semantics is explicitly value-only; failed membership, canonical input or currentness refuses instead of becoming text. Person targets require an admitted single/member Lookup row, strict schema-bound EID matching and protected-subject refusal. Generic protected run links retain the safe existing title.
+
+The unregistered `createAssistantM1Service` prepares read and session turns against the M1 history owner. Every tool declares a tier (`read`, `session`, `write-local`, `leaves-machine`) the registry checks against its kind. Its private tools port supplies read and session plugins, the session owner and current server reply bindings; change and proposal tools refuse before model access. A session start goes through `createAssistantSessionAuthorization` with the turn's accepted identity: only a transaction-free registered graph starts in real mode, or a supported dry run when the send carries the composer's `approvalMode: "full-access"` and Settings still allows Full access; saving workflows otherwise stay proposals. The accepted turn's check and the Full access setting are rechecked after planning and at the command effect hook. Each start claims once per accepted message and request, submits one canonical start command with session attribution, and appends a server-authored session part; a turn that attempted a start offers no retry. Durable claims arrive with the proposal store; the post-POST turn fence reports uncertain delivery. Duplicate sends authenticate the original literal text, subject and ordered attachment IDs before remasking or model work and only return stored delivery/accounting. New attempts retain the exact committed acceptance object, settle structured parts and actual per-call usage atomically, and read the stored reply back. Failed history observation returns explicit unavailable delivery metadata with the last observed revision. A definite read refusal may offer an explicit new-message retry; repeats, stale turns and uncertain delivery grant none.
+
+`models/dashboard/assistant-usage.ts` owns token schemas and aggregation. Each newly accepted attempt emits one numeric/closed-literal accounting event through the existing debug writer, including refused and uncertain exits; duplicates emit none. Missing call measurements remain unavailable rather than measured zero. A logger failure adds a closed diagnostic while preserving a known stored result, including the distinct resource-closure failure code. This preparation installs no service, route, client or migration; native activation and the C0/A2 wire replacement remain separate.
+
+The unregistered M1 message-payload contract distinguishes unrecorded display, actual accepted-turn metadata with pending or recorded usage, and reply links. Its pure historical payload converter preserves exact literal text, including empty text, without installing a reader or manufacturing accepted metadata. A shared semantic UTF-16 display counter retains the existing visible-text quota; JSON framing and replay are not display charges. Native row ownership/correlation admission, profile budget refusal and migration activation remain integration obligations.
+
+Assistant command attribution and action bindings live in `rules/commands/commands.ts`. Unregistered M1 command contracts require a sidecar outside canonical request JSON/digest and matching top-level audit attribution. Known-predecessor conversion authenticates command identity, native audit columns and the canonical outcome mirror before recording explicit unrecorded provenance; old assistant source labels confer no provenance. The search owner rebinds only a complete, matching canonical set of queued events and contributing command/audit pairs while preserving retained order and frozen declaration data. These pure contracts do not perform native/profile admission or grant permissions; immutable SQL admission, real accepted-claim ownership and coordinated reader/writer activation remain separate.
+
+
+Failure parts style only the fixed server word `Failed`; the catalog reason follows unchanged as plain text. Ordinary lists above eight require a complete server count and a resolved Queue target; proposal lists retain all 1–20 rows within the existing display/context budgets. Stored session parts have run identity and display data only. A fresh session projection rereads admitted run authority and the Queue surface, checks matching IDs/revisions and reuses only the existing eligible Cancel descriptor. This projection does not authorize Stop: integration must first prove membership in an owned accepted read-session start and its transaction-free graph; operator dispatch remains the dashboard command client. Imported wording never creates session or approval authority. Accepted-turn `acceptedAt` is the message acceptance instant, distinct from the conversation creation instant used by history currentness. Answered attribution retains the real command `requestedBy` and accepted action binding; authentic audit persistence and the coordinated caller/wire cutover remain integration work.
+
 The assistant's selected subject reference is the visible served run. The service checks its current revision and issues an opaque, version-pinned run reference with a server-only label. Read tools resolve it through the admitted run owners.
 
 Exact Employee ID queries read schema-bound canonical Person Lookup inputs on single and delegated member runs, including queued rows without name checkpoints. They exclude protected subjects, operation parents and previews. The read scans every canonical page within the existing 10,000-row corpus bound, refuses incomplete or stale scans, and orders matching candidates newest first. Multiple candidates stay explicit; the five-row tool limit reports more results. Labels use workflow, retained run number when present, Employee ID, enqueue time and attempt only on the server; the model receives reference tokens. Protected selected rows keep the existing protected-subject label.
@@ -160,7 +173,7 @@ field membership and discriminated states. The client checks identity as well as
 | Run detail, attempts | `queries/detail-queries.ts` | `run-detail.ts`: `GET /api/v1/runs/:runId`, `/attempt-history` |
 | Lazy run sections and rerun values | `queries/detail-queries.ts`, `queries/rerun-queries.ts` | `data.ts`, `trust.ts`: `GET /api/v1/runs/:runId/:section`; `data.ts`: `/rerun-values` |
 | Verified diagnostic bytes | `queries/detail-queries.ts` | `trust.ts`: `GET /api/v1/diagnostic-bundles/:bundleId`, `/manifest`, `/attachments/:artifactId`; verified artifact URL `/artifacts/v1/:artifactId` |
-| ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /sign-in`, `/sign-in/:attemptId/cancel`, `/sign-out` under the account path |
+| ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /sign-in`, `/sign-in/:attemptId/cancel` under the account path |
 | Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/facts`, `/editable`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
 | Preflight | `queries/preflight-queries.ts`, `queries/chatgpt-account-queries.ts` | `settings-preflight.ts`: `GET /api/v1/preflight`, `POST /api/v1/preflight/rerun`; explicit diagnostic through the existing `chatgpt-account.ts`: `POST /api/v1/settings/chatgpt-account/test-ocr` |
 | Storage doctor | `queries/storage-queries.ts` | `storage.ts`: `GET /api/v1/storage/doctor/latest`, `/api/v1/storage/doctor` |
@@ -419,6 +432,43 @@ Sign-in authenticates a current profile through the ordinary endpoint and sessio
 not dispatch storage maintenance or restart the app. Pending onboarding and logout continue through
 their existing recovery boundaries.
 
+The Relay login is the work email and password saved as the profile's UCPath sign-in.
+`POST /api/v1/profile/account/password` `{currentPassword, newPassword}` and
+`POST /api/v1/profile/account/username` `{currentPassword, newUsername}` change it for the current
+session cookie only. They return `{state: "changed"}`, `{state: "unknown", code}` or
+`{state: "refused", code}`. A wrong current password counts toward the sign-in lockout. A new
+username must be a plain `@ucsd.edu` address the sign-in form accepts, must change the verifier key
+and must not be taken; a new username or password longer than the form's 160 characters, or a
+password with a line break the form's single-line input would remove, is refused. Refusals leave the saved login unchanged.
+
+The change saves both UCPath entries in one marked write, then swaps that profile's verifier row as
+its commit point, and only once the entries are proved durable. If it stops between them, it
+answers `PROFILE_LOGIN_CHANGE_UNSETTLED` and the session stays signed in: its next change writes the
+proved old login back first, and after a restart resume is refused until a sign-in with the old
+login writes it back. Recovery reads the credential store's own history (`lastEntryWriters`) and
+writes back only while a marked login write was the last to set both entries, so it survives
+unrelated protected saves and never overwrites a later Settings set, clear or erase. Neither path
+needs a logout, so parked writes stay held. A swap that landed is never undone: if only its flush
+or directory close failed, the result is `{state: "changed", durability: "unconfirmed"}`, the
+failure is logged and an unclosed descriptor stays held by its owner. If the verifier cannot be read
+back after a failed swap, the result is `PROFILE_LOGIN_CHANGE_UNKNOWN`, nothing is undone and
+neither login is promised. A change that settled keeps its result when only the profile lock's
+release fails; that failure is logged and any unclosed descriptor stays held. A changed or unknown
+result whose fault cannot be written still answers its outcome, marked `diagnostics: "unrecorded"`. An old-login restore
+that cannot prove its write durable fails the sign-in or change that ran it, which may then be
+retried. The epoch, Duo material and other profiles are unchanged.
+
+`POST /api/v1/profile/account/details` `{name?: {firstName, lastName}, initials?, timekeeperName?}`
+changes the current session's Name, Initials or Timekeeper name in its registry row. It needs at
+least one value and returns `{state: "changed", account}` or `{state: "refused", code}`. Every value
+is checked before anything is written, so one refused value changes nothing:
+`PROFILE_DISPLAY_NAME_REFUSED` for a name the sign-up rules refuse, `PROFILE_INITIALS_REFUSED`
+unless the initials are 1 to 8 letters A to Z, and `PROFILE_NAME_REFUSED` for a timekeeper name
+that is padded, has a control character, is longer than 129 characters or has a word that does not
+start with a letter. Timekeeper initials are not stored; they are `profileInitials(timekeeper)`.
+`/profile/state`, bootstrap's actor label and the next run's timekeeper read the new values. A run
+already planned or started keeps the timekeeper name it captured.
+
 ### Profile onboarding boundary
 
 Details returns canonical `onboarding` state and a limited HttpOnly cookie scoped to profile routes.
@@ -516,3 +566,7 @@ The shared HTTP response observer records returned refusals, failures and uncert
 The product client reports handled HTTP, network, binary, stream, schema and protocol failures through `/api/v1/debug/errors`, using the current surface, a value-free route, approved code and static reason. An unhandled `DashboardClientError` sends its first closed cause row; any other unhandled browser error sends `DASHBOARD_UNHANDLED_ERROR` with its message and stack. The server accepts a report only with `DASHBOARD_UNHANDLED_ERROR`, the fixed request-failure message and no stack, or a browser cause row whose name, code, reason and normalized frames match the closed vocabulary. The development mirror revalidates each payload before writing. Reports require an observed active profile session; signed-out, logout and stale-session paths send none. Reporting never retries an operation or changes its result. Report delivery failures use the existing browser error channel with the catalogued `DASHBOARD_ERROR_REPORT_UNAVAILABLE` error; the app excludes that error from recursive reporting. The terminal-failures architecture guard protects request catches and the production terminal sinks; the secret-values guard also covers debug emissions and client reports.
 
 `npm run backend` starts only the development BFF; `npm run web` starts only Vite. `npm run dashboard` owns both and waits for BFF readiness without a time limit before starting Vite. Development launches set `RELAY_DEV_DEBUG_MIRROR=1` for backend descendants, including pool workers, so mirroring survives a fresh Node argument list. Production worker environments omit that flag; production entrypoints and Electron suppress mirroring.
+
+The inactive M1 history repository in `backend/storage/sqlite/assistant-history.ts` stores structured payloads directly, assigns accepted ordinals/revisions/time from the transaction and server clock input, and captures the database-bound profile plus private live account epoch. Sending and settlement compare the captured accepted-turn identity and separate conversation creation fence, plus the exact new-acceptance object retained privately for this owner lifetime. Repeats and restored metadata carry no live identity; Clear, settlement, interruption and expiry invalidate it through the required private `afterCommit` port. All private identity transitions register inside the mutation and publish only after the real outer commit; nested/outer rollback cancels them. Activation must bind this port to the existing authority owner’s commit hook; supplied-port fixture coverage does not replace native-composition proof. Settlement records actual usage only on the accepted operator row and links its ordered reply atomically; interruption keeps pending usage and records delivery unknown. Imports and local captions remain literal/unrecorded. It shares semantic display accounting and the existing attachment store. Its replacement SQL is unregistered and construction changes no schema. The current text repository, migration, registry and served wire remain active; native admission must prove the single-profile database before maintenance, and backup/upgrade/caller cutover remain separate.
+
+The inactive M2 proposal repository in `backend/storage/sqlite/assistant-proposals.ts` keeps the exact reviewed proposal snapshot (ordered rows, rendered message and digest, no own timeout), its once-only answer claim, one claim and result per row, and the durable session claims. A new proposal or any change request supersedes the chat's open one; the open count is the served needs-you count. SQL triggers keep snapshots immutable, answer once, and settle each row and session claim once; UNKNOWN stays terminal. Its candidate statements are unregistered; activation installs them after the M1 statements at the next free numbers after schema 29.

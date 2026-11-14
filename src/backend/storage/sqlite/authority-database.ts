@@ -53,6 +53,7 @@ import { deriveBulkChildCommand,deriveBulkChildCommandId } from "../../../rules/
 import { AuthorityCommandAuditRecordSchema,AuthorityCommandRecordSchema,BulkParentCommandRecordSchema,BulkRunCommandAcceptanceRecordSchema,CommandAuditRecordSchema,CommandIdentityConflictError,CommandRequestSchema,RunLifecycleCommandAuditRecordSchema,RunLifecycleCommandRecordSchema,StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
+import { interruptTransition } from "../../../rules/runs/run-interrupt.js";
 import { capturedInstantClock } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { DelegationManifestSchema,DependencyRecordSchema,delegationJoinDisposition,type DelegationManifest,type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
@@ -94,7 +95,7 @@ import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessor
 import { predecessorRunRecordFromRow,runRecordColumns,runRecordFromRow,transitionRunRecord,transitionStoredRun,updateRunRecord } from "./run-record-row.js";
 import { createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
-import { ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,} from "./run-store-contracts.js";
+import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type RunAdmission,} from "./run-store-contracts.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings, migratePersonPreferences } from "./settings-storage.js";
@@ -395,9 +396,22 @@ type DeletedRunRepository = Readonly<{
 
 type CanonicalRunClaimOutcome = RunClaimOutcome | Readonly<{ state: "refused"; refusal: RunRecordRefusal }>;
 
+/** A confirmed Pause all and quit of the bound runtime generation (`held`) that no application-admission release names; binds the generation twice. */
+const UNRELEASED_QUIT_HOLD_SQL = `held.family='application'
+  AND json_extract(held.request_json,'$.type')='pause-all-and-quit'
+  AND json_extract(held.request_json,'$.payload.confirmed')=1
+  AND json_extract(held.request_json,'$.target.runtimeGeneration')=?
+  AND NOT EXISTS(SELECT 1 FROM commands release WHERE release.state IN ('executing','succeeded') AND release.family='run-lifecycle'
+    AND json_extract(release.request_json,'$.operation')='application-admission'
+    AND json_extract(release.request_json,'$.request.runtimeGeneration')=?
+    AND json_extract(release.request_json,'$.request.releases')=held.id)`;
+
 type RunRepository = Readonly<{
   holdAdmission(input: unknown): void;
-  admission(): Readonly<{ state: "open" } | { state: "draining"; commandId: string }>;
+  releaseQuitAdmission(input: unknown): void;
+  admission(): RunAdmission;
+  /** The current runtime's unreleased Pause all and quit, whether or not an earlier hold also closes admission. */
+  quitAdmission(): string | undefined;
 
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
 
@@ -2424,8 +2438,9 @@ export class AuthorityDatabase implements Disposable {
           const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", commandId, operation: "transition", request,
             requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0transition\0${canonicalJsonStringify(request)}`),
             fence: { kind: "version", expectedVersion: current.version }, recordedAt: now });
+          // The terminal transition drops pause, so the paused-run refusal reads the current record.
+          if (Object.hasOwn(current, "pause")) throw new Error("queued-run-cancellation-pause-refused");
           const updated = transitionStoredRun(current, PredecessorRunRecordSchema.parse({ ...current, lifecycle }), now, PredecessorRunRecordSchema);
-          if (Object.hasOwn(updated, "pause")) throw new Error("queued-run-cancellation-pause-refused");
           const entries = Object.entries(runRecordColumns(updated, PredecessorRunRecordSchema)).filter(([key]) => key !== "id" && key !== "pause_state");
           const changes = Number(database.prepare(`UPDATE runs SET ${entries.map(([key]) => `${key} = ?`).join(",")} WHERE id = ? AND version = ?`)
             .run(...entries.map(([, value]) => value), updated.envelope.runId, current.version).changes);
@@ -3704,7 +3719,8 @@ export class AuthorityDatabase implements Disposable {
         contractFingerprint: current.envelope.contractFingerprint, expectedVersion: current.version, claim: request.claim,
         authorizedAt: request.now, failureId: failure.failureId });
       this.#assertTerminalAuthorizationMatchesRun(authorization, current);
-      const terminal = RunRecordSchema.parse({ ...current, version: current.version + 1, updatedAt: request.now, completion: completionFromAuthorization(authorization),
+      const { pause: _pause, ...settled } = current;
+      const terminal = RunRecordSchema.parse({ ...settled, version: current.version + 1, updatedAt: request.now, completion: completionFromAuthorization(authorization),
         lifecycle: { state: "terminal", outcome: "failed", endedAt: request.now, failureId: failure.failureId,
           errorSummary: summary, diagnosticSafetyVersion: 1 } });
       const violation = runTransitionViolation(current.lifecycle, terminal.lifecycle);
@@ -3774,8 +3790,9 @@ export class AuthorityDatabase implements Disposable {
         request.authorization.claim,
       );
 
+      const { pause: _pause, ...settled } = current;
       const terminal = RunRecordSchema.parse({
-        ...current,
+        ...settled,
         completion: completionFromAuthorization(request.authorization),
         lifecycle: {
           state: "terminal",
@@ -3879,8 +3896,9 @@ export class AuthorityDatabase implements Disposable {
         request.authorization.expectedVersion,
         request.authorization.claim,
       );
+      const { pause: _pause, ...settled } = current;
       const terminal = RunRecordSchema.parse({
-        ...current,
+        ...settled,
         completion: completionFromAuthorization(request.authorization),
         lifecycle: {
           state: "terminal",
@@ -6208,7 +6226,8 @@ export class AuthorityDatabase implements Disposable {
       if (canonical) this.#lifecycleHooks?.afterClaimSelection?.();
       admit?.(current);
       const selected = this.#readRunRow(current.envelope.runId);
-      if (this.#runAdmission().state !== "open" || selected?.pause !== undefined || selected?.version !== current.version) {
+      if (this.#runAdmission().state !== "open" || selected?.version !== current.version
+        || interruptTransition(selected, { kind: "lifecycle", to: "claimed" }).state === "refused") {
         return canonical ? { state: "refused", refusal: { reason: "none-eligible" } } : { state: "idle" };
       }
       const claimed = RunRecordSchema.parse({
@@ -6228,34 +6247,51 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #runAdmission(): Readonly<{ state: "open" } | { state: "draining"; commandId: string }> {
-    const generation = this.authority.runtimeConfig.get()?.generation;
-    const row = z.strictObject({ commandId: z.uuid() }).optional().parse(this.#database.prepare(`SELECT id AS commandId FROM commands
-      WHERE state IN ('executing','succeeded') AND ((family='application'
-      AND json_extract(request_json,'$.type')='pause-all-and-quit'
-      AND json_extract(request_json,'$.payload.confirmed')=1
-      AND json_extract(request_json,'$.target.runtimeGeneration')=?) OR (family='run-lifecycle'
+  #runAdmission(): RunAdmission {
+    const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
+    const row = z.strictObject({ commandId: z.uuid(), hold: z.enum(["quit", "update", "shutdown", "logout"]) }).optional().parse(this.#database.prepare(`SELECT id AS commandId,
+      CASE family WHEN 'application' THEN 'quit' ELSE json_extract(request_json,'$.request.reason') END AS hold FROM commands held
+      WHERE state IN ('executing','succeeded') AND ((${UNRELEASED_QUIT_HOLD_SQL}) OR (family='run-lifecycle'
       AND json_extract(request_json,'$.operation')='application-admission'
-      AND json_extract(request_json,'$.request.runtimeGeneration')=?)) ORDER BY created_at,id LIMIT 1`).get(generation ?? 0, generation ?? 0));
-    return row === undefined ? { state: "open" } : { state: "draining", commandId: row.commandId };
+      AND json_type(request_json,'$.request.reason')='text'
+      AND json_extract(request_json,'$.request.runtimeGeneration')=?)) ORDER BY created_at,id LIMIT 1`).get(generation, generation, generation));
+    return row === undefined ? { state: "open" } : { state: "draining", commandId: row.commandId, hold: row.hold };
+  }
+
+  #quitAdmission(): string | undefined {
+    const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
+    return z.strictObject({ commandId: z.uuid() }).optional().parse(this.#database.prepare(`SELECT id AS commandId FROM commands held
+      WHERE state IN ('executing','succeeded') AND ${UNRELEASED_QUIT_HOLD_SQL} ORDER BY created_at,id LIMIT 1`).get(generation, generation))?.commandId;
+  }
+
+  #insertAdmissionCommand(repositories: AuthorityRepositories, request: z.infer<typeof ApplicationAdmissionRequestSchema>): void {
+    const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", operation: "application-admission",
+      commandId: request.commandId, request,
+      requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0application-admission\0${canonicalJsonStringify(request)}`),
+      fence: { kind: "none" }, recordedAt: this.#clock.now().toISOString() });
+    repositories.lifecycleJournal.insertCommand(command);
+    repositories.lifecycleJournal.insertAudit({ kind: "run-lifecycle", auditId: request.commandId, request: command,
+      result: { kind: "application", runtimeGeneration: request.runtimeGeneration }, completedAt: command.recordedAt });
   }
 
   #buildRunRepository(): RunRepository {
     return Object.freeze({
       holdAdmission: (input: unknown) => this.withAuthorityTransaction(repositories => {
-        const request = ApplicationAdmissionRequestSchema.parse(input);
+        const request = ApplicationAdmissionHoldSchema.parse(input);
         if (repositories.runtimeConfig.get()?.generation !== request.runtimeGeneration) throw new Error("application-runtime-stale");
         const current = this.#runAdmission();
         if (current.state !== "open" && current.commandId !== request.commandId) throw new Error("application-admission-held");
-        const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", operation: "application-admission",
-          commandId: request.commandId, request,
-          requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0application-admission\0${canonicalJsonStringify(request)}`),
-          fence: { kind: "none" }, recordedAt: this.#clock.now().toISOString() });
-        repositories.lifecycleJournal.insertCommand(command);
-        repositories.lifecycleJournal.insertAudit({ kind: "run-lifecycle", auditId: request.commandId, request: command,
-          result: { kind: "application", runtimeGeneration: request.runtimeGeneration }, completedAt: command.recordedAt });
+        this.#insertAdmissionCommand(repositories, request);
+      }),
+      releaseQuitAdmission: (input: unknown) => this.withAuthorityTransaction(repositories => {
+        const request = ApplicationAdmissionReleaseSchema.parse(input);
+        if (repositories.runtimeConfig.get()?.generation !== request.runtimeGeneration) throw new Error("application-runtime-stale");
+        const current = this.#runAdmission();
+        if (current.state !== "draining" || current.hold !== "quit" || current.commandId !== request.releases) throw new Error("application-quit-admission-not-held");
+        this.#insertAdmissionCommand(repositories, request);
       }),
       admission: () => this.#runAdmission(),
+      quitAdmission: () => this.#quitAdmission(),
       enqueue: (input: unknown) => {
         const record = RunRecordSchema.parse(input);
         if (record.lifecycle.state !== "queued") {
@@ -6556,9 +6592,10 @@ export class AuthorityDatabase implements Disposable {
           if (accountingAuthorization !== undefined && (workflowDelegationAccounting(accountingAuthorization, current) === undefined
             || request.continuation !== undefined || request.pause !== undefined || current.pause?.state !== "paused"))
             throw new Error("delegation-accounting-resume-envelope-change-refused");
-          if (current.lifecycle.state === "terminal" || current.lifecycle.state === "parked-write") throw new Error("run-pause-invalid-state");
-          if (request.acknowledge && (request.claim === undefined || current.pause?.state !== "requested")) throw new Error("run-pause-claim-required");
-          if (request.pause?.state === "paused" && runClaim(current) !== undefined && !request.acknowledge) throw new Error("run-pause-acknowledgment-required");
+          if (request.acknowledge === true && request.claim === undefined) throw new Error("run-pause-claim-required");
+          const next = interruptTransition(current, { kind: request.acknowledge === true ? "acknowledge-pause" : request.pause === undefined ? "resume" : "pause" });
+          if (next.state === "refused") throw new Error(`run-pause-refused: ${next.reason}`);
+          if (next.interrupt !== (request.pause === undefined ? "none" : request.pause.state === "requested" ? "pause-requested" : "paused")) throw new Error(`run-pause-transition-mismatch: ${next.interrupt}`);
           const { pause: _pause, ...withoutPause } = current;
           return RunRecordSchema.parse({ ...withoutPause, ...(request.pause === undefined ? {} : { pause: request.pause }),
             ...(request.continuation === undefined ? {} : { envelope: { ...current.envelope, continuation: request.continuation } }),

@@ -1,7 +1,7 @@
 import { AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryViewSchema, AssistantRequestSchema, AssistantRespondEnvelopeSchema } from "../../../../src/models/dashboard/assistant.js";
 import { ASSISTANT_PLUGIN_MODULES, assistantToolEgress } from "./assistant-tool-egress.js";
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema } from "../../../../src/models/dashboard/activity-population.js";
-import { ChatGptAccountStatusSchema, ChatGptSignInStartResultSchema, ChatGptSignInCompletionSchema, ChatGptCancelResultSchema, ChatGptSignOutResultSchema, ChatGptOcrTestResultSchema } from "../../../../src/models/dashboard/chatgpt-account.js";
+import { ChatGptAccountStatusSchema, ChatGptSignInStartResultSchema, ChatGptSignInCompletionSchema, ChatGptCancelResultSchema, ChatGptOcrTestResultSchema } from "../../../../src/models/dashboard/chatgpt-account.js";
 import { EditableWorkbookSchema, SavedWorkbookSchema, EditableWorkbookWireSchema, SavedWorkbookWireSchema,
   WorkbookListWireSchema, WorkbookHistoryWireSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema,
   WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, IntakeCommandResultWireSchema,
@@ -817,7 +817,6 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/chatgpt-start", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptSignInStartResultSchema },
   { id: "wire/chatgpt-completion", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptSignInCompletionSchema },
   { id: "wire/chatgpt-cancel", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptCancelResultSchema },
-  { id: "wire/chatgpt-signout", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptSignOutResultSchema },
   { id: "wire/native-path-picker", egress: "operator-loopback", module: "src/models/dashboard/native-path-picker.ts", schema: NativePathPickerResponseSchema },
   { id: "wire/workflow-explorer", egress: "operator-loopback", module: "src/models/dashboard/explorer.ts", schema: WorkflowExplorerWireSchema },
   { id: "wire/intake-session", egress: "operator-loopback", module: "src/models/intake/wire.ts", schema: IntakeSessionWireSchema },
@@ -1332,7 +1331,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/chatgpt-completion", path: "account.name", origin: "external-text" },
   { surface: "wire/chatgpt-completion", path: "message", origin: "repository-authored" },
   { surface: "wire/chatgpt-cancel", path: "message", origin: "repository-authored" },
-  { surface: "wire/chatgpt-signout", path: "message", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.display.observation", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.display.title", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "notifications[].context.subject", origin: "captured-hr-value" },
@@ -1973,6 +1971,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/backend/assistant/service.ts", state: "audited", reason: "The process-egress leaves of the agent loop: the masked user message it sends to ChatGPT (decision D1) and the replayed answers and fixed captions of earlier turns (decision D3)." },
     ...ASSISTANT_PLUGIN_MODULES.map(module => ({ module, state: "audited" as const, reason: "Assistant tool outputs sent to ChatGPT; every free-text leaf is declared by the tool's privacy list and only repository-authored or declared-redacted origins pass." })),
     { module: "src/models/dashboard/chatgpt-account.ts", state: "audited", reason: "Local account identity and registered fixed failures only; OAuth start URL contains public PKCE, state and nonce, never tokens or verifier." },
+    { module: "src/models/dashboard/assistant-usage.ts", state: "no-surface", reason: "Numeric token counts and closed unavailable reasons only; the assistant wire and debug event audit them where they ride." },
     { module: "src/models/dashboard/dashboard-frontend-owner.ts", state: "no-surface", reason: "Declares a closed launch nonce and probe pathname; no wire or durable free-text schema." },
     { module: "src/models/dashboard/failure-display.ts", state: "audited", reason: "Repository-authored failure title and observation are embedded in run detail and archived failure values." },
     { module: "src/models/dashboard/actions.ts", state: "audited", reason: "the action descriptor and its confirmation copy ride the queue row" },
