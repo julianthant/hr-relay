@@ -47,8 +47,8 @@ export const CandidateTableWireSchema = z.strictObject({
     rowNumber: z.number().int().positive().optional(),
     cells: z.array(z.strictObject({ columnId: Text, value: z.string(), tone: z.literal("attention").optional() })).min(1),
   })).min(1),
-  /* The fill row: a typed value is valid only when it names a served row; `serverMatched` rows are matched by the server, because the table shows them masked. */
-  typed: z.strictObject({ label: Text, placeholder: Text, pattern: Pattern, serverMatched: z.literal(true).optional() }).optional(),
+  /* The fill row: a typed value names a served row; a `lookup` value instead starts a lookup for it, because the rows are shown masked. */
+  typed: z.strictObject({ label: Text, placeholder: Text, pattern: Pattern, lookup: z.literal(true).optional() }).optional(),
 }).superRefine((table, context) => {
   const columns = new Set(table.columns.map(({ id }) => id));
   if (columns.size !== table.columns.length) context.addIssue({ code: "custom", path: ["columns"], message: "candidate columns must be unique" });

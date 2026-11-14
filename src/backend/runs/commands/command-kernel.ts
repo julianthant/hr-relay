@@ -510,7 +510,7 @@ function readStartPlan(
     }
   }
 
-  if (descriptor.enqueue === "supersede-active") {
+  if (descriptor.enqueue === "supersede-active" || plan.rerun?.source.gateCorrection !== undefined) {
     for (const entry of plan.planned) {
       const current = startSupersedeTargets(repositories.runs.listByItem({ workflow: plan.workflowId, itemId: entry.itemId }));
       if (entry.supersedeTargets === undefined || canonicalJsonStringify(entry.supersedeTargets) !== canonicalJsonStringify(current)) {

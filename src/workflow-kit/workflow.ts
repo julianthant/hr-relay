@@ -12,7 +12,7 @@ import { validateRerunValueMappings } from "../models/validation/rerun-values.js
 import { retainedRunProtectedBindings } from "../models/write-safety/protected-input.js";
 import { ProtectedInputDeclarationSchema, type ProtectedInputBinding, type ProtectedInputDeclaration } from "../models/write-safety/protected-input.js";
 import { z } from "zod";
-import { validateFailureCorrections, type FailureCorrection } from "../models/workflow/failure-correction.js";
+import { validateFailureCorrections, validateGateCorrections, type FailureCorrection, type GateCorrection } from "../models/workflow/failure-correction.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../rules/validation/canonical-json.js";
 import type {
   AnyTaskContract,
@@ -232,6 +232,7 @@ export interface WorkflowDescriptor<
   /** Explicit optional candidates for new Run input/omission assertions. */
   readonly rerunValues?: readonly RerunValueMappingSpec[];
   readonly failureCorrections?: readonly FailureCorrection[];
+  readonly gateCorrections?: readonly GateCorrection[];
   readonly details: readonly DetailProjectionSpec<S>[];
   /** Ref dashboard-surfaces: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: SubjectProjectionSpec<S>;
@@ -287,6 +288,7 @@ export interface AnyWorkflowDescriptor {
   /** Explicit optional candidates for new Run input/omission assertions. */
   readonly rerunValues?: readonly RerunValueMappingSpec[];
   readonly failureCorrections?: readonly FailureCorrection[];
+  readonly gateCorrections?: readonly GateCorrection[];
   readonly details: readonly z.input<typeof DetailProjectionSpecRuntimeSchema>[];
    /** Plain data, so it rides the BROAD view (unlike `presentation`, whose title/subtitle are
     * functions of the exact input type). The run/queue projection reads it. */
@@ -1325,6 +1327,7 @@ export function defineWorkflowDescriptor<
   }
   const stepOmissions = deriveStepOmissions(id, nodes, spec.timeline);
   const failureCorrections = spec.failureCorrections === undefined ? undefined : validateFailureCorrections(spec.flow.input, nodes, spec.failureCorrections);
+  const gateCorrections = spec.gateCorrections === undefined ? undefined : validateGateCorrections(spec.flow.input, nodes, spec.gateCorrections);
   const rerunValues = spec.rerunValues === undefined ? undefined : validateRerunValueMappings({
     input: spec.flow.input, nodes, stepOmissions,
     ...(spec.protectedInputs === undefined ? {} : { protectedInputs: spec.protectedInputs }),
@@ -1364,6 +1367,7 @@ export function defineWorkflowDescriptor<
     stepOmissions,
     ...(rerunValues === undefined ? {} : { rerunValues }),
     ...(failureCorrections === undefined ? {} : { failureCorrections }),
+    ...(gateCorrections === undefined ? {} : { gateCorrections }),
     nodePurposes: deriveNodePurposes(id, nodes, spec.nodePurposes),
   });
   PROJECTIONS.set(descriptor, { ownDryRun: dryRun, support: dryRun, projections: Object.freeze({

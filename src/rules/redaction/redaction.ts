@@ -99,6 +99,12 @@ export function directIdentifierDigestReference(value: string): string {
 /** Display the identifier supplied by the authorized local caller. */
 export function directIdentifierDisplay(value: string): string { return value; }
 
+/** An Employee ID in operator text: its last four digits only. */
+export function maskedEid(value: string): string { return `••••${value.slice(-4)}`; }
+
+/** Every Employee ID inside free operator text, masked. */
+export function maskEidsInText(text: string): string { return text.replace(/\b10\d{6}\b/gu, maskedEid); }
+
 /** Operator-visible permanent-write identity, derived only from the authority digest. */
 export function idempotencyKeyDigestReference(digestInput: unknown, withheld = false): string {
   if (withheld || digestInput === "withheld-protected-input") return "protected transaction key (withheld)";
