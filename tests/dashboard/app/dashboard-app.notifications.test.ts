@@ -8,7 +8,7 @@ import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { parseRoute } from "../../../src/dashboard/app/navigation/url-state.js";
 import { PRODUCT_WORKFLOW_COMPOSITION, workflowComposition, type WorkflowSourcePolicy } from "../../../src/dashboard/app/workflow-sources.js";
-import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
+import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
 import { FIXTURE_IDS } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { FIXTURE_FAILURE_SECTIONS } from "../../support/fixtures/dashboard/run-detail/receipts-failures.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
@@ -17,8 +17,9 @@ import { LocalDateSchema } from "../../../src/rules/identity/ids.js";
 import type { NotificationDestination } from "../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
+import { NotificationTargetSchema } from "../../../src/models/notifications/notification-target.js";
 import { QueueSurfaceWireSchema, NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
-import { NotificationCommandRequestSchema } from "../../../src/rules/commands/commands.js";
+import { CommandResultSchema, NotificationCommandRequestSchema, RunCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { CrossDateSearchPageSchema, type CrossDateSearchQueryInput } from "../../../src/models/dashboard/search.js";
 import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
 import { notificationTargetUnavailable } from "../../../src/dashboard/app/navigation/run-navigation.js";
@@ -45,14 +46,19 @@ function rowAction(host: HTMLElement, title: string, label: string): HTMLButtonE
   const found = row.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`); assert(found, label); return found;
 }
 
-async function mount(missing = false, mixed = false) {
+async function mount(missing = false, mixed = false, view?: Readonly<Record<string, string>>) {
   const sources: WorkflowSourcePolicy = mixed ? { ...mockProductSources(), "person-lookup": "served" } : mockProductSources();
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
   const reads: string[] = [];
   const dayRows = FIXTURE_DAY_WIRE.queueSurfaces.map(row => mixed && row.runId === FIXTURE_IDS.failedRun ? QueueSurfaceWireSchema.parse({ ...row, workflowId: "separations" }) : row);
-  const target = requested.target; assert(target && (target.kind === "run" || target.kind === "failure"));
-  const notification = NotificationWireSchema.parse({ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title: "Run failed", occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Canonical history", workflow: mixed ? "Separations" : "Person Lookup" }, sourceEvent: { state: "available", kind: "run-failed" }, link: target.kind === "failure" ? { kind: "failure", runId: target.runId, failureId: target.failureId } : { kind: "run", runId: target.runId } });
+  const target = requested.target; assert(target && (target.kind === "run" || target.kind === "failure" || target.kind === "command-result" || target.kind === "bulk-result"));
+  const common = { notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), readState: "unread", state: "unread", occurredAt: "2026-08-03T17:00:00Z", revision: 1 };
+  const notification = NotificationWireSchema.parse(target.kind === "bulk-result"
+    ? { ...common, kind: "command", priority: true, severity: "warning", title: "Retry: partial result", summary: "1 applied", context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "bulk-incomplete" }, link: { kind: "bulk-result", bulkCommandId: target.bulkCommandId } }
+    : target.kind === "command-result"
+    ? { ...common, kind: "command", priority: true, severity: "error", title: "Cancel run: rejected", summary: "The run already finished.", context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "command-refused" }, link: { kind: "command-result", commandId: target.commandId } }
+    : { ...common, kind: "notification", trigger: "failed", severity: "error", title: "Run failed", context: { state: "available", subject: "Canonical history", workflow: mixed ? "Separations" : "Person Lookup" }, sourceEvent: { state: "available", kind: "run-failed" }, link: target.kind === "failure" ? { kind: "failure", runId: target.runId, failureId: target.failureId } : { kind: "run", runId: target.runId } });
   const client = { ...transport,
     notificationSnapshot: async () => [notification], notificationStatus: async () => ({ state: "ready" as const, pending: 0 }), notificationTarget: async () => target,
     bootstrap: async () => { const boot = await transport.bootstrap(); return mixed ? { ...boot, workflows: [...boot.workflows, { ...WorkflowBootstrapPrimitiveSchema.parse(boot.workflows[0]), id: "separations", code: "sep", label: "Separations" }] } : boot; },
@@ -62,7 +68,7 @@ async function mount(missing = false, mixed = false) {
       input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), queueSurfaces: dayRows }); input.onState({ state: "live" }); return { close() {} };
     },
   };
-  window.history.replaceState(null, "", "/?day=2026-08-04");
+  window.history.replaceState(null, "", `/?day=2026-08-04${view ? `&view=${encodeURIComponent(JSON.stringify(view))}` : ""}`);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(sources) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert(bell);
@@ -89,6 +95,52 @@ it("opens canonical historical run detail while ordinary workflow sources remain
   assert.equal(host.textContent?.includes("Source order · cross-source chronology unavailable"), false);
   assert.equal(host.textContent?.includes("Run unavailable"), false);
 });
+it("opens a stored command result on the run's own day, not the displayed day", async () => {
+  const runId = RunIdSchema.parse(FIXTURE_IDS.failedRun);
+  const commandId = "00000000-0000-4000-8000-000000000777";
+  const request = RunCommandRequestSchema.parse({ commandId, requestedAt: "2026-08-03T17:00:00.000Z", requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel", target: { runId, expectedVersion: 1 } });
+  const result = CommandResultSchema.parse({ state: "rejected", commandId, code: "invalid-state", message: "The run already finished." });
+  requested.target = { kind: "command-result", commandId: request.commandId, day: FIXTURE_DAY_WIRE.day, request, result };
+  const { host } = await mount();
+  const params = new URLSearchParams(location.search);
+  assert.equal(params.get("run"), runId);
+  assert.equal(params.get("day"), FIXTURE_DAY_WIRE.day);
+  assert.equal(host.textContent?.includes("Run unavailable"), false);
+});
+function storedCommandResult() {
+  const runId = RunIdSchema.parse(FIXTURE_IDS.failedRun);
+  const commandId = "00000000-0000-4000-8000-000000000778";
+  const request = RunCommandRequestSchema.parse({ commandId, requestedAt: "2026-08-03T17:00:00.000Z", requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel", target: { runId, expectedVersion: 1 } });
+  const result = CommandResultSchema.parse({ state: "rejected", commandId, code: "invalid-state", message: "The run already finished." });
+  return { kind: "command-result" as const, commandId: request.commandId, day: FIXTURE_DAY_WIRE.day, request, result };
+}
+const PREVIEW_VIEW = { preview: "separations" };
+const viewParam = () => JSON.parse(new URLSearchParams(location.search).get("view") ?? "{}") as Record<string, unknown>;
+it("opens a stored command result out of an open workflow preview", async () => {
+  requested.target = storedCommandResult();
+  await mount(false, false, PREVIEW_VIEW);
+  assert.equal(new URLSearchParams(location.search).get("run"), FIXTURE_IDS.failedRun);
+  const view = viewParam();
+  assert.equal(view.preview ?? null, null);
+});
+it("refuses a stored command result whose run is gone and keeps the preview", async () => {
+  requested.target = storedCommandResult();
+  await mount(true, false, PREVIEW_VIEW);
+  assert.equal(new URLSearchParams(location.search).get("run"), null);
+  assert.equal(viewParam().preview, "separations");
+});
+it("opens a stored bulk row on its own day through validated navigation, and refuses a gone run", async () => {
+  const runId = RunIdSchema.parse(FIXTURE_IDS.failedRun);
+  const gone = RunIdSchema.parse("00000000-0000-4000-8000-00000000f00d");
+  requested.target = NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId: "00000000-0000-4000-8000-000000000779", type: "retry", requestedCount: 2, notAttempted: [gone], days: { [runId]: FIXTURE_DAY_WIRE.day },
+    results: [{ outcome: "applied", runId, commandId: "00000000-0000-4000-8000-00000000077a", replayed: false, detail: "Retry started." }] });
+  await mount(false, false, PREVIEW_VIEW);
+  const rows = () => [...document.querySelectorAll<HTMLButtonElement>('[data-queue-bulk-result] button')];
+  assert.equal(rows().length, 2);
+  await act(async () => { rows()[1].click(); await new Promise(resolve => setTimeout(resolve, 30)); });
+  assert.equal(new URLSearchParams(location.search).get("run"), null); assert.equal(viewParam().preview, "separations");
+  assert(document.body.textContent?.includes("Run unavailable"));
+}, 15_000);
 it("opens the exact failure step through the existing Logs initial focus input", async () => {
   const section = FIXTURE_FAILURE_SECTIONS[FIXTURE_IDS.failedRun].failure;
   assert(section.section === "failure" && section.payload.state === "available");

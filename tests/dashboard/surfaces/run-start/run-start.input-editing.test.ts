@@ -27,12 +27,12 @@ it("normalizes Search people, removes a duplicate identity from the textbox and 
   assert.equal(box.value, "10000001;Example, Person;10000002;Other, Person");
   const parsed = document.querySelector('[aria-label="Parsed input"]');
   assert.ok(parsed);
-  assert.equal(parsed.querySelectorAll("li").length, 4);
+  assert.equal(parsed.querySelectorAll(".ds-run-row").length, 4);
   assert.match(parsed.textContent ?? "", /4 runs/u);
   await dialog.press("Remove Example, Person");
   assert.equal(box.value, "10000001;10000002;Other, Person");
   assert.equal(document.activeElement === box, true, "removing an entry restores focus to the textbox");
-  assert.equal(parsed.querySelectorAll("li").length, 3);
+  assert.equal(parsed.querySelectorAll(".ds-run-row").length, 3);
   assert.match(parsed.textContent ?? "", /3 runs/u);
   await dialog.press("Continue");
   await dialog.press("Continue");
@@ -49,7 +49,7 @@ it("clears the final Search entry and disables Continue", async () => {
   assert.equal(dialog.typedInput().value, "");
   assert.equal(document.querySelector('[aria-label="Parsed input"]'), null);
   assert.equal(dialog.disabled("Continue"), true);
-  assert.match(dialog.text(), /0 runs/u);
+  assert.match(dialog.text(), /Type at least one value/u);
 });
 
 it("keeps Match identifiers raw in the editor and masked in its preview", async () => {

@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { describe as describe_m0,describe as describe_m1,expect as expect_m0,expect as expect_m1,it as it_m0,it as it_m1 } from "vitest";
 import { allFields as allFields_m0,allFields as allFields_m1 } from "../../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
 import { buildWorkflowMock as buildWorkflowMock_m0,buildWorkflowMock as buildWorkflowMock_m1,initialWorkflowChoices as initialWorkflowChoices_m0,initialWorkflowChoices as initialWorkflowChoices_m1,updateWorkflowChoice as updateWorkflowChoice_m0,updateWorkflowChoice as updateWorkflowChoice_m1,workflowChoices as workflowChoices_m0,workflowContractSource as workflowContractSource_m0,workflowContractSource as workflowContractSource_m1 } from "../../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";

@@ -382,7 +382,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
   });
 
 
-  it("pins the parity fixture's safe message and resolution descriptors to this query", async () => {
+  it("pins the mock fixture's safe message and resolution descriptors to this query", async () => {
     const w = await world();
     seed(w);
     const served = parkedSection(w);

@@ -4,7 +4,7 @@
 `ds/theme/tokens.ts` supplies named class strings. `kit.html` renders the real primitives through
 `kit/kit-page.tsx`. Start it with `npm run web` at `http://localhost:5174/kit.html`.
 
-Product mock workflows start with empty queues; the parity composition supplies the sample runs. Automatic backups and repairs stay invisible in the dashboard.
+Product mock workflows start with empty queues; the mock composition supplies the sample runs. Automatic backups and repairs stay invisible in the dashboard.
 
 ## Tokens
 
@@ -329,7 +329,7 @@ status fill changes without changing the information's position.
 - Use live regions for changes, not every standing fact rendered on mount.
 - Keyboard focus fills the control with one light tint (`--hub-focus-fill`, one step stronger than hover) and ink (`--hub-focus-ink`) on every control, in both themes; pointer focus draws nothing, and programmatic takeover focus draws no extra default browser ring.
 
-Read [PARITY.md](PARITY.md) before judging a visual difference and
+Compare against the approved mock before judging a visual difference, and read
 [the wiring contract](../../docs/reference/frontend-backend-integration.md) before replacing a producer.
 
 Account (nav id `credentials`) uses existing ResultRow components for the signed-in profile name and per-word initials. Both are read-only; their values come from bootstrap actor.label.

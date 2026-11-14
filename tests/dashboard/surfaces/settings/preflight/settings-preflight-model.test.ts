@@ -12,7 +12,7 @@ import type { EditableSettingsState } from "../../../../../src/dashboard/surface
 import { preflightVerdict } from "../../../../../src/dashboard/surfaces/shell/preflight-popover-model.js";
 import { FingerprintSchema } from "../../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
-import { FIXTURE_EDITABLE_SETTINGS } from "../../../../parity/helpers/fixture-settings.js";
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../../mocks/helpers/fixture-settings.js";
 import { createPreflightHarness } from "../../../../support/fixtures/preflight-seams.js";
 
 import type { DashboardCommandBinding } from "../../../../../src/dashboard/app/dashboard-app-model.js";
