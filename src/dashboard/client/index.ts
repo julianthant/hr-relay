@@ -122,6 +122,11 @@ export function createDashboardClient(input: Readonly<{
     if (profileAuthority !== undefined && state.profileId !== profileAuthority.profileId) throw schemaError("POST /api/v1/profile/duo/reenrol", "re-enrolment profile identity mismatch");
     return state;
   };
+  const acceptProfileCompletion = (body: unknown): PublicProfileState => {
+    const state = parseProfileState(body);
+    if (profileAuthority !== undefined && state.state === "active" && state.profileId !== profileAuthority.profileId) throw schemaError("POST /api/v1/profile/duo/reenrol", "re-enrolment profile identity mismatch");
+    return state;
+  };
   const client: DashboardClient = {
     subscribeProfileSessionStale(listener) {
       const recipient = { listener };
@@ -286,12 +291,12 @@ export function createDashboardClient(input: Readonly<{
       }), parsed.operationId);
     },
     async cancelProfileDuoReenrol(request) {
-      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/cancel", {
+      return acceptProfileCompletion((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/cancel", {
         method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
       })).body);
     },
     async commitProfileDuoReenrol(request) {
-      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/commit", {
+      return acceptProfileCompletion((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/commit", {
         method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
       })).body);
     },

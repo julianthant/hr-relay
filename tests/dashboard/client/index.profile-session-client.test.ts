@@ -264,3 +264,40 @@ it("parses commit and cancel as the active profile, including a served refusal",
   const malformed = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => Response.json({ state: "active", token: "secret" }) });
   await assert.rejects(malformed.cancelProfileDuoReenrol({ operationId }));
 });
+
+it("binds a completed re-enrolment to the selected profile", async () => {
+  const operationId = "00000000-0000-4000-8000-000000000001";
+  const profileId = "00000000-0000-4000-8000-000000000003", otherProfile = "00000000-0000-4000-8000-000000000004";
+  const responses: unknown[] = [];
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => Response.json(responses.shift()) });
+  const mismatch = async (call: () => Promise<unknown>) => {
+    await assert.rejects(call, (error: unknown) => {
+      assert.ok(error instanceof DashboardClientError);
+      assert.equal(error.kind, "schema");
+      assert.equal(error.code, undefined);
+      assert.equal(error.status, undefined);
+      return true;
+    });
+  };
+  responses.push({ state: "active", profileId, epoch: 2, duoState: "ready" });
+  const signedIn = await client.signInProfile({ email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
+  assert.equal(signedIn.state, "active");
+  for (const call of [
+    () => client.cancelProfileDuoReenrol({ operationId }),
+    () => client.commitProfileDuoReenrol({ operationId }),
+  ]) {
+    responses.push({ state: "active", profileId: otherProfile, epoch: 1, duoState: "ready" });
+    await mismatch(call);
+  }
+  const matching = { state: "active", profileId, epoch: 1, duoState: "ready" };
+  responses.push(matching);
+  assert.deepEqual(await client.cancelProfileDuoReenrol({ operationId }), matching);
+  responses.push(matching);
+  assert.deepEqual(await client.commitProfileDuoReenrol({ operationId }), matching);
+  const refused = { state: "refused", code: "PROFILE_DUO_REENROL_UNCERTAIN" };
+  responses.push(refused);
+  assert.deepEqual(await client.cancelProfileDuoReenrol({ operationId }), refused);
+  const errored = { state: "error", code: "BROWSER_CLOSURE_UNPROVED" };
+  responses.push(errored);
+  assert.deepEqual(await client.commitProfileDuoReenrol({ operationId }), errored);
+});
