@@ -262,7 +262,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
                 : { state: publicProfile.accountDeletion.state, personName: boot.actor.label,
                   message: operatorFailureSentence(publicProfile.accountDeletion.state === "uncertain" ? "PROFILE_ACCOUNT_DELETION_REFUSED" : publicProfile.accountDeletion.code) }} />
             : undefined}
-          accountPage={profileSource === "served" && session?.state === "active" && session.account !== undefined && publicProfile.logout !== undefined ? { values: session.account, duo: session.duoState === "ready" ? "ready" : "setup", onSignOut: () => { void publicProfile.logout(); }, login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
+          accountPage={profileSource === "served" && session?.state === "active" && session.account !== undefined && publicProfile.logout !== undefined ? { values: session.account, duo: session.duoState === "ready" ? "ready" : "setup", onSignOut: () => { void publicProfile.logout(); }, details: request => profileClient.changeProfileDetails(request), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}
@@ -1336,7 +1336,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               <div className="dashboard-log-column">
                 <section aria-label="Action panel" className="dashboard-action-panel">
           <FocusQueueToolbar
-            pauseControls={<PauseAllQuitControls state={application === undefined ? "unavailable" : applicationBusy || quitting ? "pausing" : application.state === "blocked" ? "blocked" : application.state !== "ready" ? "pausing" : allPaused ? "paused" : "ready"}
+            pauseControls={<PauseAllQuitControls state={application === undefined ? "unavailable" : applicationBusy || quitting ? "pausing" : application.state !== "ready" ? "pausing" : allPaused ? "paused" : "ready"}
               activeCount={application?.targets.length ?? 0} quitRequested={quitRequested} onQuitDismiss={() => setQuitRequested(false)}
               onPauseAll={() => applicationAction("pause-all")} onResumeAll={() => applicationAction("resume")} onPauseAndQuit={() => applicationAction("pause-all-and-quit")} />}
             sort={sort}

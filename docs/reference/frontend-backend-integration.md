@@ -458,6 +458,17 @@ result whose fault cannot be written still answers its outcome, marked `diagnost
 that cannot prove its write durable fails the sign-in or change that ran it, which may then be
 retried. The epoch, Duo material and other profiles are unchanged.
 
+`POST /api/v1/profile/account/details` `{name?: {firstName, lastName}, initials?, timekeeperName?}`
+changes the current session's Name, Initials or Timekeeper name in its registry row. It needs at
+least one value and returns `{state: "changed", account}` or `{state: "refused", code}`. Every value
+is checked before anything is written, so one refused value changes nothing:
+`PROFILE_DISPLAY_NAME_REFUSED` for a name the sign-up rules refuse, `PROFILE_INITIALS_REFUSED`
+unless the initials are 1 to 8 letters A to Z, and `PROFILE_NAME_REFUSED` for a timekeeper name
+that is padded, has a control character, is longer than 129 characters or has a word that does not
+start with a letter. Timekeeper initials are not stored; they are `profileInitials(timekeeper)`.
+`/profile/state`, bootstrap's actor label and the next run's timekeeper read the new values. A run
+already planned or started keeps the timekeeper name it captured.
+
 ### Profile onboarding boundary
 
 Details returns canonical `onboarding` state and a limited HttpOnly cookie scoped to profile routes.
