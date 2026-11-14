@@ -193,6 +193,14 @@
       "replacementRequired": true
     },
     {
+      "name": "failure-code-catalog",
+      "file": "tests/architecture/runtime/failure-code-catalog.test.ts",
+      "status": "active",
+      "owner": "docs/reference/task-contract.md",
+      "invariant": "Reason: failure codes the runtime assigns kept reaching Logs without a catalog entry (UNHANDLED, CAPABILITY_UNAVAILABLE), so the operator saw the unregistered-code sentence. Every errorCode declared by a task contract in a registered workflow, and every literal TaskError code constructed under src/backend/runtime, maps through failureCodeFromTaskCode to a code the error catalog holds. The runtime scan must resolve a nonempty code set; negative controls reject an uncatalogued declared and constructed code and admit a catalogued one.",
+      "replacementRequired": true
+    },
+    {
       "name": "canonical-input-snapshot",
       "file": "tests/architecture/runs/canonical-input-snapshot.test.ts",
       "status": "active",

@@ -56,10 +56,18 @@ it("uses catalog text for every landing refusal and preserves specialized recove
     assert.equal(error.message, ERROR_CATALOG[code].text);
     assert.equal(error.host, "a5.ucsd.edu");
     assert.equal(error.path, "/sso");
+    assert.equal(error.observedUrl, "https://a5.ucsd.edu/sso");
     assert.equal(error.title, "SSO [URL]");
     assert.equal(error.cause, cause);
     assert.ok(error instanceof BrowserLoginError);
   }
+  const queried = new BrowserLandingStallError("ucpath", "DUO_PROMPT_STALLED", {
+    host: "a5.ucsd.edu", path: "/sso?EMPLID=10456712#frag-canary", title: "",
+  });
+  assert.equal(queried.observedUrl, "https://a5.ucsd.edu/sso");
+  assert.equal(queried.host, "a5.ucsd.edu");
+  assert.equal(queried.path, "/sso");
+  assert.equal(queried.observedUrl.includes("10456712"), false);
   const duo = new DuoTerminalRefusalError("crm", "private diagnostic", "https://login.example.invalid/sso", { cause });
   assert.equal(duo.code, "DUO_TERMINAL_REFUSAL");
   assert.equal(duo.message, ERROR_CATALOG.DUO_TERMINAL_REFUSAL.text);
