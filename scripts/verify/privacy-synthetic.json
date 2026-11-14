@@ -178,12 +178,7 @@
     "e3c9d12db2f5f90f7cbe8d25be825c6cf6b50b54d18f4308a7da8d5241c204d0",
     "f120bb5698d520c5691b6d603a00bfd662d13bf177a04571f9d10c0745dfa2a5"
   ],
-  "publicConfigFiles": [
-    {
-      "path": ".npmrc",
-      "sha256": "d929102a7fc1ba7239ce079f12e8c9c764d83c026280ebd826d1bb5410693b2b"
-    }
-  ],
+  "publicConfigFiles": [],
   "credentialCanaries": [
     {
       "path": "tests/architecture/runs/evidence-receipt.test.ts",

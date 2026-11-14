@@ -16,7 +16,7 @@ export const syntheticAssistantTools = [AssistantFunctionNamespaceSchema.parse({
 /** One function call in `namespace` (default the synthetic one); `action` names the function. */
 export function syntheticAssistantResponse(turn: unknown, model = "gpt-6.1-sol", callId: string = randomUUID(), namespace = "synthetic"): AssistantInferenceResult {
   const value = z.object({ action: z.string() }).passthrough().parse(turn), { action, ...argumentsValue } = value;
-  return { model, responseId: `resp_${callId}`, output: [{ type: "function_call", id: `item_${callId}`, namespace,
+  return { model, usage: { state: "unavailable", reason: "missing" }, responseId: `resp_${callId}`, output: [{ type: "function_call", id: `item_${callId}`, namespace,
     name: action === "read-subjects" ? "read_subjects" : action, call_id: callId, arguments: JSON.stringify(argumentsValue), status: "completed" }] };
 }
 export function completedAssistantStream(turn: unknown, model = "gpt-6.1-sol", namespace = "synthetic"): string {

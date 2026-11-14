@@ -1,7 +1,7 @@
 import { validateNativeLifecycleRequest } from "./native-lifecycle-request.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { StoredAuthorityCommandRecordSchema, AuthorityCommandAuditRecordSchema, CommandIdentityConflictError, RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } from "../../../rules/commands/commands.js";
+import { AssistantCommandAttributionSchema, CommandAuditRecordSchema, StoredAuthorityCommandRecordSchema, AuthorityCommandAuditRecordSchema, CommandIdentityConflictError, RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } from "../../../rules/commands/commands.js";
 import { SettingsInitializationCommandSchema, SettingsInitializationAuditSchema } from "../../../models/config/settings-initialization.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -118,4 +118,61 @@ export function settleNativeCommand(database: DatabaseSync, input: unknown): voi
   const changes = Number(database.prepare("UPDATE commands SET state=?,outcome_json=?,updated_at=? WHERE id=? AND outcome_json IS NULL")
     .run(commandAuditState(audit), json, audit.completedAt, audit.request.commandId).changes);
   if (changes !== 1) throw new Error("command-audit-state-conflict");
+}
+
+// Unregistered source contracts; current native readers and writers remain unchanged.
+export const AssistantM1NativeCommandAuditSchema = z.union([
+  CommandAuditRecordSchema.safeExtend({ attribution: AssistantCommandAttributionSchema }),
+  RunLifecycleCommandAuditRecordSchema.safeExtend({ attribution: AssistantCommandAttributionSchema }),
+  SettingsInitializationAuditSchema.safeExtend({ attribution: AssistantCommandAttributionSchema }),
+]).superRefine((audit, context) => {
+  if (audit.attribution.kind === "assistant" && (!("requestedBy" in audit.request)
+    || audit.attribution.requestedBy !== audit.request.requestedBy || audit.request.source !== "assistant")) {
+    context.addIssue({ code: "custom", message: "command-attribution-provenance-mismatch" });
+  }
+});
+export const AssistantM1NativeCommandRowSchema = RowSchema.extend({ attribution_json: z.string() }).superRefine((row, context) => {
+  try {
+    const { attribution_json, ...before } = row;
+    const attribution = AssistantCommandAttributionSchema.parse(JSON.parse(attribution_json));
+    if (before.outcome_json !== null) {
+      const { attribution: auditAttribution, ...audit } = AssistantM1NativeCommandAuditSchema.parse(JSON.parse(before.outcome_json));
+      if (canonicalJsonStringify(auditAttribution) !== canonicalJsonStringify(attribution)) throw new Error("command-attribution-mismatch");
+      before.outcome_json = canonicalJsonStringify(audit);
+    }
+    const request = commandFromRow(before);
+    if (attribution.kind === "assistant" && (!("requestedBy" in request) || request.requestedBy !== attribution.requestedBy || request.source !== "assistant")) {
+      throw new Error("command-attribution-provenance-mismatch");
+    }
+  } catch {
+    context.addIssue({ code: "custom", message: "command-m1-row-invalid" });
+  }
+});
+const CommandAuditRowSchema = z.strictObject({ id: z.string(), command_id: z.string(), code: z.string().nullable(), payload_json: z.string(), created_at: z.string() });
+
+/** Known-predecessor conversion only; authentic native/profile admission remains the activation owner's responsibility. */
+export function convertAssistantCommandPairToM1(commandInput: unknown, auditInput: unknown) {
+  const command = RowSchema.parse(commandInput);
+  commandFromRow(command);
+  const attribution = AssistantCommandAttributionSchema.parse({ kind: "unrecorded" });
+  if (command.outcome_json === null) {
+    if (auditInput !== null) throw new Error("command-audit-settlement-mismatch");
+    return { command: AssistantM1NativeCommandRowSchema.parse({ ...command, attribution_json: canonicalJsonStringify(attribution) }), audit: null };
+  }
+  const row = CommandAuditRowSchema.parse(auditInput), audit = NativeCommandAuditSchema.parse(JSON.parse(row.payload_json));
+  if (row.id !== audit.auditId || row.command_id !== audit.request.commandId || row.created_at !== audit.completedAt
+    || row.code !== ("code" in audit.result ? audit.result.code : null)
+    || row.command_id !== command.id || command.outcome_json !== canonicalJsonStringify(audit)) throw new Error("command-audit-settlement-mismatch");
+  const payload_json = canonicalJsonStringify(AssistantM1NativeCommandAuditSchema.parse({ ...audit, attribution }));
+  return { command: AssistantM1NativeCommandRowSchema.parse({ ...command, attribution_json: canonicalJsonStringify(attribution), outcome_json: payload_json }),
+    audit: { ...row, payload_json } };
+}
+
+export function assertAssistantM1CommandIdentity(input: unknown, request: unknown, attribution: unknown, parentId?: string): void {
+  const row = AssistantM1NativeCommandRowSchema.parse(input), identity = commandIdentity(request);
+  if (row.request_digest !== sha256Hex(identity.json) || canonicalJsonStringify(JSON.parse(row.request_json)) !== identity.json
+    || row.parent_id !== (parentId ?? null)
+    || canonicalJsonStringify(JSON.parse(row.attribution_json)) !== canonicalJsonStringify(AssistantCommandAttributionSchema.parse(attribution))) {
+    throw new CommandIdentityConflictError();
+  }
 }

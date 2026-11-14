@@ -89,6 +89,12 @@ const CrossDateSearchCursorPayloadSchema = z.strictObject({
     enqueuedAt: IsoInstantSchema,
     runId: RunIdSchema,
   }),
+  // The pages already served, chained, as read at `generation`.
+  served: z.strictObject({
+    generation: NonNegativeIntSchema,
+    pages: z.number().int().positive(),
+    digest: FingerprintSchema,
+  }),
 });
 type CrossDateSearchCursorPayload = z.infer<typeof CrossDateSearchCursorPayloadSchema>;
 const CrossDateSearchSnapshotTokenPayloadSchema = z.strictObject({
@@ -308,6 +314,18 @@ function decodeSnapshotToken(
   return parsed.data;
 }
 
+function servedDigest(
+  previous: z.infer<typeof FingerprintSchema> | null,
+  page: Pick<CrossDateSearchPage, "totalMatches" | "coverage" | "results">,
+): z.infer<typeof FingerprintSchema> {
+  return FingerprintSchema.parse(createHash("sha256").update(canonicalJsonStringify({
+    previous,
+    totalMatches: page.totalMatches,
+    coverage: page.coverage,
+    results: page.results,
+  })).digest("hex"));
+}
+
 function matchOf(rank: number): CrossDateSearchResult["match"] {
   const match = CROSS_DATE_SEARCH_MATCH_ORDER[rank];
   if (match === undefined) throw new Error(`authority search returned unsupported match rank ${String(rank)}`);
@@ -383,12 +401,6 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
     const generatedAt = selectedSnapshot?.generatedAt ?? cursor?.generatedAt ?? deps.clock.now().toISOString();
     return deps.authority.readSnapshot((snapshot) => {
         const authorityGeneration = NonNegativeIntSchema.parse(snapshot.authorityGeneration);
-        if (cursor !== undefined && cursor.authorityGeneration !== authorityGeneration) {
-          return cursorRefusal(
-            `search cursor names authority generation ${String(cursor.authorityGeneration)}, but the current `
-            + `snapshot is generation ${String(authorityGeneration)}`,
-          );
-        }
         if (selectedSnapshot !== undefined && selectedSnapshot.authorityGeneration !== authorityGeneration) {
           return snapshotTokenRefusal(
             `search snapshot token names authority generation ${String(selectedSnapshot.authorityGeneration)}, `
@@ -396,28 +408,63 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
           );
         }
         const { day, ...facets } = query.facets;
-        const authorityPage = RunSearchAuthorityPageSchema.parse(snapshot.searchRuns({
-          q: query.q,
-          scope: query.scope,
-          facets: {
-            ...facets,
-            ...(day === undefined ? {} : {
-              day: {
-                startsAt: pacificMidnight(day),
-                endsBefore: pacificMidnight(nextCalendarDay(day)),
-              },
-            }),
-          },
-          limit: Math.min(query.limit + 1, CROSS_DATE_SEARCH_PAGE_LIMIT + 1),
-          ...(cursor === undefined ? {} : { after: cursor.after }),
-        }));
-        const hasLaterPage = authorityPage.rows.length > query.limit;
-        const visibleRows = authorityPage.rows.slice(0, query.limit);
-        const lastVisible = visibleRows.at(-1);
-        if (hasLaterPage && lastVisible === undefined) {
-          throw new Error("authority search reported a later page without one visible cursor anchor");
+        const readPage = (after: CrossDateSearchCursorPayload["after"] | undefined) => {
+          const authorityPage = RunSearchAuthorityPageSchema.parse(snapshot.searchRuns({
+            q: query.q,
+            scope: query.scope,
+            facets: {
+              ...facets,
+              ...(day === undefined ? {} : {
+                day: {
+                  startsAt: pacificMidnight(day),
+                  endsBefore: pacificMidnight(nextCalendarDay(day)),
+                },
+              }),
+            },
+            limit: Math.min(query.limit + 1, CROSS_DATE_SEARCH_PAGE_LIMIT + 1),
+            ...(after === undefined ? {} : { after }),
+          }));
+          const visibleRows = authorityPage.rows.slice(0, query.limit);
+          const lastVisible = visibleRows.at(-1);
+          const hasLaterPage = authorityPage.rows.length > query.limit;
+          if (hasLaterPage && lastVisible === undefined) {
+            throw new Error("authority search reported a later page without one visible cursor anchor");
+          }
+          return {
+            totalMatches: authorityPage.totalMatches,
+            coverage: authorityPage.coverage,
+            results: visibleRows.map(({ record, matchRank, metadata }) => resultOf(deps, record, matchRank, metadata)),
+            next: lastVisible === undefined || !hasLaterPage ? undefined : {
+              matchRank: lastVisible.matchRank,
+              enqueuedAt: canonicalUtcInstant(lastVisible.record.envelope.enqueuedAt),
+              runId: lastVisible.record.envelope.runId,
+            },
+          };
+        };
+        // Every authority write advances the generation, so a cursor continues a later generation
+        // only when the pages it already served read back unchanged there.
+        // shortcut: re-reads the served pages on each generation change; move to a search-corpus
+        // generation kept by storage if paging large corpora under constant writes gets slow.
+        if (cursor !== undefined && cursor.served.generation !== authorityGeneration) {
+          let digest: z.infer<typeof FingerprintSchema> | null = null;
+          let after: CrossDateSearchCursorPayload["after"] | undefined;
+          for (let page = 0; page < cursor.served.pages; page += 1) {
+            const served = readPage(after);
+            digest = servedDigest(digest, served);
+            after = served.next;
+            if (after === undefined) break;
+          }
+          if (digest !== cursor.served.digest || after === undefined
+            || canonicalJsonStringify(after) !== canonicalJsonStringify(cursor.after)) {
+            return cursorRefusal(
+              `search cursor names authority generation ${String(cursor.authorityGeneration)}, but the current `
+              + `snapshot is generation ${String(authorityGeneration)} and its earlier pages changed`,
+            );
+          }
         }
-        const nextCursor = lastVisible === undefined || !hasLaterPage
+        const page = readPage(cursor?.after);
+        const snapshotGeneration = selectedSnapshot?.authorityGeneration ?? cursor?.authorityGeneration ?? authorityGeneration;
+        const nextCursor = page.next === undefined
           ? { state: "absent" as const, reason: "the snapshot has no later matching run" }
           : {
             state: "present" as const,
@@ -425,14 +472,15 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
               version: 1,
               queryHash,
               sourceIdentity,
-              authorityGeneration,
+              authorityGeneration: snapshotGeneration,
               expiresAt,
               generatedAt,
               order: CROSS_DATE_SEARCH_ORDER,
-              after: {
-                matchRank: lastVisible.matchRank,
-                enqueuedAt: canonicalUtcInstant(lastVisible.record.envelope.enqueuedAt),
-                runId: lastVisible.record.envelope.runId,
+              after: page.next,
+              served: {
+                generation: authorityGeneration,
+                pages: (cursor?.served.pages ?? 0) + 1,
+                digest: servedDigest(cursor?.served.digest ?? null, page),
               },
             }), cursorSigningKey),
           };
@@ -440,21 +488,21 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
           wireVersion: 1,
           generatedAt,
           snapshot: {
-            authorityGeneration,
+            authorityGeneration: snapshotGeneration,
             order: CROSS_DATE_SEARCH_ORDER,
             token: encodeSnapshotToken(CrossDateSearchSnapshotTokenPayloadSchema.parse({
               version: 1,
               queryHash,
               sourceIdentity,
-              authorityGeneration,
+              authorityGeneration: snapshotGeneration,
               expiresAt,
               generatedAt,
               order: CROSS_DATE_SEARCH_ORDER,
             }), cursorSigningKey),
           },
-          totalMatches: authorityPage.totalMatches,
-          coverage: authorityPage.coverage,
-          results: visibleRows.map(({ record, matchRank, metadata }) => resultOf(deps, record, matchRank, metadata)),
+          totalMatches: page.totalMatches,
+          coverage: page.coverage,
+          results: page.results,
           nextCursor,
         });
       });

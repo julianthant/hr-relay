@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { ApplicationLifecycleSchema } from "../../../models/dashboard/application-lifecycle.js";
 import { runClaim } from "../../../models/run/record.js";
+import { applicationPauseOf, applicationStateOf, interruptTransition } from "../../../rules/runs/run-interrupt.js";
 import { ApplicationAdmissionRefusedError } from "../../storage/sqlite/run-store-contracts.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 
@@ -27,9 +28,9 @@ export function createApplicationLifecycle(input: Readonly<{
     const runtime = input.database.authority.runtimeConfig.get();
     if (runtime === undefined) throw new ApplicationAdmissionRefusedError("application-runtime-unavailable");
     return ApplicationLifecycleSchema.parse({ runtimeGeneration: runtime.generation,
-      state: quitting ? "quitting" : admission.state === "open" ? "ready" : "pausing",
+      state: applicationStateOf({ quitting, admission: admission.state }), pause: applicationPauseOf(active),
       targets: active.map(run => ({ runId: run.envelope.runId, expectedVersion: run.version,
-        ...(run.pause === undefined ? {} : { pause: run.pause }), pauseUnavailable: run.lifecycle.state === "parked-write" || run.cancelRequested === true })),
+        ...(run.pause === undefined ? {} : { pause: run.pause }), pauseUnavailable: interruptTransition(run, { kind: "pause" }).state === "refused" })),
       update: input.updateHost === undefined ? "installer-unavailable" : busy || blocked ? "deferred" : input.updateHost.pending() ? "pending" : "idle",
     });
   });
@@ -37,6 +38,8 @@ export function createApplicationLifecycle(input: Readonly<{
     scheduled = undefined;
     try {
       snapshot();
+      // A Resume during the quit released its hold: the quit is over, even if another hold has since closed admission.
+      if (input.database.authority.runs.quitAdmission() === undefined) return;
       const ready = input.database.withAuthorityReadSnapshot(() => input.database.readApplicationActivity().runs
         .every(run => run.lifecycle.state === "terminal" || run.lifecycle.state === "parked-write" || runClaim(run) === undefined && run.pause?.state === "paused"));
       if (!ready) { scheduled = setTimeout(observeQuit, 50); return; }

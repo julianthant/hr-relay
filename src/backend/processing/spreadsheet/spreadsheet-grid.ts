@@ -4,6 +4,7 @@ import { SaxesParser } from "saxes";
 import { Buffer } from "node:buffer";
 import { parse as parseCsvSync } from "csv-parse/sync";
 import readXlsxFile, { InvalidSpreadsheetError } from "read-excel-file/node";
+import { assertSpreadsheetWithinInflateLimit } from "../../../rules/spreadsheets/spreadsheet-inflate-limit.js";
 
 export const CSV_SHEET_NAME = "default";
 
@@ -73,7 +74,10 @@ export async function parseSpreadsheetGrid(input: Readonly<{
     // v9 returns every worksheet from one parse, so choosing a sheet costs no
     // second read of the same immutable bytes.
     let archive: JSZip;
-    try { archive = await JSZip.loadAsync(bytes, { checkCRC32: true }); }
+    try {
+      await assertSpreadsheetWithinInflateLimit(bytes);
+      archive = await JSZip.loadAsync(bytes, { checkCRC32: true });
+    }
     catch (cause) {
       if (!(cause instanceof Error)) throw cause;
       const invalid = new InvalidSpreadsheetError("The XLSX archive is malformed.");

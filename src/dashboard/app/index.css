@@ -5,7 +5,6 @@
 @import "@fontsource/ibm-plex-mono/500.css";
 @import "@fontsource/ibm-plex-mono/600.css";
 
-@import "@heroui/styles";
 @import "tailwindcss";
 @import "../ds/theme/dashboard-theme.css";
 @import "@heroui/styles";

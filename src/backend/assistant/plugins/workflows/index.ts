@@ -6,7 +6,7 @@ import { AssistantWorkflowFactSchema, type AssistantWorkflowFacts } from "./fact
 export function workflowsPlugin(facts: () => AssistantWorkflowFacts): AssistantPlugin {
   const parameters = z.strictObject({ workflow: z.string().min(1).max(80) });
   return { domain: "workflows", tools: [{
-    kind: "read", name: "describe_workflow",
+    kind: "read", tier: "read", name: "describe_workflow",
     description: "Describe one served workflow: what it does, what input it takes (entry format and examples), its steps, whether an assistant start is a dry run or a read, which steps can be omitted, and whether it supports rerun. Use the workflow id from the served workflow list.",
     parameters, output: AssistantWorkflowFactSchema,
     privacy: ["id", "label", "summary", "category", "input.placeholder", "input.entries", "input.fields[]", "input.examples[].label", "input.examples[].text",

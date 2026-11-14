@@ -1914,8 +1914,8 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.authority.notifications.create(NOTIFICATION);
     database.close();
-    writeFileSync(`${authorityPath}-wal`, "suspect wal bytes");
-    writeFileSync(`${authorityPath}-shm`, "suspect shm bytes");
+    writeFileSync(`${authorityPath}-wal`, "suspect wal bytes", { mode: 0o644 });
+    writeFileSync(`${authorityPath}-shm`, "suspect shm bytes", { mode: 0o644 });
 
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async (stagedPath, restoreAdmission) => {
       const stagedAdmission = admissionFor(stagedPath).stoppedRestoreProjection(stagedPath, restoreAdmission);
@@ -2051,8 +2051,8 @@ describe("offline exact-backup restore", () => {
     database.authority.notifications.create(NOTIFICATION);
     database.close();
     const liveGeneration = AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration;
-    writeFileSync(`${authorityPath}-wal`, "live wal bytes");
-    writeFileSync(`${authorityPath}-shm`, "live shm bytes");
+    writeFileSync(`${authorityPath}-wal`, "live wal bytes", { mode: 0o644 });
+    writeFileSync(`${authorityPath}-shm`, "live shm bytes", { mode: 0o644 });
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), () => Promise.reject(new Error("injected projection rebuild failure")), CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
       restore.restore({ manifestPath }, maintenanceOperation(root)),
@@ -2074,8 +2074,8 @@ describe("offline exact-backup restore", () => {
     database.authority.notifications.create(NOTIFICATION);
     database.close();
     const liveGeneration = AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration;
-    writeFileSync(`${authorityPath}-wal`, "live wal bytes");
-    writeFileSync(`${authorityPath}-shm`, "live shm bytes");
+    writeFileSync(`${authorityPath}-wal`, "live wal bytes", { mode: 0o644 });
+    writeFileSync(`${authorityPath}-shm`, "live shm bytes", { mode: 0o644 });
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: () => { throw new Error("injected atomic swap failure"); },
@@ -2098,7 +2098,7 @@ describe("offline exact-backup restore", () => {
     database.authority.commands.insert(COMMAND_FIXTURES[0]);
     const { manifestPath } = await createBackup(database, directory);
     database.close();
-    writeFileSync(`${authorityPath}-wal`, "live wal bytes");
+    writeFileSync(`${authorityPath}-wal`, "live wal bytes", { mode: 0o644 });
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: renameSync,
@@ -2253,7 +2253,7 @@ describe("offline exact-backup restore", () => {
     database.authority.notifications.create(NOTIFICATION);
     database.close();
     const liveAuthorityBytes = readFileSync(authorityPath);
-    writeFileSync(`${authorityPath}-wal`, "live wal bytes");
+    writeFileSync(`${authorityPath}-wal`, "live wal bytes", { mode: 0o644 });
     let swapAttempted = false;
     const rollbackMessage = `injected rollback ${operation} failure`;
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, {
@@ -2581,6 +2581,7 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/backend/storage/sqlite/assistant-grant-retirement.ts",
       "src/backend/storage/sqlite/assistant-history.ts",
       "src/backend/storage/sqlite/assistant-model-preference.ts",
+      "src/backend/storage/sqlite/assistant-proposals.ts",
       "src/backend/storage/sqlite/authority-database.ts",
       "src/backend/storage/sqlite/backup-inspection.ts",
       "src/backend/storage/sqlite/command-record-row.ts",

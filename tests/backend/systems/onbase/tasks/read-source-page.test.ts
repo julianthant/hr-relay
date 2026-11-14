@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument } from "@cantoo/pdf-lib";
 import { describe, it } from "vitest";
 import { extractOnbasePage, readSourcePageTask } from "../../../../../src/backend/systems/onbase/tasks/read-source-page.js";
 import { ONBASE_EXAMPLE_INPUT, OnbaseInputSchema } from "../../../../../src/models/systems/onbase/import-document.js";

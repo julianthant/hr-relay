@@ -9,12 +9,15 @@ export interface SyntheticVerifier {
   readonly passwordVerifier: string;
 }
 
-function normalizeEmail(email: string): string {
+/** An email the verifier can key: non-empty and unchanged by NFKC normalization. */
+export function isPlainEmail(email: string): boolean {
   const normalized = email.normalize("NFKC").trim().toLowerCase();
-  if (normalized.length === 0 || normalized !== email.trim().toLowerCase()) {
-    throw new Error("profile email is not a plain address");
-  }
-  return normalized;
+  return normalized.length !== 0 && normalized === email.trim().toLowerCase();
+}
+
+function normalizeEmail(email: string): string {
+  if (!isPlainEmail(email)) throw new Error("profile email is not a plain address");
+  return email.trim().toLowerCase();
 }
 
 export function emailKey(pepper: Uint8Array, email: string): string {
@@ -55,8 +58,4 @@ export function emailMatch(
   const match = matches[0];
   if (match === undefined) return "unknown";
   return { profileId: match.profileId };
-}
-
-export function acceptChangedPassword(): "unavailable" {
-  return "unavailable";
 }

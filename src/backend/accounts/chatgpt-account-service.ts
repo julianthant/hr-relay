@@ -1,3 +1,4 @@
+import { AssistantCallUsageSchema } from "../../models/dashboard/assistant-usage.js";
 import { AssistantModelPreferenceSchema, type AssistantModelPreference } from "../../models/config/assistant-model-preference.js";
 import { ASSISTANT_CONTEXT_MEDIA_MAX_BYTES, ASSISTANT_REQUEST_MAX_BYTES, AssistantInferenceRequestSchema, AssistantInferenceResultSchema, AssistantModelCatalogSchema, assistantInputMedia, assistantUserParts, type AssistantInferenceRequest } from "../../models/dashboard/assistant.js";
 import { ChatGptAccountStatusSchema, type ChatGptAccountStatus, type ChatGptAccountState, type ChatGptSignInRequest, type ChatGptSignedOut } from "../../models/dashboard/chatgpt-account.js";
@@ -876,7 +877,11 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     if (bytes - media.base64Chars > 160_000 || bytes > ASSISTANT_REQUEST_MAX_BYTES || media.bytes > ASSISTANT_CONTEXT_MEDIA_MAX_BYTES
       || !parsed.data.input.every(canonicalMedia)) throw fault("CHATGPT_OCR_INVALID");
     return responseStream(parsed.data.model, parsed.data.input, (terminal, text, textOutputIndex, argumentDeltas) => {
-      const result = AssistantInferenceResultSchema.parse({ responseId: terminal.id, model: terminal.model, output: terminal.output });
+      const providerUsage = z.object({ input_tokens: z.unknown(), output_tokens: z.unknown(), total_tokens: z.unknown() }).safeParse(terminal.usage);
+      const measured = providerUsage.success ? AssistantCallUsageSchema.safeParse({ state: "measured", inputTokens: providerUsage.data.input_tokens,
+        outputTokens: providerUsage.data.output_tokens, totalTokens: providerUsage.data.total_tokens }) : undefined;
+      const usage = measured?.success ? measured.data : { state: "unavailable", reason: terminal.usage === undefined || terminal.usage === null ? "missing" : "invalid" };
+      const result = AssistantInferenceResultSchema.parse({ responseId: terminal.id, model: terminal.model, output: terminal.output, usage });
       if (result.model !== parsed.data.model) throw fault("CHATGPT_OCR_INCOMPLETE");
       const calls = result.output.filter(item => item.type === "function_call"), messages = result.output.filter(item => item.type === "message");
       if (calls.length > 1 || messages.length > 1 || calls.length === 1 && messages.length !== 0 || calls.length === 0 && messages.length !== 1) throw fault("CHATGPT_OCR_INCOMPLETE");
@@ -951,7 +956,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     }, signal, streamLimit, undefined, operation);
   }
   async function responseStream<T>(model: string, input: readonly unknown[],
-    accept: (terminal: { id: string; model: string; output: unknown[] }, text: string, textOutputIndex: number | undefined, argumentDeltas: ReadonlyMap<number, string>) => T,
+    accept: (terminal: { id: string; model: string; output: unknown[]; usage?: unknown }, text: string, textOutputIndex: number | undefined, argumentDeltas: ReadonlyMap<number, string>) => T,
     signal: AbortSignal | undefined, streamLimit: number,
     assistant?: Readonly<{ reasoning: AssistantInferenceRequest["reasoning"]; tools: AssistantInferenceRequest["tools"]; parallel_tool_calls: false; include: readonly ["reasoning.encrypted_content"] }>, capturedOperation?: InferenceOperation): Promise<T> {
     const cancelled = () => signal?.aborted === true;
@@ -1107,7 +1112,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
                   definite = true;
                   diagnostic.path = "terminal-schema";
                   const parsedTerminal = z.object({ id: z.string().min(1).max(256), model: ChatGptOcrRequestSchema.shape.model,
-                    status: z.literal("completed").optional(), error: z.null().optional(), incomplete_details: z.null().optional(), output: z.array(z.unknown()).max(32),
+                    status: z.literal("completed").optional(), error: z.null().optional(), incomplete_details: z.null().optional(), output: z.array(z.unknown()).max(32), usage: z.unknown().optional(),
                   }).safeParse(event.response);
                   if (!parsedTerminal.success) {
                     diagnostic.terminalIssues = { issues: parsedTerminal.error.issues.slice(0, 16).map(issue => ({ path: [inferenceShapeKey("response"), ...issue.path.map(inferenceShapeKey)].slice(0, 8), code: issue.code })),

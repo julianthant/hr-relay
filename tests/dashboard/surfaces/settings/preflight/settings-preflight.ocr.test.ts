@@ -65,7 +65,7 @@ it("locks duplicate OCR clicks until the preflight-owned operation settles", asy
   let calls = 0;
   const port = createServedPreflightOcrPort({ testChatGptOcr: () => { calls++; return result.promise; } }, {
     mode: "preview", getSnapshot: () => enabled, subscribe: () => () => {},
-    signIn: async () => {}, forgetAccount: async () => {}, signOut: async () => {}, cancelSignIn: async () => {},
+    signIn: async () => {}, cancelSignIn: async () => {},
   });
   try {
     await mount(port); assert.equal(calls, 0);

@@ -12,7 +12,7 @@ export function notificationsPlugin(deps: AssistantPluginDeps): AssistantPlugin 
     severity: z.enum(["info", "warning", "error"]), state: z.enum(["unread", "read", "snoozed", "pinned"]), at: z.iso.datetime() })).max(MAX_ITEMS),
   counts: z.strictObject({ total: z.number().int().nonnegative(), unread: z.number().int().nonnegative() }) });
   return { domain: "notifications", tools: [{
-    kind: "read", name: "list_notifications",
+    kind: "read", tier: "read", name: "list_notifications",
     description: "List the operator's notifications, newest first: what triggered each one, its severity and whether it is unread, read, snoozed or pinned. Notification text stays local.",
     parameters, output: Output, privacy: [],
     async invoke(value, context) {

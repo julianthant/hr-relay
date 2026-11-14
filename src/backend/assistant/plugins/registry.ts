@@ -3,7 +3,7 @@ import type { CrossDateSearchPage, CrossDateSearchQueryInput, CrossDateSearchRes
 import type { RunDetailWire } from "../../../models/dashboard/run-detail.js";
 import type { NotificationWire } from "../../../models/dashboard/projection.js";
 import type { WorkbookLibraryService } from "../../workbooks/workbook-library-service.js";
-import { AssistantFunctionNamespaceSchema, type AssistantAttachmentRecord, type AssistantFunctionNamespace } from "../../../models/dashboard/assistant.js";
+import { AssistantFunctionNamespaceSchema, type AssistantAttachmentRecord, type AssistantFunctionNamespace, type AssistantToolTier } from "../../../models/dashboard/assistant.js";
 import type { AssistantPlugin, AssistantTool } from "./plugin.js";
 import type { AssistantWorkflowFacts } from "./workflows/facts.js";
 import { workflowsPlugin } from "./workflows/index.js";
@@ -30,6 +30,8 @@ export interface AssistantPluginDeps {
 
 export const ASSISTANT_TOOL_NAMESPACE = "relay";
 const MAX_TOOLS = 16;
+const KIND_TIERS: Readonly<Record<AssistantTool["kind"], readonly AssistantToolTier[]>> = {
+  read: ["read"], session: ["session"], change: ["write-local"], proposal: ["write-local", "leaves-machine"], "typed-proposal": ["write-local", "leaves-machine"] };
 
 export function createAssistantPlugins(deps: AssistantPluginDeps): readonly AssistantPlugin[] {
   const workflowLabel = (id: string) => deps.facts().facts.find(entry => entry.id === id)?.label ?? id;
@@ -39,7 +41,8 @@ export function createAssistantPlugins(deps: AssistantPluginDeps): readonly Assi
 
 export function assistantToolRegistry(plugins: readonly AssistantPlugin[]): Readonly<{ tools: readonly AssistantTool[]; namespace: AssistantFunctionNamespace }> {
   const tools = plugins.flatMap(plugin => plugin.tools);
-  if (tools.length > MAX_TOOLS || new Set(tools.map(tool => tool.name)).size !== tools.length) throw new Error("assistant-tool-registry-invalid");
+  if (tools.length > MAX_TOOLS || new Set(tools.map(tool => tool.name)).size !== tools.length
+    || tools.some(tool => !KIND_TIERS[tool.kind].includes(tool.tier))) throw new Error("assistant-tool-registry-invalid");
   const namespace = AssistantFunctionNamespaceSchema.parse({ type: "namespace", name: ASSISTANT_TOOL_NAMESPACE,
     description: "Relay's local reads and proposals. Reads return opaque [[…]] references instead of names and IDs; proposals only prepare a card the operator confirms.",
     tools: tools.map(tool => ({ type: "function", name: tool.name, description: tool.description, strict: true, parameters: z.toJSONSchema(tool.parameters) })) });

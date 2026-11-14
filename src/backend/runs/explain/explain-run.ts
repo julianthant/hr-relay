@@ -14,6 +14,7 @@ import {
   type FailureRecord,
 } from "../../../models/trust/failure.js";
 import type { RunRecord } from "../../../models/run/record.js";
+import { pendingInterruptOf } from "../../../rules/runs/run-interrupt.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import type { RemediationActionSchema } from "../../../models/trust/failure.js";
@@ -139,8 +140,9 @@ function nextSafeAction(
   failure: readonly Remediation[],
 ): string {
   const { lifecycle } = run;
-  if (run.pause !== undefined && lifecycle.state !== "terminal" && lifecycle.state !== "parked-write") {
-    return run.pause.state === "paused"
+  const pending = pendingInterruptOf(run);
+  if ((pending === "paused" || pending === "pause-requested") && lifecycle.state !== "parked-write") {
+    return pending === "paused"
       ? "Paused (a shutdown pauses every unfinished run). It does not resume by itself, not even at the next start; Resume or Cancel it from Logs."
       : "A pause is requested; the worker stops it after the current step. Then Resume or Cancel it from Logs.";
   }

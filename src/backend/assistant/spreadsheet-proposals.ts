@@ -145,7 +145,7 @@ export function createSpreadsheetProposals(deps: AssistantSpreadsheetProposalDep
     }
   }
 
-  const tool: AssistantProposalTool = { kind: "proposal", name: "propose_spreadsheet_change",
+  const tool: AssistantProposalTool = { kind: "proposal", tier: "write-local", name: "propose_spreadsheet_change",
     description: "Prepare a card for one Spreadsheets library change; the operator confirms it. import: add an attached spreadsheet as a new workbook under a name the operator typed (it starts without a type; "
       + "set the type with a separate set-type card after it is imported). new-version: save an attached spreadsheet as the workbook's next version. set-type, sync (download from SharePoint), "
       + "link (a SharePoint URL the operator typed), unlink, rename, create-version (from a named version or SharePoint), use-version (publish a named version), rename-version. "

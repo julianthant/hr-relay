@@ -511,6 +511,9 @@ export function assertOnlyLoopStallWrites(database: Harness["database"], before:
   return added.length;
 }
 
+/** Exact HTTP-fault timeline counts compose the dashboard with the event-loop monitor off. */
+export const exactHttpFaultLoopDelay = false;
+
 export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number,
   history: HistoryWrites = NO_HISTORY_WRITES) {
   const after = faultAuthoritySnapshot(h, history);

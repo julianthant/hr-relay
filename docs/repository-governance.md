@@ -137,8 +137,7 @@ synthetic document fixtures, and names source paths containing schema examples, 
 placeholder guidance. Its token digests identify existing synthetic IDs and redaction canaries from
 those examples and tests. Both a known
 token and a test or named source location are required; fixture directories are never exempt from
-content checks. The existing `.npmrc` configuration is pinned by whole-file digest; two redaction-test
-credential canaries are pinned by exact token and file. Other credentials still fail in those files.
+content checks. Two redaction-test credential canaries are pinned by exact token and file. Other credentials still fail in those files.
 New values fail even in test text; changing an approved binary fixture also fails. Changes to this
 list require independent review of synthetic provenance; do not generate allowances from unreviewed findings.
 

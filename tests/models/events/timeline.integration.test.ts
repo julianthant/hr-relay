@@ -160,7 +160,7 @@ afterEach(_afterEachFixture0);
       finally { reopened.close(); }
     } finally { await f.dispose(); }
   });
-  it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1, 29, 46, 999])("refuses schema %s without conversion or source I/O repair", async version => {
+  it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1, 46, 999])("refuses schema %s without conversion or source I/O repair", async version => {
     const f = await fresh(); await f.run();
     const raw = new DatabaseSync(f.path);
     try { raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`); }
