@@ -41,7 +41,7 @@ describe("actual factory and recipe signing scope", () => {
           signature: "AQID", transport: "usb", userHandle: null, signCount: signs }; } });
       const recipe = defineVerifiedLoginRecipe({ system: "ucpath", navigate: async () => undefined,
         verify: async () => authenticated ? { authenticated: true, evidence: { system: "ucpath", url: "https://fixture.invalid/app", positive: "fixture ready", negative: "fixture no sign-in" } }
-          : { authenticated: false, reason: "fixture login required" },
+          : { authenticated: false, reason: "fixture login required", check: "application-route" },
         ceremony: async () => { await request(); authenticated = true; },
       });
       const baseBindings = recordingBindings();

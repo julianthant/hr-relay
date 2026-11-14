@@ -76,7 +76,7 @@ export function logEntryText(entry: LogEntry): string {
     case "fields": return [entry.title, ...entry.fields.map(field => `${field.time} ${field.label} ${field.value}`), entry.result].filter(Boolean).join(" ");
     case "click": return `${entry.time} ${entry.label}`;
     case "note": return `${entry.time} ${entry.message}`;
-    case "decision": return [entry.time, entry.decision.title, entry.decision.message, entry.decision.attemptedAction, entry.decision.lastCompleted, entry.decision.field?.label, entry.decision.field?.value, entry.decision.caution, entry.decision.footer, ...(entry.decision.comparison ?? []).map(row => `${row.label} ${row.expected} ${row.observed}`)].filter(Boolean).join(" ");
+    case "decision": return [entry.time, entry.decision.title, entry.decision.message, entry.decision.attemptedAction, entry.decision.lastCompleted, entry.decision.field?.label, entry.decision.field?.value, entry.decision.caution, entry.decision.unavailableCapture, entry.decision.footer, ...(entry.decision.comparison ?? []).map(row => `${row.label} ${row.expected} ${row.observed}`)].filter(Boolean).join(" ");
   }
 }
 
