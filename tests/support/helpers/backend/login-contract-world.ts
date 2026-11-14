@@ -64,7 +64,7 @@ export function createLoginContractTestWorld() {
           system: SYSTEM,
           verify: async () => ceremonyCompleted
             ? { authenticated: true, evidence: { system: SYSTEM, url: page.url(), positive: "stub session", negative: "no form" } }
-            : { authenticated: false, reason: "the stub session is not proven until the ceremony ran" },
+            : { authenticated: false, reason: "the stub session is not proven until the ceremony ran", check: "application-route" },
           navigate: async () => undefined,
           ceremony: async (context, token) => {
             await script.onCeremony(token, context);
