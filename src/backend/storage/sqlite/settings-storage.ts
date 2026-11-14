@@ -1,4 +1,4 @@
-import { convertPersonPreferencesRow } from "./person-preferences-migration.js";
+import { convertPersonPreferencesRow, convertSendShortcutRow } from "./person-preferences-migration.js";
 import { derivePersonPreferencesFingerprint, resolvePersonPreferences } from "../../../models/config/person-preferences.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -85,6 +85,19 @@ export function migratePersonPreferences(database: DatabaseSync): void {
   for (const table of ["settings_snapshots", "settings", "commands", "command_audits"]) {
     for (const raw of database.prepare(`SELECT * FROM ${table}`).all()) {
       const row = convertPersonPreferencesRow(table, raw);
+      if (canonicalJsonStringify(row) === canonicalJsonStringify(raw)) continue;
+      if (table === "commands") database.prepare("UPDATE commands SET request_json=?,request_digest=?,outcome_json=? WHERE id=?")
+        .run(z.string().parse(row.request_json), z.string().parse(row.request_digest), z.string().nullable().parse(row.outcome_json), z.string().parse(row.id));
+      else database.prepare(`UPDATE ${table} SET payload_json=? WHERE id=?`).run(z.string().parse(row.payload_json), z.string().parse(row.id));
+    }
+  }
+}
+
+/** The forward conversion; runs inside migration 30 while the snapshot and audit triggers are dropped. */
+export function migrateSendShortcut(database: DatabaseSync): void {
+  for (const table of ["settings_snapshots", "settings", "commands", "command_audits"]) {
+    for (const raw of database.prepare(`SELECT * FROM ${table}`).all()) {
+      const row = convertSendShortcutRow(table, raw);
       if (canonicalJsonStringify(row) === canonicalJsonStringify(raw)) continue;
       if (table === "commands") database.prepare("UPDATE commands SET request_json=?,request_digest=?,outcome_json=? WHERE id=?")
         .run(z.string().parse(row.request_json), z.string().parse(row.request_digest), z.string().nullable().parse(row.outcome_json), z.string().parse(row.id));

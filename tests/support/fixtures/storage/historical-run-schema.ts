@@ -7,8 +7,15 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
-/** Steps an empty current authority back to schema 28: the empty operator grant table still existed. */
+/** Steps a current authority back to schema 29: schema 30 converts settings rows in place, and schema-29 inspection reads converted rows unchanged. */
+export function regressSchema30SendShortcut(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 30);
+  database.exec("UPDATE database_states SET schema_version=29; PRAGMA user_version=29");
+}
+
+/** Steps an empty schema-29 authority back to schema 28: the empty operator grant table still existed. */
 export function restoreSchema28AssistantGrants(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 30) regressSchema30SendShortcut(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 29);
   const ddl = SQLITE_MIGRATIONS.find(migration => migration.version === 8)?.statements.join("\n");
   const table = ddl?.match(/CREATE TABLE assistant_grants \([\s\S]*?\n\) STRICT;/u)?.[0], trigger = ddl?.match(/CREATE TRIGGER assistant_grants_revision[\s\S]*?END;/u)?.[0];
@@ -19,7 +26,7 @@ export function restoreSchema28AssistantGrants(database: DatabaseSync): void {
 
 /** Steps an empty schema-28 authority back to schema 27: the attachments table did not exist yet. */
 export function removeEmptySchema28Attachments(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 29) restoreSchema28AssistantGrants(database);
+  if ([29, 30].includes(Number(database.prepare("PRAGMA user_version").get()?.user_version))) restoreSchema28AssistantGrants(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 28);
   assert.equal(database.prepare("SELECT count(*) AS count FROM assistant_attachments").get()?.count, 0);
   database.exec("DROP TABLE assistant_attachments");

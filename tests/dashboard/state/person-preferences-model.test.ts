@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
+import { createPersonPreferences, insertsNewLine, sendShortcutLabel, sendsMessage } from "../../../src/dashboard/state/person-preferences-model.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { SettingsCommandRequestSchema, CommandResultSchema } from "../../../src/rules/commands/commands.js";
 import { mergeSettingsPatch } from "../../../src/models/config/settings.js";
@@ -103,4 +103,35 @@ it("refuses malformed persisted preferences instead of publishing them as defaul
   w.read(() => Promise.resolve(malformed)); const a = w.select("A");
   await assert.rejects(ready(a.owner)); assert.equal(a.owner.snapshot().state, "failed");
   assert.equal(await a.owner.change({ "preferences.theme": { set: "light" } }), false); assert.equal(w.writes(), 0); a.close();
+});
+it("stores the send shortcut per person and reads it back after a renderer restart", async () => {
+  const w = world();
+  const a = w.select("A"); await ready(a.owner);
+  assert.equal(a.owner.snapshot().value.sendShortcut, "enter");
+  assert.equal(await a.owner.change({ "preferences.sendShortcut": { set: "mod-enter" } }), true); a.close(); a.owner.clear();
+  const b = w.select("B"); await ready(b.owner);
+  assert.equal(b.owner.snapshot().value.sendShortcut, "enter"); b.close();
+  const restarted = w.select("A"); await ready(restarted.owner);
+  assert.equal(restarted.owner.snapshot().value.sendShortcut, "mod-enter"); restarted.close();
+});
+it("sends only on the chosen key: the other key is a new line and IME composition never sends", () => {
+  const key = (init: Partial<Parameters<typeof sendsMessage>[1]> = {}) => ({ key: "Enter", shiftKey: false, metaKey: false, ctrlKey: false, isComposing: false, ...init });
+  assert.equal(sendsMessage("enter", key(), true), true);
+  assert.equal(sendsMessage("enter", key({ shiftKey: true }), true), false);
+  assert.equal(sendsMessage("enter", key({ isComposing: true }), true), false);
+  assert.equal(sendsMessage("enter", key({ key: "a" }), true), false);
+  assert.equal(sendsMessage("enter", key({ metaKey: true }), true), false);
+  assert.equal(sendsMessage("enter", key({ ctrlKey: true }), false), false);
+  assert.equal(insertsNewLine("enter", key({ metaKey: true }), true), true);
+  assert.equal(insertsNewLine("enter", key({ ctrlKey: true }), false), true);
+  assert.equal(insertsNewLine("enter", key(), true), false);
+  assert.equal(insertsNewLine("enter", key({ metaKey: true, isComposing: true }), true), false);
+  assert.equal(insertsNewLine("mod-enter", key({ metaKey: true }), true), false);
+  assert.equal(sendsMessage("mod-enter", key(), true), false);
+  assert.equal(sendsMessage("mod-enter", key({ metaKey: true }), true), true);
+  assert.equal(sendsMessage("mod-enter", key({ ctrlKey: true }), true), false);
+  assert.equal(sendsMessage("mod-enter", key({ ctrlKey: true }), false), true);
+  assert.equal(sendsMessage("mod-enter", key({ metaKey: true }), false), false);
+  assert.equal(sendsMessage("mod-enter", key({ metaKey: true, isComposing: true }), true), false);
+  assert.deepEqual([sendShortcutLabel("enter", true), sendShortcutLabel("mod-enter", true), sendShortcutLabel("mod-enter", false)], ["Enter", "⌘Enter", "Ctrl+Enter"]);
 });

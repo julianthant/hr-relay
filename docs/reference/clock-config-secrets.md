@@ -73,11 +73,13 @@ compares the populated config leaf paths with provenance keys and throws
 `fingerprint` is SHA-256 over `canonicalJsonStringify(config)`. Person appearance and shell settings live in the
 strict `preferences` sibling of each canonical snapshot, authenticated by `preferencesFingerprint`.
 Execution configuration, accepted snapshot IDs and run fingerprints do not change when preferences
-change. `person-preferences.ts` owns theme, animations, workflow panel mode/selection and keyboard
-bindings. Sparse `preferences.*` overrides are ordinary person settings with the same command,
+change. `person-preferences.ts` owns theme, animations, workflow panel mode/selection, keyboard
+bindings and the assistant send shortcut (`enter` or `mod-enter`, neutral `enter`). Sparse `preferences.*` overrides are ordinary person settings with the same command,
 revision and backup coupling as other saved values. The stopped schema-16 conversion adds neutral
 preferences to accepted snapshots and updates initialization schema identities and their exact
-command/audit digests; ordinary snapshot readers require the current fields. No browser preference
+command/audit digests. The stopped schema-30 conversion adds `sendShortcut: "enter"` to snapshots
+without it and moves initialization records from the schema before that leaf to the current one;
+any other schema identity is still refused. Ordinary snapshot readers require the current fields. No browser preference
 is imported.
 
 `ConfigSchema` has fourteen groups: `actor`, `urls`, `timeouts`, `paths`, `annualDates`, `display`,
@@ -562,7 +564,7 @@ Fresh workbook storage contains one General type seed. Incomplete-profile invent
 The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27 and 28. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 29` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 30` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
