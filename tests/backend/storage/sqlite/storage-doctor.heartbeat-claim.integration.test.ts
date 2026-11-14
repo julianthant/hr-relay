@@ -17,7 +17,7 @@ import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/a
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import type { Clock } from "../../../../src/rules/time/clock.js";
 import { PREFLIGHT_CHECKS } from "../../../../src/models/runtime/runtime-dependencies.js";
-import { requiredPreflightChecks } from "../../../../src/models/preflight/preflight.js";
+import { PreflightObservationSchema, requiredPreflightChecks } from "../../../../src/models/preflight/preflight.js";
 import { createPreflightAdmission, PreflightAdmissionScopeSchema } from "../../../../src/rules/preflight/preflight-admission.js";
 import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
@@ -140,6 +140,8 @@ async function claimWhilePeerHeartbeats(mode: HeartbeatMode) {
             const checking = doctor.run(check);
             if (mode === "during") renew();
             observation = await checking;
+            // A failed check stays failed. Only a healthy pass with no peer commit is repeated.
+            if (observation.state !== "healthy") return observation;
             // A peer process must have committed while this pass read its owner image.
             if (a.database.getMeta().authorityGeneration > startedAt) {
               counts.passesWithPeerCommits++;
@@ -203,6 +205,31 @@ it("applies a claim when a peer heartbeat lands inside every storage-doctor pass
 
 it("applies a claim while another process renews a peer claim for the whole claim", async () => {
   await claimWhilePeerHeartbeats("process");
+});
+
+it("returns an unhealthy storage-doctor pass instead of a later overlap", async () => {
+  // eslint-disable-next-line @typescript-eslint/unbound-method
+  const run = AuthorityHealthPreflightRunner.prototype.run;
+  let healthCalls = 0;
+  vi.spyOn(AuthorityHealthPreflightRunner.prototype, "run").mockImplementation(async function unhealthyThenReal(
+    this: AuthorityHealthPreflightRunner,
+    ...args: Parameters<AuthorityHealthPreflightRunner["run"]>
+  ) {
+    healthCalls += 1;
+    if (healthCalls === 1) {
+      return PreflightObservationSchema.parse({
+        check: "authority.health", state: "unhealthy", summary: "injected authority failure",
+        impact: "authority mutations remain blocked",
+      });
+    }
+    return run.apply(this, args);
+  });
+  await assert.rejects(claimWhilePeerHeartbeats("process"), (error: unknown) => {
+    assert.equal(healthCalls, 1);
+    assert.ok(error instanceof assert.AssertionError);
+    assert.match(error.message, /no peer commit landed inside a doctor pass/);
+    return true;
+  });
 });
 
 it("applies a claim while twelve peer heartbeats land inside the doctor reads", async () => {
