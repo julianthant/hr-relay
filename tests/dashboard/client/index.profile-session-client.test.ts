@@ -2,7 +2,7 @@ import { z } from "zod";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
-import type { DeleteProfileAccountRequest } from "../../../src/models/profiles/public-profile.js";
+import { DuoReenrolStateSchema, type DeleteProfileAccountRequest } from "../../../src/models/profiles/public-profile.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { healthyDashboardPreflightReport } from "../../support/fixtures/preflight-seams.js";
 
@@ -130,4 +130,67 @@ it("posts a details change and returns the served account or the refusal", async
   assert.equal(seen[0]?.path, "/api/v1/profile/account/details");
   assert.equal(seen[0]?.body, JSON.stringify({ initials: "SR" }));
   await assert.rejects(client.changeProfileDetails({}));
+});
+
+it("posts Duo re-enrolment commands to their routes and parses only a served re-enrolment state", async () => {
+  const operationId = "00000000-0000-4000-8000-000000000001", attemptId = "00000000-0000-4000-8000-000000000002";
+  const profileId = "00000000-0000-4000-8000-000000000003";
+  const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+  const served = DuoReenrolStateSchema.parse({ state: "duo-reenrol", operationId, profileId, step: "duo", methods: { key: idle, touch: idle },
+    browser: { state: "checking", generation: 0 } });
+  const calls: { path: string; body: unknown }[] = [];
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {
+    calls.push({ path: new URL(url).pathname, body: JSON.parse(z.string().parse(init?.body)) });
+    return Response.json(served);
+  } });
+  assert.deepEqual(await client.beginProfileDuoReenrol(), served);
+  assert.deepEqual(await client.readProfileDuoReenrol({ operationId }), served);
+  assert.deepEqual(await client.showProfileDuoReenrolBrowser({ operationId }), served);
+  assert.deepEqual(await client.reopenProfileDuoReenrolBrowser({ operationId, generation: 2 }), served);
+  assert.deepEqual(await client.openProfileDuoReenrolPortal({ operationId }), served);
+  assert.deepEqual(await client.startProfileDuoReenrol({ operationId, method: "key" }), served);
+  assert.deepEqual(await client.confirmProfileDuoReenrol({ operationId, method: "touch", attemptId, operatorConfirmed: true }), served);
+  assert.deepEqual(await client.cancelProfileDuoReenrolAttempt({ operationId, method: "key", attemptId }), served);
+  assert.deepEqual(calls, [
+    { path: "/api/v1/profile/duo/reenrol/begin", body: {} },
+    { path: "/api/v1/profile/duo/reenrol/read", body: { operationId } },
+    { path: "/api/v1/profile/duo/reenrol/browser", body: { operationId } },
+    { path: "/api/v1/profile/duo/reenrol/reopen", body: { operationId, generation: 2 } },
+    { path: "/api/v1/profile/duo/reenrol/portal", body: { operationId } },
+    { path: "/api/v1/profile/duo/reenrol/start", body: { operationId, method: "key" } },
+    { path: "/api/v1/profile/duo/reenrol/confirm", body: { operationId, method: "touch", attemptId, operatorConfirmed: true } },
+    { path: "/api/v1/profile/duo/reenrol/cancel-attempt", body: { operationId, method: "key", attemptId } },
+  ]);
+  for (const malformed of [
+    { state: "duo-reenrol" },
+    { ...served, extra: true },
+    { ...served, step: "ready" },
+    { state: "refused", code: "PROFILE_SESSION_STALE" },
+    { state: "error", code: "SCHEMA_INVALID", message: "no", retryable: false },
+  ]) {
+    const refusing = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => Response.json(malformed) });
+    await assert.rejects(refusing.readProfileDuoReenrol({ operationId }));
+  }
+  await assert.rejects(client.readProfileDuoReenrol({ operationId: "not-a-uuid" }));
+  assert.equal(calls.length, 8);
+});
+
+it("parses commit and cancel as the active profile, including a served refusal", async () => {
+  const operationId = "00000000-0000-4000-8000-000000000001";
+  const active = { state: "active", profileId: "00000000-0000-4000-8000-000000000003", epoch: 4, duoState: "ready" };
+  const calls: { path: string; body: unknown }[] = [];
+  const bodies = [active, { state: "refused", code: "PROFILE_DUO_REENROL_UNCERTAIN" }];
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {
+    calls.push({ path: new URL(url).pathname, body: JSON.parse(z.string().parse(init?.body)) });
+    return Response.json(bodies[calls.length - 1]);
+  } });
+  assert.deepEqual(await client.commitProfileDuoReenrol({ operationId }), active);
+  assert.deepEqual(await client.cancelProfileDuoReenrol({ operationId }), { state: "refused", code: "PROFILE_DUO_REENROL_UNCERTAIN" });
+  assert.deepEqual(calls, [
+    { path: "/api/v1/profile/duo/reenrol/commit", body: { operationId } },
+    { path: "/api/v1/profile/duo/reenrol/cancel", body: { operationId } },
+  ]);
+  await assert.rejects(client.commitProfileDuoReenrol({ operationId: "not-a-uuid" }));
+  const malformed = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => Response.json({ state: "active", token: "secret" }) });
+  await assert.rejects(malformed.cancelProfileDuoReenrol({ operationId }));
 });

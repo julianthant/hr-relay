@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { ReopenProfileOnboardingBrowserRequestSchema, type ReopenProfileOnboardingBrowserRequest, DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfilePasswordChangeRequestSchema, ProfileUsernameChangeRequestSchema, ProfileLoginChangeResultSchema, ProfileDetailsChangeRequestSchema, ProfileDetailsChangeResultSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
+import { ReopenProfileOnboardingBrowserRequestSchema, type ReopenProfileOnboardingBrowserRequest, DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfilePasswordChangeRequestSchema, ProfileUsernameChangeRequestSchema, ProfileLoginChangeResultSchema, ProfileDetailsChangeRequestSchema, ProfileDetailsChangeResultSchema, DuoReenrolStateSchema, PublicProfileStateSchema, type DuoReenrolState, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
 type ProfilePasswordChangeRequest = z.infer<typeof ProfilePasswordChangeRequestSchema>;
 type ProfileUsernameChangeRequest = z.infer<typeof ProfileUsernameChangeRequestSchema>;
 type ProfileLoginChangeResult = z.infer<typeof ProfileLoginChangeResultSchema>;
@@ -61,6 +61,16 @@ export interface DashboardClient extends DashboardQueries, DashboardCommands {
   openProfileOnboardingPortal(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
   startProfileOnboardingDuo(request: StartProfileOnboardingDuoRequest): Promise<PublicProfileState>;
   confirmProfileOnboardingDuo(request: ConfirmProfileOnboardingDuoRequest): Promise<PublicProfileState>;
+  beginProfileDuoReenrol(): Promise<DuoReenrolState>;
+  readProfileDuoReenrol(request: CompleteProfileOnboardingRequest): Promise<DuoReenrolState>;
+  showProfileDuoReenrolBrowser(request: CompleteProfileOnboardingRequest): Promise<DuoReenrolState>;
+  reopenProfileDuoReenrolBrowser(request: ReopenProfileOnboardingBrowserRequest): Promise<DuoReenrolState>;
+  openProfileDuoReenrolPortal(request: CompleteProfileOnboardingRequest): Promise<DuoReenrolState>;
+  startProfileDuoReenrol(request: StartProfileOnboardingDuoRequest): Promise<DuoReenrolState>;
+  confirmProfileDuoReenrol(request: ConfirmProfileOnboardingDuoRequest): Promise<DuoReenrolState>;
+  cancelProfileDuoReenrolAttempt(request: CancelProfileOnboardingDuoRequest): Promise<DuoReenrolState>;
+  cancelProfileDuoReenrol(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
+  commitProfileDuoReenrol(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
   reportError(report: DashboardErrorReport): Promise<void>;
   subscribeDay(
     input: Omit<DashboardDaySubscriptionDeps, "transport">,
@@ -222,6 +232,54 @@ export function createDashboardClient(input: Readonly<{
         method: "POST", body: JSON.stringify(ConfirmProfileOnboardingDuoRequestSchema.parse(request)),
       })).body);
     },
+    async beginProfileDuoReenrol() {
+      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/begin", { method: "POST", body: "{}" })).body);
+    },
+    async readProfileDuoReenrol(request) {
+      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/read", {
+        method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
+      })).body);
+    },
+    async showProfileDuoReenrolBrowser(request) {
+      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/browser", {
+        method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
+      })).body);
+    },
+    async reopenProfileDuoReenrolBrowser(request) {
+      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/reopen", {
+        method: "POST", body: JSON.stringify(ReopenProfileOnboardingBrowserRequestSchema.parse(request)),
+      })).body);
+    },
+    async openProfileDuoReenrolPortal(request) {
+      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/portal", {
+        method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
+      })).body);
+    },
+    async startProfileDuoReenrol(request) {
+      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/start", {
+        method: "POST", body: JSON.stringify(StartProfileOnboardingDuoRequestSchema.parse(request)),
+      })).body);
+    },
+    async confirmProfileDuoReenrol(request) {
+      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/confirm", {
+        method: "POST", body: JSON.stringify(ConfirmProfileOnboardingDuoRequestSchema.parse(request)),
+      })).body);
+    },
+    async cancelProfileDuoReenrolAttempt(request) {
+      return parseDuoReenrolState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/cancel-attempt", {
+        method: "POST", body: JSON.stringify(CancelProfileOnboardingDuoRequestSchema.parse(request)),
+      })).body);
+    },
+    async cancelProfileDuoReenrol(request) {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/cancel", {
+        method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
+      })).body);
+    },
+    async commitProfileDuoReenrol(request) {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/duo/reenrol/commit", {
+        method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
+      })).body);
+    },
     async reportError(report: DashboardErrorReport) {
       if (profileAuthority === undefined) return;
       const runId = report.runId ?? input.runId?.();
@@ -286,4 +344,7 @@ function parseDetailsChange(body: unknown): ProfileDetailsChangeResult {
 function parseProfileState(body: unknown): PublicProfileState {
   const wire = WIRE_ERROR_BODY.safeParse(body);
   return PublicProfileStateSchema.parse(wire.success ? { state: "refused", code: wire.data.code } : body);
+}
+function parseDuoReenrolState(body: unknown): DuoReenrolState {
+  return parseOrThrow(DuoReenrolStateSchema, "POST /api/v1/profile/duo/reenrol", body);
 }
