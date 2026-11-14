@@ -15,7 +15,7 @@ describe("separation date reconciliation refusal", () => {
         kualiLastDayWorked: "10/01/2026", kualiSeparationDate: "10/01/2026", asOfDate: "10/12/2026",
         timecardWindow: { start: "09/01/2026", end: "11/01/2026" },
       },
-      timekeeperName: "Julian Zaw", lastPunchDate: "10/01/2026", sickDates: [],
+      timekeeperInitials: "JZ", lastPunchDate: "10/01/2026", sickDates: [],
       holidayDates: ["10/31/2026"], unclassifiedPayCodes: [],
       observedWindow: { start: "09/01/2026", end: "11/01/2026" },
     });

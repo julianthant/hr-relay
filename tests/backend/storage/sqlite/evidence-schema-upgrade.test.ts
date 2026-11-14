@@ -13,10 +13,15 @@ import { WriteIntentRecordSchema } from "../../../../src/rules/write-safety/writ
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { SeparationsCanonicalInput } from "../../../../src/workflows/separations/workflow.js";
 import { kualiReceiptEvidence } from "../../../support/fixtures/receipt-run-fixtures.js";
-import { separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { compositionQueuedRun } from "../../../support/helpers/separations-composition-fixtures.js";
+import { separationsDescriptor, separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
+
+const GENERATION_0_SELECTOR = "9139ca6501ab707e3c47dfe55fcc89741dfc53dda0b783a7afb8ee2c2e1ee77d";
+const GENERATION_1_SELECTOR = "66dc2f33bf56808164be764f921a1e5a2a95afd5e0a7b760fdba687ee81575dc";
 
 it("derives the exact stopped predecessor selectors without changing the current schemas", () => {
-  assert.equal(predecessorEvidenceSchemaHash(SeparationsCanonicalInput), "66dc2f33bf56808164be764f921a1e5a2a95afd5e0a7b760fdba687ee81575dc");
+  assert.ok(RETIRED_INPUT_GENERATIONS.separations?.includes(GENERATION_1_SELECTOR));
+  assert.notEqual(predecessorEvidenceSchemaHash(SeparationsCanonicalInput), GENERATION_1_SELECTOR);
   assert.equal(predecessorEvidenceSchemaHash(KualiSavedFinalizationProofSchema), "9c8d2c765c9eb480c1b37f7e58b050edb5f907ce1392ecbdfe8489f9f875b81c");
   assert.equal(predecessorEvidenceSchemaHash(KualiFinalizationTargetSchema), "8b312e596b81243994b26160e226d0f39c6548154fb85f55d0aaf3efbfe16810");
 });
@@ -58,9 +63,10 @@ it("refuses unknown selectors and a wider-domain value forged under a predecesso
   }
 });
 
-it("pins the retired input generations to the Separations inputs this build still parses", () => {
-  assert.deepEqual(RETIRED_INPUT_GENERATIONS.separations,
-    [deriveSchemaHash(SeparationsCanonicalInput, "output"), predecessorEvidenceSchemaHash(SeparationsCanonicalInput)]);
+it("pins the retired input generations: Separations lists only earlier builds, the proof workflow its current and predecessor", () => {
+  assert.deepEqual(RETIRED_INPUT_GENERATIONS.separations, [GENERATION_0_SELECTOR, GENERATION_1_SELECTOR]);
+  assert.equal(RETIRED_INPUT_GENERATIONS.separations?.includes(deriveSchemaHash(SeparationsCanonicalInput, "output")), false);
+  assert.equal(RETIRED_INPUT_GENERATIONS.separations?.includes(predecessorEvidenceSchemaHash(SeparationsCanonicalInput)), false);
   const proof = separationsKualiFinalizationDescriptor.canonicalInput;
   assert.deepEqual(RETIRED_INPUT_GENERATIONS[separationsKualiFinalizationDescriptor.id], [deriveSchemaHash(proof, "output"), predecessorEvidenceSchemaHash(proof)]);
   assert.ok(Object.isFrozen(RETIRED_INPUT_GENERATIONS) && Object.values(RETIRED_INPUT_GENERATIONS).every(hashes => Object.isFrozen(hashes)));
@@ -88,4 +94,18 @@ it("still parses, and so refuses, a run input under an unlisted hash when the cu
   const source = nextGeneration(), run = source.runs[0]; assert.ok(run);
   source.runs[0] = RunRecordSchema.parse({ ...run, input: { ...run.input, parsed: { ...run.input.parsed, schemaHash: "e".repeat(64) } } });
   assert.throws(() => collectEvidenceSchemaAdmissions(source), /timekeeperInitials/u);
+});
+
+it("retires, without parsing, a real Separations run input stored before the stored initials existed", () => {
+  const queued = RunRecordSchema.parse(compositionQueuedRun());
+  const oldShape = z.record(z.string(), z.unknown()).parse(queued.input.parsed.value);
+  delete oldShape["timekeeperInitials"];
+  assert.equal(Object.hasOwn(oldShape, "timekeeperInitials"), false);
+  const run = RunRecordSchema.parse({ ...queued, input: { ...queued.input, parsed: { ...queued.input.parsed,
+    schemaHash: GENERATION_0_SELECTOR, value: oldShape } } });
+  const { admissions, retirements } = collectEvidenceSchemaAdmissions({ descriptors: [separationsDescriptor], runs: [run], writes: [], checkpoints: [] });
+  const owner = { kind: "run-input" as const, id: run.envelope.runId };
+  assert.deepEqual(admissions, []);
+  assert.deepEqual(retirements, [{ owner, workflowId: separationsDescriptor.id, sourceSchemaHash: GENERATION_0_SELECTOR,
+    sourceDigest: evidenceSchemaSourceDigest(owner, run.input) }]);
 });

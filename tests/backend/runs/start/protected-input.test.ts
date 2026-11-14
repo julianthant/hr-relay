@@ -12,7 +12,7 @@ describe("admitted profile timekeeper input", () => {
     const identity = readProfileIdentity(source);
     const admitted = admitProtectedInput(separationsDescriptor, [{ documentNumber: "4444" }], source)[0];
     assert.ok(admitted);
-    assert.deepEqual(admitted.admitted, { documentNumber: "4444", timekeeperName: "Synthetic Middle Operator" });
+    assert.deepEqual(admitted.admitted, { documentNumber: "4444", timekeeperName: "Synthetic Middle Operator", timekeeperInitials: "SMO" });
     assert.deepEqual(admitted.bindings, [{ kind: "profile", inputPath: "timekeeperName", name: "timekeeperName", profileId: identity.profileId, sessionEpoch: identity.sessionEpoch }]);
     assert.equal(identity.initials, "SMO");
     for (const projection of [valueFreeProtectedInput(admitted.admitted, admitted.bindings), valueFreeProtectedData(admitted.admitted, admitted.bindings)]) {
@@ -33,5 +33,30 @@ describe("admitted profile timekeeper input", () => {
   it("refuses missing profile identity instead of inventing a signer", () => {
     assert.throws(() => admitProtectedInput(separationsDescriptor, [{ documentNumber: "4444" }], protectedSecretSource()), /admitted profile identity is unavailable/u);
     assert.throws(() => admitProtectedInput(separationsDescriptor, [{ documentNumber: "4444" }]), /profile is unavailable/u);
+  });
+
+  it("admits the stored initials beside the name from one profile read, under the one name binding", () => {
+    const source = protectedSecretSource({ profileName: "Lex Rivers", profileInitials: "QZ" });
+    const admitted = admitProtectedInput(separationsDescriptor, [{ documentNumber: "4444" }], source)[0];
+    assert.ok(admitted);
+    assert.deepEqual(admitted.admitted, { documentNumber: "4444", timekeeperName: "Lex Rivers", timekeeperInitials: "QZ" });
+    assert.equal(admitted.bindings.length, 1);
+    assert.equal(admitted.bindings[0]?.inputPath, "timekeeperName");
+    assert.equal(admitted.bindings[0]?.kind, "profile");
+  });
+
+  it("refuses caller-supplied initials", () => {
+    const source = protectedSecretSource({ profileName: "Lex Rivers", profileInitials: "QZ" });
+    assert.throws(() => admitProtectedInput(separationsDescriptor, [{ documentNumber: "4444", timekeeperInitials: "AB" }], source),
+      /caller-supplied protected input timekeeperInitials is refused/u);
+  });
+
+  it("refuses a start whose stored initials are missing or not 1-8 letters A-Z, with a stated reason", () => {
+    const source = (initials: string) => protectedSecretSource({ profileName: "Lex Rivers", profileInitials: initials });
+    assert.throws(() => admitProtectedInput(separationsDescriptor, [{ documentNumber: "4444" }], source("")), /admitted profile identity is unreadable/u);
+    for (const initials of ["q1", "ABCDEFGHI"]) {
+      assert.throws(() => admitProtectedInput(separationsDescriptor, [{ documentNumber: "4444" }], source(initials)),
+        /protected input timekeeperInitials is refused: the profile's stored Timekeeper initials are not 1-8 letters A-Z/u, initials);
+    }
   });
 });

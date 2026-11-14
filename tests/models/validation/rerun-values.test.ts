@@ -31,6 +31,13 @@ describe("explicit Rerun mapping admission", () => {
     assert.throws(() => validateRerunValueMappings({ ...descriptor, nodes: descriptorRuntimeNodes(descriptor),
       protectedInputs: [{ inputPath: "eid" }] }, [eidMapping]), /TARGET_PROTECTED/u);
   });
+  it("rejects a mapping that targets the stored Timekeeper initials", () => {
+    const descriptor = mappedReadDescriptor();
+    const view = { ...descriptor, nodes: descriptorRuntimeNodes(descriptor),
+      input: z.strictObject({ eid: z.string(), timekeeperInitials: z.string() }) };
+    assert.throws(() => validateRerunValueMappings(view, [{ ...eidMapping, targetFieldPath: "timekeeperInitials" }]),
+      /RERUN_MAPPING_TARGET_PROTECTED/u);
+  });
   it("preserves nested union constraints and refuses coercion or positional guesses", () => {
     const view = { input: z.object({ value: z.union([z.object({ count: z.number().int().min(2) }), z.object({ other: z.string() })]).optional(),
       coerced: z.coerce.number(), list: z.array(z.string()) }), stepOmissions: [] };

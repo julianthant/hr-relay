@@ -35,12 +35,13 @@ export async function predecessorKualiEvidence() {
     const receipt = createReceiptService({ database: value.database, runReader: testRunService(value.database, value.clock), descriptors: [descriptor] }).ensureReceipt(runId);
     const { RunRecordSchema } = await import("../../../../src/models/run/record.js");
     const { deriveSchemaHash } = await import("../../../../src/models/validation/schema-bound-value.js");
-    const { SeparationsInput, SeparationsCanonicalInput } = await import("../../../../src/workflows/separations/workflow.js");
+    const { SeparationsInput } = await import("../../../../src/workflows/separations/workflow.js");
     const { completion: _completion, ...seed } = run;
     const { startAt: _startAt, ...envelope } = run.envelope;
     const separationsRun = RunRecordSchema.parse({ ...seed, envelope: { ...envelope, runId: randomUUID(), itemId: randomUUID(),
       workflow: separationsDescriptor.id, descriptorVersion: separationsDescriptor.version, contractFingerprint: separationsDescriptor.contractFingerprint },
-      input: { raw: { documentNumber: "4444" }, parsed: { schemaHash: deriveSchemaHash(SeparationsCanonicalInput, "output"),
+      // The generation-1 Separations input hash, from before the stored timekeeper initials.
+      input: { raw: { documentNumber: "4444" }, parsed: { schemaHash: "66dc2f33bf56808164be764f921a1e5a2a95afd5e0a7b760fdba687ee81575dc",
         value: { documentNumber: "4444", timekeeperName: FINALIZATION_VARIABLES.timekeeperName, searchTimeoutMs: 15000 },
         protectedBindings: [{ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId }] },
         ingressSchemaHash: deriveSchemaHash(SeparationsInput, "input") }, lifecycle: { state: "queued" }, claimGeneration: 0, version: 1 });

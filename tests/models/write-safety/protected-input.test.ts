@@ -8,6 +8,7 @@ retainedRunProtectedBindings,
 valueFreeProtectedData,
 valueFreeProtectedInput
 } from "../../../src/models/write-safety/protected-input.js";
+import { deriveCanonicalInputDigest } from "../../../src/models/run/start-plan.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { SeparationWritePlanSchema } from "../../../src/rules/separations/write-plan.js";
 
@@ -95,4 +96,26 @@ describe("current private protected origins and public projections", () => {
       values: [{ documentNumber: "Synthetic document" }] }]] }));
   });
 
+  it("keeps stored Timekeeper initials out of value-free projections, so stored input digests stay stable", () => {
+    const profile = ProtectedInputBindingSchema.parse({ kind: "profile", inputPath: "timekeeperName", name: "timekeeperName",
+      profileId: "10000000-0000-4000-8000-000000000003", sessionEpoch: 1 });
+    const without = { documentNumber: "4444", timekeeperName: "Lex Rivers" };
+    const withInitials = { ...without, timekeeperInitials: "QZ" };
+    const input = valueFreeProtectedInput(withInitials, [profile]);
+    const data = valueFreeProtectedData({ ...withInitials, protectedBindings: [profile] });
+    for (const projection of [input, data]) {
+      assert.equal(JSON.stringify(projection).includes("QZ"), false);
+      assert.equal(JSON.stringify(projection).includes("Lex Rivers"), false);
+      assert.equal(JSON.stringify(projection).includes("timekeeperInitials"), false);
+    }
+    assert.deepEqual(input, valueFreeProtectedInput(without, [profile]));
+    assert.equal(deriveCanonicalInputDigest(withInitials, [profile]), deriveCanonicalInputDigest(without, [profile]));
+  });
+  it("redacts the initials sign-off of a timekeeper comment", () => {
+    const projected = valueFreeProtectedData({ timekeeperName: "Lex Rivers", timekeeperInitials: "QZ",
+      timekeeperComments: "Termination filed on UCPath as T002209631. Re Kuali Form #4510. -QZ 06/11/2026" });
+    assert.equal(JSON.stringify(projected).includes("QZ"), false);
+    assert.deepEqual(projected, { timekeeperName: marker, timekeeperComments:
+      "Termination filed on UCPath as T002209631. Re Kuali Form #4510. -<protected timekeeperName> 06/11/2026" });
+  });
 });

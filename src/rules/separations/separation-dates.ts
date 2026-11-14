@@ -308,19 +308,6 @@ export function buildTerminationComments(input: Readonly<{
     + `Kuali form #${input.documentNumber}.`;
 }
 
-/** `"Synthetic Operator"` → `"SO"`: initials of the two words, dropped from the display fold. */
-export function separationInitials(fullName: string): string {
-  const initials = fullName
-    .split(/\s+/u)
-    .filter((part) => part.length > 0)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
-  if (initials.length === 0) {
-    throw new Error("cannot derive initials from protected input timekeeperName");
-  }
-  return initials;
-}
-
 /** Non-empty parts, trimmed, newline-joined. */
 export function joinSeparationComments(...parts: readonly string[]): string {
   return parts.map((part) => part.trim()).filter((part) => part.length > 0).join("\n");
@@ -358,7 +345,8 @@ export function buildDateChangeComments(input: Readonly<{
 /** Typed replacements have no observed leave facts or pay codes. */
 export function assertSeparationDates(input: Readonly<{
   plan: SeparationPlan;
-  timekeeperName: string;
+  /** The person's stored Timekeeper initials, captured when the run started. */
+  timekeeperInitials: string;
   lastDayWorked: string;
   separationDate: string;
 }>): ReconciledSeparationDates {
@@ -378,7 +366,7 @@ export function assertSeparationDates(input: Readonly<{
     );
   }
   const terminationEffectiveDate = addSeparationDays(separationDate, 1);
-  const initials = separationInitials(input.timekeeperName);
+  const initials = input.timekeeperInitials;
   return ReconciledSeparationDatesSchema.parse({
     lastDayWorked,
     separationDate,
@@ -432,7 +420,8 @@ export function buildFinalizationComments(input: Readonly<{
 /** No physical punch refuses; never substitute the Kuali date. */
 export function reconcileSeparationDates(input: Readonly<{
   plan: SeparationPlan;
-  timekeeperName: string;
+  /** The person's stored Timekeeper initials, captured when the run started. */
+  timekeeperInitials: string;
   /** Null means the card had no physical punch. */
   lastPunchDate: string | null;
   sickDates: readonly string[];
@@ -490,7 +479,7 @@ export function reconcileSeparationDates(input: Readonly<{
     });
   }
   const terminationEffectiveDate = addSeparationDays(separationDate, 1);
-  const initials = separationInitials(input.timekeeperName);
+  const initials = input.timekeeperInitials;
   const dateChangeComments = buildDateChangeComments({
     kualiLastDayWorked: input.plan.kualiLastDayWorked,
     lastDayWorked,

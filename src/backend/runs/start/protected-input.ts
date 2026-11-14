@@ -3,11 +3,12 @@ import { readProfileIdentity } from "../../../models/config/secrets.js";
 import type { ProfileIdentity } from "../../../models/profiles/profile-identity.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
-import { ProtectedInputBindingsSchema, protectedInputBindings, type ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
+import { PROFILE_INITIALS_INPUT_PATH, ProtectedInputBindingsSchema, protectedDeclarationPaths, protectedInputBindings, type ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
 import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
 import { projectFailureDisplay } from "../../../models/dashboard/failure-display.js";
 import { ErrorCodeSchema } from "../../../rules/identity/ids.js";
 import type { ProtectedSecretSource } from "../../../models/config/secrets.js";
+import { ProfileInitialsSchema } from "../../../models/profiles/profile.js";
 
 
 export function hasProtectedSubject(bindings: readonly ProtectedInputBinding[]): boolean {
@@ -57,8 +58,10 @@ export function admitProtectedInput(
   const declarations = descriptor.protectedInputs ?? [];
   for (const submission of submissions) {
     for (const declaration of declarations) {
-      if (submission !== null && typeof submission === "object" && Object.hasOwn(submission, declaration.inputPath)) {
-        throw new Error(`caller-supplied protected input ${declaration.name} is refused`);
+      for (const inputPath of protectedDeclarationPaths(declaration)) {
+        if (submission !== null && typeof submission === "object" && Object.hasOwn(submission, inputPath)) {
+          throw new Error(`caller-supplied protected input ${inputPath} is refused`);
+        }
       }
     }
   }
@@ -66,6 +69,8 @@ export function admitProtectedInput(
   if (declarations.length > 0) {
     if (source === undefined) throw new Error("protected input timekeeperName profile is unavailable");
     identity = readProfileIdentity(source);
+    if (!ProfileInitialsSchema.safeParse(identity.initials).success)
+      throw new Error("protected input timekeeperInitials is refused: the profile's stored Timekeeper initials are not 1-8 letters A-Z");
   }
   if (retained !== undefined && retained.length !== submissions.length) throw new Error("retained input count mismatch");
   return submissions.map((submission, index) => {
@@ -93,7 +98,9 @@ export function admitProtectedInput(
       !declarations.some((declaration) => declaration.inputPath === inputPath));
     for (const declaration of declarations) {
       if (identity === undefined) throw new Error("protected input profile identity is absent");
+      // One profile identity read supplies the timekeeper's name and stored initials.
       admitted[declaration.inputPath] = identity.displayName;
+      admitted[PROFILE_INITIALS_INPUT_PATH] = identity.initials;
       bindings.push({ ...declaration, kind: "profile", profileId: identity.profileId, sessionEpoch: identity.sessionEpoch });
     }
     return { raw, admitted, bindings };

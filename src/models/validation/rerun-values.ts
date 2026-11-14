@@ -71,7 +71,7 @@ export function validateRerunValueMappings(view: RerunMappingView & {
     assertSchemaOffersPath(source.schema, source.path, "Rerun source field");
     const target = rerunTargetSchema(view, mapping);
     if (leafSchemas(target, mapping.targetFieldPath.split(".")).length === 0) throw new Error("RERUN_MAPPING_TARGET_FIELD_MISSING");
-    if (mapping.targetFieldPath.split(".").includes("timekeeperName")
+    if (mapping.targetFieldPath.split(".").some(part => part === "timekeeperName" || part === "timekeeperInitials")
       || (mapping.targetStepKey === undefined && view.protectedInputs?.some(({ inputPath }) =>
         mapping.targetFieldPath === inputPath || mapping.targetFieldPath.startsWith(`${inputPath}.`)))) {
       throw new Error("RERUN_MAPPING_TARGET_PROTECTED");

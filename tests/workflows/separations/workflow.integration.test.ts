@@ -39,12 +39,12 @@ describe("separations omittable write steps", () => {
 
     const dates = ReadSeparationDatesOutputSchema.parse(datesProducer({
       facts: { lastDayWorked: "06/18/2026", separationDate: "06/18/2026" },
-      scope: { input: { documentNumber: "4444", timekeeperName: "Julian Zaw" }, outputs: { plan: PLAN } },
+      scope: { input: { documentNumber: "4444", timekeeperInitials: "JZ" }, outputs: { plan: PLAN } },
       assertedAt: ASSERTED_AT,
     }));
     assert.equal(dates.terminationEffectiveDate, "06/19/2026");
     assert.throws(
-      () => datesProducer({ facts: { lastDayWorked: "06/18/2026", separationDate: "06/18/2026" }, scope: { input: { timekeeperName: "Julian Zaw" }, outputs: {} }, assertedAt: ASSERTED_AT }),
+      () => datesProducer({ facts: { lastDayWorked: "06/18/2026", separationDate: "06/18/2026" }, scope: { input: { timekeeperInitials: "JZ" }, outputs: {} }, assertedAt: ASSERTED_AT }),
       /invalid input|expected object|Required|undefined/iu,
     );
 

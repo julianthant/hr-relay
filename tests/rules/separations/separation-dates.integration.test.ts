@@ -15,7 +15,7 @@ const PLAN = SeparationPlanSchema.parse({
 describe("separations omittable write steps", () => {
 
   it("rebuilds the reconciled dates from a typed pair with no invented leave and an honest comment", () => {
-    const dates = assertSeparationDates({ plan: PLAN, timekeeperName: "Julian Zaw", lastDayWorked: "06/18/2026", separationDate: "06/19/2026" });
+    const dates = assertSeparationDates({ plan: PLAN, timekeeperInitials: "JZ", lastDayWorked: "06/18/2026", separationDate: "06/19/2026" });
     assert.equal(dates.terminationEffectiveDate, "06/20/2026");
     assert.equal(dates.lastDayWorkedChanged, false);
     assert.equal(dates.separationDateChanged, true);
@@ -27,7 +27,7 @@ describe("separations omittable write steps", () => {
     assert.doesNotMatch(dates.dateChangeComments, /Kronos/u);
     assert.doesNotMatch(dates.terminationComments, /Sick Leave|Holiday Pay/u);
     assert.throws(
-      () => assertSeparationDates({ plan: PLAN, timekeeperName: "Julian Zaw", lastDayWorked: "06/19/2026", separationDate: "06/18/2026" }),
+      () => assertSeparationDates({ plan: PLAN, timekeeperInitials: "JZ", lastDayWorked: "06/19/2026", separationDate: "06/18/2026" }),
       /precedes the asserted last day worked/u,
     );
   });
