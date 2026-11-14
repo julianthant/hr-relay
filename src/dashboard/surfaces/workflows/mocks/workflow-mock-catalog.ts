@@ -105,7 +105,7 @@ const contracts: Record<MockWorkflowId, Contract> = {
     step("fill-keywords", "Fill document keywords", "OnBase", "Use the UCPath ID keyset autofill, with reviewed name values as the fallback."),
     step("import", "Import document", "OnBase", "Import the person's emergency-contact document and verify completion.", true),
   ], result: [["Employee", "Jordan Lee"], ["UCPath ID", "10000001"], ["Document type", "X_HR_Emergency Contact"], ["Source page", "1"]] },
-  "i9-check-start": { runnable: true, methods: ["pdf"], inputLabel: "PDFs", placeholder: "", example: "i9-packet.pdf", dryRun: false, steps: [
+  "i9-check-start": { runnable: true, methods: ["pdf"], inputLabel: "PDFs", placeholder: "", example: "i9-packet.pdf", dryRun: true, steps: [
     step("person-match", "Match person in UCPath", "UCPath", "Use the paired Section 1/2 identity to search UCPath."),
     step("employment-dates", "Read employment dates", "UCPath", "Read the employment and separation dates; no UCPath transaction is submitted."),
     step("roster-match", "Append retention tracker row", undefined, "Match the configured Action History roster by Employee ID and append a retention-tracker row. A rerun appends again."),
