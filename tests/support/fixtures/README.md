@@ -88,6 +88,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/run-lifecycle-fixtures.ts` | run lifecycle fixtures |
 | `fixtures/run-operations.ts` | run operations |
 | `fixtures/settings-operation-fixtures.ts` | settings operation fixtures |
+| `fixtures/sign-in-refusal-probes.ts` | observed sign-in text that proves a refusal record copies none of it |
 | `fixtures/source-bound-read-fixtures.ts` | source bound read fixtures |
 | `fixtures/start-step-omission-fixtures.ts` | start step omission fixtures |
 | `fixtures/workflow/step-omission-terminal-fixtures.ts` | step omission terminal fixtures |

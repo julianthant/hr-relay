@@ -3,7 +3,9 @@ import { withBrowserActionSession } from "../../../../src/backend/systems/browse
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { taskSpanPath } from "../../../../src/backend/logs/span-emitter.js";
-import { NodeIdSchema } from "../../../../src/rules/identity/ids.js";
+import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { buildNodeFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
+import { NodeIdSchema, TaskIdSchema } from "../../../../src/rules/identity/ids.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
@@ -46,7 +48,10 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import type { DiagnosticArtifactWriter } from "../../../../src/workflow-kit/artifacts.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
 import { HASH_A,HASH_B,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { RUN_ID,sequentialIdFactory,WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID,sequentialIdFactory,WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { SIGN_IN_REFUSAL_PROBES } from "../../../support/fixtures/sign-in-refusal-probes.js";
+import { assertDiagnosticExportSafe } from "../../../../src/models/trust/diagnostic-capture.js";
+import { SIGN_IN_CHECKS, SIGN_IN_PAGE_ORIGINS, SIGN_IN_PAGE_PATHS, SIGN_IN_STEPS } from "../../../../src/models/trust/failure.js";
 import {
 happySessionHarness,
 healthyUcpathDriver,
@@ -642,4 +647,39 @@ describe("Person Lookup per-task capture points", () => {
       } finally { await sessions?.closeAll("worker-stop"); await world.cleanup(); }
     });
   }
+});
+
+describe("refused sign-in bundle", () => {
+  it("allows only closed sign-in leaves and copies none of the probe text", async () => {
+    const database = await openDatabase();
+    const { service } = captureService(database);
+    const capture = createRunDiagnosticCapture({ service });
+    const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+    for (const row of SIGN_IN_REFUSAL_PROBES) {
+      const login = new BrowserLoginError("ucpath", "verify-landing", row.detail, row.observedUrl, undefined, undefined, "application-route");
+      const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+        failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+        error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: "2026-08-29T08:00:00.000Z" });
+      const bundle = await capture.captureForFailure({
+        failure, configFingerprint: HASH_A, descriptorFingerprint: HASH_B,
+      });
+      assertDiagnosticExportSafe(bundle.redaction);
+      const stored = JSON.stringify({ failure, bundle });
+      for (const canary of row.canaries) assert.equal(stored.includes(canary), false, `${row.name} ${canary}`);
+      const signIn = bundle.redaction.fields.filter(field => field.key.startsWith("signIn"));
+      const allowed = new Map(signIn.map(field => {
+        assert.equal(field.state, "allowed", row.name);
+        return [field.key, field.state === "allowed" ? field.value : ""] as const;
+      }));
+      assert.equal(allowed.get("signInSystem"), "ucpath", row.name);
+      assert.ok(SIGN_IN_STEPS.some(step => step === allowed.get("signInStep")), row.name);
+      assert.ok(SIGN_IN_CHECKS.some(check => check === allowed.get("signInCheck")), row.name);
+      assert.ok(SIGN_IN_PAGE_ORIGINS.some(origin => origin === allowed.get("signInPageOrigin")), row.name);
+      const pagePath = allowed.get("signInPagePath");
+      if (pagePath !== undefined) assert.ok(SIGN_IN_PAGE_PATHS.some(path => path === pagePath), row.name);
+      for (const key of allowed.keys()) {
+        assert.ok(["signInSystem", "signInStep", "signInCheck", "signInPageOrigin", "signInPagePath"].includes(key), key);
+      }
+    }
+  });
 });
