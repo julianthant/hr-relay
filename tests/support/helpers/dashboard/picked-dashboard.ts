@@ -13,7 +13,7 @@ import { separationsDescriptor } from "../registered-workflows.js";
 import { TERMINATION_NODE, UCPATH_TRANSACTION_STEP } from "../../../../src/workflows/separations/steps/ucpath-transaction/step.js";
 import { FIXTURE_NOW, uuidOf } from "../../fixtures/dashboard/fixture-identity.js";
 
-// The parity runner loads this file in Node. status-model pulls in the CSS token sheet.
+// The mock runner loads this file in Node. status-model pulls in the CSS token sheet.
 function servedInterruptLabel(interrupt: StepInterruptWire | undefined): string | undefined {
   if (interrupt?.step === "finish-write") return "Finishing the save first";
   if (interrupt?.action === "pause") return "This step will restart";

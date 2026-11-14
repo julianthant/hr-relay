@@ -35,8 +35,8 @@ export function RailSearch({ data, workflows, startKey, onAction, onWorkflow, on
   return <div className="rail-search">
     <Tooltip side="bottom" content="Search" shortcut={preferences.bindings.search[0] && shortcutLabel(preferences.bindings.search[0])}><button ref={trigger} type="button" aria-label="Search" aria-haspopup="dialog" aria-expanded={open} className={iconButton} onClick={() => setOpen(true)}><Search aria-hidden className="size-4" /></button></Tooltip>
     <SearchPalette open={open} onOpenChange={next => { setOpen(next); if (!next) setNotice(""); }} query={query} onQuery={value => { setQuery(value); setNotice(""); }}
-      runs={data.unavailable ? [] : data.results} runsMatched={data.totalMatches !== undefined} workflows={workflows} sheets={statusMock() === undefined ? [] : PALETTE_SPREADSHEETS} startKey={startKey} onAction={onAction} onWorkflow={onWorkflow}
-      onRun={result => onResult(result, () => { setOpen(false); setNotice(""); }, setNotice)} notice={notice || data.unavailable || ""}
+      runs={data.unavailable ? [] : data.results} runsMatched={data.totalMatches !== undefined} workflows={workflows} sheets={data.sheets ?? (statusMock() === undefined ? [] : PALETTE_SPREADSHEETS)} startKey={startKey} onAction={onAction} onWorkflow={onWorkflow}
+      onRun={result => onResult(result, () => { setOpen(false); setNotice(""); }, setNotice)} notice={notice || data.unavailable || data.sheetsUnavailable || ""}
       onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }} />
   </div>;
 }
