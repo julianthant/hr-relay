@@ -131,7 +131,7 @@ async function pendingQuitWorld() {
   assert.equal(quits, 0);
   const acknowledgeStuck = (commandId: string) => f.service.acknowledgePause({ commandId, runId: stuck.envelope.runId,
     claim: { workerId: member.workerId, claimGeneration: claim.run.claimGeneration } }).state;
-  return { f, lifecycle, runtime, waiting, acknowledgeStuck, quits: () => quits };
+  return { f, lifecycle, runtime, stuck, waiting, acknowledgeStuck, quits: () => quits };
 }
 
 it("ends a Pause all and quit that cannot complete when the operator resumes a paused run", async () => {
@@ -167,6 +167,29 @@ it("does not quit for a released Pause all and quit when a logout hold takes adm
   assert.equal(f.service.pause({ commandId: "a1000000-0000-4000-8000-000000000013", runId: waiting.envelope.runId, expectedVersion: resumed.version }).state, "applied");
   assert.equal(acknowledgeStuck("a1000000-0000-4000-8000-000000000014"), "applied");
   assert.equal(lifecycle.snapshot().state, "pausing");
+  await vi.advanceTimersByTimeAsync(200);
+  assert.equal(quits(), 0);
+});
+
+it("serves one application pause from Pause all and quit until every run that can pause has paused", async () => {
+  const { lifecycle, acknowledgeStuck } = await pendingQuitWorld();
+  assert.equal(lifecycle.snapshot().pause, "pause-pending");
+  assert.equal(acknowledgeStuck("a1000000-0000-4000-8000-000000000014"), "applied");
+  assert.equal(lifecycle.snapshot().pause, "paused");
+});
+
+it("withdraws every pending pause and ends the quit when the operator resumes all before the pauses are processed", async () => {
+  const { f, lifecycle, stuck, waiting, acknowledgeStuck, quits } = await pendingQuitWorld();
+  for (const [index, run] of [stuck, waiting].entries()) {
+    const current = f.database.authority.runs.get(run.envelope.runId); assert.ok(current);
+    assert.equal(f.service.resumePaused({ commandId: `a1000000-0000-4000-8000-00000000002${index}`, runId: run.envelope.runId, expectedVersion: current.version }).state, "applied");
+  }
+  assert.equal(f.database.authority.runs.admission().state, "open");
+  assert.deepEqual([lifecycle.snapshot().state, lifecycle.snapshot().pause], ["ready", "running"]);
+  // The worker that already stopped its step for the withdrawn pause releases the run unpaused.
+  assert.equal(acknowledgeStuck("a1000000-0000-4000-8000-000000000014"), "applied");
+  const released = f.database.authority.runs.get(stuck.envelope.runId); assert.ok(released);
+  assert.deepEqual([released.lifecycle.state, released.pause], ["queued", undefined]);
   await vi.advanceTimersByTimeAsync(200);
   assert.equal(quits(), 0);
 });
