@@ -143,8 +143,18 @@ it("checks each quit-time backup's bytes once per quit and inspects none of them
       const proof = [...f.proofs.values()].find(value => value.backupPath === path); assert.ok(proof);
       reads.set(proof.manifest.authorityGeneration, (reads.get(proof.manifest.authorityGeneration) ?? 0) + 1);
     }
-    assert.deepEqual(Object.fromEntries(reads), { 0: 1, 1: 1, 2: 1, 3: 1 });
+    assert.deepEqual(Object.fromEntries(reads), { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1 });
     assert.equal(readdirSync(f.directory).length, 8);
+  } finally { f.close(); }
+});
+
+it("refuses retention without deletion when the fresh backup's bytes changed after its backup request verified them", async () => {
+  const f = fixture(), fresh = [...f.proofs.values()].find(value => value.manifest.authorityGeneration === 4); assert.ok(fresh);
+  try {
+    writeFileSync(fresh.backupPath, "dx", { mode: 0o600 });
+    const before = new Map(readdirSync(f.directory).map(name => [name, readFileSync(join(f.directory, name))]));
+    await assert.rejects(f.retain(fresh));
+    assert.deepEqual(new Map(readdirSync(f.directory).map(name => [name, readFileSync(join(f.directory, name))])), before);
   } finally { f.close(); }
 });
 
