@@ -158,12 +158,8 @@ it("plans one Emergency Contact run per uploaded PDF and says so on Confirm", as
     inputRun: { state: "absent", reason: "PDF input" }, uploadRun: contact.surfaces.uploadRun && { ...contact.surfaces.uploadRun, supportsDryRun: true }, requiredWorkbookFields: contact.requiredWorkbookFields, workbookReference: contact.workbookReference, referenceSources: [] };
   const dialog = await h.openDialog(served, { workflows: [flow], panelWorkflowId: flow.workflowId });
   await attach([pdf("first.pdf", "%PDF first"), pdf("second.pdf", "%PDF second")]);
+  await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
   await dialog.press("Continue");
-  for (const [label, optionText] of [['Choose a spreadsheet Reference spreadsheet', 'Action History.xlsx'], ['Choose a version Reference version', 'Fall review'], ['Choose a worksheet Reference worksheet', 'Action History']]) {
-    await dialog.press(label);
-    const option = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes(optionText)); assert.ok(option);
-    await act(async () => option.click()); await h.settle();
-  }
   const dryRun = [...document.querySelectorAll<HTMLElement>('[role="checkbox"], [role="switch"]')].find(node => node.closest("label")?.textContent?.startsWith("Dry run"));
   assert.ok(dryRun); await act(async () => dryRun.click());
   await dialog.press("Continue");
