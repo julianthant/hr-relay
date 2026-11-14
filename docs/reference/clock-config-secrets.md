@@ -531,7 +531,8 @@ drain, and restore paths retain their held custody after ordinary access is revo
 
 The kernel-held lifetime listener owns process exclusion. Bootstrap binds the dedicated configured
 loopback `lockPort` before installation admission and holds it through shutdown. A busy port refuses
-with `RUNTIME_ALREADY_RUNNING`. Workers receive the listening handle over IPC before storage
+with `RUNTIME_ALREADY_RUNNING`, except that a starting dashboard and the quit-time backup finisher wait
+up to ten minutes while the port is busy and no dashboard serves on `backendPort`. Workers receive the listening handle over IPC before storage
 admission. Each worker retains its copy through parent disconnect and its write-safe drain. Controller
 close waits for each owned child process's actual `close` event before closing the listener. Standalone
 and offline commands acquire the same port. Existing source-byte, closure, credential, profile-creation,
@@ -943,7 +944,7 @@ then uses current registry readers and sign-up creates a fresh private profile. 
 artifact-root identity and the empty fixed process-lock directory stay in place. Ordinary document
 and report roots outside the erased state are preserved.
 
-Backups are automatic. After clean application resource closure, the held lifetime obtains stopped exclusive custody and verifies a SQLite backup for each READY saved person. Shutdown backups use the `.shutdown.sqlite` filename class. Retention verifies those manifests and copies again, keeps the newest three, and removes only older verified shutdown pairs. Pre-upgrade backups and the pre-erase flat archive stay protected. Retirement first durably renames the obsolete manifest to `.retiring`. Startup and shutdown finish that exact same-person record before full backup inventory: three newer verified shutdown backups must remain, changed bytes refuse, and an already removed copy is an accepted prefix. The record disappears only after copy deletion and directory sync.
+Backups are automatic. After clean application resource closure, the `dashboard` command spawns a detached `storage finish-shutdown-backup <workspace> <profileId>...` finisher and exits; the finisher takes the lifetime lock the dashboard released, obtains stopped exclusive custody and verifies a SQLite backup for each handed READY saved person. Its output goes to `.tracker/data/logs/shutdown-backup.log`. Other compositions take the backup in process before stop resolves. A new backup is inspected once, its final bytes are hashed once against that inspection, and its manifest is published last, so a backup counts only once its manifest exists. Shutdown backups use the `.shutdown.sqlite` filename class. Retention checks each manifest's binding and its copy's bytes once per quit, keeps the newest three, and removes only older checked shutdown pairs, and only after this quit's backup was verified. Restore inspects a backup fully before using it. Pre-upgrade backups and the pre-erase flat archive stay protected. Retirement first durably renames the obsolete manifest to `.retiring`. Startup and shutdown finish that exact same-person record before full backup inventory: three newer verified shutdown backups must remain, changed bytes refuse, and an already removed copy is an accepted prefix. The record disappears only after copy deletion and directory sync.
 
 Shutdown admits each current profile through the sign-in-independent backup purpose under the held stopped machine owner, verifies worker, browser, Duo and control custody closed before and after backup, and repeats native browser closure against the exact source. Never-initialized settings and retained ordinary files keep their meaning; parked write evidence is copied without resubmission.
 
