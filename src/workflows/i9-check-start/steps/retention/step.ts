@@ -42,7 +42,7 @@ export function buildRetention(author: Author, reference: ReturnType<typeof buil
   const rows = author.task(entries.task("read-rows", ReadI9CheckRows, { replay: "checkpoint" }), [reference.prepared, children], ({ input, outputs }) => ({
     batchKey: FingerprintSchema.parse(i9CheckStartMatchKey(input)), prepared: outputs["read-requests"], outcomes: [...outputs["check-people"]],
   }));
-  const workbook = author.task(entries.task("save-workbook", ReadWorkbookResult, { replay: "checkpoint" }), [rows], ({ outputs }) => ({
+  const workbook = author.task(entries.task("save-workbook", ReadWorkbookResult, { replay: "checkpoint", dryRun: "stop-before-publish" }), [rows], ({ outputs }) => ({
     name: "I-9 Check results", table: i9CheckWorkbookTable(outputs["read-rows"].tracker.rows),
   }));
   const published = author.task(entries.task("publish-results", ReadI9CheckPublication, { replay: "checkpoint" }), [rows, workbook], ({ outputs }) => ({ rows: outputs["read-rows"], workbook: outputs["save-workbook"] }));

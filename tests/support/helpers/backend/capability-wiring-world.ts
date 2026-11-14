@@ -65,6 +65,7 @@ export function createCapabilityWiringTestWorld() {
   }
 
   const FixtureOutput = z.strictObject({ value: z.string().min(1) });
+  const PublicationApprovalSchema = z.strictObject({ approved: z.boolean() });
 
   const providersOnlyContract = defineTaskContract({
     id: taskId("ocr/extract-form-page"),
@@ -145,6 +146,40 @@ export function createCapabilityWiringTestWorld() {
     return defineWorkflowDescriptor({ ...descriptorMeta(id, code), flow: fixtureFlow });
   }
 
+  /** `extract` is a dry-run publication boundary; input name "invalid-bound" binds an invalid command. */
+  function publicationDescriptor(id: string, code: string, replay: "checkpoint" | "always-rerun" = "checkpoint") {
+    const fixtureFlow = flow(FixtureInput)
+      .step("extract", providersOnlyContract, {
+        dependsOn: [],
+        replay,
+        dryRun: "stop-before-publish",
+        bind: ({ input }) => ({ name: input.name === "invalid-bound" ? "" : input.name }),
+      })
+      .step("after", providersOnlyContract, { dependsOn: ["extract"], replay: "checkpoint", bind: ({ input }) => ({ name: input.name }) })
+      .build({
+        schema: z.strictObject({ done: z.boolean() }),
+        dependsOn: ["after"],
+        derive: () => ({ done: true }),
+      });
+    return defineWorkflowDescriptor({ ...descriptorMeta(id, code), flow: fixtureFlow });
+  }
+
+  /** `extract` is a dry-run publication boundary with `after` behind it; `approval` parks before `tail`. Each node binds its own id as `name`. */
+  function publicationGateDescriptor(id: string, code: string, replay: "checkpoint" | "always-rerun" = "checkpoint") {
+    const fixtureFlow = flow(FixtureInput)
+      .step("read", providersOnlyContract, { dependsOn: [], replay: "checkpoint", bind: () => ({ name: "read" }) })
+      .step("extract", providersOnlyContract, { dependsOn: [], replay, dryRun: "stop-before-publish", bind: () => ({ name: "extract" }) })
+      .step("after", providersOnlyContract, { dependsOn: ["extract"], replay: "checkpoint", bind: () => ({ name: "after" }) })
+      .gate("approval", { dependsOn: ["read"], label: "Approval", resolvedBy: "operator", result: PublicationApprovalSchema })
+      .step("tail", providersOnlyContract, { dependsOn: ["approval"], replay: "checkpoint", bind: () => ({ name: "tail" }) })
+      .build({
+        schema: z.strictObject({ done: z.boolean() }),
+        dependsOn: ["after", "tail"],
+        derive: () => ({ done: true }),
+      });
+    return defineWorkflowDescriptor({ ...descriptorMeta(id, code), flow: fixtureFlow });
+  }
+
   function queuedRunFor(descriptor: AnyWorkflowDescriptor) {
     return {
       ...QUEUED_RUN,
@@ -194,7 +229,7 @@ export function createCapabilityWiringTestWorld() {
     return { authority, emitter, deps };
   }
 
-  function claim(authority: Pick<Awaited<ReturnType<typeof openAuthorityHarness>>, "database" | "clock" | "path">, descriptor: AnyWorkflowDescriptor): {
+  function claim(authority: Pick<Awaited<ReturnType<typeof openAuthorityHarness>>, "database" | "clock" | "path">, descriptor: AnyWorkflowDescriptor, commandId = sequentialIdFactory("c").uuid()): {
     run: RunRecord;
     claim: { workerId: string; claimGeneration: number };
   } {
@@ -202,14 +237,14 @@ export function createCapabilityWiringTestWorld() {
     const ports = testWorkerPorts(database, clock, { path, descriptor, poolIndex: 1 });
     const slot = database.authority.workerSlots.list(descriptor.id).find(candidate => candidate.poolIndex === 1);
     if (slot === undefined) throw new Error("fixture native worker slot absent");
-    const claimed = ports.claimNext({ commandId: sequentialIdFactory("c").uuid(), workflow: descriptor.id, workerId: slot.workerId });
+    const claimed = ports.claimNext({ commandId, workflow: descriptor.id, workerId: slot.workerId });
     if (claimed.state !== "applied") throw new Error(`claim outcome was ${claimed.state}`);
     return { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration } };
   }
   const cleanup = async () => {
     for (const dispose of disposers.splice(0)) await dispose();
   };
-  return { disposers, SIGNAL, SCENARIO, FIXTURE_BYTES, PAYLOAD, FixtureOutput, providersOnlyContract, artifactsOnlyContract, wiredContract, byteLength, fixtureDescriptor, queuedRunFor, wiringHarness, claim, cleanup };
+  return { disposers, SIGNAL, SCENARIO, FIXTURE_BYTES, PAYLOAD, FixtureOutput, providersOnlyContract, artifactsOnlyContract, wiredContract, byteLength, fixtureDescriptor, publicationDescriptor, publicationGateDescriptor, PublicationApprovalSchema, queuedRunFor, wiringHarness, claim, cleanup };
 }
 
 export function createWiredCapabilityTask(wiredContract: ReturnType<typeof createCapabilityWiringTestWorld>["wiredContract"], FIXTURE_BYTES: Uint8Array, PAYLOAD: ReturnType<typeof createCapabilityWiringTestWorld>["PAYLOAD"], byteLength: (stream: AsyncIterable<unknown>) => Promise<number>, observed: () => { artifactSha?: string; artifactBytes?: number; providerState?: string }) {
