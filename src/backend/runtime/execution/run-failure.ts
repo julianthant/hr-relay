@@ -1,4 +1,4 @@
-import { pageAddress, sanitizeDebugText } from "../../../rules/redaction/redaction.js";
+import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { browserLoginFailure } from "../../systems/browser-shared/login-contract.js";
 import { hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 
@@ -24,6 +24,7 @@ import {
   CURRENT_DIAGNOSTIC_SAFETY_VERSION,
   FailureRecordSchema,
   settledWriteState,
+  signInPage,
   type FailureRecord,
 } from "../../../models/trust/failure.js";
 
@@ -195,50 +196,15 @@ export function buildEntryValidationFailureRecord(input: EntryValidationFailureI
 
 const DEBUG_TEXT_BUDGET = 96 * 1024;
 
-/** Query, fragment and userinfo never stay in diagnostic text. An unreadable URL becomes a fixed token. */
-function withoutPageQuery(text: string): string {
-  return text.replace(/https?:\/\/[^\s<>"']+/giu, (raw) => {
-    const address = pageAddress(raw);
-    return address === "unreadable-address" ? "[invalid-url]" : address;
-  });
-}
-
-/** Percent-encoding is decoded until it is plain or an undecodable run is replaced.
- * The raw run is not kept: a broken sequence can hide an employee id from the digit mask.
- * Decoding finishes before URL, credential and employee-id suppression, and does not run again. */
-function decodeUriText(text: string): string {
-  let current = text;
-  let passes = 0;
-  while (passes < 8) {
-    passes += 1;
-    let changed = false;
-    current = current.replace(/(?:%[0-9A-Fa-f]{2})+/gu, (run) => {
-      changed = true;
-      try { return decodeURIComponent(run); }
-      catch { return "[invalid-encoding]"; }
-    });
-    if (!changed) return current;
-  }
-  return current.replace(/(?:%[0-9A-Fa-f]{2})+/gu, () => "[invalid-encoding]");
-}
-
-/** An employee id is eight digits. These refusal fields are safe diagnostic text, so the digits do not stay. */
-function withoutEmployeeId(text: string): string {
-  return text.replace(/(?<!\d)\d{8}(?!\d)/gu, "[removed]");
-}
-
-function refusalText(text: string): string {
-  return withoutEmployeeId(sanitizeDebugText(withoutPageQuery(decodeUriText(text))));
-}
-
 function signInRefusalFrom(error: Error) {
   const login = browserLoginFailure(error);
   if (login === undefined) return undefined;
-  const reason = refusalText(login.detail);
-  const address = refusalText(pageAddress(login.observedUrl));
-  if (reason.length === 0) throw new Error("sign-in refusal reason is empty");
-  if (address.length === 0) throw new Error("sign-in page address is empty");
-  return { system: login.system, step: login.step, reason, pageAddress: address };
+  return {
+    system: login.system,
+    step: login.step,
+    ...(login.check === undefined ? {} : { check: login.check }),
+    ...signInPage(login.observedUrl),
+  };
 }
 
 /** Keep a whole UTF-8 character or none of it. The caller spends only the bytes actually kept. */
@@ -259,21 +225,12 @@ export function failureDebugDetails(error: Error) {
     seen.add(cause); texts.push(`${cause.name}: ${cause.stack ?? cause.message}`); cause = cause.cause;
   }
   const safe = texts.map(sanitizeDebugText);
-  const refusal = signInRefusalFrom(error);
-  const originalBytes = safe.reduce((total, text) => total + Buffer.byteLength(text), 0)
-    + (refusal === undefined ? 0 : Buffer.byteLength(refusal.reason) + Buffer.byteLength(refusal.pageAddress));
-  // The page cannot spend the whole budget. The check is taken from what remains, then stack text.
-  const pageSlot = { bytes: Math.floor(DEBUG_TEXT_BUDGET / 2) };
-  const pageAddressText = refusal === undefined ? "" : takeDebugText(refusal.pageAddress, pageSlot);
-  const remaining = { bytes: DEBUG_TEXT_BUDGET - Buffer.byteLength(pageAddressText) };
-  const reasonText = refusal === undefined ? "" : takeDebugText(refusal.reason, remaining);
+  const signInRefusal = signInRefusalFrom(error);
+  const originalBytes = safe.reduce((total, text) => total + Buffer.byteLength(text), 0);
+  const remaining = { bytes: DEBUG_TEXT_BUDGET };
   const bounded = safe.map(text => takeDebugText(text, remaining));
-  const signInRefusal = refusal === undefined || reasonText.length === 0 || pageAddressText.length === 0
-    ? undefined
-    : { system: refusal.system, step: refusal.step, reason: reasonText, pageAddress: pageAddressText };
   const retainedBytes = Buffer.byteLength(bounded[0] ?? "")
-    + bounded.slice(1).reduce((total, text) => total + Buffer.byteLength(text), 0)
-    + (signInRefusal === undefined ? 0 : Buffer.byteLength(signInRefusal.reason) + Buffer.byteLength(signInRefusal.pageAddress));
+    + bounded.slice(1).reduce((total, text) => total + Buffer.byteLength(text), 0);
   return { stack: bounded[0] ?? "", causes: bounded.slice(1), originalBytes,
     omittedBytes: Math.max(0, originalBytes - retainedBytes),
     ...(signInRefusal === undefined ? {} : { signInRefusal }) };

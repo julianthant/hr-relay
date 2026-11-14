@@ -6,7 +6,7 @@ import { FIXTURE_FAILURE_SECTIONS } from "../../../support/fixtures/dashboard/ru
 import { FIXTURE_IDS } from "../../../support/fixtures/dashboard/fixture-queue.js";
 import { DelegationConfigUnavailableError } from "../../../../src/backend/runs/lifecycle/delegation-admission.js";
 import { ERROR_CATALOG, operatorFailureSentence, resolveErrorCatalogFailure } from "../../../../src/models/failures/error-catalog.js";
-import { projectFailureForOperator } from "../../../../src/models/trust/failure.js";
+import { projectFailureForOperator, signInPage } from "../../../../src/models/trust/failure.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import {
@@ -15,6 +15,7 @@ buildNodeFailureRecord, buildEntryValidationFailureRecord
 import { TaskError, wrapUnhandledTaskError } from "../../../../src/workflow-kit/errors.js";
 import { NodeIdSchema,TaskIdSchema } from "../../../../src/rules/identity/ids.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { SIGN_IN_REFUSAL_PROBES } from "../../../support/fixtures/sign-in-refusal-probes.js";
 const NODE_ID = NodeIdSchema.parse("searching");
 const TASK_ID = TaskIdSchema.parse("ucpath/search-person-org");
 
@@ -140,33 +141,38 @@ it.each(["not-attempted", "unknown"] as const)("shows the registered delegation 
 });
 
 const FIXTURE_EMPLOYEE_ID = "10456712";
+const PEOPLESOFT_PREFIX = "/psc/ucphrprd/EMPLOYEE/HRMS/";
+const LISTED_SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 
-function percentEncode(text: string): string {
-  return [...text].map(character => `%${character.charCodeAt(0).toString(16).padStart(2, "0")}`).join("");
-}
-const APPLICATION_ROUTE_REASON = "the login could not prove the authenticated application: the observed URL is not a UCPath PeopleSoft application route; the public UCPath portal, campus discovery, SSO, Duo and the classic-PIA expiry landings are all refused here";
-
-function storedSignInFailure(detail: string, observedUrl: string, system: "ucpath" | "crm" = "ucpath") {
-  const login = new BrowserLoginError(system, "verify-landing", detail, observedUrl);
+function storedSignInFailure(detail: string, observedUrl: string, system: "ucpath" | "crm" = "ucpath", check?: "application-route") {
+  const login = new BrowserLoginError(system, "verify-landing", detail, observedUrl, undefined, undefined, check);
   return buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
     failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
     error: new TaskError(TASK_ID, login.code, login.message, { cause: login }),
     occurredAt: "2026-08-29T08:00:00.000Z" });
 }
 
+function retainedDebugBytes(debug: { stack: string; causes: readonly string[] }): number {
+  return Buffer.byteLength(debug.stack) + debug.causes.reduce((total, text) => total + Buffer.byteLength(text), 0);
+}
+
 describe("refused sign-in detail", () => {
-  it("stores the application-route check and the page origin and path, and leaves the employee id out", () => {
+  it("stores the step and the registry page, and leaves the employee id out", () => {
     const failure = storedSignInFailure(
-      APPLICATION_ROUTE_REASON,
-      `https://user:secret@ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app?EMPLID=${FIXTURE_EMPLOYEE_ID}#frag-canary`,
+      "the login could not prove the authenticated application",
+      `https://user:secret@ucphrprdpub.universityofcalifornia.edu${PEOPLESOFT_PREFIX}c/app?EMPLID=${FIXTURE_EMPLOYEE_ID}#frag-canary`,
+      "ucpath",
+      "application-route",
     );
     assert.equal(failure.code, "UCPATH_SIGN_IN_FAILED");
     assert.equal(projectFailureForOperator(failure).summary, "UCPath sign-in failed.");
-    assert.equal(failure.summary.includes(APPLICATION_ROUTE_REASON), false);
-    assert.equal(failure.debug?.signInRefusal?.system, "ucpath");
-    assert.equal(failure.debug?.signInRefusal?.step, "verify-landing");
-    assert.equal(failure.debug?.signInRefusal?.reason, APPLICATION_ROUTE_REASON);
-    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app");
+    assert.deepEqual(failure.debug?.signInRefusal, {
+      system: "ucpath",
+      step: "verify-landing",
+      check: "application-route",
+      pageOrigin: "https://ucphrprdpub.universityofcalifornia.edu",
+      pagePath: PEOPLESOFT_PREFIX,
+    });
     const stored = JSON.stringify(failure);
     assert.equal(stored.includes(FIXTURE_EMPLOYEE_ID), false);
     assert.equal(stored.includes("frag-canary"), false);
@@ -174,36 +180,20 @@ describe("refused sign-in detail", () => {
     assert.equal(stored.includes("secret"), false);
   });
 
-  it.each([
-    ["PS_TOKEN cookie", "the login could not prove the authenticated application: UCPath PeopleSoft never issued its PS_TOKEN session cookie for universityofcalifornia.edu (context holds 0 name(s): none)"],
-    ["sign-on form", "the login could not prove the authenticated application: the PeopleSoft signon form is still present on the page"],
-  ])("stores the %s check without the query", (_name, reason) => {
-    const failure = storedSignInFailure(reason, `https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app?EMPLID=${FIXTURE_EMPLOYEE_ID}`);
-    assert.equal(failure.debug?.signInRefusal?.reason, reason);
-    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app");
-    assert.equal(JSON.stringify(failure).includes(FIXTURE_EMPLOYEE_ID), false);
-    assert.equal(projectFailureForOperator(failure).summary, "UCPath sign-in failed.");
-  });
-
-  it("sanitizes a credential and a query inside the verifier reason", () => {
+  it("stores a CRM refusal as registry leaves, and Logs still show the catalog sentence", () => {
     const failure = storedSignInFailure(
-      "probe failed password=SECRET_CANARY at https://example.test/read?EMPLID=10456712",
-      "https://example.test/read",
+      "the login could not prove the authenticated application",
+      `https://act-crm.my.site.com/hr/ONB_SearchOnboardings?EMPLID=${FIXTURE_EMPLOYEE_ID}`,
+      "crm",
     );
-    const stored = JSON.stringify(failure);
-    assert.equal(stored.includes("SECRET_CANARY"), false);
-    assert.equal(stored.includes("10456712"), false);
-    assert.match(failure.debug?.signInRefusal?.reason ?? "", /password=\[removed\]/);
-    assert.match(failure.debug?.signInRefusal?.reason ?? "", /https:\/\/example\.test\/read/);
-  });
-
-  it("stores a CRM refusal the same way, and Logs still show the catalog sentence", () => {
-    const reason = "the login could not prove the authenticated application: ACT CRM Salesforce Communities never issued its sid session cookie for my.site.com (context holds 0 name(s): none)";
-    const failure = storedSignInFailure(reason, `https://act-crm.my.site.com/hr/ONB_SearchOnboardings?EMPLID=${FIXTURE_EMPLOYEE_ID}`, "crm");
     assert.equal(failure.code, "CRM_SIGN_IN_FAILED");
-    assert.equal(failure.debug?.signInRefusal?.system, "crm");
-    assert.equal(failure.debug?.signInRefusal?.reason, reason);
-    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://act-crm.my.site.com/hr/ONB_SearchOnboardings");
+    assert.equal(failure.debug?.signInRefusal?.check, undefined);
+    assert.deepEqual(failure.debug?.signInRefusal, {
+      system: "crm",
+      step: "verify-landing",
+      pageOrigin: "https://act-crm.my.site.com",
+      pagePath: "/hr/ONB_SearchOnboardings",
+    });
     assert.equal(projectFailureForOperator(failure).summary, "CRM sign-in failed.");
     assert.equal(JSON.stringify(failure).includes(FIXTURE_EMPLOYEE_ID), false);
 
@@ -224,27 +214,7 @@ describe("refused sign-in detail", () => {
     assert.equal(entry.decision.message.includes(FIXTURE_EMPLOYEE_ID), false);
   });
 
-  it("drops an uppercase URL query from the verifier reason before the record or its byte budget", () => {
-    const detail = `HTTPS://example.test/read?EMPLID=${FIXTURE_EMPLOYEE_ID}#frag-canary ${"x".repeat(200_000)}`;
-    const failure = storedSignInFailure(detail, `HTTPS://example.test/read?EMPLID=${FIXTURE_EMPLOYEE_ID}#frag-canary`);
-    const debug = failure.debug;
-    assert.ok(debug?.signInRefusal);
-    const kept = Buffer.byteLength(debug.stack)
-      + debug.causes.reduce((total, text) => total + Buffer.byteLength(text), 0)
-      + Buffer.byteLength(debug.signInRefusal.reason)
-      + Buffer.byteLength(debug.signInRefusal.pageAddress);
-    assert.ok(kept <= 96 * 1024);
-    assert.ok(debug.originalBytes > 200_000);
-    assert.equal(debug.omittedBytes, debug.originalBytes - 96 * 1024);
-    assert.equal(debug.signInRefusal.pageAddress, "https://example.test/read");
-    assert.match(debug.signInRefusal.reason, /^https:\/\/example\.test\/read /);
-    const stored = JSON.stringify(failure);
-    assert.equal(stored.includes(FIXTURE_EMPLOYEE_ID), false);
-    assert.equal(stored.includes("frag-canary"), false);
-    assert.equal(stored.includes("HTTPS://"), false);
-  });
-
-  it("stores a landing stall's known host and path", () => {
+  it("stores a landing stall as the registry origin when the path is not listed", () => {
     const login = new BrowserLandingStallError("ucpath", "DUO_PROMPT_STALLED", {
       host: "a5.ucsd.edu", path: "/sso", title: "SSO https://example.invalid/private",
     });
@@ -252,126 +222,84 @@ describe("refused sign-in detail", () => {
       failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
       error: new TaskError(TASK_ID, login.code, login.message, { cause: login }),
       occurredAt: "2026-08-29T08:00:00.000Z" });
-    assert.equal(failure.debug?.signInRefusal?.step, "duo-clearance");
-    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://a5.ucsd.edu/sso");
-    assert.equal(failure.debug?.signInRefusal?.reason, ERROR_CATALOG.DUO_PROMPT_STALLED.text);
-    assert.equal(projectFailureForOperator(failure).summary, operatorFailureSentence("DUO_PROMPT_STALLED"));
-    assert.equal(JSON.stringify(failure).includes("unreadable-address"), false);
-  });
-
-  it("drops an employee id from the verifier reason and from the page path", () => {
-    const failure = storedSignInFailure(
-      `the check refused employee ${FIXTURE_EMPLOYEE_ID}`,
-      `https://example.test/people/${FIXTURE_EMPLOYEE_ID}`,
-    );
-    assert.equal(failure.debug?.signInRefusal?.reason, "the check refused employee [removed]");
-    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://example.test/people/[removed]");
-    assert.equal(JSON.stringify(failure).includes(FIXTURE_EMPLOYEE_ID), false);
-    assert.equal(projectFailureForOperator(failure).summary, "UCPath sign-in failed.");
-  });
-
-  it("keeps the sign-in check when a cause stack fills the debug budget", () => {
-    const login = new BrowserLoginError("ucpath", "verify-landing", "the application route was refused", "https://example.test/app", {
-      cause: new Error("x".repeat(200_000)),
+    assert.equal(failure.debug?.signInRefusal?.check, undefined);
+    assert.deepEqual(failure.debug?.signInRefusal, {
+      system: "ucpath",
+      step: "duo-clearance",
+      pageOrigin: "https://a5.ucsd.edu",
     });
+    assert.equal(projectFailureForOperator(failure).summary, operatorFailureSentence("DUO_PROMPT_STALLED"));
+    assert.equal(JSON.stringify(failure).includes("example.invalid"), false);
+  });
+
+  it("stores a landing stall's listed path as the registry constant", () => {
+    const login = new BrowserLandingStallError("ucpath", "DUO_PROMPT_STALLED", {
+      host: "a5.ucsd.edu", path: "/tritON/profile/SAML2/Redirect/SSO", title: "SSO",
+    });
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
+      error: new TaskError(TASK_ID, login.code, login.message, { cause: login }),
+      occurredAt: "2026-08-29T08:00:00.000Z" });
+    assert.deepEqual(failure.debug?.signInRefusal, {
+      system: "ucpath",
+      step: "duo-clearance",
+      pageOrigin: "https://a5.ucsd.edu",
+      pagePath: "/tritON/profile/SAML2/Redirect/SSO",
+    });
+  });
+
+  it("keeps the same refusal for every probe, and copies none of its text", () => {
+    for (const row of SIGN_IN_REFUSAL_PROBES) {
+      const failure = storedSignInFailure(row.detail, row.observedUrl);
+      const plain = storedSignInFailure("the check refused", row.observedUrl);
+      assert.deepEqual(failure.debug?.signInRefusal, plain.debug?.signInRefusal, row.name);
+      assert.deepEqual(failure.debug?.signInRefusal, {
+        system: "ucpath",
+        step: "verify-landing",
+        ...signInPage(row.observedUrl),
+      }, row.name);
+      const stored = JSON.stringify(failure);
+      for (const canary of row.canaries) assert.equal(stored.includes(canary), false, `${row.name} ${canary}`);
+    }
+  });
+
+  it("keeps the refusal outside the stack budget", () => {
+    const short = storedSignInFailure("the check refused", LISTED_SSO);
+    const longReason = storedSignInFailure(`${"r".repeat(200_000)}LONG_REASON_CANARY`, LISTED_SSO);
+    const longPage = storedSignInFailure("the check refused", `https://example.test/${"p".repeat(100_000)}LONG_PAGE_CANARY`);
+    const multibyte = storedSignInFailure(`${"€".repeat(50_000)}MULTIBYTE_CANARY`, LISTED_SSO);
+    assert.ok(short.debug?.signInRefusal);
+    assert.deepEqual(longReason.debug?.signInRefusal, short.debug.signInRefusal);
+    assert.deepEqual(multibyte.debug?.signInRefusal, short.debug.signInRefusal);
+    assert.equal(longReason.debug?.originalBytes, short.debug.originalBytes);
+    assert.equal(longPage.debug?.originalBytes, short.debug.originalBytes);
+    assert.equal(multibyte.debug?.originalBytes, short.debug.originalBytes);
+    assert.equal(longReason.debug?.omittedBytes, short.debug.omittedBytes);
+    assert.equal(longPage.debug?.omittedBytes, short.debug.omittedBytes);
+    assert.equal(multibyte.debug?.omittedBytes, short.debug.omittedBytes);
+
+    const huge = new Error("y".repeat(200_000));
+    const login = new BrowserLoginError("ucpath", "verify-landing", "the check refused", LISTED_SSO, { cause: huge });
     const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
       failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
       error: new TaskError(TASK_ID, login.code, login.message, { cause: login }),
       occurredAt: "2026-08-29T08:00:00.000Z" });
     const debug = failure.debug;
     assert.ok(debug?.signInRefusal);
-    assert.equal(debug.signInRefusal.step, "verify-landing");
-    assert.equal(debug.signInRefusal.reason, "the application route was refused");
-    assert.equal(debug.signInRefusal.pageAddress, "https://example.test/app");
-    const kept = Buffer.byteLength(debug.stack)
-      + debug.causes.reduce((total, text) => total + Buffer.byteLength(text), 0)
-      + Buffer.byteLength(debug.signInRefusal.reason)
-      + Buffer.byteLength(debug.signInRefusal.pageAddress);
-    assert.ok(kept <= 96 * 1024);
-    assert.equal(debug.omittedBytes, debug.originalBytes - kept);
+    assert.deepEqual(debug.signInRefusal, short.debug.signInRefusal);
     assert.ok(debug.originalBytes > 200_000);
-  });
+    assert.equal(debug.omittedBytes, debug.originalBytes - retainedDebugBytes(debug));
 
-  it("cuts a multibyte verifier reason on a UTF-8 boundary and counts the bytes it keeps", () => {
-    const failure = storedSignInFailure(`check ${"€".repeat(60_000)}`, "https://example.test/p");
-    const debug = failure.debug;
-    assert.ok(debug?.signInRefusal);
-    const kept = Buffer.byteLength(debug.stack)
-      + debug.causes.reduce((total, text) => total + Buffer.byteLength(text), 0)
-      + Buffer.byteLength(debug.signInRefusal.reason)
-      + Buffer.byteLength(debug.signInRefusal.pageAddress);
-    assert.ok(kept <= 96 * 1024);
-    assert.equal(debug.omittedBytes, debug.originalBytes - kept);
-    assert.equal(debug.signInRefusal.reason.includes("\uFFFD"), false);
-    assert.equal(debug.signInRefusal.pageAddress, "https://example.test/p");
-    assert.match(debug.signInRefusal.reason, /^check /);
-  });
-
-  it("drops a percent-encoded employee id from the verifier reason and the page path", () => {
-    const encoded = "%31%30%34%35%36%37%31%32";
-    const failure = storedSignInFailure(
-      `the check saw https://example.test/people/${encoded}`,
-      `https://example.test/people/${encoded}`,
-    );
-    assert.equal(failure.debug?.signInRefusal?.reason, "the check saw https://example.test/people/[removed]");
-    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://example.test/people/[removed]");
-    const stored = JSON.stringify(failure);
-    assert.equal(stored.includes(FIXTURE_EMPLOYEE_ID), false);
-    assert.equal(stored.toLowerCase().includes(encoded.toLowerCase()), false);
-  });
-
-  it("keeps the check when the page address fills its share of the debug budget", () => {
-    const failure = storedSignInFailure("the application route was refused", `https://example.test/${"p".repeat(100_000)}`);
-    const debug = failure.debug;
-    assert.ok(debug?.signInRefusal);
-    assert.equal(debug.signInRefusal.reason, "the application route was refused");
-    assert.match(debug.signInRefusal.pageAddress, /^https:\/\/example\.test\//);
-    assert.ok(Buffer.byteLength(debug.signInRefusal.pageAddress) <= Math.floor(96 * 1024 / 2));
-    const kept = Buffer.byteLength(debug.stack)
-      + debug.causes.reduce((total, text) => total + Buffer.byteLength(text), 0)
-      + Buffer.byteLength(debug.signInRefusal.reason)
-      + Buffer.byteLength(debug.signInRefusal.pageAddress);
-    assert.ok(kept <= 96 * 1024);
-    assert.equal(debug.omittedBytes, debug.originalBytes - kept);
-    assert.ok(debug.originalBytes > 100_000);
-  });
-
-  it("strips a credential and an uppercase URL that were percent-encoded in the verifier reason", () => {
-    const encoded = percentEncode("password=SECRET_CANARY HTTPS://user:USERINFO_CANARY@example.test/read?token=QUERY_CANARY#FRAGMENT_CANARY");
-    const failure = storedSignInFailure(`the check saw ${encoded}`, "https://example.test/login");
-    assert.equal(failure.debug?.signInRefusal?.reason, "the check saw password=[removed] https://example.test/read");
-    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://example.test/login");
-    const stored = JSON.stringify(failure);
-    for (const canary of ["SECRET_CANARY", "USERINFO_CANARY", "QUERY_CANARY", "FRAGMENT_CANARY", "?token=", "#FRAGMENT"]) {
-      assert.equal(stored.includes(canary), false, canary);
-    }
-  });
-
-  it("strips a query and fragment hidden in a percent-encoded page path", () => {
-    const failure = storedSignInFailure(
-      "the check failed",
-      "https://example.test/read%3Ftoken%3DQUERY_CANARY%23FRAGMENT_CANARY",
-    );
-    assert.equal(failure.debug?.signInRefusal?.reason, "the check failed");
-    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://example.test/read");
-    const stored = JSON.stringify(failure);
-    assert.equal(stored.includes("QUERY_CANARY"), false);
-    assert.equal(stored.includes("FRAGMENT_CANARY"), false);
-    assert.equal(stored.includes("?token="), false);
-    assert.equal(stored.includes("#FRAGMENT"), false);
-  });
-
-  it("drops an employee id hidden in an undecodable percent-encoding run", () => {
-    const encoded = percentEncode(FIXTURE_EMPLOYEE_ID);
-    const failure = storedSignInFailure(
-      `the check saw https://example.test/people/%FF${encoded}`,
-      `https://example.test/people/%FF${encoded}`,
-    );
-    assert.equal(failure.debug?.signInRefusal?.reason, "the check saw https://example.test/people/[invalid-encoding]");
-    assert.equal(failure.debug?.signInRefusal?.pageAddress, "https://example.test/people/[invalid-encoding]");
-    const stored = JSON.stringify(failure);
-    assert.equal(stored.includes(FIXTURE_EMPLOYEE_ID), false);
-    assert.equal(stored.toLowerCase().includes(encoded.toLowerCase()), false);
-    assert.equal(stored.includes(`%FF${encoded}`), false);
+    const cutLogin = new BrowserLoginError("ucpath", "verify-landing", "the check refused", LISTED_SSO);
+    cutLogin.stack = `${"a".repeat(96 * 1024 - 1)}€tail`;
+    const cutFailure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
+      error: cutLogin, occurredAt: "2026-08-29T08:00:00.000Z" });
+    const cutDebug = cutFailure.debug;
+    assert.ok(cutDebug?.signInRefusal);
+    assert.equal(cutDebug.stack.includes("\uFFFD"), false);
+    assert.equal(cutDebug.causes.some(text => text.includes("\uFFFD")), false);
+    assert.equal(cutDebug.omittedBytes, cutDebug.originalBytes - retainedDebugBytes(cutDebug));
+    assert.ok(cutDebug.omittedBytes > 0);
   });
 });

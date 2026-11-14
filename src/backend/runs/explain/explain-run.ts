@@ -289,8 +289,7 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
           sameFingerprintSeen: Math.max(1, evidence.sameFingerprintSeen ?? 1),
           causeCodes: causes.codes,
           causeClasses: causes.classes,
-          // The protected projection drops debug. The refusal is already limited to the
-          // sanitized check and the page origin and path, so explain keeps it.
+          // The protected projection drops debug. The refusal is closed vocabulary, so explain keeps it.
           ...(evidence.failure?.debug?.signInRefusal === undefined
             ? {}
             : { signInRefusal: evidence.failure.debug.signInRefusal }),
@@ -378,6 +377,18 @@ function shown<Value>(
   return resource.state === "present" ? render(resource.value) : `— ${resource.reason}`;
 }
 
+function signInRefusalLines(refusal: z.infer<typeof SignInRefusalSchema>): string {
+  const check = refusal.check === undefined
+    ? `sign-in step ${refusal.step}`
+    : `sign-in check ${refusal.step}: ${refusal.check}`;
+  const page = refusal.pageOrigin === "not-read" ? "page not read"
+    : refusal.pageOrigin === "unreadable" ? "page unreadable"
+    : refusal.pageOrigin === "unlisted" ? "page not listed"
+    : refusal.pagePath === undefined ? `page ${refusal.pageOrigin} (path not listed)`
+    : `page ${refusal.pageOrigin}${refusal.pagePath}`;
+  return `\n    ${check}\n    ${page}`;
+}
+
 export function renderExplainRun(view: ExplainRunView): string {
   const instances = Object.entries(view.resolvedInstance)
     .map(([system, instance]) => `${system}=${instance}`)
@@ -403,8 +414,7 @@ export function renderExplainRun(view: ExplainRunView): string {
       `${failure.code} (${failure.writeState}) fingerprint ${failure.fingerprint}\n`
       + `    seen ${String(failure.sameFingerprintSeen)}× · ${failure.summary}\n`
       + `    causes: ${[...failure.causeCodes, ...failure.causeClasses].join(", ") || "(none)"}`
-      + (failure.signInRefusal === undefined ? ""
-        : `\n    sign-in check ${failure.signInRefusal.step}: ${failure.signInRefusal.reason}\n    page ${failure.signInRefusal.pageAddress}`))]),
+      + (failure.signInRefusal === undefined ? "" : signInRefusalLines(failure.signInRefusal)))]),
     ...section("last successful action", [shown(view.lastSuccessfulAction, (value) => value)]),
     ...section("open gate", [shown(view.openGate, (value) => value)]),
     ...section("open dependency", [shown(view.openDependency, (value) => value)]),

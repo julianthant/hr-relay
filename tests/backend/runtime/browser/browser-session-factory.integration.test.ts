@@ -513,6 +513,7 @@ describe("worker browser session factory", () => {
           verify: verifierFor({
             authenticated: false,
             reason: "the PeopleSoft signon form is still present on the page",
+            check: "sign-in-form-absent",
           }).verify,
         }),
       );

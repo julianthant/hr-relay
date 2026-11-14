@@ -11,6 +11,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { timelineCheckpointReference, TimelineCheckpointReferenceSchema } from "../../../../src/models/events/timeline.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { SIGN_IN_REFUSAL_PROBES } from "../../../support/fixtures/sign-in-refusal-probes.js";
 
 const {STEP, TYPED_FACT, omittedStepFixture, cleanup } = createStepOmissionTestWorld();
 
@@ -113,149 +114,75 @@ describe("explain run under step omission", () => {
   });
 });
 
-it("explains a refused sign-in with the check and the page, and leaves the query out", () => {
-  const reason = "the login could not prove the authenticated application: the observed URL is not a UCPath PeopleSoft application route";
-  const login = new BrowserLoginError("ucpath", "verify-landing", reason, "https://ucpath.universityofcalifornia.edu/?EMPLID=10456712#frag-canary");
+function refusedFailure(detail: string, observedUrl: string, check?: "application-route") {
+  const login = new BrowserLoginError("ucpath", "verify-landing", detail, observedUrl, undefined, undefined, check);
   const taskId = TaskIdSchema.parse("ucpath/search-person-org");
-  const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+  return buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
     failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
     error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: QUEUED_RUN.createdAt });
-  const view = buildExplainRunView({ run: RunRecordSchema.parse(QUEUED_RUN), checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure });
-  const rendered = renderExplainRun(view);
+}
+
+function renderRefusal(detail: string, observedUrl: string, check?: "application-route", protectedRun = false) {
+  const failure = refusedFailure(detail, observedUrl, check);
+  const run = protectedRun ? RunRecordSchema.parse({
+    ...QUEUED_RUN,
+    input: { ...QUEUED_RUN.input, parsed: { ...QUEUED_RUN.input.parsed, protectedBindings: [{
+      kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "00000000-0000-4000-8000-000000000099",
+    }] } },
+  }) : RunRecordSchema.parse(QUEUED_RUN);
+  return renderExplainRun(buildExplainRunView({ run, checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure }));
+}
+
+it("explains a refused sign-in with the check and the registry page", () => {
+  const rendered = renderRefusal("the check saw employee 10456712", "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO?EMPLID=10456712#frag-canary", "application-route");
   assert.match(rendered, /UCPath sign-in failed\./);
-  assert.match(rendered, new RegExp(`sign-in check verify-landing: ${reason}`));
-  assert.match(rendered, /page https:\/\/ucpath\.universityofcalifornia\.edu\//);
+  assert.match(rendered, /sign-in check verify-landing: application-route/);
+  assert.match(rendered, /page https:\/\/a5\.ucsd\.edu\/tritON\/profile\/SAML2\/Redirect\/SSO/);
   assert.equal(rendered.includes("10456712"), false);
   assert.equal(rendered.includes("frag-canary"), false);
 });
 
-it("explains a protected run's refused sign-in without the query", () => {
-  const reason = "the login could not prove the authenticated application: UCPath PeopleSoft never issued its PS_TOKEN session cookie for universityofcalifornia.edu";
-  const login = new BrowserLoginError("ucpath", "verify-landing", reason, "https://ucpath.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app?EMPLID=10456712#frag-canary");
-  const taskId = TaskIdSchema.parse("ucpath/search-person-org");
-  const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
-    failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
-    error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: QUEUED_RUN.createdAt });
-  const run = RunRecordSchema.parse({
-    ...QUEUED_RUN,
-    input: { ...QUEUED_RUN.input, parsed: { ...QUEUED_RUN.input.parsed, protectedBindings: [{
-      kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "00000000-0000-4000-8000-000000000099",
-    }] } },
-  });
-  const rendered = renderExplainRun(buildExplainRunView({ run, checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure }));
-  assert.match(rendered, /UCPath sign-in failed\./);
-  assert.match(rendered, new RegExp(`sign-in check verify-landing: ${reason}`));
-  assert.match(rendered, /page https:\/\/ucpath\.universityofcalifornia\.edu\/psc\/ucphrprd\/EMPLOYEE\/HRMS\/c\/app/);
-  assert.equal(rendered.includes("10456712"), false);
-  assert.equal(rendered.includes("frag-canary"), false);
-  assert.equal(rendered.includes("EMPLID"), false);
-});
-
-it("explains a protected run without an uppercase URL query from the verifier reason", () => {
-  const login = new BrowserLoginError("ucpath", "verify-landing",
-    "the check saw HTTPS://example.test/read?EMPLID=10456712#frag-canary",
-    "https://example.test/other");
-  const taskId = TaskIdSchema.parse("ucpath/search-person-org");
-  const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
-    failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
-    error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: QUEUED_RUN.createdAt });
-  const run = RunRecordSchema.parse({
-    ...QUEUED_RUN,
-    input: { ...QUEUED_RUN.input, parsed: { ...QUEUED_RUN.input.parsed, protectedBindings: [{
-      kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "00000000-0000-4000-8000-000000000099",
-    }] } },
-  });
-  const rendered = renderExplainRun(buildExplainRunView({ run, checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure }));
-  assert.match(rendered, /sign-in check verify-landing: the check saw https:\/\/example\.test\/read/);
-  assert.equal(rendered.includes("10456712"), false);
-  assert.equal(rendered.includes("frag-canary"), false);
-});
-
-it("explains a protected run without an employee id in the reason or the page path", () => {
-  const login = new BrowserLoginError("ucpath", "verify-landing",
-    "the check refused employee 10456712", "https://example.test/people/10456712");
-  const taskId = TaskIdSchema.parse("ucpath/search-person-org");
-  const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
-    failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
-    error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: QUEUED_RUN.createdAt });
-  const run = RunRecordSchema.parse({
-    ...QUEUED_RUN,
-    input: { ...QUEUED_RUN.input, parsed: { ...QUEUED_RUN.input.parsed, protectedBindings: [{
-      kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "00000000-0000-4000-8000-000000000099",
-    }] } },
-  });
-  const rendered = renderExplainRun(buildExplainRunView({ run, checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure }));
-  assert.match(rendered, /sign-in check verify-landing: the check refused employee \[removed\]/);
-  assert.match(rendered, /page https:\/\/example\.test\/people\/\[removed\]/);
+it("explains a sign-in step when the verifier named no check", () => {
+  const rendered = renderRefusal("the check saw employee 10456712", "https://a5.ucsd.edu/sso");
+  assert.match(rendered, /sign-in step verify-landing/);
+  assert.match(rendered, /page https:\/\/a5\.ucsd\.edu \(path not listed\)/);
+  assert.equal(rendered.includes("sign-in check"), false);
   assert.equal(rendered.includes("10456712"), false);
 });
 
-it("explains a protected run without a percent-encoded employee id", () => {
-  const encoded = "%31%30%34%35%36%37%31%32";
-  const login = new BrowserLoginError("ucpath", "verify-landing",
-    `the check saw https://example.test/people/${encoded}`, `https://example.test/people/${encoded}`);
-  const taskId = TaskIdSchema.parse("ucpath/search-person-org");
-  const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
-    failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
-    error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: QUEUED_RUN.createdAt });
-  const run = RunRecordSchema.parse({
-    ...QUEUED_RUN,
-    input: { ...QUEUED_RUN.input, parsed: { ...QUEUED_RUN.input.parsed, protectedBindings: [{
-      kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "00000000-0000-4000-8000-000000000099",
-    }] } },
-  });
-  const rendered = renderExplainRun(buildExplainRunView({ run, checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure }));
-  assert.match(rendered, /sign-in check verify-landing: the check saw https:\/\/example\.test\/people\/\[removed\]/);
-  assert.match(rendered, /page https:\/\/example\.test\/people\/\[removed\]/);
-  assert.equal(rendered.includes("10456712"), false);
-  assert.equal(rendered.toLowerCase().includes(encoded.toLowerCase()), false);
-});
-
-it("explains a protected run without a percent-encoded credential or uppercase URL", () => {
-  const encoded = percentEncode("password=SECRET_CANARY HTTPS://user:USERINFO_CANARY@example.test/read?token=QUERY_CANARY#FRAGMENT_CANARY");
-  const login = new BrowserLoginError("ucpath", "verify-landing", `the check saw ${encoded}`, "https://example.test/login");
-  const taskId = TaskIdSchema.parse("ucpath/search-person-org");
-  const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
-    failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
-    error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: QUEUED_RUN.createdAt });
-  const run = protectedExplainRun();
-  const rendered = renderExplainRun(buildExplainRunView({ run, checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure }));
-  assert.match(rendered, /sign-in check verify-landing: the check saw password=\[removed\] https:\/\/example\.test\/read/);
-  assert.match(rendered, /page https:\/\/example\.test\/login/);
-  for (const canary of ["SECRET_CANARY", "USERINFO_CANARY", "QUERY_CANARY", "FRAGMENT_CANARY"]) {
-    assert.equal(rendered.includes(canary), false, canary);
+it("explains an unlisted, unread, or unreadable page", () => {
+  assert.match(renderRefusal("the check refused", "https://example.test/read?token=QUERY_CANARY"), /page not listed/);
+  assert.match(renderRefusal("the check refused", ""), /page not read/);
+  assert.match(renderRefusal("the check refused", "not a url"), /page unreadable/);
+  for (const rendered of [
+    renderRefusal("the check refused", "https://example.test/read?token=QUERY_CANARY"),
+    renderRefusal("the check refused", ""),
+    renderRefusal("the check refused", "not a url"),
+  ]) {
+    assert.equal(rendered.includes("QUERY_CANARY"), false);
+    assert.equal(rendered.includes("not a url"), false);
   }
 });
 
-it("explains a protected run without a query hidden in the page path or an undecodable employee-id run", () => {
-  const encoded = percentEncode("10456712");
-  const login = new BrowserLoginError("ucpath", "verify-landing",
-    `the check saw https://example.test/people/%FF${encoded}`,
-    "https://example.test/read%3Ftoken%3DQUERY_CANARY%23FRAGMENT_CANARY");
-  const taskId = TaskIdSchema.parse("ucpath/search-person-org");
-  const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
-    failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
-    error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: QUEUED_RUN.createdAt });
-  const rendered = renderExplainRun(buildExplainRunView({
-    run: protectedExplainRun(), checkpoints: [], writes: [], nodeIds: [], dependencies: [], failure,
-  }));
-  assert.match(rendered, /sign-in check verify-landing: the check saw https:\/\/example\.test\/people\/\[invalid-encoding\]/);
-  assert.match(rendered, /page https:\/\/example\.test\/read/);
+it("explains a protected run's refused sign-in from the closed leaves", () => {
+  const rendered = renderRefusal(
+    "the check saw employee 10456712 password=SECRET_CANARY",
+    "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app?EMPLID=10456712#frag-canary",
+    "application-route",
+    true,
+  );
+  assert.match(rendered, /UCPath sign-in failed\./);
+  assert.match(rendered, /sign-in check verify-landing: application-route/);
+  assert.match(rendered, /page https:\/\/ucphrprdpub\.universityofcalifornia\.edu\/psc\/ucphrprd\/EMPLOYEE\/HRMS\//);
   assert.equal(rendered.includes("10456712"), false);
-  assert.equal(rendered.toLowerCase().includes(encoded.toLowerCase()), false);
-  assert.equal(rendered.includes("QUERY_CANARY"), false);
-  assert.equal(rendered.includes("FRAGMENT_CANARY"), false);
+  assert.equal(rendered.includes("frag-canary"), false);
+  assert.equal(rendered.includes("SECRET_CANARY"), false);
+  assert.equal(rendered.includes("EMPLID"), false);
 });
 
-function percentEncode(text: string): string {
-  return [...text].map(character => `%${character.charCodeAt(0).toString(16).padStart(2, "0")}`).join("");
-}
-
-function protectedExplainRun() {
-  return RunRecordSchema.parse({
-    ...QUEUED_RUN,
-    input: { ...QUEUED_RUN.input, parsed: { ...QUEUED_RUN.input.parsed, protectedBindings: [{
-      kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: "00000000-0000-4000-8000-000000000099",
-    }] } },
-  });
-}
+it("explains every probe without copying its text", () => {
+  for (const row of SIGN_IN_REFUSAL_PROBES) {
+    const rendered = renderRefusal(row.detail, row.observedUrl, undefined, true);
+    for (const canary of row.canaries) assert.equal(rendered.includes(canary), false, `${row.name} ${canary}`);
+  }
+});

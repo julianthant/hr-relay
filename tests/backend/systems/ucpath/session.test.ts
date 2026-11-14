@@ -618,7 +618,12 @@ describe("ucpath login recipe", () => {
 const FIXTURE_EMPLOYEE_ID = "10456712";
 
 describe("ucpath sign-in refusal record", () => {
-  async function storedRefusal(script: FakePageScript, pattern: RegExp, pageAddress: string) {
+  async function storedRefusal(
+    script: FakePageScript,
+    check: "application-route" | "positive-evidence" | "sign-in-form-absent",
+    pageOrigin: string,
+    pagePath: string,
+  ) {
     const { context } = await contextFor(script);
     let refusal: unknown;
     try {
@@ -632,30 +637,31 @@ describe("ucpath sign-in refusal record", () => {
       failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
       error: new TaskError(taskId, refusal.code, refusal.message, { cause: refusal }),
       occurredAt: "2026-08-29T08:00:00.000Z" });
-    assert.match(failure.debug?.signInRefusal?.reason ?? "", pattern);
+    assert.equal(failure.debug?.signInRefusal?.check, check);
     assert.equal(failure.debug?.signInRefusal?.step, "verify-landing");
-    assert.equal(failure.debug?.signInRefusal?.pageAddress, pageAddress);
+    assert.equal(failure.debug?.signInRefusal?.pageOrigin, pageOrigin);
+    assert.equal(failure.debug?.signInRefusal?.pagePath, pagePath);
     assert.equal(projectFailureForOperator(failure).summary, "UCPath sign-in failed.");
     const stored = JSON.stringify(failure);
     assert.equal(stored.includes(FIXTURE_EMPLOYEE_ID), false);
     assert.equal(stored.includes("frag-canary"), false);
   }
 
-  it("stores the application-route, PS_TOKEN and sign-on refusals without the query", async () => {
+  it("names the application-route, positive-evidence and sign-in-form-absent checks", async () => {
     const queried = (url: string) => `${url}?EMPLID=${FIXTURE_EMPLOYEE_ID}#frag-canary`;
     await storedRefusal({
       url: queried("https://ucpath.universityofcalifornia.edu/"),
       elements: NO_SIGN_IN_FORMS,
       cookies: [PS_TOKEN],
-    }, /not a UCPath PeopleSoft application route/, "https://ucpath.universityofcalifornia.edu/");
+    }, "application-route", "https://ucpath.universityofcalifornia.edu", "/");
     await storedRefusal({
       url: queried(UCPATH_APP),
       elements: NO_SIGN_IN_FORMS,
-    }, /never issued its PS_TOKEN session cookie/, UCPATH_APP);
+    }, "positive-evidence", "https://ucphrprdpub.universityofcalifornia.edu", "/psc/ucphrprd/EMPLOYEE/HRMS/");
     await storedRefusal({
       url: queried(UCPATH_APP),
       elements: { ...NO_SIGN_IN_FORMS, "peoplesoft-signon": { count: 1 } },
       cookies: [PS_TOKEN],
-    }, /PeopleSoft signon form is still present/, UCPATH_APP);
+    }, "sign-in-form-absent", "https://ucphrprdpub.universityofcalifornia.edu", "/psc/ucphrprd/EMPLOYEE/HRMS/");
   });
 });

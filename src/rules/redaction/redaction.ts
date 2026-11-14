@@ -198,15 +198,6 @@ export function maskSsnText(text: string): string {
   return text.replace(/(?<!\d)\d{3}[- ]?\d{2}[- ]?\d{4}(?!\d)/gu, "[SSN masked]");
 }
 
-/** Origin and path of a page. Query, fragment and userinfo are not returned.
- * An unreadable or non-hierarchical URL has no origin to keep, so the raw text is replaced
- * by a fixed token; that case is covered by the page-address tests. */
-export function pageAddress(observedUrl: string): string {
-  const url = URL.parse(observedUrl);
-  if (url === null || url.origin === "null") return "unreadable-address";
-  return `${url.origin}${url.pathname}`;
-}
-
 // Diagnostic text never carries authorization material or URL query values.
 export function sanitizeDebugText(text: string): string {
   const credentialKey = /password|passwd|token|cookie|authorization|private[-_ ]?key|challenge|signature/iu;
