@@ -5,6 +5,7 @@ import { createDashboardClient } from "../client/index.js";
 import { DashboardClientError, DashboardReportDeliveryError } from "../client/errors.js";
 import { serializeErrorCauses } from "../../models/failures/error-origins.js";
 import { DASHBOARD_UNHANDLED_ERROR } from "../../models/events/debug-report.js";
+import { RunIdSchema } from "../../rules/identity/ids.js";
 import { DashboardClientProvider } from "../state/client-context.js";
 import { DashboardApp } from "./dashboard-app.js";
 import { activeTakeover, parseRoute, shellViewOf } from "./navigation/url-state.js";
@@ -16,7 +17,13 @@ if (container === null) {
 }
 
 const client = createDashboardClient({ baseUrl: window.location.origin,
-  surface: () => shellViewOf(activeTakeover(parseRoute(window.location.search))) });
+  surface: () => shellViewOf(activeTakeover(parseRoute(window.location.search))),
+  runId: () => {
+    const route = parseRoute(window.location.search);
+    if (activeTakeover(route) !== "none") return undefined;
+    const parsed = RunIdSchema.safeParse(route.run);
+    return parsed.success ? parsed.data : undefined;
+  } });
 
 const clientId = crypto.randomUUID();
 const report = (error: unknown) => {

@@ -6,7 +6,7 @@ let allowed: boolean | undefined;
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 
-/** Read on first use: the parity harness sets its flag after the modules load. */
+/** Read on first use: the mock harness sets its flag after the modules load. */
 const current = () => allowed ??= mockParam("assistantFullAccess") === "1";
 
 export function setFullAccessAllowed(next: boolean): void {

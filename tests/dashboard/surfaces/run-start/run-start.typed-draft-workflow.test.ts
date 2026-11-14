@@ -8,7 +8,7 @@ import { projectStartSteps } from "../../../../src/backend/runs/start/step-selec
 import { ViewNavigationContext } from "../../../../src/dashboard/app/navigation/view-route-model.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";

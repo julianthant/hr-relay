@@ -140,10 +140,12 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   if (run.envelope.workflow !== descriptor.id) throw new RerunRefusedError("schema-mismatch", "Rerun source workflow changed");
   const older = run.envelope.contractFingerprint !== descriptor.contractFingerprint || run.envelope.descriptorVersion !== descriptor.version;
   // Use the same authority disposition predicate as RunRecordService.read.
-  if (run.lifecycle.state !== "terminal" || !["done", "failed", "interrupted"].includes(run.lifecycle.outcome)
+  const parkedAtCorrectedGate = source.gateCorrection !== undefined && run.lifecycle.state === "parked-gate"
+    && String(run.lifecycle.gateId) === source.gateCorrection.gateId;
+  if ((!parkedAtCorrectedGate && (run.lifecycle.state !== "terminal" || !["done", "failed", "interrupted"].includes(run.lifecycle.outcome)))
     || repositories.writeIntents.listAttemptingByItem({ workflowId: descriptor.id, itemId: run.envelope.itemId }).length > 0
     || repositories.writeIntents.listByRun(source.runId).some((intent) => intent.status === "parked")) {
-    throw new RerunRefusedError("invalid-state", "Rerun requires a successful, failed or interrupted source without uncertain writes");
+    throw new RerunRefusedError("invalid-state", "Rerun requires a successful, failed, interrupted or gate-corrected source without uncertain writes");
   }
   if (older && repositories.writeIntents.listByRun(source.runId).some(intent => intent.status === "committed"
     && !descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction" && node.commit.uses.id === intent.taskId

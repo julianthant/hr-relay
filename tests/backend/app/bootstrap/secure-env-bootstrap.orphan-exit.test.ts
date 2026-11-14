@@ -15,6 +15,7 @@ it("stops an orphaned worker's run on parent disconnect and exits it after WORKE
   let disconnect: (() => void) | undefined, signal: AbortSignal | undefined;
   const exits: number[] = [];
   void runSecureEnvironmentBootstrap(["cli", "worker"], {
+    installCrashHandlers: () => undefined,
     receiveLifetimeLock: async (port, onDisconnect) => {
       assert.equal(port, rebuildRuntimeIsolation.lockPort);
       disconnect = onDisconnect;

@@ -127,6 +127,7 @@ const CANONICAL_REDACTION_MODULE = "src/rules/redaction/redaction.ts";
 const CANONICAL_DIAGNOSTIC_EXPORTS = new Set([
   "directIdentifierDigestReference",
   "directIdentifierDisplay",
+  "maskedEid",
   "redactedEvidenceId",
 ]);
 const CANONICAL_WORKFLOW_MODULE = "src/workflow-kit/workflow.ts";

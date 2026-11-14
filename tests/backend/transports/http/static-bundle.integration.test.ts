@@ -5,7 +5,7 @@ import { chmodSync,mkdirSync,mkdtempSync,readFileSync,rmSync,symlinkSync,unlinkS
 import { tmpdir } from "node:os";
 import { join,resolve } from "node:path";
 import { afterEach,describe,it } from "vitest";
-import { assertDashboardBuildCurrent,PARITY_BUILD_COMMAND,writeDashboardBuildIdentity } from "../../../../src/backend/app/composition/dashboard/build-identity.js";
+import { assertDashboardBuildCurrent,MOCK_BUILD_COMMAND,writeDashboardBuildIdentity } from "../../../../src/backend/app/composition/dashboard/build-identity.js";
 import {
 decideStaticBundlePath,
 openStaticBundle,
@@ -125,14 +125,14 @@ describe("static bundle over a real temp bundle", () => {
     await assert.rejects(openStaticBundle(dist, REPO_ROOT), /bundle bytes changed after build/u);
   });
 
-  it("rejects parity composition for production and product composition for parity", async () => {
+  it("rejects mock composition for production and product composition for mocks", async () => {
     const { dist } = scaffold();
-    assert.throws(() => assertDashboardBuildCurrent({ repoRoot: REPO_ROOT, distDir: dist, buildScript: PARITY_BUILD_COMMAND }), /required composition/u);
-    await assert.rejects(openStaticBundle(dist, REPO_ROOT, PARITY_BUILD_COMMAND), /required composition/u);
-    writeDashboardBuildIdentity({ repoRoot: REPO_ROOT, distDir: dist, buildScript: PARITY_BUILD_COMMAND });
-    assert.equal(assertDashboardBuildCurrent({ repoRoot: REPO_ROOT, distDir: dist, buildScript: PARITY_BUILD_COMMAND }).buildScript, PARITY_BUILD_COMMAND);
+    assert.throws(() => assertDashboardBuildCurrent({ repoRoot: REPO_ROOT, distDir: dist, buildScript: MOCK_BUILD_COMMAND }), /required composition/u);
+    await assert.rejects(openStaticBundle(dist, REPO_ROOT, MOCK_BUILD_COMMAND), /required composition/u);
+    writeDashboardBuildIdentity({ repoRoot: REPO_ROOT, distDir: dist, buildScript: MOCK_BUILD_COMMAND });
+    assert.equal(assertDashboardBuildCurrent({ repoRoot: REPO_ROOT, distDir: dist, buildScript: MOCK_BUILD_COMMAND }).buildScript, MOCK_BUILD_COMMAND);
     await assert.rejects(openStaticBundle(dist, REPO_ROOT), /required composition/u);
-    assert.ok(await openStaticBundle(dist, REPO_ROOT, PARITY_BUILD_COMMAND));
+    assert.ok(await openStaticBundle(dist, REPO_ROOT, MOCK_BUILD_COMMAND));
   });
 
   it("serves bundle bytes with exact headers, falls back to the SPA, and keeps API precedence", async () => {

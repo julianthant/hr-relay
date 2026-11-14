@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,describe as describe_m1,expect as expect_m1,it as it_m0,it as it_m1 } from "vitest";
 import { launchWorkflows as launchWorkflows_m1 } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
@@ -6,7 +6,7 @@ import { previewSessionAdd as previewSessionAdd_m0,previewSessionAdd as previewS
 import { sessionTallies as sessionTallies_m0,sessionTimelineSummary as sessionTimelineSummary_m0 } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { parseWorkflows as parseWorkflows_m1 } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog as buildWorkflowCatalog_m0,buildWorkflowCatalog as buildWorkflowCatalog_m1 } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP as FIXTURE_START_PICKER_BOOTSTRAP_m1 } from "../../../parity/helpers/fixture-start.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as FIXTURE_START_PICKER_BOOTSTRAP_m1 } from "../../../mocks/helpers/fixture-start.js";
 
 
 {

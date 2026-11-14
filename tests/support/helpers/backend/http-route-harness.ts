@@ -490,6 +490,9 @@ export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot"
   } finally { raw.close(); }
 }
 
+/** Exact HTTP-fault timeline counts compose the dashboard with the event-loop monitor off. */
+export const exactHttpFaultLoopDelay = false;
+
 export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number) {
   const after = faultAuthoritySnapshot(h);
   assert.deepEqual(after.schema, before.schema, "HTTP refusal changes no table, index or trigger");

@@ -1,5 +1,4 @@
-import { I18nProvider } from "react-aria-components/I18nProvider";
-import { Calendar as HeroCalendar, DateField, DatePicker as HeroDatePicker, Label, RangeCalendar as HeroRangeCalendar } from "@heroui/react";
+import { Calendar as HeroCalendar, DateField, DatePicker as HeroDatePicker, I18nProvider, Label, RangeCalendar as HeroRangeCalendar } from "@heroui/react";
 import { parseDate, type CalendarDate } from "@internationalized/date";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/utils.js";

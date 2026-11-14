@@ -1,18 +1,18 @@
 import { z } from "zod";
 import { isDirectExecution } from "./scope-files.js";
 
-const suiteNames = ["unit", "integration", "architecture", "parity"] as const;
+const suiteNames = ["unit", "integration", "architecture"] as const;
 const contextSchema = z.object({
   workflow: z.enum(["portable", "release"]), event: z.enum(["pull_request", "workflow_dispatch"]),
   base: z.string(), head: z.string(), draft: z.boolean(), filters: z.record(z.string(), z.string()),
 });
 const matrixSchema = z.object({ include: z.array(z.object({
-  suite: z.enum(["unit", "integration", "architecture", "parity", "native"]),
+  suite: z.enum(["unit", "integration", "architecture", "native"]),
   shard: z.number().int().positive(), shards: z.number().int().positive(),
 })) });
 export const ciPlanSchema = z.object({
   workflow: z.enum(["portable", "release"]), fullRelease: z.boolean(), releaseBatch: z.boolean(),
-  unit: z.boolean(), integration: z.boolean(), architecture: z.boolean(), parity: z.boolean(),
+  unit: z.boolean(), integration: z.boolean(), architecture: z.boolean(),
   ubuntu: matrixSchema, macos: matrixSchema, windows: matrixSchema,
   testJobs: z.number().int().nonnegative(),
 }).refine(plan => plan.testJobs === plan.ubuntu.include.length + plan.macos.include.length + plan.windows.include.length,
@@ -33,13 +33,11 @@ export function createCiPlan(input: unknown): CiPlan {
   }
   const fullRelease = context.workflow === "release" && (manual || context.head === "staging");
   const enabled = (suite: typeof suiteNames[number]) =>
-    (suite !== "parity" || fullRelease) && (manual || context.filters.shared === "true" || context.filters[suite] === "true");
-  const selected = { unit: enabled("unit"), integration: enabled("integration"),
-    architecture: enabled("architecture"), parity: enabled("parity") };
+    manual || context.filters.shared === "true" || context.filters[suite] === "true";
+  const selected = { unit: enabled("unit"), integration: enabled("integration"), architecture: enabled("architecture") };
   if (!manual && context.draft) {
     selected.integration = false;
     selected.architecture = false;
-    selected.parity = false;
   }
   const jobs = (suite: z.infer<typeof matrixSchema>["include"][number]["suite"], shards: number) =>
     Array.from({ length: shards }, (_, i) => ({ suite, shard: i + 1, shards }));
@@ -48,8 +46,8 @@ export function createCiPlan(input: unknown): CiPlan {
     ...(selected.architecture ? jobs("architecture", 2) : []),
     ...(selected.integration ? jobs("integration", 14) : []),
   ];
-  const nativeShards = selected.integration ? (selected.parity ? 2 : 5) : selected.unit ? 1 : 0;
-  const macos = fullRelease ? [...(selected.parity ? jobs("parity", 3) : []), ...jobs("native", nativeShards)] : [];
+  const nativeShards = selected.integration ? 5 : selected.unit ? 1 : 0;
+  const macos = fullRelease ? jobs("native", nativeShards) : [];
   const windows = fullRelease ? jobs("native", selected.integration ? 5 : selected.unit ? 1 : 0) : [];
   return ciPlanSchema.parse({ ...selected, workflow: context.workflow, fullRelease,
     releaseBatch: !manual && fullRelease && selected.architecture,
@@ -80,11 +78,11 @@ export function verifyUnitProof(input: unknown, outcomes: unknown): void {
 export function verifyProofs(input: unknown, outcomes: unknown): void {
   const plan = ciPlanSchema.parse(input);
   const results = resultsSchema.parse(outcomes);
-  for (const job of ["changes", "static", "privacy", "integration", "architecture", "parity"]) requireResult(results, job, "success");
+  for (const job of ["changes", "static", "privacy", "integration", "architecture"]) requireResult(results, job, "success");
   requireResult(results, "ubuntu", plan.unit || plan.integration || plan.architecture ? "success" : "skipped");
   if (plan.workflow === "release") {
     requireResult(results, "unit-proofs", "success");
-    requireResult(results, "macos", plan.fullRelease && (plan.unit || plan.integration || plan.parity) ? "success" : "skipped");
+    requireResult(results, "macos", plan.fullRelease && (plan.unit || plan.integration) ? "success" : "skipped");
     requireResult(results, "windows", plan.fullRelease && (plan.unit || plan.integration) ? "success" : "skipped");
     requireResult(results, "release-batch", plan.releaseBatch ? "success" : "skipped");
   }

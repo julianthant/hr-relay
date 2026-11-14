@@ -48,8 +48,11 @@ from their subfolders. Canonical wire contracts live under `src/models/dashboard
 live under `src/rules/commands/`. Browser imports never reach backend composition or task registries.
 
 `app/workflow-sources.ts` reads `config/dashboard-workflow-sources.json`. Each workflow is explicitly
-`mock`, `served` or `hidden`. Person Lookup, Separations and Emergency Contact select `served`, OCR selects `hidden` and every other configured workflow selects `mock`. An undeclared ID throws
-`WORKFLOW_SOURCE_UNDECLARED`. A served failure never falls back to a mock.
+`mock`, `served` or `hidden`. Person Lookup, Separations, Emergency Contact and the public I-9 Check PDF parent select `served`.
+OCR and I-9 Lookup are hidden children. The I-9 Check person child has no source entry.
+Other configured workflows select `mock`. An undeclared ID throws `WORKFLOW_SOURCE_UNDECLARED`.
+A served failure never falls back to a mock. I-9 Check's live acceptance is blocked pending the
+operator's choice of ordinary execution with local publication or a separate preview implementation.
 
 Bootstrap, Settings, Preflight, storage, and the served intake workspace use the typed client.
 Current Logs, worker cards, Analytics, Explorer, notifications, and workflow runs have local
@@ -75,5 +78,5 @@ running BFF for dashboard data. `npm run web:build` builds dashboard and specime
 `http://localhost:5174/kit.html` shows the primitives.
 
 Read [AGENTS.md](AGENTS.md) before edits, [DESIGN.md](DESIGN.md) for tokens and layout,
-[PARITY.md](PARITY.md) for visual verification, and [dashboard surfaces](../../docs/reference/dashboard-surfaces.md)
+[MOCKS.md](MOCKS.md) for the mock scene runner, and [dashboard surfaces](../../docs/reference/dashboard-surfaces.md)
 for mounted behavior. `tests/perf/frontend/` contains the isolated Queue/Logs performance fixture.

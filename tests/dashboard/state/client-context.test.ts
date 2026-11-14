@@ -2,22 +2,22 @@ import { Hono } from "hono";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
-import { FIXTURE_EDITABLE_SETTINGS,FIXTURE_SETTINGS_FACTS,FIXTURE_STORAGE_DOCTOR } from "../../parity/helpers/fixture-day.js";
-import { registerFixtureExplorerRoutes } from "../../parity/helpers/fixture-explorer-routes.js";
-import { FIXTURE_EXPLORER_WIRE } from "../../parity/helpers/fixture-explorer.js";
-import { registerFixtureIntakeRoutes } from "../../parity/helpers/fixture-intake-routes.js";
+import { FIXTURE_EDITABLE_SETTINGS,FIXTURE_SETTINGS_FACTS,FIXTURE_STORAGE_DOCTOR } from "../../mocks/helpers/fixture-day.js";
+import { registerFixtureExplorerRoutes } from "../../mocks/helpers/fixture-explorer-routes.js";
+import { FIXTURE_EXPLORER_WIRE } from "../../mocks/helpers/fixture-explorer.js";
+import { registerFixtureIntakeRoutes } from "../../mocks/helpers/fixture-intake-routes.js";
 import { FIXTURE_INTAKE_IDS } from "../../support/fixtures/dashboard/fixture-intake.js";
-import { registerFixtureSettingsRoutes } from "../../parity/helpers/fixture-settings-routes.js";
-import * as settings from "../../parity/helpers/fixture-settings.js";
-import { registerFixtureStorageRoutes } from "../../parity/helpers/fixture-storage-routes.js";
-import * as storage from "../../parity/helpers/fixture-storage.js";
-import { SCENES as activity } from "../../parity/helpers/reference-activity-scenes.js";
-import { SCENES as detail } from "../../parity/helpers/reference-detail-scenes.js";
-import { SCENES as explorer } from "../../parity/helpers/reference-explorer-scenes.js";
-import { SCENES as intake } from "../../parity/helpers/reference-intake-scenes.js";
-import { SCENES as settingsScenes } from "../../parity/helpers/reference-settings-scenes.js";
-import { SCENES as shell } from "../../parity/helpers/reference-shell-scenes.js";
-import { SCENES as start } from "../../parity/helpers/reference-start-scenes.js";
+import { registerFixtureSettingsRoutes } from "../../mocks/helpers/fixture-settings-routes.js";
+import * as settings from "../../mocks/helpers/fixture-settings.js";
+import { registerFixtureStorageRoutes } from "../../mocks/helpers/fixture-storage-routes.js";
+import * as storage from "../../mocks/helpers/fixture-storage.js";
+import { SCENES as activity } from "../../mocks/helpers/reference-activity-scenes.js";
+import { SCENES as detail } from "../../mocks/helpers/reference-detail-scenes.js";
+import { SCENES as explorer } from "../../mocks/helpers/reference-explorer-scenes.js";
+import { SCENES as intake } from "../../mocks/helpers/reference-intake-scenes.js";
+import { SCENES as settingsScenes } from "../../mocks/helpers/reference-settings-scenes.js";
+import { SCENES as shell } from "../../mocks/helpers/reference-shell-scenes.js";
+import { SCENES as start } from "../../mocks/helpers/reference-start-scenes.js";
 
 describe("released surface fixtures", () => {
   it("keeps compatibility exports as the exact schema-backed leaf objects", () => {

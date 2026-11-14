@@ -3,6 +3,7 @@ import type { SaxesTagNS } from 'saxes';
 import { parse } from 'csv-parse/browser/esm/sync';
 import { ERROR_CATALOG } from '../../models/failures/error-catalog.js';
 import type { EditableWorkbook as LibraryWorkbook } from '../../models/dashboard/workbooks.js';
+import { assertSpreadsheetWithinInflateLimit, SpreadsheetInflateLimitError } from './spreadsheet-inflate-limit.js';
 import { MAX_WORKBOOK_GRID_CELLS, MAX_WORKBOOK_POPULATED_CELLS, populatedSpreadsheetValue, workbookSizeIssue } from './workbook-size.js';
 export type SheetCell = Readonly<{ value: string | number | boolean | Date | null; fill?: LibraryWorkbook['sheets'][number]['rows'][number]['cells'][number]['fill']; background?: string; numFmt?: string; richText?: LibraryWorkbook['sheets'][number]['rows'][number]['cells'][number]['richText']; hyperlink?: string; tooltip?: string }>;
 export type SheetRow = Readonly<{ id: string; sourceRow?: number; cells: readonly SheetCell[] }>;
@@ -279,6 +280,12 @@ export async function importWorkbook(name: string, data: ArrayBuffer): Promise<E
     return { name, themes: [], hasFormulas: false, sheets: [{ id: 'csv', name: 'Sheet 1', width, hidden: [], rows: values.map((row, index) => ({ id: `row-${index}`, sourceRow: index + 1, cells: Array.from({ length: width }, (_, column) => ({ value: row[column] ?? '' })) })) }] };
   }
   if (!/\.xlsx$/i.test(name)) throw new Error('SPREADSHEET_FORMAT_UNSUPPORTED: choose XLSX or CSV.');
+  try {
+    await assertSpreadsheetWithinInflateLimit(data);
+  } catch (cause) {
+    if (cause instanceof SpreadsheetInflateLimitError) throw new Error('SPREADSHEET_TOO_LARGE: maximum file size is 20 MB.', { cause });
+    throw cause;
+  }
   const input = await spreadsheetValueInput(data);
   const workbook = readXlsx(new Uint8Array(input.data));
   const themes: EditableWorkbook['themes'] = workbook.themePart?.parts.reduce<Record<string, string>>((parts, part) => {

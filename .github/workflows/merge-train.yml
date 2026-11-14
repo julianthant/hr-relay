@@ -37,7 +37,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
-          node-version-file: package.json
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
       - run: gh auth setup-git

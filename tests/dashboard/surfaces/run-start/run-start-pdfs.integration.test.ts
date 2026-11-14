@@ -73,15 +73,8 @@ it("uploads both original PDFs through the typed client and plans one parent wit
   expect(uploads).toEqual(["first.pdf", "second.pdf"]);
   expect(dialog.text()).toContain("2 PDFs selected");
   expect(dialog.disabled("Continue")).toBe(false);
+  await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
   await dialog.press("Continue");
-  const choose = async (label: string, optionText: string) => {
-    await dialog.press(label);
-    const option = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes(optionText)); assert.ok(option);
-    await act(async () => option.click()); await h.settle();
-  };
-  await choose('Choose a spreadsheet Reference spreadsheet', 'Action History.xlsx');
-  await choose('Choose a version Reference version', 'Fall review');
-  await choose('Choose a worksheet Reference worksheet', 'Action History');
   await dialog.press("Continue");
   expect(plans).toHaveLength(1);
   const request = StartPlanRequestSchema.parse(plans[0]);
@@ -98,6 +91,32 @@ it("uploads both original PDFs through the typed client and plans one parent wit
   expect([...confirm.querySelectorAll("dt")].filter(term => ["first.pdf", "second.pdf"].includes(term.textContent ?? ""))
     .map(term => [term.textContent, term.nextElementSibling?.textContent])).toEqual([["first.pdf", "PDF"], ["second.pdf", "PDF"]]);
   expect(request.dryRun).toBe(false);
+});
+
+it("offers the Dry run switch for the PDF workflow and plans and confirms a dry run", async () => {
+  const plans: unknown[] = [];
+  const dryWorkflow = { ...workflow, uploadRun: { ...workflow.uploadRun, supportsDryRun: true } } as RunStartWorkflow;
+  const served = client({ uploadOcrSource: async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
+    artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }),
+  submitStartPlan: async request => { plans.push(request); const plan = h.planResponse("5a000000-0000-4000-8000-000000000001");
+    return { ...plan, workflowId: descriptor.id, dryRun: true, planned: plan.planned.map(entry => ({ ...entry, outputs: [],
+      workbookReferences: [{ libraryId: reference.libraryId, version: reference.version, versionId: "earlier", versionName: "Fall review",
+        worksheets: [{ sheetId: "history", name: "Action History" }], type: reference.type }] })) }; } });
+  const dialog = await h.openDialog(served, { workflows: [dryWorkflow], panelWorkflowId: dryWorkflow.workflowId });
+  await attach([pdf("first.pdf", "%PDF first")]);
+  await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
+  await dialog.press("Continue");
+  const dryRunSwitch = [...document.querySelectorAll<HTMLElement>('[role="switch"]')].find(node => node.closest("label")?.textContent?.includes("Dry run"));
+  assert.ok(dryRunSwitch, "Dry run switch is missing");
+  expect(dryRunSwitch.closest(".ds-run-row")?.textContent).toContain("Dry run");
+  expect(dryRunSwitch.closest(".ds-run-row")?.textContent).toContain("Fill and check every step without submitting or saving.");
+  await act(async () => dryRunSwitch.click()); await h.settle();
+  await dialog.press("Continue");
+  expect(StartPlanRequestSchema.parse(plans[0]).dryRun).toBe(true);
+  const confirm = document.querySelector('[aria-label="Confirm"]'); assert.ok(confirm);
+  expect(confirm.textContent).toMatch(/Dry run\s*On/u);
+  expect(dialog.text()).not.toContain("I-9 Check results");
+  expect(dialog.text()).toContain("Start dry run");
 });
 
 it("keeps the accepted selection and refuses invalid PDFs before planning or uploading them", async () => {

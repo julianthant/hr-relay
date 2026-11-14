@@ -1,5 +1,0 @@
-@import "../../../../src/dashboard/app/index.css";
-@source "../../../../src/dashboard";
-@source ".";
-html, body, #root { height: 100%; }
-#root { display: flex; padding: 16px; }

@@ -128,6 +128,35 @@ describe("Pause and Stop cancel the current read step (ref workers-pause-cancels
     assert.match(paused.reason, /paused/);
   });
 
+  it("Resume after the worker cancelled the step for a pause withdraws it and restarts the step from its checkpoint", async () => {
+    const fx = blockingReadFixture();
+    const h = await world.loopHarness({ sessions: fx.sessions, exitWhenIdle: false });
+    const c = controls(h);
+    c.database.authority.runs.enqueue(personLookupQueuedRun());
+    const loop = runWorkerLoop({ ...h.deps });
+    try {
+      await fx.blocked;
+      const node = c.blockedNode();
+      c.pauseRun(randomUUID());
+      const now = h.authority.clock.monotonicMs();
+      const polls = h.scheduler.pending().filter(timer => timer.deadlineMonotonicMs - now === WORK_CONTROL_POLL_MS && !timer.cancelled());
+      assert.equal(polls.length, 1);
+      polls[0]?.fire();
+      // The worker has aborted the step; Resume lands before the executor settles the pause.
+      c.resume();
+      assert.equal(c.run().pause, undefined);
+      await pump(h, c.isTerminal("done"));
+      assert.deepEqual(c.endedOutcomes(node), ["cancelled", "done"]);
+      assert.equal(fx.blockedInvocations(), 2);
+      assert.equal(fx.readerInvocations(), 1);
+    } finally { await finish(h, loop); }
+    const report = await loop;
+    assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["abandoned", "done"]);
+    const withdrawn = report.outcomes[0];
+    assert.ok(withdrawn?.state === "abandoned");
+    assert.equal(withdrawn.reason, "resumed");
+  });
+
   it("worker Pause (directive + run pause) cancels the step and claims nothing until resumed", async () => {
     const fx = blockingReadFixture();
     const h = await world.loopHarness({ sessions: fx.sessions, exitWhenIdle: false });

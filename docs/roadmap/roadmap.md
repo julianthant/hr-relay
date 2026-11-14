@@ -2,6 +2,24 @@
 
 Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation; track operator preview and live sign-off separately.
 
+## Merging into staging
+
+One line per feature branch. Merged features are in staging; the rest say what they wait for.
+
+- [done] Runs replay, Runs status, Runs process, Settings subscription and usage, Storage health, Processing review, Workers member state — merged.
+- [now] Logs failed run — its pull request waits on one failing architecture check: the new sign-in refusal fixtures are missing from the shared fixtures list.
+- [now] Onboarding served data — its pull request waits on the same fixtures-list check; the live dry run and operator sign-off are the last ticket.
+- [now] Work Study workflow — its pull request waits on one failing unit test whose expected sentence changed; the CI-fix ticket is in review, and the live PayPath dry run follows.
+- [now] I-9 served data — its pull request waits on a storage-doctor test that sees no worker commit during its pass (the test baseline ticket); the live dry run and sign-off follow.
+- [now] Emergency Contact served data — its pull request waits on a failing Run dialog test (the reference spreadsheet control is missing); typed Employee ID lookup is in review, and the full dry run and sign-off follow.
+- [now] Assistant agent — checks are green; it waits only on proof that a copy of the real store upgrades to schema 29, which is running now. The browser check runs on staging after it merges.
+- [now] Spreadsheets pin and tags — sits on the Assistant agent pull request, and merges after it; its staging sync is in review.
+- [now] CI pipeline — its pull request has a required check cancelled by a newer run; two tickets are left, both waiting on later releases.
+- [now] Storage read speed — no pull request yet; the change-log ticket is in review, then planner statistics, the store-copy proof and slow-read events.
+- [now] Account Duo re-enrolment — no pull request yet; the routes ticket is in review, then the Settings Security group.
+- [now] Timekeeper initials — no pull request yet; the Separations input ticket is in review, then a store-copy upgrade, a live dry run and sign-off.
+- [next] Workers session state — no pull request yet; its staging sync is in review and the state replacement follows, after Emergency Contact merges.
+
 ## Foundation
 
 - [done] Approved mock dashboard frozen — keep parity screenshots as the visual contract.
@@ -58,7 +76,7 @@ Worker custody merges first. Schema changes merge one at a time, in this order: 
 
 The approved combined mock on `design/dashboard-mock` is the dashboard. Port it once, then wire each area to served data and delete that area's fixtures. A served surface never shows fixture data.
 
-- [next] Design port — merge the approved design into staging in one pull request: rewrite or delete the tests of removed pages and controls, delete the unreachable old UI and refreeze the parity references once.
+- [next] Design port — merge the approved design into staging in one pull request: rewrite or delete the tests of removed pages and controls, and delete the unreachable old UI.
 - [next] Logs panel wiring — serve the identity review with display labels and a short reason, a log for every batch member, pause and stop per member, Rerun with a Records pick and the result label of an answered decision.
 - [next] Notifications wiring — the bell swaps the workflow list for notifications; serve command notifications (recovery, command result, bulk result) as Priority items with the needs-you count.
 - [next] Run dialog wiring — every workflow takes reference spreadsheets in the Run and Rerun dialogs: several worksheets and a version per spreadsheet, column mappings per worksheet and name-to-ID matching.
@@ -67,7 +85,7 @@ The approved combined mock on `design/dashboard-mock` is the dashboard. Port it 
 - [next] Sessions bar wiring — serve the open state as a view setting, Pause all and Stop all for a group, and the idle refresh countdown.
 - [next] Emergency Contact review form — show Employee ID, name, date completed, home address, phones and the Emergency Information half; drop PID and remove Add record.
 - [next] Assistant panel wiring — run the floating panel on served conversation parts with typed-yes approval, the full-access mode and History; lands with Assistant phase 1.
-- [next] Mock cleanup — delete each area's fixtures and mock flags once served renders the same, and right-size parity to 150-200 states.
+- [next] Mock cleanup — delete each area's fixtures and mock flags once served renders the same.
 
 ## Workflows live on the Mac
 

@@ -63,7 +63,7 @@ it("serves a native Lookup batch root Retry, retains its session once on replay 
   assert.ok(mismatched.state === "rejected" && mismatched.code === "schema-mismatch");
   descriptor = personLookupDescriptor;
   const blocked: ((repositories: AuthorityRepositories) => AuthorityRepositories)[] = [
-    repositories => ({ ...repositories, runs: { ...repositories.runs, admission: () => ({ state: "draining", commandId: randomUUID() }) } }),
+    repositories => ({ ...repositories, runs: { ...repositories.runs, admission: () => ({ state: "draining", commandId: randomUUID(), hold: "update" }) } }),
   ];
   for (const view of blocked) {
     assert.equal(batchMemberRetryAvailable(view(h.database.authority), failed, descriptor, workflowQueueCapabilities("person-lookup")), false);

@@ -12,6 +12,7 @@ import {
 import {
   advanceProfileRegistryDocument,
   ProfileRegistryRowSchema,
+  type ProfileDetailsPatch,
   type ProfileRegistryDocument,
   type ProfileRegistryRow,
   type ProfileSelectionChangeReason,
@@ -70,7 +71,7 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
     ensureRoot(profileId: string): string {
       return ensureProfileRoot(root, z.uuid().parse(profileId));
     },
-    update(profileId: string, patch: Partial<Pick<ProfileRegistryRow, "lastSignedInAt" | "lifecycle">>): ProfileRegistryRow {
+    update(profileId: string, patch: Partial<Pick<ProfileRegistryRow, "lastSignedInAt" | "lifecycle">> & ProfileDetailsPatch): ProfileRegistryRow {
       return withProfileLock(root, () => {
         const id = z.uuid().parse(profileId);
         const current = read();

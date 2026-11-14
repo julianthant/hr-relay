@@ -4,15 +4,13 @@ import { Spinner, Button, PageHeading } from "../../ds/ui.js";
 import { ActivityBreadcrumbs, ActivityDrilldown } from './activity-drilldown.js';
 import type { ActivityDrilldownData, ActivityBrowse, ActivitySelectionHandler } from './activity-drilldown-model.js';
 import { ActivitySkeleton } from "./activity-loading.js";
-import type { ActivityDatePreset, ActivityDateRange } from "./activity-model.js";
-import { ActivityRange } from "./activity-range.js";
+import type { ActivityDateRange } from "./activity-model.js";
 import { AnalyticsSections, AnalyticsToolbar } from "./analytics-view.js";
 import type { ActivityViewState } from "./activity-view-model.js";
 
-export function ActivityView({ data, range, today, rangeRevision = 0, period, onPreset, onRange, onExport, notice, selection, onSelection, browse, pending = false, blocked = false }: {
-  data: ActivityViewState; range: ActivityDateRange; today: string; period: ActivityDatePreset;
-  rangeRevision?: number;
-  onPreset: (preset: ActivityDatePreset) => void; onRange: (range: ActivityDateRange) => void;
+export function ActivityView({ data, range, today, onRange, onExport, notice, selection, onSelection, browse, pending = false, blocked = false }: {
+  data: ActivityViewState; range: ActivityDateRange; today: string;
+  onRange: (range: ActivityDateRange) => void;
   onExport?: (format: "csv" | "xlsx") => void | Promise<void>; notice?: string;
   browse?: ActivityDrilldownData; pending?: boolean; blocked?: boolean;
   selection?: ActivityBrowse | null; onSelection?: ActivitySelectionHandler;
@@ -34,9 +32,8 @@ export function ActivityView({ data, range, today, rangeRevision = 0, period, on
   return <section aria-label="Analytics report" className="settings-reference-page settings-data-section ui-theme-scope text-ui-primary">
     {selection && onSelection && data.state === 'loaded' && <ActivityBreadcrumbs report={data.report} selection={selection} onSelection={onSelection} browse={browse} />}
     <PageHeading title="Analytics" description="How your workflows are going." />
-    <AnalyticsToolbar range={range} today={today} period={period} onPreset={onPreset} onRange={onRange}
+    <AnalyticsToolbar range={range} today={today} onRange={onRange}
       workflows={data.state === "loaded" ? data.report.analytics.workflows : []} workflow={workflow} onWorkflow={setWorkflow}
-      rangeInput={<ActivityRange key={rangeRevision} range={range} onApply={onRange} onEdit={() => onPreset('custom')} />}
       exportButton={<Button variant="secondary" aria-busy={!!exporting || undefined} disabled={data.state !== "loaded" || pending || blocked || !onExport || !!exporting} icon={exporting ? <span aria-hidden><Spinner /></span> : undefined} onClick={() => void exportCsv()}>Export</Button>} />
     {exportError?.report === data && <p role="alert" className="m-0 text-body text-ui-danger">{exportError.reason}</p>}
     {notice && <p role="status" className="m-0 text-body text-ui-secondary">{notice}</p>}

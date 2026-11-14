@@ -1,4 +1,4 @@
-import { separationsIdentityCheckModule } from "../../../support/helpers/registered-workflows.js";
+import { separationsDescriptor, separationsIdentityCheckModule } from "../../../support/helpers/registered-workflows.js";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 
@@ -24,9 +24,11 @@ import { MatchIdentityOutputSchema } from "../../../../src/models/workflows/sepa
 import { IdentityGateAnswerRequestSchema, type CommandRequest, type IdentityGateAnswerRequest } from "../../../../src/rules/commands/commands.js";
 import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { ApprovedIdentitySubjectSchema, IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
+import { ApprovedIdentitySubjectSchema, IdentityApprovalResultSchema, verifyIdentityApproval } from "../../../../src/rules/separations/identity-approval.js";
 import { VerifyIdentityApprovalOutputSchema } from "../../../../src/models/workflows/separations/verify-identity-approval.js";
 import { IdentityGateDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
+import { SeparationsCanonicalInput } from "../../../../src/workflows/separations/workflow.js";
+import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import type { IdentityEvidencePacket } from "../../../../src/rules/separations/identity-evidence.js";
 import {
 buildIdentityEvidencePacket,
@@ -90,7 +92,7 @@ function packetOf(overrides: Readonly<{
   eid?: string;
   documentName?: string;
   ucpathName?: string;
-  source?: "name-resolved" | "document-eid";
+  source?: "name-resolved" | "document-eid" | "operator-entered";
 }> = {}): IdentityEvidencePacket {
   const source = overrides.source ?? "name-resolved";
   const eid = overrides.eid ?? EID;
@@ -131,8 +133,8 @@ hdh: true,
   });
 }
 
-function checkpointOf(packet: IdentityEvidencePacket, nodeId = "comparison"): RunCheckpointRecord {
-  const task = descriptorRuntimeNodes(IDENTITY_DESCRIPTOR)
+function checkpointOf(packet: IdentityEvidencePacket, nodeId = "comparison", descriptor: AnyWorkflowDescriptor = IDENTITY_DESCRIPTOR): RunCheckpointRecord {
+  const task = descriptorRuntimeNodes(descriptor)
     .find((node) => node.kind === "task" && String(node.id) === nodeId);
   if (task === undefined || task.kind !== "task") throw new Error(`identity checkpoint task ${nodeId} is absent`);
   const value = MatchIdentityOutputSchema.parse({
@@ -141,15 +143,15 @@ function checkpointOf(packet: IdentityEvidencePacket, nodeId = "comparison"): Ru
     evidenceDigest: deriveIdentityEvidenceDigest(packet),
   });
   return RunCheckpointRecordSchema.parse({
-    workflowId: IDENTITY_DESCRIPTOR.id,
+    workflowId: descriptor.id,
     itemId: runRecordOf({ seed: 1 }).envelope.itemId,
     nodeId,
     attempt: 1,
     claimGeneration: 1,
     runId: RUN_ID,
     output: { schemaHash: deriveSchemaHash(task.uses.output, "output"), value },
-    descriptorVersion: IDENTITY_DESCRIPTOR.version,
-    contractFingerprint: IDENTITY_DESCRIPTOR.contractFingerprint,
+    descriptorVersion: descriptor.version,
+    contractFingerprint: descriptor.contractFingerprint,
     implFingerprint: taskImplFingerprint(task.uses),
     provenance: [],
     writtenAt: NOW,
@@ -188,6 +190,8 @@ function depsOf(
   w: DashboardWorld,
   gateNodes: readonly unknown[] | null = GATE_NODES,
   includeCanonical = true,
+  descriptor: AnyWorkflowDescriptor = IDENTITY_DESCRIPTOR,
+  attemptingWriteIntents: readonly unknown[] = [],
 ): RunDetailQueryDeps {
   const timelineEvents = {
     get: (eventId: string) => checkpointEvents.get(w)?.get(eventId),
@@ -195,13 +199,17 @@ function depsOf(
   const canonical = {
     reader: w.runReader,
     descriptors: {
-      resolve: (workflowId: string) => String(IDENTITY_DESCRIPTOR.id) === workflowId ? IDENTITY_DESCRIPTOR : undefined,
+      resolve: (workflowId: string) => String(descriptor.id) === workflowId ? descriptor : undefined,
     },
     database: {
       withAuthorityReadSnapshot: <Result>(read: () => Result) => read(),
       authority: {
-        runs: { listChildren: () => [] },
+        runs: { listChildren: () => [], get: () => w.authority.getRun(RUN_ID) },
+        deletedRuns: { get: () => undefined },
+        writeIntents: { listAttemptingByItem: () => attemptingWriteIntents, listByRun: () => [], listByBusinessKey: () => [] },
+        gateResults: { listByRun: () => [] },
         runCheckpoints: {
+          listByItem: () => [],
           latest: (workflowId: string, itemId: string, nodeId: string) =>
             w.authority.latestCheckpoint(workflowId, itemId, nodeId),
           listByAttempt: (workflowId: string, itemId: string, nodeId: string, attempt: number) => {
@@ -226,10 +234,13 @@ function depsOf(
   };
 }
 
-function seed(w: DashboardWorld, input?: Readonly<{ lifecycle?: unknown; version?: number }>): void {
+const SEPARATIONS_INPUT = { documentNumber: "4510", timekeeperName: "Synthetic Timekeeper", searchTimeoutMs: 15000 };
+
+function seed(w: DashboardWorld, input?: Readonly<{ lifecycle?: unknown; version?: number; descriptor?: AnyWorkflowDescriptor }>): void {
+  const descriptor = input?.descriptor ?? IDENTITY_DESCRIPTOR;
   queuedEventOf(w, {
     seed: 1,
-    workflow: String(IDENTITY_DESCRIPTOR.id),
+    workflow: String(descriptor.id),
     claimGeneration: 1,
     version: input?.version ?? 4,
     lifecycle: input?.lifecycle ?? PARKED_GATE_LIFECYCLE,
@@ -240,9 +251,12 @@ function seed(w: DashboardWorld, input?: Readonly<{ lifecycle?: unknown; version
     ...seeded,
     envelope: {
       ...seeded.envelope,
-      descriptorVersion: IDENTITY_DESCRIPTOR.version,
-      contractFingerprint: IDENTITY_DESCRIPTOR.contractFingerprint,
+      descriptorVersion: descriptor.version,
+      contractFingerprint: descriptor.contractFingerprint,
     },
+    ...(descriptor === separationsDescriptor ? { input: { ...seeded.input, parsed: { ...seeded.input.parsed, value: SEPARATIONS_INPUT,
+      protectedBindings: [{ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId: uuidOf(90) }],
+      schemaHash: deriveSchemaHash(SeparationsCanonicalInput, "output") } } } : {}),
   }));
 }
 
@@ -421,7 +435,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
   });
 
 
-  it("pins the parity fixture's gate descriptors and option labels to this query's", async () => {
+  it("pins the mock fixture's gate descriptors and option labels to this query's", async () => {
     for (const fixture of [FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_NAME_MISMATCH]) {
       const w = await world();
       seed(w, { version: fixture.expectedVersion });
@@ -441,7 +455,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
       assert.equal(payload.value.approvalShape, fixture.approvalShape);
       const decision = payload.value.decision;
       if (fixture.approvalShape === "choose-a-candidate") {
-        // D2: the pick table rows are the served options, keyed by their opaque refs; a typed EID is matched on the server.
+        // D2: the pick table rows are the served options, keyed by their opaque refs; without a declared gate correction there is no fill row.
         assert.equal(decision?.type, "pick-person");
         const confirm = decision?.options.find(({ id }) => id === "confirm");
         const table = confirm?.input?.kind === "candidate" ? confirm.input.table : undefined;
@@ -449,7 +463,8 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
         assert.deepEqual(table?.rows.map(row => row.cells.find(({ columnId }) => columnId === "eid")?.value), payload.value.options.map(({ maskedEid }) => maskedEid));
         const approve = payload.value.actions.find(action => action.kind === "command" && action.resolution === "approved");
         assert.deepEqual(confirm?.confirm, approve?.kind === "command" ? approve.confirm : undefined);
-        assert.deepEqual(table?.typed, { label: "Enter employee ID", placeholder: "8 digits", pattern: "^\\d{8}$", serverMatched: true });
+        assert.equal(table?.typed, undefined);
+        assert.equal(payload.value.correction, undefined);
         const cancelKey = w.projection.queueSurface(RUN_ID)?.actions.find(action => action.kind === "command" && action.command === "cancel")?.key;
         assert.deepEqual(decision?.options.find(({ id }) => id === "cancel-run")?.send, cancelKey === undefined ? undefined : { via: "row-action", actionKey: cancelKey });
       } else {
@@ -612,15 +627,12 @@ describe("resolving an identity answer", () => {
     assert.equal(digest, deriveIdentityEvidenceDigest(packet));
   });
 
-  it("resolves a typed Employee ID only when it names a found candidate", async () => {
-    const { w, value, digest } = await chooseWorld();
-    const typed = (typedEid: string) => resolveIdentityGateAnswer(depsOf(w),
-      answerOf(value, { decision: "approved", gateRef: value.gateRef, typedEid }), undefined);
-    assert.deepEqual(resolvedValue(accepted(typed(SEARCH_EID))), { decision: "approved", eid: SEARCH_EID, chosenFrom: "name-search", evidenceDigest: digest });
-    assert.deepEqual(resolvedValue(accepted(typed(EID))), { decision: "approved", eid: EID, chosenFrom: "checked", evidenceDigest: digest });
-    const stranger = typed("10000000");
-    assert.equal(stranger.state, "refused");
-    assert.equal(stranger.state === "refused" ? stranger.code : undefined, "invalid-state");
+  it("never answers the gate with a typed Employee ID, even one that names a found candidate", async () => {
+    const { value } = await chooseWorld();
+    for (const typedEid of [SEARCH_EID, EID, "10000000"]) {
+      assert.equal(IdentityGateAnswerRequestSchema.safeParse({ ...answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: optionRefOf(value) }),
+        payload: { decision: "approved", gateRef: value.gateRef, typedEid } }).success, false);
+    }
   });
 
   it("resolves a one-click approval and a rejection to canonical resolve-gate commands", async () => {
@@ -654,5 +666,82 @@ describe("resolving an identity answer", () => {
     assert.equal(different.state === "refused" ? different.code : undefined, "command-divergent");
     const flipped = resolveIdentityGateAnswer(depsOf(w), answerOf(value, { decision: "rejected", gateRef: value.gateRef }), journaled);
     assert.equal(flipped.state === "refused" ? flipped.code : undefined, "command-divergent");
+  });
+});
+
+const SEPARATIONS_GATE_NODES = [{ ...GATE_NODES[0], dependsOn: descriptorRuntimeNodes(separationsDescriptor)
+  .flatMap(node => node.kind === "gate" && String(node.id) === "identity-approval" ? node.dependsOn.map(String) : []) }];
+
+describe("the typed Employee ID lookup served with the Separations pick-person gate", () => {
+  async function separationsWorld(packet: IdentityEvidencePacket, attempting: readonly unknown[] = []) {
+    const w = await world();
+    seed(w, { descriptor: separationsDescriptor });
+    putCheckpoint(w, checkpointOf(packet, "comparison", separationsDescriptor));
+    const deps = depsOf(w, SEPARATIONS_GATE_NODES, true, separationsDescriptor, attempting);
+    return { w, value: available(gateSection(w, deps)).value };
+  }
+  const confirmTable = (value: ServedGate) => {
+    const input = value.decision?.options.find(({ id }) => id === "confirm")?.input;
+    return input?.kind === "candidate" ? input.table : undefined;
+  };
+
+  it("serves the typed row and the one-field rerun request for several candidates", async () => {
+    const { w, value } = await separationsWorld(packetOf({ searchEid: SEARCH_EID }));
+    const run = w.authority.getRun(RUN_ID);
+    assert.ok(run);
+    const keys = separationsDescriptor.timeline.filter(step => !run.envelope.stepOmissions?.some(omission => omission.step === step.key)).map(step => step.key);
+    assert.equal(value.decision?.type, "pick-person");
+    assert.deepEqual(confirmTable(value)?.typed, { label: "Employee ID", placeholder: "8 digits", pattern: "^10\\d{6}$", lookup: true });
+    assert.deepEqual(value.correction, { inputField: "operatorEmployeeId", label: "Employee ID", placeholder: "8 digits", pattern: "^10\\d{6}$",
+      expectedVersion: 4, confirm: { ...IDENTITY_REVIEW_TEXT.lookup, tone: "neutral" },
+      request: { workflowId: "separations",
+        rerunSource: { runId: RUN_ID, expectedVersion: 4, intent: "rerun", selectedStepKeys: keys,
+          gateCorrection: { gateId: "identity-approval", inputField: "operatorEmployeeId" } },
+        submissions: [{}], selectedStepKeys: keys, dryRun: run.envelope.dryRun, browserMode: run.envelope.browserMode ?? "headless",
+        captureBrowserScreenshots: run.envelope.captureBrowserScreenshots ?? false, priority: run.envelope.priority } });
+    assert.ok(keys.length > 0);
+    assert.equal(IdentityGateDetailWireSchema.safeParse(value).success, true);
+    assert.deepEqual(value.correction?.request.submissions, [{}]);
+    for (const eid of [EID, SEARCH_EID]) assert.equal(JSON.stringify(value).includes(eid), false, `full EID ${eid} is served`);
+  });
+
+  it("serves no typed row or correction for one candidate", async () => {
+    const { value } = await separationsWorld(packetOf());
+    assert.equal(value.decision?.type, "identity-mismatch");
+    assert.equal(JSON.stringify(value.decision).includes("typed"), false);
+    assert.equal(value.correction, undefined);
+  });
+
+  it.each([
+    { search: "matches the entered ID", searchEid: undefined, ucpathName: undefined },
+    { search: "resolves an old candidate", searchEid: SEARCH_EID, ucpathName: undefined },
+    { search: "matches the entered ID, whose UCPath name differs from the form", searchEid: undefined, ucpathName: "Okafor, Adaeze" },
+  ])("serves the replacement run's park with one option, Approve and Reject, and no typed row when the name search $search", async ({ searchEid, ucpathName }) => {
+    const typed = "10800002";
+    const packet = packetOf({ eid: typed, source: "operator-entered", ...(searchEid === undefined ? {} : { searchEid }), ...(ucpathName === undefined ? {} : { ucpathName }) });
+    const { value } = await separationsWorld(packet);
+    assert.deepEqual(packet.approvableEids, [typed]);
+    if (searchEid !== undefined) {
+      const forged = IdentityApprovalResultSchema.parse({ decision: "approved", eid: searchEid, chosenFrom: "name-search", evidenceDigest: deriveIdentityEvidenceDigest(packet) });
+      const refusal = verifyIdentityApproval(packet, forged);
+      assert.equal(refusal.state === "refused" ? refusal.code : refusal.state, "identity-approval-eid-not-shown");
+    }
+    assert.equal(value.options.length, 1);
+    assert.equal(value.decision?.type, "identity-mismatch");
+    assert.deepEqual(value.decision?.options.map(({ id }) => id), ["approve", "reject"]);
+    assert.equal(JSON.stringify(value.decision).includes("typed"), false);
+    assert.equal(value.correction, undefined);
+    assert.equal(value.reason, IDENTITY_REVIEW_TEXT.reason["eid-entered"]);
+    assert.equal(JSON.stringify(value).includes(typed), false, "the typed EID is served in full");
+    assert.match(JSON.stringify(value), /••••0002/u);
+  });
+
+  it("serves the candidates but no typed row or correction while a write intent is attempting", async () => {
+    const { value } = await separationsWorld(packetOf({ searchEid: SEARCH_EID }), [{ intentId: uuidOf(77) }]);
+    assert.equal(value.decision?.type, "pick-person");
+    assert.equal(value.options.length, 2);
+    assert.equal(confirmTable(value)?.rows.length, 2);
+    assert.equal(confirmTable(value)?.typed, undefined);
+    assert.equal(value.correction, undefined);
   });
 });

@@ -12,7 +12,7 @@ export const REBUILD_UNIT_TEST_EXCLUDE = [
   "tests/**/*.integration.test.ts",
   "tests/**/*.local.test.ts",
   "tests/architecture/**",
-  "tests/parity/**",
+  "tests/mocks/**",
   "tests/perf/**",
 ] as const;
 export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/**/*.integration.test.ts"] as const;
@@ -36,7 +36,7 @@ export const REBUILD_LOCAL_TEST_INCLUDE = [
   "tests/**/*.local.test.ts",
   "tests/**/*.local.integration.test.ts",
 ] as const;
-export const REBUILD_LOCAL_TEST_EXCLUDE = ["tests/parity/**"] as const;
+export const REBUILD_LOCAL_TEST_EXCLUDE = ["tests/mocks/**"] as const;
 export const REBUILD_TEST_PROJECTS = [
   { name: "unit", include: REBUILD_UNIT_TEST_INCLUDE, exclude: REBUILD_UNIT_TEST_EXCLUDE },
   { name: "integration", include: REBUILD_INTEGRATION_TEST_INCLUDE, exclude: REBUILD_INTEGRATION_TEST_EXCLUDE },

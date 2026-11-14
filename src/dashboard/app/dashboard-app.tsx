@@ -6,6 +6,8 @@ import { PreflightOcrContext, createServedPreflightOcrPort } from "../surfaces/s
 import { PreflightAssistantContext, createServedPreflightAssistantPort, type PreflightAssistantPort } from "../surfaces/settings/preflight/preflight-assistant-model.js";
 import { ChatGptAccountContext, createServedChatGptAccountPort } from "../surfaces/settings/general/chatgpt-account-model.js";
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
+import { StartupLoading } from "../surfaces/shell/startup-loading.js";
+import { useStartupGate } from "./startup/startup-gate.js";
 import { usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import { DeleteAccountControl } from "../surfaces/settings/general/ui-settings-records-general-paths.js";
@@ -18,7 +20,7 @@ import { HubShell } from "../surfaces/shell/hub-shell.js";
 import { useHubMotion } from "../ds/theme/motion.js";
 import "../ds/theme/hub-theme.css";
 import { useInboxWiring, type InboxWiring } from "../state/inbox-wiring-adapter.js";
-import { useSearchWiring } from "../state/search-wiring-adapter.js";
+import { useLibrarySheets, useSearchWiring } from "../state/search-wiring-adapter.js";
 import { useQueueWiring } from "../state/queue-wiring-adapter.js";
 import { useApplicationLifecycle } from "../state/application-lifecycle-model.js";
 import type { RunWiringConfirm } from "../state/run-wiring-adapter.js";
@@ -106,12 +108,14 @@ import { PAUSE_ALL_EFFECT, PROPOSED_STATUS, dsStatusOf } from "../surfaces/share
 import { StorageNotice } from "../surfaces/settings/storage/storage-settings.js";
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { BulkRunCommandResponseSchema } from "../../rules/commands/commands.js";
+import { RunIdSchema } from "../../rules/identity/ids.js";
 import { notificationTargetUnavailable, resolveRunNavigation } from "./navigation/run-navigation.js";
 import type { NotificationReads } from "../surfaces/notifications/notification-rail-model.js";
 import { notificationDestinationRefusal, useWorkspaceNotifications } from "../surfaces/notifications/notifications-preview-model.js";
 import { withCommandNotices, type NotificationDestination, type NotificationItem } from "../surfaces/notifications/notifications-view-model.js";
 import {
-bulkSubjectsOf,
+bulkSubjectsOf, BULK_VERB_LABEL,
 composeBulkRunCommand,
 type BulkBatchOutcome,
 type BulkVerbPlan,
@@ -159,6 +163,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const profileClient = useDashboardClient();
   const publicProfile = usePublicProfileSession(profileClient, profileSource === "served");
   const session = profileSource === "served" ? publicProfile.state : undefined;
+  const startup = useStartupGate(session, publicProfile.failure, publicProfile.port);
   const [profileCreationChosen, setProfileCreationChosen] = useState(false);
   useEffect(() => { if (session?.state === "active") setProfileCreationChosen(false); }, [session?.state]);
   const bootstrap = useBootstrap(session, profileSource === "mock" || session?.state === "active");
@@ -230,10 +235,12 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
         <EmptyState title="Invalid navigation link" description="The view parameters are invalid. Open the dashboard to recover." action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />
       ) : route.onboardingSetup !== undefined && profileSource === "served" && session?.state === PROFILE_ONBOARDING_STATE ? (
         <OnboardingSetup page="fast" port={publicProfile.port} />
+      ) : profileSource === "served" && startup.loading ? (
+        <StartupLoading />
       ) : profileSource === "served" && (publicProfile.failure || session !== undefined && (session.state !== "active" || session.duoState !== "ready")) ? (
         <Onboarding step={session?.state === PROFILE_ONBOARDING_STATE ? "duo" : session?.state === "active" ? "duo" : session?.state === "signed-out" && session.resumable ? "login" : route.onboarding === "signup" && profileCreationChosen || route.onboarding !== "login" && session?.state === "signed-out" && session.signUpRequired ? "signup" : "login"}
-          authenticated={session?.state === "active"} port={publicProfile.port} resumable={session?.state === "signed-out" && session.resumable === true}
-          problem={publicProfile.failure ? operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE")
+          authenticated={session?.state === "active"} port={publicProfile.port}
+          problem={publicProfile.failure || startup.unavailable ? operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE")
             : session?.state === "refused" || session?.state === "error" ? operatorFailureSentence(session.code)
               : session?.state === "cancelling" ? operatorFailureSentence("PROFILE_LOGOUT_BLOCKED")
                 : session?.state === "signed-out" && session.logoutIncomplete ? operatorFailureSentence("PROFILE_LOGOUT_INCOMPLETE") : undefined}
@@ -259,7 +266,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
                 : { state: publicProfile.accountDeletion.state, personName: boot.actor.label,
                   message: operatorFailureSentence(publicProfile.accountDeletion.state === "uncertain" ? "PROFILE_ACCOUNT_DELETION_REFUSED" : publicProfile.accountDeletion.code) }} />
             : undefined}
-          accountPage={profileSource === "served" && session?.state === "active" && session.account !== undefined && publicProfile.logout !== undefined ? { values: session.account, duo: session.duoState === "ready" ? "ready" : "setup", onSignOut: () => { void publicProfile.logout(); } } : undefined}
+          accountPage={profileSource === "served" && session?.state === "active" && session.account !== undefined && publicProfile.logout !== undefined ? { values: session.account, duo: session.duoState === "ready" ? "ready" : "setup", onSignOut: () => { void publicProfile.logout(); }, details: request => profileClient.changeProfileDetails(request), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}
@@ -313,7 +320,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
   if (bootstrap.state === "failed") {
     return (
       <main
-        data-parity-ready="failed"
+        data-mock-ready="failed"
         className="flex min-h-screen items-center justify-center bg-[color:var(--ds-surface-page)] p-[var(--ds-space-loose)]"
       >
         <div className="max-w-prose text-[color:var(--ds-fg)]">
@@ -327,7 +334,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
   }
   return (
     <main
-      data-parity-ready="loading"
+      data-mock-ready="loading"
       className="flex min-h-0 flex-1 flex-col bg-[color:var(--ds-surface-page)]"
     >
       <DashboardSkeleton settings={new URLSearchParams(window.location.search).has("settings")} settingsContent={
@@ -371,6 +378,14 @@ interface LoadedAppProps {
   startupPreflight?: boolean;
 }
 
+
+/** A stored command result opens its run through the same validated served navigation as a run notice. */
+function commandResultRun(destination: NotificationDestination): NotificationDestination | undefined {
+  if (destination.kind !== "command-result") return destination;
+  const request = destination.request;
+  if (!("target" in request) || !("runId" in request.target) || destination.day === undefined) return undefined;
+  return { kind: "run", runId: request.target.runId, day: destination.day };
+}
 
 function LoadedApp({
   profileTarget,
@@ -485,6 +500,7 @@ function LoadedApp({
 type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: RetainedCommandRequest };
   const [pendingBulk, setPendingBulk] = useState<(PendingBulkCommand & { readonly scope: CommandExecutionScope }) | null>(null);
   const [bulkReview, setBulkReview] = useState(false);
+  const [openedBulk, setOpenedBulk] = useState<BulkBatchOutcome | null>(null);
   const [noticeRead, setNoticeRead] = useState<ReadonlySet<string>>(() => new Set());
   const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(() => statusMock() === "command-results" ? STATUS_MOCK_BULK_OUTCOME : null);
   const [, refreshCommandRecovery] = useState(0);
@@ -541,7 +557,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const applicationBusy = appAttempts.some(attempt => attempt.state === "pending" || attempt.outcome?.kind === "uncertain");
   const quitting = appAttempts.some(attempt => attempt.request.type === "pause-all-and-quit"
     && (attempt.state === "pending" || attempt.outcome?.kind === "confirmed" || attempt.outcome?.kind === "uncertain")) || application?.state === "quitting";
-  const allPaused = application !== undefined && application.targets.length > 0 && application.targets.every(target => target.pause?.state === "paused" && target.pauseUnavailable === false);
   useEffect(() => {
     const quit = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "q") {
@@ -716,7 +731,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             const folded = settleCommandResult(outcome.reply);
             if (folded.kind === "refused") {
               const surface = dayWire?.queueSurfaces.find(row => row.runId === request.target.runId);
-              const entry = commandResultFeedEntry({ settlement: { ...folded, problem: outcome.feedback.text, message: outcome.feedback.text },
+              const entry = commandResultFeedEntry({ settlement: { ...folded, problem: outcome.feedback.text },
                 targetRunId: request.target.runId, expectedVersion: request.target.expectedVersion, commandId: request.commandId,
                 subject: surface?.title ?? `run ${request.target.runId}`, workflowLabel: workflowLabelOf(surface?.workflowId ?? activeWorkflowId),
                 actionLabel: label, clock: fmtClock(nowIso), actorId: request.requestedBy });
@@ -745,7 +760,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const envelope = { commandId: crypto.randomUUID(), requestedAt: nowIso, requestedBy: boot.actor.id, source: "dashboard" };
     const targets = application.targets.map(({ runId, expectedVersion }) => ({ runId, expectedVersion }));
     if (action === "resume") {
-      if (!allPaused) return;
+      if (application.pause !== "paused") return;
       const plan: BulkVerbPlan = { verb: "resume", label: "Resume", eligible: targets.map(target => ({ ...target,
         title: dayWire?.queueSurfaces.find(row => row.runId === target.runId)?.title ?? target.runId })), skipped: [], unavailable: [] };
       void executeShell(BulkRunCommandRequestSchema.parse({ ...envelope, bulkCommandId: envelope.commandId, family: "run", type: "resume", targets, mode: "best-effort" }), "Resume all runs", plan).then(lifecycle.refresh);
@@ -1036,9 +1051,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     setRoute(current => ({ ...current, view: { ...current.view, preview: id, mockRun: (runs.find(run => run.id === `mock:${id}:sample`) ?? runs.find(run => !run.parentId) ?? runs[0])?.id, records: undefined } }));
   }, [mockRuns, setRoute]);
   const previewSearchData = useWorkspaceSearchData({ today, day, unavailable: dateError, rows: queueRows, workflowLabel: workflowLabelOf, mockRuns });
+  const searchTitles = useMemo(() => new Map(queueRows.map(row => [String(row.runId), row.title])), [queueRows]);
   const servedSearchData = useSearchWiring({ client, enabled: workflowComposition.search === "served" && route.view?.search === true,
-    query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows });
-  const searchData = workflowComposition.search === "mock" ? previewSearchData : servedSearchData;
+    query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows, titles: searchTitles });
+  const librarySheets = useLibrarySheets(client, workflowComposition.search === "served" && route.view?.search === true);
+  const searchData = useMemo(() => workflowComposition.search === "mock" ? previewSearchData : { ...servedSearchData, sheets: librarySheets.sheets, sheetsUnavailable: librarySheets.unavailable }, [workflowComposition.search, previewSearchData, servedSearchData, librarySheets]);
   const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast });
   const [notificationReads, setNotificationReads] = useState<NotificationReads>({});
   const notifications = useWorkspaceNotifications(notificationScenario(), {
@@ -1056,9 +1073,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     ...(bulkOutcome === null ? [] : [bulkResultNotice(bulkOutcome)]),
   ];
   const railNotifications = withCommandNotices(notifications, commandNotices);
-  const openInbox: InboxWiring["open"] = (item, navigate, opened, refused) => item.kind === "command" ? navigate(item.destination, opened, refused) : inbox.open(item, navigate, opened, refused);
   // Local command notices are not server rows: their read state lives here, never in the served inbox.
   const localNoticeIds = new Set(commandNotices.map(notice => notice.id));
+  const openInbox: InboxWiring["open"] = (item, navigate, opened, refused) => localNoticeIds.has(item.id) ? navigate(item.destination, opened, refused) : inbox.open(item, navigate, opened, refused);
   const railInbox = workflowComposition.inbox === "served" ? { ...inbox, open: openInbox,
     state: withCommandNotices(inbox.state, commandNotices.map(notice => noticeRead.has(notice.id) ? { ...notice, read: true } : notice)),
     control: async (id: string, action: Parameters<InboxWiring["control"]>[1]) => {
@@ -1073,8 +1090,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId });
   notificationContext.current = { day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId };
   const notificationNavigation = useRef(0);
-  const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
+  const openNotification = useCallback((requested: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
     const request = ++notificationNavigation.current;
+    const destination = commandResultRun(requested);
+    if (destination === undefined) { refused(notificationTargetUnavailable()); return; }
     if (destination.kind === "local-recovery") { setPendingRecovery(destination.key); opened(); return; }
     if (destination.kind === "local-bulk-result") { setBulkReview(true); opened(); return; }
     if (destination.kind === "local-command-result") {
@@ -1082,6 +1101,18 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       setCommandResults(previous => previous.filter(result => result.id !== destination.id));
       if (entry !== undefined) selectRun(entry.targetRunId);
       opened();
+      return;
+    }
+    if (destination.kind === "bulk-result" && (destination.type === "cancel" || destination.type === "retry" || destination.type === "resume")) {
+      const rows = notificationContext.current.rows;
+      const title = (runId: string) => rows.find(row => row.runId === runId)?.title ?? "Earlier run";
+      const response = BulkRunCommandResponseSchema.safeParse({ state: "vector", bulkCommandId: destination.bulkCommandId, type: destination.type, requestedCount: destination.requestedCount, results: destination.results });
+      if (!response.success) { refused(notificationTargetUnavailable()); return; }
+      const ids = [...destination.results.map(result => result.runId), ...destination.notAttempted];
+      setOpenedBulk({ plan: { verb: destination.type, label: BULK_VERB_LABEL[destination.type], eligible: [], skipped: destination.notAttempted.map(runId => ({ runId, title: title(runId) })), skippedReason: "Not attempted", unavailable: [] },
+        days: new Map(Object.entries(destination.days)),
+        subjects: new Map(ids.map(runId => [runId, title(runId)])), response: response.data });
+      setBulkReview(true); opened();
       return;
     }
     if (destination.kind === "settings") {
@@ -1208,7 +1239,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       showSessions: () => setSessionsOpen(true),
     }}>
     <div
-      data-parity-ready={ready ? "true" : "loading"}
+      data-mock-ready={ready ? "true" : "loading"}
       className="dashboard-shell relative flex min-h-0 min-w-0 flex-1 flex-col"
       data-settings-takeover={["settings", "archive", "activity", "explore"].includes(takeover)}
     >
@@ -1266,7 +1297,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               void executeShell(request, retained.label, plan, true);
             }}
           />
-          <BulkCommandFeedback bulkOutcome={bulkOutcome} reviewing={bulkReview} onReviewed={() => { setBulkReview(false); setBulkOutcome(null); }} onSelectRun={selectRun} />
+          <BulkCommandFeedback bulkOutcome={openedBulk ?? bulkOutcome} reviewing={bulkReview} onReviewed={() => { setBulkReview(false); if (openedBulk === null) setBulkOutcome(null); setOpenedBulk(null); }} onSelectRun={runId => {
+            if (openedBulk === null) { selectRun(runId); return; }
+            const runDay = openedBulk.days?.get(runId);
+            const refuse = (message: string) => toast({ tone: "danger", title: "Run unavailable", description: message });
+            if (runDay === undefined) { refuse(notificationTargetUnavailable()); return; }
+            openNotification({ kind: "run", runId: RunIdSchema.parse(runId), day: runDay }, () => undefined, refuse, workflowComposition.inbox);
+          }} />
 
 
           <CommandResultFeed results={commandResults} />
@@ -1303,9 +1340,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               <div className="dashboard-log-column">
                 <section aria-label="Action panel" className="dashboard-action-panel">
           <FocusQueueToolbar
-            pauseControls={<PauseAllQuitControls state={application === undefined ? "unavailable" : applicationBusy || quitting ? "pausing" : application.state === "blocked" ? "blocked" : application.state !== "ready" ? "pausing" : allPaused ? "paused" : "ready"}
+            pauseControls={<PauseAllQuitControls state={application === undefined ? "unavailable" : application.state !== "ready" || application.pause === "pause-pending" ? "pausing" : application.pause === "paused" ? "paused" : "ready"}
               activeCount={application?.targets.length ?? 0} quitRequested={quitRequested} onQuitDismiss={() => setQuitRequested(false)}
-              onPauseAll={() => applicationAction("pause-all")} onResumeAll={() => applicationAction("resume")} onPauseAndQuit={() => applicationAction("pause-all-and-quit")} />}
+              onPauseAll={applicationBusy || quitting ? undefined : () => applicationAction("pause-all")} onResumeAll={applicationBusy || quitting ? undefined : () => applicationAction("resume")} onPauseAndQuit={applicationBusy || quitting ? undefined : () => applicationAction("pause-all-and-quit")} />}
             sort={sort}
             onSort={onSort}
             active={filter}

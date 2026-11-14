@@ -24,7 +24,7 @@ import { OperationsToolbarRow } from '../shell/operations-toolbar.js';
 import { OUTCOME_CHIP, bulkSummary } from "./queue-toolbar-model.js";
 import { QUEUE_SORTS, type QueueSortKey } from "./queue-model.js";
 import { PAUSE_ALL_EFFECT, PAUSE_ALL_PENDING_STATUS, stepInterruptLabel } from "../shared/status/status-model.js";
-import type { StepInterruptWire } from "../../../models/dashboard/projection.js";
+import type { QueueSurfaceWire, StepInterruptWire } from "../../../models/dashboard/projection.js";
 import {
   bulkClosingAssurance,
   bulkConfirmBody,
@@ -334,7 +334,7 @@ export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, 
                   onOpen={() => { onReviewed(); onSelectRun(entry.runId); }} />
               ))}
               {/* Skipped rows keep a place so missing outcomes reconcile with the original selection. */}
-              {reviewing.plan.skipped.map(row => <BulkResultRow key={row.runId} outcome="not-attempted" subject={row.title} reason={`Not offered ${reviewing.plan.label.toLowerCase()}`}
+              {reviewing.plan.skipped.map(row => <BulkResultRow key={row.runId} outcome="not-attempted" subject={row.title} reason={reviewing.plan.skippedReason ?? `Not offered ${reviewing.plan.label.toLowerCase()}`}
                 onOpen={() => { onReviewed(); onSelectRun(row.runId); }} />)}
             </div>
           )}
@@ -370,24 +370,23 @@ export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, 
   </>;
 }
 
-export function RunPauseControl({ runLabel, state, interrupt, onAction }: {
+export function RunPauseControl({ runLabel, state, command, interrupt, onAction }: {
   runLabel: string;
-  state: "running" | "pause-pending" | "paused" | "resume-pending" | "unavailable";
+  state: NonNullable<QueueSurfaceWire["pauseControl"]>["state"];
+  command?: "pause" | "resume";
   interrupt?: StepInterruptWire;
   onAction?: (action: "pause" | "resume") => void;
 }) {
-  const resumable = state === "paused";
-  const pending = state === "pause-pending" || state === "resume-pending";
   const pendingStatus = stepInterruptLabel(interrupt) ?? "Pause is not yet recorded.";
   return <div className="flex items-center gap-2" aria-label={`${runLabel} pause controls`}>
 
-    <Button size="sm" variant="secondary" disabled={pending || state === "unavailable" || onAction === undefined} onClick={() => onAction?.(resumable ? "resume" : "pause")}>{state === "pause-pending" ? "Pausing…" : state === "resume-pending" ? "Resuming…" : resumable ? "Resume" : "Pause"}</Button>
-    {(pending || resumable || state === "unavailable") && <span className="sr-only" role="status">{state === "pause-pending" ? pendingStatus : resumable ? "Pause recorded. Resume explicitly after restart." : state === "resume-pending" ? "Validating finished work. Resume is not yet confirmed." : "Run pause authority is unavailable."}</span>}
+    <Button size="sm" variant="secondary" disabled={command === undefined || onAction === undefined} onClick={() => command !== undefined && onAction?.(command)}>{command === "resume" ? "Resume" : state === "pause-pending" ? "Pausing…" : "Pause"}</Button>
+    {state !== "running" && <span className="sr-only" role="status">{state === "pause-pending" ? pendingStatus : state === "paused" ? "Pause recorded. Resume explicitly after restart." : "Run pause authority is unavailable."}</span>}
   </div>;
 }
 
 export function PauseAllQuitControls({ state, activeCount, onPauseAll, onResumeAll, onPauseAndQuit, quitRequested = false, onQuitDismiss }: {
-  state: "ready" | "pausing" | "paused" | "blocked" | "unavailable";
+  state: "ready" | "pausing" | "paused" | "unavailable";
   activeCount: number;
   quitRequested?: boolean;
   onQuitDismiss?: () => void;
@@ -400,7 +399,7 @@ export function PauseAllQuitControls({ state, activeCount, onPauseAll, onResumeA
   const resume = state === "paused";
   return <>
     <Button ref={pauseAll} size="sm" variant="secondary" className="size-7 p-0" aria-label={resume ? "Resume all runs" : "Pause all runs"} title={resume ? "Resume all paused runs" : PAUSE_ALL_EFFECT} icon={resume ? <Play aria-hidden className="size-4" /> : <Pause aria-hidden className="size-4" />} disabled={!enabled || activeCount === 0 || (resume ? !onResumeAll : !onPauseAll)} onClick={resume ? onResumeAll : onPauseAll} />
-    {state !== "ready" && <p role="status" className="sr-only">{state === "pausing" ? PAUSE_ALL_PENDING_STATUS : state === "paused" ? "All runs paused. Resume them next time." : state === "blocked" ? "Closure is unknown. Keep Relay open and check active runs." : "Pause all is unavailable. Check the connection."}</p>}
+    {state !== "ready" && <p role="status" className="sr-only">{state === "pausing" ? PAUSE_ALL_PENDING_STATUS : state === "paused" ? "All runs paused. Resume them next time." : "Pause all is unavailable. Check the connection."}</p>}
     <Dialog open={quitRequested} onOpenChange={open => { if (!open) onQuitDismiss?.(); }}><DialogContent size="sm" title="Pause all and quit?" description={PAUSE_ALL_EFFECT} onCloseAutoFocus={event => { event.preventDefault(); if (pauseAll.current?.disabled === false) pauseAll.current.focus(); else document.getElementById("dashboard-main-region")?.focus(); }}>
       <DialogFooter><Button variant="secondary" autoFocus onClick={onQuitDismiss}>Keep working</Button><Button disabled={!enabled || !onPauseAndQuit} onClick={() => { onQuitDismiss?.(); onPauseAndQuit?.(); }}>Pause all and quit</Button></DialogFooter>
     </DialogContent></Dialog>

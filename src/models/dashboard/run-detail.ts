@@ -13,6 +13,7 @@ import { FailureDisplaySchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
 import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } from "../trust/failure-resolution.js";
 import { PublicTransactionKeyDigestSchema } from "../write-safety/protected-input.js";
+import { WriteParkCodeSchema } from "../../rules/write-safety/write-safety-primitives.js";
 import { z } from "zod";
 import { DataObservationOriginSchema } from "../events/data-observation-origin.js";
 import {
@@ -753,14 +754,7 @@ export const CaptureListSchema = z.strictObject({
 
 /* ── the parked-write vocabulary, mirrored across the browser boundary ────── */
 
-/** The park codes and subject-binding evidence, RE-DECLARED here rather than imported, and pinned to the durable originals by the wire-connectivity test. */
-const ParkedWriteCodeSchema = z.enum([
-  "unknown",
-  "ambiguous",
-  "present-proof-invalid",
-  "binding-invalid",
-  "operator-required",
-]);
+/** The subject-binding evidence, RE-DECLARED here rather than imported, and pinned to the durable original by the wire-connectivity test. */
 
 export const ParkedWriteSubjectEvidenceSchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -871,7 +865,7 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   idempotencyKeyDigest: PublicTransactionKeyDigestSchema,
   fencedAt: IsoInstantSchema,
   parkedAt: IsoInstantSchema,
-  parkedCode: ParkedWriteCodeSchema,
+  parkedCode: WriteParkCodeSchema,
   /** A repository-authored digest projection; authority retains the original park evidence. */
   parkedMessage: z.string().min(1),
   subject: ParkedWriteSubjectWireSchema,
@@ -950,6 +944,11 @@ export const IdentityGateDetailWireSchema = z.strictObject({
   /** Ref frontend-backend-integration: an interactive control exists only because the server said so. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
   decision: RunDecisionWireSchema.optional(),
+  /** The fill row's lookup: a typed value starts this one-field rerun, which replaces the parked run; it never answers the gate. */
+  correction: z.strictObject({
+    inputField: z.string().min(1), label: z.string().min(1), placeholder: z.string().min(1), pattern: z.string().min(1),
+    expectedVersion: z.number().int().positive(), confirm: ActionConfirmWireSchema, request: StartPlanRequestSchema,
+  }).optional(),
 }).superRefine((gate, context) => {
   refineDecisionActions(gate.decision, gate.actions, context, ["decision"]);
   if (gate.approvalShape !== (gate.options.length > 1 ? "choose-a-candidate" : "one-click")) {

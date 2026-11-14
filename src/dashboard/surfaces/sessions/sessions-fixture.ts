@@ -63,7 +63,7 @@ export function previewSessionAdd(data: SessionsViewState, catalog: readonly Wor
   }))] };
 }
 
-/** Explicit parity fixture acknowledgment and readback. */
+/** Explicit mock fixture acknowledgment and readback. */
 export function createFixtureSessionPort(initial: SessionsViewState, catalog: readonly WorkflowCatalogEntry[], scenario: 'normal' | 'refused' | 'uncertain' = 'normal'): SessionPreviewCommandPort {
   let data = initial;
   const outcomes = new Map<string, SessionPreviewResult>();

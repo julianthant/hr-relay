@@ -144,10 +144,10 @@ export function architectureProjectViolations({
     "tests/**/*.integration.test.ts",
     "tests/**/*.local.test.ts",
     "tests/architecture/**",
-    "tests/parity/**",
+    "tests/mocks/**",
     "tests/perf/**",
   ])) {
-    violations.push("unit project must exclude integration suffixes, operator-machine markers, architecture, parity, and perf");
+    violations.push("unit project must exclude integration suffixes, operator-machine markers, architecture, mocks, and perf");
   }
   if (JSON.stringify(integrationInclude) !== JSON.stringify(["tests/**/*.integration.test.ts"])) {
     violations.push("integration project must include every recursive tests/**/*.integration.test.ts file");
@@ -175,8 +175,8 @@ export function architectureProjectViolations({
   if (JSON.stringify(localInclude) !== JSON.stringify(["tests/**/*.local.test.ts", "tests/**/*.local.integration.test.ts"])) {
     violations.push("local project must include only operator-machine marker files");
   }
-  if (JSON.stringify(localExclude) !== JSON.stringify(["tests/parity/**"])) {
-    violations.push("local project must exclude parity");
+  if (JSON.stringify(localExclude) !== JSON.stringify(["tests/mocks/**"])) {
+    violations.push("local project must exclude mocks");
   }
   if (JSON.stringify(reporters) !== JSON.stringify(["verbose"])) {
     violations.push("every Vitest entry point must use the single verbose streaming reporter from config");
@@ -197,17 +197,17 @@ export function testProjectTopologyViolations(
     const collected = collect(include).filter((path) => !excluded.has(path));
     return { name, files: collected };
   });
-  const parity = all.filter((path) => path.startsWith("tests/parity/"));
-  const runtime = all.filter((path) => !path.startsWith("tests/parity/"));
+  const mocks = all.filter((path) => path.startsWith("tests/mocks/"));
+  const runtime = all.filter((path) => !path.startsWith("tests/mocks/"));
   const cloud = projects.filter((project) => project.name !== "local");
   const violations = projectOwnershipViolations(
     runtime.filter((path) => !OPERATOR_LOCAL_TEST.test(path)),
     cloud.map((project) => ({
       ...project,
-      files: project.files.filter((path) => !path.startsWith("tests/parity/") && !OPERATOR_LOCAL_TEST.test(path)),
+      files: project.files.filter((path) => !path.startsWith("tests/mocks/") && !OPERATOR_LOCAL_TEST.test(path)),
     })),
   );
-  for (const path of parity) {
+  for (const path of mocks) {
     const owners = projects.filter(({ files }) => files.includes(path)).map(({ name }) => name);
     if (owners.length > 0) violations.push(`${path}: expected no Vitest projects, found ${owners.join(", ")}`);
   }
@@ -343,7 +343,7 @@ describe("reviewed architecture guard manifest", () => {
       writeFixture(root, "tests/architecture/guard.test.ts", "export {};\n");
       writeFixture(root, "tests/models/real.integration.test.ts", "export {};\n");
       writeFixture(root, "tests/perf/shape.integration.test.ts", "export {};\n");
-      writeFixture(root, "tests/parity/scene.test.ts", "export {};\n");
+      writeFixture(root, "tests/mocks/scene.test.ts", "export {};\n");
       assert.deepEqual(testProjectTopologyViolations(root), []);
       const missingPerf = REBUILD_TEST_PROJECTS.filter(({ name }) => name !== "perf");
       assert.match(testProjectTopologyViolations(root, missingPerf).join("\n"),
@@ -353,11 +353,11 @@ describe("reviewed architecture guard manifest", () => {
         : project);
       assert.match(testProjectTopologyViolations(root, integrationPerfLeak).join("\n"),
         /tests\/perf\/shape\.integration\.test\.ts: expected exactly one Vitest project, found integration, perf/u);
-      const parityLeak = REBUILD_TEST_PROJECTS.map((project) => project.name === "unit"
-        ? { ...project, exclude: project.exclude.filter((pattern) => pattern !== "tests/parity/**") }
+      const mockLeak = REBUILD_TEST_PROJECTS.map((project) => project.name === "unit"
+        ? { ...project, exclude: project.exclude.filter((pattern) => pattern !== "tests/mocks/**") }
         : project);
-      assert.deepEqual(testProjectTopologyViolations(root, parityLeak), [
-        "tests/parity/scene.test.ts: expected no Vitest projects, found unit",
+      assert.deepEqual(testProjectTopologyViolations(root, mockLeak), [
+        "tests/mocks/scene.test.ts: expected no Vitest projects, found unit",
       ]);
       writeFixture(root, "tests/support/helpers/helper.test.ts", "export {};\n");
       writeFixture(root, "tests/types/input.integration.test.ts", "export {};\n");

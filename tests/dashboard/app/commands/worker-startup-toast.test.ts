@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { appliedWorkerStartupToast, stoppedWorkerToasts, unconfirmedBulkWorkerToast, workerStartupToast, workflowWorkersStopped } from "../../../../src/dashboard/app/commands/worker-startup-toast.js";
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../../parity/helpers/fixture-day.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../../mocks/helpers/fixture-day.js";
 import { runLaunchAppliedToast } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import type { RunWorkerStartupFailure } from "../../../../src/rules/commands/commands.js";
 

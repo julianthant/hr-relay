@@ -48,6 +48,66 @@ li div, .intro { overflow-wrap: anywhere; }
 <main>
 <header><h1>Relay roadmap</h1><p class="intro">Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation; track operator preview and live sign-off separately.</p></header>
 <section>
+<h2>Merging into staging</h2>
+<p class="intro">One line per feature branch. Merged features are in staging; the rest say what they wait for.</p>
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>1</strong></span>
+<span class="count now">now <strong>11</strong></span>
+<span class="count next">next <strong>1</strong></span>
+<span class="count later">later <strong>0</strong></span></div>
+<ul><li>
+<span class="pill done">done</span>
+<div><strong class="name">Runs replay, Runs status, Runs process, Settings subscription and usage, Storage health, Processing review, Workers member state</strong><p class="description">merged.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Logs failed run</strong><p class="description">its pull request waits on one failing architecture check: the new sign-in refusal fixtures are missing from the shared fixtures list.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Onboarding served data</strong><p class="description">its pull request waits on the same fixtures-list check; the live dry run and operator sign-off are the last ticket.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Work Study workflow</strong><p class="description">its pull request waits on one failing unit test whose expected sentence changed; the CI-fix ticket is in review, and the live PayPath dry run follows.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">I-9 served data</strong><p class="description">its pull request waits on a storage-doctor test that sees no worker commit during its pass (the test baseline ticket); the live dry run and sign-off follow.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Emergency Contact served data</strong><p class="description">its pull request waits on a failing Run dialog test (the reference spreadsheet control is missing); typed Employee ID lookup is in review, and the full dry run and sign-off follow.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Assistant agent</strong><p class="description">checks are green; it waits only on proof that a copy of the real store upgrades to schema 29, which is running now. The browser check runs on staging after it merges.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Spreadsheets pin and tags</strong><p class="description">sits on the Assistant agent pull request, and merges after it; its staging sync is in review.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">CI pipeline</strong><p class="description">its pull request has a required check cancelled by a newer run; two tickets are left, both waiting on later releases.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Storage read speed</strong><p class="description">no pull request yet; the change-log ticket is in review, then planner statistics, the store-copy proof and slow-read events.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Account Duo re-enrolment</strong><p class="description">no pull request yet; the routes ticket is in review, then the Settings Security group.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Timekeeper initials</strong><p class="description">no pull request yet; the Separations input ticket is in review, then a store-copy upgrade, a live dry run and sign-off.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Workers session state</strong><p class="description">no pull request yet; its staging sync is in review and the state replacement follows, after Emergency Contact merges.</p></div>
+</li></ul>
+</section>
+<section>
 <h2>Foundation</h2>
 
 <div class="counts" aria-label="Status counts"><span class="count done">done <strong>10</strong></span>
@@ -244,7 +304,7 @@ li div, .intro { overflow-wrap: anywhere; }
 <span class="count later">later <strong>0</strong></span></div>
 <ul><li>
 <span class="pill next">next</span>
-<div><strong class="name">Design port</strong><p class="description">merge the approved design into staging in one pull request: rewrite or delete the tests of removed pages and controls, delete the unreachable old UI and refreeze the parity references once.</p></div>
+<div><strong class="name">Design port</strong><p class="description">merge the approved design into staging in one pull request: rewrite or delete the tests of removed pages and controls, and delete the unreachable old UI.</p></div>
 </li>
 <li>
 <span class="pill next">next</span>
@@ -280,7 +340,7 @@ li div, .intro { overflow-wrap: anywhere; }
 </li>
 <li>
 <span class="pill next">next</span>
-<div><strong class="name">Mock cleanup</strong><p class="description">delete each area&#39;s fixtures and mock flags once served renders the same, and right-size parity to 150-200 states.</p></div>
+<div><strong class="name">Mock cleanup</strong><p class="description">delete each area&#39;s fixtures and mock flags once served renders the same.</p></div>
 </li></ul>
 </section>
 <section>

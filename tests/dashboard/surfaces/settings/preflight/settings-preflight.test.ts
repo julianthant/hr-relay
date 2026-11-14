@@ -11,7 +11,7 @@ import { PreflightReportContent } from "../../../../../src/dashboard/surfaces/se
 import { PreflightCheckIdSchema } from "../../../../../src/models/preflight/preflight-contract.js";
 import { FingerprintSchema } from "../../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
-import { FIXTURE_EDITABLE_SETTINGS } from "../../../../parity/helpers/fixture-settings.js";
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../../mocks/helpers/fixture-settings.js";
 import { createPreflightHarness } from "../../../../support/fixtures/preflight-seams.js";
 
 Reflect.set(globalThis,"IS_REACT_ACT_ENVIRONMENT",true);
@@ -127,7 +127,7 @@ it("keeps independent workflow operations when readiness cannot be read", async 
   assert.equal(host.querySelector('[aria-label="Loading readiness checks"]'), null);
 });
 
-import { FIXTURE_SETTINGS_FACTS } from "../../../../parity/helpers/fixture-settings.js";
+import { FIXTURE_SETTINGS_FACTS } from "../../../../mocks/helpers/fixture-settings.js";
 
 it("does not claim an empty readiness group before any report has been observed", async () => {
   const client = { preflightScopes: () => Promise.resolve([]) } as unknown as DashboardClient;

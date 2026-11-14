@@ -2,14 +2,14 @@ import { createPersonPreferences } from "../../../src/dashboard/state/person-pre
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
-import { FIXTURE_EXPLORER_WIRE } from "../../parity/helpers/fixture-explorer.js";
-import { servedFixtureSources } from "../../parity/helpers/workflow-composition.js";
+import { FIXTURE_EXPLORER_WIRE } from "../../mocks/helpers/fixture-explorer.js";
+import { servedFixtureSources } from "../../mocks/helpers/workflow-composition.js";
 import { workflowComposition as servedWorkflowComposition } from "../../../src/dashboard/app/workflow-sources.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { vi } from "vitest";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
 import { disposeHttpRouteHarness, harness as backendHarness, type Harness as BackendHarness } from "../../support/helpers/backend/http-route-harness.js";
-import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m0 } from "../../parity/helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m0 } from "../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert_m0 from "node:assert/strict";
 import { act as act_m0,createElement as createElement_m0 } from "react";
@@ -20,7 +20,7 @@ import { DashboardApp as DashboardApp_m0 } from "../../../src/dashboard/app/dash
 import { createDashboardClient as createDashboardClient_m0,type DashboardClient as DashboardClient_m0 } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider as DashboardClientProvider_m0 } from "../../../src/dashboard/state/client-context.js";
 import { importWorkbook as importSpreadsheet_m0 } from '../../../src/rules/spreadsheets/workbook-io.js';
-import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m1 } from "../../parity/helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m1 } from "../../mocks/helpers/workflow-composition.js";
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { createFixtureBff as createFixtureBff_m0 } from "../../support/helpers/dashboard/served-fixtures/fixture-bff.js";
 // @vitest-environment jsdom
@@ -77,7 +77,7 @@ async function mount(overrides: Partial<DashboardClient_m0> = {}) {
     ...overrides,
   };
   const host=document.createElement("div"); document.body.append(host); root=createRoot_m0(host);
-  await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(DashboardApp_m0, { workflowComposition: workflows => ({ ...PARITY_WORKFLOW_COMPOSITION_m0(workflows) }), previewPreferences: preview })})));
+  await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(DashboardApp_m0, { workflowComposition: workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m0(workflows) }), previewPreferences: preview })})));
   await settle();
 }
 it_m0("command binding never renders implementation comment text", async () => {
@@ -204,7 +204,7 @@ function workflowButton(name: string): HTMLButtonElement {
 }
 async function click(node: HTMLElement) { await act_m1(async () => node.click()); await settle(); }
 let shellPreferences = createPersonPreferences("preview");
-async function mount(search: string, overrides: Partial<DashboardClient_m1> = {}, panelMode: "icon" | "sidebar" = "icon", workflowComposition = PARITY_WORKFLOW_COMPOSITION_m1) {
+async function mount(search: string, overrides: Partial<DashboardClient_m1> = {}, panelMode: "icon" | "sidebar" = "icon", workflowComposition = MOCK_WORKFLOW_COMPOSITION_m1) {
   window.history.replaceState(null, "", `/${search}`);
   await shellPreferences.change({ "preferences.workflowPanelMode": { set: panelMode } });
   const { app } = createFixtureBff_m1();
@@ -337,7 +337,7 @@ afterEach_m1(_afterEachFixture0);
       notificationStatus: async () => ({ state: "ready" as const, pending: 0 }),
       notificationTarget: async () => ({ kind: "run" as const, runId: row.runId, day: linkedDay.day }),
     }, "sidebar", workflows => {
-      const composition = PARITY_WORKFLOW_COMPOSITION_m1(workflows);
+      const composition = MOCK_WORKFLOW_COMPOSITION_m1(workflows);
       return { ...composition, inbox: "served" as const, dataSources: { ...composition.dataSources, separations: "served" } };
     });
     await editHeadlessPreference();
@@ -497,7 +497,7 @@ it_m1("passes canonical Queue outcomes through the mounted app and refreshes out
     }
   } finally { await _afterEachFixture0(); }
 });
-it_m1("keeps served Logs failures while explicit parity composition selects mock Logs for the same run", async () => {
+it_m1("keeps served Logs failures while explicit mock composition selects mock Logs for the same run", async () => {
   try {
     const { DashboardClientError } = await import("../../../src/dashboard/client/index.js");
     let reads = 0;
@@ -511,20 +511,20 @@ it_m1("keeps served Logs failures while explicit parity composition selects mock
     assert_m1.doesNotMatch(document.body.textContent ?? "", /Is this the right person\?|private transport detail/);
     const failedReads = reads;
     await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client,
-      children: createElement_m1(DashboardApp_m1, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }) })));
+      children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
     await settle();
     assert_m1.equal(reads, failedReads);
     assert_m1.match(document.body.textContent ?? "", /Is this the right person\?/);
     assert_m1.doesNotMatch(document.body.textContent ?? "", /Could not load logs|Logs unavailable|cross-source chronology unavailable/);
     const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows), FIXTURE_BOOTSTRAP_m1.workbookCompatibility)[0];
     assert_m1.ok(workflow);
-    const composition = PARITY_WORKFLOW_COMPOSITION_m1([{ ...workflow, workflowId: "generic-served-workflow" }]);
+    const composition = MOCK_WORKFLOW_COMPOSITION_m1([{ ...workflow, workflowId: "generic-served-workflow" }]);
     assert_m1.equal(composition.sources["person-lookup"], "mock");
     assert_m1.equal(composition.logsSources?.["person-lookup"], "mock");
     assert_m1.equal(composition.logsSources?.["generic-served-workflow"], "served");
   } finally { await _afterEachFixture0(); }
 });
-it_m1("passes the app client to a served Explorer read while parity explicitly retains mock Explorer", async () => {
+it_m1("passes the app client to a served Explorer read while mocks explicitly retains mock Explorer", async () => {
   try {
     const explorer = structuredClone(FIXTURE_EXPLORER_WIRE);
     let calls = 0;
@@ -560,7 +560,7 @@ it_m1("passes the app client to a served Explorer read while parity explicitly r
     await click(rejected);
     assert_m1.ok((document.querySelector('[data-step-number="16"]') as HTMLElement).hidden);
     const replacement = { ...client };
-    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client: replacement, children: createElement_m1(DashboardApp_m1, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }) })));
+    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client: replacement, children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
     await settle();
     assert_m1.equal((document.querySelector('[data-step-number="16"]') as HTMLElement).hidden, false);
     assert_m1.equal(calls, 0);
@@ -593,7 +593,7 @@ it_m1("an empty catalog is not a fabricated workflow queue",async()=>{
 try {
 
 
-  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, "icon", workflows => ({ ...PARITY_WORKFLOW_COMPOSITION_m1(workflows), catalogIncludesMocks: false, servedDay: true }));
+  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, "icon", workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m1(workflows), catalogIncludesMocks: false, servedDay: true }));
   assert_m1.match(document.body.textContent??"",/No workflows available/);
 
 } finally {

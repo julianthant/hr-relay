@@ -406,7 +406,7 @@ describe("retention and the pin sweep", () => {
     });
 
     const early = createDiagnosticRetentionSweep({ authority: database.authority, clock, lifecycle: testRunService(database, clock) });
-    assert.deepEqual(early.sweep().purged, []);
+    assert.deepEqual(early.sweep([ordinary.bundleId, pinned.bundleId]).purged, []);
 
     const later = new Date(clock.now().getTime() + 2 * 86_400_000);
     const sweep = createDiagnosticRetentionSweep({
@@ -414,7 +414,7 @@ describe("retention and the pin sweep", () => {
       clock: manualClock(later),
       lifecycle: testRunService(database, manualClock(later)),
     });
-    const report = sweep.sweep();
+    const report = sweep.sweep([ordinary.bundleId, pinned.bundleId]);
     assert.deepEqual(report.purged, [ordinary.bundleId]);
     assert.equal(database.authority.diagnosticBundles.get(ordinary.bundleId), undefined);
     assert.ok(database.authority.diagnosticBundles.get(pinned.bundleId));

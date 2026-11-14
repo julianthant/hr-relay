@@ -13,10 +13,8 @@
   --hub-dialog-shadow: 0 20px 60px #0003;
   --hub-launcher-shadow: 0 4px 12px #0002;
   --hub-dur-hover: 120ms;
-  --hub-panel-layer: 50;
   --hub-ease: cubic-bezier(0.23, 1, 0.32, 1);
 }
-html[data-hub] body:has([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]) { --hub-panel-layer:19; }
 [data-demo-theme="dark"] { --hub-focus-fill: #4a4a4a; --hub-focus-ink: #f2f2f2; --hub-shadow: 0 12px 40px #0006; }
 html[data-hub]:not([data-hub-input="pointer"]) :is(button, a, select, [tabindex]):not(input):not(textarea):not([tabindex="-1"]):focus-visible {
   background: var(--hub-focus-fill) !important;
@@ -31,7 +29,7 @@ html[data-hub] :is(.ds-focus-within, .ds-secret-input, .ds-unit-field):focus-wit
   outline: none !important;
   box-shadow: none !important;
 }
-html[data-hub] [tabindex="-1"]:not([role="menu"]):focus-visible { background: transparent !important; color: inherit !important; }
+html[data-hub] [tabindex="-1"]:not([role="menu"]):focus-visible { color: inherit !important; }
 /* Text fields never take a ring: the edge steps up one neutral step. */
 html[data-hub] :is(.date-input-group, .ds-secret-input, .ds-unit-field):is(:focus-within, [data-focus-within="true"]),
 html[data-hub] :is(textarea, input.input):focus-visible { border-color: var(--ds-field-focus-edge); box-shadow: none; }

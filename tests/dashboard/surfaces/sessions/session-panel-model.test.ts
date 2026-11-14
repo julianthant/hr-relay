@@ -5,7 +5,7 @@ import { type Root } from "react-dom/client";
 import { afterEach,it } from "vitest";
 import { workerTimelineView,type WorkerCardWire } from "../../../../src/dashboard/surfaces/sessions/session-panel-model.js";
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_DAY_WIRE } from "../../../parity/helpers/fixture-day.js";
+import { FIXTURE_DAY_WIRE } from "../../../mocks/helpers/fixture-day.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });

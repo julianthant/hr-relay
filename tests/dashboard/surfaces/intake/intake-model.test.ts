@@ -179,7 +179,7 @@ describe("ranks header candidates beside their mapping", () => {
     assert.ok(!label.includes("%"), label);
   });
 
-  it("draws every candidate the parity fixture serves, each carrying its rank", () => {
+  it("draws every candidate the mock fixture serves, each carrying its rank", () => {
     assert.ok(FIXTURE_INTAKE_MAPPING.headerCandidates.length > 0);
     for (const candidate of FIXTURE_INTAKE_MAPPING.headerCandidates) {
       assert.match(headerCandidateOptionLabel(candidate), /^row \d+ · confidence \d\.\d\d — /u);

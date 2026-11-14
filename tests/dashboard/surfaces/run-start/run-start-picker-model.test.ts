@@ -5,8 +5,8 @@ import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-st
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../parity/helpers/fixture-start.js";
-import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 
 const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
 const catalog = buildWorkflowCatalog(served, true, servedFixtureSources([]));
@@ -18,15 +18,15 @@ describe("shared run catalog", () => {
     expect(required).toBeDefined();
     expect(() => launchWorkflows([required!], { workflows: [], libraries: [] })).toThrow(/WORKBOOK_COMPATIBILITY_UNAVAILABLE/u);
   });
-  it("omits only parent-only previews from the picker while retaining the complete catalog", () => {
+  it("keeps hidden children and removed workflows out of the picker and catalog", () => {
     const visible = ["crm-doc-download", "emergency-contact", "i9-check-start", "kronos-pay-rule", "oath-signature", "oath-upload", "old-kronos-reports", "onbase", "onboarding", "person-lookup", "separations", "work-study"];
     expect(ids().sort()).toEqual(visible);
-    expect(catalog.map(flow => flow.id).sort()).toEqual([...visible, "i9-lookup"].sort());
-    expect(ids()).not.toContain("i9-lookup");
+    expect(catalog.map(flow => flow.id).sort()).toEqual(visible);
+    expect(ids()).not.toContain("i9-lookup"); expect(ids()).not.toContain("sharepoint-download");
     expect(ids("OCR")).toEqual([]); expect(ids("i-9")).toEqual(["i9-check-start"]);
     expect(ids("I-9 Lookup")).toEqual([]); expect(ids("SharePoint")).toEqual([]);
     expect(ids("Onboarding Documents")).toEqual(["crm-doc-download"]); expect(ids("Search")).toEqual(["person-lookup"]);
-    expect(catalog.filter(flow => flow.launch.state === "unavailable").map(flow => flow.id).sort()).toEqual(["i9-lookup"]);
+    expect(catalog.filter(flow => flow.launch.state === "unavailable").map(flow => flow.id).sort()).toEqual([]);
     expect(catalog.find(flow => flow.id === "ocr")).toBeUndefined();
   });
   it("uses served capability instead of restoring a preview launch when served input is absent", () => {

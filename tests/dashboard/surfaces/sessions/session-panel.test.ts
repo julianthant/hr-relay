@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";

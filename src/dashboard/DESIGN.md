@@ -4,7 +4,7 @@
 `ds/theme/tokens.ts` supplies named class strings. `kit.html` renders the real primitives through
 `kit/kit-page.tsx`. Start it with `npm run web` at `http://localhost:5174/kit.html`.
 
-Product mock workflows start with empty queues; the parity composition supplies the sample runs. Automatic backups and repairs stay invisible in the dashboard.
+Product mock workflows start with empty queues; the mock composition supplies the sample runs. Automatic backups and repairs stay invisible in the dashboard.
 
 ## Tokens
 
@@ -173,7 +173,7 @@ Every manual choice or input is one `DecisionCard` (`run-detail/logs/decision-ca
   - Columns never wrap. The column with the longest values truncates and shows the full value on hover.
   - A status that needs attention (On leave) takes the warning colour.
   - Under the card comes the question as a step line, then Confirm (primary) and Cancel run, the same buttons as every decision. Confirm stays disabled until a row is chosen.
-- The last row of every pick is a fill row for the operator's own value ("Enter employee ID", 8 digits; "Enter row number"), after any extra option such as "Add a new row". There is no "None of these" row: typing a value selects the fill row and clears any picked row, and picking a row clears the typed value. Confirm stays disabled until a typed value is valid. A typed employee ID is asked for only here, when Relay cannot find the person.
+- The last row of every pick is a fill row for the operator's own value ("Enter employee ID", 8 digits; "Enter row number"), after any extra option such as "Add a new row". There is no "None of these" row: typing a value selects the fill row and clears any picked row, and picking a row clears the typed value. Confirm stays disabled until a typed value is valid. A typed employee ID is asked for only here, when Relay cannot find the person. A typed employee ID is never matched against the rows: Relay looks that ID up in a run that replaces this one, and the operator confirms the person it finds.
 - A match to approve shows a Request and UCPath table. A different value is semibold in the warning colour and has a "differs" name for screen readers.
 - A value to correct is the card's input, prefilled with what Relay read or typed.
 - A failure uses the same anatomy. The question is the failure title in the danger colour (the card keeps the normal border; only the title is red), and the note is the catalog sentence plus the write outcome. The action is Retry step when nothing was written. There is no Add note action.
@@ -329,7 +329,7 @@ status fill changes without changing the information's position.
 - Use live regions for changes, not every standing fact rendered on mount.
 - Keyboard focus fills the control with one light tint (`--hub-focus-fill`, one step stronger than hover) and ink (`--hub-focus-ink`) on every control, in both themes; pointer focus draws nothing, and programmatic takeover focus draws no extra default browser ring.
 
-Read [PARITY.md](PARITY.md) before judging a visual difference and
+Compare against the approved mock before judging a visual difference, and read
 [the wiring contract](../../docs/reference/frontend-backend-integration.md) before replacing a producer.
 
 Account (nav id `credentials`) uses existing ResultRow components for the signed-in profile name and per-word initials. Both are read-only; their values come from bootstrap actor.label.

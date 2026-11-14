@@ -12,6 +12,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `config/` | Runtime isolation and test-data configuration. |
 | `docs/reference/` | Current contracts and this map. |
 | `docs/guides/` | Workflow authoring guide. |
+| `docs/guides/windows.md` | Windows launcher steps. |
 | `docs/guard-inventory.json` | Guard owners and reasons. |
 | `docs/roadmap/roadmap.md` | Roadmap content. |
 | `docs/roadmap/index.html` | Generated roadmap site. |
@@ -30,7 +31,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 owns the contract fingerprint and build id.
 `npm run roadmap` generates the roadmap site; `npm run roadmap:check` checks it.
 `npm run web:build` produces the dashboard bundle in `dist/`.
-Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. The [Git instructions](../../AGENTS.md#git) own worktree naming and lifecycle.
+Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. The [Conventions](../../AGENTS.md#conventions) own worktree naming and lifecycle.
 
 `src/backend/runtime/writes/recovery-activity.ts` owns retained-run recovery read activity, action notes and required captures. `src/models/run/recovery-activity.ts` owns its exact operation identity and task-compatible note path.
 
@@ -90,7 +91,7 @@ Paths in this table are relative to `src/backend/`.
 | `logs/` | Spans, observed data, artifacts, and diagnostics. `debug-events.ts` owns repository-backed debug persistence and redaction. `emergency-faults.ts` constructs boot faults for the native local timeline spool. `duo-diagnostics.ts` writes closed Duo codes and timings under the admitted machine root’s `logs/`, rotating four files of at most 256 KiB each; request and profile identifiers never enter these files. |
 | `logs/diagnostics/` | Diagnostic capture and retention. |
 | `processing/` | Extraction, normalization, OCR, provider calls, roster processing, and spreadsheets. Task families register beside their implementations. `providers/nominatim-owner.ts` owns the parent serial geocode queue and worker IPC client; `providers/geocode-adapters.ts` owns provider request/response mapping. `ocr/tasks/read-approved-records.ts` exposes that read to workflow graphs. `providers/chatgpt-ocr-adapter.ts` owns the fixed OCR model and scoped page reader shared by the canonical provider adapter and the fixed Settings diagnostic. |
-| `profiles/` | Control-authenticated registry, credential inventory and session authority. `profile-session.ts` owns private draft/session publication, `profile-onboarding.ts` owns issued draft attempts and verified method receipts, and `onboarding-duo.ts` defines the provider capability contract. Browser enrollment lives in `runtime/browser/onboarding-duo-provider.ts`. `profile-errors.ts` owns shared profile refusals. Native verifier publication and its cryptography live in `storage/configuration/verifier-store.ts` and `storage/configuration/synthetic-verifier.ts`. Browser-safe schemas live in `models/profiles/`. |
+| `profiles/` | Control-authenticated registry, credential inventory and session authority. `profile-session.ts` owns private draft/session publication, `login-change.ts` owns the Relay login change and its interrupted-change restore, `profile-onboarding.ts` owns issued draft attempts and verified method receipts, and `onboarding-duo.ts` defines the provider capability contract. Browser enrollment lives in `runtime/browser/onboarding-duo-provider.ts`. `profile-errors.ts` owns shared profile refusals. Native verifier publication and its cryptography live in `storage/configuration/verifier-store.ts` and `storage/configuration/synthetic-verifier.ts`. Browser-safe schemas live in `models/profiles/`. |
 | `runs/lifecycle/startup-crash-recovery.ts` | Startup process-closure receipts, dead-worker run reconciliation and previous-day pristine queue cancellation before work admission. |
 | `runs/` | Commands, start plans, lifecycle, recovery, queries, projections, exports, provenance, notifications, settings, explanation, and trust readers. |
 | `runs/commands/write-command-target.ts` | Projects opaque write occurrence tokens and resolves them through private intent authority at HTTP ingress. |
@@ -207,7 +208,7 @@ The local `ocr.approved-snapshot` and `ocr.review` capabilities are issued by
 Its pure contracts live in `src/models/workflows/i9-check/read-match-outcome.ts` and
 `read-retention-row.ts`; `check.ts` owns their shared identity/retention schemas and policy.
 `src/workflows/i9-check-start/` is the public PDF parent, with document review, roster-reference and retention step definitions and proofs. It delegates original PDFs to admitted OCR, authenticates corrected approved selections, retains each source coordinate, and runs the existing person child once per approved EID. It publishes one results workbook and the configured tracker through the shared workbook and xlsx services. Pure batch derivations live in `src/rules/i9-check/batch.ts`; canonical document/person/result shapes live in `src/models/workflows/i9-check/`, and parent task contracts mirror their IDs in `src/models/workflows/i9-check-start/`.
-Shared workbook publication and captured-version reads use `src/models/processing/workbooks/{read-result,read-reference}.ts` and the processing workbook store. `src/backend/runs/workbooks.ts` authenticates the run's retained reference before late-discovered keys can be read; callers cannot select another library or version. Captured-reference writes require an explicit planning declaration. Onboarding declares its roster for name binding, row choice and verified result patches through the captured reference. SharePoint imports remain unexposed. The I-9 parent remains on its static mock source pending activation.
+Shared workbook publication and captured-version reads use `src/models/processing/workbooks/{read-result,read-reference}.ts` and the processing workbook store. `src/backend/runs/workbooks.ts` authenticates the run's retained reference before late-discovered keys can be read; callers cannot select another library or version. Captured-reference writes require an explicit planning declaration. Onboarding declares its roster for name binding, row choice and verified result patches through the captured reference. SharePoint imports remain unexposed. The public I-9 parent selects served data. I-9 Lookup is hidden and the person child has no source entry; both remain admitted through declared parent edges. I-9 Check supports a dry run: `save-workbook` declares `stop-before-publish`, so a dry run previews the results workbook without saving it and leaves the tracker untouched.
 `src/workflows/i9-lookup/workflow.ts` is child-only; Onboarding declares its parent edge in the registered workflow definition. It uses
 the I-9 system store, then retains its typed result through `tasks/read-result.ts` in the workflow
 store. Its one `lookup` timeline checkpoint groups both tasks. The registered harness at
@@ -242,7 +243,7 @@ tests/
 ├── dashboard/{app,client,ds,lib,state,surfaces}/
 ├── fast-duo/src/
 ├── {models,rules,scripts,workflow-kit,workflows}/
-├── parity/
+├── mocks/
 ├── perf/
 ├── support/{fixtures,helpers,processes}/
 ├── types/
@@ -252,11 +253,11 @@ tests/
 ```
 
 `tests/architecture/test-layout.test.ts` checks canonical filenames and mirrors against existing tracked source.
-Architecture, parity, performance, type, and support trees are exempt from source mirroring.
+Architecture, mocks, performance, type, and support trees are exempt from source mirroring.
 Architecture fixtures and helpers stay beside their owning guard families.
 Shared fixtures, fresh-authority builders, and child-process entrypoints live under `tests/support/`.
 `tests/support/helpers/dashboard/controls/` owns the UI control preview fixtures, loaded by
-fixture name from `tests/parity/app-entry.tsx`.
+fixture name from `tests/mocks/app-entry.tsx`.
 - `tests/support/duo-ceremony-setup.ts` registers the shared Duo fixture cleanup for every Vitest project; the fixture owner stays process-safe.
 Shared composition setup lives in `tests/support/helpers/backend/{capability-wiring-world,write-recovery-world,dashboard-child-world,worker-loop-world}.ts`
 and `tests/support/helpers/dashboard/mounted-rerun-world.ts`; each test owns its allocation, hooks, and cleanup.
@@ -292,7 +293,7 @@ and persisted-read path.
 `tests/support/processes/failure-resolution-peer.ts` runs the independent annotation writers;
 `tests/support/helpers/failure-resolution/fixtures.ts` owns their launch and closure.
 
-`tests/parity/` holds the desktop presentation contract and its references.
+`tests/mocks/` holds `/ui-mock` scenes and the mock dashboard build entry.
 `tests/perf/` holds dashboard performance checks. `tests/types/` holds compile-time inputs and their checks.
 `tests/scripts/docs/roadmap.test.ts` tests roadmap parsing.
 The private `config/test-data.local.json` input is ignored. Runtime state and artifact roots are declared
@@ -316,7 +317,7 @@ Workflow execution uses the signed-in dashboard Run and its canonical start-plan
 
 `src/models/config/assistant-model-preference.ts` owns model slug and preference validation shared by command and assistant schemas. `src/models/dashboard/assistant.ts` owns the profile preference record and served assistant action contract. `src/backend/storage/sqlite/assistant-model-preference.ts` owns its authenticated singleton and command/audit history checks. The existing command kernel and command service own the operator-only asynchronous preparation boundary and compare-and-swap mutation; account/composition preparation is required before that command becomes available.
 
-`src/rules/spreadsheets/workbook-io.ts` owns shared library XLSX/CSV IO, structural admission, retained cell metadata and deterministic intake export through `@shbernal/ts-xlsx`. Its sibling `workbook-size.ts` shares populated-cell and grid limits with saved-workbook validation. Imported formulas or metadata outside the editable model mark the workbook for named master-edit refusal. The dashboard editor owns editing/rendering behavior and consumes this browser-safe boundary.
+`src/rules/spreadsheets/workbook-io.ts` owns shared library XLSX/CSV IO, structural admission, retained cell metadata and deterministic intake export through `@shbernal/ts-xlsx`. Its sibling `spreadsheet-inflate-limit.ts` refuses an xlsx whose parts inflate past one shared byte limit, counted while the bytes inflate, before workbook XML is parsed. Its sibling `workbook-size.ts` shares populated-cell and grid limits with saved-workbook validation. Imported formulas or metadata outside the editable model mark the workbook for named master-edit refusal. The dashboard editor owns editing/rendering behavior and consumes this browser-safe boundary.
 
 `transports/http/routes/debug-responses.ts` observes terminal HTTP failure responses through the existing debug writer.
 

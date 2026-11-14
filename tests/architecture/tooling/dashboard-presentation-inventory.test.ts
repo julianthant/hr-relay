@@ -15,7 +15,7 @@ import frozenPresentationFiles from "./fixtures/dashboard-presentation-file-set.
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 
 const DASHBOARD_ROOT = "src/dashboard";
-const PRESENTATION_FREEZE_BRIEF = "src/dashboard/PARITY.md";
+const PRESENTATION_FREEZE_BRIEF = "src/dashboard/MOCKS.md";
 const COMPONENT_CHANGE_INSTRUCTION =
   "components are fixed; ask the operator before adding or removing one";
 const STYLESHEET_EXTENSIONS = new Set([
@@ -123,13 +123,13 @@ function temporaryRoot(): string {
 describe("dashboard presentation freeze", () => {
   it("pins every current presentation component, stylesheet, and design-token file", () => {
     assert.equal(new Set(frozenPresentationFiles).size, frozenPresentationFiles.length);
-    assert.equal(frozenPresentationFiles.length, 149);
+    assert.equal(frozenPresentationFiles.length, 150);
 
     const actual = discoverDashboardPresentationFiles(REPO_ROOT);
     assert.equal(actual.filter((file) => file.endsWith(".tsx")).length, 122);
     assert.equal(
       actual.filter((file) => STYLESHEET_EXTENSIONS.has(extname(file).toLowerCase())).length,
-      25,
+      26,
     );
     assert.ok(actual.includes("src/dashboard/ds/theme/tokens.ts"));
     assert.ok(actual.includes("src/dashboard/ds/theme/tokens.css"));

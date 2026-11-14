@@ -12,7 +12,7 @@ export async function startAssistantCoupledServer() {
   const output = await mkdtemp(join(tmpdir(), 'relay-assistant-coupled-'));
   let assets: PreviewServer | undefined;
   try {
-    const root = resolve('tests/parity/fixtures/assistant-coupled');
+    const root = resolve('tests/mocks/fixtures/assistant-coupled');
     await build({ configFile: false, root, plugins: [react(), tailwindcss()], logLevel: 'warn', build: { outDir: output, emptyOutDir: true } });
     assets = await preview({ configFile: false, root, logLevel: 'warn', build: { outDir: output }, preview: { host: '127.0.0.1', port: 0, strictPort: true } });
     const address = assets.httpServer.address();

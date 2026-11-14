@@ -15,8 +15,8 @@ import { RunDetailWireSchema, NativeRunEventWireSchema, IdentityGateDetailWireSc
 import { appendLogPage } from "../../../src/dashboard/surfaces/run-detail/logs-model.js";
 import { createIdentityCeremonyFixtures } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 import { FIXTURE_FAILURE_SECTIONS } from "../../support/fixtures/dashboard/run-detail/receipts-failures.js";
-import { FIXTURE_RUN_DETAILS, FIXTURE_SECTIONS } from "../../parity/helpers/fixture-detail.js";
-import { FIXTURE_START_PICKER_DAY_WIRE } from "../../parity/helpers/fixture-start.js";
+import { FIXTURE_RUN_DETAILS, FIXTURE_SECTIONS } from "../../mocks/helpers/fixture-detail.js";
+import { FIXTURE_START_PICKER_DAY_WIRE } from "../../mocks/helpers/fixture-start.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { FIXTURE_PARKED_WRITE } from "../../support/fixtures/dashboard/run-detail/gates-park.js";
 import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";

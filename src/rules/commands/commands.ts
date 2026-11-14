@@ -340,7 +340,6 @@ export const IdentityGateAnswerRequestSchema = z.strictObject({
   target: GateCommandRequestSchema.shape.target,
   payload: z.union([
     z.strictObject({ decision: z.literal("approved"), gateRef: z.uuid(), optionRef: z.uuid() }),
-    z.strictObject({ decision: z.literal("approved"), gateRef: z.uuid(), typedEid: z.string().regex(/^\d{8}$/u) }),
     z.strictObject({ decision: z.literal("rejected"), gateRef: z.uuid() }),
   ]),
 });

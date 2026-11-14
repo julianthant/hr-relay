@@ -53,6 +53,7 @@ import { deriveBulkChildCommand,deriveBulkChildCommandId } from "../../../rules/
 import { AuthorityCommandAuditRecordSchema,AuthorityCommandRecordSchema,BulkParentCommandRecordSchema,BulkRunCommandAcceptanceRecordSchema,CommandAuditRecordSchema,CommandIdentityConflictError,CommandRequestSchema,RunLifecycleCommandAuditRecordSchema,RunLifecycleCommandRecordSchema,StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
+import { interruptTransition } from "../../../rules/runs/run-interrupt.js";
 import { capturedInstantClock } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { DelegationManifestSchema,DependencyRecordSchema,delegationJoinDisposition,type DelegationManifest,type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
@@ -94,7 +95,7 @@ import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessor
 import { predecessorRunRecordFromRow,runRecordColumns,runRecordFromRow,transitionRunRecord,transitionStoredRun,updateRunRecord } from "./run-record-row.js";
 import { createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
-import { ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,} from "./run-store-contracts.js";
+import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type RunAdmission,} from "./run-store-contracts.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings, migratePersonPreferences } from "./settings-storage.js";
@@ -115,6 +116,7 @@ import { DuoCeremonyLeaseAcquireRequestSchema,DuoCeremonyLeaseRecordSchema,DuoCe
 import { localDatePart,systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { IdempotencyKeySchema,WriteAttemptRecordSchema,WriteIntentRecordSchema,type WriteAttemptRecord,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
+import type { WriteEvent } from "../../../rules/write-safety/write-transitions.js";
 import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeaseToken,type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import { assertWorkflowRunResultAuthorization,workflowDelegationAccounting,descriptorRuntimeNodes,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { assertCredentialCopyResourcesClosed, assertLogoutResourcesClosed } from "../maintenance/profile-custody.js";
@@ -128,7 +130,7 @@ import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAutho
 import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema,type ArtifactOutboxStorageRecord,type ArtifactSinkHeadRecord,type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
 
-import { AtomicWriteCommitInputSchema,AtomicWriteCommitReportSchema,PermanentWriteResolutionSchema,ResolvedParkedWriteAbsenceInputSchema,ResolvedParkedWriteCommitInputSchema,WriteFenceInputSchema,WriteFenceRecordsSchema,WriteIntentParkRequestSchema,WriteIntentRetrySettlementRequestSchema,WriteRecheckParkRequestSchema,WriteRecheckRequestSchema,WriteRefenceInputSchema,type AtomicWriteCommitReport,type AtomicWriteCommitStorageStep,type PermanentWriteResolution } from "./write-commit-contracts.js";
+import { applyWriteTransition,AtomicWriteCommitInputSchema,AtomicWriteCommitReportSchema,PermanentWriteResolutionSchema,ResolvedParkedWriteAbsenceInputSchema,ResolvedParkedWriteCommitInputSchema,WriteFenceInputSchema,WriteFenceRecordsSchema,WriteIntentParkRequestSchema,WriteIntentRetrySettlementRequestSchema,WriteRecheckParkRequestSchema,WriteRecheckRequestSchema,WriteRefenceInputSchema,type AtomicWriteCommitReport,type AtomicWriteCommitStorageStep,type PermanentWriteResolution } from "./write-commit-contracts.js";
 
 
 export class AuthoritySchemaVersionError extends Error {
@@ -390,9 +392,22 @@ type DeletedRunRepository = Readonly<{
 
 type CanonicalRunClaimOutcome = RunClaimOutcome | Readonly<{ state: "refused"; refusal: RunRecordRefusal }>;
 
+/** A confirmed Pause all and quit of the bound runtime generation (`held`) that no application-admission release names; binds the generation twice. */
+const UNRELEASED_QUIT_HOLD_SQL = `held.family='application'
+  AND json_extract(held.request_json,'$.type')='pause-all-and-quit'
+  AND json_extract(held.request_json,'$.payload.confirmed')=1
+  AND json_extract(held.request_json,'$.target.runtimeGeneration')=?
+  AND NOT EXISTS(SELECT 1 FROM commands release WHERE release.state IN ('executing','succeeded') AND release.family='run-lifecycle'
+    AND json_extract(release.request_json,'$.operation')='application-admission'
+    AND json_extract(release.request_json,'$.request.runtimeGeneration')=?
+    AND json_extract(release.request_json,'$.request.releases')=held.id)`;
+
 type RunRepository = Readonly<{
   holdAdmission(input: unknown): void;
-  admission(): Readonly<{ state: "open" } | { state: "draining"; commandId: string }>;
+  releaseQuitAdmission(input: unknown): void;
+  admission(): RunAdmission;
+  /** The current runtime's unreleased Pause all and quit, whether or not an earlier hold also closes admission. */
+  quitAdmission(): string | undefined;
 
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
 
@@ -2404,8 +2419,9 @@ export class AuthorityDatabase implements Disposable {
           const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", commandId, operation: "transition", request,
             requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0transition\0${canonicalJsonStringify(request)}`),
             fence: { kind: "version", expectedVersion: current.version }, recordedAt: now });
+          // The terminal transition drops pause, so the paused-run refusal reads the current record.
+          if (Object.hasOwn(current, "pause")) throw new Error("queued-run-cancellation-pause-refused");
           const updated = transitionStoredRun(current, PredecessorRunRecordSchema.parse({ ...current, lifecycle }), now, PredecessorRunRecordSchema);
-          if (Object.hasOwn(updated, "pause")) throw new Error("queued-run-cancellation-pause-refused");
           const entries = Object.entries(runRecordColumns(updated, PredecessorRunRecordSchema)).filter(([key]) => key !== "id" && key !== "pause_state");
           const changes = Number(database.prepare(`UPDATE runs SET ${entries.map(([key]) => `${key} = ?`).join(",")} WHERE id = ? AND version = ?`)
             .run(...entries.map(([, value]) => value), updated.envelope.runId, current.version).changes);
@@ -3683,7 +3699,8 @@ export class AuthorityDatabase implements Disposable {
         contractFingerprint: current.envelope.contractFingerprint, expectedVersion: current.version, claim: request.claim,
         authorizedAt: request.now, failureId: failure.failureId });
       this.#assertTerminalAuthorizationMatchesRun(authorization, current);
-      const terminal = RunRecordSchema.parse({ ...current, version: current.version + 1, updatedAt: request.now, completion: completionFromAuthorization(authorization),
+      const { pause: _pause, ...settled } = current;
+      const terminal = RunRecordSchema.parse({ ...settled, version: current.version + 1, updatedAt: request.now, completion: completionFromAuthorization(authorization),
         lifecycle: { state: "terminal", outcome: "failed", endedAt: request.now, failureId: failure.failureId,
           errorSummary: summary, diagnosticSafetyVersion: 1 } });
       const violation = runTransitionViolation(current.lifecycle, terminal.lifecycle);
@@ -3753,8 +3770,9 @@ export class AuthorityDatabase implements Disposable {
         request.authorization.claim,
       );
 
+      const { pause: _pause, ...settled } = current;
       const terminal = RunRecordSchema.parse({
-        ...current,
+        ...settled,
         completion: completionFromAuthorization(request.authorization),
         lifecycle: {
           state: "terminal",
@@ -3858,8 +3876,9 @@ export class AuthorityDatabase implements Disposable {
         request.authorization.expectedVersion,
         request.authorization.claim,
       );
+      const { pause: _pause, ...settled } = current;
       const terminal = RunRecordSchema.parse({
-        ...current,
+        ...settled,
         completion: completionFromAuthorization(request.authorization),
         lifecycle: {
           state: "terminal",
@@ -3951,19 +3970,8 @@ export class AuthorityDatabase implements Disposable {
       throw new Error("confirmed-history-checkpoint-outcome-mismatch");
     }
     return this.withAuthorityTransaction(() => {
-      const currentIntent = this.#readRecord("write_intents", parsed.writeIntentId, WriteIntentRecordSchema);
-      if (currentIntent === undefined) throw new Error(`write intent ${parsed.writeIntentId} does not exist`);
-      if (currentIntent.status !== "attempting") {
-        throw new Error(`write intent ${parsed.writeIntentId} is ${currentIntent.status}; only attempting may commit`);
-      }
-      if (currentIntent.generation !== parsed.generation) {
-        throw new Error(`write intent ${parsed.writeIntentId} generation ${String(currentIntent.generation)} does not match commit generation ${String(parsed.generation)}`);
-      }
-      const currentAttempt = this.#readRecord("write_attempts", currentIntent.currentAttemptId, WriteAttemptRecordSchema);
-      if (currentAttempt === undefined) throw new Error(`current write attempt ${currentIntent.currentAttemptId} does not exist`);
-      if (currentAttempt.outcome.state !== "attempting") {
-        throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; only attempting may commit`);
-      }
+      const next = this.#transitionWrite(parsed.writeIntentId, { generation: parsed.generation }, { type: "commit" });
+      const { intent: currentIntent, attempt: currentAttempt } = next;
       WriteFenceRecordsSchema.parse({ intent: currentIntent, attempt: currentAttempt });
       this.#assertAtomicCommitMatchesIntent(parsed, currentIntent);
       const run=this.#readRunRow(currentIntent.runId);
@@ -3976,7 +3984,7 @@ export class AuthorityDatabase implements Disposable {
 
       const committedIntent = WriteIntentRecordSchema.parse({
         ...currentIntent,
-        status: "committed",
+        status: next.status,
         completionProof: parsed.completionProof,
         confirmedAt: parsed.confirmedAt,
         version: currentIntent.version + 1,
@@ -3985,7 +3993,7 @@ export class AuthorityDatabase implements Disposable {
       const committedAttempt = WriteAttemptRecordSchema.parse({
         ...currentAttempt,
         outcome: {
-          state: "committed",
+          state: next.outcome,
           completionProof: parsed.completionProof,
           confirmedAt: parsed.confirmedAt,
         },
@@ -4025,12 +4033,10 @@ export class AuthorityDatabase implements Disposable {
     const request = ResolvedParkedWriteCommitInputSchema.parse(input);
     const {commit,checkpoint,resolution} = request;
     return this.withAuthorityTransaction(()=>{
-      const current = this.#requireAttemptBearingWriteIntent(commit.writeIntentId,commit.generation,request.expectedIntentVersion);
-      if (current.status !== "parked") throw new Error("parked-write-resolution-parked-intent-required");
-      const attempt = this.#requireWriteAttempt(current.currentAttemptId);
-      if (attempt.outcome.state !== "parked") throw new Error("parked-write-resolution-original-attempt-required");
+      const next = this.#transitionWrite(commit.writeIntentId,{generation:commit.generation,version:request.expectedIntentVersion},{type:"resolve-present",resolution});
+      const {intent:current,attempt} = next;
       const run = this.#readRunRow(current.runId);
-      if (run === undefined || run.lifecycle.state !== "running" || current.recheck?.commandId !== resolution.commandId
+      if (current.status !== "parked" || run === undefined || run.lifecycle.state !== "running" || current.recheck?.commandId !== resolution.commandId
         || run.envelope.attempt !== current.runAttempt || commit.outcome.proofSource !== "recovery-probe") throw new Error("parked-write-recheck-run-mismatch");
       this.#assertCurrentExecution(current.runId, request.claim);
       authenticateParkedWriteRecheck(current, attempt, this.authority.commands.get(resolution.commandId), this.authority.commandAudits.get(resolution.auditId));
@@ -4042,7 +4048,7 @@ export class AuthorityDatabase implements Disposable {
         || checkpoint.contractFingerprint !== run.envelope.contractFingerprint || commit.transaction.traceId !== run.envelope.traceId
         || canonicalJsonStringify(checkpoint.output.value) !== canonicalJsonStringify(commit.outcome)) throw new Error("parked-write-resolution-checkpoint-mismatch");
       const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,recheck:_recheck,...base} = current;
-      const intent = WriteIntentRecordSchema.parse({...base,status:"committed",completionProof:commit.completionProof,
+      const intent = WriteIntentRecordSchema.parse({...base,status:next.status,completionProof:commit.completionProof,
         confirmedAt:commit.confirmedAt,version:current.version+1,updatedAt:commit.confirmedAt,resolution});
       authenticateStoredWriteResolution(this.#database,intent);
       const history = confirmedOperationTimeline({ledger:commit.transaction,span:commit.committedSpan,checkpoint,
@@ -4066,15 +4072,14 @@ export class AuthorityDatabase implements Disposable {
   settleResolvedParkedAbsence(input: unknown): WriteIntentRecord {
     const request = ResolvedParkedWriteAbsenceInputSchema.parse(input);
     return this.withAuthorityTransaction(()=>{
-      const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId,request.generation,request.expectedIntentVersion);
-      if (current.status !== "parked") throw new Error("parked-write-resolution-parked-intent-required");
-      const attempt = this.#requireWriteAttempt(current.currentAttemptId);
+      const next = this.#transitionWrite(request.writeIntentId,{generation:request.generation,version:request.expectedIntentVersion},{type:"resolve-absent",resolution:request.resolution});
+      const {intent:current,attempt} = next;
       const run = this.#readRunRow(current.runId);
-      if (attempt.outcome.state !== "parked" || run === undefined || run.version !== request.resolution.expectedRunVersion
+      if (current.status !== "parked" || run === undefined || run.version !== request.resolution.expectedRunVersion
         || run.lifecycle.state !== "parked-write" || run.lifecycle.writeIntentId !== current.writeIntentId
         || run.lifecycle.intentGeneration !== current.generation) throw new Error("parked-write-resolution-run-cas-mismatch");
       const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,recheck:_recheck,...base} = current;
-      const intent = WriteIntentRecordSchema.parse({...base,status:"retryable",settlement:request.settlement,
+      const intent = WriteIntentRecordSchema.parse({...base,status:next.status,settlement:request.settlement,
         resolvedAt:request.resolution.resolvedAt,version:current.version+1,updatedAt:request.resolution.resolvedAt,resolution:request.resolution});
       authenticateStoredWriteResolution(this.#database,intent);
       this.#replaceWriteIntent(intent);
@@ -5832,17 +5837,19 @@ export class AuthorityDatabase implements Disposable {
           return this.withAuthorityTransaction(() => {
             const refusal = this.#writeFenceRefusal(intent, claim);
             if (refusal !== undefined) return PermanentWriteResolutionSchema.parse({ state: "refused", refusal });
-            const current = this.#requireWriteIntent(intent.writeIntentId);
-            if (canonicalJsonStringify(current.status === "observed-present" ? null : current.occurrence ?? null)
+            const stored = this.#readWrite(intent.writeIntentId, {});
+            if (canonicalJsonStringify(stored.intent.status === "observed-present" ? null : stored.intent.occurrence ?? null)
               !== canonicalJsonStringify(intent.occurrence ?? null)) {
               throw new Error("re-fence may not change permanent occurrence authorization");
             }
             this.#assertBusinessWriteAdmission(intent);
-            if (current.status !== "retryable") {
-              throw new Error(`write intent ${intent.writeIntentId} is ${current.status}; only a retryable intent may re-fence`);
-            }
+            const next = applyWriteTransition(stored.intent, stored.attempt, { type: "refence" });
+            const current = next.intent;
             if (current.version !== expectedVersion) {
               throw new Error(`write intent ${intent.writeIntentId} is at version ${String(current.version)}, not ${String(expectedVersion)}; the re-fence is stale`);
+            }
+            if (intent.status !== next.status || attempt.outcome.state !== next.outcome) {
+              throw new Error(`re-fence of ${intent.writeIntentId} must present a ${next.status}/${next.outcome} write`);
             }
             if (intent.generation !== current.generation + 1) {
               throw new Error(`re-fence of ${intent.writeIntentId} must advance generation ${String(current.generation)} by exactly one, not to ${String(intent.generation)}`);
@@ -5874,14 +5881,14 @@ export class AuthorityDatabase implements Disposable {
         requestRecheck: (input: unknown) => {
           const request = WriteRecheckRequestSchema.parse(input);
           return this.withAuthorityTransaction(() => {
-            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
+            const { intent: current, attempt } = this.#readWrite(request.writeIntentId, { generation: request.generation, version: request.expectedVersion });
             if (current.status !== "parked" || current.recheck !== undefined) throw new Error("parked-write-recheck-parked-intent-required");
             const run = this.#readRunRow(current.runId);
             if (run?.lifecycle.state !== "parked-write" || run.version !== request.recheck.expectedRunVersion
               || run.lifecycle.writeIntentId !== current.writeIntentId || run.lifecycle.intentGeneration !== current.generation) throw new Error("parked-write-recheck-run-mismatch");
             const intent = WriteIntentRecordSchema.parse({ ...current, recheck: request.recheck,
               version: current.version + 1, updatedAt: request.recheck.requestedAt });
-            authenticateParkedWriteRecheck(intent, this.#requireWriteAttempt(current.currentAttemptId),
+            authenticateParkedWriteRecheck(intent, attempt,
               this.authority.commands.get(request.recheck.commandId), this.authority.commandAudits.get(request.recheck.auditId));
             this.#replaceWriteIntent(intent);
             return intent;
@@ -5890,7 +5897,7 @@ export class AuthorityDatabase implements Disposable {
         parkRecheck: (input: unknown) => {
           const request = WriteRecheckParkRequestSchema.parse(input);
           return this.withAuthorityTransaction(() => {
-            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
+            const { intent: current } = this.#readWrite(request.writeIntentId, { generation: request.generation, version: request.expectedVersion });
             if (current.status !== "parked" || current.recheck?.commandId !== request.commandId) throw new Error("parked-write-recheck-request-mismatch");
             const { recheck: _recheck, ...base } = current;
             const intent = WriteIntentRecordSchema.parse({ ...base, parkedCode: request.code, message: request.message,
@@ -5902,24 +5909,22 @@ export class AuthorityDatabase implements Disposable {
         parkAttempt: (input: unknown) => {
           const request = WriteIntentParkRequestSchema.parse(input);
           return this.withAuthorityTransaction(() => {
-            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
-            if (current.status !== "attempting") {
-              throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only an attempting intent may park`);
-            }
+            const next = this.#transitionWrite(request.writeIntentId, { generation: request.generation, version: request.expectedVersion },
+              { type: "park", code: request.code });
+            const { intent: current, attempt: currentAttempt } = next;
             const parked = WriteIntentRecordSchema.parse({
               ...current,
-              status: "parked",
+              status: next.status,
               parkedCode: request.code,
               message: request.message,
               authorityReason: request.authorityReason,
               version: current.version + 1,
               updatedAt: request.now,
             });
-            const currentAttempt = this.#requireAttemptingWriteAttempt(current.currentAttemptId);
             const parkedAttempt = WriteAttemptRecordSchema.parse({
               ...currentAttempt,
               outcome: {
-                state: "parked",
+                state: next.outcome,
                 code: request.code,
                 message: request.message,
                 authorityReason: request.authorityReason,
@@ -5934,10 +5939,9 @@ export class AuthorityDatabase implements Disposable {
         settleRetryable: (input: unknown) => {
           const request = WriteIntentRetrySettlementRequestSchema.parse(input);
           return this.withAuthorityTransaction(() => {
-            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
-            if (current.status !== "attempting") {
-              throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only attempting may settle retryable`);
-            }
+            const next = this.#transitionWrite(request.writeIntentId, { generation: request.generation, version: request.expectedVersion },
+              { type: "settle-safe-to-retry" });
+            const { intent: current, attempt: currentAttempt } = next;
             const { parkedCode: _parkedCode, message: _message, authorityReason: _authorityReason, ...base } = {
               parkedCode: undefined,
               message: undefined,
@@ -5946,19 +5950,15 @@ export class AuthorityDatabase implements Disposable {
             };
             const retryable = WriteIntentRecordSchema.parse({
               ...base,
-              status: "retryable",
+              status: next.status,
               settlement: request.settlement,
               resolvedAt: request.now,
               version: current.version + 1,
               updatedAt: request.now,
             });
-            const currentAttempt = this.#requireWriteAttempt(current.currentAttemptId);
-            if (currentAttempt.outcome.state !== "attempting") {
-              throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; it cannot settle retryable`);
-            }
             const settledAttempt = WriteAttemptRecordSchema.parse({
               ...currentAttempt,
-              outcome: { state: "safe-to-retry", settlement: request.settlement },
+              outcome: { state: next.outcome, settlement: request.settlement },
               recordedAt: request.now,
             });
             this.#replaceWriteIntent(retryable);
@@ -6203,7 +6203,8 @@ export class AuthorityDatabase implements Disposable {
       if (canonical) this.#lifecycleHooks?.afterClaimSelection?.();
       admit?.(current);
       const selected = this.#readRunRow(current.envelope.runId);
-      if (this.#runAdmission().state !== "open" || selected?.pause !== undefined || selected?.version !== current.version) {
+      if (this.#runAdmission().state !== "open" || selected?.version !== current.version
+        || interruptTransition(selected, { kind: "lifecycle", to: "claimed" }).state === "refused") {
         return canonical ? { state: "refused", refusal: { reason: "none-eligible" } } : { state: "idle" };
       }
       const claimed = RunRecordSchema.parse({
@@ -6223,34 +6224,51 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #runAdmission(): Readonly<{ state: "open" } | { state: "draining"; commandId: string }> {
-    const generation = this.authority.runtimeConfig.get()?.generation;
-    const row = z.strictObject({ commandId: z.uuid() }).optional().parse(this.#database.prepare(`SELECT id AS commandId FROM commands
-      WHERE state IN ('executing','succeeded') AND ((family='application'
-      AND json_extract(request_json,'$.type')='pause-all-and-quit'
-      AND json_extract(request_json,'$.payload.confirmed')=1
-      AND json_extract(request_json,'$.target.runtimeGeneration')=?) OR (family='run-lifecycle'
+  #runAdmission(): RunAdmission {
+    const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
+    const row = z.strictObject({ commandId: z.uuid(), hold: z.enum(["quit", "update", "shutdown", "logout"]) }).optional().parse(this.#database.prepare(`SELECT id AS commandId,
+      CASE family WHEN 'application' THEN 'quit' ELSE json_extract(request_json,'$.request.reason') END AS hold FROM commands held
+      WHERE state IN ('executing','succeeded') AND ((${UNRELEASED_QUIT_HOLD_SQL}) OR (family='run-lifecycle'
       AND json_extract(request_json,'$.operation')='application-admission'
-      AND json_extract(request_json,'$.request.runtimeGeneration')=?)) ORDER BY created_at,id LIMIT 1`).get(generation ?? 0, generation ?? 0));
-    return row === undefined ? { state: "open" } : { state: "draining", commandId: row.commandId };
+      AND json_type(request_json,'$.request.reason')='text'
+      AND json_extract(request_json,'$.request.runtimeGeneration')=?)) ORDER BY created_at,id LIMIT 1`).get(generation, generation, generation));
+    return row === undefined ? { state: "open" } : { state: "draining", commandId: row.commandId, hold: row.hold };
+  }
+
+  #quitAdmission(): string | undefined {
+    const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
+    return z.strictObject({ commandId: z.uuid() }).optional().parse(this.#database.prepare(`SELECT id AS commandId FROM commands held
+      WHERE state IN ('executing','succeeded') AND ${UNRELEASED_QUIT_HOLD_SQL} ORDER BY created_at,id LIMIT 1`).get(generation, generation))?.commandId;
+  }
+
+  #insertAdmissionCommand(repositories: AuthorityRepositories, request: z.infer<typeof ApplicationAdmissionRequestSchema>): void {
+    const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", operation: "application-admission",
+      commandId: request.commandId, request,
+      requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0application-admission\0${canonicalJsonStringify(request)}`),
+      fence: { kind: "none" }, recordedAt: this.#clock.now().toISOString() });
+    repositories.lifecycleJournal.insertCommand(command);
+    repositories.lifecycleJournal.insertAudit({ kind: "run-lifecycle", auditId: request.commandId, request: command,
+      result: { kind: "application", runtimeGeneration: request.runtimeGeneration }, completedAt: command.recordedAt });
   }
 
   #buildRunRepository(): RunRepository {
     return Object.freeze({
       holdAdmission: (input: unknown) => this.withAuthorityTransaction(repositories => {
-        const request = ApplicationAdmissionRequestSchema.parse(input);
+        const request = ApplicationAdmissionHoldSchema.parse(input);
         if (repositories.runtimeConfig.get()?.generation !== request.runtimeGeneration) throw new Error("application-runtime-stale");
         const current = this.#runAdmission();
         if (current.state !== "open" && current.commandId !== request.commandId) throw new Error("application-admission-held");
-        const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", operation: "application-admission",
-          commandId: request.commandId, request,
-          requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0application-admission\0${canonicalJsonStringify(request)}`),
-          fence: { kind: "none" }, recordedAt: this.#clock.now().toISOString() });
-        repositories.lifecycleJournal.insertCommand(command);
-        repositories.lifecycleJournal.insertAudit({ kind: "run-lifecycle", auditId: request.commandId, request: command,
-          result: { kind: "application", runtimeGeneration: request.runtimeGeneration }, completedAt: command.recordedAt });
+        this.#insertAdmissionCommand(repositories, request);
+      }),
+      releaseQuitAdmission: (input: unknown) => this.withAuthorityTransaction(repositories => {
+        const request = ApplicationAdmissionReleaseSchema.parse(input);
+        if (repositories.runtimeConfig.get()?.generation !== request.runtimeGeneration) throw new Error("application-runtime-stale");
+        const current = this.#runAdmission();
+        if (current.state !== "draining" || current.hold !== "quit" || current.commandId !== request.releases) throw new Error("application-quit-admission-not-held");
+        this.#insertAdmissionCommand(repositories, request);
       }),
       admission: () => this.#runAdmission(),
+      quitAdmission: () => this.#quitAdmission(),
       enqueue: (input: unknown) => {
         const record = RunRecordSchema.parse(input);
         if (record.lifecycle.state !== "queued") {
@@ -6551,9 +6569,10 @@ export class AuthorityDatabase implements Disposable {
           if (accountingAuthorization !== undefined && (workflowDelegationAccounting(accountingAuthorization, current) === undefined
             || request.continuation !== undefined || request.pause !== undefined || current.pause?.state !== "paused"))
             throw new Error("delegation-accounting-resume-envelope-change-refused");
-          if (current.lifecycle.state === "terminal" || current.lifecycle.state === "parked-write") throw new Error("run-pause-invalid-state");
-          if (request.acknowledge && (request.claim === undefined || current.pause?.state !== "requested")) throw new Error("run-pause-claim-required");
-          if (request.pause?.state === "paused" && runClaim(current) !== undefined && !request.acknowledge) throw new Error("run-pause-acknowledgment-required");
+          if (request.acknowledge === true && request.claim === undefined) throw new Error("run-pause-claim-required");
+          const next = interruptTransition(current, { kind: request.acknowledge === true ? "acknowledge-pause" : request.pause === undefined ? "resume" : "pause" });
+          if (next.state === "refused") throw new Error(`run-pause-refused: ${next.reason}`);
+          if (next.interrupt !== (request.pause === undefined ? "none" : request.pause.state === "requested" ? "pause-requested" : "paused")) throw new Error(`run-pause-transition-mismatch: ${next.interrupt}`);
           const { pause: _pause, ...withoutPause } = current;
           return RunRecordSchema.parse({ ...withoutPause, ...(request.pause === undefined ? {} : { pause: request.pause }),
             ...(request.continuation === undefined ? {} : { envelope: { ...current.envelope, continuation: request.continuation } }),
@@ -6925,35 +6944,26 @@ export class AuthorityDatabase implements Disposable {
     return current;
   }
 
-  #requireAttemptBearingWriteIntent(
-    writeIntentId: string,
-    generation: number,
-    expectedVersion: number,
-  ): Exclude<WriteIntentRecord, { status: "observed-present" }> {
+  #readWrite(writeIntentId: string, expected: Readonly<{ generation?: number; version?: number }>) {
     const current = this.#requireWriteIntent(writeIntentId);
-    if (current.status === "observed-present") {
-      throw new Error(`write intent ${writeIntentId} is observed-present; it carries no automation attempt to transition`);
+    if (expected.generation !== undefined && current.generation !== expected.generation) {
+      throw new Error(`write intent ${writeIntentId} is at generation ${String(current.generation)}, not ${String(expected.generation)}; the transition is stale`);
     }
-    if (current.generation !== generation) {
-      throw new Error(`write intent ${writeIntentId} is at generation ${String(current.generation)}, not ${String(generation)}; the transition is stale`);
+    if (expected.version !== undefined && current.version !== expected.version) {
+      throw new Error(`write intent ${writeIntentId} is at version ${String(current.version)}, not ${String(expected.version)}; the transition is stale`);
     }
-    if (current.version !== expectedVersion) {
-      throw new Error(`write intent ${writeIntentId} is at version ${String(current.version)}, not ${String(expectedVersion)}; the transition is stale`);
-    }
-    return current;
+    return Object.freeze({ intent: current,
+      attempt: current.status === "observed-present" ? undefined : this.#requireWriteAttempt(current.currentAttemptId) });
+  }
+
+  #transitionWrite(writeIntentId: string, expected: Readonly<{ generation?: number; version?: number }>, event: WriteEvent) {
+    const { intent, attempt } = this.#readWrite(writeIntentId, expected);
+    return applyWriteTransition(intent, attempt, event);
   }
 
   #requireWriteAttempt(writeAttemptId: string): WriteAttemptRecord {
     const attempt = this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema);
     if (attempt === undefined) throw new Error(`write attempt ${writeAttemptId} does not exist`);
-    return attempt;
-  }
-
-  #requireAttemptingWriteAttempt(writeAttemptId: string): WriteAttemptRecord {
-    const attempt = this.#requireWriteAttempt(writeAttemptId);
-    if (attempt.outcome.state !== "attempting") {
-      throw new Error(`write attempt ${writeAttemptId} is ${attempt.outcome.state}; only an attempting attempt may transition`);
-    }
     return attempt;
   }
 
@@ -7077,7 +7087,7 @@ export class AuthorityDatabase implements Disposable {
 
   #assertAtomicCommitMatchesIntent(
     input: z.infer<typeof AtomicWriteCommitInputSchema>,
-    intent: Extract<WriteIntentRecord, { status: "attempting" | "parked" }>,
+    intent: Exclude<WriteIntentRecord, { status: "observed-present" }>,
   ): void {
     const ledger = { kind: "ledger-entry", entry: input.transaction };
     const span = input.committedSpan;

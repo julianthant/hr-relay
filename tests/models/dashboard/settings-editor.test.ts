@@ -3,7 +3,7 @@ import { describe } from "vitest";
 import { it } from "vitest";
 import { vi } from "vitest";
 import { EditableSettingsWireSchema } from "../../../src/models/dashboard/settings-editor.js";
-import { FIXTURE_EDITABLE_SETTINGS } from "../../parity/helpers/fixture-settings.js";
+import { FIXTURE_EDITABLE_SETTINGS } from "../../mocks/helpers/fixture-settings.js";
 import { fixtureSettingsDocument } from "../../support/fixtures/dashboard/fixture-settings.js";
 import { act } from "react";
 import type { Root } from "react-dom/client";

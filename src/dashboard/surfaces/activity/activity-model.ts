@@ -1,15 +1,10 @@
-import { formatCalendarDate } from "../../lib/date-format.js";
-/** The activity report's range vocabulary — the one shape the URL carries. */
 import type {
   ActivityPeopleTotal,
   ActivityReportWire,
 } from "../../../models/dashboard/activity.js";
-import {
-  ACTIVITY_VOLUME_MAX_YEAR_BUCKETS,
-  ACTIVITY_VOLUME_WEEK_STARTS_ON,
-  chooseActivityVolumeGranularity,
-} from "../../../models/dashboard/activity-volume.js";
-import { dayLabel, plural } from "../shared/status/format.js";
+import { plural } from "../shared/status/format.js";
+
+/** The activity report's range vocabulary — the one shape the URL carries. */
 
 /** What the Activity Who column needs off a queue row, and nothing else. */
 export interface QueueRowIdentity {
@@ -87,10 +82,10 @@ export function activityPeopleEvidenceItems(people: ActivityPeopleTotal): readon
 
 /** `from..to`, the one shape the URL carries. */
 export function parseActivityRange(value: string, today: string): { from: string; to: string; refusal?: string } {
-  // Only a navigation entry with no selection gets the month-to-date default.
+  // Only a navigation entry with no selection gets the 7-day default.
   if (value === "") {
     if (!isActivityCalendarDate(today)) return { from: "", to: "", refusal: ACTIVITY_RANGE_REFUSAL };
-    return { from: `${today.slice(0, 7)}-01`, to: today };
+    return { from: shiftActivityCalendarDay(today, -6), to: today };
   }
   const parts = value.split("..");
   const from = parts[0] ?? "";
@@ -104,49 +99,12 @@ export function activityRangeValue(range: { from: string; to: string }): string 
 }
 
 const ACTIVITY_RANGE_REFUSAL = "Choose valid From and To dates, with From no later than To. The requested range was not replaced.";
-const ACTIVITY_INCOMPLETE_RANGE_REFUSAL = "Choose both From and To dates before applying. The requested range was not replaced.";
-const MILLISECONDS_PER_CALENDAR_DAY = 86_400_000;
 
 /** Treat report dates as calendar dates; UTC arithmetic avoids browser-zone shifts. */
 export interface ActivityDateRange {
   from: string;
   to: string;
 }
-
-export interface ActivityRangeDraft {
-  from: string | null;
-  to: string | null;
-}
-
-export const ACTIVITY_DATE_PRESETS = [
-  { value: "this-week", label: "This week" },
-  { value: "today", label: "Today" },
-  { value: "last-month", label: "Last month" },
-  { value: "last-3-months", label: "Last 3 months" },
-  { value: "last-6-months", label: "Last 6 months" },
-  { value: "last-year", label: "Last year" },
-  { value: "custom", label: "Custom range" },
-] as const;
-
-export type ActivityDatePreset = typeof ACTIVITY_DATE_PRESETS[number]["value"];
-export type ActivityRangePreset = Exclude<ActivityDatePreset, "custom">;
-
-export const ACTIVITY_WEEK_STARTS_ON = ACTIVITY_VOLUME_WEEK_STARTS_ON;
-export const ACTIVITY_MAX_YEAR_BUCKETS = ACTIVITY_VOLUME_MAX_YEAR_BUCKETS;
-
-export type ActivityGranularityPolicy = ReturnType<typeof chooseActivityVolumeGranularity>;
-
-export interface ActivityRangeModel {
-  selection: ActivityDateRange;
-  /** The exclusive end may use ISO's signed expanded year; selected dates remain strict YYYY-MM-DD. */
-  interval: { start: string; endExclusive: string };
-  inclusiveDays: number;
-  granularity: ActivityGranularityPolicy;
-}
-
-export type ActivityRangeModelResult =
-  | { state: "ready"; model: ActivityRangeModel }
-  | { state: "refused"; refusal: string };
 
 interface ActivityCalendarDate {
   year: number;
@@ -180,122 +138,10 @@ function formatActivityCalendarDate(year: number, month: number, day: number): s
   return `${formattedYear}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function isLeapYear(year: number): boolean {
-  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-}
-
-function daysInMonth(year: number, month: number): number {
-  if (month === 2) return isLeapYear(year) ? 29 : 28;
-  return month === 4 || month === 6 || month === 9 || month === 11 ? 30 : 31;
-}
-
-function shiftActivityCalendarMonth(value: string, monthDelta: number): string {
-  const date = parseActivityCalendarDate(value);
-  if (date === null) throw new RangeError("activityPresetRange: today must be a valid YYYY-MM-DD report-calendar date");
-  const absoluteMonth = date.year * 12 + date.month - 1 + monthDelta;
-  const year = Math.floor(absoluteMonth / 12);
-  if (year < 0 || year > 9999) throw new RangeError("activityPresetRange: shifted date is outside the YYYY-MM-DD calendar");
-  const month = absoluteMonth - year * 12 + 1;
-  return formatActivityCalendarDate(year, month, Math.min(date.day, daysInMonth(year, month)));
-}
-
 function shiftActivityCalendarDay(value: string, dayDelta: number): string {
   const date = parseActivityCalendarDate(value);
   if (date === null) throw new RangeError("activity date arithmetic requires a valid YYYY-MM-DD report-calendar date");
   const shifted = new Date(date.utcMilliseconds);
   shifted.setUTCDate(shifted.getUTCDate() + dayDelta);
   return formatActivityCalendarDate(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, shifted.getUTCDate());
-}
-
-function rollingRange(today: string, months: number): ActivityDateRange {
-  return { from: shiftActivityCalendarDay(shiftActivityCalendarMonth(today, -months), 1), to: today };
-}
-
-/** Exact order, labels, and values used by the Activity date selector. */
-export function activityPresetRange(preset: ActivityRangePreset, today: string): ActivityDateRange {
-  if (!isActivityCalendarDate(today)) {
-    throw new RangeError("activityPresetRange: today must be a valid YYYY-MM-DD report-calendar date");
-  }
-  if (preset === "today") return { from: today, to: today };
-  if (preset === "last-month") return rollingRange(today, 1);
-  if (preset === "last-3-months") return rollingRange(today, 3);
-  if (preset === "last-6-months") return rollingRange(today, 6);
-  if (preset === "last-year") return rollingRange(today, 12);
-  if (preset !== "this-week") throw new RangeError(`activityPresetRange: unsupported preset ${String(preset)}`);
-
-  const parsed = parseActivityCalendarDate(today);
-  if (parsed === null) throw new RangeError("activityPresetRange: today must be a valid YYYY-MM-DD report-calendar date");
-  const weekday = new Date(parsed.utcMilliseconds).getUTCDay();
-  return { from: shiftActivityCalendarDay(today, -weekday), to: today };
-}
-
-/** Return the matching bounded preset, or `custom` when the range is not an exact preset. */
-export function activityPresetOf(range: ActivityDateRange, today: string): ActivityDatePreset {
-  for (const preset of ACTIVITY_DATE_PRESETS) {
-    if (preset.value === "custom") continue;
-    const candidate = activityPresetRange(preset.value, today);
-    if (candidate.from === range.from && candidate.to === range.to) return preset.value;
-  }
-  return "custom";
-}
-
-/** Range arithmetic uses calendar bounds, never report instants or browser timezone. */
-export function buildActivityRangeModel(range: ActivityDateRange): ActivityRangeModelResult {
-  const from = parseActivityCalendarDate(range.from);
-  const to = parseActivityCalendarDate(range.to);
-  if (from === null || to === null || range.from > range.to) return { state: "refused", refusal: ACTIVITY_RANGE_REFUSAL };
-
-  const inclusiveDays = (to.utcMilliseconds - from.utcMilliseconds) / MILLISECONDS_PER_CALENDAR_DAY + 1;
-  return {
-    state: "ready",
-    model: {
-      selection: { from: range.from, to: range.to },
-      interval: { start: range.from, endExclusive: shiftActivityCalendarDay(range.to, 1) },
-      inclusiveDays,
-      granularity: chooseActivityVolumeGranularity(range),
-    },
-  };
-}
-
-/** Clone an applied selection before editing; applying stays separate from draft changes. */
-export function activityRangeDraft(range: ActivityDateRange): ActivityRangeDraft {
-  return { from: range.from, to: range.to };
-}
-
-/** Incomplete or invalid drafts are refused and never become report selections. */
-export function applyActivityRangeDraft(draft: ActivityRangeDraft): ActivityRangeModelResult {
-  if (draft.from === null || draft.to === null) return { state: "refused", refusal: ACTIVITY_INCOMPLETE_RANGE_REFUSAL };
-  return buildActivityRangeModel({ from: draft.from, to: draft.to });
-}
-
-/** Compact, unambiguous heading label for the exact applied report-calendar dates. */
-export function activityCompactRangeLabel(range: ActivityDateRange): string {
-  const from = parseActivityCalendarDate(range.from);
-  const to = parseActivityCalendarDate(range.to);
-  if (from === null || to === null || range.from > range.to) throw new RangeError("activityCompactRangeLabel: range must contain valid ordered dates");
-  if (range.from === range.to) return formatCalendarDate(range.from);
-  return `${formatCalendarDate(range.from)} – ${formatCalendarDate(range.to)}`;
-}
-
-export type ActivityPeriod = "today" | "week" | "month" | "custom";
-
-export function activityPeriodRange(period: Exclude<ActivityPeriod, "custom">, today: string): { from: string; to: string } {
-  if (period === "today") return { from: today, to: today };
-  if (period === "month") return { from: `${today.slice(0, 7)}-01`, to: today };
-  const date = new Date(`${today}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() - date.getUTCDay());
-  return { from: date.toISOString().slice(0, 10), to: today };
-}
-
-export function activityPeriodOf(range: { from: string; to: string }, today: string): ActivityPeriod {
-  for (const period of ["today", "week", "month"] as const) {
-    const candidate = activityPeriodRange(period, today);
-    if (candidate.from === range.from && candidate.to === range.to) return period;
-  }
-  return "custom";
-}
-
-
-export function activityRangeLabel(from: string, to: string): string {
-  return from === to ? dayLabel(from) : `${dayLabel(from)} – ${dayLabel(to)}`;
 }

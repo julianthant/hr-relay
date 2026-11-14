@@ -53,7 +53,7 @@ import { sessionsFromDay } from "../../../../src/dashboard/surfaces/sessions/ses
 import { sessionCommandEffect } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { AuthorityBackupService, AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase as StoreDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 

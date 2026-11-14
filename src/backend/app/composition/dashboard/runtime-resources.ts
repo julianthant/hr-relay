@@ -9,6 +9,7 @@ import { ActorIdSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identit
 import { runtimeTimeZone,systemClock } from "../../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { createDebugEventWriter } from "../../../logs/debug-events.js";
+import { composeLoopDelayMonitor } from "../../../logs/loop-delay.js";
 import { withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
 import { importLocalDebugLog } from "../../../storage/events/local-debug-log.js";
 import { runQueuedSpanEvent } from "../../../runs/commands/run-queued-span.js";
@@ -177,6 +178,8 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
 
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: appVersion, development: frontend === "vite-dev" });
+  const loopDelayMonitor = composeLoopDelayMonitor(input.loopDelay, { clock, debugEvents });
+  startupCleanups.push(() => loopDelayMonitor.stop());
   chatGptAccount.setDebugEvents(debugEvents);
   const spanWriter = createTimelineEmitter({ repository: loggingRepository, clock });
   const descriptors = {
@@ -230,5 +233,5 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
 
 
-  return { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
+  return { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
 }

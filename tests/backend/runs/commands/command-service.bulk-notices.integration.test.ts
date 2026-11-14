@@ -152,6 +152,7 @@ describe("bulk command notices", () => {
     assert.ok(notice);
     assert.equal(notice.trigger, "command");
     assert.deepEqual(notice.links, [{ kind: "bulk-result", bulkCommandId: request.bulkCommandId }]);
+    assert.equal(notice.summary, "1 failed · 1 not attempted");
     assertPrivate(notice, [FIRST_EMPLOYEE_ID, SECOND_EMPLOYEE_ID, `Kernel ${FIRST_EMPLOYEE_ID}`, `Kernel ${SECOND_EMPLOYEE_ID}`]);
     const stored = inbox.list("local-operator");
     const replayed = await service.executeBulk(request);

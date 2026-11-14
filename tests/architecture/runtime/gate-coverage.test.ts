@@ -21,7 +21,7 @@ const AUTHORED_ROOTS = ["src", "tests", "scripts"] as const;
 const EXPECTED_ROOT_TYPESCRIPT_CONFIG_FILES = [
   "vitest.config.ts",
   "vite.dashboard.config.ts",
-  "vite.parity.config.ts",
+  "vite.mocks.config.ts",
 ] as const;
 
 /** Root TS inputs are explicit tsconfig entries, never a broad lint glob. */
@@ -31,7 +31,7 @@ const rootTypeScriptConfigFiles = tsconfig.include
 
 const EXACT_GATE_COMMANDS = {
   typecheck: "tsc --noEmit",
-  lint: "node --max-old-space-size=6144 node_modules/eslint/bin/eslint.js --cache --cache-strategy content --cache-location node_modules/.cache/eslint/ src tests scripts vitest.config.ts vite.dashboard.config.ts vite.parity.config.ts --max-warnings 0",
+  lint: "node --max-old-space-size=6144 node_modules/eslint/bin/eslint.js --cache --cache-strategy content --cache-location node_modules/.cache/eslint/ src tests scripts vitest.config.ts vite.dashboard.config.ts vite.mocks.config.ts --max-warnings 0",
   test: "vitest run --project unit --project integration --project architecture --project perf",
   "test:coverage": "vitest run --coverage --project unit --project integration --project architecture",
   "test:perf": "vitest run --project perf --passWithNoTests=false",

@@ -1,5 +1,4 @@
-import { deriveProfileNames } from "../../../models/profiles/profile.js";
-import { ProfileIdentitySchema, type ProfileIdentity } from "../../../models/profiles/profile-identity.js";
+import { ProfileIdentitySchema, profileInitials, type ProfileIdentity } from "../../../models/profiles/profile-identity.js";
 import type { RuntimeAdmission } from "../../storage/admission/admission.js";
 import { authenticateSavedSettings } from "../../storage/sqlite/settings-storage.js";
 import { selectActiveRunSettings } from "../../runs/settings/run-settings.js";
@@ -64,9 +63,8 @@ export function readAdmittedProfileIdentity(machine: RuntimeAdmission, admission
   const registry = machine.readProfileRegistry(), profileId = admission.profileBinding.profileId;
   const person = registry.profiles.find(row => row.profileId === profileId);
   if (person === undefined || registry.activeProfileId !== profileId) throw new Error("PROFILE_AUTHORITY_UNAVAILABLE");
-  const names = deriveProfileNames(person.firstName, person.lastName);
   admission.assertProfileRuntime();
-  return ProfileIdentitySchema.parse({ profileId, sessionEpoch: registry.sessionGeneration, displayName: names.timekeeperName, initials: names.initials });
+  return ProfileIdentitySchema.parse({ profileId, sessionEpoch: registry.sessionGeneration, displayName: person.timekeeperName, initials: profileInitials(person.timekeeperName) });
 }
 
 /** Credentials are read at next use; SQLite history never gates availability. */

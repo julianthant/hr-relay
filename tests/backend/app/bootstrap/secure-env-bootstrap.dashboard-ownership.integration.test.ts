@@ -8,6 +8,7 @@ for (const accepted of [false, true]) it(`honors the dashboard admission-ownersh
   const argv = [...process.argv];
   try {
     await runSecureEnvironmentBootstrap(["cli", "dashboard"], {
+      installCrashHandlers: () => undefined,
       acquireAdmission: () => profile.machine,
       assertEnvironment: () => undefined,
       runCli: async (_admission, accept) => { if (accepted) { assert.ok(accept); accept(); } },

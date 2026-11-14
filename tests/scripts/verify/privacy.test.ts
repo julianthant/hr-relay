@@ -63,8 +63,8 @@ describe("public repository privacy check", () => {
     }
   });
 
-  it("pins public npm configuration and rejects a replacement at the same path", () => {
-    assert.deepEqual(inspectTrackedFile(".npmrc", readFileSync(new URL("../../../.npmrc", import.meta.url))), []);
+  it("treats an npmrc as a credential file", () => {
+    assert.deepEqual(inspectTrackedFile(".npmrc", text("")), [{ path: ".npmrc", rule: "credential-file" }]);
     assert.deepEqual(inspectTrackedFile(".npmrc", text("changed")), [{ path: ".npmrc", rule: "credential-file" }]);
   });
 

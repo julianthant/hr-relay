@@ -16,7 +16,7 @@ import { createAssistantHistory } from '../../../../src/dashboard/surfaces/assis
 import { ASSISTANT_START_PROPOSAL } from '../../../support/fixtures/dashboard/assistant-start.js';
 import { MeasurementFreeResizeObserver } from '../../../support/helpers/settings-storage-doctor-fixtures.js';
 import { useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
-import { ChatGptAccountContext, createPreviewChatGptAccountPort, createServedChatGptAccountPort } from '../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js';
+import { ChatGptAccountContext, createPreviewChatGptAccountPort, createServedChatGptAccountPort, type ChatGptAccountPort, type ChatGptAccountSnapshot } from '../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js';
 import { type ComposerDraft, useComposer } from '../../../../src/dashboard/surfaces/shell/composer-model.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
@@ -25,9 +25,11 @@ afterEach(async () => { await act(async () => root?.unmount()); vi.unstubAllGlob
 it('isolates retained chats, cancels cross-chat replies and invalidates every chat on account or authority changes', async () => {
   const pending: { signal?: AbortSignal; settle: (value: AssistantResult) => void }[] = [];
   const client = { assistantRespond: (_request: unknown, signal?: AbortSignal) => new Promise<AssistantResult>(settle => pending.push({ signal, settle })) };
-  const preview = createPreviewChatGptAccountPort();
-  const account = { ...preview, mode: 'live' as const };
-  await account.signIn({ usePlan: true });
+  const listeners = new Set<() => void>();
+  let snapshot: ChatGptAccountSnapshot = { state: 'connected', name: 'Synthetic', email: 'synthetic@example.com', planUsage: 'enabled' };
+  const account: ChatGptAccountPort = { mode: 'live', getSnapshot: () => snapshot, subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    signIn: async () => {}, cancelSignIn: async () => {} };
+  const loseAccount = () => { snapshot = { state: 'unavailable', message: 'Synthetic account loss' }; for (const listener of listeners) listener(); };
   let current!: ReturnType<typeof useAssistantController>;
   function Harness({ chat, authority }: { chat: string; authority: number }) { current = useAssistantController(client, authority, undefined, false, chat); return null; }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
@@ -55,7 +57,7 @@ it('isolates retained chats, cancels cross-chat replies and invalidates every ch
   await render('new-chat-after-authority-loss', 1);
   await act(async () => current.onAction({ type: 'edit', value: nextAccountDraft }));
   await act(async () => { current.onAction({ type: 'send' }); });
-  await act(async () => { await account.signOut(); }); assert.equal(pending[3].signal?.aborted, true); assert.equal(current.accountAvailable, false);
+  await act(async () => loseAccount()); assert.equal(pending[3].signal?.aborted, true); assert.equal(current.accountAvailable, false);
   await act(async () => { pending[3].settle({ state: 'answered', text: 'Stale account', citations: [] }); });
   assert.equal(current.state.messages.some(message => message.text === 'Stale account'), false);
   await act(async () => current.forgetSession('b'));

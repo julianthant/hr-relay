@@ -73,6 +73,8 @@ export interface StartPlanRequest {
   readonly configSnapshotId: string;
   readonly plannedBy: string;
   readonly rerun?: RerunPlan;
+  /** A gate correction replaces exactly this parked run, which must be the item's only active run. */
+  readonly supersedeRunId?: string;
 }
 
 export function resolveInstances(
@@ -236,24 +238,26 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       continue;
     }
 
-    if (descriptor.enqueue === "reject-active") {
-      const active = deps.authority.authority.runs
-        .listByItem({ workflow: descriptor.id, itemId })
-        .filter((run) => !isTerminalRunState(run.lifecycle));
-      if (active.length > 0) {
-        refuse("active-run-exists", `${matchKey} already has an active run (${active[0].envelope.traceId})`);
-        continue;
-      }
+    const itemRuns = deps.authority.authority.runs.listByItem({ workflow: descriptor.id, itemId });
+    const active = itemRuns.filter((run) => !isTerminalRunState(run.lifecycle));
+    if (request.supersedeRunId !== undefined && !active.some((run) => run.envelope.runId === request.supersedeRunId)) {
+      refuse("active-run-exists", `${matchKey} is not the item of the run this correction replaces`);
+      continue;
+    }
+    const blocking = active.filter((run) => run.envelope.runId !== request.supersedeRunId);
+    if (descriptor.enqueue === "reject-active" && blocking.length > 0) {
+      refuse("active-run-exists", `${matchKey} already has an active run (${blocking[0].envelope.traceId})`);
+      continue;
     }
 
     const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(canonicalInput), subtitle: planning.subtitle(canonicalInput) }));
-    const outputs = planning.plannedOutputs(canonicalInput, (workbookReferences ?? []).map(reference => parseRunWorkbookReference(reference)));
+    // A dry run publishes nothing, so it plans no outputs.
+    const outputs = request.dryRun ? [] : planning.plannedOutputs(canonicalInput, (workbookReferences ?? []).map(reference => parseRunWorkbookReference(reference)));
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
       ...(outputs.length === 0 ? {} : { outputs }),
       ...(workbookReferences === undefined ? {} : { workbookReferences }),
-      ...(descriptor.enqueue !== "supersede-active" ? {} : { supersedeTargets: startSupersedeTargets(
-        deps.authority.authority.runs.listByItem({ workflow: descriptor.id, itemId })) }),
+      ...(descriptor.enqueue !== "supersede-active" && request.supersedeRunId === undefined ? {} : { supersedeTargets: startSupersedeTargets(itemRuns) }),
       itemId,
       ...display,
       rawInput,

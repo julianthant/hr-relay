@@ -9,7 +9,7 @@ sessionPoolGroupFor as sessionPoolGroupFor_m0,
 workerBrowserView as workerBrowserView_m0
 } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { DashboardDayWireSchema as DashboardDayWireSchema_m0,type DashboardDayWire as DashboardDayWire_m0 } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0,uuidOf as uuidOf_m0 } from "../../../parity/helpers/fixture-day.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0,uuidOf as uuidOf_m0 } from "../../../mocks/helpers/fixture-day.js";
 
 import { describe as describe_m1,expect as expect_m1,it as it_m1 } from "vitest";
 import { z as z_m1 } from "zod";

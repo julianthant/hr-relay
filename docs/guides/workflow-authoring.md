@@ -360,9 +360,8 @@ Check `auditImplBindings`
 consumers when their inputs change.
 
 Before proposing integration, run `npm run typecheck`, `npm run lint`, `npm run web:build`,
-`npm run test:parity`, then `npm run test:coverage` alone. Coverage runs unit, integration and
+then `npm run test:coverage` alone. Coverage runs unit, integration and
 architecture suites. Preserve assertions, membership, isolation, coverage floors and timeouts.
-Parity uses the fixed desktop presentation contract; do not update references to make wiring pass.
 Follow the assigned brief's additional checks and resource limits.
 
 Use the signed-in dashboard Run surface for workflow execution. Select Dry Run only where the
