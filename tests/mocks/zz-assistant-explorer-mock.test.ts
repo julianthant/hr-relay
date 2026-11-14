@@ -194,7 +194,7 @@ for (const theme of THEMES) test(`assistant panel header, History and composer @
   await page.getByRole("button", { name: "Close assistant", exact: true }).click();
   await expect(slot).toBeHidden();
 
-  // The history row opens a chat; the approval menu offers one option until full access is allowed in Settings.
+  // The history row opens a chat; the approval menu offers one option, "Ask before every action".
   await page.locator("[data-assistant-launcher]").click();
   await page.getByRole("button", { name: "Ask before every action" }).click();
   await expect(page.getByRole("menuitemradio")).toHaveCount(1);
