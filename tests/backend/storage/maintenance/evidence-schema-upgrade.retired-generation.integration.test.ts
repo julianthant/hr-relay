@@ -6,9 +6,10 @@ import { it } from "vitest";
 import type { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import type { EvidenceSchemaAdmission } from "../../../../src/models/storage/evidence-schema-admission.js";
 import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { retiredSeparationsRun, simulateNextSeparationsInputGeneration } from "../../../support/helpers/backend/retired-separations-run.js";
+import { retiredSeparationsRun, simulatePreviousSeparationsInputGeneration } from "../../../support/helpers/backend/retired-separations-run.js";
 import { predecessorSeparationsRerun } from "../../../support/helpers/backend/predecessor-separations-rerun.js";
-import { RETIRED_INPUT_GENERATIONS } from "../../../../src/backend/storage/sqlite/evidence-schema-upgrade.js";
+import { RETIRED_INPUT_GENERATIONS } from "../../../../src/models/storage/evidence-schema-admission.js";
+import { NAME_DOMAIN_CANONICAL_INPUT_HASH, PRE_INITIALS_CANONICAL_INPUT_HASH } from "../../../support/fixtures/storage/pre-initials-separations.js";
 
 const tables = ["runs", "run_results", "run_checkpoints", "write_intents", "write_attempts", "gate_results", "run_delegations", "commands", "command_audits", "run_receipts", "timeline_events", "delegation_dependencies", "run_failures", "run_requests"] as const;
 const retiredHashes = RETIRED_INPUT_GENERATIONS.separations ?? [];
@@ -32,11 +33,10 @@ function journal(path: string, id: string) {
   finally { database.close(); }
 }
 
-it("admits a store written by the previous Separations input generation as retired history without changing a row", async () => {
+it("admits a store written by the pre-initials build as retired history without changing a row", async () => {
   const f = await retiredSeparationsRun();
   const before = frozenRows(f.path), stored = f.run.input.parsed.schemaHash;
-  assert.ok(retiredHashes.includes(stored));
-  const restoreBuild = simulateNextSeparationsInputGeneration();
+  assert.equal(stored, PRE_INITIALS_CANONICAL_INPUT_HASH); assert.ok(retiredHashes.includes(stored));
   try {
     const { RuntimeLifetimeLock } = await import("../../../../src/backend/storage/admission/lifetime-lock.js");
     const { acquireEntrypointAdmission } = await import("../../../../src/backend/storage/admission/bootstrap-admission.js");
@@ -87,12 +87,11 @@ it("admits a store written by the previous Separations input generation as retir
         } finally { database.close(); admission.release(); }
       } finally { await runtime.close(); machine.release(); }
     } finally { await lifetime.close(); }
-  } finally { restoreBuild(); await f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
 it("refuses a stored Separations run under an unlisted input hash", async () => {
   const f = await retiredSeparationsRun();
-  const restoreBuild = simulateNextSeparationsInputGeneration();
   try {
     await assertGenerationMoved();
     const { collectEvidenceSchemaAdmissions } = await import("../../../../src/backend/storage/sqlite/evidence-schema-upgrade.js");
@@ -100,7 +99,7 @@ it("refuses a stored Separations run under an unlisted input hash", async () => 
     const { RunRecordSchema } = await import("../../../../src/models/run/record.js");
     const unlisted = RunRecordSchema.parse({ ...f.run, input: { ...f.run.input, parsed: { ...f.run.input.parsed, schemaHash: "e".repeat(64) } } });
     assert.throws(() => collectEvidenceSchemaAdmissions({ descriptors: [separationsDescriptor], runs: [unlisted], writes: [], checkpoints: [] }), /evidence-schema-source-selector-refused/u);
-  } finally { restoreBuild(); await f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
 const backupEntries = (stateRoot: string) => {
@@ -161,8 +160,7 @@ async function assertGenerationOneStillVerifies(f: PredecessorStore, record: Awa
 it("converts both pending generations on one startup, one backed record each", async () => {
   const f = await predecessorSeparationsRerun();
   const stored = f.run.input.parsed.schemaHash, before = frozenRows(f.path), backupsBefore = backupEntries(f.stateRoot);
-  assert.ok(retiredHashes.includes(stored));
-  const restoreBuild = simulateNextSeparationsInputGeneration();
+  assert.equal(stored, NAME_DOMAIN_CANONICAL_INPUT_HASH); assert.ok(retiredHashes.includes(stored));
   try {
     const fresh = await assertGenerationMoved();
     if (process.platform === "win32") {
@@ -196,7 +194,7 @@ it("converts both pending generations on one startup, one backed record each", a
       for (const record of [domain, retired]) assert.throws(() => admission.assertEvidenceSchemaConversion({ ...record, evidenceSchemaMac: "0".repeat(64) }), /seal-invalid/u);
       assert.deepEqual(frozenRows(f.path), before);
     });
-  } finally { restoreBuild(); await f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
 it("adds generation 2 to a store that already recorded generation 1", async () => {
@@ -204,15 +202,24 @@ it("adds generation 2 to a store that already recorded generation 1", async () =
   const stored = f.run.input.parsed.schemaHash, before = frozenRows(f.path);
   let restoreBuild: (() => void) | undefined;
   try {
+    assert.equal(stored, NAME_DOMAIN_CANONICAL_INPUT_HASH);
     if (process.platform === "win32") {
       await startupOnce(f).catch(() => undefined);
       assert.deepEqual(frozenRows(f.path), before); assert.equal(journal(f.path, "profile-name-domain").length, 0); return;
     }
+    restoreBuild = simulatePreviousSeparationsInputGeneration();
+    {
+      const { deriveSchemaHash } = await import("../../../../src/models/validation/schema-bound-value.js");
+      const { predecessorEvidenceSchemaHash } = await import("../../../../src/backend/storage/sqlite/evidence-schema-upgrade.js");
+      const { separationsDescriptor } = await import("../../../support/helpers/registered-workflows.js");
+      assert.equal(deriveSchemaHash(separationsDescriptor.canonicalInput, "output"), PRE_INITIALS_CANONICAL_INPUT_HASH);
+      assert.equal(predecessorEvidenceSchemaHash(separationsDescriptor.canonicalInput), NAME_DOMAIN_CANONICAL_INPUT_HASH);
+    }
     await startupOnce(f);
+    restoreBuild(); restoreBuild = undefined;
     const firstRows = journal(f.path, "profile-name-domain");
     assert.equal(firstRows.length, 1); assert.equal(journal(f.path, "retired-input-generation").length, 0); assert.deepEqual(frozenRows(f.path), before);
     const captured = firstRows[0];
-    restoreBuild = simulateNextSeparationsInputGeneration();
     const fresh = await assertGenerationMoved();
     await startupOnce(f);
     const domainRows = journal(f.path, "profile-name-domain"), retiredRows = journal(f.path, "retired-input-generation"), backups = backupEntries(f.stateRoot);

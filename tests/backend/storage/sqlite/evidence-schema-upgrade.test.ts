@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { z } from "zod";
-import { collectEvidenceSchemaAdmissions, predecessorEvidenceSchemaHash, RETIRED_INPUT_GENERATIONS } from "../../../../src/backend/storage/sqlite/evidence-schema-upgrade.js";
-import { evidenceSchemaSourceDigest } from "../../../../src/models/storage/evidence-schema-admission.js";
+import { collectEvidenceSchemaAdmissions, predecessorEvidenceSchemaHash } from "../../../../src/backend/storage/sqlite/evidence-schema-upgrade.js";
+import { evidenceSchemaSourceDigest, RETIRED_INPUT_GENERATIONS } from "../../../../src/models/storage/evidence-schema-admission.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { KualiSavedFinalizationProofSchema, KualiFinalizationTargetSchema } from "../../../../src/models/ui/kuali-separation-finalization.js";
 import { KualiSaveSeparationFinalizationOutputSchema } from "../../../../src/models/systems/kuali/save-separation-finalization.js";
@@ -11,13 +11,13 @@ import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/check
 import { TransactionOutcomeSchema } from "../../../../src/rules/write-safety/write-safety-primitives.js";
 import { WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { SeparationsCanonicalInput } from "../../../../src/workflows/separations/workflow.js";
+import { SeparationsCanonicalInput, SeparationsInput } from "../../../../src/workflows/separations/workflow.js";
 import { kualiReceiptEvidence } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { compositionQueuedRun } from "../../../support/helpers/separations-composition-fixtures.js";
 import { separationsDescriptor, separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-const GENERATION_0_SELECTOR = "9139ca6501ab707e3c47dfe55fcc89741dfc53dda0b783a7afb8ee2c2e1ee77d";
-const GENERATION_1_SELECTOR = "66dc2f33bf56808164be764f921a1e5a2a95afd5e0a7b760fdba687ee81575dc";
+import { NAME_DOMAIN_CANONICAL_INPUT_HASH as GENERATION_1_SELECTOR, NAME_DOMAIN_INGRESS_HASH, PRE_INITIALS_CANONICAL_INPUT_HASH as GENERATION_0_SELECTOR,
+  PRE_INITIALS_INGRESS_HASH } from "../../../support/fixtures/storage/pre-initials-separations.js";
 
 it("derives the exact stopped predecessor selectors without changing the current schemas", () => {
   assert.ok(RETIRED_INPUT_GENERATIONS.separations?.includes(GENERATION_1_SELECTOR));
@@ -70,6 +70,16 @@ it("pins the retired input generations: Separations lists only earlier builds, t
   const proof = separationsKualiFinalizationDescriptor.canonicalInput;
   assert.deepEqual(RETIRED_INPUT_GENERATIONS[separationsKualiFinalizationDescriptor.id], [deriveSchemaHash(proof, "output"), predecessorEvidenceSchemaHash(proof)]);
   assert.ok(Object.isFrozen(RETIRED_INPUT_GENERATIONS) && Object.values(RETIRED_INPUT_GENERATIONS).every(hashes => Object.isFrozen(hashes)));
+});
+
+it("pins the pre-initials ingress hashes to the current schema without the stored initials", () => {
+  const withoutInitials = SeparationsInput.omit({ timekeeperInitials: true });
+  assert.equal(deriveSchemaHash(withoutInitials, "input"), PRE_INITIALS_INGRESS_HASH);
+  assert.equal(predecessorEvidenceSchemaHash(withoutInitials, "input"), NAME_DOMAIN_INGRESS_HASH);
+  assert.notEqual(deriveSchemaHash(SeparationsInput, "input"), PRE_INITIALS_INGRESS_HASH);
+  const canonical = SeparationsCanonicalInput instanceof z.ZodObject ? SeparationsCanonicalInput.omit({ timekeeperInitials: true }) : undefined;
+  assert.ok(canonical);
+  assert.deepEqual([deriveSchemaHash(canonical, "output"), predecessorEvidenceSchemaHash(canonical)], RETIRED_INPUT_GENERATIONS.separations);
 });
 
 function nextGeneration() {

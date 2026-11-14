@@ -13,22 +13,30 @@ function merge(example: JsonValue, value: JsonValue): JsonValue {
 
 const CANONICAL_INPUT = "../../../../src/models/workflow/canonical-input.js";
 
-/** Rebuild the module graph as a next build whose Separations inputs gained a field: both the current schema hash and its profile-name-domain predecessor hash move, while stored values still parse. Returns the restore. */
-export function simulateNextSeparationsInputGeneration(): () => void {
+const withoutInitials = (schema: z.ZodType): z.ZodType => schema instanceof z.ZodObject && "timekeeperInitials" in schema.shape
+  ? schema.omit({ timekeeperInitials: true }) : schema;
+
+/** Rebuild the module graph as the previous build, whose Separations input had no stored Timekeeper initials: its canonical hash is the pre-initials one and its predecessor the profile-name-domain one. Returns the restore. */
+export function simulatePreviousSeparationsInputGeneration(): () => void {
   vi.resetModules();
   vi.doMock(CANONICAL_INPUT, async importOriginal => {
     const original = await importOriginal<typeof import("../../../../src/models/workflow/canonical-input.js")>();
-    const defineCanonicalInput = (input: z.ZodType, canonical: z.ZodType, samples: readonly [unknown, ...unknown[]]): z.ZodType =>
-      original.defineCanonicalInput(input, canonical instanceof z.ZodObject && "timekeeperName" in canonical.shape
-        ? canonical.extend({ nextInputGeneration: z.literal(true).optional() }) : canonical, samples);
+    const defineCanonicalInput = (input: z.ZodType, canonical: z.ZodType, samples: readonly [unknown, ...unknown[]]): z.ZodType => {
+      const [first, ...rest] = samples.map(sample => {
+        if (sample === null || typeof sample !== "object" || !("timekeeperInitials" in sample)) return sample;
+        const { timekeeperInitials: _initials, ...earlier } = z.record(z.string(), z.unknown()).parse(sample);
+        return earlier;
+      });
+      return original.defineCanonicalInput(withoutInitials(input), withoutInitials(canonical), [first, ...rest]);
+    };
     return { ...original, defineCanonicalInput };
   });
   return () => { vi.doUnmock(CANONICAL_INPUT); vi.resetModules(); };
 }
 
-/** A closed profile store holding a terminal Separations run with a committed Kuali write, stamped with this build's own Separations input hash. */
+/** A closed profile store holding a terminal Separations run with a committed Kuali write, stored as the last pre-initials build wrote it, receipt included (the whole fixture is built under that build's input schema): the run input carries the pre-initials hashes and no initials, while the write executed with the letters that build derived from the name. */
 export async function retiredSeparationsRun() {
-  vi.resetModules();
+  const restoreBuild = simulatePreviousSeparationsInputGeneration();
   const { compositionHarness, compositionQueuedRun, compositionClaimRunning, compositionContext, COMPOSITION_SCOPE_OUTPUTS,
     FINALIZE_NODE } = await import("../separations-composition-fixtures.js");
   const h = await compositionHarness();
@@ -45,7 +53,8 @@ export async function retiredSeparationsRun() {
     const { buildNodeFailureRecord } = await import("../../../../src/backend/runtime/execution/run-failure.js");
     const { buildFailureTerminalAuthorization } = await import("../../../../src/backend/runs/lifecycle/terminal-authorization.js");
     const { NodeIdSchema } = await import("../../../../src/rules/identity/ids.js");
-    const queued = RunRecordSchema.parse(compositionQueuedRun());
+    const { preInitialsSeparationsRun, preInitialsExecutionInput, preInitialsSignedComment } = await import("../../fixtures/storage/pre-initials-separations.js");
+    const queued = preInitialsSeparationsRun(RunRecordSchema.parse(compositionQueuedRun()), "pre-initials");
     const { run, claim } = compositionClaimRunning(h.database, h.clock, queued, FINALIZE_NODE);
     const { createTimelineEmitter } = await import("../../../../src/backend/storage/events/timeline-emitter.js");
     const { runQueuedSpanEvent } = await import("../../../../src/backend/runs/commands/run-queued-span.js");
@@ -55,7 +64,8 @@ export async function retiredSeparationsRun() {
     const context = compositionContext(run, claim, FINALIZE_NODE), nodes = descriptorRuntimeNodes(descriptor), outputs: Record<string, JsonValue> = {};
     for (const id of context.node.dependsOn) {
       const node = nodes.find(node => node.id === id); assert.ok(node?.kind === "task");
-      const override: unknown = id === "approval" ? { ...COMPOSITION_SCOPE_OUTPUTS.approval, jobs: FINALIZATION_SCOPE_OUTPUTS.approval.jobs } : Reflect.get(COMPOSITION_SCOPE_OUTPUTS, id);
+      const override: unknown = id === "approval" ? { ...COMPOSITION_SCOPE_OUTPUTS.approval, jobs: FINALIZATION_SCOPE_OUTPUTS.approval.jobs }
+        : id === "dates" ? { ...COMPOSITION_SCOPE_OUTPUTS.dates, dateChangeComments: preInitialsSignedComment(COMPOSITION_SCOPE_OUTPUTS.dates.dateChangeComments) } : Reflect.get(COMPOSITION_SCOPE_OUTPUTS, id);
       const value = JsonValueSchema.parse(node.uses.output.parse(merge(JsonValueSchema.parse(node.uses.example), JsonValueSchema.parse(override))));
       outputs[id] = value;
       h.database.authority.runCheckpoints.insert(RunCheckpointRecordSchema.parse({ workflowId: descriptor.id, runId: run.envelope.runId,
@@ -65,7 +75,7 @@ export async function retiredSeparationsRun() {
         provenance: evidenceLeaves(value).map(({ path }) => ({ path, source: "live", observedAt: h.clock.now().toISOString(), originalObservedAt: h.clock.now().toISOString() })) }));
     }
     const outcome = await h.bound(() => h.sequencer.executeTransaction({ ...context,
-      scope: { input: run.input.parsed.value, protectedInputBindings: run.input.parsed.protectedBindings, outputs } }));
+      scope: { input: preInitialsExecutionInput(run), protectedInputBindings: run.input.parsed.protectedBindings, outputs } }));
     assert.equal(Reflect.get(Object(outcome), "disposition"), "committed");
     const current = h.database.authority.runs.get(run.envelope.runId); assert.ok(current);
     const failure = buildNodeFailureRecord({ writes: [], run: current, failureId: randomUUID(), nodeId: NodeIdSchema.parse(FINALIZE_NODE), taskId: context.node.commit.uses.id,
@@ -81,5 +91,5 @@ export async function retiredSeparationsRun() {
     await h.closeController();
     return { ...paths, run: terminal, result, checkpoints, writes, receipt, cleanup: h.dispose };
   } catch (error) { await h.dispose(); throw error; }
-  finally { vi.resetModules(); }
+  finally { restoreBuild(); }
 }
