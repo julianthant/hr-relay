@@ -157,6 +157,19 @@ describe("UCPath PayPath work-study staging on a fake page", () => {
   });
 });
 
+describe("UCPath PayPath subject name before the fence", () => {
+  it("reads the one header name on the staged page", async () => {
+    const h = world();
+    await h.driver.stagePayPathWorkStudy(target);
+    assert.equal(await h.driver.readPayPathSubject(), "Lee, Jordan");
+  });
+
+  it("refuses as unreadable when no record header is shown", async () => {
+    const h = world();
+    await assert.rejects(h.driver.readPayPathSubject(), (error: unknown) => error instanceof UcpathPayPathRefusedError && error.code === "paypath-identity-unreadable");
+  });
+});
+
 describe("UCPath PayPath work-study Save on a fake page", () => {
   it("clicks Save and Submit exactly once on the staged page under a minted capability", async () => {
     const h = world();
