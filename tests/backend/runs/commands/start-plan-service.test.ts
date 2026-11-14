@@ -14,7 +14,7 @@ function harness(held: boolean, lateHold = false, descriptor: AnyWorkflowDescrip
   const effects = { transactions: 0, secrets: 0, preflight: 0, identity: 0 };
   const ids = sequentialIdFactory();
   const admission = (): ReturnType<AuthorityRepositories["runs"]["admission"]> => held
-    ? { state: "draining", commandId: "held-command" } : { state: "open" };
+    ? { state: "draining", commandId: "held-command", hold: "update" } : { state: "open" };
   // Only admission may be read when the transaction discovers a late hold.
   const repositories = new Proxy({} as AuthorityRepositories, { get(_target, key) {
     if (key === "runs") return { admission };
