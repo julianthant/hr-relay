@@ -48,7 +48,7 @@ export function pickedRunWorld(state: PickedRunState) {
   const status = state === "after-crash" || state === "pre-submit-failed" || state === "post-submit-proved" ? "failed"
     : unknownWrite ? "blocked" : terminal ? "done" : state === "resuming" ? "queued" : "running";
   const pauseControl = { state: terminal || unknownWrite ? "unavailable" as const : paused ? "paused" as const : pending ? "pause-pending" as const : "running" as const,
-    expectedVersion: PositiveIntSchema.parse(original.rowRevision), ...(terminal || pending || unknownWrite ? {} : { command: paused ? "resume" as const : "pause" as const }) };
+    expectedVersion: PositiveIntSchema.parse(original.rowRevision), ...(terminal || unknownWrite ? {} : { command: paused || pending ? "resume" as const : "pause" as const }) };
   const interrupt = state === "quitting" ? { action: "pause" as const, step: "finish-write" as const }
     : pending ? { action: "pause" as const, step: "cancel" as const } : undefined;
   const interruptLabel = servedInterruptLabel(interrupt);
@@ -115,7 +115,7 @@ export function pickedRunWorld(state: PickedRunState) {
     gate: { state: "absent", reason: "No gate" }, outcome: { state: "absent", reason: "Fictional receipt omitted" }, context: { dataFacts: 0, evidenceFacts: captures.length, attempts: 1 },
     captures: captures.length > 0 ? { state: "available", artifactCount: captures.length } : { state: "absent", reason: "No captures in this scenario" },
     availableSections: ["logs", ...(captures.length > 0 ? ["captures"] : []), ...(state === "post-submit-proved" ? ["failure"] : [])] });
-  const lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 1, state: "ready", update: "installer-unavailable",
+  const lifecycle = ApplicationLifecycleSchema.parse({ runtimeGeneration: 1, state: "ready", pause: paused ? "paused" : pending ? "pause-pending" : "running", update: "installer-unavailable",
     targets: terminal ? [] : [{ runId: row.runId, expectedVersion: row.rowRevision, ...(row.pause === undefined ? {} : { pause: row.pause }), pauseUnavailable: unknownWrite }] });
   return { bootstrap: FIXTURE_START_PICKER_BOOTSTRAP, row, day, detail, logs, captureSection, failureSection, lifecycle, bytes, artifactIds: captures.map(capture => capture.artifactId) };
 }

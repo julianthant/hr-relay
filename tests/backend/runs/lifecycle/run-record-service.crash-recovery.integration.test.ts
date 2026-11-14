@@ -1,6 +1,8 @@
 import { RuntimeLifetimeLockReleasedError } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
+import { randomUUID } from "node:crypto";
+import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import { attemptingOwnedWrite } from "../../../support/helpers/backend/worker-lifetime-world.js";
 import { settledWriteState } from "../../../../src/models/trust/failure.js";
@@ -68,4 +70,16 @@ it("records a crash after the run's own committed write as a failure after that 
   assert.equal(failure.writeState, settledWriteState(committed));
   assert.equal(failure.writeState, "committed");
   assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), committed);
+});
+
+it("settles a crashed run whose pause was still pending without carrying that pause", async () => {
+  const f = await world.interruptedFixture();
+  const pausing = requireLifecycleApplied(f.service.pause({ commandId: randomUUID(), runId: f.run.envelope.runId, expectedVersion: f.run.version }));
+  assert.equal(pausing.pause?.state, "requested");
+  const result = f.service.recoverCrash({ ...f.recoveryRequest, expectedVersion: pausing.version }, f.lock);
+  assert.equal(result.state, "applied"); if (result.state !== "applied") throw new Error("recovery-refused");
+  assert.ok(result.run.lifecycle.state === "terminal" && result.run.lifecycle.outcome === "failed");
+  assert.equal(result.run.pause, undefined);
+  assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.pause, undefined);
+  assert.equal(f.database.authority.runResults.getSettlement(f.run.envelope.runId, result.run.version)?.run.pause, undefined);
 });
