@@ -3,13 +3,13 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createCiPlan, hasTimingArtifact, registeredTimingWorkflows, timingRunIds, verifyCiResults, verifyProofs, verifyUnitProof } from "../../../scripts/test/ci-plan.js";
 
-const filters = { shared: "true", unit: "false", integration: "false", architecture: "false", parity: "false" };
+const filters = { shared: "true", unit: "false", integration: "false", architecture: "false" };
 const context = (workflow = "portable", extra: Record<string, unknown> = {}) => ({ workflow, event: "pull_request",
   base: workflow === "portable" ? "staging" : "main", head: workflow === "portable" ? "feature/test" : "staging",
   draft: false, filters, ...extra });
 const portableResults = { changes: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
   ubuntu: { result: "success" }, integration: { result: "success" }, architecture: { result: "success" },
-  parity: { result: "success" }, timings: { result: "success" } };
+  timings: { result: "success" } };
 const releaseResults = { ...portableResults, macos: { result: "success" }, windows: { result: "success" },
   "unit-proofs": { result: "success" }, "release-batch": { result: "success" } };
 
@@ -20,21 +20,17 @@ function cli(command: string, input: unknown, results?: unknown) {
 }
 
 describe("flat CI plan", () => {
-  it("keeps staging portable and preserves release/manual native/parity shards", () => {
+  it("keeps staging portable and preserves release/manual native shards", () => {
     const portable = createCiPlan(context());
     expect(portable.ubuntu.include.filter(row => row.suite === "unit")).toHaveLength(2);
     expect(portable.ubuntu.include.filter(row => row.suite === "architecture")).toHaveLength(2);
     expect(portable.ubuntu.include.filter(row => row.suite === "integration")).toHaveLength(14);
     expect(portable.macos.include).toEqual([]);
     expect(portable.windows.include).toEqual([]);
-    expect(portable.parity).toBe(false);
     expect(portable.testJobs).toBe(18);
     for (const manual of [false, true]) {
       const plan = createCiPlan(context("release", manual ? { event: "workflow_dispatch", base: "", head: "", filters: {}, draft: true } : {}));
-      expect(plan.macos.include).toEqual([
-        ...[1, 2, 3].map(shard => ({ suite: "parity", shard, shards: 3 })),
-        ...[1, 2].map(shard => ({ suite: "native", shard, shards: 2 })),
-      ]);
+      expect(plan.macos.include).toEqual(Array.from({ length: 5 }, (_, i) => ({ suite: "native", shard: i + 1, shards: 5 })));
       expect(plan.windows.include).toEqual(Array.from({ length: 5 }, (_, i) => ({ suite: "native", shard: i + 1, shards: 5 })));
       expect(plan.releaseBatch).toBe(!manual);
       expect(plan.testJobs).toBe(28);
@@ -49,7 +45,6 @@ describe("flat CI plan", () => {
     const plan = createCiPlan(context("release", { filters: { ...filters, shared: "false", [suite]: "true" }, draft }));
     expect(plan.macos.include).toEqual(Array.from({ length: shards }, (_, i) => ({ suite: "native", shard: i + 1, shards })));
     expect(plan.windows.include).toEqual(plan.macos.include);
-    expect(plan.parity).toBe(false);
     expect(plan.releaseBatch).toBe(false);
   });
 
@@ -61,7 +56,6 @@ describe("flat CI plan", () => {
     }
     const invalid = createCiPlan(context("release", { head: "feature/other" }));
     expect(invalid.fullRelease).toBe(false);
-    expect(invalid.parity).toBe(false);
     expect(invalid.macos.include).toEqual([]);
     expect(invalid.windows.include).toEqual([]);
     expect(invalid.releaseBatch).toBe(false);
@@ -118,7 +112,7 @@ describe("flat CI failure fences", () => {
   it("requires timing input proofs before publication and both selected native platforms", () => {
     const plan = createCiPlan(context("release"));
     expect(() => verifyProofs(plan, releaseResults)).not.toThrow();
-    expect(() => verifyProofs(plan, { ...releaseResults, parity: { result: "failure" } })).toThrow();
+    expect(() => verifyProofs(plan, { ...releaseResults, architecture: { result: "failure" } })).toThrow();
     expect(() => verifyUnitProof(plan, releaseResults)).not.toThrow();
     for (const platform of ["macos", "windows"]) {
       for (const result of ["failure", "cancelled", "skipped"]) {
@@ -133,7 +127,7 @@ describe("flat CI failure fences", () => {
 
   it("refuses malformed selectors, matrices and timing counts", () => {
     const plan = createCiPlan(context());
-    for (const field of ["unit", "integration", "architecture", "parity", "fullRelease", "releaseBatch"]) {
+    for (const field of ["unit", "integration", "architecture", "fullRelease", "releaseBatch"]) {
       for (const value of [undefined, "false", 1, {}]) {
         expect(() => verifyCiResults({ ...plan, [field]: value }, portableResults)).toThrow();
       }

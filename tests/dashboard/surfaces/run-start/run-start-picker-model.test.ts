@@ -5,8 +5,8 @@ import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-st
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../parity/helpers/fixture-start.js";
-import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 
 const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
 const catalog = buildWorkflowCatalog(served);

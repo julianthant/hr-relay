@@ -112,10 +112,10 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       descriptors,
       writeResolution: {
         recheck: () => {
-          throw new Error("write resolution is not wired in the parity seed");
+          throw new Error("write resolution is not wired in the mock seed");
         },
         resolveAbsent: () => {
-          throw new Error("write resolution is not wired in the parity seed");
+          throw new Error("write resolution is not wired in the mock seed");
         },
       },
       workerRuntime: { pool: unusedWorkerPool() },

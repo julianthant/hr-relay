@@ -2,7 +2,8 @@ import { retainedRunProtectedBindings } from "../../../models/write-safety/prote
 import { PublicTransactionKeyDigestSchema, publicTransactionKeyDigest, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 
 import { z } from "zod";
-import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
+import { TimelineEventRecordSchema, timelineCheckpointReference, type TimelineCheckpointReferenceSchema } from "../../../models/events/timeline.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { TimelineCategoryKeySchema } from "../../../models/workflow/presentation.js";
 import { idempotencyKeyDigestReference } from "../../../rules/redaction/redaction.js";
 import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
@@ -111,6 +112,7 @@ export type ExplainRunView = z.infer<typeof ExplainRunViewSchema>;
 export interface ExplainRunEvidence {
   readonly run: RunRecord;
   readonly checkpoints: readonly RunCheckpointRecord[];
+  readonly replayedCheckpoints?: readonly z.infer<typeof TimelineCheckpointReferenceSchema>[];
   readonly writes: readonly WriteIntentRecord[];
   readonly failure?: FailureRecord;
   readonly sameFingerprintSeen?: number;
@@ -191,7 +193,11 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
   const notRun = new Map(evidence.dependencies
     .filter((entry) => entry.state !== "resolved")
     .map((entry) => [entry.nodeId, entry.state]));
-  const byNode = new Map(evidence.checkpoints.map((record) => [String(record.nodeId), record]));
+  const replayedCheckpoints = new Set((evidence.replayedCheckpoints ?? []).map(canonicalJsonStringify));
+  const byNode = new Map(evidence.checkpoints
+    .filter((record) => record.runId === envelope.runId
+      || replayedCheckpoints.has(canonicalJsonStringify(timelineCheckpointReference(record))))
+    .map((record) => [String(record.nodeId), record]));
 
   const timeline = evidence.nodeIds.map((nodeId) => {
     const record = byNode.get(nodeId);
