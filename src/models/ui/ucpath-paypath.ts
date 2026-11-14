@@ -66,6 +66,7 @@ export const UCPATH_PAYPATH_REFUSAL_CODES = [
   "paypath-multiple-records",
   "paypath-alert-shown",
   "paypath-identity-unreadable",
+  "paypath-position-already-dated",
   "unexpected-page-state",
   "staged-value-mismatch",
 ] as const;

@@ -38,6 +38,12 @@ describe("UCPath PayPath read on a fake page", () => {
     assert.deepEqual(h.actions, ["click:category", "click:actions", "fill:empl-id-input=10000001", "click:search"]);
   });
 
+  it("refuses the already-dated record run 92dd9da8 reached by its own reason, typing nothing after the search", async () => {
+    const { h, error } = await refusal({ outcome: "already-dated" });
+    assert.equal(error.code, "paypath-position-already-dated");
+    assert.deepEqual(h.actions, ["click:category", "click:actions", "fill:empl-id-input=10000001", "click:search"]);
+  });
+
   it("refuses on an alert, carries its text and never clicks OK", async () => {
     const { h, error } = await refusal({ outcome: "alert", alertText: " Synthetic alert text " });
     assert.equal(error.code, "paypath-alert-shown");
@@ -49,15 +55,19 @@ describe("UCPath PayPath read on a fake page", () => {
     [{ outcome: "no-results" }, "employee-not-found"],
     [{ outcome: "grid" }, "paypath-multiple-records"],
     [{ name: "   " }, "paypath-identity-unreadable"],
+    [{ missing: "name" }, "paypath-identity-unreadable"],
+    [{ nameCount: 2 }, "paypath-identity-unreadable"],
     [{ headerEmplId: "10000002" }, "subject-mismatch"],
     [{ headerEmplId: "not an id" }, "subject-mismatch"],
+    [{ missing: "job-data-tab" }, "unexpected-page-state"],
+    [{ missing: "effective-date-label" }, "unexpected-page-state"],
     [{ missing: "category" }, "paypath-hr-tasks-not-shown"],
     [{ missing: "actions" }, "paypath-hr-tasks-not-shown"],
     [{ missing: "body" }, "paypath-hr-tasks-not-shown"],
     [{ missing: "empl-id-input" }, "paypath-search-not-shown"],
     [{ missing: "search" }, "paypath-search-not-shown"],
     [{ missing: "empl-id-display" }, "unexpected-page-state"],
-    [{ missing: "effective-date" }, "unexpected-page-state"],
+    [{ missing: "position-pool" }, "unexpected-page-state"],
     [{ outcome: "alert", missing: "alert-text" }, "paypath-alert-shown"],
     [{ outcome: "nothing" }, "unexpected-page-state"],
     [{ ambiguousPositionNumber: true }, "unexpected-page-state"],
@@ -134,6 +144,7 @@ describe("UCPath PayPath work-study staging on a fake page", () => {
 
   it.each<[Parameters<typeof fakeUcpathPayPathPage>[0], UcpathPayPathRefusalCode]>([
     [{ outcome: "no-results" }, "employee-not-found"],
+    [{ outcome: "already-dated" }, "paypath-position-already-dated"],
     [{ headerEmplId: "10000002" }, "subject-mismatch"],
     [{ saveButtons: 2 }, "unexpected-page-state"],
     [{ saveDisabled: true }, "unexpected-page-state"],

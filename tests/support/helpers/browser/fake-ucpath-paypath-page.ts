@@ -1,10 +1,13 @@
 import type { Page } from "playwright";
 
-export type FakePayPathOutcome = "record" | "alert" | "no-results" | "grid" | "nothing";
+const HEADER = (field: string) => `[id*="${field}"]:not([id^="win0div"]):not(input):not(select):not(label):visible`;
+
+/** `already-dated` is the record run 92dd9da8 reached: header and tabs shown, Position Data as display text with no input boxes. */
+export type FakePayPathOutcome = "record" | "already-dated" | "alert" | "no-results" | "grid" | "nothing";
 
 /** Answers exactly the locators `UCPATH_PAYPATH_UI` builds and records every fill and click; waits reject at once when a control is not shown or is the one named in `missing`. Fills stick unless named in `revert`. */
 export function fakeUcpathPayPathPage(options: Readonly<{
-  outcome?: FakePayPathOutcome; alertText?: string; name?: string; headerEmplId?: string; ambiguousPositionNumber?: boolean;
+  outcome?: FakePayPathOutcome; alertText?: string; name?: string; nameCount?: number; headerEmplId?: string; ambiguousPositionNumber?: boolean;
   missing?: string; revert?: string; postbackClears?: string; alertAfterFill?: string; saveButtons?: number; saveDisabled?: boolean; alertAfterSave?: string; saveStays?: boolean;
 }> = {}) {
   let outcome = options.outcome ?? "record";
@@ -18,11 +21,12 @@ export function fakeUcpathPayPathPage(options: Readonly<{
     "job-data-comments": "", "initiator-comments": "",
   };
   const alertNow = (text: string) => { outcome = "alert"; alertText = text; };
+  const positionBoxes = new Set(["effective-date", "position-change-reason", "position-pool", "position-number"]);
   function control(key: string) {
     const shown = () => {
       if (key === "busy" || key === options.missing) return false;
-      if (key === "name" || key === "empl-id-display" || key in values || key.endsWith("-tab") || key === "save") {
-        return searched && (outcome === "record" || outcome === "alert" && key === "save");
+      if (key === "name" || key === "empl-id-display" || key === "effective-date-label" || key in values || key.endsWith("-tab") || key === "save") {
+        return searched && (outcome === "record" || outcome === "already-dated" && !positionBoxes.has(key) || outcome === "alert" && key === "save");
       }
       if (key === "alert-ok" || key === "alert-text") return searched && outcome === "alert";
       if (key === "no-results") return searched && outcome === "no-results";
@@ -32,6 +36,7 @@ export function fakeUcpathPayPathPage(options: Readonly<{
     const self = {
       first: () => self,
       count: async () => key === "position-number" && options.ambiguousPositionNumber === true ? 2
+        : key === "name" && options.nameCount !== undefined && shown() ? options.nameCount
         : key === "save" && options.saveButtons !== undefined ? options.saveButtons
           : key === "rows" ? (shown() ? 2 : 0) : shown() ? 1 : 0,
       isVisible: async () => shown(),
@@ -65,7 +70,7 @@ export function fakeUcpathPayPathPage(options: Readonly<{
   const tabs: Record<string, string> = { "Position Data": "position-data-tab", "Job Data": "job-data-tab", "Additional Pay Data": "additional-pay-tab" };
   const frameSelectors: Record<string, string> = {
     "body > *": "body", "#UC_E102_PP_SRCH_EMPLID": "empl-id-input", "#PTS_CFG_CL_WRK_PTS_SRCH_BTN": "search", 'tr[id^="trPTS_CFG_CL_STD_RSL"]': "rows",
-    '[id="UC_E102_PP_WRK_NAME_DISPLAY"]': "name", '[id="UC_E102_PP_WRK_EMPLID"]': "empl-id-display",
+    [HEADER("NAME_DISPLAY")]: "name", [HEADER("EMPLID")]: "empl-id-display",
     '[id="UC_E102_PP_WRK_SUBMIT_BTN"]': "save", "#WAIT_win0": "busy",
   };
   const frame = {
@@ -80,8 +85,9 @@ export function fakeUcpathPayPathPage(options: Readonly<{
       if (key === undefined) throw new Error(`Unexpected PayPath frame selector ${selector}`);
       return control(key);
     },
-    getByText: (pattern: RegExp) => {
-      if (!pattern.test("No matching values were found")) throw new Error("Unexpected PayPath text recipe");
+    getByText: (text: string | RegExp, input?: { exact?: boolean }) => {
+      if (text === "Effective Date:" && input?.exact === true) return control("effective-date-label");
+      if (!(text instanceof RegExp) || !text.test("No matching values were found")) throw new Error("Unexpected PayPath text recipe");
       return control("no-results");
     },
   };
