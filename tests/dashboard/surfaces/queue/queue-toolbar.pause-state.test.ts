@@ -16,6 +16,7 @@ describe("run toolbar shows the served pause control", () => {
     assert.match(render("running", "pause"), />Pause</u);
     assert.match(render("paused", "resume"), />Resume</u);
     assert.match(render("pause-pending"), />Pausing…</u);
+    assert.match(render("pause-pending", "resume"), />Resume</u);
     assert.match(render("unavailable"), /pause authority is unavailable/u);
   });
   it("disables the button only when the backend serves no command", () => {

@@ -552,7 +552,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const applicationBusy = appAttempts.some(attempt => attempt.state === "pending" || attempt.outcome?.kind === "uncertain");
   const quitting = appAttempts.some(attempt => attempt.request.type === "pause-all-and-quit"
     && (attempt.state === "pending" || attempt.outcome?.kind === "confirmed" || attempt.outcome?.kind === "uncertain")) || application?.state === "quitting";
-  const allPaused = application !== undefined && application.targets.length > 0 && application.targets.every(target => target.pause?.state === "paused" && target.pauseUnavailable === false);
   useEffect(() => {
     const quit = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "q") {
@@ -756,7 +755,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const envelope = { commandId: crypto.randomUUID(), requestedAt: nowIso, requestedBy: boot.actor.id, source: "dashboard" };
     const targets = application.targets.map(({ runId, expectedVersion }) => ({ runId, expectedVersion }));
     if (action === "resume") {
-      if (!allPaused) return;
+      if (application.pause !== "paused") return;
       const plan: BulkVerbPlan = { verb: "resume", label: "Resume", eligible: targets.map(target => ({ ...target,
         title: dayWire?.queueSurfaces.find(row => row.runId === target.runId)?.title ?? target.runId })), skipped: [], unavailable: [] };
       void executeShell(BulkRunCommandRequestSchema.parse({ ...envelope, bulkCommandId: envelope.commandId, family: "run", type: "resume", targets, mode: "best-effort" }), "Resume all runs", plan).then(lifecycle.refresh);
@@ -1336,9 +1335,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               <div className="dashboard-log-column">
                 <section aria-label="Action panel" className="dashboard-action-panel">
           <FocusQueueToolbar
-            pauseControls={<PauseAllQuitControls state={application === undefined ? "unavailable" : applicationBusy || quitting ? "pausing" : application.state !== "ready" ? "pausing" : allPaused ? "paused" : "ready"}
+            pauseControls={<PauseAllQuitControls state={application === undefined ? "unavailable" : application.state !== "ready" || application.pause === "pause-pending" ? "pausing" : application.pause === "paused" ? "paused" : "ready"}
               activeCount={application?.targets.length ?? 0} quitRequested={quitRequested} onQuitDismiss={() => setQuitRequested(false)}
-              onPauseAll={() => applicationAction("pause-all")} onResumeAll={() => applicationAction("resume")} onPauseAndQuit={() => applicationAction("pause-all-and-quit")} />}
+              onPauseAll={applicationBusy || quitting ? undefined : () => applicationAction("pause-all")} onResumeAll={applicationBusy || quitting ? undefined : () => applicationAction("resume")} onPauseAndQuit={applicationBusy || quitting ? undefined : () => applicationAction("pause-all-and-quit")} />}
             sort={sort}
             onSort={onSort}
             active={filter}
