@@ -54,4 +54,22 @@ describe("profile name check", () => {
       assert.deepEqual(profileDetailsPatch({ name: { firstName, lastName } }), { refused: "PROFILE_DISPLAY_NAME_REFUSED" });
     }
   });
+
+  it("lets one normalization failure escape the name check and the details patch", () => {
+    const sentinel = new Error("synthetic-normalization-failure");
+    const original = Object.getOwnPropertyDescriptor(String.prototype, "normalize");
+    assert.ok(original);
+    const firstName = "Alex", lastName = "Rivera";
+    try {
+      Object.defineProperty(String.prototype, "normalize", { ...original, value() { throw sentinel; } });
+      for (const call of [
+        () => isProfileName(firstName, lastName),
+        () => deriveProfileNames(firstName, lastName),
+        () => profileDetailsPatch({ name: { firstName, lastName } }),
+      ]) assert.throws(call, (error: unknown) => error === sentinel);
+    } finally {
+      Object.defineProperty(String.prototype, "normalize", original);
+    }
+    assert.equal(isProfileName(firstName, lastName), true);
+  });
 });
