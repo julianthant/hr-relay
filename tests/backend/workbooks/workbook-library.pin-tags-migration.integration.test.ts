@@ -25,9 +25,9 @@ function schema29Store() {
   return database;
 }
 
-it('is the current schema version', () => {
+it('is schema version 30, under the change log\'s current 31', () => {
   expect(WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version).toBe(30);
-  expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(30);
+  expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(31);
 });
 
 it('validates a schema-29 library as a predecessor and refuses it as current', () => {

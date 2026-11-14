@@ -13,6 +13,9 @@ afterEach(() => { vi.restoreAllMocks(); });
 
 const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
 const WHOLE_STORE = /\b(?:settings_snapshots|command_audits|workbook_\w+)\b/u;
+/** The reader's read of the entries above its cursor, and its re-validation of the peer's one logged timeline row. */
+const LOG_READ = /\bFROM authority_changes WHERE seq>\?/u;
+const PEER_ROW = /^SELECT \* FROM timeline_events WHERE cursor=\?$/u;
 
 function emitter(database: AuthorityDatabase) {
   return createDebugEventWriter({ repository: database.authority.timelineEvents, clock, build: "fixture" });
@@ -51,24 +54,27 @@ describe("authority write lock scope", () => {
     } finally { await f.close(); }
   });
 
-  it("validates the whole store before the write lock when registering search declarations after a peer commit", async () => {
+  it("validates the peer's logged closure before the write lock when registering search declarations, and nothing under it", async () => {
     const f = await peers();
     try {
       const run = runRecordOf({ seed: 7 }).envelope;
       const statements = traceSql(() => { f.database.registerRunSearchDeclarations([{ workflow: run.workflow, version: run.descriptorVersion,
         contractFingerprint: run.contractFingerprint, subjectProjection: null }]); });
-      const begin = statements.indexOf("BEGIN IMMEDIATE"), firstWholeStore = statements.findIndex(sql => WHOLE_STORE.test(sql));
-      assert.ok(firstWholeStore >= 0 && firstWholeStore < begin, "whole-store validation runs before BEGIN IMMEDIATE");
-      assert.deepEqual(underWriteLock(statements).filter(sql => WHOLE_STORE.test(sql)), []);
+      const begin = statements.indexOf("BEGIN IMMEDIATE"), logRead = statements.findIndex(sql => LOG_READ.test(sql));
+      assert.ok(logRead >= 0 && logRead < begin, "the logged changes are read and validated before BEGIN IMMEDIATE");
+      assert.ok(statements.slice(logRead, begin).some(sql => PEER_ROW.test(sql)), "the peer's logged row is re-validated before the lock");
+      assert.deepEqual(statements.filter(sql => WHOLE_STORE.test(sql)), []);
+      assert.deepEqual(underWriteLock(statements).filter(sql => LOG_READ.test(sql) || PEER_ROW.test(sql)), []);
     } finally { await f.close(); }
   });
 
-  it("keeps validating the whole store on search reads after a peer commit", async () => {
+  it("validates the closure of the peer's logged keys on a search read after a peer commit", async () => {
     const f = await peers();
     try {
       const statements = traceSql(() => { f.database.authority.runs.search({ q: "", scope: "run", facets: {}, limit: 10 }); });
-      assert.ok(statements.some(sql => /\bsettings_snapshots\b/u.test(sql)));
-      assert.ok(statements.some(sql => /\bcommand_audits\b/u.test(sql)));
+      assert.ok(statements.some(sql => LOG_READ.test(sql)));
+      assert.ok(statements.some(sql => PEER_ROW.test(sql)));
+      assert.deepEqual(statements.filter(sql => WHOLE_STORE.test(sql)), []);
     } finally { await f.close(); }
   });
 

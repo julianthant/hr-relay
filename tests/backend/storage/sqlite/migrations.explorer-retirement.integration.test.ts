@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { inspectNativeAuthority, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { AuthorityTableNameSchema } from "../../../../src/models/config/authority.js";
+import { AUTHORITY_DERIVED_TABLES, AuthorityTableNameSchema } from "../../../../src/models/config/authority.js";
 
 function editorDatabase() {
   const database = new DatabaseSync(":memory:");
@@ -105,7 +105,7 @@ it.each(["CREATE TABLE unexpected_table (id TEXT)", "ALTER TABLE explorer_overri
 it("admits only the current schema for ordinary inspection", () => {
   const database = inspectionDatabase(CURRENT_AUTHORITY_SCHEMA_VERSION);
   try {
-    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get()?.count, 49);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get()?.count, 49 + AUTHORITY_DERIVED_TABLES.length);
     assert.deepEqual(inspectNormalAuthority(database), inspectNativeAuthority(database, CURRENT_AUTHORITY_SCHEMA_VERSION));
   }
   finally { database.close(); }
