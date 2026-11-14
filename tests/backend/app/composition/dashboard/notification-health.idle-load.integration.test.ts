@@ -15,8 +15,8 @@ import { AuthorityBackupService, syntheticStateRoot } from "../../../../support/
 
 const { fixture, seedRun } = createNotificationCompositionTestWorld();
 const IDLE_MS = 10 * 60_000;
-/** One source read, then one live-lease check per 60 s health pass. */
-const IDLE = { wholeStore: 1, liveRunLists: 1 + (IDLE_MS / 60_000 + 1) };
+/** The first pass reads the store once each for integrity, notification sources and live-run leases; idle passes after it read nothing. */
+const IDLE = { wholeStore: 1, liveRunLists: 2 };
 
 /** Store reads the gate watch makes over an idle period on a store holding a queued run and `backups` verified backups, optionally logging an event-loop stall each minute. */
 async function idleReads(backups: number, stalls = false): Promise<typeof IDLE> {
