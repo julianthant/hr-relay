@@ -2,7 +2,8 @@ import { retainedRunProtectedBindings } from "../../../models/write-safety/prote
 import { PublicTransactionKeyDigestSchema, publicTransactionKeyDigest, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 
 import { z } from "zod";
-import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
+import { TimelineEventRecordSchema, timelineCheckpointReference, type TimelineCheckpointReferenceSchema } from "../../../models/events/timeline.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { TimelineCategoryKeySchema } from "../../../models/workflow/presentation.js";
 import { idempotencyKeyDigestReference } from "../../../rules/redaction/redaction.js";
 import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
@@ -13,6 +14,7 @@ import {
   type FailureRecord,
 } from "../../../models/trust/failure.js";
 import type { RunRecord } from "../../../models/run/record.js";
+import { pendingInterruptOf } from "../../../rules/runs/run-interrupt.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import type { RemediationActionSchema } from "../../../models/trust/failure.js";
@@ -111,6 +113,7 @@ export type ExplainRunView = z.infer<typeof ExplainRunViewSchema>;
 export interface ExplainRunEvidence {
   readonly run: RunRecord;
   readonly checkpoints: readonly RunCheckpointRecord[];
+  readonly replayedCheckpoints?: readonly z.infer<typeof TimelineCheckpointReferenceSchema>[];
   readonly writes: readonly WriteIntentRecord[];
   readonly failure?: FailureRecord;
   readonly sameFingerprintSeen?: number;
@@ -137,8 +140,9 @@ function nextSafeAction(
   failure: readonly Remediation[],
 ): string {
   const { lifecycle } = run;
-  if (run.pause !== undefined && lifecycle.state !== "terminal" && lifecycle.state !== "parked-write") {
-    return run.pause.state === "paused"
+  const pending = pendingInterruptOf(run);
+  if ((pending === "paused" || pending === "pause-requested") && lifecycle.state !== "parked-write") {
+    return pending === "paused"
       ? "Paused (a shutdown pauses every unfinished run). It does not resume by itself, not even at the next start; Resume or Cancel it from Logs."
       : "A pause is requested; the worker stops it after the current step. Then Resume or Cancel it from Logs.";
   }
@@ -191,7 +195,11 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
   const notRun = new Map(evidence.dependencies
     .filter((entry) => entry.state !== "resolved")
     .map((entry) => [entry.nodeId, entry.state]));
-  const byNode = new Map(evidence.checkpoints.map((record) => [String(record.nodeId), record]));
+  const replayedCheckpoints = new Set((evidence.replayedCheckpoints ?? []).map(canonicalJsonStringify));
+  const byNode = new Map(evidence.checkpoints
+    .filter((record) => record.runId === envelope.runId
+      || replayedCheckpoints.has(canonicalJsonStringify(timelineCheckpointReference(record))))
+    .map((record) => [String(record.nodeId), record]));
 
   const timeline = evidence.nodeIds.map((nodeId) => {
     const record = byNode.get(nodeId);

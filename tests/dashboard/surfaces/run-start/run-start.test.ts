@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
@@ -10,7 +10,7 @@ import { type DashboardClient, createDashboardClient } from "../../../../src/das
 import { START_DOOR_ABSENCE } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import { type RunStartWorkflow, RunStartSurfaces } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../parity/helpers/fixture-day.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-day.js";
 import { createRoot, type Root } from "react-dom/client";
 import { type AppRouteState } from "../../../../src/dashboard/app/navigation/url-state.js";
 import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";
@@ -54,6 +54,32 @@ it("keeps the current view after a refused start", async () => {
   await dialog.press("Continue");
   await dialog.press("Start 1 run");
   assert.deepEqual(revealed, []);
+});
+
+it("Enter advances and starts, Shift+Enter keeps its newline, buttons keep their own Enter", async () => {
+  onTestFinished(cleanup);
+  const revealed: string[] = [];
+  const dialog = await openDialog(stubClient({
+    submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
+    executeCommand: async () => APPLIED,
+  }), undefined, (workflowId) => revealed.push(workflowId));
+  assert.ok(!dialog.text().includes("Enter to continue"), "nothing typed: no hint");
+  assert.equal(await dialog.enter(), false, "Enter does nothing while Continue is unavailable");
+  await dialog.type(TYPED);
+  assert.ok(dialog.text().includes("Enter to continue"));
+  assert.equal(await dialog.enter({ shift: true }), false, "Shift+Enter keeps its newline");
+  assert.equal(dialog.stage(), "Input");
+  const back = buttons().find(button => button.textContent?.trim() === "Cancel");
+  assert.ok(back);
+  assert.equal(await dialog.enter({ on: back }), false, "a focused button keeps its Enter");
+  assert.equal(await dialog.enter(), true);
+  assert.notEqual(dialog.stage(), "Input");
+  await dialog.enter({ on: document.body });
+  assert.equal(dialog.stage(), "Confirm");
+  assert.ok(dialog.text().includes("Enter to start"));
+  assert.deepEqual(revealed, []);
+  await dialog.enter({ on: document.body });
+  assert.deepEqual(revealed, [WORKFLOW_ID]);
 });
 
 describe("a settlement that arrives after the request moved is DROPPED", () => {
@@ -164,7 +190,7 @@ describe("keeps optional steps and removes only the per-start destination", () =
     assert.ok(dialog.text().includes("Customize steps"));
     assert.ok(!dialog.text().includes("Destination"));
     assert.ok(!dialog.text().includes("Test instance"));
-    assert.equal(document.querySelectorAll('input[type="radio"][name^="Priority-"]').length, 2);
+    assert.ok(dialog.text().includes("Runs before bulk batches."));
     assert.equal(document.querySelectorAll('input[type="radio"][name^="Browser mode-"]').length, 2);
     assert.doesNotMatch(dialog.text(), /Active policy|Workflow version|Fixed by the selected workflow/u);
     const selectedWorkflow = document.body.querySelector('nav[aria-label="Workflow"] button[aria-current="page"]');
@@ -375,6 +401,27 @@ function separationsPlan(omittedSteps?: readonly string[]): StartPlanResponse {
     refused: [],
   });
 }
+
+it("keeps staging's dry-run sentence for a typed workflow", async () => {
+  onTestFinished(cleanup);
+  const base = SEPARATIONS_WORKFLOWS.find(workflow => workflow.workflowId === "separations");
+  assert.ok(base?.inputRun.state === "present");
+  const typed = {
+    ...base,
+    inputRun: { state: "present" as const, surface: { ...base.inputRun.surface, supportsDryRun: true } },
+  };
+  const dialog = await openDialog(stubClient({}), {
+    workflows: SEPARATIONS_WORKFLOWS.map(workflow => workflow.workflowId === typed.workflowId ? typed : workflow),
+    panelWorkflowId: "separations",
+  });
+  await dialog.type(DOCUMENT);
+  await dialog.press("Continue");
+  assert.equal(dialog.stage(), "Options");
+  const row = [...document.querySelectorAll(".ds-run-row")].find(node => node.textContent?.includes("Dry run"));
+  assert.ok(row, "the typed dry-run row is missing");
+  assert.match(row.textContent ?? "", /Fill and check every step without submitting\./u);
+  assert.equal((row.textContent ?? "").includes("or saving"), false);
+});
 
 async function openSteps(client: DashboardClient, typed: string = DOCUMENT): Promise<OpenDialog> {
   const dialog = await openDialog(client, SEPARATIONS);

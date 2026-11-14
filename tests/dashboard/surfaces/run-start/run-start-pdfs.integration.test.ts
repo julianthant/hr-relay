@@ -71,15 +71,8 @@ it("uploads both original PDFs through the typed client and plans one parent wit
   expect(uploads).toEqual(["first.pdf", "second.pdf"]);
   expect(dialog.text()).toContain("2 PDFs selected");
   expect(dialog.disabled("Continue")).toBe(false);
+  await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
   await dialog.press("Continue");
-  const choose = async (label: string, optionText: string) => {
-    await dialog.press(label);
-    const option = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes(optionText)); assert.ok(option);
-    await act(async () => option.click()); await h.settle();
-  };
-  await choose('Choose a spreadsheet Reference spreadsheet', 'Action History.xlsx');
-  await choose('Choose a version Reference version', 'Fall review');
-  await choose('Choose a worksheet Reference worksheet', 'Action History');
   await dialog.press("Continue");
   expect(plans).toHaveLength(1);
   const request = StartPlanRequestSchema.parse(plans[0]);
@@ -109,18 +102,12 @@ it("offers the Dry run switch for the PDF workflow and plans and confirms a dry 
         worksheets: [{ sheetId: "history", name: "Action History" }], type: reference.type }] })) }; } });
   const dialog = await h.openDialog(served, { workflows: [dryWorkflow], panelWorkflowId: dryWorkflow.workflowId });
   await attach([pdf("first.pdf", "%PDF first")]);
+  await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
   await dialog.press("Continue");
-  const choose = async (label: string, optionText: string) => {
-    await dialog.press(label);
-    const option = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes(optionText)); assert.ok(option);
-    await act(async () => option.click()); await h.settle();
-  };
-  await choose('Choose a spreadsheet Reference spreadsheet', 'Action History.xlsx');
-  await choose('Choose a version Reference version', 'Fall review');
-  await choose('Choose a worksheet Reference worksheet', 'Action History');
-  const dryRunSwitch = document.querySelector<HTMLElement>('[role="switch"]'); assert.ok(dryRunSwitch, "Dry run switch is missing");
-  expect(dryRunSwitch.closest("label")?.textContent).toContain("Dry run");
-  expect(dryRunSwitch.closest("label")?.textContent).toContain("Fill and check every step without submitting or saving.");
+  const dryRunSwitch = [...document.querySelectorAll<HTMLElement>('[role="switch"]')].find(node => node.closest("label")?.textContent?.includes("Dry run"));
+  assert.ok(dryRunSwitch, "Dry run switch is missing");
+  expect(dryRunSwitch.closest(".ds-run-row")?.textContent).toContain("Dry run");
+  expect(dryRunSwitch.closest(".ds-run-row")?.textContent).toContain("Fill and check every step without submitting or saving.");
   await act(async () => dryRunSwitch.click()); await h.settle();
   await dialog.press("Continue");
   expect(StartPlanRequestSchema.parse(plans[0]).dryRun).toBe(true);

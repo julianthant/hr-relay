@@ -1,6 +1,6 @@
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act,createElement } from "react";
@@ -32,10 +32,9 @@ function button(name: string): HTMLButtonElement {
   assert.equal(matches.length, 1, `one button ${name}: ${text()}`); return matches[0];
 }
 async function press(name: string) { const node = button(name); assert.equal(node.disabled, false, `${name}: ${text()}`); await act(async () => node.click()); }
-function checkbox(label: string): HTMLButtonElement {
-  const nodes = [...document.querySelectorAll<HTMLButtonElement>('[role="checkbox"]')];
-  const node = nodes.find((entry) => entry.getAttribute("aria-label") === label
-    || entry.getAttribute("aria-labelledby")?.split(" ").map((id) => document.getElementById(id)?.textContent).join(" ") === label);
+function checkbox(label: string): HTMLInputElement {
+  const names = [`Include ${label}`, `${label} (required)`];
+  const node = [...document.querySelectorAll<HTMLInputElement>('input[role="switch"]')].find((entry) => names.includes(entry.closest("label")?.textContent?.trim() ?? ""));
   assert.ok(node, `${label}: ${text()}`); return node;
 }
 async function mount(h: Harness, source: RunRecord, client: DashboardClient = h.client) {
@@ -70,10 +69,10 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
         ? { ...step, control: { ...step.control, forces: ["filing"] } } : step) };
       assert.deepEqual(defaultRerunSteps(response.snapshot, dependent), ["reading", "checking", "filing"]);
     }
-    await mount(h, h.fresh(source)); assert.equal(checkbox("Read employee").getAttribute("aria-checked"), "true");
-    assert.equal(checkbox("File transaction").getAttribute("aria-checked"), "true");
-    assert.equal(checkbox("Check employee").getAttribute("aria-checked"), outcome === "failed" ? "false" : "true");
-    await act(async () => checkbox("File transaction").click()); assert.equal(checkbox("File transaction").getAttribute("aria-checked"), "false");
+    await mount(h, h.fresh(source)); assert.equal(checkbox("Read employee").checked, true);
+    assert.equal(checkbox("File transaction").checked, true);
+    assert.equal(checkbox("Check employee").checked, outcome !== "failed");
+    await act(async () => checkbox("File transaction").click()); assert.equal(checkbox("File transaction").checked, false);
     await press("Continue"); assert.ok(document.querySelector('[aria-label="Values"]')); assert.match(text(), /Unavailable/u);
   });
 

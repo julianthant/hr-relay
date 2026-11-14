@@ -25,3 +25,17 @@ it("the review dialog speaks in the past about rows that were already gone when 
     assert.ok(text.includes(runId(7)) && text.includes(runId(8)), text);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+it("a stored result's unattempted rows say not attempted, never not offered", async () => {
+  const host = document.createElement("div"), root = createRoot(host);
+  document.body.append(host);
+  try {
+    const response = BulkRunCommandResponseSchema.parse({ state: "vector", bulkCommandId: "0f3b6d5a-2e5a-4b8f-9a4e-1c2d3e4f5a6b", type: "cancel", requestedCount: 2,
+      results: [{ runId: runId(1), commandId: "1f3b6d5a-2e5a-4b8f-9a4e-1c2d3e4f5a6b", outcome: "errored", detail: "threw" }] });
+    const bulkOutcome = { plan: { verb: "cancel", label: "Cancel", eligible: [], skipped: [{ runId: runId(2), title: "Casey Lin" }], skippedReason: "Not attempted", unavailable: [] },
+      subjects: new Map([[runId(1), "Jordan Reyes"]]), response } as Parameters<typeof BulkCommandFeedback>[0]["bulkOutcome"];
+    await act(async () => root.render(createElement(BulkCommandFeedback, { bulkOutcome, reviewing: true, onReviewed: () => undefined, onSelectRun: () => undefined })));
+    const text = (document.body.textContent ?? "").replace(/\s+/gu, " ");
+    assert.ok(text.includes("Casey Lin") && text.includes("Not attempted") && !text.includes("Not offered"), text);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
