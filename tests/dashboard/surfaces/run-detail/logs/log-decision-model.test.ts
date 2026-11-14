@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { logDecisionExamples } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-fixture.js";
-import { answeredOutcome, answeredRow, choiceOptions, decisionAnswerValid, recommendedOption } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
+import { answeredOutcome, answeredRow, choiceOptions, decisionAnswerValid, lookupTyped, recommendedOption } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
 import { LogDecisionBlock, type DecisionAnswerHandler } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision.js";
 import { type LogEntry } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import { RunDecisionWireSchema } from "../../../../../src/models/dashboard/run-decision.js";
@@ -54,6 +54,16 @@ describe("served log decisions", () => {
     assert.equal(decisionAnswerValid(pick, { typed: "1000" }), false);
     assert.equal(decisionAnswerValid(pick, { candidate: "10000042", typed: "10000077" }), false);
     assert.equal(answeredRow(pick, { typed: " 10000077 " })?.name, "Morgan, Alexis");
+  });
+  it("accepts any pattern-valid typed value on a lookup fill row, which names no row", () => {
+    const pick = option("review-candidates", "review-candidates-0");
+    assert.ok(pick.input?.kind === "candidate" && pick.input.table.typed !== undefined);
+    const lookup = { ...pick, input: { ...pick.input, table: { ...pick.input.table, typed: { ...pick.input.table.typed, lookup: true as const } } } };
+    assert.equal(decisionAnswerValid(lookup, { typed: " 10000123 " }), true);
+    assert.equal(lookupTyped(lookup.input.table, " 10000123 "), "10000123");
+    assert.equal(decisionAnswerValid(lookup, { typed: "1000" }), false);
+    assert.equal(decisionAnswerValid(lookup, { candidate: "10000042", typed: "10000123" }), false);
+    assert.equal(lookupTyped(pick.input.table, "10000123"), undefined, "a row-naming fill row never starts a lookup");
   });
   it("never offers a submit retry while the result is unknown", () => {
     for (const id of ["parked", "parked-kuali", "park-unavailable", "failure-attempting", "failure-unknown", "transport-unknown"]) {

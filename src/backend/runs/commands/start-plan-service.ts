@@ -1,7 +1,7 @@
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
 import { z } from "zod";
-import { failureCorrectionSubmission } from "../start/failure-correction.js";
+import { failureCorrectionSubmission, gateCorrectionSubmission } from "../start/failure-correction.js";
 import { JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import type { RunRecoveryMode } from "../../../models/run/envelope.js";
 import { workflowPreflightScope } from "../start/preflight-scope.js";
@@ -116,20 +116,24 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         if (run === undefined) throw new RerunRefusedError("target-not-found", "Rerun source does not exist");
         validateRerunSourcePlan(repositories, run);
         const correction = rerunSource.failureCorrection;
+        if (rerunSource.gateCorrection !== undefined) {
+          return { input: run.input.parsed, submissions: [gateCorrectionSubmission(descriptor, run, ingress)],
+            stepOmissions: run.envelope.stepOmissions, supersedeRunId: run.envelope.runId };
+        }
         if (correction === undefined) return { input: run.input.parsed };
         const submission = failureCorrectionSubmission(descriptor, run, repositories.failures.get(correction.failureId), ingress);
         return { input: run.input.parsed, submissions: [submission], stepOmissions: run.envelope.stepOmissions };
       });
       const stepOmissions = resolveStartStepOmissions(descriptor, ingress.selectedStepKeys,
         source?.stepOmissions ?? ingress.stepOmissions);
-      if (rerunSource?.failureCorrection === undefined) {
-        for (const submission of ingress.submissions) for (const correction of descriptor.failureCorrections ?? []) {
+      if (rerunSource?.failureCorrection === undefined && rerunSource?.gateCorrection === undefined) {
+        for (const submission of ingress.submissions) for (const correction of [...descriptor.failureCorrections ?? [], ...descriptor.gateCorrections ?? []]) {
           if (descriptor.surfaces?.inputRun?.parser.rules.some(rule => rule.emit === correction.inputField)) continue;
           const object = z.record(z.string(), JsonValueSchema).safeParse(submission);
           const prior = source === undefined ? undefined : z.record(z.string(), JsonValueSchema).parse(source.input.value);
           if (object.success && Object.hasOwn(object.data, correction.inputField)
             && prior?.[correction.inputField] !== object.data[correction.inputField]) {
-            throw new RerunRefusedError("invalid-value", "This input can only be entered through its failure action");
+            throw new RerunRefusedError("invalid-value", "This input can only be entered through its correction action");
           }
         }
       }
@@ -147,6 +151,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           ...(ingress.workbookReferences === undefined ? {} : { workbookReferences: ingress.workbookReferences }),
           ...(deps.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: deps.protectedSubmissionBindings }),
           ...(source === undefined ? {} : { retainedInputs: [source.input] }),
+          ...(source?.supersedeRunId === undefined ? {} : { supersedeRunId: source.supersedeRunId }),
           submissions: (source?.submissions ?? ingress.submissions).map((submission) =>
             applyStartStepSelection(descriptor, submission, ingress.selectedStepKeys)),
           ...(ingress.requestedInstance === undefined ? {} : { requestedInstance: ingress.requestedInstance }),
