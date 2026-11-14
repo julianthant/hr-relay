@@ -56,7 +56,8 @@ type OcrReviewEvent = "publish-checkpoint" | "operator-revise" | "approve";
 type OcrReviewRefusal = "ocr-review-not-published" | "ocr-review-approved";
 type OcrReviewStep = "in-review" | "approved" | OcrReviewRefusal;
 
-// Replays return before this table. stateOf reads rows inside the same mutate.
+// Identical replays return before this table. A divergent replay of the latest revision
+// refuses before it. stateOf reads rows inside the same mutate.
 const OCR_REVIEW_TRANSITIONS: { readonly [State in OcrReviewState["kind"]]: { readonly [Event in OcrReviewEvent]: OcrReviewStep } } = Object.freeze({
   reading: Object.freeze({ "publish-checkpoint": "in-review", "operator-revise": "ocr-review-not-published", approve: "ocr-review-not-published" }),
   "in-review": Object.freeze({ "publish-checkpoint": "in-review", "operator-revise": "in-review", approve: "approved" }),
@@ -112,6 +113,7 @@ export function createOcrReviewRepository(ports: Ports) {
       return ports.mutate("ocr_review_revisions", () => {
         const current = latest(record.sourceRunId);
         if (current?.id === record.id && canonicalJsonStringify(current) === canonicalJsonStringify(record)) return { result: current, changes: 0 };
+        if (current?.id === record.id) throw new Error("ocr-review-revision-conflict");
         const snapshots = database.prepare("SELECT * FROM ocr_approved_snapshots WHERE run_id=? ORDER BY created_at,id").all(record.sourceRunId).map(ocrSnapshotFromRow);
         const refusal = transitionRefusal(stateOf(current, snapshots), record.origin.kind === "checkpoint" ? "publish-checkpoint" : "operator-revise");
         if (refusal !== undefined) throw new Error(refusal);

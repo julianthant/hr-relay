@@ -162,9 +162,21 @@ it("moves a stored OCR review only through the explicit transition table", async
   const conflict = await world.openDatabase();
   try {
     prepare(conflict, "in-review");
+    const before = view(conflict);
     assertRefused(() => { conflict.authority.ocrReviews.append(checkpointRevision(1, LATER), 1); }, "ocr-review-revision-conflict");
-    assert.deepEqual(view(conflict), { revision: 1, snapshots: [] });
+    assert.deepEqual(view(conflict), before);
   } finally { conflict.close(); }
+
+  const approvedConflict = await world.openDatabase();
+  try {
+    prepare(approvedConflict, "approved");
+    const before = view(approvedConflict);
+    const stored = approvedConflict.authority.ocrReviews.revision(RUN_ID, 1);
+    assert.ok(stored);
+    assertRefused(() => { approvedConflict.authority.ocrReviews.append(checkpointRevision(1, LATER), 0); }, "ocr-review-revision-conflict");
+    assert.deepEqual(view(approvedConflict), before);
+    assert.equal(approvedConflict.authority.ocrReviews.revision(RUN_ID, 1)?.createdAt, stored.createdAt);
+  } finally { approvedConflict.close(); }
 
   const snapshotConflict = await world.openDatabase();
   try {
