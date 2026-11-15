@@ -80,9 +80,9 @@ Bootstrap projects the admitted person registry name as the actor label. Appeara
 ## Static workflow source policy
 
 `app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json` into `WORKFLOW_SOURCES`.
-Every declared value is `mock` or `served`. `workflowSource` throws `WORKFLOW_SOURCE_UNDECLARED`
+Every declared value is `mock`, `served` or `hidden`. `workflowSource` throws `WORKFLOW_SOURCE_UNDECLARED`
 for an absent ID. `PRODUCT_WORKFLOW_COMPOSITION` supplies the static product policy;
-`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup, Separations and OCR use `served`; the other configured workflows use `mock`.
+`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup, Separations and the public I-9 Check PDF parent use `served`. OCR and I-9 Lookup are `hidden`: their admitted child runs use served data without public catalog or assistant entries. The I-9 Check person child has no source entry. Other configured workflows use `mock`.
 Product mock queues start empty. `WorkflowComposition.initialMockRuns` supplies initial rows; the product supplies none, while the mock composition supplies `seedMockRuns`. The mock composition starts from an explicit mock policy and opts fixture workflows into served capability tests. There is no runtime served-to-mock fallback.
 
 `WorkflowComposition.sources` controls workflow presentation; `explorerSources`, `logsSources`,
@@ -93,6 +93,11 @@ route's producer. `buildWorkflowCatalog` combines served registration with the p
 keeping availability, executable registration, and preview capability separate. Only a workflow's
 own wiring task changes its source policy after its accepted behavior is implemented across
 Run, Rerun, Queue, Logs, Explorer, Records, notifications, and Analytics where applicable.
+
+I-9 Check's source is wired; live acceptance remains blocked. Its graph has no transaction node,
+so the planner refuses `dryRun=true`. Ordinary execution reads HR systems and publishes a results
+workbook to the library and the configured local tracker. The operator must choose between that
+ordinary execution and a separately implemented preview path before live verification.
 
 ## Current frontend mock wiring checklist
 
@@ -163,7 +168,7 @@ field membership and discriminated states. The client checks identity as well as
 | Run detail, attempts | `queries/detail-queries.ts` | `run-detail.ts`: `GET /api/v1/runs/:runId`, `/attempt-history` |
 | Lazy run sections and rerun values | `queries/detail-queries.ts`, `queries/rerun-queries.ts` | `data.ts`, `trust.ts`: `GET /api/v1/runs/:runId/:section`; `data.ts`: `/rerun-values` |
 | Verified diagnostic bytes | `queries/detail-queries.ts` | `trust.ts`: `GET /api/v1/diagnostic-bundles/:bundleId`, `/manifest`, `/attachments/:artifactId`; verified artifact URL `/artifacts/v1/:artifactId` |
-| ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /sign-in`, `/sign-in/:attemptId/cancel`, `/sign-out` under the account path |
+| ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /sign-in`, `/sign-in/:attemptId/cancel` under the account path |
 | Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/facts`, `/editable`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
 | Preflight | `queries/preflight-queries.ts`, `queries/chatgpt-account-queries.ts` | `settings-preflight.ts`: `GET /api/v1/preflight`, `POST /api/v1/preflight/rerun`; explicit diagnostic through the existing `chatgpt-account.ts`: `POST /api/v1/settings/chatgpt-account/test-ocr` |
 | Storage doctor | `queries/storage-queries.ts` | `storage.ts`: `GET /api/v1/storage/doctor/latest`, `/api/v1/storage/doctor` |

@@ -332,7 +332,7 @@ describe("approved Person Lookup scenarios", () => {
       assert.equal(bundle.runId, queued.envelope.runId);
       assert.ok(bundle.attachments.some(row => row.artifactId === association?.[1] && row.kind === "screenshot"));
     }
-    if (failed) assert.equal(actions.length, 1);
+    if (failed) assert.deepEqual(actions.map(action => action.targetId).sort(), ["ucpath.browser-capture", "ucpath.task-capture"]);
   });
   it("M4", () => {
     const surface = personLookupDescriptor.surfaces.inputRun;

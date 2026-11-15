@@ -19,7 +19,7 @@ export function createFixtureShellRoutesSetup() {
         nextDay: [...days, today].filter(value => value > day).sort().at(0) ?? null }));
     });
     app.get("/api/v1/bootstrap", (c) => c.json(profile.bootstrap as unknown));
-    app.get("/api/v1/application-lifecycle", c => c.json({ runtimeGeneration: 1, state: "ready", update: "installer-unavailable",
+    app.get("/api/v1/application-lifecycle", c => c.json({ runtimeGeneration: 1, state: "ready", pause: "running", update: "installer-unavailable",
       targets: dayWire.queueSurfaces.filter(row => !isTerminalQueueStatus(row.status)).map(row => ({
         runId: row.runId, expectedVersion: row.rowRevision, ...(row.pause === undefined ? {} : { pause: row.pause }),
         pauseUnavailable: row.status === "blocked" || row.status === "cancelling",

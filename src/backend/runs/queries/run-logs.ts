@@ -450,7 +450,8 @@ function dryRunPreviewForLogs(deps: RunDetailQueryDeps, authority: RunRecord) {
     const label = node?.kind === "task" ? node.label ?? node.uses.title : node?.kind === "transaction" ? node.label ?? node.prepare.uses.title : String(step.nodeId);
     const state = step.state === "not-run" ? "skipped" : step.state === "unavailable" || step.state === "transaction-preview" && step.preview.outcome.state !== "would-prepare" ? "unavailable" : "exercised";
     const samples = step.state === "transaction-preview" ? step.samples : [];
-    const detail = step.state === "delegation-preview" ? "Previewed child changes without saving." : step.state === "not-run" ? step.reason : step.state === "unavailable" ? "Requires an unsubmitted result; this stage was not exercised."
+    const detail = step.state === "delegation-preview" ? "Previewed child changes without saving."
+      : step.state === "publication-preview" ? "Prepared and checked without saving." : step.state === "not-run" ? step.reason : step.state === "unavailable" ? "Requires an unsubmitted result; this stage was not exercised."
         : step.state === "transaction-preview" ? step.preview.outcome.state === "would-prepare" ? "Filled, verified and captured without submitting."
         : "Existing completion observed; the form was not staged." : "Completed from recorded workflow evidence.";
     return { id: step.nodeId, label, state,

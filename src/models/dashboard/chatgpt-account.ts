@@ -42,10 +42,6 @@ export const ChatGptCancelResultSchema = z.union([
 export const ChatGptSignedOutSchema = z.strictObject({ state: z.literal("signed-out"), remoteRevocation: z.enum(["confirmed", "unconfirmed", "not-needed"]) });
 export type ChatGptSignedOut = z.infer<typeof ChatGptSignedOutSchema>;
 export type ChatGptSignInRequest = z.infer<typeof ChatGptSignInRequestSchema>;
-export const ChatGptSignOutResultSchema = z.union([
-  ChatGptSignedOutSchema,
-  RefusedSchema, UncertainSchema,
-]);
 export type ChatGptSignInStart = z.infer<typeof ChatGptSignInStartSchema>;
 export type ChatGptAccountView = z.infer<typeof ChatGptAccountViewSchema>;
 export type ChatGptSignInCompletion = z.infer<typeof ChatGptSignInCompletionSchema>;

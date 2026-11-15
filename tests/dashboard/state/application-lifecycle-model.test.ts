@@ -20,7 +20,7 @@ it("discards late lifecycle reads after the authority changes", async () => {
     await act(async () => root.render(createElement(Probe)));
     authority = {};
     await act(async () => root.render(createElement(Probe)));
-    const response = (generation: number) => Response.json({ runtimeGeneration: generation, state: "ready", targets: [], update: "installer-unavailable" });
+    const response = (generation: number) => Response.json({ runtimeGeneration: generation, state: "ready", pause: "running", targets: [], update: "installer-unavailable" });
     await act(async () => { replies[1].resolve(response(2)); });
     assert.equal(result?.resource.state, "loaded");
     await act(async () => { replies[0].resolve(response(1)); });
@@ -33,7 +33,7 @@ it("exposes read failure until the operator refreshes, without retaining old aut
   const transport = createDashboardClient({ baseUrl: "http://fixture.test" });
   const client = { ...transport, async applicationLifecycle() {
     if (fail) throw new DashboardClientError({ kind: "http", status: 503, code: "DASHBOARD_READ_FAILED", message: "fixture failure" });
-    return ApplicationLifecycleSchema.parse({ runtimeGeneration: 2, state: "ready", targets: [], update: "installer-unavailable" });
+    return ApplicationLifecycleSchema.parse({ runtimeGeneration: 2, state: "ready", pause: "running", targets: [], update: "installer-unavailable" });
   } };
   const authority = {};
   let result: ReturnType<typeof useApplicationLifecycle> | undefined;

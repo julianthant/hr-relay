@@ -46,7 +46,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     {ucpath}
     <Group label="Workflow configuration">
       {details("Timekeeper name", values.timekeeper, timekeeperName => ({ timekeeperName }))}
-      <ResultRow label="Timekeeper initials" value={timekeeperInitials(values.timekeeper)} />
+      <ResultRow label="Timekeeper initials" value={profileInitials(values.timekeeper)} />
     </Group>
     <Group label="Security">
       <ResultRow label="Duo" value={duo === "ready" ? "Ready" : "Needs setup"} />
@@ -58,10 +58,6 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
 
 export type ProfileDetailsChangeRequest = z.infer<typeof ProfileDetailsChangeRequestSchema>;
 export type ProfileDetailsChangeResult = z.infer<typeof ProfileDetailsChangeResultSchema>;
-
-function timekeeperInitials(name: string): string {
-  try { return profileInitials(name); } catch { return ""; }
-}
 
 /** A value row whose pencil swaps the value for an inline field: Enter saves, Escape cancels, and focus returns to the pencil. */
 function EditableRow({ label, value, onSave }: { label: string; value: string; onSave: (next: string) => Promise<boolean> }) {

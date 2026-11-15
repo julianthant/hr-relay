@@ -164,6 +164,14 @@ Its `tasks/read-worksheet-archives.ts` verifies retained PDFs and creates the ar
 reference reads live in `backend/workbooks/` and the `workbooks.library` provider; tasks accept
 lookup keys while the native run owner supplies the exact retained library and named version.
 
+`src/workflows/work-study/` opens UCPath PayPath Actions for one Employee ID, plans the work-study
+transaction (effective date, reason JRL, pool F, matching comments) and files it through one stop-after-prepare
+Save transaction; the plan rule lives in `src/rules/work-study/plan.ts` and the duplicate and receipt verdict over
+SS Smart HR transaction findings in `src/rules/work-study/transaction-verdict.ts`. `src/models/ui/ucpath-paypath.ts`
+owns the PayPath read, staging, Save driver surface and refusals; the four Save contracts live in
+`src/models/systems/ucpath/{stage,submit,match,verify}-paypath-work-study.ts`.
+`backend/systems/ucpath/driver/paypath-operation.ts` and `paypath-ui-registry.ts` own the PayPath browser family.
+
 `src/workflows/onbase/` registers a child-only per-person Emergency Contact PDF import with source-page and import-document step proofs. Its system store and semantic driver live in `src/backend/systems/onbase/`; `src/backend/storage/sqlite/exclusive-session-leases.ts` owns the durable identity-session lease and its migration. The browser factory holds that lease through proven browser closure; uncertainty and process loss do not expire it.
 Its task implementations live in `tasks/read-source-page.ts`, `stage-import.ts`, `match-import.ts`, `upload-import.ts` and `verify-import.ts`, matching each contract's task ID for implementation fingerprints.
 The corresponding contract files live under `src/models/systems/onbase/` with those same task names;
@@ -208,7 +216,7 @@ The local `ocr.approved-snapshot` and `ocr.review` capabilities are issued by
 Its pure contracts live in `src/models/workflows/i9-check/read-match-outcome.ts` and
 `read-retention-row.ts`; `check.ts` owns their shared identity/retention schemas and policy.
 `src/workflows/i9-check-start/` is the public PDF parent, with document review, roster-reference and retention step definitions and proofs. It delegates original PDFs to admitted OCR, authenticates corrected approved selections, retains each source coordinate, and runs the existing person child once per approved EID. It publishes one results workbook and the configured tracker through the shared workbook and xlsx services. Pure batch derivations live in `src/rules/i9-check/batch.ts`; canonical document/person/result shapes live in `src/models/workflows/i9-check/`, and parent task contracts mirror their IDs in `src/models/workflows/i9-check-start/`.
-Shared workbook publication and captured-version reads use `src/models/processing/workbooks/{read-result,read-reference}.ts` and the processing workbook store. `src/backend/runs/workbooks.ts` authenticates the run's retained reference before late-discovered keys can be read; callers cannot select another library or version. Captured-reference writes require an explicit planning declaration. Onboarding declares its roster for name binding, row choice and verified result patches through the captured reference. SharePoint imports remain unexposed. The I-9 parent remains on its static mock source pending activation.
+Shared workbook publication and captured-version reads use `src/models/processing/workbooks/{read-result,read-reference}.ts` and the processing workbook store. `src/backend/runs/workbooks.ts` authenticates the run's retained reference before late-discovered keys can be read; callers cannot select another library or version. Captured-reference writes require an explicit planning declaration. Onboarding declares its roster for name binding, row choice and verified result patches through the captured reference. SharePoint imports remain unexposed. The public I-9 parent selects served data. I-9 Lookup is hidden and the person child has no source entry; both remain admitted through declared parent edges. I-9 Check supports a dry run: `save-workbook` declares `stop-before-publish`, so a dry run previews the results workbook without saving it and leaves the tracker untouched.
 `src/workflows/i9-lookup/workflow.ts` is child-only; Onboarding declares its parent edge in the registered workflow definition. It uses
 the I-9 system store, then retains its typed result through `tasks/read-result.ts` in the workflow
 store. Its one `lookup` timeline checkpoint groups both tasks. The registered harness at
@@ -317,7 +325,7 @@ Workflow execution uses the signed-in dashboard Run and its canonical start-plan
 
 `src/models/config/assistant-model-preference.ts` owns model slug and preference validation shared by command and assistant schemas. `src/models/dashboard/assistant.ts` owns the profile preference record and served assistant action contract. `src/backend/storage/sqlite/assistant-model-preference.ts` owns its authenticated singleton and command/audit history checks. The existing command kernel and command service own the operator-only asynchronous preparation boundary and compare-and-swap mutation; account/composition preparation is required before that command becomes available.
 
-`src/rules/spreadsheets/workbook-io.ts` owns shared library XLSX/CSV IO, structural admission, retained cell metadata and deterministic intake export through `@shbernal/ts-xlsx`. Its sibling `workbook-size.ts` shares populated-cell and grid limits with saved-workbook validation. Imported formulas or metadata outside the editable model mark the workbook for named master-edit refusal. The dashboard editor owns editing/rendering behavior and consumes this browser-safe boundary.
+`src/rules/spreadsheets/workbook-io.ts` owns shared library XLSX/CSV IO, structural admission, retained cell metadata and deterministic intake export through `@shbernal/ts-xlsx`. Its sibling `spreadsheet-inflate-limit.ts` refuses an xlsx whose parts inflate past one shared byte limit, counted while the bytes inflate, before workbook XML is parsed. Its sibling `workbook-size.ts` shares populated-cell and grid limits with saved-workbook validation. Imported formulas or metadata outside the editable model mark the workbook for named master-edit refusal. The dashboard editor owns editing/rendering behavior and consumes this browser-safe boundary.
 
 `transports/http/routes/debug-responses.ts` observes terminal HTTP failure responses through the existing debug writer.
 

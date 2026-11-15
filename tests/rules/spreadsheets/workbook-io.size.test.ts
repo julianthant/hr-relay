@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import { Workbook, writeXlsx } from '@shbernal/ts-xlsx';
 import { importWorkbook } from '../../../src/rules/spreadsheets/workbook-io.js';
 import { decodeEditableWorkbook, encodeEditableWorkbook } from '../../../src/models/dashboard/workbooks.js';
+import { xlsxWithInflatedWorkbookXml } from '../../support/helpers/spreadsheets/inflated-workbook.js';
 
 async function xlsx(sheetData: string, dimension = 'A1:XFD1048576'): Promise<ArrayBuffer> {
   const book = new Workbook();
@@ -112,4 +113,10 @@ it('refuses a distant populated cell rather than deleting it or allocating an en
 it('still refuses invalid declared dimensions', async () => {
   await expect(importWorkbook('invalid.xlsx', await xlsx('<row r="1"><c r="A1"><v>1</v></c></row>', 'XFE1')))
     .rejects.toThrow('SPREADSHEET_DIMENSIONS_INVALID');
+});
+
+it('refuses an xlsx whose workbook XML inflates past the limit when the zip header declares a tiny size', async () => {
+  const inflated = await xlsxWithInflatedWorkbookXml(232 * 1024 * 1024, 64);
+  await expect(importWorkbook('inflated.xlsx', inflated))
+    .rejects.toThrow('SPREADSHEET_TOO_LARGE: maximum file size is 20 MB.');
 });
