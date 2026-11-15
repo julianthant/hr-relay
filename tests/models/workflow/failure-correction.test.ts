@@ -1,7 +1,8 @@
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { validateFailureCorrections } from "../../../src/models/workflow/failure-correction.js";
+import { validateFailureCorrections, validateGateCorrections } from "../../../src/models/workflow/failure-correction.js";
+import { EID_PATTERN } from "../../../src/rules/identity/ids.js";
 import { rerunInputFieldAccepts } from "../../../src/models/validation/rerun-values.js";
 import { TaskIdSchema } from "../../../src/rules/identity/ids.js";
 import { classifyEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
@@ -59,4 +60,26 @@ it("classifies the entered EID as an identifier and its origin and gate requirem
   for (const path of ["packet.emplIdSource", "approvalRequired"]) {
     assert.equal(classifyEvidenceLeaf({ kind: "task-output", taskId: TaskIdSchema.parse("workflow:separations/match-identity") }, path).classification, "safe-diagnostic");
   }
+});
+
+describe("identity lookup corrections", () => {
+  const nodes = descriptorRuntimeNodes(separationsDescriptor);
+  const gate = separationsDescriptor.gateCorrections?.[0];
+  it("declares the identity gate fill row and both subject failures as one Employee ID lookup", () => {
+    assert.deepEqual(separationsDescriptor.gateCorrections, [{ gateId: "identity-approval", inputField: "operatorEmployeeId",
+      label: "Employee ID", placeholder: "8 digits", pattern: EID_PATTERN.source }]);
+    for (const code of ["subject-not-resolvable", "subject-ambiguous"]) {
+      const correction = separationsDescriptor.failureCorrections?.find(entry => entry.nodeId === "subject" && entry.code === code);
+      assert.deepEqual(correction, { nodeId: "subject", code, inputField: "operatorEmployeeId", label: "Employee ID", actionLabel: "Enter EID",
+        placeholder: "8 digits", pattern: EID_PATTERN.source });
+    }
+  });
+  it("refuses a gate correction naming an unknown gate, a task node, an unknown input, a bad pattern or the same gate twice", () => {
+    assert.ok(gate);
+    assert.deepEqual(validateGateCorrections(SeparationsInput, nodes, [gate]), [gate]);
+    for (const invalid of [{ ...gate, gateId: "unknown" }, { ...gate, gateId: "subject" }, { ...gate, inputField: "unknown" }, { ...gate, pattern: "(" }]) {
+      assert.throws(() => validateGateCorrections(SeparationsInput, nodes, [invalid]));
+    }
+    assert.throws(() => validateGateCorrections(SeparationsInput, nodes, [gate, gate]));
+  });
 });

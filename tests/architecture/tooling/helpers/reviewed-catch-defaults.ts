@@ -33,11 +33,11 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runs/queries/run-detail/receipts-failures.ts",
-    "reason": "Only the canonical typed RerunRefusedError suppresses an unavailable recovery action; it grants no correction or retry. Unexpected snapshot, custody or validation failures propagate. Separate negative controls verify typed refusal and original unexpected-error propagation.",
+    "reason": "Only the canonical typed RerunRefusedError suppresses an unavailable failure or gate correction request; it grants no correction, lookup or retry. Unexpected snapshot, custody or validation failures propagate. Separate negative controls verify typed refusal and original unexpected-error propagation.",
     "statements": [
       {
         "kind": "try",
-        "sha256": "8e8a1bb862f5cb18d8141adfa0f89e306a28188b368a542e3010f26cf74cd0b6",
+        "sha256": "63b8b59f846e56ec3406287530347a48dd18b00fccb9a8f98ca06a26537668ab",
         "occurrences": 1
       }
     ]
