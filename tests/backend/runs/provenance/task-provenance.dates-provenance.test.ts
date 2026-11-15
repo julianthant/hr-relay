@@ -77,7 +77,7 @@ describe("separations dates task provenance", () => {
     const output = await readSeparationDatesTask.impl.run({
       input: {
         plan,
-        timekeeperName: "Julian Zaw",
+        timekeeperInitials: "JZ",
         lastPunchDate: timecard.grid.lastPunchDate,
         sickDates: timecard.grid.sickDates,
         holidayDates: timecard.grid.holidayDates,
