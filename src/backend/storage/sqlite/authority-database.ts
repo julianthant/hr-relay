@@ -2369,7 +2369,7 @@ export class AuthorityDatabase implements Disposable {
   #authorityCommitCallbacks: (() => void)[] = [];
   #lifecycleHooks: AuthorityLifecycleHooks | undefined;
   #slowOperation: SlowOperationHook | undefined;
-  /** Nonzero while an outermost operation is being timed, including the hook call. */
+  /** Nonzero while an outermost operation is being timed, and again while its hook runs. */
   #slowOperationDepth = 0;
 
   readonly authority: AuthorityRepositories;
@@ -4879,7 +4879,7 @@ export class AuthorityDatabase implements Disposable {
           this.#transactionDelegationReads = undefined;
           this.#snapshotExternalDataVersion = undefined;
           this.#authorityDirty = false;
-          slow.finish();
+          slow.settled();
         }
         const callbacks = this.#authorityCommitCallbacks.splice(0);
         for (const callback of callbacks) callback();
@@ -4888,19 +4888,37 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  /** Times one outermost operation. Nested work, and work the hook starts, does not report on its own. */
-  #beginSlowOperation(name: string): { finish(): void } {
-    if (this.#slowOperation === undefined || this.#slowOperationDepth > 0) return { finish() {} };
+  /**
+   * Times one outermost operation. Nested work does not report on its own.
+   * The clock stops when the transaction settles, before commit callbacks. The hook runs only after those callbacks,
+   * so a hook transaction cannot take them or swallow their errors, and work the hook starts does not report.
+   */
+  #beginSlowOperation(name: string): { settled(): void; finish(): void } {
+    if (this.#slowOperation === undefined || this.#slowOperationDepth > 0) return { settled() {}, finish() {} };
     const startedMs = this.#clock.monotonicMs();
     this.#slowOperationDepth += 1;
+    let settled = false;
     let finished = false;
+    let durationMs = 0;
     return {
+      settled: () => {
+        if (settled) return;
+        settled = true;
+        durationMs = this.#clock.monotonicMs() - startedMs;
+        this.#slowOperationDepth -= 1;
+      },
       finish: () => {
         if (finished) return;
         finished = true;
+        if (!settled) {
+          durationMs = this.#clock.monotonicMs() - startedMs;
+          this.#slowOperationDepth -= 1;
+          settled = true;
+        }
+        if (durationMs <= 50) return;
+        this.#slowOperationDepth += 1;
         try {
-          const durationMs = this.#clock.monotonicMs() - startedMs;
-          if (durationMs > 50) this.#slowOperation?.({ name, durationMs });
+          this.#slowOperation?.({ name, durationMs });
         } catch {
           // A hook failure never replaces the transaction result or its error.
         } finally {

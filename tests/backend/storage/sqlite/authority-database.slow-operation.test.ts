@@ -122,4 +122,42 @@ describe("slow storage operations", () => {
     assert.equal(event.name, "projection-transaction");
     assert.ok(event.durationMs > 50);
   });
+
+  it("keeps a commit callback's error at the threshold and above it", () => {
+    const seen: SlowCall[] = [];
+    const clock = manualClock(AT);
+    const authority = open(operation => { seen.push(operation); }, clock);
+    const ran: string[] = [];
+    const publicationFailed = (): void => { throw new Error("publication-failed"); };
+    assert.throws(() => authority.withAuthorityTransaction(() => {
+      clock.advanceMonotonic(50);
+      authority.afterAuthorityCommit(() => { ran.push("edge"); publicationFailed(); });
+      return "edge";
+    }), (error: unknown) => error instanceof Error && error.message === "publication-failed");
+    assert.throws(() => authority.withAuthorityTransaction(() => {
+      clock.advanceMonotonic(51);
+      authority.afterAuthorityCommit(() => { ran.push("slow"); publicationFailed(); });
+      return "slow";
+    }), (error: unknown) => error instanceof Error && error.message === "publication-failed");
+    assert.deepEqual(ran, ["edge", "slow"]);
+    assert.deepEqual(seen, [{ name: "authority-transaction", durationMs: 51 }]);
+  });
+
+  it("runs commit callbacks when the slow hook's own transaction fails", () => {
+    const clock = manualClock(AT);
+    const ran: string[] = [];
+    const held: { authority?: AuthorityDatabase } = {};
+    held.authority = open(() => {
+      assert.throws(() => held.authority?.withAuthorityTransaction(() => { throw new Error("hook-txn-failed"); }),
+        (error: unknown) => error instanceof Error && error.message === "hook-txn-failed");
+    }, clock);
+    const authority = held.authority;
+    assert.ok(authority);
+    assert.equal(authority.withAuthorityTransaction(() => {
+      clock.advanceMonotonic(51);
+      authority.afterAuthorityCommit(() => { ran.push("committed"); });
+      return "kept";
+    }), "kept");
+    assert.deepEqual(ran, ["committed"]);
+  });
 });

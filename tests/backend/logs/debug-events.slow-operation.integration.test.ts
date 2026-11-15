@@ -56,6 +56,32 @@ describe("slow storage operations in the debug report", () => {
     }
   });
 
+  it("keeps a commit callback's error from the dashboard backend", async () => {
+    const profile = await createBoundProfileFixture();
+    const clock = manualClock(AT);
+    const context = composeSelectedProfileStorage({ machineAdmission: profile.machine, admission: profile.admission,
+      credentials: boundProfileCredentials(profile.admission), hostFacts: { primaryDisplay: null }, clock });
+    try {
+      const publicationFailed = (): void => { throw new Error("publication-failed"); };
+      assert.throws(() => context.database.withAuthorityTransaction(() => {
+        clock.advanceMonotonic(50);
+        context.database.afterAuthorityCommit(publicationFailed);
+      }), (error: unknown) => error instanceof Error && error.message === "publication-failed");
+      assert.equal(slowOperationEvents(context.database).length, 0);
+      assert.throws(() => context.database.withAuthorityTransaction(() => {
+        clock.advanceMonotonic(51);
+        context.database.afterAuthorityCommit(publicationFailed);
+      }), (error: unknown) => error instanceof Error && error.message === "publication-failed");
+      const events = slowOperationEvents(context.database);
+      assert.equal(events.length, 1);
+      assertSlowOperation(events[0], "http");
+    } finally {
+      await context.account.close();
+      context.database.close();
+      await profile.close();
+    }
+  });
+
   it("records one event from a workflow worker", async () => {
     const profile = await createBoundProfileFixture();
     const clock = manualClock(AT);
