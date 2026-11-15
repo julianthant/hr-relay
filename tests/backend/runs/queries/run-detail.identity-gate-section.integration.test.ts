@@ -234,7 +234,7 @@ function depsOf(
   };
 }
 
-const SEPARATIONS_INPUT = { documentNumber: "4510", timekeeperName: "Synthetic Timekeeper", searchTimeoutMs: 15000 };
+const SEPARATIONS_INPUT = { documentNumber: "4510", timekeeperName: "Synthetic Timekeeper", timekeeperInitials: "ST", searchTimeoutMs: 15000 };
 
 function seed(w: DashboardWorld, input?: Readonly<{ lifecycle?: unknown; version?: number; descriptor?: AnyWorkflowDescriptor }>): void {
   const descriptor = input?.descriptor ?? IDENTITY_DESCRIPTOR;

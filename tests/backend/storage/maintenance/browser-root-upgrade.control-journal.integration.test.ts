@@ -31,7 +31,9 @@ it(`continues a captured V1 browser journal at cold stopped startup after ${boun
   const registry = join(state, "machine", "profiles.json"), marker = join(state, "machine", "profile-registry-version.json"), browsers = join(state, "machine", "browser-roots.json");
   const intent = join(controlRoot, "profile-control-upgrade.json"), archives = join(controlRoot, "profile-control-upgrades");
   const initial = read(control);
-  write(control, { ...initial, schemaVersion: 5, completedRestores: [] }); write(marker, { schemaVersion: 6 }); fs.unlinkSync(browsers);
+  const priorRegistry = { ...read(registry), schemaVersion: 3 }; write(registry, priorRegistry);
+  write(control, { ...initial, schemaVersion: 5, digest: createHash("sha256").update(canonicalJsonStringify(priorRegistry)).digest("hex"), completedRestores: [] });
+  write(marker, { schemaVersion: 6 }); fs.unlinkSync(browsers);
   for (const name of ["credential-keys", "duo-credentials"]) mkdirSync(join(state, "machine", name), { recursive: true, mode: 0o700 });
   if (!existsSync(join(state, "machine", "profile-pepper"))) writeFileSync(join(state, "machine", "profile-pepper"), randomBytes(32), { mode: 0o600 });
   const fault = vi.spyOn(fs, "renameSync").mockImplementation((source, target) => {

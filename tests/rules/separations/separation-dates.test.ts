@@ -18,7 +18,6 @@ pacificCalendarDay,
 parseSeparationDate,
 planSeparation,
 reconcileSeparationDates,
-separationInitials,
 shiftMonths,
 } from "../../../src/rules/separations/separation-dates.js";
 
@@ -53,7 +52,7 @@ function plannedPlan(): SeparationPlan {
 function reconcile(overrides: Partial<Parameters<typeof reconcileSeparationDates>[0]> = {}) {
   return reconcileSeparationDates({
     plan: plannedPlan(),
-    timekeeperName: "Julian Zaw",
+    timekeeperInitials: "JZ",
     lastPunchDate: "06/12/2026",
     sickDates: [],
     holidayDates: ["06/19/2026"],
@@ -274,12 +273,6 @@ describe("separation dates — the comment builders", () => {
     );
   });
 
-  it("derives initials the way legacy does, and refuses a name it cannot", () => {
-    assert.equal(separationInitials("Julian Zaw"), "JZ");
-    assert.equal(separationInitials("  Ada  Byron King "), "ABK");
-    assert.throws(() => separationInitials("   "));
-  });
-
   it("joins only non-empty comment parts", () => {
     assert.equal(joinSeparationComments("", " a ", "", "b"), "a\nb");
   });
@@ -336,4 +329,25 @@ describe("timecard reconciliation — plan as-of eligibility", () => {
       assert.match(result.reason, /not yet separated/u);
     });
   }
+});
+
+describe("separation dates — stored Timekeeper initials", () => {
+  it("signs every date-change line and the finalization line with the stored initials, not letters of a name", () => {
+    const moved = reconcile({ timekeeperInitials: "QZ", lastPunchDate: "06/10/2026" });
+    assert.equal(moved.state, "reconciled");
+    if (moved.state !== "reconciled") return;
+    const lines = moved.dates.dateChangeComments.split("\n");
+    assert.equal(lines.length, 2);
+    for (const line of lines) assert.match(line, /per Kronos timesheet\. -QZ$/u);
+    const finalization = buildFinalizationComments({
+      existingComments: "",
+      dateChangeComments: moved.dates.dateChangeComments,
+      documentNumber: "4510",
+      transactionNumber: "T002209631",
+      initials: "QZ",
+      asOfDate: "06/11/2026",
+    });
+    assert.match(finalization, /Re Kuali Form #4510\. -QZ 06\/11\/2026$/u);
+    for (const text of [moved.dates.dateChangeComments, finalization]) assert.doesNotMatch(text, /-LR/u);
+  });
 });

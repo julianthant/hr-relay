@@ -561,6 +561,15 @@ captures at finish; a failed task-owned capture always refuses completion. The c
 Required captures run regardless of `captureBrowserScreenshots`. Unavailable capture is retained
 explicitly where possible, logs a warning, and fails with `BROWSER_SCREENSHOT_CAPTURE_FAILED`.
 A failed capture or Screenshot action persistence prevents the read checkpoint.
+A browser read task that throws captures the page it stopped on through the same task-point path
+while its lease holds the page, then rethrows its own failure unchanged. When that capture is
+refused or its Screenshot action cannot be saved, the failure keeps its own code and adds a
+secondary `BROWSER_SCREENSHOT_CAPTURE_FAILED` cause naming the reason; there is no retry and no
+extra wait. An error outside the task's declared codes, or one whose own code is not catalogued,
+records `TASK_UNHANDLED_FAILURE`. A deadline or lease fault that arrives after the task stopped
+is recorded as a secondary cause; the task's own failure stays primary. The `failure-code-catalog`
+guard requires every declared task error code in a registered workflow, and every literal
+`TaskError` code under `src/backend/runtime`, to be catalogued.
 
 Owned-run transactions capture after the probe and prepare, before the durable fence, after the commit
 callback settles, and after the saved-effect verifier. Pre-submit capture failure prevents both

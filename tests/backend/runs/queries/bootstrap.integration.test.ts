@@ -111,6 +111,7 @@ describe("bootstrap start-surface block", () => {
         "emergency-contact": { "read-document": [], members: [] },
         "emergency-contact-member": { "contact-plan": ["ucpath"], "contact-preview": ["ucpath"] },
         "i9-check-start": { documents: [], "roster-reference": [], retention: [] },
+        "work-study": { "ucpath-auth": ["ucpath"], transaction: ["ucpath"] },
       };
       for (const descriptor of DESCRIPTORS) {
         expect(served.get(String(descriptor.id)), String(descriptor.id)).toEqual({
@@ -223,7 +224,7 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
       documentField: 'document', fileNameField: 'fileName', readingIdField: 'readingId', fixed: { roster: null, reading: { kind: 'subscription' } },
     });
     const uploadDryRun = (id: string) => wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === id)?.start?.uploadRun?.supportsDryRun;
-    expect([uploadDryRun('emergency-contact'), uploadDryRun('i9-check-start')]).toEqual([true, false]);
+    expect([uploadDryRun('emergency-contact'), uploadDryRun('i9-check-start')]).toEqual([true, true]);
     expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:onboarding')).toBe(false);
     const onboarding = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'onboarding');
     expect(onboarding?.availability).toEqual({ state: 'available' });

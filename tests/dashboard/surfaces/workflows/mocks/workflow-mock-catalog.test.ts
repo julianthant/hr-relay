@@ -17,7 +17,7 @@ describe_m0("frontend workflow catalog", () => {
 
 describe_m1("legacy workflow previews", () => {
   it_m1("covers all 15 permanent workflows with distinct contracts", () => {
-    expect_m1(MOCK_WORKFLOWS_m1.map(flow => flow.id).sort()).toEqual(["crm-doc-download", "emergency-contact", "i9-check-start", "i9-lookup", "kronos-pay-rule", "oath-signature", "oath-upload", "ocr", "old-kronos-reports", "onbase", "onboarding", "person-lookup", "separations", "work-study"].sort());
+    expect_m1(MOCK_WORKFLOWS_m1.map(flow => flow.id).sort()).toEqual(["crm-doc-download", "emergency-contact", "i9-check-start", "i9-lookup", "kronos-pay-rule", "oath-signature", "oath-upload", "ocr", "old-kronos-reports", "onbase", "onboarding", "person-lookup", "separations"].sort());
     expect_m1(mockWorkflow_m1("i9-lookup").methods).toEqual(["delegated"]);
     expect_m1(mockWorkflow_m1("oath-signature").methods).toEqual(["typed", "pdf"]);
     expect_m1(() => mockWorkflow_m1("missing")).toThrow("MOCK_WORKFLOW_UNKNOWN");
@@ -25,7 +25,6 @@ describe_m1("legacy workflow previews", () => {
   it_m1.each([
     ["separations", ["kuali-extraction", "identity-check", "ucpath-job-summary", "kronos-search", "transaction-check", "ucpath-transaction", "kuali-finalization"]],
     ["onboarding", ["crm-auth", "crm-search", "extraction", "pdf-download", "ucpath-auth", "person-search", "i9-creation", "transaction"]],
-    ["work-study", ["ucpath-auth", "transaction"]],
     ["kronos-pay-rule", ["csv-lookup", "determine-action", "kronos-auth", "update-pay-rule"]],
     ["oath-signature", ["crm-verify", "ucpath-auth", "transaction"]],
     ["oath-upload", ["wait-approval", "wait-signatures", "servicenow-auth", "open-hr-form", "fill-form", "submit"]],
