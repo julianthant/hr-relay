@@ -41,6 +41,8 @@ export interface DashboardComposeInput {
   readonly isolation: RuntimeIsolation;
   readonly env?: NodeJS.ProcessEnv;
   readonly clock?: Clock;
+  /** Omit to run the production event-loop stall monitor. `false` leaves it off. A monitor is installed as given and stopped on shutdown. */
+  readonly loopDelay?: false | Readonly<{ stop(): void }>;
   readonly ids?: IdFactory;
   /** Package and frontend source root; storage roots come from installation admission. */
   readonly repoRoot?: string;
