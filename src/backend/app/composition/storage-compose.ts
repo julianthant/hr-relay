@@ -315,6 +315,11 @@ export function writePendingShutdownBackup(workspace: string, people: readonly s
   fsyncPath(directory);
 }
 
+/** A quit adds its people to any record a finisher or start has not completed yet, so no earlier quit's people are dropped. */
+export function addPendingShutdownBackup(workspace: string, people: readonly string[]): void {
+  writePendingShutdownBackup(workspace, [...new Set([...readPendingShutdownBackup(workspace) ?? [], ...people])]);
+}
+
 export function readPendingShutdownBackup(workspace: string): ReadonlySet<string> | undefined {
   const path = pendingShutdownBackupPath(workspace);
   if (!existsSync(path)) return undefined;
@@ -339,7 +344,7 @@ export function detachedShutdownBackup(launch: Readonly<{ command: string; prefi
       const people = await withStoppedMachineStorage(workspace, lifetime, machine => Promise.resolve(shutdownBackupPeople(machine, lifetime).map(profile => profile.profileId)));
       if (people.length === 0) return;
       assertMaintenanceCustodyAvailable("backup");
-      writePendingShutdownBackup(workspace, people);
+      addPendingShutdownBackup(workspace, people);
       const logDirectory = join(workspace, rebuildRuntimeIsolation.stateRoot, "logs");
       mkdirSync(logDirectory, { recursive: true, mode: 0o700 });
       const log = openSync(join(logDirectory, "shutdown-backup.log"), "a", 0o600);

@@ -13,7 +13,7 @@ import { acquireExclusiveRuntimeAdmission,RuntimeAdmission } from "../../storage
 import { acquireDashboardEntrypointAdmission,acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { FixedLayoutRefusedError } from "../../storage/maintenance/fixed-layout.js";
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
-import { AutomaticPersonRepairRefusedError,FINISH_SHUTDOWN_BACKUP,readPendingShutdownBackup,RegisteredPersonUpgradeRefusedError,removePendingShutdownBackup,RuntimeCustodyUncertainError } from "../composition/storage-compose.js";
+import { AutomaticPersonRepairRefusedError,FINISH_SHUTDOWN_BACKUP,readPendingShutdownBackup,RegisteredPersonUpgradeRefusedError,removePendingShutdownBackup,RuntimeCustodyUncertainError,writePendingShutdownBackup } from "../composition/storage-compose.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { probePrimaryDisplay } from "../host/primary-display.js";
 import { WORKER_GRACEFUL_STOP_TIMEOUT_MS, WorkerPoolError } from "../../runtime/workers/worker-pool.js";
@@ -83,16 +83,21 @@ export async function acquireLifetimeLockAfterShutdownBackup(port: number, wait:
   }
 }
 
-/** Completes the recorded quit-time backup: the finisher passes `only` and lets errors propagate, a starting dashboard passes `warn` and keeps the record on failure. */
+/**
+ * Completes the recorded quit-time backup: the finisher passes `only` and lets errors propagate, a starting dashboard passes `warn` and keeps the record on failure.
+ * Only people backed up here leave the record, so a delayed finisher never drops people a later quit recorded.
+ */
 export async function completePendingShutdownBackup(deps: Readonly<{ read: () => ReadonlySet<string> | undefined; backup: (people: ReadonlySet<string>) => Promise<void>;
-  remove: () => void; only?: ReadonlySet<string>; warn?: (error: unknown) => void }>): Promise<void> {
+  remove: () => void; write: (people: readonly string[]) => void; only?: ReadonlySet<string>; warn?: (error: unknown) => void }>): Promise<void> {
   try {
     const record = deps.read();
     if (record === undefined) return;
     const people = new Set([...record].filter(person => deps.only?.has(person) ?? true));
-    if (people.size > 0) await deps.backup(people);
-    deps.remove();
-  } catch (error) { if (deps.warn === undefined) throw error; deps.warn(error); }
+    if (people.size === 0) return;
+    await deps.backup(people);
+    const remaining = [...record].filter(person => !people.has(person));
+    if (remaining.length === 0) deps.remove(); else deps.write(remaining);
+  } catch (error) { if (deps.warn === undefined || hasUnprovedSourceClosure(error)) throw error; deps.warn(error); }
 }
 
 function backendListening(port: number): Promise<boolean> {
@@ -177,6 +182,7 @@ async function runAdmittedEnvironmentBootstrap(
     const { backupRegisteredPeopleAtCleanShutdown } = await import("../composition/storage-compose.js");
     const only = new Set(z.array(z.uuid()).min(1).parse(people));
     await completePendingShutdownBackup({ read: () => readPendingShutdownBackup(workspace), only, remove: () => { removePendingShutdownBackup(workspace); },
+      write: remaining => { writePendingShutdownBackup(workspace, remaining); },
       backup: done => backupRegisteredPeopleAtCleanShutdown(workspace, rootLifetime(), systemClock, done) });
     return;
   }
@@ -195,6 +201,7 @@ async function runAdmittedEnvironmentBootstrap(
     await initializeRegisteredPersonStores(workspace, rootLifetime(), hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay)));
     const { backupRegisteredPeopleAtCleanShutdown } = await import("../composition/storage-compose.js");
     await completePendingShutdownBackup({ read: () => readPendingShutdownBackup(workspace), remove: () => { removePendingShutdownBackup(workspace); },
+      write: remaining => { writePendingShutdownBackup(workspace, remaining); },
       backup: people => { process.stderr.write("[dashboard] finishing the last quit-time backup.\n"); return backupRegisteredPeopleAtCleanShutdown(workspace, rootLifetime(), systemClock, people); },
       warn: error => { process.stderr.write(`[dashboard] the last quit-time backup is unfinished: ${error instanceof Error ? error.message : String(error)}\n`); } });
   }
