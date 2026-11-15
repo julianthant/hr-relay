@@ -224,7 +224,7 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
       documentField: 'document', fileNameField: 'fileName', readingIdField: 'readingId', fixed: { roster: null, reading: { kind: 'subscription' } },
     });
     const uploadDryRun = (id: string) => wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === id)?.start?.uploadRun?.supportsDryRun;
-    expect([uploadDryRun('emergency-contact'), uploadDryRun('i9-check-start')]).toEqual([true, false]);
+    expect([uploadDryRun('emergency-contact'), uploadDryRun('i9-check-start')]).toEqual([true, true]);
     expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:onboarding')).toBe(false);
     const onboarding = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'onboarding');
     expect(onboarding?.availability).toEqual({ state: 'available' });
