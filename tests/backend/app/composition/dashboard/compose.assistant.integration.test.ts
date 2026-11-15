@@ -702,7 +702,7 @@ it.each(["ready", "refused", "unknown"] as const)('confirms run actions with %s 
   }); } finally { factory.mockRestore(); }
 });
 
-it('refuses a PDF start while OnBase is not served and confirms an attached spreadsheet as a library import', async () => {
+it('refuses a CRM document download while it is not served and confirms an attached spreadsheet as a library import', async () => {
   await withServedAssistant(async fixture => {
     const { context, transport, origin, clock } = fixture, client = createDashboardClient({ baseUrl: origin }), database = context.database;
     const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
@@ -738,11 +738,14 @@ it('refuses a PDF start while OnBase is not served and confirms an attached spre
         ...(decision === 'confirm' ? { reviewedDigest: digest } : {}) }));
     });
 
-    assert.equal(configuredSources['onbase'], 'mock');
-    const pdf = await respond('Run this PDF for OnBase', { name: 'contact.pdf', mediaType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n% synthetic\n') },
-      file => ['propose_workflow_start', { workflow: 'onbase', entries: [file] }]);
-    assert.equal(pdf.kind === 'result' ? pdf.result.state === 'refused' && pdf.result.code : pdf.kind, 'ASSISTANT_PROPOSAL_REFUSED', 'a workflow that is not served is never proposed');
-    assert.equal(database.authority.runs.listByWorkflow('onbase').length, 0);
+    const plans = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), raw => raw.prepare('SELECT id FROM run_requests').all().length);
+    const plansBefore = plans();
+    assert.equal(configuredSources['crm-doc-download'], 'mock');
+    const refusedStart = await respond('Download CRM documents for fixture@example.test', { name: 'note.txt', mediaType: 'text/plain', bytes: new TextEncoder().encode('fixture@example.test\n') },
+      () => ['propose_workflow_start', { workflow: 'crm-doc-download', entries: ['fixture@example.test'] }]);
+    assert.equal(refusedStart.kind === 'result' ? refusedStart.result.state === 'refused' && refusedStart.result.code : refusedStart.kind, 'ASSISTANT_PROPOSAL_REFUSED', 'a workflow that is not served is never proposed');
+    assert.equal(database.authority.runs.listByWorkflow('crm-doc-download').length, 0);
+    assert.equal(plans(), plansBefore, 'an unserved workflow is refused before a start plan is written');
 
     const sheets = () => library.catalog().filter(entry => entry.name === 'Q3 roster').length;
     const imported = await turn('Import this as Q3 roster', { name: 'roster.csv', mediaType: 'text/csv', bytes: new TextEncoder().encode('Name,Dept\nAda,HR\n') },
