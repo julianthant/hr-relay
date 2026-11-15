@@ -28,6 +28,7 @@ import { composeRuntimePreflight } from "../../preflight/runtime-admission.js";
 import { DESCRIPTORS,SERVER_REGISTRY,descriptorSetHash } from "../../registries/workflow-registry.js";
 import { RuntimeCustodyUncertainError } from "../storage-compose.js";
 import { createTrustNotifications } from "./notifications.js";
+import { ownedDiagnostics } from "./notification-health.js";
 import { DashboardFrontendModeSchema,PackageVersionSchema,type DashboardComposeInput,type StartupCleanup,type StartupCustody } from "./runtime-contracts.js";
 import { composeSettings } from "./settings.js";
 
@@ -178,7 +179,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
 
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: appVersion, development: frontend === "vite-dev" });
-  const loopDelayMonitor = composeLoopDelayMonitor(input.loopDelay, { clock, debugEvents });
+  const loopDelayMonitor = composeLoopDelayMonitor(input.loopDelay, { clock, debugEvents: ownedDiagnostics(database, debugEvents) });
   startupCleanups.push(() => loopDelayMonitor.stop());
   chatGptAccount.setDebugEvents(debugEvents);
   const spanWriter = createTimelineEmitter({ repository: loggingRepository, clock });
