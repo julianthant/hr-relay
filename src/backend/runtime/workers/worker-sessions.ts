@@ -119,7 +119,8 @@ export interface WorkerSessionManagerOptions {
 
 /** What `#acquireBounded` knows about its own envelope, handed down to the lease gate. */
 interface AcquisitionEnvelope {
-  readonly deadlineMonotonicMs: number;
+  readonly deadlineMonotonicMs: () => number;
+  readonly extend: () => void;
   readonly cancel: (reason: Error) => void;
   readonly claimStaleRequestRecovery: () => boolean;
   /** An idle Reopen names the retained session it replaces; that worker's own released lease admits the exclusive replacement. */
@@ -772,19 +773,25 @@ export class WorkerSessionManager {
     if (signal.aborted) forwardAbort();
     signal.addEventListener("abort", forwardAbort, { once: true });
     let expiry: Error | undefined;
-    const deadlineMonotonicMs = this.#clock.monotonicMs() + this.#acquireDeadlineMs;
-    const handle = this.#scheduler.schedule(
+    let deadlineMonotonicMs = this.#clock.monotonicMs() + this.#acquireDeadlineMs;
+    const arm = () => this.#scheduler.schedule(
       deadlineMonotonicMs,
       () => {
         expiry = new SessionAcquisitionTimeoutError(need.system, this.#acquireDeadlineMs);
         acquisition.abort(expiry);
       },
     );
+    let handle = arm();
     // The acquisition runs under the ACQUISITION signal, so a cooperative
     // login recipe aborts itself at the bound instead of only being raced.
     let staleRequestRecovered = false;
     const started = this.#getOrStart(need, instance, configFingerprint, browserMode, acquisition.signal, {
-      deadlineMonotonicMs,
+      deadlineMonotonicMs: () => deadlineMonotonicMs,
+      extend: () => {
+        handle.cancel();
+        deadlineMonotonicMs = this.#clock.monotonicMs() + this.#acquireDeadlineMs;
+        handle = arm();
+      },
       cancel: (reason) => acquisition.abort(reason),
       claimStaleRequestRecovery: () => {
         if (staleRequestRecovered) return false;
@@ -898,7 +905,7 @@ export class WorkerSessionManager {
     const gate = this.#duoCeremony.openGate({
       workerId: this.#workerId,
       system: need.system,
-      envelopeDeadlineMonotonicMs: envelope.deadlineMonotonicMs,
+      envelopeDeadlineMonotonicMs: envelope.deadlineMonotonicMs(),
       cancelCeremony: envelope.cancel,
       signal,
     });
@@ -983,7 +990,8 @@ export class WorkerSessionManager {
       duoCeremony: gate,
       claimStaleRequestRecovery: envelope.claimStaleRequestRecovery,
       ...(envelope.replacesSessionId === undefined ? {} : { replacesSessionId: envelope.replacesSessionId }),
-      acquisitionRemainingMs: () => Math.max(0, envelope.deadlineMonotonicMs - this.#clock.monotonicMs()),
+      acquisitionRemainingMs: () => Math.max(0, envelope.deadlineMonotonicMs() - this.#clock.monotonicMs()),
+      extendAcquisition: envelope.extend,
     });
     } finally { acquired?.(); }
     this.#retained.set(resource.sessionId, { openedAt: this.#clock.now().toISOString(), factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode });
