@@ -129,12 +129,10 @@ function composeGateResult(
 
   const problem = identityDraftProblem(ceremony, decided);
   if (problem !== undefined) return { state: "refused", reason: problem };
-  if ("optionRef" in decided && optionFor(served.options, decided.optionRef) === undefined) {
+  if (optionFor(served.options, decided.optionRef) === undefined) {
     return { state: "refused", reason: "the picked candidate is not one this review served" };
   }
-  return request("optionRef" in decided
-    ? { decision: "approved", gateRef: served.gateRef, optionRef: decided.optionRef }
-    : { decision: "approved", gateRef: served.gateRef, typedEid: decided.typedEid });
+  return request({ decision: "approved", gateRef: served.gateRef, optionRef: decided.optionRef });
 }
 
 /** Refuse unknown served verbs by name; never turn new commands into silent no-ops. */

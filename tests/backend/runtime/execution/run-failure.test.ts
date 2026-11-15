@@ -13,6 +13,7 @@ import {
 buildNodeFailureRecord, buildEntryValidationFailureRecord
 } from "../../../../src/backend/runtime/execution/run-failure.js";
 import { TaskError, wrapUnhandledTaskError } from "../../../../src/workflow-kit/errors.js";
+import { DelegationOutcomePolicyUnsatisfiedError } from "../../../../src/models/run/result.js";
 import { NodeIdSchema,TaskIdSchema } from "../../../../src/rules/identity/ids.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { SIGN_IN_REFUSAL_PROBES } from "../../../support/fixtures/sign-in-refusal-probes.js";
@@ -51,6 +52,7 @@ describe("node failure code selection", () => {
     { name: "declared task code", error: new TaskError(TASK_ID, "subject-mismatch", "Synthetic failure"), expected: "SUBJECT_MISMATCH" },
     { name: "catalogued own code", error: Object.assign(new Error("Synthetic failure"), { code: "browser-profile-still-closing" }), expected: "BROWSER_PROFILE_STILL_CLOSING" },
     { name: "uncatalogued own code", error: Object.assign(new Error("Synthetic failure"), { code: "ECONNRESET" }), expected: "TASK_UNHANDLED_FAILURE" },
+    { name: "unsatisfied delegation join", error: new DelegationOutcomePolicyUnsatisfiedError(), expected: "DELEGATION_OUTCOME_POLICY_UNSATISFIED" },
     { name: "uncaught task error", error: wrapUnhandledTaskError(TASK_ID, new Error("Timeout 30000ms exceeded")), expected: "TASK_UNHANDLED_FAILURE" },
     { name: "plain Error", error: new Error("Synthetic failure"), expected: "TASK_UNHANDLED_FAILURE" },
     { name: "non-Error value", error: "Synthetic non-Error failure", expected: "TASK_UNHANDLED_FAILURE" },

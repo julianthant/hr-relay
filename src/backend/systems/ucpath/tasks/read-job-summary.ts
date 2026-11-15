@@ -3,7 +3,7 @@ import {
   ReadJobSummaryOutputSchema,
   UcpathReadJobSummary,
 } from "../../../../models/systems/ucpath/read-job-summary.js";
-import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
+import { maskedEid } from "../../../../rules/redaction/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
 
@@ -17,7 +17,8 @@ export const readJobSummaryTask = defineTask(ucpathDriver, UcpathReadJobSummary,
 
       return ctx.fail(
         "employee-not-found",
-        `UCPath Person Org has no record for EID ${directIdentifierDisplay(read.emplId)} `
+        // The ID may be one the operator typed, so these lines name only its last four digits.
+        `UCPath Person Org has no record for EID ${maskedEid(read.emplId)} `
         + `(the page rendered ${JSON.stringify(read.observedMarker)}). This is UCPath's own answer, not `
         + "a timeout: a search that times out throws instead.",
       );
@@ -25,8 +26,8 @@ export const readJobSummaryTask = defineTask(ucpathDriver, UcpathReadJobSummary,
     if (read.state === "subject-mismatch") {
       return ctx.fail(
         "subject-mismatch",
-        `UCPath opened the Person Org detail for EID ${directIdentifierDisplay(read.observedEid)} while the run asked for `
-        + `${directIdentifierDisplay(read.expectedEid)}; refusing to read one person's employment grid as another's.`,
+        `UCPath opened the Person Org detail for EID ${maskedEid(read.observedEid)} while the run asked for `
+        + `${maskedEid(read.expectedEid)}; refusing to read one person's employment grid as another's.`,
       );
     }
 
@@ -34,8 +35,8 @@ export const readJobSummaryTask = defineTask(ucpathDriver, UcpathReadJobSummary,
     if (output.emplId !== input.emplId) {
       return ctx.fail(
         "unexpected-page-state",
-        `the UCPath driver returned a job summary for ${directIdentifierDisplay(output.emplId)} while the task ran for `
-        + `${directIdentifierDisplay(input.emplId)}`,
+        `the UCPath driver returned a job summary for ${maskedEid(output.emplId)} while the task ran for `
+        + `${maskedEid(input.emplId)}`,
       );
     }
     ctx.recordData([
