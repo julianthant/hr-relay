@@ -1,4 +1,5 @@
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
+import { ocrRecordSourcePages } from "../../../../models/ocr/review-record.js";
 import { contactEffectIdentity } from "../../../../models/systems/ucpath/emergency-contacts.js";
 import { EmergencyContactMemberInputSchema } from "../../../../models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactInputSchema } from "../../../../models/workflows/emergency-contact/input.js";
@@ -32,7 +33,7 @@ export function buildEmergencyContactRecords(author: WorkflowAuthor<typeof Emerg
           employees.set(employee, desired);
         }
       },
-      memberInput: (_input, approved) => approved });
+      memberInput: (input, approved, ocr) => ({ ...approved, document: input.document, sourcePage: ocrRecordSourcePages(ocr.review.records, approved.record)[0] }) });
   return { ...graph, steps: [[READ_DOCUMENT_STEP, graph.steps[0][1]]] as const,
     result: author.result(ReadApprovedOcrSnapshot.output, [graph.approved], ({ outputs }) => outputs["approved-records"]) };
 }

@@ -37,6 +37,8 @@ import { canonicalChildExecution } from "../../support/helpers/backend/canonical
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import { seedUnknownContactWrite } from "../../support/helpers/backend/unknown-contact-write.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
+import { onbaseFilingFixture } from "../../support/helpers/backend/onbase-filing-fixture.js";
+import { onbaseModule } from "../../support/helpers/registered-workflows.js";
 
 const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
 
@@ -63,7 +65,8 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
   let entered = (): void => undefined, release = (): void => undefined;
   const inFlight = new Promise<void>(resolve => { entered = resolve; });
   const maySettle = new Promise<void>(resolve => { release = resolve; });
-  const sessions = sessionFactoryHarness({ ucpath: () => {
+  const filing = await onbaseFilingFixture();
+  const sessions = sessionFactoryHarness({ onbase: filing.session(() => h.authority.clock), ucpath: () => {
     const session = persistence.session();
     const port: UcpathContactPagePort = { ...session.port, async snapshot() {
       const observed = await session.port.snapshot();
@@ -130,7 +133,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
     sessions: h.manager, emitter: h.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: h.scheduler, taskDeadlineMs: 60_000,
     operator: "local-operator", log: h.deps.log });
   const taskNotes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });
-  const execution = canonicalChildExecution({ ...h.deps, taskNotes, writeSequencer: sequencer, providers: {
+  const execution = canonicalChildExecution({ ...h.deps, taskNotes, writeSequencer: sequencer, artifacts: filing.artifacts, providers: {
     configSnapshots: database.authority.configSnapshots, idFactory: { next: () => randomUUID() }, adapters: {
       "ocr.approved-snapshot": { capability: "ocr.approved-snapshot", async invoke(_request, options) {
         providerCalls++;
@@ -141,9 +144,11 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
           evidence: { summary: "Synthetic isolated approved member", capturedAt: IsoInstantSchema.parse(clock.now().toISOString()), providerRequestId: options.requestId } };
       } },
     },
-  } }, database, path, id => id === compiled.descriptor.id ? compiled.descriptor : undefined);
+  } }, database, path, id => id === compiled.descriptor.id ? compiled.descriptor : id === "onbase" ? onbaseModule.descriptor : undefined);
   const prior = options.priorWrite === undefined ? undefined : seedUnknownContactWrite(database, { ...contact, plan: planEmergencyContact(interpretContactPage(page, contact), desired) }, clock.now().toISOString(), options.priorWrite === "parked");
-  const run = execution.start(compiled.descriptor, approved, { dryRun: options.dryRun ?? false });
+  // A second record of the same person comes from another page, so its OnBase filing is a different child item.
+  const member = (recordId: string = approved.record.recordId, sourcePage = 2) => ({ ...approved, record: { ...approved.record, recordId }, document: filing.document, sourcePage });
+  const run = execution.start(compiled.descriptor, member(), { dryRun: options.dryRun ?? false });
   const signal = new AbortController();
   let settled = false;
   const running = execution.execute(run, signal.signal).finally(() => { settled = true; });
@@ -158,7 +163,8 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
   }
   const result = await running;
   const failures = database.authority.failures.listByRun(run.envelope.runId);
-  return { ...h, clock, database, run, result, failures, ports, captures, providerCalls, reads, prior, execution, stores, persistence,
+  const children = () => database.authority.runs.listChildren(run.envelope.runId);
+  return { ...h, clock, database, run, result, failures, ports, captures, providerCalls, reads, prior, execution, stores, persistence, filing, member, children,
 
   };
 }
@@ -177,12 +183,17 @@ it("emergency-contact/verified-save — commits the declared primary demotion an
   const receipt = receipts.ensureReceipt(f.run.envelope.runId);
   assert.equal(receipt.result, "verified-done");
   assert.deepEqual(receipts.ensureReceipt(f.run.envelope.runId), receipt);
-  assert.equal(f.reads, 3, "initial read, native probe and mandatory native verifier");
+  assert.equal(f.reads, 4, "initial read, native probe, mandatory native verifier and the re-entry read after filing");
   const intents = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
   assert.equal(intents.length, 1); assert.equal(intents[0]?.status, "committed");
   assert.ok(f.database.authority.runCheckpoints.latest(f.run.envelope.workflow, f.run.envelope.itemId, "contact-preview"));
   const date = f.clock.now().toISOString().slice(0, 10);
   assert.equal(createTransactionHistory(f.database.authority).query({ from: date, to: date, runId: f.run.envelope.runId }).rows.length, 1);
+  assert.equal(f.filing.imports(), 1, "a committed Save files exactly one Import");
+  const children = f.children(); assert.equal(children.length, 1);
+  assert.deepEqual(children[0]?.input.parsed.value, { ucpathId: contact.emplId, document: f.filing.document, sourcePage: 2 });
+  assert.ok(children[0]?.lifecycle.state === "terminal" && children[0].lifecycle.outcome === "done");
+  assert.equal(f.database.authority.writeIntents.listByRun(children[0].envelope.runId)[0]?.status, "committed");
 });
 for (const failure of ["identity-before-click", "timeout", "lost-page", "unknown-response", "foreign-eid", "foreign-name", "staged-page-drift", "pending", "save-before", "save-after", "partial", "primary-conflict", "unreadable", "mismatch", "staged-readback", "stale-readback", "verifier", "capture-after"] as const) it(`parks ${failure} after the fence without a forged output or retry`, async () => {
   const f = await memberFixture({ failure });
@@ -197,9 +208,11 @@ for (const failure of ["identity-before-click", "timeout", "lost-page", "unknown
   const date = f.clock.now().toISOString().slice(0, 10);
   assert.deepEqual(createTransactionHistory(f.database.authority).query({ from: date, to: date, runId: f.run.envelope.runId }).rows, []);
   assert.equal(f.database.authority.runCheckpoints.latest(f.run.envelope.workflow, f.run.envelope.itemId, "contact-preview"), undefined);
+  assert.deepEqual(f.children(), [], "a parked Save admits no filing child");
+  assert.equal(f.filing.imports(), 0);
   const submissions = f.persistence.submissions.length;
   assert.equal(submissions, failure === "identity-before-click" || failure === "staged-page-drift" || failure === "save-before" || failure === "pending" ? 0 : 1);
-  const retry = f.execution.start(compiled.descriptor, { ...approved, record: { ...approved.record, recordId: `${"b".repeat(64)}#emergency-contact#2` } }, { dryRun: false });
+  const retry = f.execution.start(compiled.descriptor, f.member(`${"b".repeat(64)}#emergency-contact#2`, 1), { dryRun: false });
   await f.execution.execute(retry, world.SIGNAL);
   assert.equal(f.persistence.submissions.length, submissions);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(retry.envelope.runId), []);
@@ -209,6 +222,7 @@ for (const failure of ["read", "probe", "prepare", "identity", "drift", "capture
   const f = await memberFixture({ failure });
   assert.ok(f.failures.length > 0);
   assert.equal(f.persistence.submissions.length, 0);
+  assert.deepEqual(f.children(), [], "a refused Save admits no filing child");
   assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
 });
 it("uses complete persisted exact presence without a new intent or Save", async () => {
@@ -220,6 +234,8 @@ it("uses complete persisted exact presence without a new intent or Save", async 
   assert.deepEqual(f.failures, []);
   assert.equal(f.persistence.submissions.length, 0);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
+  assert.equal(f.filing.imports(), 1, "an already-present Save still files exactly one Import");
+  assert.equal(f.children().length, 1);
 });
 
 it("keeps interrupted Save ownership until callback settlement, verifies and commits it once, then abandons the run without a result or another click", async () => {
@@ -237,7 +253,7 @@ it("keeps interrupted Save ownership until callback settlement, verifies and com
   assert.notEqual(f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state, "terminal");
   // The controller recovers the abandoned claim when the interrupted worker exits.
   releaseSeededWriteOwners(f.database, f.clock.now().toISOString());
-  const retry = f.execution.start(compiled.descriptor, { ...approved, record: { ...approved.record, recordId: `${"b".repeat(64)}#emergency-contact#2` } }, { dryRun: false });
+  const retry = f.execution.start(compiled.descriptor, f.member(`${"b".repeat(64)}#emergency-contact#2`, 1), { dryRun: false });
   await f.execution.execute(retry, world.SIGNAL);
   assert.equal(f.persistence.submissions.length, 1);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(retry.envelope.runId), []);
@@ -258,6 +274,8 @@ it("prepares the real production workflow in dry run with zero Save clicks and n
   const f = await memberFixture({ dryRun: true });
   assert.deepEqual(f.failures, []);
   assert.equal(f.persistence.submissions.length, 0);
+  assert.equal(f.filing.imports(), 0, "a dry run never clicks Import");
+  assert.ok(f.children().every(child => child.envelope.dryRun && f.database.authority.writeIntents.listByRun(child.envelope.runId).length === 0));
   assert.ok(f.captures.some(snapshot => snapshot.observation === "staged"));
   assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
 });

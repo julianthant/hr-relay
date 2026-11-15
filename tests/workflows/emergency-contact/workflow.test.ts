@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { emergencyContactWorkflow } from "../../../src/workflows/emergency-contact/workflow.js";
-import { EMERGENCY_CONTACT_MEMBER_EXAMPLE } from "../../../src/models/workflows/emergency-contact-member/input.js";
+import { EMERGENCY_CONTACT_MEMBER_EXAMPLE, EmergencyContactMemberInputSchema } from "../../../src/models/workflows/emergency-contact-member/input.js";
 import { ReadApprovedOcrSnapshot } from "../../../src/models/processing/ocr/read-approved-snapshot.js";
 import { OCR_INPUT_EXAMPLE } from "../../../src/models/workflows/ocr/input.js";
 import { ReadOcrReviewSeed } from "../../../src/models/workflows/ocr/read-review-seed.js";
@@ -19,6 +19,11 @@ const descriptor = compileWorkflow(emergencyContactWorkflow).descriptor;
 const members = descriptorRuntimeNodes(descriptor).find(node => node.id === "members");
 assert.ok(members?.kind === "child-run" && members.cardinality === "many");
 const first = EMERGENCY_CONTACT_MEMBER_EXAMPLE.record;
+// The OCR review seed is where a record's source page lives; the members delegate files that page.
+const reviewed = (recordIds: readonly string[]) => ({ ...ReadOcrReviewSeed.example, records: recordIds.map((recordId, index) => ({ recordId, sourcePage: index + 2,
+  extractionId: "c".repeat(64), subjectName: null, assertedEid: null, identitySource: "document" as const, rosterMatch: null,
+  lookup: { state: "unavailable" as const, reason: "missing-identity" as const }, issues: ["identity-unverified" as const] })) });
+const recordIds = [1, 2, 3].map(index => `${"b".repeat(64)}#emergency-contact#${String(index)}`);
 function scope(different = false): RuntimeScope {
   const second = { ...first, recordId: `${"b".repeat(64)}#emergency-contact#2`, fields: { ...first.fields,
     answers: first.fields.answers.map(answer => different && answer.path === "contact.name" && answer.state === "read"
@@ -26,13 +31,13 @@ function scope(different = false): RuntimeScope {
   const { sourceRunId: _sourceRunId, formType: _formType, approval: _approval, ...input } = OCR_INPUT_EXAMPLE;
   return { input: EmergencyContactInputSchema.parse(input), outputs: {
     "read-document": { state: "done", runId: EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval.sourceRunId, itemId: OCR_INPUT_EXAMPLE.readingId,
-      output: OcrWorkflowResultSchema.parse({ review: ReadOcrReviewSeed.example, identities: [],
+      output: OcrWorkflowResultSchema.parse({ review: reviewed(recordIds), identities: [],
         approvedSnapshot: EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval }) },
     "approved-records": { snapshot: { ...ReadApprovedOcrSnapshot.example.snapshot, records: [first, second], selectedRecordIds: [first.recordId, second.recordId] } },
   } };
 }
 it("preserves equal primary effects for the same employee as two ordered approved members", () => {
-  const inputs = z.array(ApprovedOcrRecordInputSchema).parse(members.bind(scope()));
+  const inputs = z.array(EmergencyContactMemberInputSchema).parse(members.bind(scope()));
   assert.equal(inputs.length, 2);
   const records = inputs.map(input => input.record);
   assert.deepEqual(records.map(record => record.recordId), [first.recordId, `${"b".repeat(64)}#emergency-contact#2`]);
@@ -49,12 +54,19 @@ it("binds a three-record approved subset in selected order through the registere
   const snapshot = OcrApprovedSnapshotSchema.parse({ ...ReadApprovedOcrSnapshot.example.snapshot,
     records: selected, selectedRecordIds: selected.map(record => record?.recordId) });
   const initial = scope();
-  const bound = z.array(ApprovedOcrRecordInputSchema).parse(members.bind({ ...initial, outputs: { ...initial.outputs,
+  const bound = z.array(EmergencyContactMemberInputSchema).parse(members.bind({ ...initial, outputs: { ...initial.outputs,
     "approved-records": ReadApprovedOcrSnapshot.output.parse({ snapshot }) } }));
   assert.deepEqual(bound.map(member => member.record), selected);
   assert.deepEqual(bound.map(member => member.record.assertedEid), ["10800002", "10800000"]);
   assert.ok(bound.every(member => member.record.recordId !== records[1]?.recordId));
   assert.ok(bound.every(member => JSON.stringify(member.approval) === JSON.stringify(EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval)));
+});
+
+it("gives each member the run's PDF and its record's first source page to file to OnBase", () => {
+  const initial = scope();
+  const bound = z.array(EmergencyContactMemberInputSchema).parse(members.bind(initial));
+  assert.deepEqual(bound.map(member => member.sourcePage), [2, 3]);
+  assert.ok(bound.every(member => JSON.stringify(member.document) === JSON.stringify(EmergencyContactInputSchema.parse(initial.input).document)));
 });
 
 it("titles an Emergency Contact run by its PDF name, else the generic PDF title", () => {
