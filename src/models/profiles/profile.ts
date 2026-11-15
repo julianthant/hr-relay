@@ -3,7 +3,7 @@ import { FileIdentitySchema } from "../storage/file-identity.js";
 import { z } from "zod";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { ProfileDisplayNameSchema, ProfileIdentitySchema, profileInitials } from "./profile-identity.js";
-import { DuoEnrollmentScopeSchema } from "../config/duo-credential-store.js";
+import { DuoEnrollmentScopeSchema, DuoReenrolCommitIntentSchema } from "../config/duo-credential-store.js";
 
 const NameSchema = z.string().min(1).max(64).refine((value) => value === value.trim(), "profile name may not be whitespace-padded");
 
@@ -29,6 +29,7 @@ export const ProfileRegistryRowSchema = z.strictObject({
   lastName: NameSchema,
   initials: ProfileIdentitySchema.shape.initials,
   timekeeperName: ProfileDisplayNameSchema,
+  timekeeperInitials: ProfileIdentitySchema.shape.initials,
   createdAt: IsoInstantSchema,
   lastSignedInAt: IsoInstantSchema,
   credentialState: z.enum(["saved", "wiped"]),
@@ -39,7 +40,7 @@ export const ProfileRegistryRowSchema = z.strictObject({
 export type ProfileRegistryRow = z.infer<typeof ProfileRegistryRowSchema>;
 
 export const ProfileRegistryDocumentSchema = z.strictObject({
-  schemaVersion: z.literal(3),
+  schemaVersion: z.literal(4),
   installationId: z.uuid(),
   revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   profiles: z.array(ProfileRegistryRowSchema),
@@ -118,11 +119,13 @@ export function deriveProfileNames(firstName: string, lastName: string): {
   readonly lastName: string;
   readonly initials: string;
   readonly timekeeperName: string;
+  readonly timekeeperInitials: string;
 } {
   const problem = profileNameProblem(firstName, lastName);
   if (problem !== undefined) throw problem;
   const timekeeperName = `${firstName} ${lastName}`;
-  return { firstName, lastName, initials: profileInitials(timekeeperName), timekeeperName };
+  const initials = profileInitials(timekeeperName);
+  return { firstName, lastName, initials, timekeeperName, timekeeperInitials: initials };
 }
 
 /** Initials a person enters for themself: one to eight letters A to Z. */
@@ -135,8 +138,9 @@ export type ProfileDetailsChange = {
   readonly name?: { readonly firstName: string; readonly lastName: string };
   readonly initials?: string;
   readonly timekeeperName?: string;
+  readonly timekeeperInitials?: string;
 };
-export type ProfileDetailsPatch = Partial<Pick<ProfileRegistryRow, "firstName" | "lastName" | "initials" | "timekeeperName">>;
+export type ProfileDetailsPatch = Partial<Pick<ProfileRegistryRow, "firstName" | "lastName" | "initials" | "timekeeperName" | "timekeeperInitials">>;
 export type ProfileDetailsRefusalCode = "PROFILE_DISPLAY_NAME_REFUSED" | "PROFILE_INITIALS_REFUSED" | "PROFILE_NAME_REFUSED";
 
 /** The registry patch for a details change, or the code of the first refused value; nothing is trimmed or corrected. */
@@ -144,9 +148,11 @@ export function profileDetailsPatch(change: ProfileDetailsChange): { readonly pa
   if (change.name !== undefined && !isProfileName(change.name.firstName, change.name.lastName)) return { refused: "PROFILE_DISPLAY_NAME_REFUSED" };
   if (change.initials !== undefined && !ProfileInitialsSchema.safeParse(change.initials).success) return { refused: "PROFILE_INITIALS_REFUSED" };
   if (change.timekeeperName !== undefined && !ProfileTimekeeperNameSchema.safeParse(change.timekeeperName).success) return { refused: "PROFILE_NAME_REFUSED" };
+  if (change.timekeeperInitials !== undefined && !ProfileInitialsSchema.safeParse(change.timekeeperInitials).success) return { refused: "PROFILE_INITIALS_REFUSED" };
   return { patch: { ...(change.name === undefined ? {} : { firstName: change.name.firstName, lastName: change.name.lastName }),
     ...(change.initials === undefined ? {} : { initials: change.initials }),
-    ...(change.timekeeperName === undefined ? {} : { timekeeperName: change.timekeeperName }) } };
+    ...(change.timekeeperName === undefined ? {} : { timekeeperName: change.timekeeperName }),
+    ...(change.timekeeperInitials === undefined ? {} : { timekeeperInitials: change.timekeeperInitials }) } };
 }
 
 export const ProfileDatabaseBindingSchema = z.strictObject({ installationId: z.uuid(), profileId: ProfileIdSchema });
@@ -273,11 +279,26 @@ export const LogoutOperationSchema = z.strictObject({
   phase: z.enum(["admitted", "cancelling", "incomplete", "complete"]),
 });
 
+/**
+ * Setting up Duo again for a registered profile. Its draft enrols under a fresh account so its scopes never equal sign-up's; the
+ * staged credentials replace the ready set only through the recorded commit intent, and abort marks a draft that is only discarded.
+ */
+export const DuoReenrolOperationSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  kind: z.literal("duo-reenrol"),
+  operationId: z.uuid(),
+  profileId: z.uuid(),
+  createdAt: IsoInstantSchema,
+  draft: z.strictObject({ accountId: z.uuid(), generation: z.number().int().safe().positive(), attempts: z.array(SignUpDuoAttemptSchema) }),
+  commit: DuoReenrolCommitIntentSchema.optional(),
+  abort: z.strictObject({ abortedAt: IsoInstantSchema }).optional(),
+}).refine(value => value.commit === undefined || value.abort === undefined && value.commit.accountId === value.draft.accountId, "duo-reenrol-operation-invalid");
+export type DuoReenrolOperation = z.infer<typeof DuoReenrolOperationSchema>;
+
 export type SignUpOperation = z.infer<typeof SignUpOperationSchema>;
 
-export function assertFinishedProfileOnboarding(operation: SignUpOperation): void {
-  const draft = operation.onboarding;
-  if (draft === undefined || draft.finish === undefined || draft.abort !== undefined) throw new Error("profile-onboarding-incomplete");
+/** Both methods of the draft's current generation proved under its own account, as sign-up and re-enrolment both require. */
+export function assertProvedDuoMethods(draft: Readonly<{ accountId: string; generation: number; attempts: readonly SignUpDuoAttempt[] }>): void {
   for (const method of ["key", "touch"] as const) {
     const attempt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
     if (attempt?.state !== "complete" || attempt.scope?.accountId !== draft.accountId || attempt.providerClosedAt === undefined
@@ -289,8 +310,15 @@ export function assertFinishedProfileOnboarding(operation: SignUpOperation): voi
     }
   }
 }
+
+export function assertFinishedProfileOnboarding(operation: SignUpOperation): void {
+  const draft = operation.onboarding;
+  if (draft === undefined || draft.finish === undefined || draft.abort !== undefined) throw new Error("profile-onboarding-incomplete");
+  assertProvedDuoMethods(draft);
+}
 export type LogoutOperation = z.infer<typeof LogoutOperationSchema>;
-export type ProfileOperation = SignUpOperation | LogoutOperation;
+export const ProfileOperationSchema = z.union([SignUpOperationSchema, LogoutOperationSchema, DuoReenrolOperationSchema]);
+export type ProfileOperation = SignUpOperation | LogoutOperation | DuoReenrolOperation;
 
 const ProfileVerifierRowSchema = z.strictObject({
   profileId: ProfileIdSchema,

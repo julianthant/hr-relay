@@ -386,7 +386,7 @@ closure still stops startup and retains its owners.
 Ordinary readers accept only the current schema. Stopped conversion and flat-source inspection own
 the previous grammar; retained value-free receipts keep the catalog used by their original write.
 
-Registry document 3 binds immutable installation ID and safe revision. Control 7 binds logical registry digest/revision/epoch and operation membership; marker 8 selects the current tuple and external browser-root registry. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
+Registry document 4 binds immutable installation ID and safe revision, and each row stores its timekeeper initials apart from its timekeeper name. Control 7 binds logical registry digest/revision/epoch and operation membership; marker 9 selects the current tuple and external browser-root registry. Startup under stopped exclusive custody upgrades document 3 at marker 8 forward once, seeding each row's timekeeper initials from the letters of its timekeeper name; its control intent `registry-initials-upgrade.json` lets a stop at any step finish the same upgrade, and the conversion refuses while a publication, restore journal, control upgrade or account deletion is pending. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
 
 Browser-root registry schema 2 stores short numeric handles with complete owner bindings. Stopped startup
 runs `maintenance/browser-root-upgrade.ts` before ordinary admission. Its schema-1 forward conversion
@@ -701,7 +701,7 @@ the bytes again before publication. Changed content, identity, permissions or an
 
 Startup owns automatic same-person repair before ordinary admission, providers or HTTP. It selects the newest verified supported backup that preserves current write fences, attempts, evidence, deletion tombstones and generated-file publication records. It refuses when current critical evidence or immutable identity cannot be inspected, or when a backup would weaken it; it never unions databases. Current runtime roots must match the admitted person.
 
-The one external control `journal.json` restore record (schema 3) binds source/stage/quarantine/manifest bytes, current canonical credential head, retained files and browser membership. Replacement advances the session epoch once, revokes old runtime authority and preserves the authenticated profile selection. Startup resumes only its exact interrupted prefix, verifies the original manifest and preserved evidence again, and retains an on-disk repair record with the backup time. Unknown prefixes remain held. No restore command or picker exists. Settled schema-6 control converts once under stopped exclusive custody to logical control 7 and marker 8; old physical completed-restore entries are checked during that conversion and removed from current control.
+The one external control `journal.json` restore record (schema 3) binds source/stage/quarantine/manifest bytes, current canonical credential head, retained files and browser membership. Replacement advances the session epoch once, revokes old runtime authority and preserves the authenticated profile selection. Startup resumes only its exact interrupted prefix, verifies the original manifest and preserved evidence again, and retains an on-disk repair record with the backup time. Unknown prefixes remain held. No restore command or picker exists. Settled schema-6 control converts once under stopped exclusive custody to logical control 7 and marker 8, then to registry document 4 and marker 9; old physical completed-restore entries are checked during that conversion and removed from current control.
 
 ## Settings and readiness readback
 
@@ -894,6 +894,19 @@ base64url in Duo custody and convert to standard base64 only at the Chromium pro
 A completed Chromium platform receipt with a matching ready encrypted key survives the scoped
 retention hook, just like the software key. Actual provider failures still retain their error and
 block Finish through the existing custody checks.
+
+Setting Duo up again for an active profile is a separate `duo-reenrol` operation beside the active session. The same draft owner
+runs its attempts under a fresh account, but a proved credential is staged, not confirmed, so workflows keep signing with the
+ready set. Commit requires both methods. Its fence proves the profile idle and sets an in-process commit hold in one authority
+transaction; the intent, head and record then publish under that hold, and the hold clears only once they are proved. A failure
+after the intent gets one validated reconciliation, never a retry, and the result is reported uncertain; a recorded intent keeps
+every session of that profile stale until boot reconciles it under stopped custody or holds that person. Logout and delete
+account refuse while a draft is open; cancel and the internal close their callers run first abandon an uncommitted draft by
+discarding only its rows. Boot proves every uncommitted draft's setup browser closed, closes its attempts and marks it aborted, so it
+can never be started, shown or committed again. Boot discards the rows and the operation at once for the profile it selects;
+otherwise that profile's next sign-in or resume does it before any credential read and before the session is returned, and a failed
+discard leaves the person signed out for the next sign-in to retry. An uncommitted draft does not refuse a stopped repair claim on
+its profile; a recorded commit intent does.
 
 Draft Duo publication resumes only its authenticated prior/next intent, including stopped recovery.
 The native onboarding Finish intent owns verifier and registry publication together; verifier preparation does not publish an account. Fresh database, key, protected credential, verifier-pepper file identity/digest and method witnesses precede that intent. Exact prior/next prefixes recover together, while a changed source remains HOLD.

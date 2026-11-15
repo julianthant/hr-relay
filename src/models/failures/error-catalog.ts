@@ -109,6 +109,7 @@ export const ERROR_CATALOG = Object.freeze({
   ONBOARDING_MATCH_INVALID: catalogEntry("UCPath duplicate search returned inconsistent identity evidence.", EmptyParametersSchema),
   ONBOARDING_EXISTING_PERSON_REQUIRED: catalogEntry("Concurrent hire requires an existing UCPath person. Review the hire mode and source identity.", EmptyParametersSchema),
   ONBOARDING_I9_LOOKUP_UNRESOLVED: catalogEntry("The delegated I-9 lookup did not establish a result for this hire. No profile will be created.", EmptyParametersSchema),
+  DELEGATION_OUTCOME_POLICY_UNSATISFIED: catalogEntry("A step this run depends on did not finish, so the run stopped. Open that step for the reason.", EmptyParametersSchema),
   RUN_CONTINUATION_REFUSED: catalogEntry("Saved completed steps could not be authenticated for recovery. No saved result was reused; review the source run before starting work.", EmptyParametersSchema),
   APPLICATION_ADMISSION_REFUSED: catalogEntry("Relay could not secure idle update or shutdown admission. Work remains held; restart Relay after resolving the retained failure.", EmptyParametersSchema),
   UNEXPECTED_CONTACT_PAGE: catalogEntry("UCPath did not show the expected Emergency Contact page.", EmptyParametersSchema),
@@ -770,6 +771,22 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   PROFILE_LOGIN_CHANGE_BUSY: catalogEntry(
     "Another save was in progress, so your sign-in was not changed. Try again.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_DUO_REENROL_OPEN: catalogEntry(
+    "Duo setup is still open for this profile. Finish or cancel it, then try again.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_DUO_REENROL_BUSY: catalogEntry(
+    "Relay can switch to the new Duo setup only while no run, change or Duo sign-in is in progress. Nothing was changed; wait for current work to finish, then try again.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_DUO_REENROL_REFUSED: catalogEntry(
+    "The new Duo setup no longer matches the saved Duo devices, so nothing was changed. Cancel this setup and start it again.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_DUO_REENROL_UNCERTAIN: catalogEntry(
+    "Relay could not confirm that switching to the new Duo setup finished cleanly. Check this profile's Duo status; if the profile stays closed, restart Relay so it can check the setup.",
     EmptyParametersSchema,
   ),
   PROFILE_FLAT_STORE_MIGRATION_FAILED: catalogEntry("Relay could not verify the old store backup and start a clean profile installation. Startup is stopped; remaining data is preserved.", EmptyParametersSchema),
