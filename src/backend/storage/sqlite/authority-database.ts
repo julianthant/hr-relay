@@ -364,6 +364,9 @@ export interface AuthorityLifecycleHooks {
   }>): void;
 }
 
+/** Called after an outermost write or read snapshot settles, and only when it took more than 50 ms. */
+export type SlowOperationHook = (operation: Readonly<{ name: string; durationMs: number }>) => void;
+
 
 type RunCheckpointRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<RunCheckpointRecord>;
@@ -2365,6 +2368,9 @@ export class AuthorityDatabase implements Disposable {
 
   #authorityCommitCallbacks: (() => void)[] = [];
   #lifecycleHooks: AuthorityLifecycleHooks | undefined;
+  #slowOperation: SlowOperationHook | undefined;
+  /** Nonzero while an outermost operation is being timed, including the hook call. */
+  #slowOperationDepth = 0;
 
   readonly authority: AuthorityRepositories;
 
@@ -2377,6 +2383,7 @@ export class AuthorityDatabase implements Disposable {
     lifecycleHooks?: AuthorityLifecycleHooks,
     credentials?: CredentialStore,
     purpose: "stopped-startup-recovery" | "stopped-layout-source" | "stopped-layout-target" | "ordinary" | "profile-initialization" | "profile-onboarding-debug" | "stopped-restore-projection" | "stopped-span-root-repair" | "stopped-logout-settlement" | "stopped-logout-inspection" = "ordinary",
+    slowOperation?: SlowOperationHook,
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
@@ -2425,6 +2432,7 @@ export class AuthorityDatabase implements Disposable {
     this.#writeCommitHooks = writeCommitHooks;
     this.#terminalizationHooks = terminalizationHooks;
     this.#lifecycleHooks = lifecycleHooks;
+    this.#slowOperation = slowOperation;
     this.#path = options.path;
     this.#busyTimeoutMs = options.busyTimeoutMs;
     this.#database = new DatabaseSync(readOnlyNoMigrate || mayCreate ? options.path : existingDatabaseLocation(options.path), {
@@ -2496,10 +2504,11 @@ export class AuthorityDatabase implements Disposable {
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
     credentials?: CredentialStore,
+    slowOperation?: SlowOperationHook,
   ): AuthorityDatabase {
     admission.assertProfileRuntime();
     const options = AuthorityDatabaseOptionsSchema.parse(input);
-    const database = new AuthorityDatabase(admission, options, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks, credentials);
+    const database = new AuthorityDatabase(admission, options, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks, credentials, "ordinary", slowOperation);
     if (options.openMode !== "read-write") return database;
     try {
       database.resumeRunDeletionFiles();
@@ -2735,17 +2744,17 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  static openStoppedStartupRecovery(admission: RuntimeAdmission, clock: Clock): AuthorityDatabase {
+  static openStoppedStartupRecovery(admission: RuntimeAdmission, clock: Clock, slowOperation?: SlowOperationHook): AuthorityDatabase {
     admission.assertStoppedStartupRecoveryDatabase(join(admission.stateRoot, "state.db"));
     return new AuthorityDatabase(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250,
-      migrationOwner: "startup-crash-recovery" }, clock, undefined, undefined, undefined, undefined, "stopped-startup-recovery");
+      migrationOwner: "startup-crash-recovery" }, clock, undefined, undefined, undefined, undefined, "stopped-startup-recovery", slowOperation);
   }
 
-  static openFixedLayoutSource(machine: RuntimeAdmission, admission: RuntimeAdmission, clock: Clock): AuthorityDatabase {
+  static openFixedLayoutSource(machine: RuntimeAdmission, admission: RuntimeAdmission, clock: Clock, slowOperation?: SlowOperationHook): AuthorityDatabase {
     admission.assertReadyStoppedProfileLayoutOwner(machine);
     return new AuthorityDatabase(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250,
       migrationOwner: "fixed-layout-source", openMode: "storage-doctor-read-only-no-migrate" }, clock,
-      undefined, undefined, undefined, undefined, "stopped-layout-source");
+      undefined, undefined, undefined, undefined, "stopped-layout-source", slowOperation);
   }
 
   static publishFixedLayoutActivation(admission: RuntimeAdmission): Readonly<{ state: "activated" | "already-activated"; configSnapshotId: string }> {
@@ -2791,14 +2800,14 @@ export class AuthorityDatabase implements Disposable {
     return result;
   }
 
-  static openStoppedRestoreProjection(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock): AuthorityDatabase {
+  static openStoppedRestoreProjection(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, slowOperation?: SlowOperationHook): AuthorityDatabase {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     admission.assertStoppedRestoreProjection(options.path);
     if (options.openMode !== "read-write") throw new Error("profile-restore-projection-mode-refused");
     const inspection = withDirectReaderAdmission(admission, () => inspectExistingDatabaseReadOnly(options.path, options.busyTimeoutMs));
     if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-restore-projection-schema-refused");
     admission.assertStoppedRestoreProjection(options.path);
-    return new AuthorityDatabase(admission, options, clock, undefined, undefined, undefined, undefined, "stopped-restore-projection");
+    return new AuthorityDatabase(admission, options, clock, undefined, undefined, undefined, undefined, "stopped-restore-projection", slowOperation);
   }
 
   static openStoppedSpanRootRepair(admission: RuntimeAdmission, input: unknown, operation: OfflineMaintenanceOperation, clock: Clock = systemClock): AuthorityDatabase {
@@ -4813,66 +4822,92 @@ export class AuthorityDatabase implements Disposable {
           throw error;
         } finally { this.#transactionDepth -= 1; }
       }
-      this.#admitMutation();
-      const witnesses = new Map(outermostOperationProof()?.witnesses);
-      if (mode === "projection") this.#withReadSnapshot(() => { this.#validateExternalQuerySources("mutation", searchValidation); });
-      this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
-      try { this.#database.exec("BEGIN IMMEDIATE"); }
-      catch (error) {
-        if (error instanceof Error && "errcode" in error && error.errcode === 5) throw new AuthorityWriterBusyError({ cause: error });
-        throw error;
-      }
-      this.#transactionDepth = 1;
-      this.#transactionMode = mode;
-      this.#authorityDirty = false;
-      let result: Result;
+      const slow = this.#beginSlowOperation(mode === "authority" ? "authority-transaction" : "projection-transaction");
       try {
-        const search = createRunSearchIndex(this.#database);
-        const priorSearch = search.publication();
-        const insideDataVersion = readIntPragma(this.#database, "data_version");
-        if (this.#logoutBatch !== undefined) {
-          const operation = this.#logoutBatch.admission.assertPendingLogoutSettlementDatabase(this.#path), settlement = operation.settlement;
-          const before = inspectNativeAuthority(this.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint;
-          if (settlement === undefined || (before !== settlement.before && !(settlement.phase === "commit-intent" && before === settlement.after))) throw new Error("profile-logout-settlement-source-changed");
-        }
-        result = work();
-        if (this.#authorityDirty) {
-          const update = this.#database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,updated_at=?,search_state='invalid',search_generation=NULL WHERE id=1").run(this.#now());
-          if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation singleton is missing");
-          search.publishChanges(this.getMeta().authorityGeneration, this.#now(), priorSearch);
-        }
-        revalidateOperationProof(witnesses);
         this.#admitMutation();
-        this.#assertOpen();
-        if (this.#logoutBatch !== undefined) {
-          const admission = this.#logoutBatch.admission, operation = admission.assertPendingLogoutSettlementDatabase(this.#path), settlement = operation.settlement;
-          if (settlement === undefined) throw new Error("profile-logout-settlement-unprepared");
-          const after = inspectNativeAuthority(this.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint;
-          if (settlement.phase === "prepared") this.#publishPendingLogout(admission, LogoutOperationSchema.parse({ ...operation, settlement: { ...settlement, phase: "commit-intent", after } }));
-          else if (settlement.phase !== "commit-intent" || settlement.after !== after) throw new Error("profile-logout-settlement-postimage-changed");
-          this.#assertOpen();
+        const witnesses = new Map(outermostOperationProof()?.witnesses);
+        if (mode === "projection") this.#withReadSnapshot(() => { this.#validateExternalQuerySources("mutation", searchValidation); });
+        this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
+        try { this.#database.exec("BEGIN IMMEDIATE"); }
+        catch (error) {
+          if (error instanceof Error && "errcode" in error && error.errcode === 5) throw new AuthorityWriterBusyError({ cause: error });
+          throw error;
         }
-        const settleChangeLog = this.#prepareChangeLogCommit(mode, searchValidation, insideDataVersion);
-        this.#database.exec("COMMIT");
-        if (searchValidation === "none" && this.#changeReader === undefined) this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
-        settleChangeLog?.();
-      } catch (error) {
-        try { this.#database.exec("ROLLBACK"); }
-        catch (rollback) { this.#failNativeClosure([error, rollback]); }
-        this.#authorityCommitCallbacks.splice(0);
-        throw error;
-      } finally {
-        clearOperationProofSlots();
-        this.#transactionDepth = 0;
-        this.#transactionMode = undefined;
-        this.#transactionDelegationReads = undefined;
-        this.#snapshotExternalDataVersion = undefined;
+        this.#transactionDepth = 1;
+        this.#transactionMode = mode;
         this.#authorityDirty = false;
-      }
-      const callbacks = this.#authorityCommitCallbacks.splice(0);
-      for (const callback of callbacks) callback();
-      return result;
+        let result: Result;
+        try {
+          const search = createRunSearchIndex(this.#database);
+          const priorSearch = search.publication();
+          const insideDataVersion = readIntPragma(this.#database, "data_version");
+          if (this.#logoutBatch !== undefined) {
+            const operation = this.#logoutBatch.admission.assertPendingLogoutSettlementDatabase(this.#path), settlement = operation.settlement;
+            const before = inspectNativeAuthority(this.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint;
+            if (settlement === undefined || (before !== settlement.before && !(settlement.phase === "commit-intent" && before === settlement.after))) throw new Error("profile-logout-settlement-source-changed");
+          }
+          result = work();
+          if (this.#authorityDirty) {
+            const update = this.#database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,updated_at=?,search_state='invalid',search_generation=NULL WHERE id=1").run(this.#now());
+            if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation singleton is missing");
+            search.publishChanges(this.getMeta().authorityGeneration, this.#now(), priorSearch);
+          }
+          revalidateOperationProof(witnesses);
+          this.#admitMutation();
+          this.#assertOpen();
+          if (this.#logoutBatch !== undefined) {
+            const admission = this.#logoutBatch.admission, operation = admission.assertPendingLogoutSettlementDatabase(this.#path), settlement = operation.settlement;
+            if (settlement === undefined) throw new Error("profile-logout-settlement-unprepared");
+            const after = inspectNativeAuthority(this.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint;
+            if (settlement.phase === "prepared") this.#publishPendingLogout(admission, LogoutOperationSchema.parse({ ...operation, settlement: { ...settlement, phase: "commit-intent", after } }));
+            else if (settlement.phase !== "commit-intent" || settlement.after !== after) throw new Error("profile-logout-settlement-postimage-changed");
+            this.#assertOpen();
+          }
+          const settleChangeLog = this.#prepareChangeLogCommit(mode, searchValidation, insideDataVersion);
+          this.#database.exec("COMMIT");
+          if (searchValidation === "none" && this.#changeReader === undefined) this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
+          settleChangeLog?.();
+        } catch (error) {
+          try { this.#database.exec("ROLLBACK"); }
+          catch (rollback) { this.#failNativeClosure([error, rollback]); }
+          this.#authorityCommitCallbacks.splice(0);
+          throw error;
+        } finally {
+          clearOperationProofSlots();
+          this.#transactionDepth = 0;
+          this.#transactionMode = undefined;
+          this.#transactionDelegationReads = undefined;
+          this.#snapshotExternalDataVersion = undefined;
+          this.#authorityDirty = false;
+          slow.finish();
+        }
+        const callbacks = this.#authorityCommitCallbacks.splice(0);
+        for (const callback of callbacks) callback();
+        return result;
+      } finally { slow.finish(); }
     });
+  }
+
+  /** Times one outermost operation. Nested work, and work the hook starts, does not report on its own. */
+  #beginSlowOperation(name: string): { finish(): void } {
+    if (this.#slowOperation === undefined || this.#slowOperationDepth > 0) return { finish() {} };
+    const startedMs = this.#clock.monotonicMs();
+    this.#slowOperationDepth += 1;
+    let finished = false;
+    return {
+      finish: () => {
+        if (finished) return;
+        finished = true;
+        try {
+          const durationMs = this.#clock.monotonicMs() - startedMs;
+          if (durationMs > 50) this.#slowOperation?.({ name, durationMs });
+        } catch {
+          // A hook failure never replaces the transaction result or its error.
+        } finally {
+          this.#slowOperationDepth -= 1;
+        }
+      },
+    };
   }
 
   #readDelegationGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup> {
@@ -4906,30 +4941,34 @@ export class AuthorityDatabase implements Disposable {
       this.#assertOpen();
       if (this.#transactionDepth > 0) return read();
 
-      const witnesses = new Map(outermostOperationProof()?.witnesses);
-      this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
-      this.#database.exec("BEGIN");
-      this.#transactionDepth = 1;
-      this.#transactionMode = "read";
-      this.#delegationReadSnapshot = { waits: new Map(), memo: newDelegationAuthenticationMemo(), invocations: new Map() };
-      this.#authorityDirty = false;
+      const slow = this.#beginSlowOperation("read-snapshot");
       try {
-        const result = read();
-        revalidateOperationProof(witnesses);
-        this.#assertOpen();
-        this.#database.exec("COMMIT");
-        return result;
-      } catch (error) {
-        this.#database.exec("ROLLBACK");
-        throw error;
-      } finally {
-        clearOperationProofSlots();
-        this.#transactionDepth = 0;
-        this.#transactionMode = undefined;
-        this.#delegationReadSnapshot = undefined;
-        this.#snapshotExternalDataVersion = undefined;
+        const witnesses = new Map(outermostOperationProof()?.witnesses);
+        this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
+        this.#database.exec("BEGIN");
+        this.#transactionDepth = 1;
+        this.#transactionMode = "read";
+        this.#delegationReadSnapshot = { waits: new Map(), memo: newDelegationAuthenticationMemo(), invocations: new Map() };
         this.#authorityDirty = false;
-      }
+        try {
+          const result = read();
+          revalidateOperationProof(witnesses);
+          this.#assertOpen();
+          this.#database.exec("COMMIT");
+          return result;
+        } catch (error) {
+          this.#database.exec("ROLLBACK");
+          throw error;
+        } finally {
+          clearOperationProofSlots();
+          this.#transactionDepth = 0;
+          this.#transactionMode = undefined;
+          this.#delegationReadSnapshot = undefined;
+          this.#snapshotExternalDataVersion = undefined;
+          this.#authorityDirty = false;
+          slow.finish();
+        }
+      } finally { slow.finish(); }
     });
   }
 
