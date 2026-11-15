@@ -201,8 +201,14 @@ function button(host: HTMLElement, label: string) {
   const target = [...host.querySelectorAll("button")].find(button => button.textContent === label); assert.ok(target); return target;
 }
 
+it("does not offer Add record on an emergency-contact review", async () => {
+  const host = await mountEditor(editorWorld());
+  assert.equal([...host.querySelectorAll("button")].some(button => button.textContent === "Add record"), false);
+});
+
 it("coalesces existing-record edits, confirms revision readback before approval and freezes approved inputs", async () => {
   const h = editorWorld(), host = await mountEditor(h);
+  assert.equal([...host.querySelectorAll("button")].some(button => button.textContent === "Add record"), false);
   await act(async () => {
     changeInput(host, "contact.name", "Draft"); changeInput(host, "contact.name", "Edited Contact");
     changeInput(host, "employee.employeeId", "10800000");

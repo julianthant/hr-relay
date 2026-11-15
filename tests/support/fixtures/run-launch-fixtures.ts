@@ -39,7 +39,7 @@ import { sourceBoundReadContract, sourceBoundReadStores } from "./source-bound-r
 import { WriteFixturePrepare, WriteFixtureCommit, buildWriteFixtureRegistry, absentProbeEvidence } from "./write-sequencer-fixtures.js";
 
 const Input = z.strictObject({ eid: EidSchema, memo: z.string().optional() });
-export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", current: { version?: number; fingerprint?: string; stepPrefix?: string; gateDependency?: boolean; readReplay?: "checkpoint" | "always-rerun" } = {}) {
+export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", current: { version?: number; fingerprint?: string; stepPrefix?: string; gateDependency?: boolean; gateCorrection?: boolean; readReplay?: "checkpoint" | "always-rerun" } = {}) {
   const prefix = current.stepPrefix ?? "";
   const readFlow = () => flow(Input)
     .step("read", sourceBoundReadContract, { dependsOn: [], replay: current.readReplay ?? "checkpoint", bind: ({ input }) => input })
@@ -73,8 +73,10 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", curre
       { nodeId: "submit-write", fieldPath: "output.value.transactionId", targetFieldPath: "memo", label: "Previous transaction" },
     ],
   } as const;
+  const gateCorrections = current.gateCorrection === true
+    ? { gateCorrections: [{ gateId: "approval", inputField: "memo", label: "Memo", placeholder: "lowercase", pattern: "^[a-z]+$" }] } : {};
   return current.gateDependency
-    ? defineWorkflowDescriptor({ ...descriptor, flow: graphWithGate })
+    ? defineWorkflowDescriptor({ ...descriptor, ...gateCorrections, flow: graphWithGate })
     : defineWorkflowDescriptor({ ...descriptor, flow: graphWithoutGate });
 }
 export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2], selection?: Readonly<{ descriptor: AnyWorkflowDescriptor; protectedSecrets: ProtectedSecretSource }>,
