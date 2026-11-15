@@ -1,8 +1,9 @@
 /** One case per client transition in the day-stream design, driven through subscribeDashboardDay. */
 import { createClientDayFixtures } from "../../../support/helpers/dashboard/client-day-fixtures.js";
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
+import * as dayState from "../../../../src/dashboard/client/queries/day-state.js";
 import { subscribeDashboardDay, type SubscriptionState } from "../../../../src/dashboard/client/subscriptions/subscription.js";
 import type { DashboardTransport, SseMessage, StreamHandle } from "../../../../src/dashboard/client/transport.js";
 import type { NotificationPublicationWire } from "../../../../src/models/dashboard/subscription.js";
@@ -237,6 +238,34 @@ describe("dashboard day subscription phase", () => {
     greeted.streams[0].deliver("{");
     assertStopped(greeted, /malformed stream envelope/);
     greeted.close();
+  });
+
+  it("stops a greeted snapshot or patch whose cursor the schema rejects, without publishing or reconnecting", () => {
+    const snapshot = {
+      type: "snapshot",
+      topic: "dashboard-day",
+      cursor: "pc:0",
+      payload: dayOf([surfaceOf(3)], "pc:1"),
+    };
+    const patch = { ...replacePatch("pc:2", 2), cursor: "not-a-cursor" };
+    for (const envelope of [snapshot, patch]) {
+      const harness = subscribe();
+      harness.streams[0].push(hello("pc:1"));
+      harness.streams[0].push(snapshotEnvelope("pc:1", [surfaceOf(1)]));
+      const published = harness.days.length;
+      harness.streams[0].push(envelope);
+      const state = harness.states.at(-1);
+      assert.equal(state?.state, "stopped");
+      if (state?.state !== "stopped") continue;
+      assert.equal(state.error?.kind, "protocol");
+      assert.match(state.error?.message ?? "", /malformed stream envelope/);
+      assert.match(state.error?.message ?? "", /projection cursor must be pc:<positive integer>/);
+      assert.doesNotMatch(state.error?.message ?? "", /envelope carries malformed cursor/);
+      assert.equal(harness.days.length, published);
+      assert.deepEqual(harness.scheduled, []);
+      assert.equal(harness.streams.length, 1);
+      harness.close();
+    }
   });
 
   it("greets an open stream on hello without reporting a new subscription state", () => {
@@ -491,6 +520,30 @@ describe("dashboard day subscription phase", () => {
     assert.deepEqual(harness.scheduled, [0]);
     harness.runScheduled();
     assert.equal(harness.streams[1].lastEventId, undefined);
+    harness.close();
+  });
+
+  it("stops when applying a patch throws something other than a protocol error", () => {
+    const harness = liveAtCursorTwo();
+    const published = harness.days.length;
+    const fault = new Error("patch applicator failed");
+    const apply = vi.spyOn(dayState, "applyDashboardDayPatch").mockImplementation(() => {
+      throw fault;
+    });
+    try {
+      harness.streams[0].push(replacePatch("pc:3", 3));
+    } finally {
+      apply.mockRestore();
+    }
+    const state = harness.states.at(-1);
+    assert.equal(state?.state, "stopped");
+    if (state?.state === "stopped") {
+      assert.equal(state.error?.kind, "protocol");
+      assert.equal(state.error?.message, fault.message);
+    }
+    assert.equal(harness.days.length, published);
+    assert.deepEqual(harness.scheduled, []);
+    assert.equal(harness.streams.length, 1);
     harness.close();
   });
 
