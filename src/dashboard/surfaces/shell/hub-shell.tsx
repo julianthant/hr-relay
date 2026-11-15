@@ -1,7 +1,6 @@
 import type { DashboardCommandBinding } from '../../app/dashboard-app-model.js';
 import { useAssistantController } from "../assistant/assistant-controller-model.js";
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { PreflightAssistantContext } from "../settings/preflight/preflight-assistant-model.js";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { History, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, EmptyState, SearchInput, SegmentedChoice } from "../../ds/ui.js";
 import { assistantFrame } from "../assistant/assistant-mock-frames.js";
@@ -22,7 +21,7 @@ export function HubShell(props: HubShellProps) {
   const client = useDashboardClient();
   const history = useAssistantHistory(client, props.source === 'served', props.authority);
   return <HubShellBody key={history.store?.profileId ?? (history.pending ? 'loading' : 'session')} {...props} history={history.store}
-    preferenceChanged={history.preferenceChanged} modelPreference={history.preference} historyPending={history.pending || props.source === 'served' && history.store === undefined} historyNotice={history.notice || (history.pending ? 'Loading chat history…' : '')} />;
+    preferenceChanged={history.preferenceChanged} modelPreference={history.preference} historyPending={history.pending || history.blocked || props.source === 'served' && history.store === undefined} historyNotice={history.notice || (history.pending ? 'Loading chat history…' : '')} />;
 }
 function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLogoutOpenChange, chatsPort, onRunWorkflow, source = "mock", authority, commands, subjectRef, history, historyPending, historyNotice, modelPreference, preferenceChanged }: HubShellProps & { history?: AssistantHistory; historyPending: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
   const panelPosition = useHubPanelPosition(4);
@@ -50,15 +49,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
   const model = useHubChats(chatsPort ?? localChats);
   const [seedId] = useState(model.currentId);
   const assistant = useHubAssistant(onRunWorkflow, (id, title) => { if (model.chats.some(chat => chat.id === id)) void model.rename(id, title); }, history);
-  const assistantTest = useContext(PreflightAssistantContext);
-  const seenRevision = useRef<string | undefined>(undefined);
-  const modelChanged = useCallback((view: AssistantModelPreferenceView, saved: boolean) => {
-    const revision = `${view.profileId}:${String(view.epoch)}:${String(view.revision)}`, prior = seenRevision.current; seenRevision.current = revision;
-    // Every accepted save bumps the revision, even for the same choice; a read only reveals a change when it differs from the last seen revision.
-    if (saved || prior !== undefined && prior !== revision) assistantTest.invalidate?.();
-    preferenceChanged?.(view);
-  }, [assistantTest, preferenceChanged]);
-  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged: modelChanged });
+  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged });
   const served = historyPending ? { ...servedController, canCompose: false } : servedController;
   const current = model.chats.find(chat => chat.id === model.currentId);
   const currentSession = current ? assistant.session(current.id, current.title) : undefined;
