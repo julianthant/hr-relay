@@ -212,4 +212,3 @@ it("preserves capability-validating driver commits while rejecting raw methods i
     assert.match(auditTaskDriverBoundary(root).join("\n"), /runtime\/settings\/reader\.ts: raw browser member \.locator/u);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
-

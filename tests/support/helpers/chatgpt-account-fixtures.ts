@@ -1,6 +1,4 @@
-import assert from 'node:assert/strict';
 import { completedResponseStream } from "./chatgpt-response-stream.js";
-import { z } from 'zod';
 import { generateKeyPairSync, sign } from "node:crypto";
 import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { createChatGptAccountService, type ChatGptAuthorization } from "../../../src/backend/accounts/chatgpt-account-service.js";
@@ -80,17 +78,3 @@ export function completedOcrStream(text: string, model = "gpt-6.1-sol"): string 
   return completedResponseStream([{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text }] }], model);
 }
 
-function completedCapabilityStream(output: readonly unknown[], model: string) {
-  return completedResponseStream(output, model);
-}
-
-export function publicCapabilityResponses(f: Awaited<ReturnType<typeof chatGptFixture>>, value = 'relay-public-capability') {
-  f.setResponse(init => {
-    assert.ok(typeof init.body === 'string');
-    const wire = z.object({ model: z.string(), input: z.array(z.object({ type: z.string().optional() }).passthrough()) }).parse(JSON.parse(init.body));
-    const continuation = wire.input.some(item => item.type === 'function_call_output');
-    return new Response(continuation ? completedOcrStream('Relay public capability verified', wire.model)
-      : completedCapabilityStream([{ type: 'function_call', namespace: 'relay_capability', name: 'echo', call_id: 'public-capability-call', arguments: JSON.stringify({ value }) }], wire.model),
-    { headers: { 'content-type': 'text/event-stream' } });
-  });
-}
