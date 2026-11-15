@@ -23,7 +23,7 @@ import { backupStoppedAuthority, upgradeProfileAtStartup, upgradeReadyProfileSto
 import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { FingerprintSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
@@ -31,7 +31,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { writePredecessorUncertainRetry } from "../../../support/fixtures/storage/predecessor-worker-custody.js";
-import { hostFacts, PRE_BUILD_RUN_TABLES, digest, readyBoundEight, rawEight } from "../../../support/helpers/storage/ready-bound-upgrade.js";
+import { assertGrantTableRetired, hostFacts, PRE_BUILD_RUN_TABLES, digest, readyBoundEight, rawEight } from "../../../support/helpers/storage/ready-bound-upgrade.js";
 
 it("upgrades a genuinely READY bound profile with exact preference conversion, retained historical rows, credentials and replay", async () => {
   const f = await readyBoundEight();
@@ -45,6 +45,7 @@ it("upgrades a genuinely READY bound profile with exact preference conversion, r
     assert.deepEqual(rawEight(f.path), before);
     const result = await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock);
     assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 8, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
+    assertGrantTableRetired(f.path);
     const after = rawEight(f.path);
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
@@ -63,7 +64,7 @@ it("upgrades a genuinely READY bound profile with exact preference conversion, r
       const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock, undefined, undefined, undefined, credentials);
       try {
         assert.equal(database.authority.assistantModelPreference.get(), undefined);
-        for (const table of ["assistant_grants", "assistant_chats", "assistant_actions"]) {
+        for (const table of ["assistant_chats", "assistant_actions"]) {
           const raw = new DatabaseSync(f.path, { readOnly: true });
           try { assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0); } finally { raw.close(); }
         }
@@ -148,6 +149,45 @@ it("refuses a genuine canonical queued run despite stopped global process roles"
       { message: "credential-maintenance-custody-unproved" });
     assert.deepEqual(storageTree(f.stateRoot), before);
     assert.deepEqual(rawEight(f.path), rows);
+  } finally { await f.close(); }
+});
+
+it("automatically upgrades schema 25 with queued work intact", async () => {
+  const f = await readyBoundEight("queued", 25);
+  const tables = () => { const raw = new DatabaseSync(f.path, { readOnly: true });
+    try { return raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => String(row.name)); } finally { raw.close(); } };
+  try {
+    assert.deepEqual(tables(), [...migrationTableNames(25)].sort());
+    assert.equal(tables().includes("assistant_conversations"), false);
+    const before = rawEight(f.path, 25);
+    assert.ok(before.runs.length > 0); assert.ok(before.artifacts.length > 0);
+    assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
+    assert.deepEqual(tables(), [...migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION)].sort());
+    const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "assistant_attachments", "assistant_conversations", "assistant_messages"].sort());
+    for (const [table, rows] of Object.entries(before)) {
+      if (table === "database_states") assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "database_upgrades") { assert.deepEqual(after[table].slice(0, rows.length), rows); assert.equal(after[table].length, rows.length + 1); }
+      else assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row })), table);
+    }
+    assert.deepEqual([after.assistant_conversations, after.assistant_messages], [[], []]);
+  } finally { await f.close(); }
+});
+
+it("automatically upgrades schema 28 at startup, dropping only the empty grant table", async () => {
+  const f = await readyBoundEight("queued", 28);
+  try {
+    const before = rawEight(f.path, 28);
+    assert.ok(before.runs.length > 0);
+    assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
+    assertGrantTableRetired(f.path);
+    const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.deepEqual(Object.keys(after).sort(), Object.keys(before).sort());
+    for (const [table, rows] of Object.entries(before)) {
+      if (table === "database_states") assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "database_upgrades") { assert.deepEqual(after[table].slice(0, rows.length), rows); assert.equal(after[table].length, rows.length + 1); }
+      else assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row })), table);
+    }
   } finally { await f.close(); }
 });
 
@@ -370,11 +410,11 @@ it("upgrades a frozen schema 23 older-build store through its original fingerpri
     const originalFingerprint = replantOlderBuildAuthority(f.path, 23);
     const before = rawEight(f.path, 23);
     const result = await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock);
-    assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 23, toSchemaVersion: 25, credentials: "unchanged" });
-    const after = rawEight(f.path, 25);
+    assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 23, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
+    const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
     for (const [table, rows] of Object.entries(before)) {
       if (table === "worker_slots") continue;
-      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: 25 })));
+      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows, table);
     }

@@ -25,7 +25,6 @@ import { createNotificationTargetQuery } from "../../../../../src/backend/runs/q
 import { createWorkbookIntakeBridge } from "../../../../../src/backend/runs/commands/workbook-intake-service.js";
 import { createWorkbookLibraryService } from "../../../../../src/backend/workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../../../../src/backend/workbooks/workbook-library-error.js";
-import { SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/settings.js";
 import type { AssistantService } from "../../../../../src/backend/assistant/service.js";
 
 import { composeActivity } from "../../../../../src/backend/app/composition/dashboard/activity.js";
@@ -157,9 +156,8 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         sync: { withDownload: () => { throw new WorkbookLibraryError("WORKBOOK_SYNC_LINK_REQUIRED"); } } });
       const profileId = "00000000-0000-4000-8000-000000000001";
       const assistant: AssistantService = {
-        respond: () => Promise.resolve({ state: "refused", code: "ASSISTANT_UNAVAILABLE", message: "The assistant is unavailable. Check the ChatGPT connection." }),
+        respond: () => Promise.resolve({ kind: "result", result: { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: "The assistant is unavailable. Check the ChatGPT connection." } }),
         modelPreference: () => ({ profileId, epoch: 1, revision: 1, preference: { slug: "gpt-5.4", effort: "medium" } }),
-        permission: () => ({ state: "grant-required", profileId, epoch: 1, mode: "every-action", settingsRevision: 1, settingsSchemaHash: SETTINGS_SCHEMA_HASH, policyRevision: 0 }),
       };
       return {
         notifications: composeNotificationRoutes({ database, clock, lifecycle, runDetailDeps, descriptors: { resolve: id => { const descriptor = descriptors.resolve(id); if (descriptor === undefined) throw new Error(`seeded-descriptor-missing:${id}`); return descriptor; } }, assertCurrent: () => undefined, notificationObserver: observer, notificationTarget }),

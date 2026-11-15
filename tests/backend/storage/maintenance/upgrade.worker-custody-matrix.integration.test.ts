@@ -235,13 +235,18 @@ it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-
   assert.ok(readdirSync(backups).filter(name => name.endsWith(".manifest.json"))
     .some(name => AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(backups, name), "utf8"))).schemaVersion === version));
   const after = read(s.path);
-  const { workflow_workbook_selections: selections, ...kept } = after.kept;
-  assert.deepEqual(selections, []);
-  assert.deepEqual(kept, before.kept);
+  const { workflow_workbook_selections: selections, assistant_conversations: conversations, assistant_messages: messages, assistant_attachments: attachments, ...kept } = after.kept;
+  assert.deepEqual([selections, conversations, messages, attachments], [[], [], [], []]);
+  // Schema 29 drops the empty grant table.
+  const { assistant_grants: grants, ...keptBefore } = before.kept;
+  assert.deepEqual(grants, []);
+  assert.deepEqual(kept, keptBefore);
   assert.deepEqual(after.upgrades.slice(0, before.upgrades.length), before.upgrades);
   assert.ok(after.upgrades.length > before.upgrades.length);
   // Migration 21 rewrites this trigger; every other trigger comes through verbatim.
-  const unchanged = (rows: readonly Record<string, unknown>[]) => rows.filter(row => version > 20 || row.name !== "runs_completion_immutable");
+  // The assistant migrations add the history and attachment triggers and retire the grant trigger.
+  const ASSISTANT_TRIGGERS = new Set(["assistant_messages_settle_only", "assistant_attachments_accept_only", "assistant_grants_revision"]);
+  const unchanged = (rows: readonly Record<string, unknown>[]) => rows.filter(row => (version > 20 || row.name !== "runs_completion_immutable") && !ASSISTANT_TRIGGERS.has(String(row.name)));
   assert.deepEqual(unchanged(after.triggers), unchanged(before.triggers));
   assert.ok(after.triggers.some(row => row.name === "runs_completion_immutable"));
   assert.deepEqual(after.foreignKeys, []);

@@ -274,20 +274,22 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     },
     catalog: () => deps.repository.catalog(),
     libraryVersion: (libraryId: string, versionId?: string) => deps.repository.libraryVersion(input(WorkbookIdSchema, libraryId), versionId === undefined ? undefined : input(WorkbookIdSchema, versionId)),
+    libraryActionRecord: (libraryId: string, operationId: string) => deps.repository.libraryActionRecord(input(WorkbookIdSchema, libraryId), input(WorkbookIdSchema, operationId)),
     libraryActionStatus(libraryId: string, operationId: string) {
       const record = deps.repository.libraryActionRecord(input(WorkbookIdSchema, libraryId), input(WorkbookIdSchema, operationId));
       return WorkbookLibraryActionStatusSchema.parse(record === undefined ? { state: 'absent' }
         : record.action.change.kind === 'merge' ? { state: 'retired', code: 'WORKBOOK_ACTION_RETIRED', message: ERROR_CATALOG.WORKBOOK_ACTION_RETIRED.text }
           : { state: 'recorded', record });
     },
-    async libraryAction(libraryId: string, value: unknown, signal: AbortSignal) {
+    /** `assertCurrent` runs after any SharePoint download and import and immediately before the repository write. */
+    async libraryAction(libraryId: string, value: unknown, signal: AbortSignal, assertCurrent: () => void = () => {}) {
       const action = input(WorkbookLibraryActionSchema, value);
       const replay = deps.repository.libraryActionRecord(libraryId, action.operationId);
       if (replay !== undefined) return deps.repository.libraryAction(libraryId, action, replay.at);
       const record = read(libraryId), state = deps.repository.libraryState(libraryId);
       if (record.version !== action.expectedVersion || state.revision !== action.expectedRevision) throw new WorkbookLibraryError('WORKBOOK_VERSION_CONFLICT');
       signal.throwIfAborted();
-      const apply = (workbook?: EditableWorkbookWire) => deps.repository.libraryAction(libraryId, action, deps.clock.now().toISOString(), workbook);
+      const apply = (workbook?: EditableWorkbookWire) => { assertCurrent(); return deps.repository.libraryAction(libraryId, action, deps.clock.now().toISOString(), workbook); };
       return action.change.kind === 'sync' || action.change.kind === 'create-version' && action.change.from.kind === 'sharepoint'
         ? withDownloadedWorkbook(libraryId, action.operationId, signal, apply) : apply();
     },
