@@ -79,7 +79,7 @@ const UNCLOSING = { "close-proved": NOT_CLOSING, "close-failed": NOT_CLOSING } a
 const expected: Record<WorkerSessionBrowserKey, Record<WorkerSessionEventType, WorkerSessionTransition>> = {
   closed: {
     launch: to(browsers["starting/launching"]), ...PHASE, "launch-uncertain": to(failed(browsers.closed)),
-    "ceremony-release-failed": to(failed(browsers.closed)), "acquisition-close-timeout": NOT_ACQUIRING,
+    "ceremony-release-failed": to(failed(browsers.closed)), "acquisition-close-timeout": to(failed(browsers.closed)),
     lease: NONE, reset: NOT_LEASED, poison: NONE, close: NONE, ...UNCLOSING,
   },
   "starting/launching": {
@@ -96,7 +96,7 @@ const expected: Record<WorkerSessionBrowserKey, Record<WorkerSessionEventType, W
   },
   "authenticated/idle": {
     launch: OPEN, ...PHASE, "ceremony-release-failed": NOT_ACQUIRING, "acquisition-close-timeout": NOT_ACQUIRING,
-    lease: to(browsers["authenticated/leased"]), reset: NOT_LEASED, poison: NOT_LEASED,
+    lease: to(browsers["authenticated/leased"]), reset: NOT_LEASED, poison: to(browsers["closure-unproved"]),
     close: to({ state: "closing", owner: "session", reason: "parked" }), ...UNCLOSING,
   },
   "authenticated/leased": {
@@ -117,7 +117,7 @@ const expected: Record<WorkerSessionBrowserKey, Record<WorkerSessionEventType, W
   },
   "closure-unproved": {
     launch: UNPROVED, ...PHASE, "ceremony-release-failed": to(failed(browsers["closure-unproved"])),
-    "acquisition-close-timeout": NOT_ACQUIRING,
+    "acquisition-close-timeout": to(failed(browsers["closure-unproved"])),
     lease: UNPROVED, reset: NOT_LEASED, poison: to(browsers["closure-unproved"]),
     close: to({ state: "closing", owner: "session", reason: "parked" }), ...UNCLOSING,
   },

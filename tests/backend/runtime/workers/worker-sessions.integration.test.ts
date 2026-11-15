@@ -576,6 +576,75 @@ describe("bounded browser-session acquisition", () => {
       && error.errors.some(value => value instanceof Error && /closure is unproved/.test(value.message)));
   });
 
+  it("bounds a login still pending after its stop proved the browser closed", async () => {
+    const base = sessionFactory();
+    let rejectLogin: (error: unknown) => void = () => assert.fail("login has not started");
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const scheduler = new ManualScheduler(clock);
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry,
+      factory: { probeProfile: async () => undefined, open: async input => {
+        const resource = await base.factory.open(input);
+        // A non-cooperative login: closing its browser does not end it.
+        return { ...resource, authentication: { authenticate: () => new Promise<never>((_resolve, reject) => { rejectLogin = reject; }) } };
+      } }, clock, scheduler, acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: await fixtureDuoCeremonyGates(clock, undefined, profileFixtures.create),
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    const lease = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => assert.fail("expired acquisition must not run"));
+    const rejection = assert.rejects(lease, /timeouts\.sessionAcquireMs bound/);
+    await new Promise(resolve => setImmediate(resolve));
+    scheduler.pending()[0].fire();
+    await rejection;
+
+    let shutdown: unknown = "pending";
+    const closing = sessions.closeAll("worker-stop").then(() => { shutdown = "resolved"; }, (error: unknown) => { shutdown = error; });
+    for (let tick = 0; tick < 5; tick += 1) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(base.closes(), 1, "the stop proves the browser closed while its login is still pending");
+    const pending = scheduler.pending();
+    assert.equal(pending.length, 1, "the still-pending acquisition arms its close bound");
+    pending[0].fire();
+    await closing;
+    assert.ok(shutdown instanceof AggregateError
+      && shutdown.errors.some(value => value instanceof Error && /closure is unproved/.test(value.message)));
+    await assert.rejects(sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => undefined), /closure is unproved/);
+
+    rejectLogin(new Error("stuck login released"));
+    for (let tick = 0; tick < 5; tick += 1) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(base.closes(), 1);
+    await assert.rejects(sessions.closeAll("worker-stop"), error => error instanceof AggregateError
+      && error.errors.some(value => value instanceof Error && /closure is unproved/.test(value.message)));
+  });
+
+  it("keeps a reopen replacement untrusted when its start report fails", async () => {
+    const base = sessionFactory();
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const health: string[] = [];
+    const started: string[] = [];
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry, factory: base.factory,
+      clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: await fixtureDuoCeremonyGates(clock, undefined, profileFixtures.create),
+      onObservation: observation => { health.push(observation.health); },
+      onEvent: event => {
+        if (event.type !== "browser-session:start") return;
+        started.push(event.sessionId);
+        if (started.length === 2) throw new Error("injected start report failure");
+      },
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    await sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => undefined);
+    sessions.releaseRunConfigFingerprint();
+
+    await assert.rejects(sessions.controlBrowser("reopen-browser", started[0], SIGNAL), /injected start report failure/);
+    assert.equal(health.at(-1), "failed");
+    assert.throws(() => sessions.assertControlTarget(started[1]), /worker-browser-unproven-close/);
+
+    await sessions.closeAll("worker-stop");
+    assert.equal(base.closes(), 2);
+    assert.equal(health.at(-1), "closed");
+  });
+
   it("reports no authenticated session between an unproved close and its proven close", async () => {
     const base = sessionFactory({ closeFailureAt: 1 });
     const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));

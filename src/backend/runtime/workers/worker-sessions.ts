@@ -480,9 +480,11 @@ export class WorkerSessionManager {
       return replacement;
       });
     } catch (error) {
-      const remaining = heldResource(this.#session(resource.system));
+      const session = this.#session(resource.system);
+      const remaining = heldResource(session);
       if (remaining !== undefined) {
-        this.#apply(resource.system, { type: "poison" });
+        // A closing or already untrusted session needs no poison; refusing it would mask the control's error.
+        if (!closureUnproved(session.state)) this.#apply(resource.system, { type: "poison" });
         this.#observe(resource.system, remaining);
       }
       throw error;
@@ -782,8 +784,8 @@ export class WorkerSessionManager {
                 const closing = new AbortController();
                 const timeout = new Error(`${system} pending acquisition closure exceeded its ${this.#acquireDeadlineMs}ms bound; closure is unproved`);
                 const handle = this.#scheduler.schedule(this.#clock.monotonicMs() + this.#acquireDeadlineMs, () => {
-                  this.#loseCustody(system, { type: "acquisition-close-timeout" }, timeout);
-                  closing.abort(timeout);
+                  try { this.#loseCustody(system, { type: "acquisition-close-timeout" }, timeout); }
+                  finally { closing.abort(timeout); }
                 });
                 try { await waitForAcquisition(starting, closing.signal, system); }
                 catch (error) {
