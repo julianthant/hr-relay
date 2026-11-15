@@ -11,7 +11,7 @@ export const readSeparationDatesTask = defineTask(SeparationsReadSeparationDates
   async run({ input, ctx }) {
     const resolution = reconcileSeparationDates({
       plan: input.plan,
-      timekeeperName: input.timekeeperName,
+      timekeeperInitials: input.timekeeperInitials,
       lastPunchDate: input.lastPunchDate,
       sickDates: input.sickDates,
       holidayDates: input.holidayDates,
