@@ -164,6 +164,10 @@ export class WorkerSessionClosureUnprovedError extends AggregateError {
   }
 }
 
+export class BrowserScreenshotUnavailableError extends Error {
+  constructor(readonly reason: Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"]) { super(reason); this.name = "BrowserScreenshotUnavailableError"; }
+}
+
 export class SessionAcquisitionTimeoutError extends Error {
   readonly code = "browser-session-acquisition-timeout";
   readonly phase = "acquisition";
@@ -568,15 +572,18 @@ export class WorkerSessionManager {
         };
         assertLeaseActive();
         let reason: string | undefined;
+        let failure: unknown;
         try {
-          reason = await this.#captureLeaseScreenshot(resource, { kind: "task-point", nodeId: screenshotOwner.nodeId, attempt: screenshotOwner.attempt, boundary }, configFingerprint, assertLeaseActive, screenshotOwner.sampleLabels);
+          const unavailable = await this.#captureLeaseScreenshot(resource, { kind: "task-point", nodeId: screenshotOwner.nodeId, attempt: screenshotOwner.attempt, boundary }, configFingerprint, assertLeaseActive, screenshotOwner.sampleLabels);
+          if (unavailable !== undefined) { reason = unavailable; failure = new BrowserScreenshotUnavailableError(unavailable); }
         } catch (cause) {
           assertLeaseActive();
+          failure = cause;
           reason = cause instanceof Error && ["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError", "AggregateError", "TimeoutError"].includes(cause.name) ? cause.name : "Error";
         }
         if (reason !== undefined) {
           screenshotOwner.log.warn("Screenshot capture unavailable.", { code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", boundary, reason });
-          throw new TaskError(screenshotOwner.taskId, "BROWSER_SCREENSHOT_CAPTURE_FAILED", ERROR_CATALOG.BROWSER_SCREENSHOT_CAPTURE_FAILED.text);
+          throw new TaskError(screenshotOwner.taskId, "BROWSER_SCREENSHOT_CAPTURE_FAILED", ERROR_CATALOG.BROWSER_SCREENSHOT_CAPTURE_FAILED.text, { cause: failure });
         }
       };
       let operationCompleted = false;

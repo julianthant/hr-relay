@@ -5,7 +5,7 @@ export function fakeUcpathHirePage(options: Readonly<{
   rehire?: boolean; headerName?: string; disabled?: boolean; resetRate?: boolean; unknownSubmit?: boolean;
   submitSignal?: "confirmation" | "person-match" | "select-action" | "error";
   saved?: Omit<Partial<typeof UCPATH_HIRE_PROOF_EXAMPLE>, "approvalStatus"> & { approvalStatus?: string }; wrongConfirmation?: boolean;
-  staleFilter?: boolean; existingRows?: readonly typeof UCPATH_HIRE_PROOF_EXAMPLE[]; paged?: boolean; driftAfterDetail?: boolean;
+  staleFilter?: boolean; presetName?: string; existingRows?: readonly typeof UCPATH_HIRE_PROOF_EXAMPLE[]; paged?: boolean; driftAfterDetail?: boolean;
 }> = {}) {
   const origin = "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/";
   let url = `${origin}ADMINISTER_WORKFORCE_(GBL).HR_TBH_JOB.GBL`, view: "wizard" | "clear" | "empty" | "detail" | "list" = "wizard";
@@ -30,7 +30,7 @@ export function fakeUcpathHirePage(options: Readonly<{
       : key === "confirmation" ? options.wrongConfirmation ? "Unexpected warning" : "Person ID 10800000 already exists in the system for Fixture Hire. Select OK to continue the hire process with this Person ID."
       : key === "routing" ? `Transaction: ${current().transactionId}, ID: ${current().emplId ?? "NEW"}, Effdt: 2026-09-11,`
       : key === "detail-name" ? current().displayedName : key === "detail-action" ? current().action : key === "detail-date" ? current().effectiveDate
-      : key === "counter" ? `1-${String(visibleRowCount())} of ${String(records.length)}` : key.startsWith("row-id:") ? options.driftAfterDetail && returned ? "T009999999" : records[Number(key.slice(7))]?.transactionId : key === "name-operator-selected" ? "begins with" : key === "reason-selected" ? fields.get("reason") : fields.get(key);
+      : key === "counter" ? `1-${String(visibleRowCount())} of ${String(records.length)}` : key.startsWith("row-name:") ? records[Number(key.slice(9))]?.displayedName : key.startsWith("row-id:") ? options.driftAfterDetail && returned ? "T009999999" : records[Number(key.slice(7))]?.transactionId : key === "name-operator-selected" ? "begins with" : key === "reason-selected" ? fields.get("reason") : fields.get(key);
     return {
       count: async () => key === "rows" ? view === "list" ? visibleRowCount() : 0 : key === "transaction" ? view === "detail" || view === "wizard" ? 1 : 0 : key === "empty" ? view === "empty" ? 1 : 0 : 1,
       isVisible: async () => visible(),
@@ -57,7 +57,6 @@ export function fakeUcpathHirePage(options: Readonly<{
       click: async () => {
         actions.push(`click:${key}`);
         if (key.startsWith("tab:")) { tab = key.slice(4); visited.add(tab); }
-        if (key === "clear") view = "clear";
         if (key === "search") view = submitted || options.existingRows !== undefined ? records.length === 1 ? "detail" : "list" : "empty";
         if (key === "back") { view = "list"; expanded = !options.paged; returned = true; }
         if (key === "view-all") expanded = true;
@@ -80,13 +79,18 @@ export function fakeUcpathHirePage(options: Readonly<{
      '[id="NAME$span$0"]': "detail-name", '[id="UC_SS_TBH_VW_ACTION$0"]': "detail-action", '[id="UC_SS_TBH_VW_START_DT$0"]': "detail-date" };
   const page = {
     url: () => url,
-    goto: async (destination: string) => { url = destination; view = destination.endsWith("UC_SS_TBH.GBL") ? "clear" : "wizard"; return null; },
+    goto: async (destination: string) => {
+      url = destination; view = destination.endsWith("UC_SS_TBH.GBL") ? "clear" : "wizard";
+      if (view === "clear") fields.set("search-name", options.presetName ?? ""); return null;
+    },
     waitForURL: async (predicate: (value: URL) => boolean) => { if (!predicate(new URL(url))) { if (options.unknownSubmit) throw new Error("Synthetic unknown hire outcome"); await new Promise(() => {}); } },
     locator: (selector: string) => {
       if (selector === '[id="UC_SS_TBH_DVW_NAME$op"]') return control("name-operator");
       if (/^#UC_SS_TBH_DVW_(?:UC_TRANSACT_ID|EMPLID|ACTION|APPR_STATUS|BUSINESS_UNIT)$/u.test(selector)) return control(`filter:${selector.replace("#UC_SS_TBH_DVW_", "")}`);
       const rowId = /^\[id="PTS_CFG_CL_RSLT_NUI_SRCH0\$11\$\$(\d+)"\]$/u.exec(selector);
       if (rowId !== null) return control(`row-id:${rowId[1]}`);
+      const rowName = /^\[id="PTS_CFG_CL_RSLT_NUI_SRCH2\$13\$\$(\d+)"\]$/u.exec(selector);
+      if (rowName !== null) return control(`row-name:${rowName[1]}`);
       const drill = /^\[id="PTS_CFG_CL_RSLT_PTS_DRILLIN\$40\$\$(\d+)"\]$/u.exec(selector);
       if (drill !== null) return control(`drill:${drill[1]}`);
       const key = selectors[selector]; if (key === undefined) throw new Error(`Unexpected hire selector ${selector}`); return control(key); },
@@ -95,7 +99,7 @@ export function fakeUcpathHirePage(options: Readonly<{
       if (role === "checkbox" && input.name === "Case Sensitive") return control("case-sensitive");
       if (role === "tab") return control(`tab:${input.name}`);
       if (role === "link" && input.name === "View All") return control("view-all");
-      const buttons: Record<string, string> = { "Create Transaction": "draft", "Continue": "continue", "Save and Submit": "save", "OK": "ok", "Clear": "clear" };
+      const buttons: Record<string, string> = { "Create Transaction": "draft", "Continue": "continue", "Save and Submit": "save", "OK": "ok" };
       const key = buttons[input.name]; if (role !== "button" || key === undefined) throw new Error(`Unexpected hire role ${role}:${input.name}`); return control(key);
     },
     getByLabel: (name: string) => { if (name !== "Reason Code") throw new Error("Unexpected hire label"); return control("reason"); },
