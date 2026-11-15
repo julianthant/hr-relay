@@ -66,7 +66,7 @@ export interface WorkerPoolCompositionInput {
   readonly spawn: WorkerProcessSpawner;
   readonly settleExit: (member: WorkerPoolMember) => void | Promise<void>;
   readonly onChange?: (view: WorkerMemberView) => void;
-  readonly onFault: (error: Error) => void;
+  readonly onFault: (error: Error, origin?: Readonly<{ workerId: string; pid?: number }>) => void;
   readonly onStopChannelClosed?: (error: Error) => void;
   /** A member start's readiness gate: a fresh preflight of the profile's current scope, aborted when the pool stops. */
   readonly preflight?: Readonly<{ admission: Pick<PreflightAdmission, "assertReady"> & { prepare(scope: PreflightAdmissionScope, signal: AbortSignal): Promise<unknown> };
@@ -107,7 +107,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
     if (respawned.has(view.member.workerId) || !queuedWork(view.member.workflowId)) return;
     respawned.add(view.member.workerId);
     // onChange runs only after settleExit, so the replacement starts against a settled crash.
-    void current.start(view.member).catch((error: unknown) => { input.onFault(fault(error)); });
+    void current.start(view.member).catch((error: unknown) => { input.onFault(fault(error), { workerId: view.member.workerId }); });
   };
   const pool = createWorkerPool({
     profileId, sessionGeneration: input.sessionGeneration, clock: input.clock, scheduler: input.scheduler, ids: input.ids,
@@ -125,7 +125,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
     // A crashed child can leave a root open; it is probed closed before the exit settles, so the replacement can launch.
     settleExit: async member => { await settleProfiles(member, "recover"); await input.settleExit(member); },
     onChange: onMemberChange,
-    onFault: (_member, error) => { input.onFault(fault(error)); },
+    onFault: (member, error, pid) => { input.onFault(fault(error), { workerId: member.workerId, ...(pid === undefined ? {} : { pid }) }); },
     onStopChannelClosed: (_member, error) => { input.onStopChannelClosed?.(fault(error)); },
   });
   poolRef.current = pool;
@@ -198,7 +198,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
     },
     async start(member) { assertStartsOpen(); releaseRespawn(member.workerId); await pool.start(member); },
     // A failed member start shows on its card and as a worker fault, whichever command asked for it.
-    ensure: member => ensure(member).catch((error: unknown) => { input.onFault(fault(error)); throw error; }),
+    ensure: member => ensure(member).catch((error: unknown) => { input.onFault(fault(error), { workerId: member.workerId }); throw error; }),
     stop,
     async remove(member) {
       const view = viewOf(member.workerId);
@@ -211,7 +211,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
       if (view?.state !== "running") return;
       // The slot already holds the directive; a lost message only delays the card's activity.
       try { await (directive === "pause" ? pool.pause(targetOf(view)) : pool.resume(targetOf(view))); }
-      catch (error) { input.onFault(fault(error)); }
+      catch (error) { input.onFault(fault(error), { workerId }); }
     },
     async browser(target, type) {
       await pool.request(target, { type, browserSessionId: BrowserSessionIdSchema.parse(target.browserSessionId) }, WORKER_REQUEST_DEADLINE_MS);
@@ -225,7 +225,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
   const activeMembers = (workflowId?: string): readonly WorkerPoolMember[] => input.database.authority.workerSlots.list(workflowId)
     .filter(slot => slot.retiredAt === null).map(workerPoolMember);
   const startAll = async (members: readonly WorkerPoolMember[]): Promise<void> => {
-    await Promise.all(members.map(member => ensure(member).catch((error: unknown) => { input.onFault(fault(error)); })));
+    await Promise.all(members.map(member => ensure(member).catch((error: unknown) => { input.onFault(fault(error), { workerId: member.workerId }); })));
   };
   return Object.freeze({
     pool: Object.freeze({

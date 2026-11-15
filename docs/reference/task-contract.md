@@ -385,7 +385,7 @@ Post-fence uncertainty parks as `UNKNOWN` without automatic retry. The productio
 supplies the Save port; `CONTACT_SAVE_UNAVAILABLE` applies to compositions without that port.
 The [write-safety contract](write-safety.md#current-write-keys) owns the detailed Save and verification rules.
 
-Emergency Contact remains on its mock dashboard source. The first live Save requires the operator
+Emergency Contact is a served dashboard workflow. The first live Save requires the operator
 present and separate authorization. Live acceptance is outstanding for success and error UI,
 settlement and network completion, persisted reload, `UNKNOWN` handling, multi-row expansion,
 typing postbacks, and preservation of Address 3, County, and Same Phone as Employee.
