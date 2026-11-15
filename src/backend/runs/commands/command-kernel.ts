@@ -499,7 +499,8 @@ function readStartPlan(
   if (plan.rerun !== undefined) {
     let current;
     try {
-      current = buildRerunPlan(repositories, descriptor, plan.rerun.source, plan.planned, plan.rerun.acknowledgment, plan.stepOmissions);
+      current = buildRerunPlan(repositories, descriptor, plan.rerun.source, plan.planned, plan.rerun.acknowledgment, plan.stepOmissions,
+        dependencies.authority.evidenceSchemaHash?.bind(dependencies.authority));
     } catch (error) {
       if (!(error instanceof RerunRefusedError)) throw error;
       reject(request, error.code === "source-stale" ? "replan-required" : error.code, error.message);
@@ -511,7 +512,7 @@ function readStartPlan(
     }
   }
 
-  if (descriptor.enqueue === "supersede-active") {
+  if (descriptor.enqueue === "supersede-active" || plan.rerun?.source.gateCorrection !== undefined) {
     for (const entry of plan.planned) {
       const current = startSupersedeTargets(repositories.runs.listByItem({ workflow: plan.workflowId, itemId: entry.itemId }));
       if (entry.supersedeTargets === undefined || canonicalJsonStringify(entry.supersedeTargets) !== canonicalJsonStringify(current)) {

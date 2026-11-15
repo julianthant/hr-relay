@@ -164,6 +164,10 @@ export class WorkerSessionClosureUnprovedError extends AggregateError {
   }
 }
 
+export class BrowserScreenshotUnavailableError extends Error {
+  constructor(readonly reason: Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"]) { super(reason); this.name = "BrowserScreenshotUnavailableError"; }
+}
+
 export class SessionAcquisitionTimeoutError extends Error {
   readonly code = "browser-session-acquisition-timeout";
   readonly phase = "acquisition";
@@ -329,6 +333,7 @@ export class WorkerSessionManager {
   readonly #poisoned = new Set<BrowserSystemId>();
   readonly #acquisitionCleanupFailures = new Map<BrowserSystemId, Error>();
   readonly #starting = new Map<BrowserSystemId, Promise<WorkerBrowserResource>>();
+  readonly #stopLogin = new Map<BrowserSystemId, (reason: "parked" | "worker-stop") => void>();
   readonly #tails = new Map<BrowserSystemId, Promise<void>>();
   #closingReason: "parked" | "worker-stop" | undefined;
   #runConfigFingerprint: Fingerprint | undefined;
@@ -353,6 +358,11 @@ export class WorkerSessionManager {
     this.#acquireDeadlineMs = z.number().int().positive().parse(options.acquireDeadlineMs);
     this.#duoCeremony = options.duoCeremony;
     this.#onEvent = options.onEvent ?? (() => undefined);
+  }
+
+  /** Sessions stay open across runs of one execution workflow; a workflow change parks them first. */
+  async parkForExecution(workflowId: WorkflowId, stores: TaskStoreRegistry): Promise<void> {
+    if (workflowId !== this.#executionWorkflowId || stores !== this.#stores) await this.closeAll("parked");
   }
 
   configureExecution(workflowId: WorkflowId, stores: TaskStoreRegistry): void {
@@ -568,15 +578,18 @@ export class WorkerSessionManager {
         };
         assertLeaseActive();
         let reason: string | undefined;
+        let failure: unknown;
         try {
-          reason = await this.#captureLeaseScreenshot(resource, { kind: "task-point", nodeId: screenshotOwner.nodeId, attempt: screenshotOwner.attempt, boundary }, configFingerprint, assertLeaseActive, screenshotOwner.sampleLabels);
+          const unavailable = await this.#captureLeaseScreenshot(resource, { kind: "task-point", nodeId: screenshotOwner.nodeId, attempt: screenshotOwner.attempt, boundary }, configFingerprint, assertLeaseActive, screenshotOwner.sampleLabels);
+          if (unavailable !== undefined) { reason = unavailable; failure = new BrowserScreenshotUnavailableError(unavailable); }
         } catch (cause) {
           assertLeaseActive();
+          failure = cause;
           reason = cause instanceof Error && ["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError", "AggregateError", "TimeoutError"].includes(cause.name) ? cause.name : "Error";
         }
         if (reason !== undefined) {
           screenshotOwner.log.warn("Screenshot capture unavailable.", { code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", boundary, reason });
-          throw new TaskError(screenshotOwner.taskId, "BROWSER_SCREENSHOT_CAPTURE_FAILED", ERROR_CATALOG.BROWSER_SCREENSHOT_CAPTURE_FAILED.text);
+          throw new TaskError(screenshotOwner.taskId, "BROWSER_SCREENSHOT_CAPTURE_FAILED", ERROR_CATALOG.BROWSER_SCREENSHOT_CAPTURE_FAILED.text, { cause: failure });
         }
       };
       let operationCompleted = false;
@@ -679,6 +692,8 @@ export class WorkerSessionManager {
         ...this.#acquisitionCleanupFailures.keys(),
         ...this.#tails.keys(),
       ]);
+      // A pending login's context is closed instead of awaited, so the login ends and closure is proved.
+      for (const system of systems) this.#stopLogin.get(system)?.(reason);
       for (const system of systems) {
         const starting = this.#starting.get(system);
         try {
@@ -973,6 +988,7 @@ export class WorkerSessionManager {
     } finally { acquired?.(); }
     this.#retained.set(resource.sessionId, { openedAt: this.#clock.now().toISOString(), factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode });
     let login: LoginResult;
+    let stopClose: Promise<void> | undefined;
     try {
       BrowserSessionIdSchema.parse(resource.sessionId);
       BrowserSystemIdSchema.parse(resource.system);
@@ -991,16 +1007,24 @@ export class WorkerSessionManager {
         throw new Error(`${need.system} session factory returned a resource with mismatched launch options`);
       }
       const authenticated = this.#onActivity?.("authenticating");
+      this.#stopLogin.set(need.system, reason => {
+        stopClose ??= this.#closeResource(resource, reason, exclusive);
+        stopClose.catch(observeAbandonedAcquisition);
+      });
       try {
       this.#observe(resource, "starting");
       login = LoginResultSchema.parse(await store.session.login(resource.authentication, {
         ...(instance === undefined ? {} : { instance }),
         signal,
       }));
-      } finally { authenticated?.(); }
+      } finally {
+        this.#stopLogin.delete(need.system);
+        authenticated?.();
+      }
+      if (stopClose !== undefined) throw new Error(`${need.system} login was stopped before it settled`);
     } catch (loginError) {
       try {
-        await this.#closeResource(resource, "login-failed", exclusive);
+        await (stopClose ?? this.#closeResource(resource, "login-failed", exclusive));
       } catch (closeError) {
         this.#resources.set(need.system, resource);
         this.#poisoned.add(need.system);

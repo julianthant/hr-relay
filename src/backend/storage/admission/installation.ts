@@ -12,6 +12,7 @@ readdirSync,realpathSync,renameSync,rmSync,rmdirSync,unlinkSync,writeFileSync
 import { basename,dirname,isAbsolute,join,relative,resolve } from "node:path";
 import { z } from "zod";
 import { ConfigSchema } from "../../../models/config/schema.js";
+import { profileInitials } from "../../../models/profiles/profile-identity.js";
 import { LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason } from "../../../models/profiles/profile.js";
 import { CanonicalCredentialConversionPlanSchema,CanonicalCredentialHeadSchema,CanonicalCredentialOperationSchema,CanonicalCredentialPublicationSourceSchema,CanonicalCredentialRestoreSnapshotSchema,CredentialMaintenanceHold,captureCanonicalCredentialStartupLocks,publishStoppedCanonicalCredentials,type CanonicalCredentialConversionPlan } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
@@ -71,7 +72,15 @@ const StoppedPriorProfileContinuitySchema = z.discriminatedUnion("schemaVersion"
 const StoppedCurrentProfileContinuitySchema = PriorProfileContinuitySchema.extend({ schemaVersion: z.literal(3), duo: z.array(DuoContinuityRowSchema).max(10_000),
   completedRestores: z.array(CompletedRestoreCustodySchema).max(10_000).refine(rows => new Set(rows.map(row => row.operationId)).size === rows.length) })
   .refine(value => value.completedRestores.every(row => row.profile.installationId === value.installationId));
-const StoppedProfileRegistryDocumentSchema = z.union([ProfileRegistryDocumentSchema.omit({ installationId: true, revision: true }).extend({ schemaVersion: z.literal(2) }), ProfileRegistryDocumentSchema]);
+const StoppedProfileRegistryDocumentV3Schema = ProfileRegistryDocumentSchema.extend({ schemaVersion: z.literal(3),
+  profiles: z.array(ProfileRegistryRowSchema.omit({ timekeeperInitials: true })) });
+type StoppedProfileRegistryDocumentV3 = z.infer<typeof StoppedProfileRegistryDocumentV3Schema>;
+const StoppedProfileRegistryDocumentSchema = z.union([StoppedProfileRegistryDocumentV3Schema.omit({ installationId: true, revision: true }).extend({ schemaVersion: z.literal(2) }), StoppedProfileRegistryDocumentV3Schema]);
+/** The version 4 registry for a version 3 one: each row's timekeeper initials are seeded from its timekeeper name and nothing else changes. */
+function seededTimekeeperInitials(prior: StoppedProfileRegistryDocumentV3): ProfileRegistryDocument {
+  return ProfileRegistryDocumentSchema.parse({ ...prior, schemaVersion: 4,
+    profiles: prior.profiles.map(row => ({ ...row, timekeeperInitials: profileInitials(row.timekeeperName) })) });
+}
 const StoppedLogicalProfileContinuitySchema = z.strictObject({ schemaVersion: z.literal(4), installationId: z.uuid(),
   digest: z.string().regex(/^[0-9a-f]{64}$/u), revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   generation: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
@@ -708,7 +717,7 @@ function profileOperationInventory(machineRoot: string) {
   });
 }
 
-function profileRegistryWitness(installationId: string, path: string, document: ProfileRegistryDocument) {
+function profileRegistryWitness(installationId: string, path: string, document: ProfileRegistryDocument | StoppedProfileRegistryDocumentV3) {
   privateFile(path);
   if (document.installationId !== installationId) fail("profile-registry-installation-mismatch");
   return ProfileContinuitySchema.parse({ schemaVersion: 7, installationId, revision: document.revision,
@@ -747,7 +756,7 @@ function readProfilePublicationSource(control: string, locator: RuntimeLocator) 
   const path = join(locator.stateRoot, "machine", "profiles.json");
   if (lstatMaybe(join(control, "profile-control-upgrade.json"))) fail("profile-control-upgrade-pending");
   assertNoSymlinkComponents(path);
-  readProfileEvidence(join(locator.stateRoot, "machine", "profile-registry-version.json"), z.strictObject({ schemaVersion: z.literal(8) }));
+  readProfileEvidence(join(locator.stateRoot, "machine", "profile-registry-version.json"), z.strictObject({ schemaVersion: z.literal(9) }));
   const document = readProfileEvidence(path, ProfileRegistryDocumentSchema);
   readProfileEvidence(join(locator.stateRoot, "machine", "profile-verifiers.json"), ProfileVerifierDocumentSchema);
   const pepperPath = join(locator.stateRoot, "machine", "profile-pepper");
@@ -1183,9 +1192,9 @@ function initializeMachineRegistry(control: string, locator: RuntimeLocator, fla
     if (!lstatMaybe(path)) atomicJson(path, value);
     else if (canonicalJsonStringify(readStrict(path, z.unknown())) !== canonicalJsonStringify(value)) fail("profile-machine-initialization-changed");
   };
-  const document = ProfileRegistryDocumentSchema.parse({ schemaVersion: 3, installationId: locator.installationId, revision: 0, profiles: [], activeProfileId: null, sessionGeneration: 0 });
+  const document = ProfileRegistryDocumentSchema.parse({ schemaVersion: 4, installationId: locator.installationId, revision: 0, profiles: [], activeProfileId: null, sessionGeneration: 0 });
   publish(join(directory, "browser-roots.json"), BrowserRootsSchema.parse({ schemaVersion: 3, installationId: locator.installationId, revision: 0, nextHandle: 1, nextGeneration: 1, roots: [] }));
-  publish(join(directory, "profile-registry-version.json"), { schemaVersion: 8 });
+  publish(join(directory, "profile-registry-version.json"), { schemaVersion: 9 });
   publish(join(directory, "profiles.json"), document);
   publish(join(directory, "profile-verifiers.json"), { schemaVersion: 1, profiles: [] });
   const pepperPath = join(directory, "profile-pepper");
@@ -1275,18 +1284,45 @@ function upgradeRestoreControl(control: string, locator: RuntimeLocator): void {
     const marker = readStrict(markerPath, z.strictObject({ schemaVersion: z.number().int() }));
     if (marker.schemaVersion !== 7) return;
     for (const name of ["journal.json", "profile-publication.json", "profile-control-upgrade.json"]) if (lstatMaybe(join(control, name))) fail("restore-control-upgrade-pending-unsupported");
-    const prior = readStrict(path, StoppedRestoreProfileContinuitySchema), document = readStrict(registryPath, ProfileRegistryDocumentSchema);
+    const prior = readStrict(path, StoppedRestoreProfileContinuitySchema), document = readStrict(registryPath, StoppedProfileRegistryDocumentV3Schema);
     assertPriorRegistryLogicalBinding(locator, prior, document);
     for (const row of prior.completedRestores) assertCompletedRestoreCustody(locator, row);
     intent = schema.parse({ schemaVersion: 1, prior, current: profileRegistryWitness(locator.installationId, registryPath, document) });
     atomicJson(intentPath, intent);
   }
-  const document = readStrict(registryPath, ProfileRegistryDocumentSchema), actual = readStrict(path, z.union([StoppedRestoreProfileContinuitySchema, ProfileContinuitySchema]));
+  const document = readStrict(registryPath, StoppedProfileRegistryDocumentV3Schema), actual = readStrict(path, z.union([StoppedRestoreProfileContinuitySchema, ProfileContinuitySchema]));
   if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, document)) !== canonicalJsonStringify(intent.current)
     || canonicalJsonStringify(actual) !== canonicalJsonStringify(intent.prior) && canonicalJsonStringify(actual) !== canonicalJsonStringify(intent.current)) fail("restore-control-upgrade-source-changed");
   const marker = readStrict(markerPath, z.strictObject({ schemaVersion: z.union([z.literal(7), z.literal(8)]) }));
   if (marker.schemaVersion === 8 && actual.schemaVersion !== 7) fail("restore-control-upgrade-prefix-invalid");
   atomicJson(path, intent.current); atomicJson(markerPath, { schemaVersion: 8 });
+  unlinkSync(intentPath); fsyncPath(control);
+}
+const RegistryInitialsUpgradeIntentSchema = z.strictObject({ schemaVersion: z.literal(1), priorDocument: StoppedProfileRegistryDocumentV3Schema,
+  document: ProfileRegistryDocumentSchema, prior: ProfileContinuitySchema, current: ProfileContinuitySchema });
+/** Registry version 3 to 4 (marker 8 to 9). The intent fixes both documents first, so a stop at any later step finishes the same upgrade. */
+function upgradeRegistryTimekeeperInitials(control: string, locator: RuntimeLocator): void {
+  if ((installationAdmissions.get(control)?.size ?? 0) !== 0) fail("registry-initials-upgrade-admission-busy");
+  const registryPath = join(locator.stateRoot, "machine", "profiles.json"), witnessPath = join(control, "profile-registry.json"),
+    versionPath = join(locator.stateRoot, "machine", "profile-registry-version.json"), intentPath = join(control, "registry-initials-upgrade.json");
+  let intent = lstatMaybe(intentPath) ? readStrict(intentPath, RegistryInitialsUpgradeIntentSchema) : undefined;
+  if (intent === undefined) {
+    if (readStrict(versionPath, z.strictObject({ schemaVersion: z.number().int() })).schemaVersion !== 8) return;
+    for (const name of ["journal.json", "profile-publication.json", "profile-control-upgrade.json", "account-deletion.json"]) if (lstatMaybe(join(control, name))) fail("registry-initials-upgrade-pending-unsupported");
+    const priorDocument = readStrict(registryPath, StoppedProfileRegistryDocumentV3Schema), prior = readStrict(witnessPath, ProfileContinuitySchema);
+    if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, priorDocument)) !== canonicalJsonStringify(prior)) fail("profile-registry-continuity-mismatch");
+    const document = seededTimekeeperInitials(priorDocument);
+    intent = RegistryInitialsUpgradeIntentSchema.parse({ schemaVersion: 1, priorDocument, document, prior, current: profileRegistryWitness(locator.installationId, registryPath, document) });
+    atomicJson(intentPath, intent);
+  }
+  const step = (value: unknown, before: unknown, after: unknown): number => canonicalJsonStringify(value) === canonicalJsonStringify(before) ? 0
+    : canonicalJsonStringify(value) === canonicalJsonStringify(after) ? 1 : fail("registry-initials-upgrade-source-changed");
+  const steps = [step(readStrict(registryPath, z.union([StoppedProfileRegistryDocumentV3Schema, ProfileRegistryDocumentSchema])), intent.priorDocument, intent.document),
+    step(readStrict(witnessPath, ProfileContinuitySchema), intent.prior, intent.current),
+    readStrict(versionPath, z.strictObject({ schemaVersion: z.union([z.literal(8), z.literal(9)]) })).schemaVersion === 9 ? 1 : 0];
+  if (steps.some((done, index) => index > 0 && done > (steps[index - 1] ?? 0))) fail("registry-initials-upgrade-prefix-invalid");
+  if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, intent.document)) !== canonicalJsonStringify(intent.current)) fail("registry-initials-upgrade-source-changed");
+  atomicJson(registryPath, intent.document); atomicJson(witnessPath, intent.current); atomicJson(versionPath, { schemaVersion: 9 });
   unlinkSync(intentPath); fsyncPath(control);
 }
 
@@ -1322,9 +1358,9 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
     const pending = readProfileEvidence(join(control, "journal.json"), JournalSchema);
     if (pending.phase !== "restoring" || pending.restore.operationId !== restoreOperationId || pending.installationId !== locator.installationId) fail("profile-restore-context-unavailable");
   }
-  if (stoppedForward) upgradeRestoreControl(control, locator);
+  if (stoppedForward) { upgradeRestoreControl(control, locator); upgradeRegistryTimekeeperInitials(control, locator); }
   const marker = readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() }));
-  if (marker.schemaVersion === 8) {
+  if (marker.schemaVersion === 9) {
     if (!stoppedForward && lstatMaybe(join(control, "browser-root-upgrade.json"))) fail("browser-root-upgrade-pending");
     const browsers = stoppedForward || restoreOperationId !== undefined ? parseStoppedBrowserRootUpgradeSource(readProfileEvidence(join(machine, "browser-roots.json"), z.unknown()))
       : readProfileEvidence(join(machine, "browser-roots.json"), BrowserRootsSchema);
@@ -1338,7 +1374,7 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
     validateStoppedControlUpgrade(control, locator, readControlUpgradeReceipt(pending));
     return;
   }
-  if (marker.schemaVersion === 8) {
+  if (marker.schemaVersion === 9) {
     const document = readProfileEvidence(join(machine, "profiles.json"), ProfileRegistryDocumentSchema);
     const continuity = readProfileEvidence(join(control, "profile-registry.json"), ProfileContinuitySchema);
     if (document.installationId !== locator.installationId || continuity.installationId !== locator.installationId) fail("profile-registry-installation-mismatch");
@@ -1423,7 +1459,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       assertNoSymlinkComponents(machine);
       const marker = lstatMaybe(join(machine, "profile-registry-version.json")) === undefined ? undefined
         : readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() }));
-      if (marker?.schemaVersion === 8 && !lstatMaybe(join(control, "profile-control-upgrade.json"))) {
+      if (marker?.schemaVersion === 9 && !lstatMaybe(join(control, "profile-control-upgrade.json"))) {
         if (lstatMaybe(join(control, "account-deletion.json"))) {
           finishAccountDeletion(control, priorLocator, () => {
             lifetime.assertStartupWorkspace(workspace);
@@ -1667,7 +1703,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (next.profiles.length !== before.profiles.length || next.profiles.some(row => {
         const original = before.profiles.find(prior => prior.profileId === row.profileId);
         return original === undefined || canonicalJsonStringify({ ...row, lifecycle: original.lifecycle, lastSignedInAt: original.lastSignedInAt,
-          firstName: original.firstName, lastName: original.lastName, initials: original.initials, timekeeperName: original.timekeeperName }) !== canonicalJsonStringify(original);
+          firstName: original.firstName, lastName: original.lastName, initials: original.initials, timekeeperName: original.timekeeperName,
+          timekeeperInitials: original.timekeeperInitials }) !== canonicalJsonStringify(original);
       })) fail("profile-registry-registration-required");
       if (expected !== undefined && canonicalJsonStringify(before) !== canonicalJsonStringify(expected)
         || next.installationId !== before.installationId || next.revision !== before.revision + 1 || next.sessionGeneration < before.sessionGeneration) fail("profile-registry-publication-conflict");
@@ -1833,11 +1870,11 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (lstatMaybe(join(control, "profile-publication.json")) || lstatMaybe(join(control, "profile-control-upgrade.json"))) fail("profile-registry-publication-pending");
         const before = profileObservation(control, locator);
         const prior = readProfileEvidence(join(control, "profile-registry.json"), StoppedLogicalProfileContinuitySchema);
-        const document = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), ProfileRegistryDocumentSchema);
+        const document = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), StoppedProfileRegistryDocumentV3Schema);
         priorControlUpgradeEvidence(locator, prior, document);
         assertHeld();
         if (before !== profileObservation(control, locator)) fail("profile-registry-observation-changed");
-        return document;
+        return seededTimekeeperInitials(document);
       }
       if (lstatMaybe(join(control, "profile-publication.json"))) {
         if (options?.readonlyControl === true) return readMachineRegistry(control, locator, false);
@@ -2400,7 +2437,7 @@ function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typ
   const machine = join(locator.stateRoot, "machine");
   if (document.profiles.some(row => row.lifecycle !== "ready" || row.credentialState !== "saved")) fail("profile-control-upgrade-pending-conversion-unsupported");
   assertPriorRegistryLogicalBinding(locator, prior, document);
-  const currentDocument = ProfileRegistryDocumentSchema.parse({ ...document, schemaVersion: 3, installationId: locator.installationId, revision: 1 });
+  const currentDocument = seededTimekeeperInitials(StoppedProfileRegistryDocumentV3Schema.parse({ ...document, schemaVersion: 3, installationId: locator.installationId, revision: 1 }));
   if (plans.length !== 0 && (plans.length !== document.profiles.length || new Set(plans.map(row => row.profileId)).size !== plans.length
     || plans.some(row => !document.profiles.some(profile => profile.profileId === row.profileId)))) fail("profile-control-upgrade-plan-membership");
   if (plans.length === 0 && prior.schemaVersion === 1 && lstatMaybe(join(machine, "duo-credentials"))) fail("profile-control-upgrade-duo-material-present");
@@ -2508,9 +2545,9 @@ export function assertStoppedMachineMaintenance(lease: InstallationLease, restor
 function convertedProfileRegistry(locator: RuntimeLocator, prior: z.infer<typeof StoppedProfileRegistryDocumentSchema>): ProfileRegistryDocument {
   if (prior.schemaVersion === 3) {
     if (prior.installationId !== locator.installationId) fail("profile-registry-installation-mismatch");
-    return prior;
+    return seededTimekeeperInitials(prior);
   }
-  return ProfileRegistryDocumentSchema.parse({ ...prior, schemaVersion: 3, installationId: locator.installationId, revision: 1 });
+  return seededTimekeeperInitials(StoppedProfileRegistryDocumentV3Schema.parse({ ...prior, schemaVersion: 3, installationId: locator.installationId, revision: 1 }));
 }
 function convertedProfileControl(locator: RuntimeLocator, _prior: z.infer<typeof StoppedProfileContinuitySchema>, document: ProfileRegistryDocument) {
   return profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document);
@@ -2585,7 +2622,7 @@ function validateStoppedControlUpgrade(control: string, locator: RuntimeLocator,
   const staged = (role: string, path: string) => lstatMaybe(`${prefix}.${role}.stage`) ? `${prefix}.${role}.stage` : path;
   if (canonicalJsonStringify(readProfileEvidence(staged("registry", registryPath), ProfileRegistryDocumentSchema)) !== canonicalJsonStringify(receipt.document)
     || canonicalJsonStringify(readProfileEvidence(staged("control", controlPath), ProfileContinuitySchema)) !== canonicalJsonStringify(receipt.current)) fail("profile-control-upgrade-stage-diverged");
-  readProfileEvidence(staged("marker", markerPath), z.strictObject({ schemaVersion: z.literal(8) }));
+  readProfileEvidence(staged("marker", markerPath), z.strictObject({ schemaVersion: z.literal(9) }));
   return stages;
 }
 
@@ -2609,7 +2646,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
   const intentPath = join(control, "profile-control-upgrade.json"), backupDirectory = join(control, "profile-control-upgrades");
   try {
     const marker = readProfileEvidence(markerPath, z.strictObject({ schemaVersion: z.number().int() }));
-    if (marker.schemaVersion !== 8 || lstatMaybe(intentPath)) assertMaintenanceCustodyAvailable("schema-upgrade");
+    if (marker.schemaVersion !== 9 || lstatMaybe(intentPath)) assertMaintenanceCustodyAvailable("schema-upgrade");
   } catch (error) {
     if (ownsLease) {
       try { restore.release(); lease.release(); }
@@ -2747,7 +2784,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
               }
               writePrivateStage(`${prefix}.registry.stage`, Buffer.from(JSON.stringify(document)));
               writePrivateStage(`${prefix}.control.stage`, Buffer.from(JSON.stringify(current)));
-              writePrivateStage(`${prefix}.marker.stage`, Buffer.from(JSON.stringify({ schemaVersion: 8 })));
+              writePrivateStage(`${prefix}.marker.stage`, Buffer.from(JSON.stringify({ schemaVersion: 9 })));
               fsyncPath(backupDirectory);
               const receipt = ControlUpgradeReceiptSchema.parse({ schemaVersion: 3, operationId, installationId: locator.installationId,
                 phase: "preparing", credentials: [], backups: [], browsers, prior, current, priorDocument, document, retained,
@@ -2774,8 +2811,8 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     machineControlCurrent(): boolean {
       held();
       const observedMarker = readProfileEvidence(markerPath, z.strictObject({ schemaVersion: z.number().int() }));
-      if (![2, 3, 4, 5, 6, 7, 8].includes(observedMarker.schemaVersion)) fail("profile-control-upgrade-pending-conversion-unsupported");
-      return observedMarker.schemaVersion === 8;
+      if (![2, 3, 4, 5, 6, 7, 8, 9].includes(observedMarker.schemaVersion)) fail("profile-control-upgrade-pending-conversion-unsupported");
+      return observedMarker.schemaVersion === 9;
     },
     upgradeIntentPresent(): boolean {
       held();

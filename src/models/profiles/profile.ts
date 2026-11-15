@@ -29,6 +29,7 @@ export const ProfileRegistryRowSchema = z.strictObject({
   lastName: NameSchema,
   initials: ProfileIdentitySchema.shape.initials,
   timekeeperName: ProfileDisplayNameSchema,
+  timekeeperInitials: ProfileIdentitySchema.shape.initials,
   createdAt: IsoInstantSchema,
   lastSignedInAt: IsoInstantSchema,
   credentialState: z.enum(["saved", "wiped"]),
@@ -39,7 +40,7 @@ export const ProfileRegistryRowSchema = z.strictObject({
 export type ProfileRegistryRow = z.infer<typeof ProfileRegistryRowSchema>;
 
 export const ProfileRegistryDocumentSchema = z.strictObject({
-  schemaVersion: z.literal(3),
+  schemaVersion: z.literal(4),
   installationId: z.uuid(),
   revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   profiles: z.array(ProfileRegistryRowSchema),
@@ -118,11 +119,13 @@ export function deriveProfileNames(firstName: string, lastName: string): {
   readonly lastName: string;
   readonly initials: string;
   readonly timekeeperName: string;
+  readonly timekeeperInitials: string;
 } {
   const problem = profileNameProblem(firstName, lastName);
   if (problem !== undefined) throw problem;
   const timekeeperName = `${firstName} ${lastName}`;
-  return { firstName, lastName, initials: profileInitials(timekeeperName), timekeeperName };
+  const initials = profileInitials(timekeeperName);
+  return { firstName, lastName, initials, timekeeperName, timekeeperInitials: initials };
 }
 
 /** Initials a person enters for themself: one to eight letters A to Z. */
@@ -135,8 +138,9 @@ export type ProfileDetailsChange = {
   readonly name?: { readonly firstName: string; readonly lastName: string };
   readonly initials?: string;
   readonly timekeeperName?: string;
+  readonly timekeeperInitials?: string;
 };
-export type ProfileDetailsPatch = Partial<Pick<ProfileRegistryRow, "firstName" | "lastName" | "initials" | "timekeeperName">>;
+export type ProfileDetailsPatch = Partial<Pick<ProfileRegistryRow, "firstName" | "lastName" | "initials" | "timekeeperName" | "timekeeperInitials">>;
 export type ProfileDetailsRefusalCode = "PROFILE_DISPLAY_NAME_REFUSED" | "PROFILE_INITIALS_REFUSED" | "PROFILE_NAME_REFUSED";
 
 /** The registry patch for a details change, or the code of the first refused value; nothing is trimmed or corrected. */
@@ -144,9 +148,11 @@ export function profileDetailsPatch(change: ProfileDetailsChange): { readonly pa
   if (change.name !== undefined && !isProfileName(change.name.firstName, change.name.lastName)) return { refused: "PROFILE_DISPLAY_NAME_REFUSED" };
   if (change.initials !== undefined && !ProfileInitialsSchema.safeParse(change.initials).success) return { refused: "PROFILE_INITIALS_REFUSED" };
   if (change.timekeeperName !== undefined && !ProfileTimekeeperNameSchema.safeParse(change.timekeeperName).success) return { refused: "PROFILE_NAME_REFUSED" };
+  if (change.timekeeperInitials !== undefined && !ProfileInitialsSchema.safeParse(change.timekeeperInitials).success) return { refused: "PROFILE_INITIALS_REFUSED" };
   return { patch: { ...(change.name === undefined ? {} : { firstName: change.name.firstName, lastName: change.name.lastName }),
     ...(change.initials === undefined ? {} : { initials: change.initials }),
-    ...(change.timekeeperName === undefined ? {} : { timekeeperName: change.timekeeperName }) } };
+    ...(change.timekeeperName === undefined ? {} : { timekeeperName: change.timekeeperName }),
+    ...(change.timekeeperInitials === undefined ? {} : { timekeeperInitials: change.timekeeperInitials }) } };
 }
 
 export const ProfileDatabaseBindingSchema = z.strictObject({ installationId: z.uuid(), profileId: ProfileIdSchema });

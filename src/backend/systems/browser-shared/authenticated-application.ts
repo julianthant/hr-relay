@@ -98,7 +98,7 @@ export async function assertAuthenticatedApplication(
   const probe = await verify(context);
   context.assertCurrent();
   if (!probe.authenticated) {
-    throw new BrowserLoginError(system, "verify-landing", `${refusal}: ${probe.reason}`, context.page.url());
+    throw new BrowserLoginError(system, "verify-landing", `${refusal}: ${probe.reason}`, context.page.url(), undefined, undefined, probe.check);
   }
   if (probe.evidence.system !== system) {
     throw new BrowserLoginError(
@@ -106,6 +106,9 @@ export async function assertAuthenticatedApplication(
       "verify-landing",
       `authentication evidence was produced for ${probe.evidence.system}, not ${system}`,
       context.page.url(),
+      undefined,
+      undefined,
+      "evidence-system",
     );
   }
   context.recordEvidence(probe.evidence);

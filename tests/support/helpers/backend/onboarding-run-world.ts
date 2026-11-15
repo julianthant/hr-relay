@@ -50,7 +50,7 @@ export function createOnboardingRunWorld() {
   const managers: Awaited<ReturnType<typeof sessionManagerFor>>[] = [];
   const fixtureProfiles = createProfileFixtureSet();
   const world = createCommandKernelTestWorld(fixtureProfiles.create);
-  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; general?: boolean } = {}) {
+  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; general?: boolean; legalName?: string; livedName?: string } = {}) {
     const h = await world.createHarness(undefined, { descriptors: [descriptor], publishQueued: (run, publication) => {
       assert.ok(publication);
       createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
@@ -65,9 +65,9 @@ export function createOnboardingRunWorld() {
         columnBindings: ONBOARDING_ROSTER_FIELDS.map((fieldId, index) => ({ id: `${id}-${index}`, sourceColumn: index,
           sourceHeader: fieldId, fieldId, basis: "manual" })),
         rows: [{ id: `${id}-header`, cells: ONBOARDING_ROSTER_FIELDS.map(value => ({ value })) },
-          { id: `${id}-person`, cells: [email, "Fixture", "Hire", "", null, null, null, null, null, null, null].map(value => ({ value })) },
+          { id: `${id}-person`, cells: [email, options.legalName ?? "Fixture Hire", options.livedName ?? null, null, null].map(value => ({ value })) },
           ...(match === "duplicate" && id === "people" ? [{ id: "people-second",
-            cells: [email, "Second", "Hire", "", null, null, null, null, null, null, null].map(value => ({ value })) }] : [])] };
+            cells: [email, "Second Hire", null, null, null].map(value => ({ value })) }] : [])] };
     }
     const saved = library.create({ name: "Synthetic.xlsx", themes: [], hasFormulas: false,
       sheets: [sheet("people", match === "missing" ? "other@example.test" : key), sheet("archive", "other@example.test")] });
@@ -95,8 +95,8 @@ export function createOnboardingRunWorld() {
     const plan = (value: unknown = request) => {
       const wire = planner.plan(value), record = h.database.authority.startPlans.get(wire.startPlanId); assert.ok(record); return record;
     };
-    const start = () => {
-      const planned = plan(); assert.equal(planned.refused.length, 0);
+    const start = (value: unknown = request) => {
+      const planned = plan(value); assert.equal(planned.refused.length, 0);
       const result = h.kernel.execute(world.startCommand(planned));
       const run = h.database.authority.runs.get(singleAppliedRunId(result)); assert.ok(run); return run;
     };
@@ -144,7 +144,7 @@ export function createOnboardingRunWorld() {
   type ExecutionFault = "gate-missing" | "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
 
   async function executionFixture(corruptAssertedSubject = false, options: {
-    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other";
+    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; legalName?: string; livedName?: string; crmReadFails?: boolean;
     personMatch?: z.output<typeof SearchPersonMatchOutputSchema>;
     hire?: Omit<Parameters<typeof deterministicHireOperations>[0], "now">;
     i9?: Partial<Omit<Parameters<typeof createDeterministicI9Driver>[0], "now">>;
@@ -155,7 +155,9 @@ export function createOnboardingRunWorld() {
     const calls: { system: string; input: unknown }[] = [];
     const sessions = sessionFactoryHarness({
       crm: () => ({ ...healthyCrmDriver(), readHireData: async (input: { email: string }) => {
-        calls.push({ system: "crm", input }); return CrmReadHireData.example;
+        calls.push({ system: "crm", input });
+        if (options.crmReadFails === true) throw new Error("synthetic CRM read failure");
+        return CrmReadHireData.example;
       } }),
       ucpath: () => {
         const base = healthyUcpathDriver();
@@ -190,7 +192,7 @@ export function createOnboardingRunWorld() {
       clock: f.clock, ids: { uuid: randomUUID }, scheduler: new ManualScheduler(f.clock), taskDeadlineMs: 60_000,
       log: recordingLogger().log }, f.database, f.profilePath,
       id => id === descriptor.id ? descriptor : id === "i9-lookup" ? childWorkflowModuleOf("onboarding", "i9-lookup").descriptor : undefined);
-    function approve(run: RunRecord, decision: { decision: "new-hire" } | { decision: "existing-person"; emplId: string }) {
+    function approve(run: RunRecord, decision: z.input<typeof OnboardingWriteApprovalSchema>) {
       const current = f.database.authority.runs.get(run.envelope.runId); assert.ok(current?.lifecycle.state === "parked-gate" && current.lifecycle.gateId === ONBOARDING_WRITE_REVIEW_GATE);
       return rawExecution.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(),
         requestedBy: "local-operator", source: "dashboard", family: "gate", type: "resolve-gate",
@@ -203,7 +205,7 @@ export function createOnboardingRunWorld() {
         if (first.run?.lifecycle.state !== "parked-gate" || first.run.lifecycle.gateId !== ONBOARDING_WRITE_REVIEW_GATE) return first;
         assert.deepEqual(f.database.authority.writeIntents.listByRun(root.envelope.runId), []);
         assert.deepEqual(f.repository.runOperations(root.envelope.runId), []);
-        assert.equal(approve(root, { decision: "new-hire" }).state, "applied");
+        assert.equal(approve(root, { decision: "new-hire", ruledOut: [] }).state, "applied");
         const next = await rawExecution.execute(root, signal);
         return { ...next, outcomes: [...first.outcomes, ...next.outcomes] };
       },
@@ -222,8 +224,7 @@ export function createOnboardingRunWorld() {
         if (fault !== "legal-name" && fault !== "lived-name") return gate;
         const selected = OnboardingRosterChoiceSchema.parse(gate.result.value);
         const row = { ...selected.row, references: { ...selected.row.references,
-          ...(fault === "legal-name" ? { legalName: { ...selected.row.references.legalName, firstName: "Injected" } }
-            : { livedName: { firstName: "Injected", lastName: "Hire", middleName: "" } }) } };
+          ...(fault === "legal-name" ? { legalName: "Injected Hire" } : { livedName: "Injected Hire" }) } };
         const result = { ...gate.result, value: { ...selected, row } };
         return { ...gate, result, checkpointFingerprint: FingerprintSchema.parse(deriveGateResultCheckpointFingerprint(result)) };
       };
