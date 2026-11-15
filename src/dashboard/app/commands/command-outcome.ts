@@ -44,12 +44,6 @@ export function uncertainOutcome(commandId: string, cause: unknown, reply?: Comm
   return { kind: "uncertain", commandId, feedback: feedback(code), cause, ...(reply === undefined ? {} : { reply }) };
 }
 
-function replyLanded(reply: CommandExecutionReply | undefined): boolean {
-  if (reply === undefined) return false;
-  if ("outcome" in reply) return reply.outcome === "applied";
-  return reply.state === "applied" || reply.state === "already-applied";
-}
-
 function replyEffect(outcome: CommandOutcome): CommandEffect {
   const reply = outcome.reply;
   if (reply === undefined) return "none";
@@ -71,7 +65,7 @@ export function outcomeEffect(outcome: CommandOutcome): CommandEffect | "mixed" 
     if (effects.size === 1 && effects.has("none")) return "none";
     return "mixed";
   }
-  if (outcome.kind === "confirmed" || replyLanded(outcome.reply)) return "landed";
+  if (outcome.kind === "confirmed") return "landed";
   return replyEffect(outcome);
 }
 

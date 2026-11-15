@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { attemptTransition, attemptUnresolved, commandAttemptView, outcomeEffect, type AttemptEvent, type AttemptPhase, type CommandAttemptView } from "../../../../src/dashboard/app/commands/command-outcome.js";
 import type { CommandExecutionScope, CommandOutcome, RetainedCommandAttempt } from "../../../../src/dashboard/app/commands/command-executor.js";
+import type { SharedCommands } from "../../../../src/dashboard/client/commands/shared-commands.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogCode } from "../../../../src/models/failures/error-catalog.js";
 import { BulkRunCommandOutcomeSchema, BulkRunCommandResponseSchema, CommandRequestSchema, CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 
@@ -119,7 +120,11 @@ describe("outcomeEffect and commandAttemptView", () => {
 describe("retained attempts", () => {
   const request = CommandRequestSchema.parse({ commandId: COMMAND, requestedAt: "2026-08-03T12:00:00.000Z", requestedBy: "local-operator",
     source: "dashboard", family: "run", type: "cancel", target: { runId: RUN, expectedVersion: 1 } });
-  const scope = { actorId: "local-operator", client: {}, authority: {}, dayRequest: {} } as unknown as CommandExecutionScope;
+  const client: SharedCommands = {
+    executeCommand: () => Promise.reject(new Error("fixture-client-unused")),
+    executeBulkCommand: () => Promise.reject(new Error("fixture-client-unused")),
+  };
+  const scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
   const attempt = (state: RetainedCommandAttempt["state"], outcome?: CommandOutcome): RetainedCommandAttempt =>
     ({ request, body: JSON.stringify(request), scope, state, ...(outcome === undefined ? {} : { outcome }) });
 
