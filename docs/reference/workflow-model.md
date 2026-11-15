@@ -27,6 +27,14 @@ collection, as-of date and reviewer fields in the canonical input. Bootstrap car
 to the existing PDF picker. Its authenticated uploads form one submission, with fresh reading IDs;
 the served operator/date facts and those IDs remain fixed while the plan is reviewed.
 
+A typed input control is a boolean switch or a `kind: "date"` control. A date control is one
+MM/DD/YYYY value for the whole start. The start plan refuses every entry with the control's declared
+`refusal` when a required date is missing or invalid. When entries carry different valid dates, it
+refuses every entry with "<label> must be one date for every entry in this start." instead.
+Otherwise each run's canonical input holds the ISO date, and its raw input keeps the typed text.
+`submitsMode: false` keeps a single-mode surface's mode out of submissions. Work Study uses it for
+its one Employee IDs mode and the required effective date.
+
 An optional `outcomeProjection` maps a terminal-result field to declared `{ value, label, tone }`
 cases. `defineWorkflowDescriptor` requires a string, enum, or literal field and rejects case values
 outside its schema vocabulary. Person Lookup declares eight cases for `activeStatus.state`; the
@@ -68,10 +76,13 @@ the approved EIDs. Its run-bound read uses those late keys against the captured 
 retaining the original version label and worksheet/row coordinates. Confirm lists every PDF and one
 results workbook with one row per person after review.
 
-Onboarding maps the exact requested email key and seven fields: `email`, `firstName`, `lastName`,
-`middleName`, `roster.livedFirstName`, `roster.livedLastName` and `roster.livedMiddleName`.
-All three lived-name cells must be null for explicit absence; otherwise all three must contain valid
-name strings. A single `livedName` cell is never split. The public planner refuses supplied roster
+Onboarding maps the exact requested email key and five required fields: `email`, `fullName` (Legal
+Name), `livedName` (Lived Name), `eid` and `transactionNumber`. It reads the two name cells as whole,
+whitespace-collapsed strings; a blank Lived Name means no lived name, and a blank Legal Name refuses
+the row. The `hire-plan` task splits both names against the CRM first, middle and last name and accepts
+only a split the roster's own `Last, First Middle` comma or a CRM name proves; any other name fails
+with `ONBOARDING_NAME_UNRESOLVED` before the UCPath search. Only `eid` and `transactionNumber` are
+written back; I-9 profile ID and approval status stay in the run result. The public planner refuses supplied roster
 values and builds required canonical roster input from the one captured reference. With `selectedRow`,
 the server derives and checks the email from that retained physical row and binds its typed names.
 Execution authentication rebinds from the selector in the retained reference request, never from the

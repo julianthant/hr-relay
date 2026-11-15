@@ -563,7 +563,45 @@ function i9ReferenceLeaves(scope: EvidenceValueScope): unknown[] {
       .map(path => `reference.snapshot.${path}`));
 }
 
+const PAYPATH_POSITION_FIELDS = ["effectiveDate", "positionChangeReason", "positionPool", "positionNumber"] as const;
+function payPathReadLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...person(scope, `${prefix}emplId`, `${prefix}displayedName`),
+    ...open(scope, `${prefix}pageStateId`, `${prefix}observedAt`, ...PAYPATH_POSITION_FIELDS.map(field => `${prefix}position.${field}`))];
+}
+function workStudyPlanLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...person(scope, `${prefix}emplId`, `${prefix}name`),
+    ...open(scope, ...["effectiveDate", "positionChangeReason", "positionPool", "comments"].map(field => `${prefix}${field}`),
+      ...PAYPATH_POSITION_FIELDS.map(field => `${prefix}current.${field}`))];
+}
+function workStudyProofLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...person(scope, `${prefix}emplId`, `${prefix}displayedName`),
+    ...open(scope, ...["kind", "effectiveDate", "transactionId", "action", "approvalStatus", "source"].map(field => `${prefix}${field}`))];
+}
+const WORK_STUDY_STAGED_FIELDS = ["effectiveDate", "positionChangeReason", "positionPool", "jobDataComments", "initiatorComments"] as const;
+
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...payPathReadLeaves(taskOutput("ucpath/read-paypath-position"), ""),
+  ...person(taskOutput("ucpath/stage-paypath-work-study"), "staged.emplId", "staged.displayedName"),
+  ...open(taskOutput("ucpath/stage-paypath-work-study"), "stagedPageState", "staged.pageStateId", "staged.observedAt",
+    ...WORK_STUDY_STAGED_FIELDS.map(field => `staged.values.${field}`)),
+  /* PeopleSoft alert text is free text that can name the employee. */
+  ...["stage", "submit"].map(verb => ({ scope: taskOutput(`ucpath/${verb}-paypath-work-study`), path: "alertText", classification: "direct-identifier", transform: "drop" })),
+  ...workStudyProofLeaves(taskOutput("ucpath/submit-paypath-work-study"), "receipt."),
+  ...workStudyProofLeaves(writeProof("ucpath/submit-paypath-work-study"), ""),
+  ...["match", "verify"].flatMap(verb => {
+    const scope = taskOutput(`ucpath/${verb}-paypath-work-study`);
+    return [...open(scope, "state", "reason", "matches", "observedAt", "evidence.source", "evidence.sourceState", "evidence.observedAt"),
+      ...onboardingPrivateLeaves(scope, "queryDigest", "evidence.idempotencyKeyDigest", "evidence.queryDigest", "evidence.evidenceRef"),
+      ...population(scope, "evidence"), ...workStudyProofLeaves(scope, "proof.")];
+  }),
+  /* PeopleSoft alert text is free text that can name the employee. */
+  { scope: taskOutput("ucpath/read-paypath-position"), path: "alertText", classification: "direct-identifier", transform: "drop" },
+  ...payPathReadLeaves(workflowResult("work-study-ucpath-auth"), ""),
+  ...workStudyPlanLeaves(taskOutput("workflow:work-study/read-transaction-plan"), ""),
+  ...["work-study", "work-study-transaction"].flatMap(id => [
+    ...workStudyPlanLeaves(workflowResult(id), "plan."), ...open(workflowResult(id), "state"), ...workStudyProofLeaves(workflowResult(id), "receipt."),
+  ]),
+  ...["work-study", "work-study-ucpath-auth", "work-study-transaction"].flatMap(id => [...person(workflowInput(id), "emplId"), ...open(workflowInput(id), "effectiveDate")]),
   ...approvedOcrRecordLeaves(taskOutput("ocr/read-approved-record"), "record."),
   ...approvedOcrSnapshotLeaves(taskOutput("ocr/read-approved-snapshot")),
   ...approvedOcrSnapshotLeaves(workflowResult("emergency-contact-read-document")),
@@ -664,14 +702,12 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(gateResult("ocr", "approve-records"), "revision"),
   ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-hire-writes"].flatMap(id => [
     ...open(workflowInput(id), "mode", "configuredJobEndDate", "roster.state", "roster.reason"),
-    ...onboardingPrivateLeaves(workflowInput(id), "email", "postalCodeOverride", "roster.row.references.livedName",
-      ...["legalName", "livedName"].flatMap(name => ["firstName", "lastName", "middleName"].map(part => `roster.row.references.${name}.${part}`))),
+    ...onboardingPrivateLeaves(workflowInput(id), "email", "postalCodeOverride", "roster.row.references.legalName", "roster.row.references.livedName"),
     ...onboardingRosterLeaves(workflowInput(id), "roster.binding."),
     ...onboardingRosterLeaves(workflowInput(id), "roster.row.binding."),
     ...open(gateResult(id, "roster-choice"), "decision"),
     ...onboardingRosterLeaves(gateResult(id, "roster-choice"), "row.binding."),
-    ...onboardingPrivateLeaves(gateResult(id, "roster-choice"), "row.references.livedName",
-      ...["legalName", "livedName"].flatMap(name => ["firstName", "lastName", "middleName"].map(part => `row.references.${name}.${part}`))),
+    ...onboardingPrivateLeaves(gateResult(id, "roster-choice"), "row.references.legalName", "row.references.livedName"),
   ]),
   ...[taskOutput("workflow:onboarding/read-hire-plan"), workflowResult("onboarding-crm-data")].flatMap(scope => onboardingPlanLeaves(scope)),
   ...[taskOutput("workflow:onboarding/match-hire-subject"), workflowResult("onboarding-ucpath-search")].flatMap(scope => onboardingSubjectLeaves(scope)),
@@ -684,8 +720,8 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...["firstName", "lastName", "middleName", "preferredFirstName", "preferredLastName", "preferredMiddleName", "ssn", "dob", "address", "addressLine2", "city", "state", "postalCode", "phone", "email", "positionNumber", "departmentNumber", "recruitmentNumber", "employeeClassification", "hourlyRateMinor", "effectiveDate", "expectedJobEndDate"].map(path => `hire.employee.${path}`),
     ...["firstName", "lastName", "middleName", "ssn", "dob", "email", "departmentNumber", "expectedName"].map(path => `i9.${path}`)),
   ...["onboarding", "onboarding-hire-writes"].flatMap(id => [
-    ...open(gateResult(id, "hire-review"), "decision"),
-    ...onboardingPrivateLeaves(gateResult(id, "hire-review"), "emplId"),
+    ...open(gateResult(id, "hire-review"), "decision", "confirmedBy"),
+    ...onboardingPrivateLeaves(gateResult(id, "hire-review"), "emplId", "ruledOut"),
     ...onboardingPlanLeaves(workflowResult(id), "plan."),
     ...onboardingSubjectLeaves(workflowResult(id), "subject."),
     ...open(workflowResult(id), "state", "i9.state", "hireWrite.state", "hireWrite.disposition",

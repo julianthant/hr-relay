@@ -1,5 +1,5 @@
 import * as profileCredentials from "../../../../src/backend/storage/configuration/credential-store.js";
-import { createProfileFixtureSet, installationAdmission, profileFixtureStorageAdmission, releaseAdmissionFixture, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, createSyntheticProfileSession, finishProfileOnboarding, installationAdmission, profileFixtureStorageAdmission, releaseAdmissionFixture, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import { TargetNotFoundError } from "../../../../src/backend/runs/commands/refusals.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -46,6 +46,8 @@ EXIT_TRACE_ID,
 seedPersonLookupExitRun,
 } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase as ProductionAuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 
 const profiles = createProfileFixtureSet();
 const heldProfiles: BoundProfileStorageFixture[] = [];
@@ -60,7 +62,31 @@ afterEach(async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-async function seeded(): Promise<AuthorityDatabase> {
+// Registers a second ready profile on the fixture's machine and leaves the first selected.
+async function addSecondProfile(profile: BoundProfileStorageFixture): Promise<string> {
+  const registry = createProfileRegistry(profile.machine);
+  const first = registry.read().activeProfileId; assert.ok(first);
+  const session = createSyntheticProfileSession({ admission: profile.machine, machineRoot: profile.machine.stateRoot, activity: { hasUnquiescedWork: () => false } });
+  try {
+    registry.advanceSession(null);
+    const draft = session.signUp({ firstName: "Second", lastName: "Example", email: "second@ucsd.edu", password: "disposable-fixture-password", createdAt: "2026-10-02T12:00:00.000Z" });
+    assert.equal(draft.state, "onboarding");
+    const active = await finishProfileOnboarding(session, draft);
+    assert.equal(active.state, "active");
+    assert.notEqual(registry.read().activeProfileId, first);
+    return first;
+  } finally { await session.close(); }
+}
+
+// Seeds a run-scoped debug event and closes the writer so the test may change the profile selection.
+async function seededWithRunEvent(): Promise<void> {
+  const database = await seeded();
+  createDebugEventWriter({ repository: database.authority.timelineEvents, clock: manualClock(new Date("2026-08-04T00:11:13.500Z")), build: "fixture" })
+    .emit({ category: "http", phase: "failed", correlationId: "run-scoped" }, { kind: "run", runId: RunIdSchema.parse(EXIT_RUN_ID) }, WorkflowIdSchema.parse("person-lookup"));
+  databases.splice(databases.indexOf(database), 1); database.close();
+}
+
+async function seeded(seedRun = true): Promise<AuthorityDatabase> {
   const profile = await profiles.create(); heldProfiles.push(profile);
   const root = profile.stateRoot;
   const database = AuthorityDatabase.open(
@@ -69,7 +95,7 @@ async function seeded(): Promise<AuthorityDatabase> {
   );
   testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: join(root, "state.db"), descriptor: personLookupDescriptor, poolIndex: 1 });
   databases.push(database);
-  seedPersonLookupExitRun(database);
+  if (seedRun) seedPersonLookupExitRun(database);
   return database;
 }
 
@@ -295,6 +321,7 @@ describe("explain run", () => {
     const path = join(root, "state.db");
     const admission = profileFixtureStorageAdmission(path);
     const before = readFileSync(path); const inventory = readdirSync(root, { recursive: true, encoding: "utf8" }).sort();
+    // Profile admission's live-binding observer opens state.db read-only, which moves SQLite's WAL read marks in -shm.
     const sourceBytes = inventory.filter(name => !name.endsWith("-shm") && lstatSync(join(root, name)).isFile()).map(name => [name, readFileSync(join(root, name))] as const);
     const output = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] });
     assert.match(output, /nextCursor/u);
@@ -400,6 +427,98 @@ describe("explain run", () => {
       assert.equal(machine.readProfileRegistry().activeProfileId, null);
       const credentials = vi.spyOn(profileCredentials, "createCredentialStore");
       assert.throws(() => composeExplainRuntime({ admission: machine, isolation: rebuildRuntimeIsolation, args: ["run", EXIT_RUN_ID] }), /profile-session-stale/u);
+      assert.equal(credentials.mock.calls.length, 0);
+      assert.equal(readdirSync(machine.stateRoot).includes("profiles"), false);
+    } finally { releaseAdmissionFixture(root); await lifetime.close(); }
+  });
+
+  it("routes diagnostics --run to the selected profile's authority without machine authority or credential reads", async () => {
+    const database = await seeded();
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    const writer = createDebugEventWriter({ repository: database.authority.timelineEvents, clock: manualClock(new Date("2026-08-04T00:11:13.500Z")), build: "fixture" });
+    writer.emit({ category: "http", phase: "failed", correlationId: "run-scoped" }, { kind: "run", runId: RunIdSchema.parse(EXIT_RUN_ID) }, WorkflowIdSchema.parse("person-lookup"));
+    const expected = AuthorityDatabase.inspectTimelinePageReadOnly(profile.admission, profile.path, { runId: RunIdSchema.parse(EXIT_RUN_ID), after: 0, limit: 100 });
+    assert.ok(expected.records.length > 0);
+    const generation = database.getMeta().authorityGeneration;
+    const before = readFileSync(profile.path);
+    const inventory = readdirSync(profile.stateRoot, { recursive: true, encoding: "utf8" }).sort();
+    const machineInventory = readdirSync(profile.machine.stateRoot).sort();
+    const credentials = vi.spyOn(profileCredentials, "createCredentialStore");
+    const output = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID, "--json"] });
+    const view = z.object({ records: z.array(z.object({ eventId: z.string(), cursor: z.number() })), nextCursor: z.number() }).parse(JSON.parse(output));
+    assert.deepEqual(view.records.map(record => [record.eventId, record.cursor]), expected.records.map(record => [record.eventId, record.cursor]));
+    assert.equal(view.nextCursor, expected.nextCursor);
+    assert.equal(credentials.mock.calls.length, 0);
+    assert.deepEqual(readFileSync(profile.path), before);
+    assert.equal(database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(readdirSync(profile.stateRoot, { recursive: true, encoding: "utf8" }).sort(), inventory);
+    assert.deepEqual(readdirSync(profile.machine.stateRoot).sort(), machineInventory);
+    assert.equal(machineInventory.includes("state.db"), false);
+    profile.machine.assertLive(); profile.admission.assertLive();
+  });
+
+  it("refuses a diagnostics run that belongs to another profile's authority", async () => {
+    await seeded();
+    await seeded(false);
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    assert.notEqual(profile.machine, heldProfiles[0]?.machine);
+    assert.throws(() => composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID, "--json"] }), /timeline-event-owner-missing/u);
+    profile.machine.assertLive(); profile.admission.assertLive();
+  });
+
+  it("serves diagnostics --run only from the selected profile when two profiles share one machine", async () => {
+    await seededWithRunEvent();
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    const first = await addSecondProfile(profile);
+    const registry = createProfileRegistry(profile.machine);
+    const second = registry.read().activeProfileId; assert.ok(second);
+    assert.equal(registry.read().profiles.length, 2);
+    const secondPath = join(profile.machine.stateRoot, "profiles", second, "state.db");
+    const run = () => composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID, "--json"] });
+    const firstBefore = readFileSync(profile.path);
+
+    assert.throws(run, /timeline-event-owner-missing/u);
+
+    registry.advanceSession(first);
+    const records = z.object({ records: z.array(z.object({ eventId: z.string() })) }).parse(JSON.parse(run())).records;
+    assert.ok(records.length > 0);
+    assert.notEqual(secondPath, profile.path);
+
+    registry.advanceSession(second);
+    assert.throws(run, /timeline-event-owner-missing/u);
+    assert.deepEqual(readFileSync(profile.path), firstBefore);
+    profile.machine.assertLive();
+  });
+
+  it("refuses the page and releases the person admission when the selection changes during the read", async () => {
+    await seededWithRunEvent();
+    const profile = heldProfiles.at(-1); assert.ok(profile);
+    const registry = createProfileRegistry(profile.machine);
+    const selected = registry.read().activeProfileId; assert.ok(selected);
+    const admitted: RuntimeAdmission[] = [];
+    const real = ProductionAuthorityDatabase.inspectTimelinePageReadOnly.bind(ProductionAuthorityDatabase);
+    vi.spyOn(ProductionAuthorityDatabase, "inspectTimelinePageReadOnly").mockImplementation((...args) => {
+      admitted.push(args[0]); const page = real(...args); registry.advanceSession(selected); return page;
+    });
+    const run = () => composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID, "--json"] });
+
+    assert.throws(run, /profile-session-stale/u);
+    assert.equal(admitted.length, 1);
+    assert.throws(() => admitted[0]?.assertLive());
+    profile.machine.assertLive();
+
+    vi.restoreAllMocks();
+    assert.ok(z.object({ records: z.array(z.unknown()) }).parse(JSON.parse(run())).records.length > 0);
+  });
+
+  it("refuses diagnostics --run with a missing profile selection before reading credentials", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-explain-diag-unselected-"))); roots.push(root);
+    const lifetime = await RuntimeLifetimeLock.acquire(0);
+    try {
+      const machine = installationAdmission(root, lifetime);
+      assert.equal(machine.readProfileRegistry().activeProfileId, null);
+      const credentials = vi.spyOn(profileCredentials, "createCredentialStore");
+      assert.throws(() => composeExplainRuntime({ admission: machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID, "--json"] }), /profile-session-stale/u);
       assert.equal(credentials.mock.calls.length, 0);
       assert.equal(readdirSync(machine.stateRoot).includes("profiles"), false);
     } finally { releaseAdmissionFixture(root); await lifetime.close(); }

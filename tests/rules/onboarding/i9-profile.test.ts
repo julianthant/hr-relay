@@ -50,7 +50,7 @@ describe("onboarding I-9 delegation and profile plan", () => {
     ]) assert.throws(() => readOnboardingI9Lookup({ ...request, outcomes: OnboardingI9OutcomeSchema.array().parse(outcomes) }));
   });
 
-  it("skips I-9 entirely for existing and unresolved UCPath identities and refuses an unexpected child", () => {
+  it("skips I-9 for existing and unresolved UCPath identities and refuses a child for an existing person", () => {
     for (const subject of [
       { state: "existing-person" as const, person: { emplId: "10800000", name: "Hire, Fixture" } },
       { state: "review-required" as const, candidates: [{ emplId: "10800000", name: "Hire, Other" }] },
@@ -58,7 +58,13 @@ describe("onboarding I-9 delegation and profile plan", () => {
       const lookup = readOnboardingI9Lookup({ ...request, subject, outcomes: [] });
       assert.deepEqual(lookup, { state: "not-required", subjectState: subject.state });
       assert.deepEqual(readI9ProfilePlan({ plan, lookup }), lookup);
-      assert.throws(() => readOnboardingI9Lookup({ ...request, subject }));
     }
+    assert.throws(() => readOnboardingI9Lookup({ ...request, subject: { state: "existing-person", person: { emplId: "10800000", name: "Hire, Fixture" } } }));
+  });
+
+  it("checks one exact successful child for an unresolved identity the operator may still file as a new hire", () => {
+    const subject = { state: "review-required" as const, candidates: [{ emplId: "10800000", name: "Hire, Other" }] };
+    assert.equal(readOnboardingI9Lookup({ ...request, subject }).state, "checked");
+    assert.throws(() => readOnboardingI9Lookup({ ...request, subject, outcomes: [done, done] }));
   });
 });

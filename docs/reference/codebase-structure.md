@@ -164,6 +164,14 @@ Its `tasks/read-worksheet-archives.ts` verifies retained PDFs and creates the ar
 reference reads live in `backend/workbooks/` and the `workbooks.library` provider; tasks accept
 lookup keys while the native run owner supplies the exact retained library and named version.
 
+`src/workflows/work-study/` opens UCPath PayPath Actions for one Employee ID, plans the work-study
+transaction (effective date, reason JRL, pool F, matching comments) and files it through one stop-after-prepare
+Save transaction; the plan rule lives in `src/rules/work-study/plan.ts` and the duplicate and receipt verdict over
+SS Smart HR transaction findings in `src/rules/work-study/transaction-verdict.ts`. `src/models/ui/ucpath-paypath.ts`
+owns the PayPath read, staging, Save driver surface and refusals; the four Save contracts live in
+`src/models/systems/ucpath/{stage,submit,match,verify}-paypath-work-study.ts`.
+`backend/systems/ucpath/driver/paypath-operation.ts` and `paypath-ui-registry.ts` own the PayPath browser family.
+
 `src/workflows/onbase/` registers a child-only per-person Emergency Contact PDF import with source-page and import-document step proofs. Its system store and semantic driver live in `src/backend/systems/onbase/`; `src/backend/storage/sqlite/exclusive-session-leases.ts` owns the durable identity-session lease and its migration. The browser factory holds that lease through proven browser closure; uncertainty and process loss do not expire it.
 Its task implementations live in `tasks/read-source-page.ts`, `stage-import.ts`, `match-import.ts`, `upload-import.ts` and `verify-import.ts`, matching each contract's task ID for implementation fingerprints.
 The corresponding contract files live under `src/models/systems/onbase/` with those same task names;
@@ -202,7 +210,7 @@ The local `ocr.approved-snapshot` and `ocr.review` capabilities are issued by
 `worker/run-resources.ts`; they have no endpoint or configurable provider.
 
 `src/workflows/onboarding/` composes snapshot-bound CRM planning, UCPath identity search, delegated I-9 lookup, complete transaction findings and an operator hire-path gate, protected profile/remote-record creation, hire filing and fresh receipt verification, and run-bound master result cells. Its four retained proofs cover CRM data, UCPath search, I-9 search and the complete write sequence. The dashboard source remains `mock` until an operator dry run and sign-off.
-`steps/hire-review/step.ts` owns the reviewed write sequence and its proof recipe. Other step definitions own their typed entries and proofs. `tasks/` contains one implementation per pure workflow task ID; `src/rules/onboarding/` validates the reviewed path and cross-checks receipts before constructing master commands. `roster.ts` binds captured legal/lived names and declares the EID, I-9 profile, transaction and status output fields. `src/backend/runs/workbooks.ts` owns native row-choice authentication and the shared run-bound patch/ownership/receipt seam. System drivers own the three independently fenced effects and fresh saved-detail reads; UNKNOWN submissions remain parked.
+`steps/hire-review/step.ts` owns the reviewed write sequence and its proof recipe. Other step definitions own their typed entries and proofs. `tasks/` contains one implementation per pure workflow task ID; `src/rules/onboarding/` validates the reviewed path and cross-checks receipts before constructing master commands. `roster.ts` binds the captured whole legal and lived name cells and declares the EID and transaction output fields; `roster-name.ts` splits those names against the CRM record. `src/backend/runs/workbooks.ts` owns native row-choice authentication and the shared run-bound patch/ownership/receipt seam. System drivers own the three independently fenced effects and fresh saved-detail reads; UNKNOWN submissions remain parked.
 
 `src/workflows/i9-check/` is child-only: it reads UCPath for one OCR-derived person and returns a retention row. Its three groups have typed tasks and retained proofs under `steps/<key>/step.ts`.
 Its pure contracts live in `src/models/workflows/i9-check/read-match-outcome.ts` and

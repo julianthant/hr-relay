@@ -2,7 +2,7 @@ import type { Page } from "playwright";
 
 export function i9SearchRow(overrides: Partial<{ lastName: string; firstName: string; profileId: string; i9Id: string; nextAction: string }> = {}): string[] {
   const row = { lastName: "Example", firstName: "Person", profileId: "900001", i9Id: "900002", nextAction: "Purge", ...overrides };
-  return [row.lastName, row.firstName, "Example Employer", "Example Worksite", row.profileId, row.i9Id, row.nextAction, "01/01/2030", "01/01/2030", ""];
+  return [row.lastName, row.firstName, "Example Employer", "Example Worksite", row.profileId, row.i9Id, row.nextAction, "01/01/2030", "01/01/2030"];
 }
 
 export function fakeI9Page(options: Readonly<{
@@ -71,6 +71,7 @@ export function fakeI9Page(options: Readonly<{
         throw new Error(`unexpected text read: ${target}`);
       },
       getByRole: (role: string, input?: { name: string | RegExp }) => byRole(role, input),
+      filter: () => result,
       getByText: (text: RegExp) => {
         if (!text.test("has not been granted access")) throw new Error("unknown text recipe");
         return locator("restricted");
@@ -82,7 +83,7 @@ export function fakeI9Page(options: Readonly<{
       if (role === "gridcell" && target === "row") return locator("gridcell", index);
       if (role === "cell" && target === "signed") return locator("cells");
       if (role === "textbox" && target === "dialog") return locator("field", 0, String(input?.name));
-      if (role === "heading" && input?.name === "No results found") return locator("empty");
+      if (role === "heading" && input?.name instanceof RegExp && input.name.test("No results found. Search again or click Create New Profile to create a new employee.")) return locator("empty");
       throw new Error(`unknown nested role ${role} in ${target}`);
     }
     return result;

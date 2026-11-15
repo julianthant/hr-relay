@@ -2,7 +2,13 @@ import { createSystemSessionTestWorld } from "../../../support/helpers/backend/s
 import assert from "node:assert/strict";
 import { describe, it, vi } from "vitest";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
+import { assertAuthenticatedApplication } from "../../../../src/backend/systems/browser-shared/authenticated-application.js";
 import { BrowserLoginError, BrowserLandingStallError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { buildNodeFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
+import { projectFailureForOperator } from "../../../../src/models/trust/failure.js";
+import { NodeIdSchema, TaskIdSchema } from "../../../../src/rules/identity/ids.js";
+import { TaskError } from "../../../../src/workflow-kit/errors.js";
+import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { isAuthenticatedUcpathAppUrl, isUcpathPostSsoLanding, ucpathLoginRecipe, verifyUcpathAuthenticatedApplication } from "../../../../src/backend/systems/ucpath/session.js";
 import { NEVER_SETTLES, type FakeCookie, type FakePageScript } from "../../../support/helpers/browser/fake-login-page.js";
 
@@ -606,5 +612,56 @@ describe("ucpath login recipe", () => {
       return true;
     });
     assert.deepEqual(harness.actions(), []);
+  });
+});
+
+const FIXTURE_EMPLOYEE_ID = "10456712";
+
+describe("ucpath sign-in refusal record", () => {
+  async function storedRefusal(
+    script: FakePageScript,
+    check: "application-route" | "positive-evidence" | "sign-in-form-absent",
+    pageOrigin: string,
+    pagePath: string,
+  ) {
+    const { context } = await contextFor(script);
+    let refusal: unknown;
+    try {
+      await assertAuthenticatedApplication("ucpath", context, verifyUcpathAuthenticatedApplication);
+    } catch (error) {
+      refusal = error;
+    }
+    assert.ok(refusal instanceof BrowserLoginError);
+    const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+      error: new TaskError(taskId, refusal.code, refusal.message, { cause: refusal }),
+      occurredAt: "2026-08-29T08:00:00.000Z" });
+    assert.equal(failure.debug?.signInRefusal?.check, check);
+    assert.equal(failure.debug?.signInRefusal?.step, "verify-landing");
+    assert.equal(failure.debug?.signInRefusal?.pageOrigin, pageOrigin);
+    assert.equal(failure.debug?.signInRefusal?.pagePath, pagePath);
+    assert.equal(projectFailureForOperator(failure).summary, "UCPath sign-in failed.");
+    const stored = JSON.stringify(failure);
+    assert.equal(stored.includes(FIXTURE_EMPLOYEE_ID), false);
+    assert.equal(stored.includes("frag-canary"), false);
+  }
+
+  it("names the application-route, positive-evidence and sign-in-form-absent checks", async () => {
+    const queried = (url: string) => `${url}?EMPLID=${FIXTURE_EMPLOYEE_ID}#frag-canary`;
+    await storedRefusal({
+      url: queried("https://ucpath.universityofcalifornia.edu/"),
+      elements: NO_SIGN_IN_FORMS,
+      cookies: [PS_TOKEN],
+    }, "application-route", "https://ucpath.universityofcalifornia.edu", "/");
+    await storedRefusal({
+      url: queried(UCPATH_APP),
+      elements: NO_SIGN_IN_FORMS,
+    }, "positive-evidence", "https://ucphrprdpub.universityofcalifornia.edu", "/psc/ucphrprd/EMPLOYEE/HRMS/");
+    await storedRefusal({
+      url: queried(UCPATH_APP),
+      elements: { ...NO_SIGN_IN_FORMS, "peoplesoft-signon": { count: 1 } },
+      cookies: [PS_TOKEN],
+    }, "sign-in-form-absent", "https://ucphrprdpub.universityofcalifornia.edu", "/psc/ucphrprd/EMPLOYEE/HRMS/");
   });
 });
