@@ -116,10 +116,12 @@ function publishReview(memory: ReviewMemory): void {
   for (const notify of memory.listeners) notify();
 }
 
-function reviewAttemptState(outcome: CommandOutcome): "uncertain" | "conflict" | "refused" {
+export function reviewAttemptState(outcome: CommandOutcome): "uncertain" | "conflict" | "refused" {
   switch (commandAttemptView(outcome).view) {
     case "unknown": return "uncertain";
-    case "conflict": case "superseded": return "conflict";
+    case "conflict": return "conflict";
+    // A landed command whose target moved on keeps the state its outcome kind gave it.
+    case "superseded": return outcome.kind === "conflict" ? "conflict" : "refused";
     default: return "refused";
   }
 }

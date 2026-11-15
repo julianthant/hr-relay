@@ -21,15 +21,21 @@ export type SettingsSaveNotice = Readonly<{ title: string; description?: string 
 export type SettingsSaveListener = (notice: SettingsSaveNotice) => void;
 export type SettingsSaveProblem = SettingsSaveNotice & Readonly<{ tone: "danger" | "warning" }>;
 export type SettingsSaveProblemListener = (notice: SettingsSaveProblem) => void;
+/** A settled outcome never reads as pending; only a retained draft does. */
+export class SettingsSaveOutcomePendingError extends Error {
+  constructor(readonly commandId: string) { super(`settings-save-outcome-pending: command ${commandId}`); this.name = "SettingsSaveOutcomePendingError"; }
+}
 export function commandSaveState(outcome: CommandOutcome | undefined): SettingsSaveState {
   if (outcome === undefined) return { state: "refused", code: "DASHBOARD_AUTHORITY_REPLACED", message: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text };
   const attempt = commandAttemptView(outcome);
   switch (attempt.view) {
     case "landed": return { state: "applied", replayed: attempt.replayed };
     case "unknown": return { state: "unconfirmed", code: attempt.feedback.code, message: attempt.feedback.text };
-    case "conflict": case "superseded": return { state: "conflict", code: attempt.feedback.code, message: attempt.feedback.text };
+    case "conflict": return { state: "conflict", code: attempt.feedback.code, message: attempt.feedback.text };
+    // A landed command whose target moved on keeps the state its outcome kind gave it.
+    case "superseded": return { state: outcome.kind === "conflict" ? "conflict" : "refused", code: attempt.feedback.code, message: attempt.feedback.text };
     case "bulk": return { state: attempt.kind === "conflict" ? "conflict" : "refused", code: attempt.feedback.code, message: attempt.feedback.text };
-    case "pending": throw new Error("settings-save-outcome-pending");
+    case "pending": throw new SettingsSaveOutcomePendingError(outcome.commandId);
     default: return { state: "refused", code: attempt.feedback.code, message: attempt.feedback.text };
   }
 }
