@@ -4,9 +4,9 @@ import { z } from "zod";
 import { ONBASE_EXAMPLE_INPUT, OnbaseInputSchema } from "../../systems/onbase/import-document.js";
 import { ApprovedOcrRecordInputSchema } from "../ocr/approved-record.js";
 
-// The run's PDF and the record's first source page, filed to OnBase after the Save.
+// The run's PDF and the record's first source page, filed to OnBase after the Save; null when another record of this person already files that page.
 export const EmergencyContactMemberInputSchema = z.strictObject({ approval: ApprovedOcrRecordInputSchema.shape.approval, record: ApprovedOcrRecordInputSchema.shape.record,
-  document: OnbaseInputSchema.shape.document, sourcePage: OnbaseInputSchema.shape.sourcePage })
+  document: OnbaseInputSchema.shape.document, sourcePage: OnbaseInputSchema.shape.sourcePage.nullable() })
   .superRefine(({ approval, record }, context) => {
     if (!ApprovedOcrRecordInputSchema.safeParse({ approval, record }).success) context.addIssue({ code: "custom", message: "An approved member requires a ready selected record" });
   });

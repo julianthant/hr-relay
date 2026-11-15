@@ -33,7 +33,13 @@ export function buildEmergencyContactRecords(author: WorkflowAuthor<typeof Emerg
           employees.set(employee, desired);
         }
       },
-      memberInput: (input, approved, ocr) => ({ ...approved, document: input.document, sourcePage: ocrRecordSourcePages(ocr.review.records, approved.record)[0] }) });
+      // An earlier record of the same person on the same first page already files it: OnBase admits one filing per employee, PDF and page.
+      memberInput: (input, approved, ocr, records) => {
+        const filing = (record: typeof approved.record) => ({ emplId: approvedEmergencyContact(record).emplId, page: ocrRecordSourcePages(ocr.review.records, record)[0] });
+        const own = filing(approved.record), index = records.findIndex(record => record.recordId === approved.record.recordId);
+        const filed = records.slice(0, index).some(record => { const other = filing(record); return other.emplId === own.emplId && other.page === own.page; });
+        return { ...approved, document: input.document, sourcePage: filed ? null : own.page };
+      } });
   return { ...graph, steps: [[READ_DOCUMENT_STEP, graph.steps[0][1]]] as const,
     result: author.result(ReadApprovedOcrSnapshot.output, [graph.approved], ({ outputs }) => outputs["approved-records"]) };
 }

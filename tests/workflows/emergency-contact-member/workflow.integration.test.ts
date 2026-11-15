@@ -17,7 +17,7 @@ import { saveEmergencyContactTask } from "../../../src/backend/systems/ucpath/ta
 import { stageEmergencyContactTask } from "../../../src/backend/systems/ucpath/tasks/stage-emergency-contact.js";
 import { verifyEmergencyContactTask } from "../../../src/backend/systems/ucpath/tasks/verify-emergency-contact-plan.js";
 import { OcrApprovalReadResultSchema } from "../../../src/models/processing/ocr/approved-snapshot.js";
-import { RunDelegatedDryRunPreviewResultSchema } from "../../../src/models/run/result.js";
+import { RunDelegatedDryRunPreviewResultSchema, RunDryRunPreviewResultSchema } from "../../../src/models/run/result.js";
 import type { UcpathContactPageSnapshot } from "../../../src/models/ui/ucpath-emergency-contact.js";
 import { UcpathContactPageSnapshotSchema } from "../../../src/models/ui/ucpath-emergency-contact.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
@@ -44,7 +44,7 @@ const approved = EMERGENCY_CONTACT_MEMBER_EXAMPLE;
 const contact = approvedEmergencyContact(approved.record);
 const desired = contactEffect(contact);
 
-async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]; dryRun?: boolean; unknownProbe?: boolean; captureFailure?: boolean; priorWrite?: "attempting" | "parked"; advanceBetweenEntriesMs?: number } = {}) {
+async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]; dryRun?: boolean; unknownProbe?: boolean; captureFailure?: boolean; priorWrite?: "attempting" | "parked"; advanceBetweenEntriesMs?: number; sourcePage?: number | null } = {}) {
   const browser = defineBrowserStore("ucpath", ucpathDriver, ucpathSession, { readContacts: readEmergencyContactsTask,
     stageContact: stageEmergencyContactTask, probeContact: probeEmergencyContactTask, verifyContact: verifyEmergencyContactTask, saveContact: saveEmergencyContactTask });
   const service = defineServiceStore("ocr", { readRecord: readApprovedOcrRecordTask });
@@ -84,7 +84,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
     },
   } }, database, path, id => id === compiled.descriptor.id ? compiled.descriptor : id === "onbase" ? onbaseModule.descriptor : undefined);
   const prior = options.priorWrite === undefined ? undefined : seedUnknownContactWrite(database, { ...contact, plan: planEmergencyContact(interpretContactPage(page, contact), desired) }, clock.now().toISOString(), options.priorWrite === "parked");
-  const run = execution.start(compiled.descriptor, { ...approved, document: filing.document, sourcePage: 2 }, { dryRun: options.dryRun ?? true });
+  const run = execution.start(compiled.descriptor, { ...approved, document: filing.document, sourcePage: options.sourcePage === undefined ? 2 : options.sourcePage }, { dryRun: options.dryRun ?? true });
   let result: Awaited<ReturnType<typeof execution.execute>>;
   if (options.advanceBetweenEntriesMs === undefined) result = await execution.execute(run, world.SIGNAL);
   else {
@@ -129,6 +129,18 @@ it("emergency-contact/dry-run — previews ordered primary demotion and addition
   assert.ok(f.captures.some(page => page.observation === "persisted" && page.rows[0]?.primary));
   assert.ok(f.captures.some(page => page.observation === "staged" && page.rows[0]?.primary === false && page.rows[1]?.primary));
   assert.ok(f.ports.some(port => port.actions.includes("demote-primary:0")));
+  f.assertNoWrites();
+});
+it("shared-page — a member whose page another record already files previews its Save with no filing child or Import", async () => {
+  const f = await memberFixture({ sourcePage: null });
+  assert.deepEqual(f.failures, []);
+  assert.deepEqual(f.children, []);
+  assert.deepEqual(f.result.outcomes.map(outcome => outcome.state), ["done"]);
+  assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state, "terminal");
+  const stored = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(stored);
+  const preview = RunDryRunPreviewResultSchema.parse(stored.result.value);
+  assert.equal(preview.coverage.state, "full");
+  assert.ok(preview.steps.some(step => step.state === "transaction-preview"));
   f.assertNoWrites();
 });
 it("emergency-contact/unambiguous-addition — prepares the approved primary without demotion when none exists", async () => {

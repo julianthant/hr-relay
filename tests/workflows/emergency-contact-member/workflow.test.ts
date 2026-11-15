@@ -1,3 +1,4 @@
+import { z } from "zod";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { OnbaseInputSchema } from "../../../src/models/systems/onbase/import-document.js";
@@ -17,7 +18,8 @@ it("files to OnBase as the member's third step, declared after the Save without 
   const node = nodes[filing];
   assert.ok(node?.kind === "child-run");
   assert.equal(node.target.id, "onbase");
-  assert.equal(node.cardinality, "one");
+  assert.equal(node.cardinality, "many");
+  assert.equal(node.join, "all-settled");
   assert.equal(node.await, "terminal");
   // A 0 ms derived read would expire between the Save and admission, so the child binds from input alone.
   assert.deepEqual(node.dependsOn, []);
@@ -27,7 +29,13 @@ it("starts the child with exactly the mapped Employee ID, the run's document and
   const node = nodes.find(candidate => candidate.id === "onbase-filing");
   assert.ok(node?.kind === "child-run");
   const bound = node.bind({ input: EMERGENCY_CONTACT_MEMBER_EXAMPLE, outputs: {} });
-  assert.deepEqual(OnbaseInputSchema.parse(bound), { ucpathId: approvedEmergencyContact(EMERGENCY_CONTACT_MEMBER_EXAMPLE.record).emplId,
+  assert.deepEqual(z.array(OnbaseInputSchema).parse(bound), [{ ucpathId: approvedEmergencyContact(EMERGENCY_CONTACT_MEMBER_EXAMPLE.record).emplId,
     document: EMERGENCY_CONTACT_MEMBER_EXAMPLE.document,
-    sourcePage: EMERGENCY_CONTACT_MEMBER_EXAMPLE.sourcePage });
+    sourcePage: EMERGENCY_CONTACT_MEMBER_EXAMPLE.sourcePage }]);
+});
+
+it("binds no filing child when another record of the person already files the page", () => {
+  const node = nodes.find(candidate => candidate.id === "onbase-filing");
+  assert.ok(node?.kind === "child-run");
+  assert.deepEqual(node.bind({ input: { ...EMERGENCY_CONTACT_MEMBER_EXAMPLE, sourcePage: null }, outputs: {} }), []);
 });

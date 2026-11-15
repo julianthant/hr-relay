@@ -20,18 +20,18 @@ const members = descriptorRuntimeNodes(descriptor).find(node => node.id === "mem
 assert.ok(members?.kind === "child-run" && members.cardinality === "many");
 const first = EMERGENCY_CONTACT_MEMBER_EXAMPLE.record;
 // The OCR review seed is where a record's source page lives; the members delegate files that page.
-const reviewed = (recordIds: readonly string[]) => ({ ...ReadOcrReviewSeed.example, records: recordIds.map((recordId, index) => ({ recordId, sourcePage: index + 2,
+const reviewed = (recordIds: readonly string[], pageOf = (index: number) => index + 2) => ({ ...ReadOcrReviewSeed.example, records: recordIds.map((recordId, index) => ({ recordId, sourcePage: pageOf(index),
   extractionId: "c".repeat(64), subjectName: null, assertedEid: null, identitySource: "document" as const, rosterMatch: null,
   lookup: { state: "unavailable" as const, reason: "missing-identity" as const }, issues: ["identity-unverified" as const] })) });
 const recordIds = [1, 2, 3].map(index => `${"b".repeat(64)}#emergency-contact#${String(index)}`);
-function scope(different = false): RuntimeScope {
+function scope(different = false, pageOf?: (index: number) => number): RuntimeScope {
   const second = { ...first, recordId: `${"b".repeat(64)}#emergency-contact#2`, fields: { ...first.fields,
     answers: first.fields.answers.map(answer => different && answer.path === "contact.name" && answer.state === "read"
       ? { ...answer, raw: "Different Contact", value: "Different Contact" } : answer) } };
   const { sourceRunId: _sourceRunId, formType: _formType, approval: _approval, ...input } = OCR_INPUT_EXAMPLE;
   return { input: EmergencyContactInputSchema.parse(input), outputs: {
     "read-document": { state: "done", runId: EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval.sourceRunId, itemId: OCR_INPUT_EXAMPLE.readingId,
-      output: OcrWorkflowResultSchema.parse({ review: reviewed(recordIds), identities: [],
+      output: OcrWorkflowResultSchema.parse({ review: reviewed(recordIds, pageOf), identities: [],
         approvedSnapshot: EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval }) },
     "approved-records": { snapshot: { ...ReadApprovedOcrSnapshot.example.snapshot, records: [first, second], selectedRecordIds: [first.recordId, second.recordId] } },
   } };
@@ -67,6 +67,13 @@ it("gives each member the run's PDF and its record's first source page to file t
   const bound = z.array(EmergencyContactMemberInputSchema).parse(members.bind(initial));
   assert.deepEqual(bound.map(member => member.sourcePage), [2, 3]);
   assert.ok(bound.every(member => JSON.stringify(member.document) === JSON.stringify(EmergencyContactInputSchema.parse(initial.input).document)));
+});
+
+it("files a person's page once: a later equal-effect record on the same first page gets no source page", () => {
+  const same = z.array(EmergencyContactMemberInputSchema).parse(members.bind(scope(false, () => 2)));
+  assert.deepEqual(same.map(member => member.sourcePage), [2, null]);
+  const apart = z.array(EmergencyContactMemberInputSchema).parse(members.bind(scope(false, index => index + 2)));
+  assert.deepEqual(apart.map(member => member.sourcePage), [2, 3]);
 });
 
 it("titles an Emergency Contact run by its PDF name, else the generic PDF title", () => {
