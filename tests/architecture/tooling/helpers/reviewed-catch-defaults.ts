@@ -139,7 +139,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
       },
       {
         "kind": "try",
-        "sha256": "ed6812db1450ece2d020d475af33b5824c8bc2e0cc86c9acc7b259209761070c",
+        "sha256": "f4085fd3887fdab9edf2dbad8125669b54715cc9059bb05379e50d680728f924",
         "occurrences": 1
       }
     ]
