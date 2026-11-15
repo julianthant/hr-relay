@@ -182,7 +182,8 @@ describe("worker browser session factory", () => {
     await withTempRuntime(async ({ config }) => {
       const launcher = fakeLauncher();
       const count = async () => 0;
-      const frames = [0, 1, 2].map(frameId => ({ ...launcher.page.mainFrame(), locator: (selector: string) => ({ selector, frameId, count }) }));
+      const filter = function <T>(this: T): T { return this; };
+      const frames = [0, 1, 2].map(frameId => ({ ...launcher.page.mainFrame(), locator: (selector: string) => ({ selector, frameId, count, filter }) }));
       launcher.page.frames = () => frames;
       let screenshotOptions: unknown;
       const originalScreenshot = launcher.page.screenshot;
@@ -193,7 +194,7 @@ describe("worker browser session factory", () => {
       const screenshot = await resource.screenshot?.();
       assert.ok(screenshot?.state === "available");
       assert.deepEqual(Buffer.from(screenshot.bytes), PNG.sync.write(new PNG({ width: config.display.screenWidth + 24, height: config.display.screenHeight })));
-      assert.deepEqual(screenshotOptions, { type: "png", clip: { x: 0, y: 0, width: config.display.screenWidth + 24, height: Math.min(config.display.screenHeight, 1200) }, mask: frames.map((_, frameId) => ({ selector: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$0"]', frameId, count })) });
+      assert.deepEqual(screenshotOptions, { type: "png", clip: { x: 0, y: 0, width: config.display.screenWidth + 24, height: Math.min(config.display.screenHeight, 1200) }, mask: frames.map((_, frameId) => ({ selector: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$0"]', frameId, count, filter })) });
       assert.deepEqual(
         { width: screenshot.width, height: screenshot.height },
         { width: config.display.screenWidth + 24, height: config.display.screenHeight },
@@ -265,7 +266,7 @@ describe("worker browser session factory", () => {
       const child = {
         ...launcher.page.mainFrame(),
         url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
-        locator: (selector: string) => ({ selector, count: async () => 0 }),
+        locator: (selector: string) => { const locator = { selector, count: async () => 0, filter: () => locator }; return locator; },
       };
       const frames = [...launcher.page.frames(), child];
       launcher.page.frames = () => frames;
@@ -297,7 +298,7 @@ describe("worker browser session factory", () => {
           const child = {
             ...launcher.page.mainFrame(),
             url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
-            locator: (selector: string) => ({ selector, count: async () => present && selector.includes(control) ? 1 : 0 }),
+            locator: (selector: string) => { const locator = { selector, count: async () => present && selector.includes(control) ? 1 : 0, filter: () => locator }; return locator; },
           };
           const frames = [...launcher.page.frames(), child];
           launcher.page.frames = () => frames;
@@ -323,7 +324,7 @@ describe("worker browser session factory", () => {
         const child = {
           ...launcher.page.mainFrame(),
           url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
-          locator: (selector: string) => ({ selector, count: async () => 0 }),
+          locator: (selector: string) => { const locator = { selector, count: async () => 0, filter: () => locator }; return locator; },
         };
         const mainFrames = launcher.page.frames();
         let frames = event === "frameattached" ? mainFrames : [...mainFrames, child];
