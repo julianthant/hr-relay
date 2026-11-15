@@ -5,10 +5,11 @@ import { CrmReadHireData } from "../../../src/models/systems/crm/read-hire-data.
 import { OnboardingReadHirePlan } from "../../../src/models/workflows/onboarding/read-hire-plan.js";
 import { OnboardingRosterSnapshotRowSchema } from "../../../src/models/workflows/onboarding/roster.js";
 import { readHirePlan } from "../../../src/rules/onboarding/read-hire-plan.js";
+import { RosterNameUnresolvedError } from "../../../src/rules/onboarding/roster-name.js";
 
 const roster = OnboardingRosterSnapshotRowSchema.parse({
   binding: OnboardingReadHirePlan.example.roster,
-  references: { legalName: { firstName: "Fixture", lastName: "Hire", middleName: "" }, livedName: null },
+  references: { legalName: "Fixture Hire", livedName: null },
 });
 const input = { crm: CrmReadHireData.example, roster, configuredJobEndDate: "06/30/2027" };
 
@@ -51,43 +52,53 @@ describe("hire plan validation", () => {
     assert.throws(() => readHirePlan({ crm: { ...input.crm, fields: { ...input.crm.fields, expectedJobEndDate: "" } }, roster }));
   });
 
-  it("uses only the supplied roster snapshot for legal and lived names", () => {
+  it("takes the legal name from the roster cell and splits both names against the CRM record", () => {
+    const crm = { ...input.crm, recordFirstName: "Jon", fields: { ...input.crm.fields, firstName: "Jon" } };
     const startSnapshot = structuredClone(roster);
-    startSnapshot.references.legalName = { firstName: "Legal", lastName: "Snapshot", middleName: "Middle" };
-    startSnapshot.references.livedName = { firstName: "Lived", lastName: "Snapshot", middleName: "" };
-    const result = readHirePlan({ ...input, roster: startSnapshot });
+    startSnapshot.references = { legalName: "Jonathan Hire", livedName: "Jon" };
+    const result = readHirePlan({ ...input, crm, roster: startSnapshot });
     assert.deepEqual(result.roster, startSnapshot.binding);
-    assert.equal(result.employee.firstName, "Legal");
-    assert.equal(result.employee.lastName, "Snapshot");
-    assert.equal(result.employee.middleName, "Middle");
-    assert.equal(result.employee.preferredFirstName, "Lived");
-    assert.equal(result.employee.preferredLastName, "Snapshot");
+    assert.equal(result.employee.firstName, "Jonathan");
+    assert.equal(result.employee.lastName, "Hire");
+    assert.equal(result.employee.middleName, "");
+    assert.equal(result.employee.preferredFirstName, "Jon");
+    assert.equal(result.employee.preferredLastName, "Hire");
     assert.equal(result.employee.preferredMiddleName, "");
-    assert.equal(input.crm.fields.firstName, "Fixture");
-    startSnapshot.references.legalName.firstName = "Later edit";
+    startSnapshot.references.legalName = "Later Edit";
     startSnapshot.binding.referenceDigest = FingerprintSchema.parse("b".repeat(64));
-    assert.equal(result.employee.firstName, "Legal");
+    assert.equal(result.employee.firstName, "Jonathan");
     assert.equal(result.roster.referenceDigest, roster.binding.referenceDigest);
   });
 
-  it("uses legal names when lived names are explicitly absent and refuses missing or foreign snapshot identity", () => {
+  it("uses the legal name when the lived name is absent and refuses missing or foreign snapshot identity", () => {
     const result = readHirePlan(input);
-    assert.equal(result.employee.preferredFirstName, roster.references.legalName.firstName);
-    assert.equal(result.employee.preferredLastName, roster.references.legalName.lastName);
-    assert.equal(result.employee.preferredMiddleName, roster.references.legalName.middleName);
+    assert.equal(result.employee.preferredFirstName, "Fixture");
+    assert.equal(result.employee.preferredLastName, "Hire");
+    assert.equal(result.employee.preferredMiddleName, "");
     const foreign = { ...roster, binding: { ...roster.binding, rowKey: { email: "other@example.test" } } };
     assert.throws(() => readHirePlan({ ...input, roster: foreign }), /row key does not match/u);
     assert.equal(OnboardingReadHirePlan.input.safeParse({ crm: input.crm }).success, false);
-    assert.throws(() => readHirePlan({ ...input, roster: { ...roster, references: { ...roster.references,
-      legalName: { firstName: " ", lastName: "Hire", middleName: "" },
-    } } }));
+    assert.throws(() => readHirePlan({ ...input, roster: { ...roster, references: { ...roster.references, legalName: " " } } }),
+      (error: unknown) => !(error instanceof RosterNameUnresolvedError));
+  });
+
+  it("throws the unresolved-name error when the CRM record cannot prove the split", () => {
+    for (const references of [{ legalName: "Fixture Other", livedName: null }, { legalName: "Fixture Hire", livedName: "Alex" }]) {
+      assert.throws(() => readHirePlan({ ...input, roster: { ...roster, references } }), RosterNameUnresolvedError);
+    }
+  });
+
+  it("takes the classification number leading the live appointment text", () => {
+    assert.equal(input.crm.fields.appointment, "5 Student: Casual/Restricted");
+    assert.equal(readHirePlan(input).employee.employeeClassification, "5");
   });
 
   it.each([
-    { appointment: "Student" }, { wage: "$17.75 annually" }, { wage: "$0.00 per hour" },
+    { appointment: "Student" }, { appointment: "Casual/Restricted 5" }, { appointment: "5" }, { appointment: "" }, { wage: "$17.75 annually" }, { wage: "$0.00 per hour" },
     { postalCode: "bad" }, { dob: "02/30/2000" }, { effectiveDate: "02/30/2026" },
     { expectedJobEndDate: "06/30/2026" }, { expectedJobEndDate: "02/30/2027" }, { ssn: "bad" },
   ])("refuses invalid source values %j", fields => {
-    assert.throws(() => readHirePlan({ ...input, crm: { ...input.crm, fields: { ...input.crm.fields, ...fields } } }));
+    assert.throws(() => readHirePlan({ ...input, crm: { ...input.crm, fields: { ...input.crm.fields, ...fields } } }),
+      (error: unknown) => !(error instanceof RosterNameUnresolvedError));
   });
 });

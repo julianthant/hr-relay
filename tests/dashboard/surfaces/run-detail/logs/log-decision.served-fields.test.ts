@@ -26,6 +26,13 @@ it("shows the served context line instead of the step message, and the served dr
   } finally { await done(); }
 });
 
+it("shows the hire review's split legal and preferred names before approval", async () => {
+  const context = "Legal name: first Jonathan, middle Michael, last Smith. Preferred name: first Jon, no middle name, last Smith.";
+  const { host, done } = await render(RunDecisionWireSchema.parse({ type: "review-before-write", title: "Review before write", context,
+    options: [{ id: "new-hire", label: "Approve new hire", hint: "File a new hire.", send: { via: "gate-arm", gateNodeId: "hire-review", expectedVersion: 7, arm: "new-hire" } }] }));
+  try { assert.match(host.textContent ?? "", new RegExp(context.replaceAll(".", "\\."), "u")); } finally { await done(); }
+});
+
 it("prefills a served text input with the rejected value", async () => {
   const { host, done } = await render(served({}, [{ id: "retry-with-value", label: "Enter EID", hint: "Start again.", send: { via: "start-plan" },
     input: { kind: "text", label: "Employee ID", pattern: "^10\\d{6}$", prefill: "1003187" } }]));
