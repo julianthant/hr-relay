@@ -38,7 +38,7 @@ export function restoreSchema28AssistantGrants(database: DatabaseSync): void {
 
 /** Steps an empty schema-28 authority back to schema 27: the attachments table did not exist yet. */
 export function removeEmptySchema28Attachments(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 29) restoreSchema28AssistantGrants(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 29) restoreSchema28AssistantGrants(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 28);
   assert.equal(database.prepare("SELECT count(*) AS count FROM assistant_attachments").get()?.count, 0);
   database.exec("DROP TABLE assistant_attachments");
