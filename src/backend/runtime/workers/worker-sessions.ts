@@ -987,7 +987,7 @@ export class WorkerSessionManager {
     const gate = this.#duoCeremony.openGate({
       workerId: this.#workerId,
       system: need.system,
-      envelopeDeadlineMonotonicMs: envelope.deadlineMonotonicMs(),
+      envelopeDeadlineMonotonicMs: envelope.deadlineMonotonicMs,
       cancelCeremony: envelope.cancel,
       signal,
     });

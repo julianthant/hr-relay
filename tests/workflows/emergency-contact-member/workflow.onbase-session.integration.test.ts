@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { describe, it } from "vitest";
+import { z } from "zod";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { BrowserProfileAdmissionSchema, OnbaseSessionHeldError, PlaywrightWorkerSessionFactory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
@@ -20,6 +21,7 @@ const onbase = WorkflowIdSchema.parse("onbase"), member = WorkflowIdSchema.parse
 const need = { system: "onbase", access: "read", session: "reuse-worker", exclusive: true } as const;
 
 const ACTIVE_RUN_STATES = "('claimed', 'validating', 'running')";
+const ActiveOwnerSchema = z.strictObject({ workerId: z.string(), runId: z.string() });
 
 // Runs the two-worker scenario; `wait` lets a test drive the clock while the second filing is blocked.
 async function withTwoWorkers(body: (w: Readonly<{ clock: ReturnType<typeof manualClock>; scheduler: ManualScheduler; database: ReturnType<typeof exclusiveLeaseFixture>["database"];
@@ -33,7 +35,8 @@ async function withTwoWorkers(body: (w: Readonly<{ clock: ReturnType<typeof manu
   await f.withTempRuntime(async ({ config, root }) => {
     const { database, repository } = exclusiveLeaseFixture();
     database.exec("ALTER TABLE runs ADD COLUMN workflow TEXT; UPDATE runs SET workflow='onbase'");
-    const runs = { listActiveOwners: (workflow: string) => database.prepare(`SELECT owner_worker_id AS workerId, id AS runId FROM runs WHERE workflow = ? AND state IN ${ACTIVE_RUN_STATES}`).all(workflow) };
+    const runs: Pick<AuthorityDatabase["authority"]["runs"], "listActiveOwners"> = { listActiveOwners: (workflow: string) => database.prepare(`SELECT owner_worker_id AS workerId, id AS runId FROM runs WHERE workflow = ? AND state IN ${ACTIVE_RUN_STATES}`)
+      .all(workflow).map(row => ActiveOwnerSchema.parse(row)) };
     const managers: WorkerSessionManager[] = [];
     try {
       const bindings: BrowserSystemBindings = { onbase: { system: "onbase", exclusive: true, createDriver: () => ({ system: "onbase" }),
@@ -43,7 +46,7 @@ async function withTwoWorkers(body: (w: Readonly<{ clock: ReturnType<typeof manu
         } } };
       const worker = async (ordinal: number, sessionId: string, harness: ReturnType<typeof f.fakeLauncher>) => {
         const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config: { ...config, paths: { ...config.paths, browserProfileRoot: join(root, "profiles") } },
-          browserOwner: { profileId: "22222222-2222-4222-8222-222222222222", database: { authority: { exclusiveSessionLeases: repository, runs } } as unknown as AuthorityDatabase },
+          browserOwner: { profileId: "22222222-2222-4222-8222-222222222222", database: { authority: { exclusiveSessionLeases: repository, runs } } as AuthorityDatabase },
           protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-value" }), clock, scheduler: pollScheduler, isolation: rebuildRuntimeIsolation,
           assertCurrent() {}, slotOrdinal: () => ordinal, newSessionId: () => sessionId, bindings, launcher: harness.launcher,
           admitProfile: async identity => BrowserProfileAdmissionSchema.parse({ ...identity, profileRevision: 1, resetRequired: false }) });
