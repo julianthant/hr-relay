@@ -8,7 +8,7 @@
   "ocr": "hidden",
   "oath-signature": "mock",
   "oath-upload": "mock",
-  "emergency-contact": "mock",
+  "emergency-contact": "served",
   "onbase": "mock",
   "i9-check-start": "served",
   "crm-doc-download": "mock",
