@@ -39,6 +39,8 @@ import type { BrowserPresentationMode } from "../../../models/run/envelope.js";
 import { LoginResultSchema, SessionNeedSchema } from "../../../models/sessions/session.js";
 import type { LoginResult, SessionNeed } from "../../../models/sessions/session.js";
 import type { RegisteredTaskStore, TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
+import { transitionWorkerSession, workerSessionHealth, workerSessionStateKey } from "./worker-session-state.js";
+import type { WorkerSessionBrowser, WorkerSessionState, WorkerSessionEvent as SessionTransition } from "./worker-session-state.js";
 
 export type {
   BrowserSessionCloseProof,
@@ -146,6 +148,37 @@ function effectiveResourceBrowserMode(
   return BrowserPresentationModeSchema.parse(
     resource.browserMode === undefined ? defaultBrowserMode : resource.browserMode,
   );
+}
+
+/**
+ * One system's browser session: `state` is its lifecycle, and each other field is what that state
+ * carries. `browser` lives from the open until its close proves, `acquisition` while it starts,
+ * `stopLogin` while it signs in, and `failure` (rethrown to every later lease) with `failed`.
+ * `turn` serializes the system's operations; it is a lock, not a lifecycle.
+ */
+interface SystemSession {
+  state: WorkerSessionState;
+  browser?: Readonly<{ resource: WorkerBrowserResource; openedAt: string; factory: WorkerBrowserSessionFactory; acquireMs: number; duo: DuoCeremonyGateFactory; defaultMode: BrowserPresentationMode }>;
+  acquisition?: Promise<WorkerBrowserResource>;
+  stopLogin?: (reason: "parked" | "worker-stop") => void;
+  failure?: Error;
+  turn?: Promise<void>;
+}
+
+const browserOf = (state: WorkerSessionState): WorkerSessionBrowser => state.state === "failed" ? state.browser : state;
+
+/** The browser a lease may reuse or a close must prove: signed in, closing it, or its close unproved. */
+function heldResource(session: SystemSession): WorkerBrowserResource | undefined {
+  const browser = browserOf(session.state);
+  const held = browser.state === "authenticated" || browser.state === "closure-unproved"
+    || browser.state === "closing" && browser.owner === "session";
+  return held ? session.browser?.resource : undefined;
+}
+
+/** A session close that has not proved, or lost custody: refuses reuse until a proven close. */
+function closureUnproved(state: WorkerSessionState): boolean {
+  const browser = browserOf(state);
+  return state.state === "failed" || browser.state === "closure-unproved" || browser.state === "closing" && browser.owner === "session";
 }
 
 function abortError(system: BrowserSystemId): Error {
@@ -328,14 +361,9 @@ export class WorkerSessionManager {
   readonly #onActivity: WorkerSessionManagerOptions["onActivity"];
   readonly #onObservation: WorkerSessionManagerOptions["onObservation"];
   readonly #onFailure: WorkerSessionManagerOptions["onFailure"];
+  readonly #systems = new Map<BrowserSystemId, SystemSession>();
+  // Worker-wide operations, not one system's session: they refuse work on every system, including one with no session yet.
   #controlInFlight = false;
-  readonly #retained = new Map<string, Readonly<{ openedAt: string; factory: WorkerBrowserSessionFactory; acquireMs: number; duo: DuoCeremonyGateFactory; defaultMode: BrowserPresentationMode }>>();
-  readonly #resources = new Map<BrowserSystemId, WorkerBrowserResource>();
-  readonly #poisoned = new Set<BrowserSystemId>();
-  readonly #acquisitionCleanupFailures = new Map<BrowserSystemId, Error>();
-  readonly #starting = new Map<BrowserSystemId, Promise<WorkerBrowserResource>>();
-  readonly #stopLogin = new Map<BrowserSystemId, (reason: "parked" | "worker-stop") => void>();
-  readonly #tails = new Map<BrowserSystemId, Promise<void>>();
   #closingReason: "parked" | "worker-stop" | undefined;
   #runConfigFingerprint: Fingerprint | undefined;
   #runBrowserMode: BrowserPresentationMode | undefined;
@@ -369,14 +397,15 @@ export class WorkerSessionManager {
   configureExecution(workflowId: WorkflowId, stores: TaskStoreRegistry): void {
     if (workflowId === this.#executionWorkflowId && stores === this.#stores) return;
     if (this.#controlInFlight || this.#runConfigFingerprint !== undefined || this.#closingReason !== undefined
-      || this.#starting.size > 0 || this.#tails.size > 0 || this.#resources.size > 0 || this.#retained.size > 0
-      || this.#poisoned.size > 0 || this.#acquisitionCleanupFailures.size > 0) throw new WorkerSessionClosureUnprovedError(this.#workerId);
+      || [...this.#systems.values()].some(session => session.state.state !== "closed" || session.acquisition !== undefined || session.turn !== undefined)) {
+      throw new WorkerSessionClosureUnprovedError(this.#workerId);
+    }
     this.#executionWorkflowId = WorkflowIdSchema.parse(workflowId);
     this.#stores = stores;
   }
 
   configureRunResources(resources: Readonly<{sessionFactory:WorkerBrowserSessionFactory;sessionAcquireMs:number;duoCeremony:DuoCeremonyGateFactory;defaultBrowserMode:BrowserPresentationMode}>): void {
-    if (this.#controlInFlight || this.#runConfigFingerprint !== undefined || this.#starting.size > 0) throw new Error("run-resources-cannot-change-during-execution");
+    if (this.#controlInFlight || this.#runConfigFingerprint !== undefined || this.#acquiring()) throw new Error("run-resources-cannot-change-during-execution");
     this.#factory = resources.sessionFactory;
     this.#acquireDeadlineMs = z.number().int().positive().parse(resources.sessionAcquireMs);
     this.#duoCeremony = resources.duoCeremony;
@@ -387,10 +416,10 @@ export class WorkerSessionManager {
     const need = SessionNeedSchema.parse(needInput), configFingerprint = this.#runConfigFingerprint, browserMode = this.#runBrowserMode;
     if (configFingerprint === undefined || browserMode === undefined || this.#closingReason !== undefined || this.#controlInFlight) throw new Error("browser-profile-preparation-unavailable");
     await this.#withSystemTurn(need.system, signal, async () => {
-      const cleanup = this.#acquisitionCleanupFailures.get(need.system);
-      if (cleanup !== undefined) throw cleanup;
-      if (this.#poisoned.has(need.system)) throw new WorkerSessionClosureUnprovedError(this.#workerId);
-      const existing = this.#resources.get(need.system);
+      const session = this.#session(need.system);
+      if (session.failure !== undefined) throw session.failure;
+      if (closureUnproved(session.state)) throw new WorkerSessionClosureUnprovedError(this.#workerId);
+      const existing = heldResource(session);
       if (existing !== undefined) {
         if (existing.instance === instance && existing.configFingerprint === configFingerprint
           && effectiveResourceBrowserMode(existing, this.#defaultBrowserMode) === browserMode) return;
@@ -399,39 +428,43 @@ export class WorkerSessionManager {
       const acquired = this.#onActivity?.("acquiring");
       try { await this.#factory.probeProfile({ workerId: this.#workerId, system: need.system, ...(instance === undefined ? {} : { instance }), browserMode, signal }); }
       catch (error) {
-        if (error instanceof BrowserSessionClosureUnprovedError) this.#acquisitionCleanupFailures.set(need.system, error);
+        if (error instanceof BrowserSessionClosureUnprovedError) this.#loseCustody(need.system, { type: "launch-uncertain" }, error);
         throw error;
       } finally { acquired?.(); }
     });
   }
 
   activeSystems(): readonly BrowserSystemId[] {
-    return Object.freeze([...this.#resources.keys()]);
+    return Object.freeze([...this.#systems].filter(([, session]) => heldResource(session) !== undefined).map(([system]) => system));
   }
 
   /** Refuse synchronously; no wait-for-idle action survives a busy target. */
   assertControlTarget(sessionId: string): WorkerBrowserResource {
-    if (this.#controlInFlight || this.#runConfigFingerprint !== undefined || this.#starting.size > 0 || this.#tails.size > 0 || this.#closingReason !== undefined) throw new WorkerControlRefusal("worker-browser-busy");
-    const resource = [...this.#resources.values()].find(value => value.sessionId === sessionId);
-    if (resource === undefined) throw new WorkerControlRefusal("worker-browser-session-unavailable");
-    if (this.#poisoned.has(resource.system)) throw new WorkerControlRefusal("worker-browser-unproven-close");
-    if (resource.browserMode === undefined || !this.#retained.has(resource.sessionId)) throw new WorkerControlRefusal("worker-browser-retained-settings-unavailable");
+    if (this.#controlInFlight || this.#runConfigFingerprint !== undefined || this.#acquiring()
+      || [...this.#systems.values()].some(session => session.turn !== undefined) || this.#closingReason !== undefined) throw new WorkerControlRefusal("worker-browser-busy");
+    const session = [...this.#systems.values()].find(candidate => heldResource(candidate)?.sessionId === sessionId);
+    const resource = session === undefined ? undefined : heldResource(session);
+    if (session === undefined || resource === undefined) throw new WorkerControlRefusal("worker-browser-session-unavailable");
+    if (closureUnproved(session.state)) throw new WorkerControlRefusal("worker-browser-unproven-close");
+    if (resource.browserMode === undefined) throw new WorkerControlRefusal("worker-browser-retained-settings-unavailable");
     return resource;
   }
 
   async controlBrowser(type: "refresh-browser" | "reopen-browser", sessionId: string, signal: AbortSignal): Promise<WorkerBrowserResource> {
     const resource = this.assertControlTarget(sessionId);
-    const retained = this.#retained.get(resource.sessionId);
+    const retained = this.#session(resource.system).browser;
     if (retained === undefined) throw new WorkerControlRefusal("worker-browser-retained-settings-unavailable");
     this.#controlInFlight = true;
     const current = { factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode };
     try {
+      // The control holds the session from here, so a control that fails before its turn still leaves it untrusted.
+      this.#apply(resource.system, { type: "lease" });
       return await this.#withSystemTurn(resource.system, signal, async () => {
-      this.#observe(resource, "unknown");
+      this.#observe(resource.system, resource);
       if (type === "refresh-browser") {
         // The resource factory's neutral reset includes content-level authentication proof.
         await resource.reset({ signal });
-        this.#observe(resource, "authenticated");
+        this.#observeAndApply(resource.system, resource, { type: "reset" });
         this.#emit({ type: "browser-session:reset", system: resource.system, sessionId: resource.sessionId });
         return resource;
       }
@@ -448,10 +481,12 @@ export class WorkerSessionManager {
       return replacement;
       });
     } catch (error) {
-      const remaining = this.#resources.get(resource.system);
+      const session = this.#session(resource.system);
+      const remaining = heldResource(session);
       if (remaining !== undefined) {
-        this.#poisoned.add(remaining.system);
-        this.#observe(remaining, "failed");
+        // A closing or already untrusted session needs no poison; refusing it would mask the control's error.
+        if (!closureUnproved(session.state)) this.#apply(resource.system, { type: "poison" });
+        this.#observe(resource.system, remaining);
       }
       throw error;
     } finally {
@@ -463,14 +498,56 @@ export class WorkerSessionManager {
     }
   }
 
-  #observe(resource: WorkerBrowserResource, health: WorkerBrowserObservation["health"]): void {
-    this.#onObservation?.(WorkerBrowserObservationSchema.parse({ ...(this.#retained.get(resource.sessionId) === undefined ? {} : { openedAt: this.#retained.get(resource.sessionId)?.openedAt }), workerId: this.#workerId, sessionId: resource.sessionId, system: resource.system,
+  #session(system: BrowserSystemId): SystemSession {
+    let session = this.#systems.get(system);
+    if (session === undefined) {
+      session = { state: { state: "closed" } };
+      this.#systems.set(system, session);
+    }
+    return session;
+  }
+
+  #acquiring(): boolean {
+    return [...this.#systems.values()].some(session => session.acquisition !== undefined);
+  }
+
+  /**
+   * Every session write goes through the transition table. A failed system refuses with the custody
+   * failure it recorded, as a new lease would; any other refusal is a broken invariant.
+   */
+  #transition(system: BrowserSystemId, event: SessionTransition): WorkerSessionState {
+    const session = this.#session(system);
+    const next = transitionWorkerSession(session.state, event);
+    if (!("refused" in next)) return next.state;
+    if (next.refused === "custody-lost" && session.failure !== undefined) throw session.failure;
+    throw new Error(`${system} browser session refused ${event.type} in ${workerSessionStateKey(session.state)}: ${next.refused}`);
+  }
+
+  #apply(system: BrowserSystemId, event: SessionTransition): void {
+    this.#session(system).state = this.#transition(system, event);
+  }
+
+  /** Report the state an event reaches before it is kept, so a failed report leaves the session where it was. */
+  #observeAndApply(system: BrowserSystemId, resource: WorkerBrowserResource, event: SessionTransition): void {
+    const next = this.#transition(system, event);
+    this.#observe(system, resource, next);
+    this.#session(system).state = next;
+  }
+
+  #loseCustody(system: BrowserSystemId, event: SessionTransition, failure: Error): void {
+    this.#apply(system, event);
+    this.#session(system).failure = failure;
+  }
+
+  #observe(system: BrowserSystemId, resource: WorkerBrowserResource, state: WorkerSessionState = this.#session(system).state): void {
+    const opened = this.#session(system).browser;
+    this.#onObservation?.(WorkerBrowserObservationSchema.parse({ ...(opened?.resource === resource ? { openedAt: opened.openedAt } : {}), workerId: this.#workerId, sessionId: resource.sessionId, system: resource.system,
       ...(resource.instance === undefined ? {} : { instance: resource.instance }), configFingerprint: resource.configFingerprint,
       profileRevision: resource.profileRevision,
       signInFingerprint: resource.signInFingerprint,
       browserMode: effectiveResourceBrowserMode(resource, this.#defaultBrowserMode),
       ...(resource.profileDirectory === undefined ? {} : { profileDirectory: resource.profileDirectory }),
-      acceptDownloads: resource.acceptDownloads, exclusive: resource.exclusive, health, observedAt: this.#clock.now().toISOString() }));
+      acceptDownloads: resource.acceptDownloads, exclusive: resource.exclusive, health: workerSessionHealth(state), observedAt: this.#clock.now().toISOString() }));
   }
 
 
@@ -597,7 +674,8 @@ export class WorkerSessionManager {
       const screenshotFailures: unknown[] = [];
       const poisonCloseFailures: unknown[] = [];
       try {
-        this.#observe(resource, "unknown");
+        this.#apply(need.system, { type: "lease" });
+        this.#observe(need.system, resource);
         resource.beginDiagnostics?.();
         let result: Result;
         try { result = await withBrowserActionSession(resource.sessionId, () => use(resource.driver, captureScreenshot)); }
@@ -606,7 +684,7 @@ export class WorkerSessionManager {
         operationCompleted = true;
         if (screenshotOwner === undefined) await withBrowserActionSession(resource.sessionId, () => this.#captureLeaseScreenshot(resource, { kind: "lease-end", outcome: "succeeded" }, configFingerprint));
         await resource.reset({ signal });
-        this.#observe(resource, "authenticated");
+        this.#observeAndApply(need.system, resource, { type: "reset" });
         this.#emit({
           type: "browser-session:reset",
           system: resource.system,
@@ -623,7 +701,7 @@ export class WorkerSessionManager {
             screenshotFailures.push(captureError);
           }
         }
-        if (this.#resources.get(need.system) === resource) {
+        if (heldResource(this.#session(need.system)) === resource) {
           try {
             await this.#closeSystem(need.system, "poisoned");
           } catch (closeError) {
@@ -687,16 +765,17 @@ export class WorkerSessionManager {
     this.#closingReason = reason;
     const failures: unknown[] = [];
     try {
+      const sessions = [...this.#systems];
       const systems = new Set<BrowserSystemId>([
-        ...this.#resources.keys(),
-        ...this.#starting.keys(),
-        ...this.#acquisitionCleanupFailures.keys(),
-        ...this.#tails.keys(),
+        ...sessions.filter(([, session]) => heldResource(session) !== undefined).map(([system]) => system),
+        ...sessions.filter(([, session]) => session.acquisition !== undefined).map(([system]) => system),
+        ...sessions.filter(([, session]) => session.failure !== undefined).map(([system]) => system),
+        ...sessions.filter(([, session]) => session.turn !== undefined).map(([system]) => system),
       ]);
       // A pending login's context is closed instead of awaited, so the login ends and closure is proved.
-      for (const system of systems) this.#stopLogin.get(system)?.(reason);
+      for (const system of systems) this.#session(system).stopLogin?.(reason);
       for (const system of systems) {
-        const starting = this.#starting.get(system);
+        const starting = this.#session(system).acquisition;
         try {
           await this.#withSystemTurn(
             system,
@@ -706,21 +785,20 @@ export class WorkerSessionManager {
                 const closing = new AbortController();
                 const timeout = new Error(`${system} pending acquisition closure exceeded its ${this.#acquireDeadlineMs}ms bound; closure is unproved`);
                 const handle = this.#scheduler.schedule(this.#clock.monotonicMs() + this.#acquireDeadlineMs, () => {
-                  this.#poisoned.add(system);
-                  this.#acquisitionCleanupFailures.set(system, timeout);
-                  closing.abort(timeout);
+                  try { this.#loseCustody(system, { type: "acquisition-close-timeout" }, timeout); }
+                  finally { closing.abort(timeout); }
                 });
                 try { await waitForAcquisition(starting, closing.signal, system); }
                 catch (error) {
                   if (error === timeout) throw error;
                   if ((error instanceof BrowserSessionClosureUnprovedError || error instanceof DuoCeremonyReleaseFailedError)
-                    && !this.#acquisitionCleanupFailures.has(system)) failures.push(error);
+                    && this.#session(system).failure === undefined) failures.push(error);
                 } finally {
                   handle.cancel();
                 }
               }
               await this.#closeSystem(system, reason);
-              const cleanupFailure = this.#acquisitionCleanupFailures.get(system);
+              const cleanupFailure = this.#session(system).failure;
               if (cleanupFailure !== undefined) failures.push(cleanupFailure);
             },
           );
@@ -741,19 +819,20 @@ export class WorkerSessionManager {
     signal: AbortSignal,
     operation: () => Promise<Result>,
   ): Promise<Result> {
-    const previous = this.#tails.get(system) ?? Promise.resolve();
+    const session = this.#session(system);
+    const previous = session.turn ?? Promise.resolve();
     let releaseTurn = (): void => undefined;
     const current = new Promise<void>((resolve) => {
       releaseTurn = resolve;
     });
     const tail = previous.then(() => current);
-    this.#tails.set(system, tail);
+    session.turn = tail;
     try {
       await waitForTurn(previous, signal, system);
       return await operation();
     } finally {
       releaseTurn();
-      if (this.#tails.get(system) === tail) this.#tails.delete(system);
+      if (session.turn === tail) session.turn = undefined;
     }
   }
 
@@ -832,7 +911,7 @@ export class WorkerSessionManager {
       this.#onFailure?.({ system, reason: "abandoned-acquisition-failed" });
       return;
     }
-    if (this.#resources.get(system) !== resource) return;
+    if (heldResource(this.#session(system)) !== resource) return;
     try {
       await this.#withSystemTurn(
         system,
@@ -854,12 +933,12 @@ export class WorkerSessionManager {
     signal: AbortSignal,
     envelope: AcquisitionEnvelope,
   ): Promise<WorkerBrowserResource> {
-    const cleanupFailure = this.#acquisitionCleanupFailures.get(need.system);
-    if (cleanupFailure !== undefined) throw cleanupFailure;
-    if (this.#poisoned.has(need.system)) {
+    const session = this.#session(need.system);
+    if (session.failure !== undefined) throw session.failure;
+    if (closureUnproved(session.state)) {
       throw new Error(`${need.system} browser session has an unresolved failed-close proof`);
     }
-    const existing = this.#resources.get(need.system);
+    const existing = heldResource(session);
     if (existing !== undefined) {
 
       if (existing.instance !== instance
@@ -876,20 +955,23 @@ export class WorkerSessionManager {
         return existing;
       }
     }
-    const pending = this.#starting.get(need.system);
-    if (pending !== undefined) return pending;
+    if (session.acquisition !== undefined) return session.acquisition;
+    this.#apply(need.system, { type: "launch" });
     const started = this.#openAndLogin(need, instance, configFingerprint, browserMode, signal, envelope);
-    this.#starting.set(need.system, started);
+    session.acquisition = started;
     try {
       return await started;
     } catch (error) {
-      if (error instanceof DuoCeremonyReleaseFailedError
-        || error instanceof BrowserSessionClosureUnprovedError && !this.#resources.has(need.system)) {
-        this.#acquisitionCleanupFailures.set(need.system, error);
+      // An acquisition that failed before its factory opened a browser leaves none.
+      const browser = browserOf(session.state);
+      if (browser.state === "starting" && browser.phase === "launching") this.#apply(need.system, { type: "launch-failed" });
+      if (error instanceof DuoCeremonyReleaseFailedError) this.#loseCustody(need.system, { type: "ceremony-release-failed" }, error);
+      else if (error instanceof BrowserSessionClosureUnprovedError && heldResource(session) === undefined) {
+        this.#loseCustody(need.system, { type: "launch-uncertain" }, error);
       }
       throw error;
     } finally {
-      if (this.#starting.get(need.system) === started) this.#starting.delete(need.system);
+      if (session.acquisition === started) session.acquisition = undefined;
     }
   }
 
@@ -918,6 +1000,8 @@ export class WorkerSessionManager {
         value = await this.#openAndLoginOnce(need, instance, configFingerprint, browserMode, signal, gate, envelope);
       } catch (error) {
         if (this.#controlInFlight || !(error instanceof DuoTerminalRefusalError) || !gate.retainedForRecovery()) throw error;
+        // The retry is the same acquisition: it relaunches under the ceremony lease it kept.
+        this.#apply(need.system, { type: "launch" });
         const discardProfile = this.#factory.discardProfile;
         if (discardProfile === undefined) {
           throw new Error(
@@ -993,8 +1077,13 @@ export class WorkerSessionManager {
       acquisitionRemainingMs: () => Math.max(0, envelope.deadlineMonotonicMs() - this.#clock.monotonicMs()),
       extendAcquisition: envelope.extend,
     });
+    } catch (error) {
+      this.#apply(need.system, { type: "launch-failed" });
+      throw error;
     } finally { acquired?.(); }
-    this.#retained.set(resource.sessionId, { openedAt: this.#clock.now().toISOString(), factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode });
+    const session = this.#session(need.system);
+    session.browser = { resource, openedAt: this.#clock.now().toISOString(), factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode };
+    this.#apply(need.system, { type: "launched" });
     let login: LoginResult;
     let stopClose: Promise<void> | undefined;
     try {
@@ -1015,27 +1104,29 @@ export class WorkerSessionManager {
         throw new Error(`${need.system} session factory returned a resource with mismatched launch options`);
       }
       const authenticated = this.#onActivity?.("authenticating");
-      this.#stopLogin.set(need.system, reason => {
-        stopClose ??= this.#closeResource(resource, reason, exclusive);
+      session.stopLogin = reason => {
+        if (stopClose === undefined) {
+          this.#apply(need.system, { type: "close", reason });
+          stopClose = this.#closeResource(need.system, resource, reason, exclusive);
+        }
         stopClose.catch(observeAbandonedAcquisition);
-      });
+      };
       try {
-      this.#observe(resource, "starting");
+      this.#observe(need.system, resource);
       login = LoginResultSchema.parse(await store.session.login(resource.authentication, {
         ...(instance === undefined ? {} : { instance }),
         signal,
       }));
       } finally {
-        this.#stopLogin.delete(need.system);
+        session.stopLogin = undefined;
         authenticated?.();
       }
       if (stopClose !== undefined) throw new Error(`${need.system} login was stopped before it settled`);
     } catch (loginError) {
+      if (stopClose === undefined) this.#apply(need.system, { type: "login-failed" });
       try {
-        await (stopClose ?? this.#closeResource(resource, "login-failed", exclusive));
+        await (stopClose ?? this.#closeResource(need.system, resource, "login-failed", exclusive));
       } catch (closeError) {
-        this.#resources.set(need.system, resource);
-        this.#poisoned.add(need.system);
         throw new AggregateError(
           [loginError, closeError],
           `${need.system} login and cleanup both failed`,
@@ -1044,8 +1135,8 @@ export class WorkerSessionManager {
       }
       throw loginError;
     }
-    this.#resources.set(need.system, resource);
-    this.#observe(resource, "authenticated");
+    this.#apply(need.system, { type: "signed-in" });
+    this.#observe(need.system, resource);
     this.#emit({
       type: "browser-session:start",
       system: resource.system,
@@ -1056,16 +1147,16 @@ export class WorkerSessionManager {
   }
 
   async #closeSystem(system: BrowserSystemId, reason: BrowserSessionCloseReason): Promise<void> {
-    const resource = this.#resources.get(system);
+    const resource = heldResource(this.#session(system));
     if (resource === undefined) return;
     const store = browserStoreFor(this.#stores, system);
-    this.#poisoned.add(system);
-    await this.#closeResource(resource, reason, store.session.exclusive === true);
-    if (this.#resources.get(system) === resource) this.#resources.delete(system);
-    this.#poisoned.delete(system);
+    this.#apply(system, { type: "close", reason });
+    await this.#closeResource(system, resource, reason, store.session.exclusive === true);
   }
 
+  /** Close the system's browser; only a proof that names it leaves the session closed. */
   async #closeResource(
+    system: BrowserSystemId,
     resource: WorkerBrowserResource,
     reason: BrowserSessionCloseReason,
     exclusive: boolean,
@@ -1086,9 +1177,10 @@ export class WorkerSessionManager {
       if (exclusive && proof.exclusiveLeaseReleased !== true) {
         throw new Error(`${resource.system} close proof is missing exclusive identity-lease release`);
       }
-      this.#observe(resource, "closed");
+      this.#observeAndApply(system, resource, { type: "close-proved" });
       proved = true;
-      this.#retained.delete(resource.sessionId);
+      const session = this.#session(system);
+      if (session.browser?.resource === resource) session.browser = undefined;
       this.#emit({
         type: "browser-session:close",
         system: resource.system,
@@ -1097,7 +1189,8 @@ export class WorkerSessionManager {
       });
     } catch (error) {
       if (!proved) {
-        try { this.#observe(resource, "failed"); }
+        this.#apply(system, { type: "close-failed" });
+        try { this.#observe(system, resource); }
         catch (observationError) { throw new AggregateError([error, observationError], "worker browser close and failure observation failed", { cause: observationError }); }
       }
       throw error;

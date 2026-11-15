@@ -203,7 +203,6 @@ for (const status of ["attempting", "parked"] as const) it(`refuses a persisted 
   f.assertNoWrites();
 });
 
-
 it("re-enters after the filing child an hour later without failing, clicking or re-reading stale scope", async () => {
   const f = await memberFixture({ advanceBetweenEntriesMs: 60 * 60_000 });
   assert.deepEqual(f.failures.map(failure => ({ code: failure.code, summary: failure.summary })), []);
