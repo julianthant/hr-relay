@@ -140,7 +140,7 @@ describe_m1("frontend workflow catalog", () => {
       expect_m1(entries.find(entry => entry.id === "person-lookup")?.source).toBe("preview");
     }
   });
-  it_m1("retains explicit mock fixtures while production serves Onboarding, Work-Study, Emergency Contact and I-9 Check and hides child workflows", () => {
+  it_m1("retains explicit mock fixtures while production serves Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and I-9 Check and hides child workflows", () => {
     const listed = Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source !== "hidden").map(([id]) => id).sort();
     expect_m1(MOCK_WORKFLOW_CATALOG_m1.workflows.filter(flow => WORKFLOW_SOURCES_m1[flow.id] !== "hidden").map(flow => flow.id).sort()).toEqual(listed.filter(id => id !== "work-study"));
     expect_m1(listed.filter(id => id !== "work-study")).toEqual(catalog.map(entry => entry.id).sort());
