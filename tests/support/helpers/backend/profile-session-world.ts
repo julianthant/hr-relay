@@ -73,7 +73,7 @@ export async function createProfileSessionWorld() {
     const settle = settlers.get(session);
     if (settle === undefined) throw new Error("profile-session-world logout owner missing");
     await settle(result.operationId);
-    return session.resumeLogout(result.operationId);
+    return { ...session.resumeLogout(result.operationId), operationId: result.operationId };
   }
 
   async function signUp(session: Session, fields: { firstName: string; lastName: string; email: string; password: string; createdAt: string }) {
