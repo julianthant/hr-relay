@@ -22,7 +22,7 @@ async function mount(deletion: () => Promise<Response>, profileSource: "served" 
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
-    if (path === "/api/v1/profile/state") return Response.json({ state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready", account: { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", lastSignedInAt: "2026-11-10T08:30:00-08:00" } });
+    if (path === "/api/v1/profile/state") return Response.json({ state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready", account: { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", timekeeperInitials: "JL", lastSignedInAt: "2026-11-10T08:30:00-08:00" } });
     if (path === "/api/v1/profile/delete-account") {
       const body = init?.body;
       assert.ok(typeof body === "string");

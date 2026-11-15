@@ -48,10 +48,7 @@ import {
   ResolvedIdentitySubjectSchema,
 } from "../../../../rules/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../../rules/separations/identity-evidence.js";
-import {
-  buildFinalizationComments,
-  separationInitials
-} from "../../../../rules/separations/separation-dates.js";
+import { buildFinalizationComments } from "../../../../rules/separations/separation-dates.js";
 import {
   assertTerminationReceipt
 } from "../../../../rules/separations/termination-receipt.js";
@@ -374,7 +371,7 @@ export function buildFinalization({ task, transaction, group }: Author, extracti
         dateChangeComments: outputs["dates"].dateChangeComments,
         documentNumber: input.documentNumber,
         transactionNumber,
-        initials: separationInitials(input.timekeeperName),
+        initials: input.timekeeperInitials,
         asOfDate: outputs["plan"].asOfDate,
       }),
       observedExistingComments: existingComments(outputs["document"].timekeeper.comments),
