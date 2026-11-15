@@ -72,6 +72,7 @@ import type { TimelineRepository } from "../../../models/events/timeline.js";
 import { readTimelineRecords, timelineSpanLocation } from "../../storage/events/timeline-reader.js";
 import { nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
 import { deriveRunStatus, foldCategoryState, panelKindOf, taskStateOf, type TaskExecutionState } from "../../../rules/runs/run-status.js";
+import { interruptTransition, pendingInterruptOf } from "../../../rules/runs/run-interrupt.js";
 import { LogIdentityRefusedError, ProjectionDegradedError } from "../commands/refusals.js";
 
 /* ── the in-memory evidence fold shape ─ */
@@ -1273,10 +1274,11 @@ export class RunQueueProjection {
       : retainedRunProtectedBindings(authority).length > 0
         ? { state: "absent", reason: "the operator's display name is withheld because this run carries protected input" }
         : { state: "present", value: authority.displayName };
-    const pauseUnavailable = authority.lifecycle.state === "terminal" || authority.lifecycle.state === "parked-write" || authority.cancelRequested === true;
+    const pending = pendingInterruptOf(authority);
+    const pauseUnavailable = interruptTransition(authority, { kind: "pause" }).state === "refused";
     const pauseControl: NonNullable<QueueSurfaceWire["pauseControl"]> = { expectedVersion: authority.version,
-      state: pauseUnavailable ? "unavailable" : authority.pause?.state === "requested" ? "pause-pending" : authority.pause?.state === "paused" ? "paused" : "running",
-      ...(pauseUnavailable || authority.pause?.state === "requested" ? {} : { command: authority.pause?.state === "paused" ? "resume" as const : "pause" as const }) };
+      state: pauseUnavailable ? "unavailable" : pending === "pause-requested" ? "pause-pending" : pending === "paused" ? "paused" : "running",
+      ...(pauseUnavailable ? {} : { command: pending === "none" ? "pause" as const : "resume" as const }) };
     const claim = runClaim(authority);
     const interrupt = claim === undefined ? undefined : stepInterruptOf(authority, this.#deps.authority.writeInFlight?.(queued.runId) === true);
     const notStarting = this.#notStarting(queued.workflow, status);

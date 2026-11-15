@@ -17,7 +17,7 @@ it("stops an unused Duo provider once and refuses any later browser launch befor
   await stopping;
   const forbidden = (): never => { throw new Error("shutdown read an owner or credential"); };
   const owner = { operationId: randomUUID(), profileId: randomUUID(), accountId: randomUUID(), generation: 1,
-    assertCurrent: forbidden, acquireCredentials: forbidden, readState: forbidden, reportEvent: forbidden,
+    assertCurrent: forbidden, readState: forbidden, reportEvent: forbidden,
     start: forbidden, cancel: forbidden, confirm: forbidden };
   await assert.rejects(provider.showBrowser(owner), error => error instanceof ProfileOnboardingDuoProviderError && error.reason === "revoked");
   assert.equal(provider.stop(), stopping);
@@ -36,7 +36,7 @@ it("does not launch a Duo browser when shutdown arrives during focus capture", a
     focus: { async captureRelay() { entered.resolve(); await release.promise; return undefined; }, show: forbidden, returnToRelay: forbidden } });
   let ownerReads = 0;
   const owner = { operationId: randomUUID(), profileId: randomUUID(), accountId: randomUUID(), generation: 1,
-    assertCurrent() { ownerReads++; }, acquireCredentials: forbidden, readState: forbidden, reportEvent: forbidden,
+    assertCurrent() { ownerReads++; }, readState: forbidden, reportEvent: forbidden,
     start: forbidden, cancel: forbidden, confirm: forbidden };
   const opening = provider.showBrowser(owner);
   const refused = assert.rejects(opening, error => error instanceof ProfileOnboardingDuoProviderError && error.reason === "revoked");

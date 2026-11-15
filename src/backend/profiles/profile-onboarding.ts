@@ -26,7 +26,6 @@ export function createProfileOnboarding(input: {
   readonly read: (operationId: string) => SignUpOperation;
   readonly update: <T>(operationId: string, change: (operation: SignUpOperation) => Readonly<{ operation: SignUpOperation; result: T }>) => T;
   readonly email: (operation: SignUpOperation) => string;
-  readonly credentials: (operation: SignUpOperation) => Readonly<{ userId: string; password: string }>;
   readonly publicState: (operation: SignUpOperation) => ProfileOnboardingState;
   readonly store: (operation: SignUpOperation) => ReturnType<typeof createDuoCredentialStore>;
 }) {
@@ -94,7 +93,6 @@ export function createProfileOnboarding(input: {
     const browser: DraftDuoBrowserOwner = Object.freeze({ operationId, profileId: operation.profileId,
       accountId: draft.accountId, generation: draft.generation,
       assertCurrent() { currentDraft(); },
-      async acquireCredentials() { const value = input.credentials(currentDraft()); currentDraft(); return value; },
       readState() { return input.publicState(currentDraft()); },
       reportEvent(event: ProfileOnboardingDuoEvent) { input.onEvent(currentDraft(), event); },
       async start(method: ProfileOnboardingMethod) { currentDraft(); await owner.start(operationId, method); currentDraft(); },

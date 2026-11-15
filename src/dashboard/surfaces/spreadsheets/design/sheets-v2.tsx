@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { closeDraft, editMapping, importWorkbook, pendingImportName } from './sheets-v2-writes.js';
-import { PageHeading, SearchInput, useToasts } from '../../../ds/ui.js';
+import { PageHeading, SearchInput, Skeleton, useToasts } from '../../../ds/ui.js';
+import { LoadingRegion, SkeletonText } from '../../shared/loading/loading.js';
 import { useSpreadsheetWiringAdapter, type LibraryChangeResult } from '../../../state/spreadsheet-wiring-adapter.js';
 import { decodeEditableWorkbook } from '../../../../models/dashboard/workbooks.js';
 import type { WorkbookLibraryAction } from '../../../../models/dashboard/workbook-library.js';
@@ -19,6 +20,10 @@ import '../spreadsheet-library.css';
 const CREATED_ROWS = 8;
 
 /** The Spreadsheets page on the served library. */
+function unusableRowsNote(count: number) {
+  return count > 0 ? `${count.toLocaleString()} ${count === 1 ? 'row has' : 'rows have'} no usable employee ID and will be read as missing.` : undefined;
+}
+
 export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionDay: string) => void }) {
   const { toast } = useToasts();
   const [openId, setOpenId] = useState<string>();
@@ -74,7 +79,10 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   };
   const add = async (document: EditableWorkbook) => {
     const outcome = await importWorkbook(adapter, document);
-    if (outcome.state === 'added') { toast({ tone: 'success', title: `Added ${outcome.name}` }); return true; }
+    if (outcome.state === 'added') {
+      toast({ tone: 'success', title: `Added ${outcome.name}`, description: unusableRowsNote(outcome.rowsWithoutEid) });
+      return true;
+    }
     toast({ tone: 'danger', title: outcome.state === 'pending' ? `Still confirming ${pendingImportName(adapter)}` : "Couldn't add the spreadsheet",
       description: outcome.state === 'pending' ? 'Choose Add to library again to check it. It is not added twice.' : outcome.reason });
     return false;
@@ -94,11 +102,12 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   return <section aria-label="Spreadsheets" className="hub-sheets-library settings-compact-page min-w-0">
     {pending.map(entry => <Grey key={entry!.libraryId} className="mb-3 text-[13px]">A change to {entry!.name} isn't confirmed yet. <V2Button look="plain" onClick={() => void checkPending(entry!.libraryId)}>Check result</V2Button></Grey>)}
     {openId && open ? (draft ? <SheetDetail key={openId} sheet={open} document={draft.document} fields={fields} onBack={back} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'rollback', id: openId })} onMap={(worksheet, patch) => void saveMapping(worksheet, patch)} />
-      : <Grey className="text-[13px]">{openError ? "This spreadsheet couldn't be opened." : 'Opening…'} <V2Button look="plain" onClick={back}>Back</V2Button></Grey>) : <>
+      : openError ? <Grey className="text-[13px]">This spreadsheet couldn't be opened. <V2Button look="plain" onClick={back}>Back</V2Button></Grey>
+      : <LoadingRegion label={`Opening ${open.name}`}><div aria-hidden><SkeletonText className="mb-2 w-48 text-[22px]" /><SkeletonText className="mb-5 w-72 text-[13px]" />{[0, 1, 2, 3].map(index => <Skeleton key={index} className="mb-2 h-9 w-full" />)}</div></LoadingRegion>) : <>
       <PageHeading title="Spreadsheets" description="Reference lists your runs look people up in." actions={<V2Button disabled={catalogLoading || !!catalogError} onClick={() => setImporting(true)}>Import</V2Button>} />
       <div className="ds-toolbar-row mb-5 flex items-center gap-2"><SearchInput aria-label="Search spreadsheets" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} className="w-[260px]" />{groups.workflows.length > 0 && <TagFilter groups={groups} value={filter} onChange={setFilter} />}</div>
       <div ref={listRef}>{catalogError ? <Grey className="text-[13px]">Spreadsheets couldn't be loaded. <V2Button look="plain" onClick={() => void adapter.refreshCatalog()}>Check again</V2Button></Grey>
-        : catalogLoading ? <Grey className="text-[13px]">Loading spreadsheets…</Grey>
+        : catalogLoading ? <LoadingRegion label="Loading spreadsheets"><div aria-hidden>{[0, 1, 2].map(index => <Skeleton key={index} className="mb-2 h-10 w-full" />)}</div></LoadingRegion>
         : tables.length ? tables.map(table => <SheetTable key={table.title} title={table.title} sheets={table.items} narrow={narrow} actions={rows} limit={table.title === 'Created' ? CREATED_ROWS : undefined} />)
         : <Grey className="text-[13px]">{sheets.length ? 'No spreadsheets match.' : 'No spreadsheets yet. Choose Import to add one.'}</Grey>}</div>
     </>}

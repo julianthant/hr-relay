@@ -27,11 +27,11 @@ describe("the descriptor prose the modal draws", () => {
     }
   });
 
-  it("exposes the I-9 PDF start without giving a workflow two start methods", () => {
+  it("exposes the I-9 Check and Emergency Contact PDF starts without giving a workflow two start methods", () => {
 
     assert.deepEqual(
       DESCRIPTORS.filter((descriptor) => descriptor.surfaces.uploadRun !== undefined).map((d) => d.id),
-      ["i9-check-start"],
+      ["i9-check-start", "emergency-contact"],
     );
     for (const descriptor of DESCRIPTORS) {
       assert.ok(Number(descriptor.surfaces.uploadRun !== undefined) + Number(descriptor.surfaces.inputRun !== undefined) <= 1, descriptor.id);
@@ -88,6 +88,7 @@ describe("workflow descriptor registry", () => {
       "person-lookup",
       "separations",
       "onboarding",
+      "work-study",
       "i9-check-start",
       "crm-doc-download",
       "emergency-contact",
@@ -96,11 +97,12 @@ describe("workflow descriptor registry", () => {
       "person-lookup",
       "separations",
       "onboarding",
+      "work-study",
       "i9-check-start",
       "crm-doc-download",
       "emergency-contact",
     ]);
-    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations", "onboarding", "i9-check-start", "crm-doc-download", "emergency-contact"]);
+    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations", "onboarding", "work-study", "i9-check-start", "crm-doc-download", "emergency-contact"]);
     for (const descriptor of STEP_PROOF_DESCRIPTORS) {
       expect(() => workflowModuleOf(descriptor.id)).toThrow(/not registered/u);
     }

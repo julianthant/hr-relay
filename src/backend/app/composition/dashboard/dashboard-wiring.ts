@@ -9,7 +9,7 @@ import type { ClearRunHistoryRequest } from "../../../../models/dashboard/run-hi
 import { admitOcrExtraction } from "../../../../models/ocr/extraction.js";
 import { buildExtractionInstruction } from "../../../../models/ocr/instruction.js";
 import { WorkerPoolMemberSchema } from "../../../../models/run/worker-slot.js";
-import { requireStoppedPool, type WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
+import { requireStoppedPool, WorkerPoolError, type WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
@@ -101,9 +101,12 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
   const { noteWriter, timelineTimer, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, lifecycle, debugEvents });
 
-  const reportSupervisorFault = (error: Error): void => {
+  const reportSupervisorFault = (error: Error, origin?: Readonly<{ workerId: string; pid?: number }>): void => {
+    const detail = error instanceof WorkerPoolError ? error.detail : {}, pid = origin?.pid ?? detail.pid;
     emitFaultWithCauses(debugEvents, input.workerProcess?.faultSink, error, { category: "worker", area: "supervisor", code: "WORKER_SUPERVISOR_FAILED",
-      reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "supervisor-failed" });
+      reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "supervisor-failed",
+      ...(origin === undefined ? {} : { message: [`workerId=${origin.workerId}`, ...(pid === undefined ? [] : [`pid=${String(pid)}`]),
+        ...(detail.field === undefined ? [] : [`field=${detail.field}`])].join(" ") }) });
   };
   const reportDashboardTransferFault = (error: Error): void => {
     emitFaultWithCauses(debugEvents, input.workerProcess?.faultSink, error, { category: "http", area: "response-transfer", code: "DASHBOARD_TRANSFER_FAILED",
@@ -331,8 +334,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       readStatus: async signal => { assertCurrent(); const result = await chatGptAccount.readStatus(signal); assertCurrent(); return result; },
       refreshAccount: async () => { assertCurrent(); const result = await chatGptAccount.refreshAccount(); assertCurrent(); return result; },
       signIn: async fields => { assertCurrent(); const result = await chatGptAccount.signIn(fields); assertCurrent(); return result; },
-      signOut: async () => { assertCurrent(); const result = await chatGptAccount.signOut(); assertCurrent(); return result; },
-      forgetAccount: async () => { assertCurrent(); const result = await chatGptAccount.forgetAccount(); assertCurrent(); return result; },
     },
     notifications: composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget }),
     ...(staticBundle === undefined ? {} : { staticBundle }),

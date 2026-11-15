@@ -765,7 +765,7 @@ export class RuntimeAdmission {
         credentials: { operationId: operation.credentials.operationId, keyId: operation.credentials.keyId, generation: operation.credentials.generation } });
       if (row === undefined && pendingOperation === undefined) throw new Error("profile-storage-claim-unregistered");
       const fingerprint = createHash("sha256").update(canonicalJsonStringify(phase === "setup" && pendingOperation !== undefined ? operationIdentity(pendingOperation) : {
-        profileId: row?.profileId, createdAt: row?.createdAt, firstName: row?.firstName, lastName: row?.lastName, registration: row?.registration,
+        profileId: row?.profileId, createdAt: row?.createdAt, registration: row?.registration,
       })).digest("hex");
       return { profileId: id, phase, verify: (purpose, publication) => {
         if (purpose === "repair" && phase !== "runtime") throw new Error("profile-storage-claim-unavailable");
@@ -787,7 +787,7 @@ export class RuntimeAdmission {
           authority = operationIdentity(operation);
         } else {
           if (registered === undefined) throw new Error("profile-storage-claim-changed");
-          authority = { profileId: registered.profileId, createdAt: registered.createdAt, firstName: registered.firstName, lastName: registered.lastName, registration: registered.registration };
+          authority = { profileId: registered.profileId, createdAt: registered.createdAt, registration: registered.registration };
         }
         if (purpose !== "custody") {
           if (current.sessionGeneration !== document.sessionGeneration) throw new Error("profile-storage-claim-generation-changed");

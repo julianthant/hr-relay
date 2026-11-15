@@ -16,6 +16,7 @@ import { KeyboardSection } from "./navigation/settings-keyboard.js";
 import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./navigation/settings-search-model.js";
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
 import { AccountSettings, type AccountPage } from "./account/account-settings.js";
+import { relayUsername } from "./account/relay-username.js";
 import { ChatGptAccountSettings } from "./general/chatgpt-account.js";
 import { DeleteAccountControl } from "./general/ui-settings-records-general-paths.js";
 import { SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
@@ -258,7 +259,7 @@ export function SettingsPage({
         {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} />
         )}
-        {resolution.state === "open" && resolution.entry.id === "account" && (accountPage === undefined ? <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} /> : <AccountSettings page={accountPage} ucpath={<SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} embedded />} deleteAccount={deleteAccount ?? <DeleteAccountControl presentation={{ state: "unavailable" }} />} />)}
+        {resolution.state === "open" && resolution.entry.id === "account" && (accountPage === undefined ? <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} /> : <AccountSettings page={accountPage} username={relayUsername(editor)} ucpath={<SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} embedded />} deleteAccount={deleteAccount ?? <DeleteAccountControl presentation={{ state: "unavailable" }} />} />)}
         {resolution.state === "open" && resolution.entry.id === "subscription" && <section className="settings-compact-page"><PageHeading title="Subscription" /><ChatGptAccountSettings /></section>}
         {resolution.state === "open"
           && resolution.entry.source === "served"

@@ -79,7 +79,14 @@ afterEach(async () => {
 afterAll(() => profiles.close());
   type AccountingDatabase = Parameters<MutationCase['mutate']>[0];
   const accountingWorkbooks = new WeakMap<AccountingDatabase, SavedWorkbook>();
-  const createAccountingWorkbook = (database: AccountingDatabase) => createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock: CLOCK })
+  const accountingLibraries = new WeakMap<AccountingDatabase, ReturnType<typeof createWorkbookLibraryService>>();
+  // Opening the library provisions the workflow reference types; prepare opens it so the measured mutation is the create alone.
+  const accountingLibrary = (database: AccountingDatabase) => {
+    let library = accountingLibraries.get(database);
+    if (library === undefined) accountingLibraries.set(database, library = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock: CLOCK }));
+    return library;
+  };
+  const createAccountingWorkbook = (database: AccountingDatabase) => accountingLibrary(database)
     .create({ name: "Accounting.xlsx", themes: [], hasFormulas: false,
       sheets: [{ id: "sheet", name: "Rows", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "synthetic" }] }] }] });
   const prepareAccountingWorkbook = (database: AccountingDatabase) => { accountingWorkbooks.set(database, createAccountingWorkbook(database)); };
@@ -101,12 +108,12 @@ afterAll(() => profiles.close());
   const cases: readonly MutationCase[] = [...authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT }),
     { table: "workbook_library_actions", prepare: prepareAccountingWorkbook, mutate: renameAccountingVersion },
     { table: "workbook_library_state", prepare: prepareAccountingWorkbook, mutate: renameAccountingVersion },
-    { table: "workbook_library_snapshots", mutate: database => {
+    { table: "workbook_library_snapshots", prepare: database => { accountingLibrary(database); }, mutate: database => {
       const saved = createAccountingWorkbook(database), version = database.authority.workbooks.libraryVersion(saved.libraryId);
       assert.equal(version.version.id, 'original');
       assert.deepEqual(version.workbook, encodeEditableWorkbook(saved.workbook));
     } },
-    { table: "workbook_creations", mutate: database => {
+    { table: "workbook_creations", prepare: database => { accountingLibrary(database); }, mutate: database => {
       const saved = createAccountingWorkbook(database);
       assert.deepEqual(database.authority.workbooks.creation(saved.libraryId), saved);
       assert.deepEqual(database.authority.workbooks.revision(saved.libraryId, 1), saved);

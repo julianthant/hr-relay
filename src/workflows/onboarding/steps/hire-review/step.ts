@@ -267,7 +267,7 @@ const hireGroup = Object.freeze({ ...defineWorkflowStep({ key: "ucpath-hire", la
             id: "hire-setup-employee-id",
             label: "Employee ID",
             transactionFields: [{ nodeId: "concurrent-hire-create", kind: "input", fieldPath: "emplId" }],
-            source: { origin: "Approved existing person", detail: "Use the independently confirmed employee ID for the existing-person hire path.", chain: [] }
+            source: { origin: "Approved existing person", detail: "Use the confirmed or operator-chosen employee ID for the existing-person hire path.", chain: [] }
           }
         ]
       },
@@ -283,7 +283,7 @@ const hireGroup = Object.freeze({ ...defineWorkflowStep({ key: "ucpath-hire", la
             text: "For a new hire, fill and check legal and lived names, identifiers, contact details and the verified Tracker profile.",
             nodeIds: ["hire-create"]
           },
-          { id: "existing-person", kind: "check", text: "For an existing person, confirm the independently verified identity.", nodeIds: ["concurrent-hire-create"] }
+          { id: "existing-person", kind: "check", text: "For an existing person, use the confirmed or operator-chosen identity.", nodeIds: ["concurrent-hire-create"] }
         ],
         fields: [
           {
@@ -598,7 +598,8 @@ export function buildHireWrites(author: WorkflowAuthor<typeof OnboardingInput>, 
       existing: ["i9-profile-plan", "concurrent-hire-create", "concurrent-hire-receipt", "concurrent-master-results"] } }, [plan],
   ({ outputs }) => outputs["write-plan"].hire.mode === "new-hire" ? "create" : "existing");
   const notRequired = author.task(entries.task("i9-profile-plan", OnboardingReadI9ProfilePlan, { replay: "always-rerun" }), [crm.plan, i9.lookup, plan], ({ outputs }) => ({
-    plan: outputs["hire-plan"], lookup: outputs["i9-lookup"],
+    // Only the existing-person branch runs this node: a concurrent hire never records an I-9 creation plan.
+    plan: outputs["hire-plan"], lookup: outputs["i9-lookup"].state === "checked" ? { state: "not-required" as const, subjectState: "review-required" as const } : outputs["i9-lookup"],
   }));
   const profile = author.transaction(entries.transaction("i9-profile-save", { label: "Save I-9 profile", prepare: I9StageProfile, commit: I9CreateProfile,
     dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000 }), [plan, approval], {
@@ -661,7 +662,7 @@ export const onboardingHireWritesDefinition = defineStep({
   group: review, build: buildHireWrites,
   nodePurposes: [
     { nodeId: "hire-findings", purpose: "Read complete UCPath transaction findings before approving any external write." },
-    { nodeId: ONBOARDING_WRITE_REVIEW_GATE, purpose: "Have the operator review findings and choose a new hire or an independently confirmed existing EID." },
+    { nodeId: ONBOARDING_WRITE_REVIEW_GATE, purpose: "Have the operator review findings and choose a new hire or a confirmed or operator-chosen existing EID." },
     { nodeId: "write-plan", purpose: "Refuse incomplete or conflicting evidence and bind the chosen path to this roster row." },
     { nodeId: "i9-route", purpose: "Run I-9 writes only for the reviewed new-hire path." },
     { nodeId: "i9-profile-plan", purpose: "Retain the explicit I-9 not-required state for a confirmed existing person." },

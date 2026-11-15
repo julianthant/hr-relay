@@ -36,9 +36,8 @@ const compiled = compileWorkflow(defineWorkflow({ id: "fixture-failure-after-set
       result: result(Plan1Output, [observe], ({ outputs }) => outputs.observe) };
   } }));
 
-it("records the run's committed write on a later node failure and serves it as a failure after a write", async () => {
-  let settledBefore: readonly unknown[] = [];
-  const driver = createWriteFixtureWorld(), write = buildWriteFixtureRegistry(driver), later = plan1TransientFailureStores(() => { settledBefore = authority.writeIntents.listByRun(run.envelope.runId); });
+async function settledWriteHarness(onRun: () => void = () => undefined) {
+  const driver = createWriteFixtureWorld(), write = buildWriteFixtureRegistry(driver), later = plan1TransientFailureStores(onRun);
   const stores = defineTaskStoreRegistry([...later.stores, ...write.stores], {
     scenarioIds: [...new Set([...later.corpus.scenarioIds, ...write.corpus.scenarioIds])],
     tasks: [...later.stores, ...write.stores].flatMap(store => Object.values(store.tasks)).map(({ contract }) => ({ id: contract.id, effect: contract.effect })) });
@@ -49,6 +48,12 @@ it("records the run's committed write on a later node failure and serves it as a
   const execution = canonicalChildExecution({ ...h.deps, writeSequencer: sequencer }, database, h.authority.path,
     id => id === compiled.descriptor.id ? compiled.descriptor : undefined);
   driver.probeResults.push(absentProbeEvidence(clock.now().toISOString()));
+  return { driver, authority, execution };
+}
+
+it("records the run's committed write on a later node failure and serves it as a failure after a write", async () => {
+  let settledBefore: readonly unknown[] = [];
+  const { authority, execution } = await settledWriteHarness(() => { settledBefore = authority.writeIntents.listByRun(run.envelope.runId); });
   const run = execution.start(compiled.descriptor, { emplId: WRITE_FIXTURE_EID, text: "same", mode: "fail" }, { dryRun: false });
   const result = await execution.execute(run, world.SIGNAL);
   assert.equal(result.outcomes.at(-1)?.state, "failed");
@@ -69,4 +74,22 @@ it("records the run's committed write on a later node failure and serves it as a
   const decision = failureDecision(wire);
   assert.equal(decision.type, "failed-after-write");
   assert.deepEqual(decision.options.map(({ id }) => id), ["mark-as-failed", "add-note"]);
+});
+
+it("a plain Start after another run's committed write replays its outcome and never clicks Save again", async () => {
+  const { driver, authority, execution } = await settledWriteHarness();
+  const input = { emplId: WRITE_FIXTURE_EID, text: "same", mode: "fail" } as const;
+  const clicks = () => driver.events.filter(event => event.startsWith("commit-click")).length;
+  const a = execution.start(compiled.descriptor, input, { dryRun: false });
+  assert.equal((await execution.execute(a, world.SIGNAL)).outcomes.at(-1)?.state, "failed");
+  assert.equal(clicks(), 1);
+
+  const b = execution.start(compiled.descriptor, input, { dryRun: false });
+  assert.equal(b.envelope.retryOf, undefined);
+  assert.equal(b.envelope.itemId, a.envelope.itemId);
+  assert.equal((await execution.execute(b, world.SIGNAL)).outcomes.at(-1)?.state, "done");
+  assert.equal(clicks(), 1, "the committed Save is not repeated");
+  assert.deepEqual(authority.writeIntents.listByRun(b.envelope.runId), []);
+  assert.deepEqual(authority.runCheckpoints.listByItem(compiled.descriptor.id, b.envelope.itemId)
+    .filter(row => row.runId === b.envelope.runId).map(row => row.nodeId), ["observe"], "B reads observe itself");
 });

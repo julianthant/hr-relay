@@ -105,9 +105,11 @@ export const ERROR_CATALOG = Object.freeze({
   UCPATH_HIRE_REFUSED: catalogEntry("UCPath hire could not be verified. Review the retained evidence before continuing.", EmptyParametersSchema),
   I9_WRITE_REFUSED: catalogEntry("I-9 did not prove the intended identity, form or saved record. Review the retained evidence; an uncertain submission must not be retried.", EmptyParametersSchema),
   ONBOARDING_DATA_INVALID: catalogEntry("CRM hire data failed validation. Review the source fields and run overrides.", EmptyParametersSchema),
+  ONBOARDING_NAME_UNRESOLVED: catalogEntry("Relay cannot tell the first, middle and last name apart in this person's roster Legal Name or Lived Name. Write it in the roster as Last, First Middle, or add the middle name to the CRM record, then run again.", EmptyParametersSchema),
   ONBOARDING_MATCH_INVALID: catalogEntry("UCPath duplicate search returned inconsistent identity evidence.", EmptyParametersSchema),
   ONBOARDING_EXISTING_PERSON_REQUIRED: catalogEntry("Concurrent hire requires an existing UCPath person. Review the hire mode and source identity.", EmptyParametersSchema),
   ONBOARDING_I9_LOOKUP_UNRESOLVED: catalogEntry("The delegated I-9 lookup did not establish a result for this hire. No profile will be created.", EmptyParametersSchema),
+  DELEGATION_OUTCOME_POLICY_UNSATISFIED: catalogEntry("A step this run depends on did not finish, so the run stopped. Open that step for the reason.", EmptyParametersSchema),
   RUN_CONTINUATION_REFUSED: catalogEntry("Saved completed steps could not be authenticated for recovery. No saved result was reused; review the source run before starting work.", EmptyParametersSchema),
   APPLICATION_ADMISSION_REFUSED: catalogEntry("Relay could not secure idle update or shutdown admission. Work remains held; restart Relay after resolving the retained failure.", EmptyParametersSchema),
   UNEXPECTED_CONTACT_PAGE: catalogEntry("UCPath did not show the expected Emergency Contact page.", EmptyParametersSchema),
@@ -126,6 +128,14 @@ export const ERROR_CATALOG = Object.freeze({
   SAVED_EFFECT_MISMATCH: catalogEntry("UCPath Save could not be confirmed against the complete approved contact plan. The write requires operator resolution.", EmptyParametersSchema),
   CONTACT_SAVE_UNAVAILABLE: catalogEntry("Emergency Contact Save is unavailable. Use Dry Run to review the prepared contact plan.", EmptyParametersSchema),
   CONTACT_APPROVED_PLAN_CONFLICT: catalogEntry("The approved selection contains conflicting primary contact plans for an employee. Select one intended contact per employee or correct the OCR records, then approve again.", EmptyParametersSchema),
+  PAYPATH_HR_TASKS_NOT_SHOWN: catalogEntry("UCPath HR Tasks did not show the PayPath Actions link. Nothing was changed; open HR Tasks > PayPath/Additional Pay in UCPath and check the page.", EmptyParametersSchema),
+  PAYPATH_SEARCH_NOT_SHOWN: catalogEntry("PayPath Actions did not show its Empl ID search. Nothing was changed; open PayPath Actions in UCPath and check the page.", EmptyParametersSchema),
+  PAYPATH_MULTIPLE_RECORDS: catalogEntry("PayPath Actions found more than one job record for this employee. Nothing was changed; file this person by hand.", EmptyParametersSchema),
+  PAYPATH_ALERT_SHOWN: catalogEntry("UCPath showed an alert on PayPath Actions for this employee. Nothing was changed; open PayPath Actions for this employee and read the alert.", EmptyParametersSchema),
+  STAGED_VALUE_MISMATCH: catalogEntry("PayPath Actions did not keep a work-study value Relay filled. Nothing was saved; review the employee in UCPath.", EmptyParametersSchema),
+  PAYPATH_SUBMIT_REFUSED: catalogEntry("UCPath answered the PayPath Save and Submit with an alert. Whether the work-study transaction was filed is unknown; check this employee's transactions in UCPath before acting.", EmptyParametersSchema),
+  PAYPATH_IDENTITY_UNREADABLE: catalogEntry("PayPath Actions did not show the employee's name. Nothing was changed; review the employee in UCPath.", EmptyParametersSchema),
+  PAYPATH_POSITION_ALREADY_DATED: catalogEntry("PayPath Actions shows this employee's Position Data read-only with a position change already dated, so Relay cannot file another. Nothing was changed; check this employee's PayPath transactions in UCPath.", EmptyParametersSchema),
   CONTACT_APPROVED_FIELDS_INVALID: catalogEntry("The approved contact fields cannot form a complete UCPath contact plan. Correct and approve the OCR record again.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_BACKUP_FAILED: catalogEntry("The automatic shutdown backup could not be verified. Relay has not completed a clean shutdown.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_REPAIR_REFUSED: catalogEntry("Relay could not safely repair this person's saved data. Their data and unresolved writes are retained, and this person stays signed out.", EmptyParametersSchema),
@@ -471,6 +481,10 @@ export const ERROR_CATALOG = Object.freeze({
     "The task stopped with an unclassified failure. Review local diagnostic evidence.",
     EmptyParametersSchema,
   ),
+  CAPABILITY_UNAVAILABLE: catalogEntry(
+    "Relay stopped before this step because a capability it needs is not available. Review local diagnostic evidence.",
+    EmptyParametersSchema,
+  ),
   BROWSER_SESSION_ACQUISITION_TIMEOUT: catalogEntry(
     "Sign-in took too long. Run it again; if it repeats, check the system's sign-in in Sessions.",
     EmptyParametersSchema,
@@ -687,6 +701,14 @@ export const ERROR_CATALOG = Object.freeze({
     "That name cannot be used as the timekeeper name.",
     EmptyParametersSchema,
   ),
+  PROFILE_DISPLAY_NAME_REFUSED: catalogEntry(
+    "That name cannot be used. Use a first and last name that each start with a letter.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_INITIALS_REFUSED: catalogEntry(
+    "Initials must be 1 to 8 letters A to Z.",
+    EmptyParametersSchema,
+  ),
   PROFILE_SIGN_IN_REFUSED: catalogEntry(
     "That email and password did not match a profile on this computer.",
     EmptyParametersSchema,
@@ -727,8 +749,28 @@ export const ERROR_CATALOG = Object.freeze({
     "Saved work email and password were removed, but a backup still has a copy.",
     EmptyParametersSchema,
   ),
-  PROFILE_VERIFIER_UNAVAILABLE: catalogEntry(
-    "A password change waits for a live sign-in that proves the new password.",
+  PROFILE_CURRENT_PASSWORD_REFUSED: catalogEntry(
+    "The current password was not accepted. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_USERNAME_TAKEN: catalogEntry(
+    "Another profile on this computer already uses that email. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_USERNAME_REFUSED: catalogEntry(
+    "Enter a different @ucsd.edu email with no spaces around it. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_UNKNOWN: catalogEntry(
+    "Relay could not confirm whether your sign-in changed, and nothing will be undone. Try your new username and password first, then your current ones.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_UNSETTLED: catalogEntry(
+    "Your sign-in change did not finish. Try it again; until it finishes, your current username and password still sign you in.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGIN_CHANGE_BUSY: catalogEntry(
+    "Another save was in progress, so your sign-in was not changed. Try again.",
     EmptyParametersSchema,
   ),
   PROFILE_FLAT_STORE_MIGRATION_FAILED: catalogEntry("Relay could not verify the old store backup and start a clean profile installation. Startup is stopped; remaining data is preserved.", EmptyParametersSchema),
@@ -766,9 +808,6 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   PROFILE_RESTORE_ADMISSION_REQUIRED: catalogEntry(
     "Log out cannot finish until restore admission accepts the machine erasure journal.",
-    EmptyParametersSchema,
-  ),  CHATGPT_REVOCATION_UNCONFIRMED: catalogEntry(
-    "Your ChatGPT account is signed out locally. Remote revocation could not be confirmed.",
     EmptyParametersSchema,
   ),
   CHATGPT_AUTH_BUSY: catalogEntry(

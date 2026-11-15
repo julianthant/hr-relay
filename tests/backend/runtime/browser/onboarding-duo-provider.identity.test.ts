@@ -31,7 +31,7 @@ function fixture() {
   const reached = new Error("focus-boundary-reached"), capture = vi.fn(async () => { throw reached; });
   const unexpected = () => { throw new Error("unexpected owner operation"); };
   const owner: DraftDuoBrowserOwner = { operationId: randomUUID(), profileId: randomUUID(), accountId: randomUUID(), generation: 1,
-    assertCurrent() {}, acquireCredentials: unexpected, readState: unexpected, reportEvent: unexpected, start: unexpected, cancel: unexpected, confirm: unexpected };
+    assertCurrent() {}, readState: unexpected, reportEvent: unexpected, start: unexpected, cancel: unexpected, confirm: unexpected };
   const provider = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: root,
     browserRoots: mockBrowserRootPort().browserRoots, clock: manualClock(new Date("2026-10-01T00:00:00Z")), closeProofMs: 50,
     focus: { captureRelay: capture, show: unexpected, returnToRelay: unexpected } });

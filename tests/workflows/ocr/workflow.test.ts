@@ -36,6 +36,7 @@ import { PDF_PAGE_LIMIT } from "../../../src/models/processing/extraction/extrac
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
+import { measureOcrObservedSizes } from "../../support/fixtures/ocr/observed-event-size.js";
 
 const descriptor = compileWorkflow(ocrWorkflow).descriptor;
 const nodes = descriptorRuntimeNodes(descriptor);
@@ -226,6 +227,16 @@ describe("child-only OCR document graph", () => {
       const sourceBytes = observedEventBytes("read-source-pages", source.recorded);
       assert.ok(renderBytes < 256 * 1024, `${String(pageCount)} rendered pages: ${String(renderBytes)} bytes`);
       assert.ok(sourceBytes < 8 * 1024, `${String(pageCount)} pages bound: ${String(sourceBytes)} bytes`);
+    }
+  });
+
+  it("keeps complete OCR review and lookup batches within the timeline limit with compact checkpoints and origins", async () => {
+    for (const pageCount of [62, PDF_PAGE_LIMIT]) for (const rosterRows of [0, 682]) {
+      const measured = await measureOcrObservedSizes(pageCount, rosterRows);
+      assert.equal(measured.recordCount, pageCount);
+      assert.equal(measured.successfulLookupCount, pageCount);
+      assert.equal(measured.buildReview.eventCount, 1);
+      assert.equal(measured.readResult.eventCount, 1);
     }
   });
 

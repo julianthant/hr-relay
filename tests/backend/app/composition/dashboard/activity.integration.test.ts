@@ -25,7 +25,6 @@ import { registerShellRoutes } from "../../../../../src/backend/transports/http/
 import { createActivityQueries } from "../../../../../src/dashboard/client/queries/activity-queries.js";
 import { verifySelectionDownload } from "../../../../../src/dashboard/client/queries/selection-download.js";
 import { createDashboardTransport } from "../../../../../src/dashboard/client/transport.js";
-import { activityPresetRange,type ActivityRangePreset } from "../../../../../src/dashboard/surfaces/activity/activity-model.js";
 import { ActivityPopulationError } from "../../../../../src/backend/runs/queries/activity-population.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema } from "../../../../../src/models/dashboard/activity-population.js";
@@ -55,11 +54,13 @@ const RANGE_AWARE_ACTIVITY_DAYS = [
   "2026-09-24",
   "2026-09-26",
 ] as const;
-const RANGE_AWARE_PRESETS: readonly ActivityRangePreset[] = [
-  "this-week", "today", "last-month", "last-3-months", "last-6-months", "last-year",
-];
 const RANGE_AWARE_SELECTIONS = Object.freeze([
-  ...RANGE_AWARE_PRESETS.map((preset) => ({ name: preset, ...activityPresetRange(preset, RANGE_AWARE_TODAY) })),
+  { name: "this-week", from: "2026-09-20", to: RANGE_AWARE_TODAY },
+  { name: "today", from: RANGE_AWARE_TODAY, to: RANGE_AWARE_TODAY },
+  { name: "last-month", from: "2026-08-27", to: RANGE_AWARE_TODAY },
+  { name: "last-3-months", from: "2026-06-27", to: RANGE_AWARE_TODAY },
+  { name: "last-6-months", from: "2026-03-27", to: RANGE_AWARE_TODAY },
+  { name: "last-year", from: "2025-09-27", to: RANGE_AWARE_TODAY },
   { name: "custom", from: "2026-09-22", to: "2026-09-24" },
 ]);
 

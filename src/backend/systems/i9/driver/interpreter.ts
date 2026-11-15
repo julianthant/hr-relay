@@ -63,7 +63,7 @@ export function createI9Driver(assertCurrent: () => void, page: Page, clock: Clo
       const parsed: I9SearchRow[] = [];
       for (let index = 0; index < count; index++) {
         const cells = (await current(() => ui.rowCells(rows.nth(index)).allTextContents())).map(value => value.trim());
-        if (cells.length !== 10) throw new I9LookupError();
+        if (cells.length !== 9) throw new I9LookupError();
         parsed.push(I9SearchRowSchema.parse({
           lastName: cells[0], firstName: cells[1], employer: cells[2], worksite: cells[3],
           profileId: cells[4], i9Id: cells[5], nextAction: cells[6], startDate: cells[7], createdOn: cells[8],

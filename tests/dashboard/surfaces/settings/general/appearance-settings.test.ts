@@ -11,7 +11,7 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); });
 
-it("describes only the Theme row and preserves availability and save failures", async () => {
+it("gives the appearance rows no descriptions and preserves availability and save failures", async () => {
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   for (const state of ["ready", "saving", "loading", "failed", "uncertain", "signed-out"] as const) {
     const snapshot: PersonPreferencesState = { value: NEUTRAL_PERSON_PREFERENCES, state,
@@ -20,7 +20,7 @@ it("describes only the Theme row and preserves availability and save failures", 
     await act(async () => root?.render(createElement(PersonPreferencesContext.Provider, { value: port,
       children: createElement(AppearanceSettings, { theme: "light", onToggleTheme() {} }) })));
     assert.doesNotMatch(host.textContent ?? "", /Saved for|Dark theme|reduced-motion preference/u);
-    assert.deepEqual([...host.querySelectorAll(".ds-field-description,.hub-row-note")].map(node => node.textContent), ["Light or dark."]);
+    assert.deepEqual([...host.querySelectorAll(".ds-field-description,.hub-row-note")].map(node => node.textContent), []);
     const theme = host.querySelector<HTMLInputElement>('input[type="radio"][value="dark"]');
     assert.ok(theme);
     assert.equal(host.querySelector<HTMLInputElement>('input[type="radio"][value="light"]')?.checked, true);
