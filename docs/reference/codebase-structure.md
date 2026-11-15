@@ -49,7 +49,7 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 
 `src/models/dashboard/workbook-library.ts` owns catalogue/version/action wire shapes.
 `src/models/dashboard/run-outputs.ts` owns intended workbook and worksheet ZIP output facts shared by retained plans and Confirm.
-`src/backend/storage/sqlite/workbook-library-repository.ts` owns catalogue CAS, immutable named snapshots, action receipts and per-workflow last-used source selections alongside editable revisions. `src/models/config/authority.ts` owns the current authority schema and build-envelope version constants; SQLite migrations re-export those bindings.
+`src/backend/storage/sqlite/workbook-library-repository.ts` owns catalogue CAS, immutable named snapshots, action receipts and per-workflow last-used source selections alongside editable revisions. `src/models/config/authority-schema-versions.ts` owns the authority application id and schema-version lists; SQLite migrations re-export those bindings. `src/models/config/authority.ts` owns the authority table registry and upgrade-record schemas. `src/backend/storage/sqlite/migrations.ts` owns the build-envelope schema version and the migration statements.
 
 `src/models/profiles/profile-identity.ts` owns the derived name/initials runtime shape.
 `src/backend/storage/configuration/protected-settings-upgrade.ts` owns stopped source authentication and
@@ -138,7 +138,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/dashboard/queue-parent.ts` | Queue visibility classification shared by native summaries, projections and browser consumers. Queue surfaces carry one nullable parent fact; stored run shapes remain scheduling authority. |
 | `src/models/dashboard/activity-population.ts` | Canonical Analytics population, selected browse, export and AP1 snapshot schemas. `activity-selection.ts` owns the nested AS1 report selection used by summary and XLSX exports. |
 | `src/models/workflows/person-lookup/result.ts` | Person Lookup terminal result schema shared by its definition, retained CRM proof and OCR outcome fold. |
-| `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. `person-preferences.ts` owns the strict person appearance/shell values and neutral defaults; snapshot preference fingerprints are independent of execution config fingerprints. |
+| `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. `authority-schema-versions.ts` owns the authority application id and schema-version lists. `person-preferences.ts` owns the strict person appearance/shell values and neutral defaults; snapshot preference fingerprints are independent of execution config fingerprints. |
 | `src/models/workflow/explorer-preview.ts` | Browser-safe read-only Explorer flow parts the timeline renders. |
 | `src/models/workflow/review-spec.ts` | Strict step-owned Explorer page, line, field-source and branch-label declarations. `src/models/dashboard/explorer-review-spec.ts` owns their generated wire shape. |
 | `src/models/workflow/dry-run.ts` | Browser-safe preview stage accounting, typed sample provenance and reserved sample detection. |

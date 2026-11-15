@@ -13,9 +13,30 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { CapturedWorkbookWriteSourceSchema, RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../models/dashboard/workbooks.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { AUTHORITY_DERIVED_TABLES, AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
+import {
+  CURRENT_AUTHORITY_SCHEMA_VERSION,
+  isSupportedStoppedAuthoritySchemaVersion,
+  isUpgradeableAuthoritySchemaVersion,
+  type OpenableAuthoritySchemaVersion,
+} from "../../../models/config/authority-schema-versions.js";
 
-export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 31;
+export {
+  AUTHORITY_APPLICATION_ID,
+  BASELINE_FROM_AUTHORITY_SCHEMA_VERSIONS,
+  BOUND_AUTHORITY_SCHEMA_VERSIONS,
+  CURRENT_AUTHORITY_SCHEMA_VERSION,
+  EVIDENCE_SCHEMA_UPGRADE_VERSIONS,
+  MAINTENANCE_AUTHORITY_SCHEMA_VERSIONS,
+  OPENABLE_AUTHORITY_SCHEMA_VERSIONS,
+  RECOGNIZED_AUTHORITY_SCHEMA_VERSIONS,
+  SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS,
+  UNBOUND_PREDECESSOR_AUTHORITY_SCHEMA_VERSIONS,
+  UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,
+  isCurrentAuthoritySchemaVersion,
+  isOpenableAuthoritySchemaVersion,
+  isSupportedStoppedAuthoritySchemaVersion,
+  isUpgradeableAuthoritySchemaVersion,
+} from "../../../models/config/authority-schema-versions.js";
 /** Runs stored before this version may omit buildId. Later versions keep the strict envelope. */
 export const BUILD_ID_ENVELOPE_SCHEMA_VERSION = 22;
 /** Migration 22 deletes every run approved before envelopes carried a build id, through the native run deletion. */
@@ -61,20 +82,6 @@ BEGIN SELECT RAISE(ABORT,'worker-slot-identity-conflict'); END`,
   `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`,
   `SELECT '${WORKER_CUSTODY_SCAN_ID}'`,
 ];
-
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] as const;
-export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
-  return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
-}
-
-/** Stopped versions a database may be upgraded from; every version list derives from these, so they cannot drift. */
-export const UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.filter(version => version >= 8);
-/** Versions startup, restore and admission open: every upgradeable version plus the current one. */
-export const OPENABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = [...UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS, CURRENT_AUTHORITY_SCHEMA_VERSION];
-
-export function isCurrentAuthoritySchemaVersion(version: number): boolean {
-  return version === CURRENT_AUTHORITY_SCHEMA_VERSION;
-}
 
 export const SQLITE_MIGRATIONS = deepFreeze([
   { version: 1, statements: [`CREATE TABLE database_states (
@@ -1021,8 +1028,8 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
-  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
-  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18 && toSchemaVersion !== 19 && toSchemaVersion !== 20 && toSchemaVersion !== 21 && toSchemaVersion !== 22 && toSchemaVersion !== 23 && toSchemaVersion !== 24 && toSchemaVersion !== 25 && toSchemaVersion !== 26 && toSchemaVersion !== 27 && toSchemaVersion !== 28 && toSchemaVersion !== 29 && toSchemaVersion !== 30)
+  toSchemaVersion: OpenableAuthoritySchemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && (!isUpgradeableAuthoritySchemaVersion(toSchemaVersion)
     || !isSupportedStoppedAuthoritySchemaVersion(fromSchemaVersion) || fromSchemaVersion < 7 || fromSchemaVersion >= toSchemaVersion)) throw new Error('authority-upgrade-plan-target-unsupported');
   const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
   return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,
