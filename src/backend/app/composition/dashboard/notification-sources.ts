@@ -14,6 +14,11 @@ function observation(event: z.input<typeof NotificationTriggerEventSchema>, iden
   return { event: NotificationTriggerEventSchema.parse(event), source: { identity: sha256Hex(`notification-occurrence:${event.kind}:${identity}`), occurredAt } };
 }
 const lastRead = new WeakMap<AuthorityDatabase, { key: string; diagnostics: readonly "NOTIFICATION_RECEIPT_MISSING"[] }>();
+/** A write this process owns that touches no source table keeps the last read current. */
+export function followOwnedWrite(database: AuthorityDatabase, before: ReturnType<AuthorityDatabase["changeKey"]>, after: ReturnType<AuthorityDatabase["changeKey"]>): void {
+  const prior = lastRead.get(database);
+  if (prior?.key === JSON.stringify(before)) lastRead.set(database, { ...prior, key: JSON.stringify(after) });
+}
 
 /** Private canonical evidence is narrowed here to closed events, never passed to the day wire. */
 export function readNotificationSources(database: AuthorityDatabase, reader: Pick<RunRecordService, "read" | "list">): NotificationSourceRead {

@@ -3,12 +3,11 @@ import { createPersonPreferences, type PersonPreferencesOwner } from "../state/p
 import { PersonPreferencesContext, usePersonPreferences } from "../lib/person-preferences.js";
 import { PROFILE_ONBOARDING_STATE } from "../../models/profiles/public-profile.js";
 import { PreflightOcrContext, createServedPreflightOcrPort } from "../surfaces/settings/preflight/preflight-ocr-model.js";
-import { PreflightAssistantContext, createServedPreflightAssistantPort, type PreflightAssistantPort } from "../surfaces/settings/preflight/preflight-assistant-model.js";
 import { ChatGptAccountContext, createServedChatGptAccountPort } from "../surfaces/settings/general/chatgpt-account-model.js";
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { StartupLoading } from "../surfaces/shell/startup-loading.js";
 import { useStartupGate } from "./startup/startup-gate.js";
-import { usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
+import { useDuoReenrol, usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import { DeleteAccountControl } from "../surfaces/settings/general/ui-settings-records-general-paths.js";
 import { HubPreferencesPreviewContext } from "../surfaces/settings/general/hub-preferences-model.js";
@@ -163,28 +162,27 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const profileClient = useDashboardClient();
   const publicProfile = usePublicProfileSession(profileClient, profileSource === "served");
   const session = profileSource === "served" ? publicProfile.state : undefined;
+  const duoReenrol = useDuoReenrol(profileClient, profileSource === "served" && publicProfile.state?.state === "active");
   const startup = useStartupGate(session, publicProfile.failure, publicProfile.port);
   const [profileCreationChosen, setProfileCreationChosen] = useState(false);
   useEffect(() => { if (session?.state === "active") setProfileCreationChosen(false); }, [session?.state]);
   const bootstrap = useBootstrap(session, profileSource === "mock" || session?.state === "active");
   const inheritedAccount = useContext(ChatGptAccountContext);
   const inheritedOcr = useContext(PreflightOcrContext);
-  const inheritedAssistantTest = useContext(PreflightAssistantContext);
   const profileId = session?.state === "active" ? session.profileId : undefined;
   const profileEpoch = session?.state === "active" ? session.epoch : undefined;
   const profileTarget = useMemo(() => profileId === undefined || profileEpoch === undefined ? undefined : { profileId, epoch: profileEpoch }, [profileId, profileEpoch]);
   const accountScope = useMemo(() => ({ profileClient, profileSource, profileId, profileEpoch }), [profileClient, profileSource, profileId, profileEpoch]);
-  const [accountOwner, setAccountOwner] = useState<{ scope: typeof accountScope; port: ReturnType<typeof createServedChatGptAccountPort>; ocr: ReturnType<typeof createServedPreflightOcrPort>; assistantTest: PreflightAssistantPort }>();
+  const [accountOwner, setAccountOwner] = useState<{ scope: typeof accountScope; port: ReturnType<typeof createServedChatGptAccountPort>; ocr: ReturnType<typeof createServedPreflightOcrPort> }>();
   const account = accountOwner?.scope === accountScope ? accountOwner.port : undefined;
   useEffect(() => {
     if (profileSource !== "served" || profileId === undefined || profileEpoch === undefined) return;
     const port = createServedChatGptAccountPort(profileClient);
     const ocr = createServedPreflightOcrPort(profileClient, port);
-    const assistantTest = createServedPreflightAssistantPort(profileClient, port);
-    setAccountOwner({ scope: accountScope, port, ocr, assistantTest });
-    const close = (event: PageTransitionEvent) => { if (!event.persisted) { ocr.dispose(); assistantTest.dispose(); port.dispose(); } };
+    setAccountOwner({ scope: accountScope, port, ocr });
+    const close = (event: PageTransitionEvent) => { if (!event.persisted) { ocr.dispose(); port.dispose(); } };
     window.addEventListener("pagehide", close);
-    return () => { window.removeEventListener("pagehide", close); ocr.dispose(); assistantTest.dispose(); port.dispose(); };
+    return () => { window.removeEventListener("pagehide", close); ocr.dispose(); port.dispose(); };
   }, [accountScope, profileClient, profileSource, profileId, profileEpoch]);
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
@@ -228,11 +226,12 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
     >
     <ChatGptAccountContext.Provider value={account ?? inheritedAccount}>
     <PreflightOcrContext.Provider value={accountOwner?.scope === accountScope ? accountOwner.ocr : inheritedOcr}>
-    <PreflightAssistantContext.Provider value={accountOwner?.scope === accountScope ? accountOwner.assistantTest : inheritedAssistantTest}>
     <TooltipProvider delayDuration={200}>
     <ToastProvider>
       {route.viewInvalid ? (
         <EmptyState title="Invalid navigation link" description="The view parameters are invalid. Open the dashboard to recover." action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />
+      ) : duoReenrol.port !== undefined ? (
+        <OnboardingSetup page="fast" port={duoReenrol.port} />
       ) : route.onboardingSetup !== undefined && profileSource === "served" && session?.state === PROFILE_ONBOARDING_STATE ? (
         <OnboardingSetup page="fast" port={publicProfile.port} />
       ) : profileSource === "served" && startup.loading ? (
@@ -266,7 +265,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
                 : { state: publicProfile.accountDeletion.state, personName: boot.actor.label,
                   message: operatorFailureSentence(publicProfile.accountDeletion.state === "uncertain" ? "PROFILE_ACCOUNT_DELETION_REFUSED" : publicProfile.accountDeletion.code) }} />
             : undefined}
-          accountPage={profileSource === "served" && session?.state === "active" && session.account !== undefined && publicProfile.logout !== undefined ? { values: session.account, duo: session.duoState === "ready" ? "ready" : "setup", onSignOut: () => { void publicProfile.logout(); }, details: request => profileClient.changeProfileDetails(request), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
+          accountPage={profileSource === "served" && session?.state === "active" && session.account !== undefined && publicProfile.logout !== undefined ? { values: session.account, duo: session.duoState === "ready" ? "ready" : "setup", onSignOut: () => { void publicProfile.logout(); }, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}
@@ -292,7 +291,6 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
       <StatusMockHost />
     </ToastProvider>
     </TooltipProvider>
-    </PreflightAssistantContext.Provider>
     </PreflightOcrContext.Provider>
     </ChatGptAccountContext.Provider>
     </div></PersonPreferencesContext.Provider>

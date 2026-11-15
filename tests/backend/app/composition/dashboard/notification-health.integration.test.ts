@@ -1,5 +1,5 @@
 import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
@@ -7,6 +7,7 @@ import { QUEUED_RUN } from "../../../../support/fixtures/phase1f-run-fixtures.js
 import { describe, expect, it, vi } from "vitest";
 import { createNotificationHealthObserver, readNotificationHealth } from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import { parseBackupManifestFile } from "../../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityBackupService, syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { releaseSeededWriteOwners } from "../../../../support/helpers/timeline-write-fixture.js";
 
@@ -24,6 +25,21 @@ describe("canonical notification producers", () => {
       const files = readdirSync(directory);
       f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: false, occurrence: 0, observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), samples: [] }));
       expect((await read()).backupFailed).toBe(false); expect(readdirSync(directory)).toEqual(files);
+      const backupFile = join(directory, files.find(name => !name.endsWith(".manifest.json"))!), bytes = readFileSync(backupFile);
+      bytes[bytes.length - 1] ^= 0xff; writeFileSync(backupFile, bytes);
+      expect((await read()).backupFailed).toBe(true);
+      bytes[bytes.length - 1] ^= 0xff; writeFileSync(backupFile, bytes);
+      expect((await read()).backupFailed).toBe(false);
+      writeFileSync(`${backupFile}-wal`, Buffer.alloc(4096, 1));
+      expect((await read()).backupFailed).toBe(true);
+      rmSync(`${backupFile}-wal`);
+      expect((await read()).backupFailed).toBe(false);
+      const manifestFile = join(directory, files.find(name => name.endsWith(".manifest.json"))!), manifestText = readFileSync(manifestFile, "utf8");
+      const seeded = parseBackupManifestFile(manifestFile);
+      writeFileSync(manifestFile, JSON.stringify({ ...seeded, pageCount: seeded.pageCount + 1, verification: { ...seeded.verification, pageCount: seeded.verification.pageCount + 1 } }));
+      expect((await read()).backupFailed).toBe(true);
+      writeFileSync(manifestFile, manifestText);
+      expect((await read()).backupFailed).toBe(false);
       writeFileSync(join(directory, "corrupt.manifest.json"), "not a manifest");
       expect((await read()).backupFailed).toBe(true);
     } finally { await f.close(); }

@@ -39,6 +39,7 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/configuration/credential-store.storage-restore-drill.integration.test.ts",
   "tests/backend/storage/admission/process-identity.integration.test.ts",
   "tests/backend/storage/maintenance/existing-data-backup.flat-storage.integration.test.ts",
+  "tests/backend/storage/maintenance/profile-inventory.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.ready-bound.integration.test.ts",
@@ -46,6 +47,7 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/sqlite/authority-database.storage-restore-drill.integration.test.ts",
   "tests/backend/storage/sqlite/backup-inspection.integration.test.ts",
   "tests/backend/storage/sqlite/backup-service.test.ts",
+  "tests/backend/storage/sqlite/migrations.assistant-numbering.integration.test.ts",
   "tests/backend/storage/sqlite/migrations.native-baseline.integration.test.ts",
   "tests/backend/storage/sqlite/offline-restore.browser-inventory.integration.test.ts",
   "tests/backend/storage/sqlite/offline-restore.browser-root-predecessor.integration.test.ts",
@@ -69,6 +71,7 @@ export const SERIAL_FILES: readonly string[] = [
 export const SERIAL_STORAGE_FILES: readonly string[] = [
   "tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
+  "tests/backend/storage/maintenance/profile-inventory.integration.test.ts",
 ];
 
 export type CiProject = "unit" | "integration" | "architecture";
