@@ -3,7 +3,6 @@
 import { DashboardClientError } from "../client/errors.js";
 
 export type AsyncResource<Value> =
-  | { readonly state: "idle" }
   | { readonly state: "loading" }
   | { readonly state: "loaded"; readonly value: Value }
   | { readonly state: "failed"; readonly error: DashboardClientError };
