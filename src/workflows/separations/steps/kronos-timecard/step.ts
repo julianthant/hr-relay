@@ -171,15 +171,15 @@ export const KRONOS_TIMECARD_OMISSION: StepOmissionDeclaration = {
       const typed = KronosTimecardFactsSchema.parse(facts);
       const plan = ReadSeparationPlanOutputSchema.parse(scope.outputs["plan"]);
       if (!isJsonObject(scope.input)) {
-        throw new Error("kronos-timecard omission requires the run's canonical input object to read the timekeeper name");
+        throw new Error("kronos-timecard omission requires the run's canonical input object to read the timekeeper initials");
       }
-      const timekeeperName = scope.input.timekeeperName;
-      if (typeof timekeeperName !== "string" || timekeeperName.length === 0) {
-        throw new Error("kronos-timecard omission requires input.timekeeperName to be a non-empty string");
+      const timekeeperInitials = scope.input.timekeeperInitials;
+      if (typeof timekeeperInitials !== "string" || timekeeperInitials.length === 0) {
+        throw new Error("kronos-timecard omission requires input.timekeeperInitials to be a non-empty string");
       }
       return assertSeparationDates({
         plan,
-        timekeeperName,
+        timekeeperInitials,
         lastDayWorked: typed.lastDayWorked,
         separationDate: typed.separationDate,
       });
@@ -290,7 +290,7 @@ export function buildTimecard({ task, group }: Author, extraction: Extraction, r
   });
   const dates = task(datesNode, [plan, timecard], ({ input, outputs }) => ({
     plan: outputs["plan"],
-    timekeeperName: input.timekeeperName,
+    timekeeperInitials: input.timekeeperInitials,
     lastPunchDate: outputs[TIMECARD_NODE].grid.lastPunchDate,
     sickDates: outputs[TIMECARD_NODE].grid.sickDates,
     holidayDates: outputs[TIMECARD_NODE].grid.holidayDates,

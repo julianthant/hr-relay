@@ -88,7 +88,7 @@ export async function upgradeBrowserRoots(lease: InstallationLease, operation: O
   }
   if (source === undefined) {
     const marker = read(join(machine, "profile-registry-version.json"));
-    if (pending !== undefined || marker !== undefined && z.object({ schemaVersion: z.number() }).parse(decode(marker.bytes)).schemaVersion === 8) refuse("source-missing");
+    if (pending !== undefined || marker !== undefined && z.object({ schemaVersion: z.number() }).parse(decode(marker.bytes)).schemaVersion === 9) refuse("source-missing");
     return "current";
   }
   const registryStages = () => readdirSync(machine).filter(name => name.startsWith("browser-roots.json.")
