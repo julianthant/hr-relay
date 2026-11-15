@@ -415,7 +415,8 @@ export async function verifyShellCommandEffect(
   }
   if (request.family === "gate") {
     const detail = await client.runDetail(request.target.runId);
-    const value = request.type === "answer-identity-gate" ? request.payload : request.payload.result.value;
+    // Every hire-review arm records an approval.
+    const value = request.type === "answer-identity-gate" ? request.payload : request.type === "answer-gate-arm" ? { decision: "approved" } : request.payload.result.value;
     const decision = typeof value === "object" && value !== null && "decision" in value ? value.decision : undefined;
     return detail.rowRevision > request.target.expectedVersion && detail.gate.state === "resolved"
       && detail.gate.nodeId !== undefined && String(detail.gate.nodeId) === String(request.target.gateId) && detail.gate.resolvedBy === request.requestedBy

@@ -4,8 +4,8 @@ import { OnboardingReadI9ProfilePlan, OnboardingI9ProfileSchema } from "../../mo
 
 export function readOnboardingI9Lookup(raw: z.input<typeof OnboardingReadI9Lookup.input>): z.output<typeof OnboardingI9LookupSchema> {
   const input = OnboardingReadI9Lookup.input.parse(raw);
-  if (input.subject.state !== "new-hire") {
-    if (input.outcomes.length !== 0) throw new Error("Onboarding I-9 lookup must not run for an existing or unresolved UCPath subject");
+  if (input.subject.state === "existing-person" || input.subject.state === "review-required" && input.outcomes.length === 0) {
+    if (input.outcomes.length !== 0) throw new Error("Onboarding I-9 lookup must not run for an existing UCPath subject");
     return { state: "not-required", subjectState: input.subject.state };
   }
   const outcome = input.outcomes[0];

@@ -37,7 +37,7 @@ import { assertRunTimelineCompatible } from "./run-timeline-compatibility.js";
 
 export { availableSections } from "./run-trust.js";
 export { buildRunSection, readRunSection } from "./run-sections.js";
-export { resolveIdentityGateAnswer } from "./run-detail/gate-park.js";
+export { resolveGateArmAnswer, resolveIdentityGateAnswer } from "./run-detail/gate-park.js";
 export { createRunNoteScanCache } from "./run-logs.js";
 export type { RunLogScanEntry, RunNoteScanEntry, RunNoteScanCache } from "./run-logs.js";
 export type {
@@ -414,9 +414,10 @@ export function buildRunDetail(
     gate,
     outcome,
     context: {
-      // Every done task recorded provenance-validated data (1f mandate); the
-      // evidence service is 2g, so its count is genuinely zero today.
-      dataFacts: row?.taskSpans.filter((span) => span.outcome === "done").length ?? 0,
+      // Every done task recorded provenance-validated data (1f mandate); a settled delegation join records no checkpoint and observed nothing.
+      // The evidence service is 2g, so its count is genuinely zero today.
+      dataFacts: row?.taskSpans.filter((span) => span.outcome === "done"
+        && readCheckpoints().some(checkpoint => checkpoint.runId === authority.envelope.runId && checkpoint.nodeId === nodeIdOfTaskSpanPath(span.spanPath))).length ?? 0,
       evidenceFacts: 0,
       attempts: authority.envelope.attempt,
     },

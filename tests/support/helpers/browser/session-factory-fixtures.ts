@@ -23,9 +23,11 @@ export function createBrowserSessionFactoryFixtures(
   SESSION_ID: string,
   NEVER_SCHEDULER: BrowserDeadlineScheduler,
 ) {
+  // Fake controls count as painted: filter({ visible: true }) returns the same locator.
+  interface FakeLocator { selector: string; count: () => Promise<number>; filter: (options: { visible: true }) => FakeLocator }
   interface FakeFrame {
     url: () => string;
-    locator: (selector: string) => { selector: string; count: () => Promise<number> };
+    locator: (selector: string) => FakeLocator;
     evaluate: <T, A>(callback: (arg: A) => T, arg: A) => Promise<T>;
     isDetached: () => boolean;
   }
@@ -66,7 +68,7 @@ export function createBrowserSessionFactoryFixtures(
       const result: unknown = runInNewContext(`(${callback.toString()})(arg)`, { ...sandbox, document: realm.document, arg });
       return result as T;
     };
-    const mainFrame = { evaluate, isDetached: () => false, url: () => current, locator: (selector: string) => ({ selector, ...page.locator() }) };
+    const mainFrame = { evaluate, isDetached: () => false, url: () => current, locator: (selector: string) => { const locator: FakeLocator = { selector, ...page.locator(), filter: () => locator }; return locator; } };
     const page: FakePage = {
       evaluate,
       viewportSize: () => ({ width: realm.innerWidth, height: realm.innerHeight }),
