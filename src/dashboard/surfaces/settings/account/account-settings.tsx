@@ -3,13 +3,13 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import type { z } from "zod";
 import { BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, FormGroup, IconButton, Input, PageHeading, ResultRow, SecretField, dsIcon, useToasts } from "../../../ds/ui.js";
 import { operatorFailureSentence } from "../../../../models/failures/error-catalog.js";
-import { profileInitials } from "../../../../models/profiles/profile-identity.js";
 import { isRelayUsername, RELAY_SIGN_IN_FIELD_MAX, type ProfileDetailsChangeRequestSchema, type ProfileDetailsChangeResultSchema, type ProfileLoginChangeResultSchema } from "../../../../models/profiles/public-profile.js";
 
 export interface AccountValues {
   readonly name: string;
   readonly initials: string;
   readonly timekeeper: string;
+  readonly timekeeperInitials: string;
   readonly lastSignedInAt: string;
 }
 export interface AccountPage { readonly values: AccountValues; readonly duo: "ready" | "setup"; readonly onSignOut: () => void; /** Opens the served Duo re-enrolment; resolves to the backend's failure sentence when it could not open. */ readonly onDuoSetup?: () => Promise<string | undefined>; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; readonly login: Omit<RelayLogin, "username"> }
@@ -46,7 +46,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     {ucpath}
     <Group label="Workflow configuration">
       {details("Timekeeper name", values.timekeeper, timekeeperName => ({ timekeeperName }))}
-      <ResultRow label="Timekeeper initials" value={profileInitials(values.timekeeper)} />
+      {details("Timekeeper initials", values.timekeeperInitials, timekeeperInitials => ({ timekeeperInitials }))}
     </Group>
     <Group label="Security">
       <ResultRow label="Duo" className="!min-h-[52px]" value={<span className="inline-flex items-center justify-end gap-3"><span>{duo === "ready" ? "Ready" : "Needs setup"}</span>{onDuoSetup && <Button variant="secondary" onClick={() => { void onDuoSetup().then(failure => { if (failure !== undefined) toast({ tone: "danger", title: "Duo setup not opened", description: failure }); }); }}>Set up again</Button>}</span>} />

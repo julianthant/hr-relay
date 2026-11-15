@@ -15,7 +15,7 @@ describe("workflow failure correction declaration", () => {
   assert.ok(declared);
   const nodes = descriptorRuntimeNodes(separationsDescriptor);
   it("accepts the optional EID without adding it to any start or rerun form", () => {
-    const original = { documentNumber: "4510", timekeeperName: "Synthetic Timekeeper" };
+    const original = { documentNumber: "4510", timekeeperName: "Synthetic Timekeeper", timekeeperInitials: "ST" };
     assert.equal(SeparationsInput.parse(original).operatorEmployeeId, undefined);
     const parsed = SeparationsInput.parse({ ...original, operatorEmployeeId: "10800001" });
     assert.deepEqual(SeparationsCanonicalInput.parse(parsed), parsed);

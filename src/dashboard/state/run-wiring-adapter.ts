@@ -406,8 +406,21 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     ? [gateTimelineOwner(detail, section.payload.value)?.native?.eventId ?? []].flat() : section.section === "workbook-writes"
       ? (section.payload.referenceChoices ?? []).map(choice => choice.native.eventId) : []));
   const failedNodes = new Set<string | undefined>(sections.flatMap(section => section.section === "failure" && section.payload.state === "available" ? [section.payload.value.nodeId] : []));
+  let gateDecisionShown = false;
   for (const event of detail.timeline.events) {
     if (decisionEvents.has(requireNative(event.native).eventId)) continue;
+    // A served gate-arm decision (open) or its recorded answer (resolved) takes the gate's own timeline line.
+    const gate = detail.gate;
+    const gateCard = gateDecisionShown || gate.state === "absent" || gate.nodeId === undefined || requireNative(event.native).nodeId !== gate.nodeId ? undefined
+      : gate.state === "open" && event.state === "blocked" && gate.decision !== undefined ? { title: gate.decision.title, served: gate.decision }
+        : gate.state === "resolved" && gate.answer !== undefined ? { title: plainStepLabel(gate.label), answered: gate.answer } : undefined;
+    if (gateCard !== undefined && gate.state !== "absent") {
+      gateDecisionShown = true;
+      const time = fmtActionClock(event.at);
+      order.set(gate.gateId, requireNative(event.native).order); node.set(gate.gateId, requireNative(event.native).nodeId);
+      steps.push({ id: gate.gateId, time, title: plainStepLabel(gate.label), entries: [{ kind: "decision", id: gate.gateId, time, decision: { state: "review", ...gateCard } }] });
+      continue;
+    }
     // The timeline strip already shows done, pending, running and failed stages; only a skip, wait or cancel adds a log line.
     if (event.state === "done" || event.state === "pending" || event.state === "active" || (event.state === "failed" && failedNodes.has(requireNative(event.native).nodeId))) continue;
     const time = fmtActionClock(event.at);
@@ -578,7 +591,11 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   }, [binding]);
   const launch = useMemo(() => binding === undefined ? undefined : createRunLaunchService(client, binding.scope.actorId,
     { uuid: () => crypto.randomUUID(), now: () => binding.authority.nowIso }), [client, binding]);
-  const matchesGate = useCallback((envelope: DashboardCommandRequest) => envelope.family === "gate" && gate?.section === "identity-gate" && gate.payload.state === "available"
+  const matchesGate = useCallback((envelope: DashboardCommandRequest) => envelope.family === "gate" && envelope.type === "answer-gate-arm"
+    ? detailGate?.state === "open" && row.rowRevision.valueOf() === envelope.target.expectedVersion.valueOf()
+      && detailGate.decision?.options.some(({ send }) => send.via === "gate-arm" && send.gateNodeId === envelope.target.gateId.valueOf()
+        && send.expectedVersion === envelope.target.expectedVersion.valueOf() && send.arm === envelope.payload.arm) === true
+    : envelope.family === "gate" && gate?.section === "identity-gate" && gate.payload.state === "available"
     && detailGate?.state === "open" && detailGate.nodeId?.valueOf() === envelope.target.gateId.valueOf() && gate.payload.value.expectedVersion === envelope.target.expectedVersion
     && row.rowRevision.valueOf() === envelope.target.expectedVersion.valueOf(), [gate, detailGate, row.rowRevision]);
   const matchesDecision = useCallback((envelope: DashboardCommandRequest) => {
@@ -827,6 +844,24 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         traceId: String(row.traceId), workflowLabel: selection.workflowLabel, source: "run-detail", commandId: envelope.commandId,
         requestedAt: envelope.requestedAt, triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : null },
         () => dispatchIfDecisionCurrent.current(envelope));
+      return;
+    }
+    const armGate = value.snapshot.detail.gate;
+    if (armGate.state === "open" && armGate.gateId === id && armGate.decision !== undefined) {
+      const option = servedOption(armGate.decision, picked);
+      if (option === undefined || option.send.via !== "gate-arm" || !decisionAnswerValid(option, answer)) return;
+      const rowId = answeredRow(option, answer)?.id;
+      const target = { runId: row.runId, gateId: option.send.gateNodeId, expectedVersion: option.send.expectedVersion };
+      const envelope = DashboardCommandRequestSchema.parse({ family: "gate", type: "answer-gate-arm", commandId: crypto.randomUUID(),
+        requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "run-detail", target,
+        payload: { arm: option.send.arm, ...(rowId === undefined ? {} : { rowId }) } });
+      if (option.confirm === undefined) { dispatch(envelope); return; }
+      if (confirm === undefined) return;
+      confirm({ action: { kind: "command", key: option.id, label: option.label, intent: option.confirm.tone === "destructive" ? "destructive" : "primary", placement: ["review"],
+        command: "resolve-gate", expectedVersion: option.send.expectedVersion, resolution: "approved", confirm: option.confirm },
+        target: { runId: row.runId, expectedVersion: option.send.expectedVersion }, subject: row.title, traceId: String(row.traceId),
+        workflowLabel: selection.workflowLabel, source: "run-detail", commandId: envelope.commandId, requestedAt: envelope.requestedAt,
+        triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : null }, () => dispatchIfDecisionCurrent.current(envelope));
       return;
     }
     const section = value.snapshot.sections.find(section => section.section === "identity-gate");
