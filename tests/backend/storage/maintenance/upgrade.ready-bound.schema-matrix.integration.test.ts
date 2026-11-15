@@ -16,7 +16,7 @@ import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/stora
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { hostFacts, readyBoundEight, rawEight } from "../../../support/helpers/storage/ready-bound-upgrade.js";
+import { assertGrantTableRetired, hostFacts, readyBoundEight, rawEight } from "../../../support/helpers/storage/ready-bound-upgrade.js";
 
 it.each([9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
   const f = await readyBoundEight("idle", sourceVersion);
@@ -29,6 +29,7 @@ it.each([9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] as const)("upgrades supporte
       assert.ok(upgraded.prepare("PRAGMA table_info(runs)").all().some(column => column.name === "pause_state"));
       assert.equal(upgraded.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE type='trigger' AND name IN ('run_pause_insert','run_pause_update')").get()?.count, 2);
     } finally { upgraded.close(); }
+    assertGrantTableRetired(f.path);
     const after = rawEight(f.path);
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));

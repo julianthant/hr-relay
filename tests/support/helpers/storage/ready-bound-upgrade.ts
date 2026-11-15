@@ -1,4 +1,4 @@
-import { restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture } from "../../fixtures/storage/historical-run-schema.js";
+import { removeEmptySchema26AssistantHistory, restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture, restoreSchema28AssistantGrants } from "../../fixtures/storage/historical-run-schema.js";
 import { removeSchema16PersonPreferences } from "../../fixtures/storage/person-preferences-predecessor.js";
 import { PREFERENCES_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { restoreSchema19RunSettlementFixture, restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../fixtures/storage/historical-run-schema.js";
@@ -51,7 +51,7 @@ export const workbookReferenceValue = RunWorkbookReferenceSchema.parse({
 });
 export const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-export async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 = 8, extractionEvidence = false,
+export async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 28 = 8, extractionEvidence = false,
   workbookEvidence?: { owner: "run" | "terminal-run" | "plan" | "consumed-plan"; schemaHash: string; value?: JsonValue }) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
@@ -121,9 +121,11 @@ export async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVe
   const raw = new (sqlite().DatabaseSync)(profile.path);
   try {
     raw.exec("PRAGMA foreign_keys=ON");
-    for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
+    for (const table of ["assistant_actions", "assistant_chats"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
-    raw.exec("DROP TABLE IF EXISTS workflow_workbook_selections");
+    if (sourceVersion === 28) restoreSchema28AssistantGrants(raw);
+    else if (sourceVersion >= 24) removeEmptySchema26AssistantHistory(raw);
+    if (sourceVersion <= 24) raw.exec("DROP TABLE IF EXISTS workflow_workbook_selections");
     if (sourceVersion < 24) restoreSchema22WorkerCustodyFixture(raw);
     if (sourceVersion === 23) {
       const claimIndex = SQLITE_MIGRATIONS.find(migration => migration.version === 23);
@@ -172,11 +174,17 @@ export async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVe
     acquireRestore: () => profile.machine.acquireOfflineMaintenance() };
 }
 
+export function assertGrantTableRetired(path: string) {
+  const raw = new (sqlite().DatabaseSync)(path, { readOnly: true });
+  try { assert.equal(raw.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE name='assistant_grants'").get()?.count, 0); } finally { raw.close(); }
+}
+
 export function rawEight(path: string, version = 8) {
   const raw = new (sqlite().DatabaseSync)(path, { readOnly: true });
   try {
+    // The empty grant table is dropped by schema 29; `assertGrantTableRetired` checks that separately.
     const present = new Set(raw.prepare("SELECT name FROM sqlite_schema WHERE type='table'").all().map(row => String(row.name)));
-    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && !isWorkerCustodyDroppedTable(table) && present.has(table)).map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides" && table !== "assistant_grants" && !isWorkerCustodyDroppedTable(table) && present.has(table)).map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
   } finally { raw.close(); }
 }
 
