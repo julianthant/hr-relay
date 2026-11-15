@@ -273,7 +273,7 @@ it("shows Separations document identities from the real planned canonical inputs
   const descriptor = DESCRIPTORS.find(candidate => candidate.id === "separations"); assert.ok(descriptor?.surfaces.inputRun);
   const planning = workflowPlanning(descriptor), schemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
   const rows = parseInputRunText(descriptor.surfaces.inputRun.parser, "4502; 4510").map(entry => {
-    const submission = { ...(toRawSubmission(entry) as Record<string, unknown>), timekeeperName: "Synthetic Timekeeper" };
+    const submission = { ...(toRawSubmission(entry) as Record<string, unknown>), timekeeperName: "Synthetic Timekeeper", timekeeperInitials: "ST" };
     return plannedRowDisplay("separations", { schemaHash, value: planning.parseCanonicalInput(planning.parseInput(submission).input) });
   });
   assert.deepEqual(rows, [{ kind: "document", documentNumber: "4502" }, { kind: "document", documentNumber: "4510" }]);
