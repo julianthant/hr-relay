@@ -211,15 +211,15 @@ export function transitionWorkerSession(state: WorkerSessionState, event: Worker
 
 /**
  * The health a worker reports for its session's browser: in use or closing is `unknown` until a
- * proof settles it. A failed system reports its browser's health; its lost custody is reported as
- * unproved closure, not as browser health.
+ * proof settles it. A failed system reports its browser's health, except that its closure is
+ * unproved, so a browser it still holds signed in reports `failed`, never `authenticated`.
  */
 export function workerSessionHealth(state: WorkerSessionState): WorkerBrowserObservation["health"] {
   const browser = state.state === "failed" ? state.browser : state;
   switch (browser.state) {
     case "closed": return "closed";
     case "starting": return "starting";
-    case "authenticated": return browser.lease === "idle" ? "authenticated" : "unknown";
+    case "authenticated": return browser.lease === "leased" ? "unknown" : state.state === "failed" ? "failed" : "authenticated";
     case "closing": return "unknown";
     case "closure-unproved": return "failed";
   }

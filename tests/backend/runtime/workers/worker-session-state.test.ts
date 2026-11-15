@@ -319,7 +319,8 @@ describe("worker browser session transition table", () => {
     };
     for (const key of WORKER_SESSION_BROWSER_KEYS) {
       expect(workerSessionHealth(browsers[key])).toBe(health[key]);
-      expect(workerSessionHealth(failed(browsers[key]))).toBe(health[key]);
+      // A failed system's closure is unproved, so even its signed-in browser never reports authenticated.
+      expect(workerSessionHealth(failed(browsers[key]))).toBe(health[key] === "authenticated" ? "failed" : health[key]);
     }
     expect([...new Set(Object.values(health))].sort()).toEqual([...WorkerBrowserObservationSchema.shape.health.options].sort());
   });

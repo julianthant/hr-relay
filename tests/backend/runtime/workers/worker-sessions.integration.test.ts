@@ -576,6 +576,30 @@ describe("bounded browser-session acquisition", () => {
       && error.errors.some(value => value instanceof Error && /closure is unproved/.test(value.message)));
   });
 
+  it("reports no authenticated session between an unproved close and its proven close", async () => {
+    const base = sessionFactory({ closeFailureAt: 1 });
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const health: string[] = [];
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry, factory: base.factory,
+      clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: await fixtureDuoCeremonyGates(clock, undefined, profileFixtures.create),
+      onObservation: observation => { health.push(observation.health); },
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    await assert.rejects(sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => { throw new Error("injected task failure"); }),
+      /operation and poison-close both failed/);
+    await assert.rejects(sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => assert.fail("an unproved close is never reused")),
+      /unresolved failed-close proof/);
+    sessions.releaseRunConfigFingerprint();
+    assert.throws(() => sessions.assertControlTarget("00000000-0000-4000-8000-000000000001"), /worker-browser-unproven-close/);
+    assert.deepEqual(health, ["starting", "authenticated", "unknown", "failed"]);
+
+    await sessions.closeAll("worker-stop");
+    assert.equal(base.closes(), 2);
+    assert.deepEqual(health, ["starting", "authenticated", "unknown", "failed", "closed"]);
+  });
+
   it("retains failed factory cleanup after its acquisition promise has settled", async () => {
     const failure = new BrowserSessionClosureUnprovedError([new Error("launch failed"), new Error("closure unproved")], "setup cleanup failed");
     const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
