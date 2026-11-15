@@ -244,7 +244,7 @@ describe("approved Person Lookup scenarios", () => {
       assert.ok(employment?.payload.kind === "note");
       assert.ok(employment.payload.note.spanPath.includes("/active-status#1"));
       assert.ok(employment.payload.note.fields?.some(field => field.key === "HDH department" && field.value === "No"));
-      assert.ok(employment.payload.note.fields?.some(field => field.key === "department" && field.value === "Engineering"));
+      assert.deepEqual(employment.payload.note.fields?.map(field => field.key), ["status", "HDH department"]);
     }
     if (testCase.id === "S14") assert.equal(output.activeStatus.reason, "UCPath HR status is unreadable: Unreadable");
     if (testCase.id === "S15") { assert.equal(harness.sessions.opens("crm"), 0); assert.equal(output.activeStatus.details.startDate, null); }
@@ -332,7 +332,7 @@ describe("approved Person Lookup scenarios", () => {
       assert.equal(bundle.runId, queued.envelope.runId);
       assert.ok(bundle.attachments.some(row => row.artifactId === association?.[1] && row.kind === "screenshot"));
     }
-    if (failed) assert.equal(actions.length, 1);
+    if (failed) assert.deepEqual(actions.map(action => action.targetId).sort(), ["ucpath.browser-capture", "ucpath.task-capture"]);
   });
   it("M4", () => {
     const surface = personLookupDescriptor.surfaces.inputRun;

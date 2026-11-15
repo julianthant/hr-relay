@@ -3,7 +3,7 @@
 The dashboard is a browser app for one local operator. `src/dashboard/app/main.tsx` mounts
 `DashboardApp`; `app/dashboard-app.tsx` composes the workspace, Queue, Logs, launcher, Settings,
 and Sessions. `app/dashboard-takeovers.tsx` mounts Settings, Analytics, Explorer, and intake.
-The workflow policy serves Person Lookup, Separations and the public I-9 Check PDF parent. OCR and I-9 Lookup are hidden children; the other configured workflows use mocks. Bootstrap, Settings,
+The workflow policy serves Person Lookup, Separations, Onboarding, Work-Study and the public I-9 Check PDF parent. OCR and I-9 Lookup are hidden children; the other configured workflows use mocks. Bootstrap, Settings,
 Preflight, storage, and the served intake workspace use the typed client. Retained backend
 capabilities do not imply that the corresponding product producer is mounted.
 
@@ -63,7 +63,7 @@ It keeps stable ID, label, category, start capability, availability, and source 
 Preview capability does not establish executable registration. An unknown workflow source throws
 rather than picking a default.
 
-`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations and I-9 Check are `served`. OCR and I-9 Lookup are `hidden`; the other configured values are `mock`. The I-9 Check person child has no source entry. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
+`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and I-9 Check are `served`. OCR and I-9 Lookup are `hidden`; the other configured values are `mock`. The I-9 Check person child has no source entry. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
 selection determines Queue heading, visible rows, launcher target, and Logs context. Exact run
 selection may identify its own workflow. Counts come from the producer corresponding to the
 rows rather than a second browser status authority.

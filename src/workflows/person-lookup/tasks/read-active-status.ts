@@ -12,7 +12,7 @@ export const readActiveStatusTask = defineTask(ReadActiveStatus, {
       if (!(error instanceof PersonLookupIdentityError)) throw error;
       return ctx.fail(error.code, error.message, { cause: error });
     }
-    ctx.log.info("Employment status", { status: output.state, reason: output.reason, department: output.details.department ?? "", "HDH department": output.hdh === false ? "No" : output.hdh === true ? "Yes" : "Unknown" });
+    ctx.log.info("Employment status", { status: output.state, "HDH department": output.hdh === false ? "No" : output.hdh === true ? "Yes" : "Unknown" });
     ctx.recordData(Object.entries(output).map(([field, value]) => ({ direction: "read" as const, field, value })));
     return output;
   },

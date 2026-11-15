@@ -48,6 +48,14 @@ function stitchCaptureBands(bands: CaptureBand[]): { bytes: Uint8Array; width: n
 
 async function observeSecrets(frame: Frame, selector: string): Promise<void> {
   await frame.evaluate(selector => {
+    // Matches Playwright's visible filter: a never-painted control cannot reach the pixels.
+    // An object method: tsx wraps a named inner function in a __name helper the page realm lacks.
+    const controls = { painted(): boolean {
+      return [...document.querySelectorAll<HTMLElement>(selector)].some(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && el.checkVisibility({ visibilityProperty: true });
+      });
+    } };
     const positions = [...document.querySelectorAll<HTMLElement>("*")].map(el => ({ el, x: el.scrollLeft, y: el.scrollTop }));
     const originalScroll = { x: window.scrollX, y: window.scrollY };
     const state = { restore() {
@@ -56,15 +64,16 @@ async function observeSecrets(frame: Frame, selector: string): Promise<void> {
       try { window.scrollTo({ left: originalScroll.x, top: originalScroll.y, behavior: "instant" }); } catch (error) { errors.push(error); }
       if (errors.length) throw new AggregateError(errors, "Full-page capture scroll restoration failed");
     }, observer: new MutationObserver(records => {
-      if (document.querySelector(selector)) state.seen = true;
+      if (controls.painted()) state.seen = true;
       for (const record of records) {
         if (record.type === "attributes" && record.target instanceof HTMLInputElement && ((record.attributeName === "type" && record.oldValue?.toLowerCase() === "password")
           || (record.attributeName === "autocomplete" && record.oldValue !== null && ["one-time-code", "current-password", "new-password"].includes(record.oldValue)))) state.seen = true;
-        for (const node of record.addedNodes) if (node instanceof Element && (node.matches(selector) || node.querySelector(selector))) state.seen = true;
+        // A secret control that left this document (removed, or moved into a shadow tree or another frame) is no longer watched.
+        for (const node of record.removedNodes) if (node instanceof Element && [...(node.matches(selector) ? [node] : []), ...node.querySelectorAll(selector)].some(el => !document.contains(el))) state.seen = true;
       }
-    }), seen: document.querySelector(selector) !== null };
+    }), seen: controls.painted() };
     (window as CaptureWindow).__relayCaptureSecrets = state;
-    state.observer.observe(document, { subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ["type", "autocomplete"] });
+    state.observer.observe(document, { subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ["type", "autocomplete", "class", "style", "hidden", "open"] });
   }, selector);
 }
 
