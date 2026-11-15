@@ -258,6 +258,7 @@ describe("redaction surface scan — the declaration audit", () => {
 
   it("pins history, operator observations and definition text origins and rejects their omission", () => {
     const reviewed = [
+      ["wire/bootstrap", "workflows[].start.inputRun.typedInput.controls[].refusal", "repository-authored"],
       ["wire/dashboard-day", "attemptHistory[].endedAt.reason", "repository-authored"],
       ["wire/stream-envelope", "payload.attemptHistory[].endedAt.reason", "repository-authored"],
       ["wire/run-detail-section", "payload.notes[].operatorAction.value", "captured-hr-value"],
