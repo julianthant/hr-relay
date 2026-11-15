@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { readPendingShutdownBackup, removePendingShutdownBackup, writePendingShutdownBackup } from "../../../../src/backend/app/composition/storage-compose.js";
+import { addPendingShutdownBackup, readPendingShutdownBackup, removePendingShutdownBackup, writePendingShutdownBackup } from "../../../../src/backend/app/composition/storage-compose.js";
 import { acquireLifetimeLockAfterShutdownBackup, completePendingShutdownBackup, SHUTDOWN_BACKUP_WAIT_MS } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 import { RuntimeAlreadyRunningError, type RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 
 function waiting(busyAttempts: number, backendListening = false) {
   const lock = {} as RuntimeLifetimeLock, calls = { acquire: 0, sleeps: [] as number[], waits: 0 };
@@ -53,12 +54,13 @@ it("passes any other lock failure through without waiting", async () => {
 
 const A = "00000000-0000-4000-8000-000000000001", B = "00000000-0000-4000-8000-000000000002";
 
-function pending(record: string[] | undefined, backupError?: Error) {
-  const calls = { backed: [] as string[][], removed: 0, warned: [] as unknown[] };
+function pending(record: string[] | undefined, backupError?: Error, removeError?: Error) {
+  const calls = { backed: [] as string[][], removed: 0, kept: [] as string[][], warned: [] as unknown[] };
   const deps = {
     read: () => record === undefined ? undefined : new Set(record),
     backup: (people: ReadonlySet<string>) => { calls.backed.push([...people]); return backupError === undefined ? Promise.resolve() : Promise.reject(backupError); },
-    remove: () => { calls.removed++; },
+    remove: () => { if (removeError !== undefined) throw removeError; calls.removed++; },
+    write: (people: readonly string[]) => { calls.kept.push([...people]); },
   };
   return { calls, deps, warn: (error: unknown) => { calls.warned.push(error); } };
 }
@@ -83,29 +85,56 @@ it("round-trips, removes and refuses a malformed pending shutdown-backup record"
 it("a starting dashboard completes the pending backup once with the record people and removes the record", async () => {
   const f = pending([A, B]);
   await completePendingShutdownBackup({ ...f.deps, warn: f.warn });
-  assert.deepEqual(f.calls, { backed: [[A, B]], removed: 1, warned: [] });
+  assert.deepEqual(f.calls, { backed: [[A, B]], removed: 1, kept: [], warned: [] });
 });
 
 it("a failed completion at start keeps the record, warns and does not throw", async () => {
   const failure = new Error("boom"), f = pending([A], failure);
   await completePendingShutdownBackup({ ...f.deps, warn: f.warn });
-  assert.deepEqual(f.calls, { backed: [[A]], removed: 0, warned: [failure] });
+  assert.deepEqual(f.calls, { backed: [[A]], removed: 0, kept: [], warned: [failure] });
 });
 
 it("the finisher without a record takes no backup", async () => {
   const f = pending(undefined);
   await completePendingShutdownBackup({ ...f.deps, only: new Set([A]) });
-  assert.deepEqual(f.calls, { backed: [], removed: 0, warned: [] });
+  assert.deepEqual(f.calls, { backed: [], removed: 0, kept: [], warned: [] });
 });
 
-it("the finisher backs up argv people in the record, then removes it; a failure keeps it and propagates", async () => {
+it("the finisher backs up argv people in the record and keeps everyone else recorded; a failure keeps it and propagates", async () => {
   const f = pending([A, B]);
   await completePendingShutdownBackup({ ...f.deps, only: new Set([B]) });
-  assert.deepEqual(f.calls, { backed: [[B]], removed: 1, warned: [] });
+  assert.deepEqual(f.calls, { backed: [[B]], removed: 0, kept: [[A]], warned: [] });
+  const all = pending([A, B]);
+  await completePendingShutdownBackup({ ...all.deps, only: new Set([A, B]) });
+  assert.deepEqual(all.calls, { backed: [[A, B]], removed: 1, kept: [], warned: [] });
   const failure = new Error("boom"), g = pending([A], failure);
   await assert.rejects(completePendingShutdownBackup({ ...g.deps, only: new Set([A]) }), failure);
-  assert.deepEqual(g.calls, { backed: [[A]], removed: 0, warned: [] });
+  assert.deepEqual(g.calls, { backed: [[A]], removed: 0, kept: [], warned: [] });
   const h = pending([A]);
   await completePendingShutdownBackup({ ...h.deps, only: new Set([B]) });
-  assert.deepEqual(h.calls, { backed: [], removed: 1, warned: [] });
+  assert.deepEqual(h.calls, { backed: [], removed: 0, kept: [], warned: [] });
+});
+
+it("a delayed finisher after a later quit leaves the later quit's people recorded", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pending-backup-"));
+  try {
+    writePendingShutdownBackup(workspace, [A]);
+    addPendingShutdownBackup(workspace, [B]);
+    const backed: string[][] = [];
+    await completePendingShutdownBackup({ read: () => readPendingShutdownBackup(workspace), only: new Set([A]),
+      backup: people => { backed.push([...people]); return Promise.resolve(); },
+      remove: () => { removePendingShutdownBackup(workspace); }, write: people => { writePendingShutdownBackup(workspace, people); } });
+    assert.deepEqual(backed, [[A]]);
+    assert.deepEqual([...readPendingShutdownBackup(workspace) ?? []], [B]);
+  } finally { rmSync(workspace, { recursive: true }); }
+});
+
+it("a starting dashboard never swallows an unproved source closure from the backup or the record", async () => {
+  const closure = new AuthoritySourceClosureUnprovedError([new Error("close failed")]);
+  const f = pending([A], closure);
+  await assert.rejects(completePendingShutdownBackup({ ...f.deps, warn: f.warn }), closure);
+  assert.deepEqual(f.calls, { backed: [[A]], removed: 0, kept: [], warned: [] });
+  const g = pending([A], undefined, closure);
+  await assert.rejects(completePendingShutdownBackup({ ...g.deps, warn: g.warn }), closure);
+  assert.deepEqual(g.calls.warned, []);
 });
