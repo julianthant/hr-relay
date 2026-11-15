@@ -273,6 +273,13 @@ export function createEmergencyContactRetryWorld() {
     }
     const interrupted = await f.canonical.execute(f.parentRun, new AbortController().signal);
     assert.equal(interrupted.run?.lifecycle.state, "queued", "a terminal failed sibling requeues the allow-partial parent");
+    // A saved member waits on its OnBase filing child; settle every member before the template is captured.
+    const memberActive = () => f.database.authority.runs.listChildren(f.parentRun.envelope.runId)
+      .some(child => child.envelope.workflow === "emergency-contact-member" && child.lifecycle.state !== "terminal");
+    while (memberActive()) {
+      const next = await f.canonical.step(f.parentRun, new AbortController().signal);
+      assert.ok(next.outcome.state === "done" || next.outcome.state === "yielded-delegation", `filing stopped: ${next.run.envelope.workflow} ${next.outcome.state}`);
+    }
     return { ...f, live, mintedIds: ids.minted().length };
   }
   function present(f: Awaited<ReturnType<typeof world.fixture>>, live: ReturnType<typeof pieces>) {
@@ -281,7 +288,15 @@ export function createEmergencyContactRetryWorld() {
       type, source: "run-detail" as const, requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(),
       target: { runId: run.envelope.runId, expectedVersion: run.version } });
     const children = () => f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(run => run.envelope.workflow === "emergency-contact-member");
-    return { ...f, facts, persistence: live.persistence, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children, filing: live.filing };
+    // A member step includes its OnBase filing: the yield, the filing child and the member's re-entry.
+    const step: typeof f.canonical.step = async (root, signal) => {
+      const executed = await f.canonical.step(root, signal);
+      if (executed.run.envelope.workflow !== "emergency-contact-member" || executed.outcome.state !== "yielded-delegation") return executed;
+      const filed = await f.canonical.step(root, signal);
+      assert.equal(filed.run.envelope.workflow, "onbase"); assert.equal(filed.run.envelope.parent?.runId, executed.run.envelope.runId);
+      return f.canonical.step(root, signal);
+    };
+    return { ...f, canonical: { ...f.canonical, step }, facts, persistence: live.persistence, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children, filing: live.filing };
   }
   async function capture(built: Awaited<ReturnType<typeof build>>): Promise<MemberStageTemplate> {
     const source = built.harness.authority.profile.workspace;
