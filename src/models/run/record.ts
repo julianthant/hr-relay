@@ -193,6 +193,11 @@ export function runTransitionViolation(from: RunLifecycle, to: RunLifecycle,
   return undefined;
 }
 
+/** Whether the run's stored result is its current, final one; a parent reopened by a waiting delegation refresh still holds an earlier result that is not. */
+export function runResultCurrent<Run extends Readonly<{ lifecycle: RunLifecycle; delegationRefresh?: RunDelegationRefresh }>>(run: Run): run is Run & Readonly<{ lifecycle: Extract<RunLifecycle, { state: "terminal" }> }> {
+  return run.lifecycle.state === "terminal" && run.delegationRefresh?.phase !== "waiting";
+}
+
 type DelegationDependencyState = DependencyRecord["state"];
 /** One parent-to-child edge: an active member settles to its child's outcome; a member Retry reopens a failed or cancelled one. */
 const LEGAL_DELEGATION_DEPENDENCY_TRANSITIONS: ReadonlyMap<DelegationDependencyState, readonly DelegationDependencyState[]> = new Map([

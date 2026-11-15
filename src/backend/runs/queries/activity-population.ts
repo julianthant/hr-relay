@@ -6,6 +6,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { spreadsheetCsvRow } from "../exports/spreadsheet-csv.js";
 import { deriveRunStatus } from "../../../rules/runs/run-status.js";
+import { runResultCurrent } from "../../../models/run/record.js";
 import { activityReportCsv, activityReportCsvFileName } from "./activity-export.js";
 import { createActivitySelectionService, createActivitySnapshotSigner } from "./activity-selection.js";
 import { queryActivitySummaries, visitActivitySummaryRange } from "./activity-summaries.js";
@@ -69,7 +70,7 @@ export function createActivityPopulationService(input: {
       visitActivitySummaryRange(database, from, to, report.volume.timeZone, row => {
         if (!isQueueTopLevel(row)) return;
         population.push(ActivityPopulationRunSchema.parse({ runId: row.runId, workflowId: row.workflow, title: row.title, attempt: row.attempt, day: row.localDay, parentRunId: row.parent?.runId ?? null, shape: row.shape,
-          status: deriveRunStatus(row), terminal: row.lifecycle.state === "terminal", durationMs: row.durationMs,
+          status: deriveRunStatus(row), terminal: runResultCurrent(row), durationMs: row.durationMs,
           receiptResult: row.receiptResult, warningCount: row.warningCount, readback: row.receiptResult === null ? null : row.receiptResult === "verified-done" }));
       });
       if (population.length !== report.totalRuns || new Set(population.map(row => row.runId)).size !== population.length) throw new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH");

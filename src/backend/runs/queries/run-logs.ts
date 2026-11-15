@@ -14,7 +14,7 @@ import {
   RunDetailSectionResponseSchema,
   type RunDetailSectionResponse,
 } from "../../../models/dashboard/run-detail.js";
-import type { RunRecord } from "../../../models/run/record.js";
+import { runResultCurrent, type RunRecord } from "../../../models/run/record.js";
 import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import {
   NoteWireSchema as NoteAtRestSchema,
@@ -436,7 +436,7 @@ function logRowOf(
 function dryRunPreviewForLogs(deps: RunDetailQueryDeps, authority: RunRecord) {
   if (!authority.envelope.dryRun) return undefined;
   if (deps.canonical === undefined) return DryRunPreviewWireSchema.parse({ state: "unavailable", reason: "preview-authority-unavailable" });
-  const result = deps.canonical.database.authority.runResults.get(authority.envelope.runId);
+  const result = runResultCurrent(authority) ? deps.canonical.database.authority.runResults.get(authority.envelope.runId) : undefined;
   const preview = result === undefined ? undefined : readRunPreviewResult(result);
   const descriptor = deps.canonical.descriptors.resolve(authority.envelope.workflow);
   if (result === undefined || preview === undefined) {

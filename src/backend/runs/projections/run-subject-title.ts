@@ -1,6 +1,6 @@
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { workflowPlanning } from "../../../workflow-kit/workflow.js";
-import type { RunRecord } from "../../../models/run/record.js";
+import { runResultCurrent, type RunRecord } from "../../../models/run/record.js";
 import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
 import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/evidence-identity.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
@@ -103,7 +103,7 @@ export function resolveResultTitle(descriptor: AnyWorkflowDescriptor, run: RunRe
   const projection = descriptor.titleProjection;
   if (run.envelope.shape === "operation" || projection === undefined || !allowsSubjectIdentity(run, descriptor)) return undefined;
   const inputTitle = workflowPlanning(descriptor).title(run.input.parsed.value);
-  if (receipt === undefined || run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done") return inputTitle;
+  if (receipt === undefined || !runResultCurrent(run) || run.lifecycle.outcome !== "done") return inputTitle;
   const value = verifiedResultDisplayValue(run, receipt, projection.fieldPath, "title");
   if (value === undefined || value === null) return inputTitle;
   if (typeof value !== "string" || value.trim() === "") throw new ProjectionDegradedError("result-title-value-invalid");
