@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { createAssistantAuthorizationRepository } from "../../../../src/backend/storage/sqlite/assistant-authorization.js";
 
 it("retires automatic grants and pending actions without changing terminal or uncertain history", () => {
   const database = new DatabaseSync(":memory:");
@@ -30,8 +29,6 @@ it("retires automatic grants and pending actions without changing terminal or un
     assert.ok(migration);
     for (const statement of migration.statements) database.exec(statement);
     assert.deepEqual(database.prepare("SELECT * FROM assistant_grants").all(), []);
-    const repository = createAssistantAuthorizationRepository({ database, mutate: () => { throw new Error("read-only proof"); } });
-    assert.equal(repository.grant(), undefined);
     assert.deepEqual(["commands", "command_audits"].map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), history);
     for (const prior of before) {
       const current = database.prepare("SELECT * FROM assistant_actions WHERE id=?").get(prior.id);
@@ -60,17 +57,5 @@ it("keeps an existing every-action grant byte-for-byte", () => {
     assert.ok(migration);
     for (const statement of migration.statements) database.exec(statement);
     assert.deepEqual(database.prepare("SELECT * FROM assistant_grants").all(), before);
-  } finally { database.close(); }
-});
-
-it.each(["before-submits", "without-asking", "every-action", "unexpected", null, undefined])("permits missing grant history only for an exact retired mode: %s", mode => {
-  const database = new DatabaseSync(":memory:");
-  try {
-    for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) database.exec(statement);
-    database.prepare("INSERT INTO commands VALUES (?,?,?,?,?,?,?,?,?,?,?)").run("grant-command", "settings", "operator", null, null, "digest",
-      JSON.stringify({ payload: { assistantPermission: { mode } } }), "succeeded", "{}", "created", "created");
-    const repository = createAssistantAuthorizationRepository({ database, mutate: () => { throw new Error("read-only proof"); } });
-    if (mode === "before-submits" || mode === "without-asking") assert.equal(repository.grant(), undefined);
-    else assert.throws(() => repository.grant(), /assistant-grant-missing-with-history/u);
   } finally { database.close(); }
 });

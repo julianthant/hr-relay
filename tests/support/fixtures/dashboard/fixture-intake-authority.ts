@@ -111,10 +111,12 @@ export async function createIntakeAuthority(profileFixture: () => Promise<BoundP
     execute: request => runtime.kernel.execute(request),
     submit: async request => runtime.kernel.execute(request),
     executeBulk: forbidden,
+    completeConsumed: forbidden,
+    publish: forbidden,
   };
   registerCommandsRoutes(app, { clock, commands, resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority), commandJournal: { get: id => database.authority.commands.get(id) },
     protectedCommandAcceptedAt: forbidden, bulkCommandAcceptances: { withTransaction: work => database.withAuthorityTransaction(repositories => work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })) },
-    intake: { prepare: request => runtime.intake.prepare(request) }, resolveIdentityGateAnswer: forbidden,
+    intake: { prepare: request => runtime.intake.prepare(request) }, resolveIdentityGateAnswer: forbidden, resolveGateArmAnswer: forbidden,
   });
   app.onError((error, c) => c.json({ state: "error", code: "INTAKE_PROOF_ERROR", message: error.message, retryable: false }, 500));
   return {

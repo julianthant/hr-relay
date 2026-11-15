@@ -3,7 +3,7 @@
 The dashboard is a browser app for one local operator. `src/dashboard/app/main.tsx` mounts
 `DashboardApp`; `app/dashboard-app.tsx` composes the workspace, Queue, Logs, launcher, Settings,
 and Sessions. `app/dashboard-takeovers.tsx` mounts Settings, Analytics, Explorer, and intake.
-The workflow policy serves Person Lookup, Separations and the public I-9 Check PDF parent. OCR and I-9 Lookup are hidden children; the other configured workflows use mocks. Bootstrap, Settings,
+The workflow policy serves Person Lookup, Separations, Onboarding, Work-Study and the public I-9 Check PDF parent. OCR and I-9 Lookup are hidden children; the other configured workflows use mocks. Bootstrap, Settings,
 Preflight, storage, and the served intake workspace use the typed client. Retained backend
 capabilities do not imply that the corresponding product producer is mounted.
 
@@ -63,7 +63,7 @@ It keeps stable ID, label, category, start capability, availability, and source 
 Preview capability does not establish executable registration. An unknown workflow source throws
 rather than picking a default.
 
-`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations and I-9 Check are `served`. OCR and I-9 Lookup are `hidden`; the other configured values are `mock`. The I-9 Check person child has no source entry. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
+`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and I-9 Check are `served`. OCR and I-9 Lookup are `hidden`; the other configured values are `mock`. The I-9 Check person child has no source entry. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
 selection determines Queue heading, visible rows, launcher target, and Logs context. Exact run
 selection may identify its own workflow. Counts come from the producer corresponding to the
 rows rather than a second browser status authority.
@@ -442,18 +442,13 @@ that read's profile, epoch and expected revision; confirmed readback must match 
 choice. Unknown settlement stays visible without automatic retry. A saved choice invalidates earlier
 verification and in-flight inference; it does not establish account eligibility or permission.
 
-Send `/verify-assistant` explicitly to verify the current choice. The account owner performs its fixed
-public two-turn namespaced probe and a fresh public model-catalog read. It sends no HR subject,
-operator prose, artifact or private context. Sign-in, model selection, catalog reads, OCR and startup
-never run that probe automatically. The account's private proof lasts at most 15 minutes and remains
-bound to current account, selected profile, epoch and saved preference authority.
+The assistant is usable as soon as ChatGPT sign-in works. There is no Test assistant step; a message
+that gets no reply shows the normal failure.
 
 Both setup commands are text-only. Recognized setup forms refuse attachments before file reading,
-registration or sending. A served `CHATGPT_USAGE_UNAVAILABLE` account resource permits composing a
-setup command while showing verification guidance; it does not make `accountAvailable` true. Confirm
-still requires the real signed-in account with available plan use and the existing issued-action,
-permission and currentness checks. After explicit verification settles, the current binding refreshes
-the served account once. Superseded requests cannot publish into another conversation.
+registration or sending. A served `CHATGPT_USAGE_UNAVAILABLE` account resource (unreadable usage meter) counts as signed in.
+Confirm still requires the signed-in account and the issued-action and currentness checks.
+Superseded requests cannot publish into another conversation.
 
 The panel has no Files view. Attached spreadsheets (`.xlsx`, `.csv`) never reach the model as content;
 the model sees only worksheet positions and counts, and they enter the Spreadsheets library through the
@@ -462,13 +457,11 @@ rename, named versions). An attached PDF can start a served workflow whose input
 (Emergency Contact), through a confirmed card only. Sent attachments show as name-only pills on the
 operator message. The model,
 effort, approval and voice controls remain unavailable. The served model and effort labels come from
-the selected person’s preference; setup changes use the existing composer command. Test assistant
-in Settings › Preflight explicitly runs the same public capability verification; its result is bound to
-the current account and clears on account change, disposal or after 15 minutes. Named verification failures remain in the conversation and never enable inference. The explicit mock composition supplies approved mock conversations and sample workflow
+the selected person’s preference; setup changes use the existing composer command. The explicit mock composition supplies approved mock conversations and sample workflow
 scenes; product failures never select those producers. Chat titles, selected chat, text drafts and displayed replies survive refresh in the current browser
 tab’s session storage, scoped only after the server verifies the selected person. Another person’s
 key is never adopted. Saved text confers no command or model authority: restored pending requests
-remain unknown, review proposals expire, and verification proof is never restored. File bodies and
+remain unknown, and review proposals expire. File bodies and
 executable action identities are not saved. Storage failures remain visible without erasing data.
 Deleting a chat retires its controller before removing history. Pending decisions become unknown;
 their late success or failure cannot write history, revive the chat or replay the action.
@@ -803,10 +796,8 @@ for byte with facts rebuilt from the running definitions and refuses with `ASSIS
 mismatch. The facts digest, registered route handoffs, command schema and static served workflow policy feed the
 command manifest identity.
 
-Model entitlement is separate from command permission and the OCR model. Trusted composition may
-supply the existing model policy with synchronous currentness; without it the service returns
-`ASSISTANT_MODEL_UNVERIFIED` without inference. Real per-profile preferences and a completed
-transaction-free capability canary remain required before the assistant is usable. Subject actions,
+Model choice is separate from command permission and the OCR model. Each turn uses the selected
+person's saved model and effort and refuses with `ASSISTANT_MODEL_CHANGED` if either changes mid-turn. Subject actions,
 freeform or protected changes, unsupported owners and remaining served actions require their current
 operator interface until their canonical assistant binding is implemented.
 
@@ -823,11 +814,14 @@ trace and other actions. A recorded pause uses the outline Queued style with a P
 remain Pausing until recorded. Logs marks the corresponding timeline boundary. The queue toolbar
 pauses every run in the application lifecycle snapshot, including runs outside the selected day.
 When every target is paused it offers Resume all, retaining each command outcome. A single Resume,
-Retry or Recover shows Start's worker warning instead of the confirmed toast when that result
+Retry or Recover shows the queued-run worker warning instead of the confirmed toast when that result
 carries worker startup. Resume all keeps the confirmed toast and adds one warning naming how many
 runs have no worker, including when another run keeps the batch from confirming. While a workflow
 has unpaused queued runs and every one of its workers has stopped, a sticky warning names how the
-worker stopped and points to Retry in Sessions. Queue rows serve `cancelledBy` for a cancelled run:
+worker stopped and points to Retry in Sessions. When served membership shows the workflow has no
+worker and a run other than a preview waits, the warning says so and points to Add workers in Sessions.
+This notice is how a Start learns its worker failed to start, since Start replies before startup; while
+that startup is still pending the worker card reads Starting and no notice shows. Queue rows serve `cancelledBy` for a cancelled run:
 the Cancelled pill credits the operator only for their own cancel and otherwise shows Relay's reason
 (the profile logged out, or a never-claimed run from a previous day was cancelled at startup). Command-Q opens
 “Pause all and quit?” with Keep working and confirmation, without a run list. A pending quit shows a

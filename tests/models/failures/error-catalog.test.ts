@@ -25,6 +25,13 @@ describe("error catalog", () => {
     }
   });
 
+  it("explains an unsatisfied delegation join with fixed text", () => {
+    const resolved = resolveErrorCatalogFailure({ code: "DELEGATION_OUTCOME_POLICY_UNSATISFIED", parameters: {}, summary: "delegation-outcome-policy-unsatisfied" }, "http-response");
+    assert.equal(resolved.state, "resolved");
+    if (resolved.state !== "resolved") throw new Error("delegation policy catalog unresolved");
+    assert.equal(resolved.text, "A step this run depends on did not finish, so the run stopped. Open that step for the reason.");
+  });
+
   it("maps the HTTP internal failure code without exposing its native cause", () => {
     const failure = { code: "INTERNAL_FAILURE", parameters: {}, summary: "private native path" };
     const resolved = resolveErrorCatalogFailure(failure, "http-response");
@@ -253,7 +260,6 @@ describe("error catalog", () => {
   it("registers every assistant refusal code with fixed operator text", () => {
     const expected = {
       ASSISTANT_AUTHORITY_INVALID: "The assistant permission could not be read. No action was taken.",
-      ASSISTANT_GRANT_REQUIRED: "The assistant has no operator grant. No action was taken.",
       ASSISTANT_MODEL_PROPOSAL_REFUSED: "The assistant proposal was refused. No action was taken.",
       ASSISTANT_PROPOSAL_MISMATCH: "The assistant proposal does not match this command. No action was taken.",
       ASSISTANT_UNCLASSIFIED: "This command is not classified for the assistant. No action was taken.",

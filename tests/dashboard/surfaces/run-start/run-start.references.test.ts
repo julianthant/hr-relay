@@ -8,7 +8,7 @@ import { WorkbookLibraryEntrySchema } from '../../../../src/models/dashboard/wor
 const entry = WorkbookLibraryEntrySchema.parse({ libraryId: 'roster', version: 3, name: 'Roster.xlsx', updatedAt: '2026-11-01T00:00:00Z', rowCount: 1,
   worksheets: [{ id: 'people', name: 'People' }], metadata: { typeId: 'roster-type', sharePoint: null },
   type: { id: 'roster-type', name: 'Roster', keyFieldId: 'email', fields: ['email', 'fullName'], defaultWorkbookId: 'roster' },
-  state: { libraryId: 'roster', revision: 4, selectedVersionId: 'current', removed: false, origin: { kind: 'local' },
+  state: { libraryId: 'roster', revision: 4, selectedVersionId: 'current', removed: false, pinned: false, tags: [], origin: { kind: 'local' },
     versions: ['earlier', 'current'].map((id, index) => ({ id, name: id, snapshotId: id, version: index + 1, savedAt: '2026-11-01T00:00:00Z', source: 'operator' })) } });
 const selections = { 'roster-type': { libraryId: 'roster', versionId: 'current', sheetId: 'people' } };
 const sources = [{ libraryId: 'roster', versionId: 'current', sheetId: 'people' }];

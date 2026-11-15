@@ -28,7 +28,7 @@ describe("public onboarding write execution", () => {
     assert.equal(h.i9.events.some(event => event.startsWith("commit:")), false); assert.equal(h.hire.events.includes("commit:hire"), false);
     assert.deepEqual(h.database.authority.writeIntents.listByRun(root.envelope.runId), []);
     assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
-    assert.equal(h.approve(root, { decision: "new-hire" }).state, "applied");
+    assert.equal(h.approve(root, { decision: "new-hire", ruledOut: [] }).state, "applied");
     terminal(await h.rawExecution.execute(root, signal()));
     const stored = h.database.authority.runResults.get(root.envelope.runId); assert.ok(stored);
     const output = OnboardingResultSchema.parse(stored.result.value);
@@ -38,7 +38,7 @@ describe("public onboarding write execution", () => {
     assert.equal(h.hire.events.filter(event => event === "commit:hire").length, 1);
     assert.equal(h.hire.events.at(-1), "probe:hire");
     const master = h.library.read(h.id); assert.ok(master);
-    assert.deepEqual(master.workbook.sheets[0].rows[1].cells.slice(7).map(cell => cell.value), [null, "900001", "T009000001", "Pending"]);
+    assert.deepEqual(master.workbook.sheets[0].rows[1].cells.slice(3).map(cell => cell.value), [null, "T009000001"]);
     assert.equal(h.repository.runOperations(root.envelope.runId).length, 1);
     assert.equal(h.repository.list().length, 1);
   });
@@ -55,7 +55,7 @@ describe("public onboarding write execution", () => {
 
     h.clock.advanceWall(60_000);
     const decidedAt = h.clock.now().toISOString();
-    const decision = h.approve(root, { decision: "new-hire" });
+    const decision = h.approve(root, { decision: "new-hire", ruledOut: [] });
     assert.equal(decision.state, "applied", JSON.stringify(decision));
     terminal(await h.rawExecution.execute(root, signal()));
 
@@ -82,7 +82,7 @@ describe("public onboarding write execution", () => {
     const h = await world.executionFixture(false, { match: "unique", selectedRow: true, mode: "rehire", personMatch: { hits: [person], confirmed: [person], dropped: [] } });
     const root = h.start();
     const review = await h.rawExecution.execute(root, signal()); assert.equal(review.run?.lifecycle.state, "parked-gate", JSON.stringify(h.database.authority.failures.listByRun(root.envelope.runId)));
-    assert.equal(h.approve(root, { decision: "existing-person", emplId: person.emplId }).state, "applied");
+    assert.equal(h.approve(root, { decision: "existing-person", emplId: person.emplId, confirmedBy: "person-org" }).state, "applied");
     terminal(await h.rawExecution.execute(root, signal()));
     assert.deepEqual(h.i9.events, []); assert.equal(h.hire.events.filter(event => event === "commit:hire").length, 1);
     assert.equal(h.database.authority.runs.listChildren(root.envelope.runId).length, 0);
@@ -91,7 +91,51 @@ describe("public onboarding write execution", () => {
     const output = OnboardingResultSchema.parse(stored.result.value); assert.deepEqual(output.i9, { state: "not-required" });
     assert.equal(output.hireWrite.receipt.emplId, person.emplId);
     const master = h.library.read(h.id); assert.ok(master);
-    assert.deepEqual(master.workbook.sheets[0].rows[1].cells.slice(7).map(cell => cell.value), [person.emplId, null, "T009000001", "Pending"]);
+    assert.deepEqual(master.workbook.sheets[0].rows[1].cells.slice(3).map(cell => cell.value), [person.emplId, "T009000001"]);
+  });
+
+  // 10800002 carries the hire's own name; 10800001 is under another name.
+  const droppedHits = ["10800002", "10800001"].map(emplId => ({ emplId: EidSchema.parse(emplId), name: emplId === "10800002" ? "Hire, Fixture" : "Other, Person" }));
+  const allDropped = { hits: droppedHits, confirmed: [], dropped: droppedHits.map(hit => ({ ...hit, reason: "Last name does not match" })) };
+
+  it("looks up I-9 while every UCPath hit is dropped, then previews a new hire the operator ruled them all out for", async () => {
+    const h = await world.executionFixture(false, { match: "unique", dryRun: true, personMatch: allDropped }), root = h.start();
+    const review = await h.rawExecution.execute(root, signal());
+    assert.ok(review.run?.lifecycle.state === "parked-gate" && review.run.lifecycle.gateId === ONBOARDING_WRITE_REVIEW_GATE, JSON.stringify(review.run?.lifecycle));
+    assert.equal(h.database.authority.runs.listChildren(root.envelope.runId).length, 1);
+    assert.equal(h.approve(root, { decision: "new-hire", ruledOut: ["10800001", "10800002"] }).state, "applied");
+    terminal(await h.rawExecution.execute(root, signal()));
+    const stored = h.database.authority.runResults.get(root.envelope.runId); assert.ok(stored);
+    const transactions = RunDryRunPreviewResultSchema.parse(stored.result.value).steps.filter(step => step.state === "transaction-preview");
+    assert.deepEqual(transactions.map(step => step.nodeId), ["i9-profile-save", "i9-remote-create", "hire-create"]);
+    assert.deepEqual(h.database.authority.writeIntents.countDryRunEvidenceByRun(root.envelope.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
+    assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
+  });
+
+  it("previews a concurrent hire under a same-name dropped hit the operator picked, with no I-9 creation plan", async () => {
+    const h = await world.executionFixture(false, { match: "unique", dryRun: true, personMatch: allDropped }), root = h.start();
+    await h.rawExecution.execute(root, signal());
+    assert.equal(h.approve(root, { decision: "existing-person", emplId: "10800002", confirmedBy: "operator" }).state, "applied");
+    terminal(await h.rawExecution.execute(root, signal()));
+    const stored = h.database.authority.runResults.get(root.envelope.runId); assert.ok(stored);
+    const transactions = RunDryRunPreviewResultSchema.parse(stored.result.value).steps.filter(step => step.state === "transaction-preview");
+    assert.deepEqual(transactions.map(step => step.nodeId), ["concurrent-hire-create"]);
+    const profilePlan = h.database.authority.runCheckpoints.listByItem(root.envelope.workflow, root.envelope.itemId)
+      .find(checkpoint => checkpoint.runId === root.envelope.runId && checkpoint.nodeId === "i9-profile-plan");
+    assert.deepEqual(profilePlan?.output.value, { state: "not-required", subjectState: "review-required" });
+    assert.equal(h.i9.events.some(event => event.startsWith("commit:")), false); assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
+  });
+
+  it("refuses an operator pick of a dropped hit under another name before any effect", async () => {
+    const h = await world.executionFixture(false, { match: "unique", personMatch: allDropped }), root = h.start();
+    await h.rawExecution.execute(root, signal());
+    assert.equal(h.approve(root, { decision: "existing-person", emplId: "10800001", confirmedBy: "operator" }).state, "applied");
+    const refused = await h.rawExecution.execute(root, signal());
+    assert.ok(refused.run?.lifecycle.state === "terminal" && refused.run.lifecycle.outcome === "failed");
+    const [failure] = h.database.authority.failures.listByRun(root.envelope.runId);
+    assert.equal(failure?.nodeId, "write-plan"); assert.equal(failure?.code, "ONBOARDING_WRITE_REVIEW_REFUSED");
+    assert.deepEqual(h.database.authority.writeIntents.listByRun(root.envelope.runId), []); assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
+    assert.equal(h.i9.events.some(event => event.startsWith("commit:")), false); assert.equal(h.hire.events.includes("commit:hire"), false);
   });
 
   it("fills the full public preview with labelled samples and no intents, receipts or master writes", async () => {
@@ -105,7 +149,7 @@ describe("public onboarding write execution", () => {
     const observation = h.database.authority.runResults.get(child.envelope.runId); assert.ok(observation);
     assert.deepEqual(I9SignerOutputSchema.parse(observation.result.value), { i9Status: "not-found", signerName: "" });
     assert.deepEqual(h.database.authority.writeIntents.listByRun(root.envelope.runId), []);
-    assert.equal(h.approve(root, { decision: "new-hire" }).state, "applied");
+    assert.equal(h.approve(root, { decision: "new-hire", ruledOut: [] }).state, "applied");
     const resumed = await h.rawExecution.execute(root, signal());
     assert.deepEqual(h.database.authority.writeIntents.countDryRunEvidenceByRun(root.envelope.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
     assert.equal(h.i9.events.some(event => event.startsWith("commit:")), false); assert.equal(h.hire.events.includes("commit:hire"), false);
@@ -122,7 +166,7 @@ describe("public onboarding write execution", () => {
         .some(checkpoint => containsDryRunSample(checkpoint.output.value)), false);
       assert.equal(h.database.authority.evidenceReceipts.findByRun(run.envelope.runId), undefined);
     }
-    assert.deepEqual(h.library.read(h.id)?.workbook.sheets[0].rows[1].cells.slice(7).map(cell => cell.value), [null, null, null, null]);
+    assert.deepEqual(h.library.read(h.id)?.workbook.sheets[0].rows[1].cells.slice(3).map(cell => cell.value), [null, null]);
   });
 
   it("previews a reviewed concurrent hire with an authenticated empty I-9 delegation and no effects", async () => {
@@ -131,7 +175,7 @@ describe("public onboarding write execution", () => {
     const root = h.start();
     const review = await h.rawExecution.execute(root, signal());
     assert.ok(review.run?.lifecycle.state === "parked-gate" && review.run.lifecycle.gateId === ONBOARDING_WRITE_REVIEW_GATE);
-    assert.equal(h.approve(root, { decision: "existing-person", emplId: person.emplId }).state, "applied");
+    assert.equal(h.approve(root, { decision: "existing-person", emplId: person.emplId, confirmedBy: "person-org" }).state, "applied");
     terminal(await h.rawExecution.execute(root, signal()));
     const stored = h.database.authority.runResults.get(root.envelope.runId); assert.ok(stored);
     const preview = RunDryRunPreviewResultSchema.parse(stored.result.value);
@@ -144,12 +188,12 @@ describe("public onboarding write execution", () => {
     assert.deepEqual(h.i9.events, []); assert.equal(h.hire.events.includes("commit:hire"), false);
     assert.deepEqual(h.hire.rows, []); assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
     assert.equal(h.database.authority.evidenceReceipts.findByRun(root.envelope.runId), undefined);
-    assert.deepEqual(h.library.read(h.id)?.workbook.sheets[0].rows[1].cells.slice(7).map(cell => cell.value), [null, null, null, null]);
+    assert.deepEqual(h.library.read(h.id)?.workbook.sheets[0].rows[1].cells.slice(3).map(cell => cell.value), [null, null]);
   });
 
   it("refuses a chosen EID absent from the independent match before creating any effect", async () => {
     const h = await world.executionFixture(false, { match: "unique" }), root = h.start();
-    await h.rawExecution.execute(root, signal()); assert.equal(h.approve(root, { decision: "existing-person", emplId: "10800000" }).state, "applied");
+    await h.rawExecution.execute(root, signal()); assert.equal(h.approve(root, { decision: "existing-person", emplId: "10800000", confirmedBy: "person-org" }).state, "applied");
     const refused = await h.rawExecution.execute(root, signal());
     assert.ok(refused.run?.lifecycle.state === "terminal" && refused.run.lifecycle.outcome === "failed");
     assert.equal(h.database.authority.failures.listByRun(root.envelope.runId)[0]?.code, "ONBOARDING_WRITE_REVIEW_REFUSED");
@@ -159,14 +203,14 @@ describe("public onboarding write execution", () => {
   it("retains operator-owned master edits as a resolve-required receipt without overwriting them", async () => {
     const h = await world.executionFixture(false, { match: "unique" }), root = h.start();
     await h.rawExecution.execute(root, signal());
-    h.edit(workbook => { workbook.sheets[0].rows[1].cells[8].value = "900007"; });
-    assert.equal(h.approve(root, { decision: "new-hire" }).state, "applied");
+    h.edit(workbook => { workbook.sheets[0].rows[1].cells[4].value = "T009000007"; });
+    assert.equal(h.approve(root, { decision: "new-hire", ruledOut: [] }).state, "applied");
     terminal(await h.rawExecution.execute(root, signal()));
     const stored = h.database.authority.runResults.get(root.envelope.runId); assert.ok(stored);
     const output = OnboardingResultSchema.parse(stored.result.value);
     assert.equal(output.state, "master-review-required");
     assert.ok(output.rosterAccess.state === "recorded" && output.rosterAccess.receiptState === "resolve-required");
-    assert.deepEqual(h.library.read(h.id)?.workbook.sheets[0].rows[1].cells.slice(7).map(cell => cell.value), [null, "900007", null, null]);
+    assert.deepEqual(h.library.read(h.id)?.workbook.sheets[0].rows[1].cells.slice(3).map(cell => cell.value), [null, "T009000007"]);
     assert.equal(h.repository.runOperations(root.envelope.runId).length, 1);
   });
 

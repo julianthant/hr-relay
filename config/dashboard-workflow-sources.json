@@ -1,6 +1,6 @@
 {
   "separations": "served",
-  "onboarding": "mock",
+  "onboarding": "served",
   "person-lookup": "served",
   "i9-lookup": "hidden",
   "work-study": "served",
@@ -8,7 +8,7 @@
   "ocr": "hidden",
   "oath-signature": "mock",
   "oath-upload": "mock",
-  "emergency-contact": "mock",
+  "emergency-contact": "served",
   "onbase": "mock",
   "i9-check-start": "served",
   "crm-doc-download": "mock",

@@ -46,7 +46,7 @@ import {
   dsIcon,
   dsText,
 } from "../../ds/ui.js";
-import type { CommandResult, RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
+import type { CommandResult } from "../../../rules/commands/commands.js";
 import { runStartRefusalToast, settleCommandResult } from "../../app/commands/command-result.js";
 import {
   type InputRunSurface,
@@ -275,7 +275,7 @@ export function RunStartDialog({
   panelWorkflowId: string;
   /** echoed from bootstrap; the server matches it against the request identity */
   actorId: string;
-  onApplied?: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure) => void;
+  onApplied?: (workflowId: string, count?: number) => void;
   /** Hand intake the picker’s workflow, never the panel’s incidental scope. */
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
@@ -358,14 +358,14 @@ export function RunStartDialog({
   const [customizeSteps, setCustomizeSteps] = useViewState("launchCustomize", false);
   const stepContext = useRef({ workflowId, workflows });
   stepContext.current = { workflowId, workflows };
-  const defaultStepKeys = (forWorkflow: string, from = stepContext.current.workflows): string[] =>
+  const workflowDefaultStepKeys = (forWorkflow: string, from = stepContext.current.workflows): string[] =>
     from.find((entry) => entry.workflowId === forWorkflow)?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? [];
   /** A selection belongs to the workflow that made it; the workflow shown falls back to its own defaults. */
   const [stepSelection, setStepSelection] = useState<Readonly<{ workflowId: string; keys: readonly string[] }>>();
-  const selectedStepKeys = useMemo(() => stepSelection?.workflowId === workflowId ? [...stepSelection.keys] : defaultStepKeys(workflowId, workflows), [stepSelection, workflowId, workflows]);
+  const customizedStepKeys = useMemo(() => stepSelection?.workflowId === workflowId ? [...stepSelection.keys] : workflowDefaultStepKeys(workflowId, workflows), [stepSelection, workflowId, workflows]);
   const setSelectedStepKeys = useCallback((next: string[] | ((current: string[]) => string[]), forWorkflow: string = stepContext.current.workflowId) =>
     setStepSelection((previous) => ({ workflowId: forWorkflow, keys: typeof next === "function"
-      ? next(previous?.workflowId === forWorkflow ? [...previous.keys] : defaultStepKeys(forWorkflow)) : next })), []);
+      ? next(previous?.workflowId === forWorkflow ? [...previous.keys] : workflowDefaultStepKeys(forWorkflow)) : next })), []);
   /** Keep drafts across checkbox toggles, but clear them across workflow or customization exits. */
   const [stepDrafts, setStepDrafts] = useState<Readonly<Record<string, StepOmissionDraft>>>({});
   const [touchedFacts, setTouchedFacts] = useState<ReadonlySet<string>>(() => new Set());
@@ -490,10 +490,17 @@ export function RunStartDialog({
     for (const step of workflow?.steps ?? []) {
       const control = step.control;
       if (control.state === "selectable" && typedDeclaration.controls.some(field => field.field === control.inputField && field.placement === "step"))
-        values[control.inputField] = typedControlAvailable(typedDeclaration, values, control.inputField) && selectedStepKeys.includes(step.key);
+        values[control.inputField] = typedControlAvailable(typedDeclaration, values, control.inputField) && (customizeSteps || isRerun ? customizedStepKeys.includes(step.key) : step.includedByDefault);
     }
     return values;
-  }, [typedDeclaration, typedDraft, workflow, selectedStepKeys]);
+  }, [typedDeclaration, typedDraft, workflow, customizeSteps, isRerun, customizedStepKeys]);
+  const defaultStepKeys = useMemo(() => workflow?.steps.filter(step => {
+    const control = step.control;
+    return declaredInput && control.state === "selectable"
+      ? typedValues[control.inputField] === true
+      : step.includedByDefault;
+  }).map(step => step.key) ?? [], [workflow, declaredInput, typedValues]);
+  const selectedStepKeys = customizeSteps || isRerun ? customizedStepKeys : defaultStepKeys;
   const rowCapability = !isRerun && inputRun.state === "present" ? inputRun.surface.workbookRows : undefined;
   const rowReference = rowCapability === undefined ? undefined : selectedReferences[rowCapability.typeId];
   const rowLibrary = library.catalog.find(entry => entry.libraryId === rowReference?.libraryId && entry.state.origin.kind === "local" && !entry.state.removed);
@@ -601,7 +608,7 @@ export function RunStartDialog({
         ...(requiredTypes.length ? { workbookReferences: launchWorkbookReferences(requiredTypes, library.catalog, selectedReferences, values === null ? preview.submissions.length : 1,
           versionSources.sources, (workbookReference?.writableFields.length ?? 0) > 0,
           rowCapability === undefined ? undefined : { typeId: rowCapability.typeId, rows: selectedWorkbookRows?.choices ?? [] }) } : {}),
-        ...(customizeSteps || declaredInput ? { selectedStepKeys } : {}),
+        selectedStepKeys,
         // Send omission facts only after every declared form parses.
         ...(customizeSteps && stepOmissions !== null && stepOmissions.length > 0 ? { stepOmissions } : {}),
       });
@@ -677,9 +684,7 @@ export function RunStartDialog({
       if (outcome.kind === "confirmed") {
         dismissLaunchRecovery(window.sessionStorage, command);
         finalRequest.current = null; setRecovery(null); setPlan(null); reviewedRequest.current = null; setExpiredPlan(false); setResult(null); setBusy(false);
-        const workerStartup = reply !== undefined && "state" in reply && (reply.state === "applied" || reply.state === "already-applied")
-          ? reply.workerStartup : undefined;
-        onApplied?.(command.target.workflowId, plan?.planned.length, workerStartup);
+        onApplied?.(command.target.workflowId, plan?.planned.length);
         onOpenChange(false);
         ++launchInstance.current;
       } else if ((outcome.kind === "refused" || outcome.kind === "conflict") && reply !== undefined && "state" in reply
@@ -761,13 +766,8 @@ export function RunStartDialog({
 
   const changeCustomizeSteps = useCallback((next: boolean) => {
     setCustomizeSteps(next);
+    setSelectedStepKeys(defaultStepKeys);
     if (!next) {
-      setSelectedStepKeys(workflow?.steps.filter(step => {
-        const control = step.control;
-        return declaredInput && control.state === "selectable"
-          ? typedDeclaration.controls.some(field => field.placement === "input" && field.field === control.inputField) && typedValues[control.inputField] === true
-          : step.includedByDefault;
-      }).map(({ key }) => key) ?? []);
       // Leaving customization clears facts so unchosen assertions cannot survive invisibly.
       setStepDrafts({});
       setTouchedFacts(new Set());
@@ -775,7 +775,7 @@ export function RunStartDialog({
     } else if (currentStage === "Confirm") {
       setCurrentStage("Steps");
     }
-  }, [currentStage, workflow, setCurrentStage, setCustomizeSteps, declaredInput, typedDeclaration, typedValues, setSelectedStepKeys]);
+  }, [currentStage, defaultStepKeys, setCurrentStage, setCustomizeSteps, setSelectedStepKeys]);
 
   /** Use the shared cascade; locked omissions cannot be changed by another checkbox path. */
   const toggleStep = useCallback((key: string, next: boolean) => {
@@ -1079,7 +1079,7 @@ export function RunStartDialog({
 
               {currentStage === "Confirm" && plan !== null && (
                 <RunConfirmLayout count={plan.planned.length} outputs={plan.planned.flatMap(planned => planned.outputs ?? [])} inputs={pdfSurface !== undefined ? pdfInput.draft?.files.map(file => ({ label: file.source.fileName, kind: "PDF" })) : preview.entries.length ? preview.entries.map(entry => ({ label: entry.sourceText, kind: rowCapability === undefined ? inputRun.state === 'present' ? inputRunFieldLabel(inputRun.surface.parser) : 'Input' : `Entry ${entry.index + 1} · ${plan.refused.some(refusal => refusal.entry === entry.index + 1) ? "Refused" : "Accepted"}` })) : undefined} flags={<RunFlagChips dryRun={plan.dryRun} priority={plan.priority} />}
-                  description={expiredPlan ? "This plan expired, so it was checked again. Review it and press Start again." : isRerun ? "A new run linked to the source." : pdfSurface !== undefined ? "One run for all attached PDFs." : "One run for each accepted entry."}
+                  description={expiredPlan ? "This plan expired, so it was checked again. Review it and press Start again." : isRerun ? "A new run linked to the source." : pdfSurface !== undefined ? pdfSurface.pdfInput !== undefined && "documentField" in pdfSurface.pdfInput ? "One run for each attached PDF." : "One run for all attached PDFs." : "One run for each accepted entry."}
                   facts={[
                       { key: "Workflow", value: workflow === undefined ? plan.workflowId : `${workflow.label} · ${versionTag(workflow.version)}` },
                       { key: "Input", value: inputSummary || Object.values(valueDrafts).map(draft => draft.text).filter(Boolean).join(", ") },
@@ -1187,7 +1187,7 @@ export function RunStartSurfaces({
   catalog: readonly WorkflowCatalogEntry[];
   panelWorkflowId: string;
   actorId: string;
-  onApplied?: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure) => void;
+  onApplied?: (workflowId: string, count?: number) => void;
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;

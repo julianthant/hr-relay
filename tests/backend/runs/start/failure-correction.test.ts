@@ -9,7 +9,8 @@ import { failureCorrectionSubmission } from "../../../../src/backend/runs/start/
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { FailureDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
-import { failureRecovery } from "../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
+import { failureDecision, failureRecovery } from "../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
+import { failureCodeFromTaskCode } from "../../../../src/models/failures/error-catalog.js";
 import { PlannedRunSchema } from "../../../../src/models/run/start-plan.js";
 import { SourceBoundRunSchema } from "../../../../src/models/run/rerun.js";
 import { buildRerunPlan, RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
@@ -25,7 +26,7 @@ import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 
 function fixture() {
-  const original = { documentNumber: "4510", timekeeperName: "Synthetic Timekeeper", searchTimeoutMs: 15000, reRead: { ordinal: 1, reason: "corrected dates" } };
+  const original = { documentNumber: "4510", timekeeperName: "Synthetic Timekeeper", timekeeperInitials: "ST", searchTimeoutMs: 15000, reRead: { ordinal: 1, reason: "corrected dates" } };
   const failureId = uuidOf(30);
   const base = runRecordOf({ seed: 1, workflow: "separations", descriptor: separationsDescriptor,
     lifecycle: { state: "terminal", outcome: "failed", endedAt: "2026-08-03T19:00:00.000Z", failureId, errorSummary: "Employee absent" } });
@@ -51,6 +52,7 @@ describe("failed-run single-field rerun", () => {
     assert.deepEqual(run.input.parsed.value, original);
     assert.deepEqual(request.rerunSource?.failureCorrection, { failureId: failure.failureId, inputField: "operatorEmployeeId" });
     assert.equal(Object.hasOwn(submission, "timekeeperName"), false);
+    assert.equal(Object.hasOwn(submission, "timekeeperInitials"), false);
   });
   it("refuses stale revisions, invalid EIDs, extra changes and undeclared failures", () => {
     const { run, failure, request } = fixture();
@@ -139,7 +141,7 @@ it("replans a missing Kuali document as the corrected item, preserving lineage a
   assert.equal(planned.matchKey, "separations:4502#re-read-1");
   assert.equal(planned.itemId, deriveItemId(separationsDescriptor.id, "separations:4502#re-read-1"));
   assert.notEqual(planned.itemId, run.envelope.itemId);
-  assert.deepEqual(planned.input.value, { ...original, documentNumber: "4502", timekeeperName: freshIdentity.displayName });
+  assert.deepEqual(planned.input.value, { ...original, documentNumber: "4502", timekeeperName: freshIdentity.displayName, timekeeperInitials: freshIdentity.initials });
   assert.deepEqual(planned.input.protectedBindings, [{ kind: "profile", inputPath: "timekeeperName", name: "timekeeperName", profileId: freshIdentity.profileId, sessionEpoch: freshIdentity.sessionEpoch }]);
   assert.notDeepEqual(planned.input.protectedBindings, run.input.parsed.protectedBindings);
   assert.deepEqual(run.input.parsed.value, original);
@@ -154,4 +156,48 @@ it("replans a missing Kuali document as the corrected item, preserving lineage a
   assert.deepEqual(search.bind({ input: planned.input.value, outputs: {} }), { documentNumber: "4502" });
   assert.deepEqual(document.bind({ input: planned.input.value, outputs: { "resolve-action": { actionId: "6a766ae6f0549046f7f0dc06" } } }),
     { documentNumber: "4502", actionId: "6a766ae6f0549046f7f0dc06" });
+});
+
+it.each(["subject-not-resolvable", "subject-ambiguous"] as const)("serves %s as the Employee ID lookup correction", code => {
+  const { run, failure: employeeAbsent, request } = fixture();
+  const subject = descriptorRuntimeNodes(separationsDescriptor).find(node => node.id === "subject");
+  assert.ok(subject?.kind === "task");
+  const failure = FailureRecordSchema.parse({ ...employeeAbsent, nodeId: "subject", taskId: subject.uses.id, code: failureCodeFromTaskCode(code),
+    causeChain: [{ ...employeeAbsent.causeChain[0], code: failureCodeFromTaskCode(code) }] });
+  const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
+    writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
+    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+  const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
+    withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
+  const wire = FailureDetailWireSchema.parse({ ...failure, ...failureRecovery(deps, run, failure), sameFingerprintSeen: 1,
+    subject: { state: "absent", reason: "No subject" }, diagnosticBundle: { state: "absent", reason: "None" } });
+  assert.equal(wire.recovery?.correction.code, code);
+  assert.equal(wire.recovery?.prefill, undefined);
+  const decision = failureDecision(wire);
+  assert.equal(decision.type, "correct-value");
+  assert.deepEqual(decision.options[0]?.input, { kind: "text", label: "Employee ID", placeholder: "8 digits", pattern: "^10\\d{6}$" });
+  const corrected = { ...request, rerunSource: { ...request.rerunSource, failureCorrection: { failureId: failure.failureId, inputField: "operatorEmployeeId" } } };
+  assert.equal((failureCorrectionSubmission(separationsDescriptor, run, failure, StartPlanIngressSchema.parse(corrected)) as Record<string, unknown>).operatorEmployeeId, "10800001");
+});
+
+it("prefills an entered Employee ID UCPath does not know, and serves it nowhere else", () => {
+  const { original, run: source, failure, request } = fixture();
+  const typed = "10800002";
+  const run = RunRecordSchema.parse({ ...source, input: { ...source.input, parsed: { ...source.input.parsed, value: { ...original, operatorEmployeeId: typed } } } });
+  const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
+    writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
+    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+  const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
+    withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
+  const wire = FailureDetailWireSchema.parse({ ...failure, ...failureRecovery(deps, run, failure), sameFingerprintSeen: 1,
+    subject: { state: "absent", reason: "No subject" }, diagnosticBundle: { state: "absent", reason: "None" } });
+  assert.equal(wire.recovery?.prefill, typed);
+  const decision = failureDecision(wire);
+  assert.equal(decision.options[0]?.input?.kind === "text" ? decision.options[0].input.prefill : undefined, typed);
+  const { recovery, ...rest } = wire;
+  assert.ok(recovery);
+  const { prefill: _prefill, ...served } = recovery;
+  assert.equal(JSON.stringify({ rest, served, options: decision.options.map(({ input: _input, ...option }) => option) }).includes(typed), false);
+  assert.deepEqual(served.request.submissions, [{}]);
+  assert.equal(served.request.rerunSource?.runId, request.rerunSource?.runId);
 });

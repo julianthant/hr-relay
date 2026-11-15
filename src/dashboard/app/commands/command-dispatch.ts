@@ -129,12 +129,10 @@ function composeGateResult(
 
   const problem = identityDraftProblem(ceremony, decided);
   if (problem !== undefined) return { state: "refused", reason: problem };
-  if ("optionRef" in decided && optionFor(served.options, decided.optionRef) === undefined) {
+  if (optionFor(served.options, decided.optionRef) === undefined) {
     return { state: "refused", reason: "the picked candidate is not one this review served" };
   }
-  return request("optionRef" in decided
-    ? { decision: "approved", gateRef: served.gateRef, optionRef: decided.optionRef }
-    : { decision: "approved", gateRef: served.gateRef, typedEid: decided.typedEid });
+  return request({ decision: "approved", gateRef: served.gateRef, optionRef: decided.optionRef });
 }
 
 /** Refuse unknown served verbs by name; never turn new commands into silent no-ops. */
@@ -415,7 +413,8 @@ export async function verifyShellCommandEffect(
   }
   if (request.family === "gate") {
     const detail = await client.runDetail(request.target.runId);
-    const value = request.type === "answer-identity-gate" ? request.payload : request.payload.result.value;
+    // Every hire-review arm records an approval.
+    const value = request.type === "answer-identity-gate" ? request.payload : request.type === "answer-gate-arm" ? { decision: "approved" } : request.payload.result.value;
     const decision = typeof value === "object" && value !== null && "decision" in value ? value.decision : undefined;
     return detail.rowRevision > request.target.expectedVersion && detail.gate.state === "resolved"
       && detail.gate.nodeId !== undefined && String(detail.gate.nodeId) === String(request.target.gateId) && detail.gate.resolvedBy === request.requestedBy

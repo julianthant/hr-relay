@@ -1,7 +1,7 @@
 import { createWorkerSlotRepository, workerSlotFromRow } from "./worker-slots.js";
 import { stoppedProfileOwnsCredentialCommand } from "../configuration/protected-settings-upgrade.js";
 import { collectEvidenceSchemaAdmissions } from "./evidence-schema-upgrade.js";
-import { evidenceSchemaSourceDigest, type EvidenceSchemaOwner } from "../../../models/storage/evidence-schema-admission.js";
+import { evidenceSchemaSourceDigest, type EvidenceSchemaConversion, type EvidenceSchemaOwner } from "../../../models/storage/evidence-schema-admission.js";
 import { artifactReferencesIn, deletionArtifactReferenceMatcher } from "./artifact-references.js";
 import { fileStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
@@ -35,7 +35,7 @@ import { IntakeSessionSchema } from "../../../models/intake/session.js";
 import { NotificationFoldRequestSchema,NotificationRecordOutcomeSchema,NotificationRecordSchema,NotificationStateRequestSchema,notificationCollectionTarget,requireMutableNotification,type NotificationCollectionOperation,type NotificationCollectionTarget,type NotificationRecord,type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
 import { StoredOcrExtractionSchema, type StoredOcrExtraction } from "../../../models/ocr/stored-extraction.js";
 import { OcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
-import { AssistantActionRecordSchema,AssistantChatRecordSchema,AssistantGrantRecordSchema } from "../../../models/profiles/assistant-authorization.js";
+import { AssistantActionRecordSchema,AssistantChatRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { LogoutOperationSchema,ProfileDatabaseBindingSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
 import { completionFromAuthorization } from "../../../models/run/completion.js";
 import { DeletedRunRecordSchema,RunDeleteInputSchema,type DeletedRunRecord } from "../../../models/run/deleted-run.js";
@@ -103,7 +103,7 @@ import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } fro
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { selectTransactions } from "./transaction-selection.js";
-import { createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,validateWorkbookLibrary } from "./workbook-library-repository.js";
+import { createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,validateWorkbookLibrary,WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION } from "./workbook-library-repository.js";
 
 import { DryRunScenarioResultSchema,type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
@@ -125,6 +125,10 @@ import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegation
 import { newDelegationAuthenticationMemo,type DelegationAuthenticationMemo,currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,memoizedDelegationGroup,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,retainedDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
+import { ASSISTANT_HISTORY_MIGRATION, assistantConversationFromRow, assistantMessageFromRow, createAssistantHistoryRepository } from "./assistant-history.js";
+import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow, migrateAssistantEffortScale } from "./assistant-effort-migration.js";
+import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE, assertNoAssistantGrantHistory } from "./assistant-grant-retirement.js";
+import { assistantAttachmentFromRow, byteAwareRow } from "./assistant-attachments.js";
 import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
@@ -600,6 +604,7 @@ export type DuoCeremonyLeaseRepository = Readonly<{
 export type AuthorityRepositories = Readonly<{
   assistantModelPreference: ReturnType<typeof createAssistantModelPreferenceRepository>;
   assistantAuthorization: ReturnType<typeof createAssistantAuthorizationRepository>;
+  assistantHistory: ReturnType<typeof createAssistantHistoryRepository>;
   timelineEvents: TimelineRepository;
   runs: RunRepository;
   failures: FailureRepository;
@@ -1139,7 +1144,7 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
   }
 
 
-function nativeTableKey(table: AuthorityTableName | "explorer_overrides" | typeof WORKER_CUSTODY_DROPPED_TABLES[number], database: DatabaseSync): string {
+function nativeTableKey(table: AuthorityTableName | "explorer_overrides" | typeof WORKER_CUSTODY_DROPPED_TABLES[number] | typeof RETIRED_ASSISTANT_GRANT_TABLE, database: DatabaseSync): string {
   if (table === "run_results") return readIntPragma(database,"user_version") >= 20 ? "id" : "run_id";
   if (table === "deleted_runs" || table === "run_search") return "run_id";
   if (table === "worker_pools") return "workflow";
@@ -1307,13 +1312,15 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
   const predecessorCustody = expectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
   const read: StoredReaders = { ...(predecessorCustody ? PREDECESSOR_CUSTODY_READERS : CURRENT_READERS), run: inspectionRunReader(expectedSchemaVersion) };
   const convertPreferences = (table: string, row: unknown) => {
-    return expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
+    const person = expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
+    return expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
   };
+  if (expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) assertNoAssistantGrantHistory(database);
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of migrationTableNames(expectedSchemaVersion)) {
     // The custody conversion validates the tables it drops.
-    if (table.startsWith("workbook_") || table === "explorer_overrides" || isWorkerCustodyDroppedTable(table)) continue;
+    if (table.startsWith("workbook_") || table === "explorer_overrides" || table === RETIRED_ASSISTANT_GRANT_TABLE || isWorkerCustodyDroppedTable(table)) continue;
     if (table === "run_search" && (!validateSearch || !searchReady)) continue;
     const retained = expectedSchemaVersion >= 10 ? "" : table === "commands" ? " WHERE family<>'explorer'"
       : table === "command_audits" ? " WHERE command_id NOT IN (SELECT id FROM commands WHERE family='explorer')" : "";
@@ -1339,6 +1346,9 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
         else if (table === "settings") readAppSettings(database, convertPreferences);
         else if (table === "worker_slots") (predecessorCustody ? predecessorWorkerSlotFromRow : workerSlotFromRow)(raw);
         else if (table === "exclusive_session_leases") exclusiveSessionLeaseFromRow(raw);
+        else if (table === "assistant_conversations") assistantConversationFromRow(raw);
+        else if (table === "assistant_messages") assistantMessageFromRow(raw);
+        else if (table === "assistant_attachments") assistantAttachmentFromRow(raw);
         else if (table === "timeline_events") assertTimelineOwner(database,timelineEventFromRow(raw),false,read);
         else if (table === "artifacts") {
           const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
@@ -1363,14 +1373,6 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             inspected = { ...raw, payload_json: canonicalJsonStringify(plan) };
           }
           const record = nativeOrdinaryRecordFromRow(table,inspected,expectedSchemaVersion);
-          if (table === "assistant_grants") {
-            const grant = AssistantGrantRecordSchema.parse(record), owner = readMetaRow(database);
-            if (grant.profileId !== owner.profile_id) throw new Error("assistant-grant-profile-mismatch");
-            const command = CommandRequestSchema.parse(read.command(database.prepare("SELECT * FROM commands WHERE id=?").get(grant.commandId)));
-            if (command.type !== "apply-settings" || command.payload.assistantPermission === undefined
-              || command.payload.assistantPermission.mode !== grant.policy.mode
-              || command.payload.assistantPermission.expectedPolicyRevision !== grant.policy.revision - 1) throw new Error("assistant-grant-command-mismatch");
-          }
           if (table === "assistant_chats") {
             if (AssistantChatRecordSchema.parse(record).profileId !== readMetaRow(database).profile_id) throw new Error("assistant-chat-profile-mismatch");
           }
@@ -1395,22 +1397,22 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
       validated++;
     }
   }
-  if (expectedSchemaVersion >= 8 && database.prepare("SELECT 1 FROM assistant_grants WHERE id='current'").get() === undefined
-    && database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' ORDER BY rowid DESC LIMIT 1) WHERE ?<11 OR mode IS NULL OR mode NOT IN ('before-submits','without-asking')").get(expectedSchemaVersion) !== undefined) throw new Error("assistant-grant-missing-with-history");
-  if (workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18);
-  if (expectedSchemaVersion >= 9) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
+  if (workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18,
+    expectedSchemaVersion >= WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version);
+  // Below schema 27 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
+  if (expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
   return validated;
 }
 
 function authorityContentFingerprint(database: DatabaseSync, excludedUpgradeRecord?: string): string {
   const hash = createHash("sha256");
-  const rowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null()]));
+  const rowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null(), z.instanceof(Uint8Array)]));
   for (const table of migrationTableNames(readIntPragma(database, "user_version"))) {
     hash.update(canonicalJsonStringify(table));
     for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
       if (table === "database_upgrades" && row.id === excludedUpgradeRecord) continue;
-      hash.update(canonicalJsonStringify(rowSchema.parse(row)));
+      hash.update(canonicalJsonStringify(byteAwareRow(rowSchema.parse(row))));
     }
   }
   return hash.digest("hex");
@@ -1429,7 +1431,7 @@ function fixedLayoutUnchangedAuthorityFingerprint(database: DatabaseSync, intent
       const record = z.record(z.string(), z.unknown()).parse(row);
       if (initialization !== undefined && (table === "commands" && record.id === initialization.commandId
         || table === "command_audits" && record.id === initialization.auditId)) continue;
-      hash.update(canonicalJsonStringify(record));
+      hash.update(canonicalJsonStringify(byteAwareRow(record)));
     }
   }
   return hash.digest("hex");
@@ -1445,7 +1447,7 @@ function fixedLayoutChangedAuthorityTables(before: DatabaseSync, after: Database
     const fingerprint = (database: DatabaseSync): string => {
       const hash = createHash("sha256");
       for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
-        hash.update(canonicalJsonStringify(z.record(z.string(), z.unknown()).parse(row)));
+        hash.update(canonicalJsonStringify(byteAwareRow(z.record(z.string(), z.unknown()).parse(row))));
       }
       return hash.digest("hex");
     };
@@ -1560,15 +1562,26 @@ function nonProjectionFingerprint(database: DatabaseSync): string {
     if (table === "run_search") continue;
     hash.update(canonicalJsonStringify(table));
     for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
-      const record = z.record(z.string(), z.union([z.string(), z.number(), z.null()])).parse(row);
+      const record = z.record(z.string(), z.union([z.string(), z.number(), z.null(), z.instanceof(Uint8Array)])).parse(row);
       if (table === "database_states") { delete record.search_generation; delete record.search_state; }
-      hash.update(canonicalJsonStringify(record));
+      hash.update(canonicalJsonStringify(byteAwareRow(record)));
     }
   }
   return hash.digest("hex");
 }
 
+/** Unpublished assistant builds numbered history 23 to 25, or ran 26-29 without staging's 24 and 25; such a store is never opened. */
+function assertPublishedAssistantNumbering(database: DatabaseSync): void {
+  const version = readIntPragma(database, "user_version");
+  if (version < 23 || version > ASSISTANT_GRANT_RETIREMENT_VERSION) return;
+  const hasTable = (name: string) => database.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(name) !== undefined;
+  if (!hasTable("assistant_conversations")) return;
+  if (version < ASSISTANT_HISTORY_MIGRATION.version || !hasTable("workflow_workbook_selections")) throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_FORMAT_UNSUPPORTED",
+    { cause: new Error("assistant-unpublished-schema-numbering") });
+}
+
 function assertNativeSchema(database: DatabaseSync, version = CURRENT_AUTHORITY_SCHEMA_VERSION, withoutRunSearch = false): void {
+  assertPublishedAssistantNumbering(database);
   if (normalizedNativeSchema(database) !== expectedNativeSchema(version, withoutRunSearch)) throw new Error("authority-native-schema-shape-mismatch");
 }
 
@@ -1579,6 +1592,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
   }
   const schemaVersion = readIntPragma(database, "user_version");
+  assertPublishedAssistantNumbering(database);
   if ((!isSupportedStoppedAuthoritySchemaVersion(expectedSchemaVersion) && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
   assertNativeSchema(database, schemaVersion, missingRunSearch);
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
@@ -1605,11 +1619,12 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   }
   const currentTables = AuthorityCopyInspectionSchema.shape.tables;
   const predecessorTables = [...(expectedSchemaVersion < 10 ? ["explorer_overrides" as const] : []),
+    ...(expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION ? [RETIRED_ASSISTANT_GRANT_TABLE] : []),
     ...(expectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION ? WORKER_CUSTODY_DROPPED_TABLES : [])];
   const tables = predecessorTables.length === 0 ? currentTables : z.array(z.union([currentTables.element,
     z.strictObject({ name: z.enum(predecessorTables), classification: z.literal("authority") }),
   ]));
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -1621,7 +1636,8 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     quickCheck: "ok",
     foreignKeyViolations: 0,
     invariants: { state: "valid", violations: [] },
-    tables: names.map((name) => ({ name, classification: expectedSchemaVersion < 10 && name === "explorer_overrides" || isWorkerCustodyDroppedTable(name)
+    tables: names.map((name) => ({ name, classification: (expectedSchemaVersion < 10 && name === "explorer_overrides")
+      || (expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION && name === RETIRED_ASSISTANT_GRANT_TABLE) || isWorkerCustodyDroppedTable(name)
       ? "authority" : tableClassification(AuthorityTableNameSchema.parse(name)) })),
     counts: pendingCounts(database),
   });
@@ -1645,8 +1661,10 @@ export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: n
       }
       if (migration.version === BUILD_ID_ENVELOPE_SCHEMA_VERSION && index === 0) deletePreBuildRuns(database, input.now, input.captureFile, settleEvidence);
       if (statement === `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`) convertWorkerCustody(database, input.now, input.captureFile, settleEvidence);
+      if (migration.version === ASSISTANT_GRANT_RETIREMENT_VERSION && index === 0) assertNoAssistantGrantHistory(database);
       execMigrationStatement(database, statement);
       if (migration.version === 16 && index === 2) migratePersonPreferences(database);
+      if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);
       if (statement === `SELECT '${WORKER_CUSTODY_SCAN_ID}'`) assertWorkerCustodyConverted(database);
     }
   }
@@ -1660,6 +1678,29 @@ export function inspectNormalAuthority(database: DatabaseSync): AuthorityCopyIns
 function readAuthorityUpgradeRecords(database: DatabaseSync) {
   return database.prepare("SELECT * FROM database_upgrades ORDER BY rowid").all()
     .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
+}
+
+type AuthorityEvidenceSchemaUpgradeRecord = z.infer<typeof AuthorityEvidenceSchemaUpgradeRecordSchema>;
+
+function evidenceSchemaPlanDigest(upgradeId: string, conversion: EvidenceSchemaConversion): string {
+  return sha256Hex(`relay:evidence-schema-conversion:v1\0${upgradeId}\0${canonicalJsonStringify(conversion)}`);
+}
+
+/** Each conversion id is recorded at most once, sealed for this profile, settled at the current schema version. */
+function verifiedEvidenceSchemaRecords(database: DatabaseSync, admission: RuntimeAdmission,
+  binding: Readonly<{ installationId?: string; profileId?: string }>): ReadonlyMap<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord> {
+  const records = new Map<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord>();
+  for (const stored of readAuthorityUpgradeRecords(database)) {
+    if (!("evidenceSchemas" in stored) || stored.evidenceSchemas === undefined) continue;
+    admission.assertEvidenceSchemaConversion(stored);
+    const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse(stored), conversion = record.evidenceSchemas;
+    if (records.has(conversion.id)) throw new Error("evidence-schema-conversion-duplicate");
+    if (record.phase !== "settled" || record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+      || record.planDigest !== evidenceSchemaPlanDigest(record.upgradeId, conversion)) throw new Error("evidence-schema-conversion-unproved");
+    if (conversion.installationId !== binding.installationId || conversion.profileId !== binding.profileId) throw new Error("evidence-schema-conversion-foreign");
+    records.set(conversion.id, record);
+  }
+  return records;
 }
 
 const startupLogoutConversionBrand: unique symbol = Symbol("startup-logout-conversion");
@@ -1988,6 +2029,7 @@ function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly Span
     database.exec("PRAGMA query_only=ON"); database.exec("BEGIN"); transactionOpen = true;
     if (readIntPragma(database,"application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("span-authority-application-mismatch");
     const version = readIntPragma(database,"user_version");
+    assertPublishedAssistantNumbering(database);
     if (!isCurrentAuthoritySchemaVersion(version)) throw new AuthoritySchemaVersionError(version);
     assertNativeSchema(database);
     const meta = readMetaRow(database);
@@ -2236,7 +2278,7 @@ export class AuthorityDatabase implements Disposable {
       catch (closeError) {
         throw retainAuthoritySourceClosure([error, closeError], { database: this.#database, admission: this.#admission });
       }
-      if (error instanceof AuthoritySchemaVersionError) throw error;
+      if (error instanceof AuthoritySchemaVersionError || error instanceof AuthorityFormatUnsupportedError) throw error;
       throw new Error(`failed to open authority database ${options.path}: ${errorMessage(error)}`, { cause: error });
     }
 
@@ -2609,6 +2651,7 @@ export class AuthorityDatabase implements Disposable {
       return withReadonlyAuthoritySnapshot(path, database => {
         const version = readIntPragma(database, "user_version");
         if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("profile-startup-foreign-application");
+        assertPublishedAssistantNumbering(database);
         if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_NEWER_VERSION", { cause: new AuthoritySchemaVersionError(version) });
         if (!OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(version)) {
           throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_FORMAT_UNSUPPORTED", { cause: new AuthoritySchemaVersionError(version) });
@@ -2758,26 +2801,28 @@ export class AuthorityDatabase implements Disposable {
     admission.assertStoppedProtectedSettingsUpgrade();
     return withAuthorityDatabaseReadOnly(admission, join(admission.stateRoot, "state.db"), database => {
       const inspection = inspectNativeAuthority(database);
-      const admissions = collectEvidenceSchemaAdmissions({ descriptors,
+      const plan = collectEvidenceSchemaAdmissions({ descriptors,
         runs: database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow),
         writes: database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row))),
         results: database.prepare("SELECT * FROM run_results ORDER BY run_id").all().map(row => RunResultRecordSchema.parse(nativeOrdinaryRecordFromRow("run_results", row))),
         gates: database.prepare("SELECT * FROM gate_results ORDER BY run_id,node_id").all().map(row => GateResultRecordSchema.parse(nativeOrdinaryRecordFromRow("gate_results", row))),
         delegations: database.prepare("SELECT * FROM run_delegations ORDER BY id").all().map(row => DelegationManifestSchema.parse(nativeOrdinaryRecordFromRow("run_delegations", row))),
         checkpoints: database.prepare("SELECT * FROM run_checkpoints ORDER BY run_id,node_id").all().map(row => RunCheckpointRecordSchema.parse(nativeOrdinaryRecordFromRow("run_checkpoints", row))) });
-      const records = readAuthorityUpgradeRecords(database).filter(record => "evidenceSchemas" in record && record.evidenceSchemas !== undefined);
-      if (records.length > 1) throw new Error("evidence-schema-conversion-duplicate");
-      const record = records[0];
-      if (record !== undefined && "evidenceSchemas" in record) {
-        admission.assertEvidenceSchemaConversion(record);
-        const conversion = record.evidenceSchemas;
-        if (conversion === undefined || record.phase !== "settled" || record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
-          || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || conversion.installationId !== inspection.installationId
-          || conversion.profileId !== inspection.profileId || record.planDigest !== sha256Hex(`relay:evidence-schema-conversion:v1\0${record.upgradeId}\0${canonicalJsonStringify(conversion)}`)
-          || admissions.some(admission => !conversion.admissions.some(existing => canonicalJsonStringify(existing) === canonicalJsonStringify(admission))))
-          throw new Error("evidence-schema-conversion-source-changed");
-      }
-      return { inspection, admissions, record };
+      const records = verifiedEvidenceSchemaRecords(database, admission, { installationId: inspection.installationId, profileId: inspection.profileId });
+      const pending: EvidenceSchemaConversion[] = [];
+      const recorded = (id: EvidenceSchemaConversion["id"], fresh: readonly unknown[], entries: (conversion: EvidenceSchemaConversion) => readonly unknown[]) => {
+        const record = records.get(id);
+        if (record === undefined) return fresh.length === 0;
+        const existing = entries(record.evidenceSchemas).map(entry => canonicalJsonStringify(entry));
+        if (fresh.some(entry => !existing.includes(canonicalJsonStringify(entry)))) throw new Error("evidence-schema-conversion-source-changed");
+        return true;
+      };
+      const binding = { installationId: admission.profileBinding.installationId, profileId: admission.profileBinding.profileId };
+      if (!recorded("profile-name-domain", plan.admissions, conversion => conversion.id === "profile-name-domain" ? conversion.admissions : []))
+        pending.push({ id: "profile-name-domain", ...binding, admissions: [...plan.admissions] });
+      if (!recorded("retired-input-generation", plan.retirements, conversion => conversion.id === "retired-input-generation" ? conversion.retirements : []))
+        pending.push({ id: "retired-input-generation", ...binding, retirements: [...plan.retirements] });
+      return { inspection, admissions: plan.admissions, retirements: plan.retirements, records: [...records.values()], pending };
     });
   }
 
@@ -2787,17 +2832,18 @@ export class AuthorityDatabase implements Disposable {
     const path = join(admission.stateRoot, "state.db");
     requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
     const plan = AuthorityDatabase.inspectEvidenceSchemaUpgrade(admission, descriptors);
-    if (plan.record !== undefined || plan.admissions.length === 0 || plan.inspection.authorityContentFingerprint !== expectedFingerprint)
+    // One record per backed source: the journal keys a settled upgrade by its source fingerprint.
+    const conversion = plan.pending[0];
+    if (conversion === undefined || plan.inspection.authorityContentFingerprint !== expectedFingerprint)
       throw new Error("evidence-schema-conversion-source-changed");
     const verified = verifyBackup(admission, backup.manifestPath), binding = admission.profileBinding;
     if (canonicalJsonStringify(verified) !== canonicalJsonStringify(backup) || verified.manifest.installationId !== binding.installationId
       || verified.manifest.profileId !== binding.profileId || verified.manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
       || verified.manifest.authorityContentFingerprint !== expectedFingerprint || verified.manifest.authorityGeneration !== plan.inspection.authorityGeneration)
       throw new Error("evidence-schema-conversion-backup-changed");
-    const conversion = { id: "profile-name-domain", ...binding, admissions: plan.admissions };
     const statement = AuthorityEvidenceSchemaUpgradeRecordSchema.omit({ evidenceSchemaMac: true }).parse({ recordKey: randomUUID(), upgradeId: expectedFingerprint, phase: "settled",
       fromSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
-      planDigest: sha256Hex(`relay:evidence-schema-conversion:v1\0${expectedFingerprint}\0${canonicalJsonStringify(conversion)}`),
+      planDigest: evidenceSchemaPlanDigest(expectedFingerprint, conversion),
       evidenceSchemas: conversion, backup: { manifestPath: backup.manifestPath, sha256: backup.manifest.sha256, authorityGeneration: plan.inspection.authorityGeneration },
       by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: clock.now().toISOString() });
     const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse({ ...statement, evidenceSchemaMac: admission.sealStoppedEvidenceSchemaConversion(statement) });
@@ -2827,17 +2873,18 @@ export class AuthorityDatabase implements Disposable {
     this.#assertOpen();
     if (sourceSchemaHash === currentSchemaHash) return sourceSchemaHash;
     return this.#withReadSnapshot(() => {
-      const records = readAuthorityUpgradeRecords(this.#database).filter(record => "evidenceSchemas" in record && record.evidenceSchemas !== undefined);
-      if (records.length > 1) throw new Error("evidence-schema-conversion-duplicate");
-      const record = records[0], conversion = record !== undefined && "evidenceSchemas" in record ? record.evidenceSchemas : undefined;
-      if (conversion === undefined) return sourceSchemaHash;
-      this.#admission.assertEvidenceSchemaConversion(record);
-      if (record === undefined || !("planDigest" in record) || record.phase !== "settled"
-        || record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
-        || record.planDigest !== sha256Hex(`relay:evidence-schema-conversion:v1\0${record.upgradeId}\0${canonicalJsonStringify(conversion)}`)) throw new Error("evidence-schema-conversion-unproved");
-      if (conversion.installationId !== this.#admission.profileBinding.installationId || conversion.profileId !== this.#admission.profileBinding.profileId)
-        throw new Error("evidence-schema-conversion-foreign");
-      const certificate = conversion.admissions.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner));
+      const records = verifiedEvidenceSchemaRecords(this.#database, this.#admission, this.#admission.profileBinding);
+      const retired = records.get("retired-input-generation")?.evidenceSchemas;
+      const retirement = retired?.id === "retired-input-generation"
+        ? retired.retirements.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner)) : undefined;
+      if (retirement !== undefined) {
+        if (retirement.sourceSchemaHash !== sourceSchemaHash || retirement.sourceDigest !== evidenceSchemaSourceDigest(owner, source))
+          throw new Error("evidence-schema-admission-source-changed");
+        return sourceSchemaHash;
+      }
+      const conversion = records.get("profile-name-domain")?.evidenceSchemas;
+      const certificate = conversion?.id === "profile-name-domain"
+        ? conversion.admissions.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner)) : undefined;
       if (certificate === undefined) return sourceSchemaHash;
       if (certificate.sourceSchemaHash !== sourceSchemaHash || certificate.currentSchemaHash !== currentSchemaHash
         || certificate.sourceDigest !== evidenceSchemaSourceDigest(owner, source)) throw new Error("evidence-schema-admission-source-changed");
@@ -4409,6 +4456,7 @@ export class AuthorityDatabase implements Disposable {
   #admitExistingSchema(): number {
     if (this.#readIntPragma("application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("authority database is not the HR authority store");
     const version = this.#readIntPragma("user_version");
+    assertPublishedAssistantNumbering(this.#database);
     if (!isCurrentAuthoritySchemaVersion(version)) throw new AuthoritySchemaVersionError(version);
     if (this.#readMetaRow().schema_version !== version) throw new Error("authority schema metadata disagrees with user_version");
     return version;
@@ -4996,6 +5044,8 @@ export class AuthorityDatabase implements Disposable {
     return Object.freeze({
       assistantModelPreference: createAssistantModelPreferenceRepository({ database: this.#database, read: work => this.#withReadSnapshot(work), mutate: (table, work) => this.#authorityWrite(table, work) }),
       assistantAuthorization: createAssistantAuthorizationRepository({ database: this.#database, mutate: (table, work) => this.#authorityWrite(table, work) }),
+      assistantHistory: createAssistantHistoryRepository({ database: this.#database, read: work => this.#withReadSnapshot(work), mutate: (table, work) => this.#authorityWrite(table, work),
+        profileId: () => z.object({ profile_id: z.uuid() }).parse(this.#database.prepare("SELECT profile_id FROM database_states WHERE id=1").get()).profile_id }),
       workbooks: createWorkbookLibraryRepository({ database: this.#database,
         mutate: work => this.#authorityWrite("workbook_library", work),
         read: work => this.#withReadSnapshot(work) }),
@@ -6064,7 +6114,13 @@ export class AuthorityDatabase implements Disposable {
     return highest + 1;
   }
 
+  /** The one run-row write; an update is refused unless the run transition table allows it from the stored row. */
   #writeRunRow(record: RunRecord, mode: "insert" | "update"): void {
+    if (mode === "update") {
+      const current = this.#readRunRow(record.envelope.runId);
+      const violation = current === undefined ? undefined : runTransitionViolation(current.lifecycle, record.lifecycle, record);
+      if (violation !== undefined) throw new Error(`run ${record.envelope.runId}: ${violation}`);
+    }
     const columns = runRecordColumns(record);
     const entries = Object.entries(columns).filter(([key]) => mode === "insert" || key !== "id");
     const keys = entries.map(([key]) => key);

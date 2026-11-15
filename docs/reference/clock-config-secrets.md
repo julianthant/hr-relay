@@ -216,7 +216,7 @@ and `configFingerprint`. Activation advances `generation`; credential edits do n
 identity with the authenticated active identity. The latter state reports a saved-versus-active
 mismatch, not a requirement on every ordinary save.
 
-### Assistant choice and private verification
+### Assistant model choice
 
 The `assistant_model_preference` singleton is separate from Settings, grants and account
 credentials. Its repository authenticates the current row against command/audit history. Only a
@@ -230,13 +230,10 @@ availability only and issues no inference proof. Same-command replay returns its
 without reapplying or rewinding a newer choice. A committed result followed by lost currentness stays
 unknown; it is not rolled back or reported as a zero-effect refusal.
 
-`chatgpt-account-service.ts` owns the private verification witness. Only an explicit composer
-`/verify-assistant` request performs the fixed public two-turn probe and fresh catalog read. The witness
-is issued after response/resource settlement, lasts at most 15 minutes and rechecks the actual account,
-selected context/profile/epoch and complete saved preference identity. A changed choice, foreign
-credential revision, an aborted verification binding, revocation, expiry or uncertain resource closure
-cannot preserve inference authority. Settings, grants, sign-in, OCR and catalog availability do not substitute for it.
-The production composition captures this account witness; it accepts no constructor policy override.
+Each assistant turn uses the selected person's saved model and effort as read at its start, rechecks
+that saved choice and the account authority before every provider request, and refuses with
+`ASSISTANT_MODEL_CHANGED` once either changes. There is no capability probe or verification witness; a
+turn that gets no reply is the failure signal.
 
 Before an effect, an actual account/source closure failure keeps its named failure rather than being
 masked by cancellation. An already-entered canonical action retains UNKNOWN priority. Account closure
@@ -386,7 +383,7 @@ closure still stops startup and retains its owners.
 Ordinary readers accept only the current schema. Stopped conversion and flat-source inspection own
 the previous grammar; retained value-free receipts keep the catalog used by their original write.
 
-Registry document 3 binds immutable installation ID and safe revision. Control 7 binds logical registry digest/revision/epoch and operation membership; marker 8 selects the current tuple and external browser-root registry. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
+Registry document 4 binds immutable installation ID and safe revision, and each row stores its timekeeper initials apart from its timekeeper name. Control 7 binds logical registry digest/revision/epoch and operation membership; marker 9 selects the current tuple and external browser-root registry. Startup under stopped exclusive custody upgrades document 3 at marker 8 forward once, seeding each row's timekeeper initials from the letters of its timekeeper name; its control intent `registry-initials-upgrade.json` lets a stop at any step finish the same upgrade, and the conversion refuses while a publication, restore journal, control upgrade or account deletion is pending. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
 
 Browser-root registry schema 2 stores short numeric handles with complete owner bindings. Stopped startup
 runs `maintenance/browser-root-upgrade.ts` before ordinary admission. Its schema-1 forward conversion
@@ -557,39 +554,44 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-The current schema is 25. Workbook catalogue names and the version in use are separate from immutable workbook snapshots and action receipts. Its forward upgrade refuses an older captured workbook-reference schema rather than rewriting retained input or its proof. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
+The current schema is 30. Workbook catalogue names and the version in use are separate from immutable workbook snapshots and action receipts. Its forward upgrade refuses an older captured workbook-reference schema rather than rewriting retained input or its proof. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
 
 
 Fresh workbook storage contains one General type seed. Incomplete-profile inventory reports that row and treats only its exact initial payload as pristine, alongside either bare authority or authenticated Settings initialization. Extra or edited types and workbook masters, creations, operations or named versions remain activity that blocks withdrawal.
 
-The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 and 24. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
+The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 and 29. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 25` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 30` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
 ordinary startup. Ordinary writable opens and stopped upgrades use SQLite existing-only mode,
 including when a source disappears during opening. Only `initializeProfile`, after its issued setup
 admission check, creates the absent canonical profile database and its current baseline.
-Schemas 1 through 23 are inspected only under stopped upgrade or maintenance authority; ordinary readers
+Schemas 1 through 29 are inspected only under stopped upgrade or maintenance authority; ordinary readers
 use the current layout. Stopped inspection projects the absent pre-v15 pause column as null only
 after validating the predecessor's registered schema, including run/search/timeline/result owners.
-The native layout includes the pause scalar and its JSON-equality triggers, plus immutable OCR source uploads, review revisions and approved snapshots. The forward v18 migration adds library catalogue state, immutable named snapshots and action receipts under the same verified-backup upgrade boundary. The v19 guard checks every captured workbook reference in runs and retained start plans, including terminal runs and consumed plans, against the current derived output-schema hash. A mismatch refuses with `workbook_reference_schema_upgrade_unproved` before migration effects and preserves retained references, proofs and the source schema; it never rehashes or rebinds evidence.
+The native layout includes the pause scalar and its JSON-equality triggers, plus immutable OCR source uploads, review revisions and approved snapshots. The forward v18 migration adds library catalogue state, immutable named snapshots and action receipts under the same verified-backup upgrade boundary. The v19 guard checks every captured workbook reference in runs and retained start plans, including terminal runs and consumed plans, against the current derived output-schema hash. A mismatch refuses with `workbook_reference_schema_upgrade_unproved` before migration effects and preserves retained references, proofs and the source schema; it never rehashes or rebinds evidence. The v27 migration moves the assistant effort preference to light|medium|high|xhigh|max: a stored `low` becomes `light` in the preference, its commands (request digest recomputed) and their audits, with the audit and preference triggers dropped and recreated around the conversion. The v29 migration drops the empty `assistant_grants` table; a store that still holds a grant, an assistant action, or a command or audit carrying `assistantPermission` refuses the upgrade with `assistant-grant-history-unsupported` and keeps its version. The v30 migration marks every library state and recorded library action result unpinned with no manual tags, with the action-journal update trigger dropped and recreated around the conversion; stopped inspection of an earlier store reads its states as unpinned and untagged.
 
 The v25 migration adds `workflow_workbook_selections`, one ordered last-used source selection per workflow in the owning person database. An absent row means no selection has been recorded; no default or historical run seeds it. Sources retain library and worksheet identities without foreign keys, so removed sources stay stale and history clearing preserves selections. Its repository records the accepted command, used time and revision; confirmed Start integration is separate. Before adding the table, the migration refuses unreceipted operator workbook operations whose identity begins with the exact `library:` prefix, using `workflow_workbook_selection_pending_library_operation`. It preserves pending ordinary run operations, completed library actions, workbook mappings and all write evidence without replaying them. A registered schema 25 marker binds the captured `run-reference` workbook-write source grammar into its plan digest. That source retains immutable version, worksheet, key, required fields and explicit writable fields; only selected-row patches with exact version CAS are admitted. Its storage apply and replay use the captured key and writable fields, while predecessor operations retain historical type semantics. Producing this source from accepted runs is separate work. The existing stopped exclusive transaction, verified pre-upgrade backup and strict current readback own this upgrade.
 
 The v21 migration updates only the completion-immutability trigger: an authenticated aggregate refresh may replace a done or failed current completion while retaining its exact prior result and receipt rows. Failed predecessors require matching retained failure evidence; unrelated completion changes remain refused.
 
-Assistant grants, chats and once-consumable actions use three profile-owned authority tables.
-An explicit operator `apply-settings` command may carry `assistantPermission` with the expected
-policy revision and mode, together with an empty ordinary patch. Settings and grant revisions
-settle in the same transaction; stale revisions refuse without partial changes. Ordinary Settings
-catalogue, persisted schema hash and commands without that field retain their existing grammar.
-Neither displayed permission defaults nor assistant-issued commands can mint a grant. The private
-profile-token composition issues chat custody and revalidates grants and canonical action bindings
-before consumption and at the asynchronous effect boundary. Subject-dependent, protected and
-unbound private/freeform actions remain unavailable until their actual owners are connected.
+The v22 migration deletes every run approved before envelopes carried a build id, through the native run deletion.
+
+The v23 migration adds `timeline_worker_claim_idx` for indexed worker claim reads.
+
+A store from an unpublished assistant numbering holds `assistant_conversations` at schema 23 to 25, or is at 26 to 29 without `workflow_workbook_selections`. It is refused with `STORAGE_PROFILE_FORMAT_UNSUPPORTED` (`assistant-unpublished-schema-numbering`) before opening, upgrade backup or automatic restore. Their version numbers are never reinterpreted as the published migration sequence, and the source remains unchanged.
+
+The v26 migration adds the assistant history tables `assistant_conversations` and `assistant_messages` (`assistant-history.ts`): at most 20 chats per profile, 200 messages per chat, at most 2,000,000 UTF-16 units of titles, drafts and message display text across a profile's unexpired chats, and a fixed 30-day expiry. An accepted turn keeps one slot for its reply; a write that would exceed a bound is refused and rolled back. Expiry fences an accepted send and its settlement whether or not cleanup has run. Settlement may change only a `sending` turn's delivery, code and update time; every other message field is written once. A stream or transport loss after the Responses POST settles as `delivery-unknown`; provider refusals and complete but invalid responses settle as `refused`. Startup settles every unfinished send as `delivery-unknown` before the history routes serve and reclaims expired chats, then hourly; a failed hourly reclamation emits `ASSISTANT_HISTORY_CLEANUP_FAILED`.
+
+Assistant chats and once-consumable actions use two profile-owned authority tables. The operator's
+Confirm on each card is the only assistant authorization; no grant or Settings permission exists.
+The private profile-token composition issues chat custody and revalidates the person, session epoch,
+manifest and canonical action binding before consumption and at the asynchronous effect boundary.
+Subject-dependent, protected and unbound private/freeform actions remain unavailable until their
+actual owners are connected.
 
 `AuthorityBootStore` reports `healthy` with mutations `available`, or `degraded-read-only` with
 mutations `blocked`. Empty, corrupt, unavailable, or incompatible existing authority does not become a
@@ -700,7 +702,7 @@ the bytes again before publication. Changed content, identity, permissions or an
 
 Startup owns automatic same-person repair before ordinary admission, providers or HTTP. It selects the newest verified supported backup that preserves current write fences, attempts, evidence, deletion tombstones and generated-file publication records. It refuses when current critical evidence or immutable identity cannot be inspected, or when a backup would weaken it; it never unions databases. Current runtime roots must match the admitted person.
 
-The one external control `journal.json` restore record (schema 3) binds source/stage/quarantine/manifest bytes, current canonical credential head, retained files and browser membership. Replacement advances the session epoch once, revokes old runtime authority and preserves the authenticated profile selection. Startup resumes only its exact interrupted prefix, verifies the original manifest and preserved evidence again, and retains an on-disk repair record with the backup time. Unknown prefixes remain held. No restore command or picker exists. Settled schema-6 control converts once under stopped exclusive custody to logical control 7 and marker 8; old physical completed-restore entries are checked during that conversion and removed from current control.
+The one external control `journal.json` restore record (schema 3) binds source/stage/quarantine/manifest bytes, current canonical credential head, retained files and browser membership. Replacement advances the session epoch once, revokes old runtime authority and preserves the authenticated profile selection. Startup resumes only its exact interrupted prefix, verifies the original manifest and preserved evidence again, and retains an on-disk repair record with the backup time. Unknown prefixes remain held. No restore command or picker exists. Settled schema-6 control converts once under stopped exclusive custody to logical control 7 and marker 8, then to registry document 4 and marker 9; old physical completed-restore entries are checked during that conversion and removed from current control.
 
 ## Settings and readiness readback
 
@@ -893,6 +895,19 @@ base64url in Duo custody and convert to standard base64 only at the Chromium pro
 A completed Chromium platform receipt with a matching ready encrypted key survives the scoped
 retention hook, just like the software key. Actual provider failures still retain their error and
 block Finish through the existing custody checks.
+
+Setting Duo up again for an active profile is a separate `duo-reenrol` operation beside the active session. The same draft owner
+runs its attempts under a fresh account, but a proved credential is staged, not confirmed, so workflows keep signing with the
+ready set. Commit requires both methods. Its fence proves the profile idle and sets an in-process commit hold in one authority
+transaction; the intent, head and record then publish under that hold, and the hold clears only once they are proved. A failure
+after the intent gets one validated reconciliation, never a retry, and the result is reported uncertain; a recorded intent keeps
+every session of that profile stale until boot reconciles it under stopped custody or holds that person. Logout and delete
+account refuse while a draft is open; cancel and the internal close their callers run first abandon an uncommitted draft by
+discarding only its rows. Boot proves every uncommitted draft's setup browser closed, closes its attempts and marks it aborted, so it
+can never be started, shown or committed again. Boot discards the rows and the operation at once for the profile it selects;
+otherwise that profile's next sign-in or resume does it before any credential read and before the session is returned, and a failed
+discard leaves the person signed out for the next sign-in to retry. An uncommitted draft does not refuse a stopped repair claim on
+its profile; a recorded commit intent does.
 
 Draft Duo publication resumes only its authenticated prior/next intent, including stopped recovery.
 The native onboarding Finish intent owns verifier and registry publication together; verifier preparation does not publish an account. Fresh database, key, protected credential, verifier-pepper file identity/digest and method witnesses precede that intent. Exact prior/next prefixes recover together, while a changed source remains HOLD.

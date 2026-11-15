@@ -33,7 +33,7 @@ export function ocrReviewCards(page: ReviewPage, sourcePageUrl: (runId: string, 
       const canonical = spec.canonicalFieldId === null ? undefined : CANONICAL_FIELDS[spec.canonicalFieldId];
       const localLabel = spec.path.split(".").at(-1)!.replace(/([a-z])([A-Z])/gu, "$1 $2");
       const label = canonical?.label ?? localLabel[0].toUpperCase() + localLabel.slice(1);
-      const section = spec.path.startsWith("contact.") ? "Emergency contact" : "Employee";
+      const section = spec.path.startsWith("contact.") ? "Emergency Information" : "Employee";
       const kind = spec.localKind === "boolean" ? "boolean" : spec.canonicalFieldId === "relationship" ? "relationship"
         : spec.canonicalFieldId !== null && ["dob", "hireDate", "signatureDate"].includes(spec.canonicalFieldId) ? "date" : undefined;
       const eid = spec.canonicalFieldId === "eid";

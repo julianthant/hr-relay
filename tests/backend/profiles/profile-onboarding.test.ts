@@ -3,10 +3,22 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { ProfileOnboardingDuoProviderError } from "../../../src/backend/runtime/browser/onboarding-duo-provider.js";
-import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
+import { SignUpOperationSchema, type SignUpDuoAttempt, type SignUpOperation } from "../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { createProfileOnboarding, duoAccountMatches } from "../../../src/backend/profiles/profile-onboarding.js";
+import { createProfileOnboarding, duoAccountMatches, type DuoDraft } from "../../../src/backend/profiles/profile-onboarding.js";
 import { ProfileOnboardingStateSchema } from "../../../src/models/profiles/public-profile.js";
+
+/** The owner's view of a sign-up draft, as profile-session presents it. */
+function draftOf(operation: SignUpOperation): DuoDraft {
+  const draft = operation.onboarding;
+  if (draft === undefined) throw new Error("fixture sign-up draft missing");
+  return { operationId: operation.operationId, profileId: operation.profileId, accountId: draft.accountId, generation: draft.generation,
+    attempts: draft.attempts, sealed: draft.finish !== undefined, aborted: draft.abort !== undefined, settle: "confirm" };
+}
+function withAttempts(operation: SignUpOperation, attempts: readonly SignUpDuoAttempt[]): SignUpOperation {
+  if (operation.onboarding === undefined) throw new Error("fixture sign-up draft missing");
+  return SignUpOperationSchema.parse({ ...operation, onboarding: { ...operation.onboarding, attempts } });
+}
 
 it("binds Duo account names only to the verified UCSD email or its exact username", () => {
   for (const observed of ["fixture@ucsd.edu", "fixture", " Fixture@UCSD.EDU "]) assert.equal(duoAccountMatches("fixture@ucsd.edu", observed), true);
@@ -46,8 +58,8 @@ for (const path of ["provider", "scope-loss"] as const) it(`persists and logs on
     onEvent: event => { events.push(event); },
     onFailure: (attempt, failure) => { events.push({ operationId: attempt.operationId, attemptId: attempt.attemptId, method: attempt.method, failure }); },
     failureDiagnostic: error => error instanceof ProfileOnboardingDuoProviderError ? { kind: error.kind, causeTag: error.reason } : { kind: "unknown", causeTag: "provider" },
-    read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
-    email: () => "synthetic@ucsd.edu", store: noSecretAccess, publicState: noSecretAccess,
+    read: () => draftOf(operation), update: (_id, change) => { const next = change(draftOf(operation)); operation = withAttempts(operation, next.attempts); return next.result; },
+    store: noSecretAccess, publicState: noSecretAccess,
     provider: { browserState() { return { state: "open", generation: 1 }; }, async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { throw new Error("unexpected portal"); },
       async stop() {},
       async closeBrowser() { return { state: "closed" }; }, async cancel() { return { state: "closed" }; },
@@ -91,8 +103,8 @@ it("starting the other method closes an unfinished attempt instead of refusing",
   const noSecretAccess = (): never => { throw new Error("unexpected secret access"); };
   const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)), onEvent() {}, onFailure() {},
     failureDiagnostic: error => error instanceof ProfileOnboardingDuoProviderError ? { kind: error.kind, causeTag: error.reason } : { kind: "unknown", causeTag: "provider" },
-    read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
-    email: () => "synthetic@ucsd.edu", store: noSecretAccess, publicState: noSecretAccess,
+    read: () => draftOf(operation), update: (_id, change) => { const next = change(draftOf(operation)); operation = withAttempts(operation, next.attempts); return next.result; },
+    store: noSecretAccess, publicState: noSecretAccess,
     provider: { async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { throw new Error("unexpected portal"); },
       async stop() {},
       async closeBrowser() { return { state: "closed" }; }, async cancel(attempt) { cancelled.push(attempt.method); return { state: "closed" }; },
@@ -122,8 +134,8 @@ it("reopens the exact browser generation after a drain failure without aborting 
   const unused = (): never => { throw new Error("unexpected credential access"); };
   const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)), onEvent() {}, onFailure() {},
     failureDiagnostic: () => ({ kind: "unknown", causeTag: "browser-lifetime" }),
-    read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
-    email: unused, store: unused, publicState: unused,
+    read: () => draftOf(operation), update: (_id, change) => { const next = change(draftOf(operation)); operation = withAttempts(operation, next.attempts); return next.result; },
+    store: unused, publicState: unused,
     provider: {
       async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { unused(); }, async start() { unused(); },
       async cancel() { return { state: "closed" }; },
@@ -162,8 +174,8 @@ for (const foreign of [false, true]) it(`settles only recovered attempt custody 
   const unused = (): never => { throw new Error("unexpected credential access"); };
   const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)), onEvent() {}, onFailure() {},
     failureDiagnostic: () => ({ kind: "unknown", causeTag: "worker" }),
-    read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
-    email: unused, store: unused, publicState: unused,
+    read: () => draftOf(operation), update: (_id, change) => { const next = change(draftOf(operation)); operation = withAttempts(operation, next.attempts); return next.result; },
+    store: unused, publicState: unused,
     provider: { async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { unused(); },
       browserState() { return { state: "closed", generation }; },
       async start(_attempt, _bind, report) { await report(new ProfileOnboardingDuoProviderError("unknown", "worker", foreign ? source : undefined)); },
@@ -193,8 +205,8 @@ for (const foreign of [false, true]) it(`a Show failure caught after proved Reop
   const unused = (): never => { throw new Error("unexpected credential access"); };
   const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)), onEvent() {}, onFailure() {},
     failureDiagnostic: () => ({ kind: "unknown", causeTag: "worker" }),
-    read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
-    email: unused, store: unused, publicState: unused,
+    read: () => draftOf(operation), update: (_id, change) => { const next = change(draftOf(operation)); operation = withAttempts(operation, next.attempts); return next.result; },
+    store: unused, publicState: unused,
     provider: { async showBrowser() { if (generation === 4) { await opening.promise; if (foreign) throw source; } }, async openPortal() { unused(); },
       browserState() { return { state: "closed", generation }; }, async start() { starts++; }, async cancel() { return { state: "closed" }; },
       async stop() {},
@@ -226,8 +238,8 @@ for (const phase of ["prelaunch", "clean-setup", "old-unproved", "new-unproved",
   const unused = (): never => { throw new Error("unexpected credential access"); };
   const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)), onEvent() {}, onFailure() {},
     failureDiagnostic: () => ({ kind: "unknown", causeTag: "worker" }),
-    read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
-    email: unused, store: unused, publicState: unused,
+    read: () => draftOf(operation), update: (_id, change) => { const next = change(draftOf(operation)); operation = withAttempts(operation, next.attempts); return next.result; },
+    store: unused, publicState: unused,
     provider: {
       browserState() { return failed ? { state: "failed", generation, code: "DUO_SETUP_OPEN_FAILED" } : { state: "open", generation }; },
       async showBrowser(browser) {
@@ -264,7 +276,7 @@ for (const phase of ["prelaunch", "clean-setup", "old-unproved", "new-unproved",
   assert.deepEqual(operation.onboarding?.attempts[0]?.failure, { kind: "unknown", causeTag: "worker" });
   assert.equal(operation.onboarding?.abort, undefined); assert.equal(operation.onboarding?.finish, undefined);
   if (phase === "old-unproved" || phase === "new-unproved" || phase === "foreign") {
-    await assert.rejects(owner.drain(operationId)); assert.throws(() => owner.assertAbortable(operationId)); assert.throws(() => owner.verifyFinish(operation));
+    await assert.rejects(owner.drain(operationId)); assert.throws(() => owner.assertAbortable(operationId)); assert.throws(() => owner.verifyProved(draftOf(operation)));
     assert.equal(operation.onboarding?.abort, undefined);
     if (phase === "foreign") await foreignProof.prove(async () => {});
     else { allowOld = true; allowNew = true; await assert.rejects(owner.reopenBrowser(operationId, generation), error => error instanceof Error && error.cause === opening); }
@@ -288,8 +300,8 @@ for (const fault of ["none", "stale-draft", "provider-stop"] as const) it(`await
   const forbidden = (): never => { throw new Error("unexpected credential or write"); };
   const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)),
     onEvent() {}, onFailure() {}, failureDiagnostic: () => ({ kind: "unknown", causeTag: "provider" }),
-    read: () => { if (stale) throw primary; return operation; }, update: forbidden,
-    email: forbidden, store: forbidden, publicState: forbidden,
+    read: () => { if (stale) throw primary; return draftOf(operation); }, update: forbidden,
+    store: forbidden, publicState: forbidden,
     provider: { showBrowser: async () => undefined, openPortal: forbidden, start: forbidden, cancel: forbidden, closeBrowser: forbidden,
       async stop() { entered.resolve(); await release.promise; if (fault === "provider-stop") throw stopFailure; stopped = true; } },
   });
