@@ -100,11 +100,11 @@ for (const family of ["ordinary", "protected"] as const) {
     assert.equal(h.commands.length, 1, "retry cannot dispatch over the pending original attempt");
     const draft = structuredClone(control().draft);
     assert.ok(settle);
-    await settingsAction(() => settle?.({ state: "rejected", commandId: (original as { commandId: string }).commandId, code: "authority-uncertain", message: "private" }));
+    await settingsAction(() => settle?.({ state: "pending", commandId: (original as { commandId: string }).commandId }));
     assert.equal(control().save.state, "unconfirmed"); assert.equal(control().locked, true);
     assert.deepEqual(control().draft, draft);
     assert.equal(h.notices.length, 0); assert.equal(h.problems.length, 0);
-    h.ports.execute = request => ({ state: "rejected", commandId: (request as { commandId: string }).commandId, code: "authority-uncertain", message: "private" });
+    h.ports.execute = request => ({ state: "pending", commandId: (request as { commandId: string }).commandId });
     await settingsAction(() => control().retry());
     assert.deepEqual(h.commands, [original, original]);
   });

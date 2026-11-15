@@ -249,7 +249,12 @@ the pool version and workflow. Pause, Resume and browser controls retain their s
 commands bind the physical `browserSessionId`. Settings uses `expectedRevision`.
 Do not substitute patch revisions, another attempt's identity, or current form values at settlement.
 
-`app/commands/command-result.ts` is the shared settlement owner. `CommandExecutor.check` reconciles
+`app/commands/command-outcome.ts` owns the dashboard's one command outcome. `outcomeEffect` reads
+whether an attempt landed from its reply, readback and children through the shared lifecycle in
+`rules/commands/command-lifecycle.ts`; `commandAttemptView` is the view a surface switches over, and
+an unknown effect is always its `unknown` view, never a refusal; `attemptTransition` is the
+executor's attempt table. `app/commands/command-result.ts` is the shared settlement fold for a reply
+read outside the executor. `CommandExecutor.check` reconciles
 a retained uncertain single command with read-only native application evidence, preserving the
 original actor/client and the current authority/request scope. Missing or mismatched evidence keeps
 the original reservation; it never dispatches or replays the command.
@@ -261,6 +266,7 @@ the original reservation; it never dispatches or replays the command.
 | `confirmation-required` | `kind: refused` | Present the exact `message` and `warningDigest` for explicit confirmation |
 | `conflict` | `kind: refused` | Show `currentVersion`; reload authority before a new decision |
 | `rejected` | `kind: refused` | Show the closed `code` and mapped message; retain the relevant draft |
+| `rejected` `bulk-child-errored`, `pending` | throws `CommandResultUnknownEffectError` | The command may have landed: keep the original attempt until served readback |
 
 Applied results require nonempty `affectedTargets`, except a canonical notification collection with
 `matchingCount: 0`: it returns `affectedTargets: []` and `noChange: 'no-matching-notifications'`.

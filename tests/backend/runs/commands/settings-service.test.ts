@@ -173,10 +173,10 @@ const WRITE_ID = "22222222-2222-4222-8222-222222222222";
 const TOKEN_A = "a".repeat(64);
 const TOKEN_B = "b".repeat(64);
 
-it("keeps request validation before private reads and maps independent-store uncertainty", () => {
+it("keeps request validation before private reads and passes a private-store refusal through", () => {
   let privateCommits = 0;
-  const credentials = { apply: () => { privateCommits += 1; return { state: "rejected", code: "authority-uncertain",
-    message: "private authority uncertain" } as const; } } as unknown as CredentialStore;
+  const credentials = { apply: () => { privateCommits += 1; return { state: "rejected", code: "lock-unavailable",
+    message: "private credential store busy" } as const; } } as unknown as CredentialStore;
   const executor = createSettingsApplicationExecutor(() => { throw new Error("unused resolver"); }, credentials);
   const command = SettingsCommandRequestSchema.parse({ commandId: ID, requestedAt: "2026-10-02T12:00:00.000Z",
     requestedBy: "local-operator", source: "settings-surface", family: "settings", type: "apply-settings",
@@ -187,8 +187,8 @@ it("keeps request validation before private reads and maps independent-store unc
   const protectedCommand = { ...command, type: "apply-protected-settings", payload: {
     protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: WRITE_ID, entries: { ucpathPassword: { set: "synthetic" } },
   } } as unknown as Parameters<typeof executor.commitPrivate>[0];
-  assert.deepEqual(executor.commitPrivate(protectedCommand), { state: "rejected", code: "authority-uncertain",
-    message: "private authority uncertain" });
+  assert.deepEqual(executor.commitPrivate(protectedCommand), { state: "rejected", code: "lock-unavailable",
+    message: "private credential store busy" });
   assert.equal(privateCommits, 1);
 
 });

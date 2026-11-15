@@ -580,8 +580,6 @@ export const D331_SERVED_LEAF_DISPOSITIONS: readonly D331ServedLeafDisposition[]
     { surface: "settings-apply-refusal", path: "code.invalid-value", valueClass: "closed-literal" },
     { surface: "settings-apply-refusal", path: "code.cross-field-invalid", valueClass: "closed-literal" },
     { surface: "settings-apply-refusal", path: "code.document-too-large", valueClass: "closed-literal" },
-    { surface: "settings-apply-refusal", path: "code.authority-unjournaled", valueClass: "closed-literal" },
-    { surface: "settings-apply-refusal", path: "code.authority-uncertain", valueClass: "closed-literal" },
     { surface: "settings-apply-refusal", path: "code.directory-integrity", valueClass: "closed-literal" },
     { surface: "settings-apply-refusal", path: "code.lock-unavailable", valueClass: "closed-literal" },
     { surface: "settings-apply-refusal", path: "code.command-divergent", valueClass: "closed-literal" },
