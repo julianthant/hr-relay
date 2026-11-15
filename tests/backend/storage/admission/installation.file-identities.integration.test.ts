@@ -27,7 +27,7 @@ for (const target of ["control", "credentials", "database"] as const) it.skipIf(
   try {
     await convertHistoricalIncompleteProfileFixture(f);
     const marker = JSON.parse(fs.readFileSync(f.markerPath, "utf8")) as { schemaVersion: number };
-    assert.equal(marker.schemaVersion, 8);
+    assert.equal(marker.schemaVersion, 9);
     const directory = `${f.workspace}/.tracker/control/profile-control-upgrades`, name = fs.readdirSync(directory).find(name => name.endsWith(".receipt.json")); assert.ok(name);
     const receipt = JSON.parse(fs.readFileSync(`${directory}/${name}`, "utf8")) as { priorRegistry: { inode: number | string }; sourceEvidence: string; credentials: { plan: { operation: { priorHead: { inode: number | string } } } }[] };
     const source = JSON.parse(receipt.sourceEvidence) as { profiles: { database: { inode: number | string } }[] };

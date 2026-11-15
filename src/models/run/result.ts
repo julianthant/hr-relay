@@ -1,6 +1,6 @@
 import type { EvidenceSchemaReader } from "../storage/evidence-schema-admission.js";
 import { RunContinuationSchema } from "./continuation.js";
-import { DryRunCoverageSchema, DryRunStepSchema } from "../workflow/dry-run.js";
+import { DryRunCoverageSchema, DryRunStepSchema, PublicationPreviewStepSchema } from "../workflow/dry-run.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { DeclaredActionIdentitySchema, OperationInputLineageSchema } from "../workflow/operation-action-identity.js";
 import { valueFreeProtectedData } from "../write-safety/protected-input.js";
@@ -217,12 +217,22 @@ export const RunDelegatedDryRunPreviewResultSchema = z.strictObject({
   ]),
   steps: z.array(RunPreviewStepSchema).min(1),
 });
-export type RunPreviewResult = RunDryRunPreviewResult | z.infer<typeof RunDelegatedDryRunPreviewResultSchema>;
+export const RunPublicationDryRunPreviewResultSchema = z.strictObject({
+  kind: z.literal("publication-dry-run-preview"),
+  externalCommit: z.literal("none"),
+  coverage: z.strictObject({ state: z.literal("full") }),
+  steps: z.array(z.union([DryRunStepSchema, PublicationPreviewStepSchema])).min(1),
+});
+export type RunPreviewResult = RunDryRunPreviewResult | z.infer<typeof RunDelegatedDryRunPreviewResultSchema>
+  | z.infer<typeof RunPublicationDryRunPreviewResultSchema>;
 export type RunPreviewStep = RunPreviewResult["steps"][number];
+/** Every step any preview kind can carry; the result schema chosen at build time narrows it. */
+export const AnyRunPreviewStepSchema = z.union([RunPreviewStepSchema, PublicationPreviewStepSchema]);
 
 const previewResultSchemas = new Map<Fingerprint, z.ZodType<RunPreviewResult>>([
   [deriveSchemaHash(RunDryRunPreviewResultSchema, "output"), RunDryRunPreviewResultSchema],
   [deriveSchemaHash(RunDelegatedDryRunPreviewResultSchema, "output"), RunDelegatedDryRunPreviewResultSchema],
+  [deriveSchemaHash(RunPublicationDryRunPreviewResultSchema, "output"), RunPublicationDryRunPreviewResultSchema],
 ]);
 
 export function isRunPreviewSchemaHash(schemaHash: string): boolean {

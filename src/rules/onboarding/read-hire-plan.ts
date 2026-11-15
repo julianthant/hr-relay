@@ -3,6 +3,7 @@ import { CANONICAL_FIELDS } from "../../models/fields/registry.js";
 import { UsDateSchema } from "../../models/config/schema.js";
 import { DateOnlySchema } from "../identity/ids.js";
 import { HirePlanSchema, OnboardingReadHirePlan } from "../../models/workflows/onboarding/read-hire-plan.js";
+import { rosterHireNames } from "./roster-name.js";
 
 const EMPTY = new Set(["n/a", "na", "n.a.", "none", "-", "--", "null"]);
 
@@ -26,10 +27,10 @@ export function readHirePlan(input: z.input<typeof OnboardingReadHirePlan.input>
   if (parsed.roster.binding.rowKey.email.toLowerCase() !== parsed.crm.requestedEmail.toLowerCase()) {
     throw new Error("Roster snapshot row key does not match the CRM subject");
   }
-  const legal = parsed.roster.references.legalName;
-  const preferred = parsed.roster.references.livedName === null ? legal : parsed.roster.references.livedName;
   const raw = parsed.crm.fields;
-  const appointment = /(?:^|\s)(\d+)\s*$/u.exec(clean(raw.appointment));
+  const { legal, preferred } = rosterHireNames(parsed.roster.references,
+    { firstName: clean(raw.firstName), middleName: clean(raw.middleName), lastName: clean(raw.lastName) });
+  const appointment = /^(\d+)\s+\S/u.exec(clean(raw.appointment));
   if (appointment?.[1] === undefined) throw new Error("CRM appointment has no classification number");
   const department = /\((\d{4,6})\)\s*$/u.exec(parsed.crm.department.trim());
   if (department?.[1] === undefined) throw new Error("CRM department has no department number");
