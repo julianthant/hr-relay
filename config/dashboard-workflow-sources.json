@@ -1,16 +1,16 @@
 {
   "separations": "served",
-  "onboarding": "mock",
+  "onboarding": "served",
   "person-lookup": "served",
-  "i9-lookup": "mock",
-  "work-study": "mock",
+  "i9-lookup": "hidden",
+  "work-study": "served",
   "kronos-pay-rule": "mock",
   "ocr": "hidden",
   "oath-signature": "mock",
   "oath-upload": "mock",
   "emergency-contact": "served",
   "onbase": "mock",
-  "i9-check-start": "mock",
+  "i9-check-start": "served",
   "crm-doc-download": "mock",
   "old-kronos-reports": "mock"
 }

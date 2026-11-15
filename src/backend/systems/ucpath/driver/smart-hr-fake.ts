@@ -1,4 +1,5 @@
 import { refuseHireOperations } from "./hire-fake.js";
+import { refusePayPathOperations } from "./paypath-fake.js";
 import { UcpathTransactionFindingsSchema } from "../../../../models/ui/ucpath-transaction-findings.js";
 import type { UcpathTransactionFindings } from "../../../../models/ui/ucpath-transaction-findings.js";
 
@@ -96,6 +97,7 @@ export function createDeterministicUcpathSmartHrDriver(
   let screen = UCPATH_SMART_HR_DETAILS_SCREEN;
   return {
     ...refuseHireOperations(),
+    ...refusePayPathOperations(),
     ...refuseUnimplementedPersonOrgHalf(half),
     system: "ucpath",
     async readTransactionFindings(input) {
@@ -278,6 +280,7 @@ export function createDeterministicUcpathSmartHrWorldDriver(
   };
   return {
     ...refuseHireOperations(),
+    ...refusePayPathOperations(),
     ...refuseUnimplementedPersonOrgHalf(half),
     system: "ucpath",
     async readTransactionFindings(input) {

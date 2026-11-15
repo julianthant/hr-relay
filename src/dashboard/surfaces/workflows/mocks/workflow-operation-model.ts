@@ -29,7 +29,7 @@ export function mockOperationValue(run: MockRun, value: string): string {
     hireType: run.draft.hireType === "rehire" ? "Rehire" : "New hire", existingPerson: run.draft.hireType === "rehire" ? field("employeeId") : "No match",
     hireTemplate: run.draft.hireType === "rehire" ? "UC_CONC_HIRE" : "UC_FULL_HIRE", hireReason: run.draft.hireType === "rehire" ? "Concurrent Hire - Non Dual Emp" : "Hire - No Prior UC Affiliation",
     hireComments: run.draft.hireType === "rehire" ? `Concurrent Hire as Dining Student Effective ${displayExtractedDate(run.draft.effectiveDate)}. PCN DEMO-POS-001. Job number #DEMO-REC-001.` : `New Dining Student Hire Effective ${displayExtractedDate(run.draft.effectiveDate)}. Job number #DEMO-REC-001.`,
-    profileId: run.draft.dryRun ? "1000001 · unsaved placeholder" : "DEMO-I9-001", workStudyComments: `Updated pool id to F per work study award ${displayExtractedDate(run.draft.effectiveDate)}`,
+    profileId: run.draft.dryRun ? "1000001 · unsaved placeholder" : "DEMO-I9-001",
     pdf: run.draft.files.map(file => file.name).join(", "), formType: run.parentWorkflowId === "onbase" ? run.draft.documentType : MOCK_FORM_TYPES.find(item => item.value === run.draft.formType)?.label ?? run.draft.formType, sourcePage: String(record.page),
     documentType: run.draft.documentType, documentName: run.draft.documentType === "Emergency Contact" ? "EMERGENCY CONTACT INFORMATION" : run.draft.documentType.toUpperCase(),
     roster: run.draft.formType === "i9" ? "Action History" : "Onboarding Roster",
