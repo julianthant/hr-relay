@@ -702,7 +702,7 @@ it.each(["ready", "refused", "unknown"] as const)('confirms run actions with %s 
   }); } finally { factory.mockRestore(); }
 });
 
-it('refuses a PDF start while Emergency Contact is not served and confirms an attached spreadsheet as a library import', async () => {
+it('refuses a PDF start while OnBase is not served and confirms an attached spreadsheet as a library import', async () => {
   await withServedAssistant(async fixture => {
     const { context, transport, origin, clock } = fixture, client = createDashboardClient({ baseUrl: origin }), database = context.database;
     const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
@@ -738,11 +738,11 @@ it('refuses a PDF start while Emergency Contact is not served and confirms an at
         ...(decision === 'confirm' ? { reviewedDigest: digest } : {}) }));
     });
 
-    assert.equal(configuredSources['emergency-contact'], 'mock');
-    const pdf = await respond('Run this PDF for Emergency Contact', { name: 'contact.pdf', mediaType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n% synthetic\n') },
-      file => ['propose_workflow_start', { workflow: 'emergency-contact', entries: [file] }]);
+    assert.equal(configuredSources['onbase'], 'mock');
+    const pdf = await respond('Run this PDF for OnBase', { name: 'contact.pdf', mediaType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n% synthetic\n') },
+      file => ['propose_workflow_start', { workflow: 'onbase', entries: [file] }]);
     assert.equal(pdf.kind === 'result' ? pdf.result.state === 'refused' && pdf.result.code : pdf.kind, 'ASSISTANT_PROPOSAL_REFUSED', 'a workflow that is not served is never proposed');
-    assert.equal(database.authority.runs.listByWorkflow('emergency-contact').length, 0);
+    assert.equal(database.authority.runs.listByWorkflow('onbase').length, 0);
 
     const sheets = () => library.catalog().filter(entry => entry.name === 'Q3 roster').length;
     const imported = await turn('Import this as Q3 roster', { name: 'roster.csv', mediaType: 'text/csv', bytes: new TextEncoder().encode('Name,Dept\nAda,HR\n') },
