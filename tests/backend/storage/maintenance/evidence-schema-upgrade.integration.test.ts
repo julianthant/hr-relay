@@ -88,7 +88,8 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
         const document = createCanonicalCredentials(admission).readRecord("protected"); assert.ok(document);
         assert.equal(authenticateDocument(document.value).retiredLegacy.valueIds.includes(f.valueId), true);
         const service = createReceiptService({ database, runReader: testRunService(database, systemClock), descriptors: [descriptor] });
-        assert.deepEqual(service.ensureReceipt(f.run.envelope.runId), f.receipt);
+        // The pre-initials run input is retired history: its receipt is never re-derived under the current canonical input.
+        assert.throws(() => service.ensureReceipt(f.run.envelope.runId), /canonical-input/u);
         const { createOperatorProjection } = await import("../../../../src/backend/app/composition/dashboard/queue.js");
         const { createOperatorRunDetail } = await import("../../../../src/backend/app/composition/dashboard/run-detail.js");
         const { buildRunLogsSection } = await import("../../../../src/backend/runs/queries/run-logs.js");
@@ -104,9 +105,9 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
         assert.deepEqual(frozenRows(f.path), before);
         const owner = { kind: "run-input" as const, id: f.run.envelope.runId };
         const current = deriveSchemaHash(descriptor.canonicalInput, "output"), old = f.run.input.parsed.schemaHash;
-        assert.equal(database.evidenceSchemaHash(owner, f.run.input, old, current), current);
+        assert.notEqual(old, current); assert.equal(database.evidenceSchemaHash(owner, f.run.input, old, current), old);
         assert.throws(() => database.evidenceSchemaHash(owner, { ...f.run.input, parsed: { ...f.run.input.parsed, protectedBindings: [] } }, old, current), /source-changed/u);
-        assert.throws(() => database.evidenceSchemaHash(owner, f.run.input, old, "f".repeat(64)), /source-changed/u);
+        assert.equal(database.evidenceSchemaHash(owner, f.run.input, old, "f".repeat(64)), old);
         assert.throws(() => database.evidenceSchemaHash(owner, f.run.input, "e".repeat(64), current), /source-changed/u);
         const { AuthorityEvidenceSchemaUpgradeRecordSchema } = await import("../../../../src/models/config/authority.js");
         const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse(JSON.parse(String(journal[0]?.payload_json)));
