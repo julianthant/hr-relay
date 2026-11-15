@@ -2,6 +2,9 @@ import { FingerprintSchema } from "../../rules/identity/ids.js";
 import { z } from "zod";
 import { JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 
+/** Admitted with the timekeeper name from the same profile identity; value-free projections omit it, as the name's binding covers it. */
+export const PROFILE_INITIALS_INPUT_PATH = "timekeeperInitials";
+
 /** The first admitted protected workflow input; data only, safe in descriptor bundles. */
 export const ProtectedInputDeclarationSchema = z.strictObject({
   inputPath: z.literal("timekeeperName"),
@@ -37,6 +40,11 @@ export const ProtectedInputBindingsSchema = z.array(ProtectedInputBindingSchema)
 });
 
 export type ProtectedInputDeclaration = z.infer<typeof ProtectedInputDeclarationSchema>;
+
+/** Every input path the timekeeper profile declaration admits: the name and the stored initials. */
+export function protectedDeclarationPaths(declaration: ProtectedInputDeclaration): readonly string[] {
+  return [declaration.inputPath, PROFILE_INITIALS_INPUT_PATH];
+}
 export type ProtectedInputBinding = z.infer<typeof ProtectedInputBindingSchema>;
 
 export function protectedInputBindings(value: unknown, bindings?: readonly ProtectedInputBinding[]): readonly ProtectedInputBinding[] {
@@ -65,6 +73,8 @@ export function valueFreeProtectedInput(value: unknown, bindings?: readonly Prot
     if (!Object.hasOwn(parsed, binding.inputPath)) throw new Error(`protected input ${binding.name} is absent`);
     copy.set(binding.inputPath, binding);
   }
+  // The timekeeperName binding names the profile that also supplied the initials; it stands for both.
+  if (identities.some(({ inputPath }) => inputPath === "timekeeperName")) copy.delete(PROFILE_INITIALS_INPUT_PATH);
   return JsonValueSchema.parse(Object.fromEntries(copy));
 }
 
@@ -98,7 +108,7 @@ export function valueFreeProtectedData(value: unknown, bindings?: readonly Prote
     if (isJsonArray(entry)) return entry.map((child) => project(child, inherited));
     const metadata: unknown = Reflect.get(entry, "protectedBindings");
     const ownBindings = metadata === undefined ? inherited : ProtectedInputBindingsSchema.parse(metadata);
-    return Object.fromEntries(Object.entries(entry).map(([key, child]) => {
+    return Object.fromEntries(Object.entries(entry).filter(([key]) => key !== PROFILE_INITIALS_INPUT_PATH).map(([key, child]) => {
       if (key === "timekeeper" && child !== null && typeof child === "object" && !Array.isArray(child)) {
         const safe = Object.fromEntries(Object.entries(child).map(([field, value]) => [field,
           field === "name" ? { kind: "legacy-protected-input", name: "timekeeperName", inputPath: "timekeeperName" }

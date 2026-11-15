@@ -29,6 +29,7 @@ export const ProfileRegistryRowSchema = z.strictObject({
   lastName: NameSchema,
   initials: ProfileIdentitySchema.shape.initials,
   timekeeperName: ProfileDisplayNameSchema,
+  timekeeperInitials: ProfileIdentitySchema.shape.initials,
   createdAt: IsoInstantSchema,
   lastSignedInAt: IsoInstantSchema,
   credentialState: z.enum(["saved", "wiped"]),
@@ -39,7 +40,7 @@ export const ProfileRegistryRowSchema = z.strictObject({
 export type ProfileRegistryRow = z.infer<typeof ProfileRegistryRowSchema>;
 
 export const ProfileRegistryDocumentSchema = z.strictObject({
-  schemaVersion: z.literal(3),
+  schemaVersion: z.literal(4),
   installationId: z.uuid(),
   revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   profiles: z.array(ProfileRegistryRowSchema),
@@ -91,14 +92,26 @@ export const ProfileAuthoritySnapshotSchema = z.strictObject({
 });
 export type ProfileAuthoritySnapshot = z.infer<typeof ProfileAuthoritySnapshotSchema>;
 
-function assertNameInitial(name: string): void {
+function nameInitialRefused(name: string): boolean {
   const raw = [...name][0];
   const characters = [...name.normalize("NFC")];
   const letter = characters[0];
-  if (raw === undefined || letter === undefined || !/^[A-Za-z]$/u.test(raw) || !/^[A-Za-z]$/u.test(letter)
-    || (characters[1] !== undefined && /\p{M}/u.test(characters[1]))) {
-    throw new ProfileNameValidationError();
-  }
+  return raw === undefined || letter === undefined || !/^[A-Za-z]$/u.test(raw) || !/^[A-Za-z]$/u.test(letter)
+    || (characters[1] !== undefined && /\p{M}/u.test(characters[1]));
+}
+
+/** The profile-name problem, or nothing when the first and last name are valid. */
+function profileNameProblem(firstName: string, lastName: string): ProfileNameValidationError | undefined {
+  const first = NameSchema.safeParse(firstName);
+  const last = NameSchema.safeParse(lastName);
+  if (!first.success || !last.success || nameInitialRefused(first.data) || nameInitialRefused(last.data)) return new ProfileNameValidationError();
+  const timekeeperName = `${first.data} ${last.data}`;
+  if (!ProfileDisplayNameSchema.safeParse(timekeeperName).success) return new ProfileNameValidationError();
+  return undefined;
+}
+
+export function isProfileName(firstName: string, lastName: string): boolean {
+  return profileNameProblem(firstName, lastName) === undefined;
 }
 
 export function deriveProfileNames(firstName: string, lastName: string): {
@@ -106,15 +119,13 @@ export function deriveProfileNames(firstName: string, lastName: string): {
   readonly lastName: string;
   readonly initials: string;
   readonly timekeeperName: string;
+  readonly timekeeperInitials: string;
 } {
-  const first = NameSchema.safeParse(firstName);
-  const last = NameSchema.safeParse(lastName);
-  if (!first.success || !last.success) throw new ProfileNameValidationError();
-  assertNameInitial(first.data);
-  assertNameInitial(last.data);
-  const timekeeperName = `${first.data} ${last.data}`;
-  if (!ProfileDisplayNameSchema.safeParse(timekeeperName).success) throw new ProfileNameValidationError();
-  return { firstName: first.data, lastName: last.data, initials: profileInitials(timekeeperName), timekeeperName };
+  const problem = profileNameProblem(firstName, lastName);
+  if (problem !== undefined) throw problem;
+  const timekeeperName = `${firstName} ${lastName}`;
+  const initials = profileInitials(timekeeperName);
+  return { firstName, lastName, initials, timekeeperName, timekeeperInitials: initials };
 }
 
 /** Initials a person enters for themself: one to eight letters A to Z. */
@@ -127,26 +138,21 @@ export type ProfileDetailsChange = {
   readonly name?: { readonly firstName: string; readonly lastName: string };
   readonly initials?: string;
   readonly timekeeperName?: string;
+  readonly timekeeperInitials?: string;
 };
-export type ProfileDetailsPatch = Partial<Pick<ProfileRegistryRow, "firstName" | "lastName" | "initials" | "timekeeperName">>;
+export type ProfileDetailsPatch = Partial<Pick<ProfileRegistryRow, "firstName" | "lastName" | "initials" | "timekeeperName" | "timekeeperInitials">>;
 export type ProfileDetailsRefusalCode = "PROFILE_DISPLAY_NAME_REFUSED" | "PROFILE_INITIALS_REFUSED" | "PROFILE_NAME_REFUSED";
-
-function isProfileName(firstName: string, lastName: string): boolean {
-  try { deriveProfileNames(firstName, lastName); return true; }
-  catch (error) {
-    if (error instanceof ProfileNameValidationError) return false;
-    throw error;
-  }
-}
 
 /** The registry patch for a details change, or the code of the first refused value; nothing is trimmed or corrected. */
 export function profileDetailsPatch(change: ProfileDetailsChange): { readonly patch: ProfileDetailsPatch } | { readonly refused: ProfileDetailsRefusalCode } {
   if (change.name !== undefined && !isProfileName(change.name.firstName, change.name.lastName)) return { refused: "PROFILE_DISPLAY_NAME_REFUSED" };
   if (change.initials !== undefined && !ProfileInitialsSchema.safeParse(change.initials).success) return { refused: "PROFILE_INITIALS_REFUSED" };
   if (change.timekeeperName !== undefined && !ProfileTimekeeperNameSchema.safeParse(change.timekeeperName).success) return { refused: "PROFILE_NAME_REFUSED" };
+  if (change.timekeeperInitials !== undefined && !ProfileInitialsSchema.safeParse(change.timekeeperInitials).success) return { refused: "PROFILE_INITIALS_REFUSED" };
   return { patch: { ...(change.name === undefined ? {} : { firstName: change.name.firstName, lastName: change.name.lastName }),
     ...(change.initials === undefined ? {} : { initials: change.initials }),
-    ...(change.timekeeperName === undefined ? {} : { timekeeperName: change.timekeeperName }) } };
+    ...(change.timekeeperName === undefined ? {} : { timekeeperName: change.timekeeperName }),
+    ...(change.timekeeperInitials === undefined ? {} : { timekeeperInitials: change.timekeeperInitials }) } };
 }
 
 export const ProfileDatabaseBindingSchema = z.strictObject({ installationId: z.uuid(), profileId: ProfileIdSchema });

@@ -111,7 +111,7 @@ describe("served Person Lookup Logs operator presentation", () => {
     assert.ok(rows);
     const logs = NotePageSchema.parse({ ...original.logs, rows, notes: rows.map(row => row.note) });
     const text = logPlainText(projectRunLogs({ ...original, logs, sections: [] }, client).steps);
-    assert.match(text, /Screenshot unavailable: no verified capture association/u);
+    assert.match(text, /No screenshot: it could not be saved\./u);
     assert.doesNotMatch(text, /completed|recorded/u);
   });
   it("keeps internal capture labels, raw target IDs and bare completion states out of operator copy", () => {

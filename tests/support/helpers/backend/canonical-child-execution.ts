@@ -104,8 +104,9 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
       throw new AggregateError([error, new Error(JSON.stringify({ stage, kind }))], "canonical child fixture failed", { cause: error });
     }
   }
+  const plans: ReturnType<ReturnType<typeof createStartPlanService>["plan"]>[] = [];
   return {
-    kernel, lifecycle, childRuns, step,
+    kernel, lifecycle, childRuns, step, plans,
     start(descriptor: AnyWorkflowDescriptor, input: unknown, startOptions: Readonly<{ dryRun: boolean; protectedSubmissionBindings?: readonly ProtectedInputBinding[];
       workbookReferences?: readonly z.infer<typeof WorkbookActiveSelectionSchema>[] }>) {
       const active = database.authority.runtimeConfig.get();
@@ -120,6 +121,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
         selectedStepKeys: descriptor.timeline.map(step => step.key) });
       assert.equal(plan.planned.length, 1, JSON.stringify(plan.refused));
       assert.equal(plan.refused.length, 0);
+      plans.push(plan);
       const result = kernel.execute({ commandId: randomUUID(), family: "start", type: "start-run", source: "dashboard",
         requestedBy: LOCAL_OPERATOR_ACTOR_ID, requestedAt: clock.now().toISOString(), target: { workflowId: descriptor.id,
           startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });

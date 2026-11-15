@@ -8,7 +8,7 @@ import { ChatGptAccountContext, createServedChatGptAccountPort } from "../surfac
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { StartupLoading } from "../surfaces/shell/startup-loading.js";
 import { useStartupGate } from "./startup/startup-gate.js";
-import { usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
+import { useDuoReenrol, usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import { DeleteAccountControl } from "../surfaces/settings/general/ui-settings-records-general-paths.js";
 import { HubPreferencesPreviewContext } from "../surfaces/settings/general/hub-preferences-model.js";
@@ -163,6 +163,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const profileClient = useDashboardClient();
   const publicProfile = usePublicProfileSession(profileClient, profileSource === "served");
   const session = profileSource === "served" ? publicProfile.state : undefined;
+  const duoReenrol = useDuoReenrol(profileClient, profileSource === "served" && publicProfile.state?.state === "active");
   const startup = useStartupGate(session, publicProfile.failure, publicProfile.port);
   const [profileCreationChosen, setProfileCreationChosen] = useState(false);
   useEffect(() => { if (session?.state === "active") setProfileCreationChosen(false); }, [session?.state]);
@@ -233,6 +234,8 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
     <ToastProvider>
       {route.viewInvalid ? (
         <EmptyState title="Invalid navigation link" description="The view parameters are invalid. Open the dashboard to recover." action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />
+      ) : duoReenrol.port !== undefined ? (
+        <OnboardingSetup page="fast" port={duoReenrol.port} />
       ) : route.onboardingSetup !== undefined && profileSource === "served" && session?.state === PROFILE_ONBOARDING_STATE ? (
         <OnboardingSetup page="fast" port={publicProfile.port} />
       ) : profileSource === "served" && startup.loading ? (
@@ -266,7 +269,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
                 : { state: publicProfile.accountDeletion.state, personName: boot.actor.label,
                   message: operatorFailureSentence(publicProfile.accountDeletion.state === "uncertain" ? "PROFILE_ACCOUNT_DELETION_REFUSED" : publicProfile.accountDeletion.code) }} />
             : undefined}
-          accountPage={profileSource === "served" && session?.state === "active" && session.account !== undefined && publicProfile.logout !== undefined ? { values: session.account, duo: session.duoState === "ready" ? "ready" : "setup", onSignOut: () => { void publicProfile.logout(); }, details: request => profileClient.changeProfileDetails(request), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
+          accountPage={profileSource === "served" && session?.state === "active" && session.account !== undefined && publicProfile.logout !== undefined ? { values: session.account, duo: session.duoState === "ready" ? "ready" : "setup", onSignOut: () => { void publicProfile.logout(); }, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}
@@ -557,7 +560,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const applicationBusy = appAttempts.some(attempt => attempt.state === "pending" || attempt.outcome?.kind === "uncertain");
   const quitting = appAttempts.some(attempt => attempt.request.type === "pause-all-and-quit"
     && (attempt.state === "pending" || attempt.outcome?.kind === "confirmed" || attempt.outcome?.kind === "uncertain")) || application?.state === "quitting";
-  const allPaused = application !== undefined && application.targets.length > 0 && application.targets.every(target => target.pause?.state === "paused" && target.pauseUnavailable === false);
   useEffect(() => {
     const quit = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "q") {
@@ -761,7 +763,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const envelope = { commandId: crypto.randomUUID(), requestedAt: nowIso, requestedBy: boot.actor.id, source: "dashboard" };
     const targets = application.targets.map(({ runId, expectedVersion }) => ({ runId, expectedVersion }));
     if (action === "resume") {
-      if (!allPaused) return;
+      if (application.pause !== "paused") return;
       const plan: BulkVerbPlan = { verb: "resume", label: "Resume", eligible: targets.map(target => ({ ...target,
         title: dayWire?.queueSurfaces.find(row => row.runId === target.runId)?.title ?? target.runId })), skipped: [], unavailable: [] };
       void executeShell(BulkRunCommandRequestSchema.parse({ ...envelope, bulkCommandId: envelope.commandId, family: "run", type: "resume", targets, mode: "best-effort" }), "Resume all runs", plan).then(lifecycle.refresh);
@@ -1341,9 +1343,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               <div className="dashboard-log-column">
                 <section aria-label="Action panel" className="dashboard-action-panel">
           <FocusQueueToolbar
-            pauseControls={<PauseAllQuitControls state={application === undefined ? "unavailable" : applicationBusy || quitting ? "pausing" : application.state === "blocked" ? "blocked" : application.state !== "ready" ? "pausing" : allPaused ? "paused" : "ready"}
+            pauseControls={<PauseAllQuitControls state={application === undefined ? "unavailable" : application.state !== "ready" || application.pause === "pause-pending" ? "pausing" : application.pause === "paused" ? "paused" : "ready"}
               activeCount={application?.targets.length ?? 0} quitRequested={quitRequested} onQuitDismiss={() => setQuitRequested(false)}
-              onPauseAll={() => applicationAction("pause-all")} onResumeAll={() => applicationAction("resume")} onPauseAndQuit={() => applicationAction("pause-all-and-quit")} />}
+              onPauseAll={applicationBusy || quitting ? undefined : () => applicationAction("pause-all")} onResumeAll={applicationBusy || quitting ? undefined : () => applicationAction("resume")} onPauseAndQuit={applicationBusy || quitting ? undefined : () => applicationAction("pause-all-and-quit")} />}
             sort={sort}
             onSort={onSort}
             active={filter}
