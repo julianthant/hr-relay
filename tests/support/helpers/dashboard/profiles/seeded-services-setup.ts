@@ -26,6 +26,7 @@ import { createWorkbookIntakeBridge } from "../../../../../src/backend/runs/comm
 import { createWorkbookLibraryService } from "../../../../../src/backend/workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../../../../src/backend/workbooks/workbook-library-error.js";
 import type { AssistantService } from "../../../../../src/backend/assistant/service.js";
+import { AssistantHistoryOperationSchema } from "../../../../../src/models/dashboard/assistant.js";
 
 import { composeActivity } from "../../../../../src/backend/app/composition/dashboard/activity.js";
 import { projectWorkbookCompatibilityFromRepository } from "../../../../../src/backend/workbooks/workbook-library-service.js";
@@ -158,6 +159,9 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       const assistant: AssistantService = {
         respond: () => Promise.resolve({ kind: "result", result: { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: "The assistant is unavailable. Check the ChatGPT connection." } }),
         modelPreference: () => ({ profileId, epoch: 1, revision: 1, preference: { slug: "gpt-5.4", effort: "medium" } }),
+        historyView: () => database.authority.assistantHistory.list(clock.now().toISOString()),
+        conversation: id => database.authority.assistantHistory.conversation(id, clock.now().toISOString()),
+        history: input => database.authority.assistantHistory.apply(AssistantHistoryOperationSchema.parse(input), clock.now().toISOString()),
       };
       return {
         notifications: composeNotificationRoutes({ database, clock, lifecycle, runDetailDeps, descriptors: { resolve: id => { const descriptor = descriptors.resolve(id); if (descriptor === undefined) throw new Error(`seeded-descriptor-missing:${id}`); return descriptor; } }, assertCurrent: () => undefined, notificationObserver: observer, notificationTarget }),
