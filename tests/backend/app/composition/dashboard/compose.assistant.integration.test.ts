@@ -589,6 +589,9 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), finishedRuns);
       assert.equal(children.length, 1);
     } catch (error) { failures.push(error); }
+    // A failure before the release would leave the blocker Start held forever; the injected runner ignores abort.
+    holdNextStartPreflight = false;
+    for (const hold of heldStartPreflights) hold.resolve();
     for (const execution of pending) {
       const outcome = await execution;
       if ("error" in outcome) failures.push(outcome.error);
