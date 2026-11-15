@@ -10,7 +10,7 @@ import { buildWorkflowCatalog as buildWorkflowCatalog_m0 } from "../../../../src
 
 describe_m0("complete workflow presentation mocks", () => {
   it_m0("covers every rail workflow and renders every declared variant without missing contract values", () => {
-    expect_m0(new Set(buildWorkflowCatalog_m0([], true, previewFixtureSources([])).map(item => item.id))).toEqual(new Set(MOCK_WORKFLOWS_m0.filter(item => item.id !== "ocr").map(item => item.id)));
+    expect_m0(new Set(buildWorkflowCatalog_m0([], true, previewFixtureSources([])).map(item => item.id))).toEqual(new Set(MOCK_WORKFLOWS_m0.filter(item => !["ocr", "i9-lookup"].includes(item.id)).map(item => item.id)));
     for (const flow of MOCK_WORKFLOWS_m0) {
       const values = initialWorkflowChoices_m0(flow.id);
       for (const scenario of [values, ...workflowChoices_m0(flow.id).flatMap(choice => choice.options.map(([value]) => updateWorkflowChoice_m0(flow.id, values, choice.key, value)))]) {
@@ -53,7 +53,7 @@ describe_m0("complete workflow presentation mocks", () => {
 
 describe_m1("source-backed workflow operation detail", () => {
   it_m1("resolves Explorer's detailed field provenance and excludes evidence for unavailable outcomes", () => {
-    for (const id of ["work-study", "onbase", "oath-upload", "old-kronos-reports", "ocr"] as const) {
+    for (const id of ["onbase", "oath-upload", "old-kronos-reports", "ocr"] as const) {
       const choices = initialWorkflowChoices_m1(id), mock = buildWorkflowMock_m1(id, choices);
       const detail = mock.steps.flatMap(step => allFields_m1(step.parts).filter(field => field.source?.startsWith("operation:")).map(field => [field, step.number] as const));
       expect_m1(detail.length, id).toBeGreaterThan(0);

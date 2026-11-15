@@ -21,10 +21,8 @@ export type IdentityCeremony =
   /** this build cannot describe the ceremony the server asked */
   | { readonly kind: "unsupported"; readonly reason: string };
 
-/** The operator's ANSWER: a served candidate's ref, or a typed Employee ID the server matches to one. */
-export type IdentityGateAnswer =
-  | { readonly decision: "approved"; readonly optionRef: string }
-  | { readonly decision: "approved"; readonly typedEid: string };
+/** The operator's ANSWER: a served candidate's ref. A typed Employee ID starts a lookup instead and is never an answer. */
+export type IdentityGateAnswer = { readonly decision: "approved"; readonly optionRef: string };
 
 // Exhaustive at compile time; newer server shapes still receive a named runtime refusal.
 function unsupportedShape(shape: never): IdentityCeremony {
@@ -68,7 +66,7 @@ export function identityCeremonyFor(gate: IdentityGateDetail): IdentityCeremony 
   }
 }
 
-/** Match kernel answer bounds; a typed Employee ID is matched by the server, which alone holds the full IDs. */
+/** Match kernel answer bounds. */
 export function identityDraftProblem(ceremony: IdentityCeremony, answer: IdentityGateAnswer): string | undefined {
   switch (ceremony.kind) {
     case "unsupported":
@@ -76,7 +74,6 @@ export function identityDraftProblem(ceremony: IdentityCeremony, answer: Identit
     case "confirm":
       return undefined;
     case "choose":
-      if ("typedEid" in answer) return /^\d{8}$/u.test(answer.typedEid) ? undefined : "Enter the 8-digit Employee ID.";
       return optionFor(ceremony.options, answer.optionRef) === undefined
         ? "Pick which candidate the separation document means."
         : undefined;

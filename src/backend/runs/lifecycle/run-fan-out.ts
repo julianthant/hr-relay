@@ -9,6 +9,9 @@ import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape 
 import type { StepOmissions } from "../../../models/workflow/step-omission.js";
 import { isTerminalRunState, type RunRecord } from "../../../models/run/record.js";
 import { RunSessionRecordSchema, type RunSessionOrigin } from "../../../models/run/session.js";
+import { capturedInstantClock } from "../../../rules/time/clock.js";
+import { createNoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
+import { runSpanPath } from "../../logs/span-emitter.js";
 
 /** Built loosely, then proven strict by the `CommandResultSchema`/audit parses. */
 export type TargetReference = Readonly<Record<string, unknown>>;
@@ -123,13 +126,18 @@ export function fanOutQueuedRuns(
     // An authority read error here aborts the whole fan-out — never "continue
     // and enqueue anyway" (ref dashboard-surfaces  Enqueue).
     const active = activeRunsForItem(repositories, envelope.workflow, entry.itemId);
-    if (descriptor.enqueue === "reject-active" && active.length > 0) {
+    // The kernel has just checked a gate correction's active set equals its reviewed supersede targets.
+    const gateCorrection = envelope.sourceBound?.source.gateCorrection;
+    const supersede = descriptor.enqueue === "supersede-active" || gateCorrection !== undefined;
+    const correctionLabel = gateCorrection === undefined ? undefined
+      : descriptor.gateCorrections?.find(entry => entry.gateId === gateCorrection.gateId && entry.inputField === gateCorrection.inputField)?.label;
+    if (descriptor.enqueue === "reject-active" && !supersede && active.length > 0) {
       refuse(
         `${envelope.workflow} item ${entry.itemId} (${entry.matchKey}) already has an active run `
         + `(${active[0].envelope.traceId}); nothing from ${origin} was started`,
       );
     }
-    if (descriptor.enqueue === "supersede-active") {
+    if (supersede) {
       for (const activeRun of active) {
         const outcome = lifecycle.transition({
           commandId: lifecycleCommandId("operator-supersede", { commandId: envelope.commandId, runId: activeRun.envelope.runId }),
@@ -138,6 +146,13 @@ export function fanOutQueuedRuns(
           lifecycle: { state: "terminal", outcome: "superseded", endedAt: now },
         });
         requireApplied(outcome, `superseding run ${activeRun.envelope.runId}`);
+        if (correctionLabel !== undefined && "run" in outcome) {
+          createNoteTimelineWriter({ repository: repositories.timelineEvents, clock: capturedInstantClock(now) }).emitRunLog({
+            workflow: activeRun.envelope.workflow, level: "step", message: `Replaced: Relay is looking up the ${correctionLabel} you entered.`,
+            address: { runId: activeRun.envelope.runId, attempt: activeRun.envelope.attempt, traceId: activeRun.envelope.traceId,
+              spanPath: runSpanPath(activeRun.envelope.traceId) },
+          }, outcome.run);
+        }
         affectedTargets.push(runTarget(activeRun.envelope.runId));
         versionChanges.push({
           target: runTarget(activeRun.envelope.runId),

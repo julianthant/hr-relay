@@ -1,15 +1,8 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act } from "react";
+import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { createElement } from "react";
 import { afterEach, it } from "vitest";
-import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
-import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
-import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
-import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
-import { RunStartDialog } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
@@ -17,11 +10,24 @@ import { WorkbookLibraryEntrySchema, WorkbookLibraryVersionViewSchema, projectWo
 import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from "../../../../src/models/dashboard/start-plan.js";
 import { RerunValuesRequestSchema, RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../../../src/models/dashboard/rerun-warning.js";
-import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
+import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
+
+import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
+import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
+import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";
+import type { AppRouteState } from "../../../../src/dashboard/app/navigation/url-state.js";
+import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
+import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 
 const h = createRunStartDialogHarness();
+let routedRoot: Root | undefined;
 let reopenRoot: Root | undefined;
-afterEach(async () => { await act(async () => reopenRoot?.unmount()); reopenRoot = undefined; await h.cleanup(); });
+afterEach(async () => {
+  await act(async () => { routedRoot?.unmount(); reopenRoot?.unmount(); });
+  routedRoot = undefined; reopenRoot = undefined;
+  await h.cleanup();
+});
 const descriptor = DESCRIPTORS.find(flow => flow.id === "onboarding"); assert.ok(descriptor?.surfaces.inputRun);
 const descriptorId = descriptor.id;
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
@@ -57,6 +63,50 @@ function proposal(request: StartPlanRequest, partial = false) {
     }]), refused: partial ? [{ entry: 2, code: "active-run-exists", message: "Duplicate email refused" }] : [],
   });
 }
+
+it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previews the same default Onboarding steps after %s opens the mounted launcher", async path => {
+  let planned: StartPlanRequest | undefined;
+  const client = h.stubClient({ ...libraryReads, submitStartPlan: async input => {
+    planned = StartPlanRequestSchema.parse(input);
+    return proposal(planned);
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  routedRoot = root;
+  let openOnboarding = () => {};
+  function Harness() {
+    const [loaded, setLoaded] = useState(path !== "late catalog");
+    const [route, setRoute] = useState<AppRouteState>(path === "restored route"
+      ? { start: true, view: { launchServed: descriptorId, launchCustomize: false } } : { start: false });
+    openOnboarding = () => {
+      setLoaded(true);
+      setRoute({ start: true, view: { launchServed: descriptorId, launchStage: "Input", launchCustomize: false } });
+    };
+    const workflows = loaded ? [h.WORKFLOWS[0], workflow] : [];
+    return createElement(ViewNavigationProvider, { route, setRoute,
+      children: createElement(DashboardClientProvider, { client,
+        children: createElement(ToastProvider, { children: createElement(FixtureCommandBinding, { actorId: h.ACTOR_ID,
+          children: createElement(RunStartDialog, { open: route.start === true, onOpenChange() {},
+            catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)),
+            panelWorkflowId: h.WORKFLOWS[0].workflowId, actorId: h.ACTOR_ID, onOpenIntake() {} }) }) }) }) });
+  }
+  await act(async () => root.render(createElement(Harness)));
+  if (path !== "restored route") await act(async () => openOnboarding());
+  await h.settle(); await chooseCurrent(); await select(0); await mode("new-hire");
+  const press = async (name: string) => {
+    const button = h.buttons().find(button => h.buttonName(button) === name); assert.ok(button, name);
+    await act(async () => button.click());
+  };
+  await press("Continue"); await press("Preview plan");
+  assert.ok(planned, document.body.textContent ?? "Planner was not called");
+  assert.deepEqual(planned.selectedStepKeys, workflow.steps.filter(step => step.includedByDefault).map(step => step.key));
+  assert.match(document.body.textContent ?? "", /Entry 1 · Accepted/u);
+  const stepsRow = [...document.querySelectorAll("dt")].find(row => row.textContent === "Steps");
+  assert.ok(stepsRow, "Confirm must show the Steps summary");
+  const count = stepsRow.nextElementSibling?.textContent;
+  assert.equal(count, `${planned.selectedStepKeys.length} / ${workflow.steps.length} included`);
+  assert.equal(planned.selectedStepKeys.length, 7, "Onboarding defaults include all seven steps");
+});
 
 it("uses saved rows only, requires a common explicit mode and preserves duplicate physical entry/refusal correspondence", async () => {
   let planned: StartPlanRequest | undefined;
