@@ -104,6 +104,17 @@ describe("native summary snapshots", () => {
     expect(()=>other.summaries.read(1)).toThrow(/row-code-mismatch/u);
   });
 
+  it("serves the stored failure resolution on the summary row", () => {
+    const f = fixture(); const runId = f.add(1, "2026-10-01T12:00:00.000Z");
+    const failure = FailureRecordSchema.parse({ failureId: "30000000-0000-4000-8000-000000000004", fingerprint: "c".repeat(64), runId,
+      traceId: QUEUED_RUN.envelope.traceId, attempt: 1, workflowId: QUEUED_RUN.envelope.workflow, code: "SUBJECT_MISMATCH", summary: "Offline mismatch", transient: false,
+      writeState: "not-attempted", causeChain: [{ code: "SUBJECT_MISMATCH", summary: "Offline mismatch", role: "primary", transient: false }],
+      remediation: [{ kind: "operator-action", message: "Review offline evidence" }], occurredAt: "2026-10-01T12:00:00.000Z" });
+    f.db.prepare("INSERT INTO run_failures(id,run_id,fingerprint,code,payload_json,resolution_json,resolution_version,created_at) VALUES(?,?,?,?,?,?,1,?)")
+      .run(failure.failureId, runId, failure.fingerprint, failure.code, canonicalJsonStringify(failure), '{"status":"resolved","version":1,"by":"local-operator","at":"2026-10-01T12:00:00.000Z"}', failure.occurredAt);
+    expect(f.summaries.read(1).map(summary => summary.resolution)).toEqual([{ status: "resolved", version: 1, by: "local-operator", at: "2026-10-01T12:00:00.000Z" }]);
+  });
+
   it("rejects a source whose physical run scalar disagrees with its JSON", () => {
     const f = fixture();
     const row = { ...runRecordColumns(RunRecordSchema.parse(QUEUED_RUN)), trace_id: "corrupt" };

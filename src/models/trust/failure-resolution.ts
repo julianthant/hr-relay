@@ -11,13 +11,5 @@ export const FailureResolutionActionSchema = z.discriminatedUnion("action", [
  z.strictObject({ action: z.literal("reopen") }),
 ]);
 export const FailureResolutionCaptureSchema = z.strictObject({ failureId: FailureIdSchema, runId: RunIdSchema, resolution: FailureResolutionSchema });
-export const FailureResolutionCapabilitySchema = z.discriminatedUnion("state", [
- z.strictObject({state:z.literal("unavailable"),reason:z.literal("resolution-not-implemented")}),
- z.strictObject({state:z.literal("available")}),
-]);
 export type FailureResolution = z.infer<typeof FailureResolutionSchema>;
 export type FailureResolutionCapture = z.infer<typeof FailureResolutionCaptureSchema>;
-
-export function failureResolutionCapability() {
-  return FailureResolutionCapabilitySchema.parse({ state: "available" });
-}

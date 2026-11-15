@@ -5,6 +5,7 @@ import { DashboardClientError } from "../client/errors.js";
 import type { DashboardClient } from "../client/index.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { CommandOutcome, CommandExecutionScope } from "../app/commands/command-executor.js";
+import { attemptUnresolved, commandAttemptView, type CommandAttemptView } from "../app/commands/command-outcome.js";
 import { batchMemberRetryAction, batchMemberRetrySourceMatches, childRetrySourceMatches, composeCommandRequest, verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import { DashboardCommandRequestSchema, type DashboardCommandRequest } from "../../rules/commands/commands.js";
 import type { DecisionOptionWire } from "../../models/dashboard/run-decision.js";
@@ -511,6 +512,24 @@ export type RunWiringConfirm = (pending: PendingCommand, onConfirmed: () => void
 interface CorrectionLaunch { readonly envelope: DashboardCommandRequest; readonly sourceVersion: number; readonly source: string; readonly plan: StartPlanWire }
 const correctionLaunches = new WeakMap<CommandExecutionScope, Map<string, CorrectionLaunch>>();
 
+type RunCommandState = "pending" | "uncertain" | "refused" | "settled";
+
+/** The Logs decision card's command state, read from the shared outcome. A landed command whose target moved on stays refused. */
+export function runCommandState(view: CommandAttemptView): RunCommandState {
+  switch (view.view) {
+    case "pending": return "pending";
+    case "landed": return "settled";
+    case "unknown": return "uncertain";
+    case "superseded": case "conflict": case "confirmation-required": case "rejected": case "call-refused": case "not-sent": case "bulk": return "refused";
+  }
+}
+
+/** A settled command refreshes the day when it landed, or when one of the two workbook resolves was refused. */
+export function runCommandRefreshesDay(view: CommandAttemptView, type: string): boolean {
+  return view.view === "landed" || (view.view === "rejected" || view.view === "call-refused")
+    && (type === "resolve-workbook-row" || type === "resolve-workbook-reference-row");
+}
+
 export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm) {
   const { row } = selection;
   // Every day frame re-serves the row as a new object. An equal row that lands while the read is in flight must not
@@ -537,7 +556,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const bindingRef = useRef(binding);
   bindingRef.current = binding;
-  const [command, setCommand] = useState<{ owner: GateCommandOwner; envelope: DashboardCommandRequest; state: "pending" | "uncertain" | "refused" | "settled"; feedback?: string }>();
+  const [command, setCommand] = useState<{ owner: GateCommandOwner; envelope: DashboardCommandRequest; state: RunCommandState; feedback?: string }>();
   const commandRef = useRef(command);
   commandRef.current = command;
   const active = useRef(request);
@@ -631,7 +650,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     }
     if (envelope.family === "failure-resolution") {
       const served = failure?.section === "failure" && failure.payload.state === "available" ? failure.payload.value : undefined;
-      return served?.resolution?.capability.state === "available" && envelope.target.runId === row.runId && envelope.target.failureId === served.failureId
+      return served?.resolution !== undefined && envelope.target.runId === row.runId && envelope.target.failureId === served.failureId
         && envelope.target.expectedVersion === served.resolution.capture.resolution.version
         && served.decision?.options.some(option => option.send.via === "command" && option.send.family === envelope.family && option.send.type === envelope.type) === true;
     }
@@ -702,14 +721,15 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     const options = { scope: binding.scope, readback: (input: DashboardCommandRequest, reply: Parameters<typeof verifyShellCommandEffect>[3]) => verifyShellCommandEffect(client, binding.authority.day, input, reply),
       publish: (outcome: CommandOutcome) => {
         if (!mounted.current) return;
+        const view = commandAttemptView(outcome);
         setCommand(current => current?.owner !== commandOwner ? current : { owner: commandOwner, envelope,
-          state: outcome.kind === "uncertain" ? "uncertain" : outcome.kind === "confirmed" ? "settled" : "refused",
+          state: runCommandState(view),
           feedback: outcome.kind === "confirmed" ? "Decision confirmed" : "feedback" in outcome ? outcome.feedback.text : undefined });
         if (currentCommandOwner.current !== commandOwner) return;
         const currentBinding = bindingRef.current;
         if (currentBinding === undefined) return;
         currentBinding.feedback(outcome);
-        if (outcome.kind === "confirmed" || outcome.kind === "refused" && (envelope.type === "resolve-workbook-row" || envelope.type === "resolve-workbook-reference-row")) currentBinding.authority.dayState.refresh();
+        if (runCommandRefreshesDay(view, envelope.type)) currentBinding.authority.dayState.refresh();
       } };
     if (envelope.family === "start" && launch !== undefined) {
       await launch.submit(envelope, binding, correctionCommand?.get(row.runId)?.plan, options.publish);
@@ -794,7 +814,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       const option = servedOption(served.decision, picked);
       if (option?.send.via === "command") {
         const resolution = served.resolution;
-        if (option.send.family !== "failure-resolution" || option.send.type !== "annotate-failure" || resolution?.capability.state !== "available"
+        if (option.send.family !== "failure-resolution" || option.send.type !== "annotate-failure" || resolution === undefined
           || !decisionAnswerValid(option, answer)) return;
         const note = option.input?.kind === "text" ? answer.text?.trim() : undefined;
         dispatchIfDecisionCurrent.current(DashboardCommandRequestSchema.parse({ family: "failure-resolution", type: "annotate-failure", commandId: crypto.randomUUID(),
@@ -932,11 +952,11 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       && request.target.runId === row.runId;
   });
   const retained = newest !== undefined && !("targets" in newest.request) && (newest.request.family === "gate" || newest.request.family === "run" || newest.request.family === "start"
-    || newest.request.family === "worker-browser" && newest.request.type === "check-parked-write") && (newest.state === "pending" || newest.outcome?.kind === "uncertain"
-    || (newest.outcome !== undefined && (newest.outcome.kind !== "confirmed" || newest.request.family === "start") && matchesDecision(newest.request))) ? newest : undefined;
+    || newest.request.family === "worker-browser" && newest.request.type === "check-parked-write") && (attemptUnresolved(newest)
+    || (newest.outcome !== undefined && (commandAttemptView(newest).view !== "landed" || newest.request.family === "start") && matchesDecision(newest.request))) ? newest : undefined;
   const retainedEnvelope = retained !== undefined && !("targets" in retained.request) && (retained.request.family === "gate" || retained.request.family === "run" || retained.request.family === "start"
     || retained.request.family === "worker-browser" && retained.request.type === "check-parked-write") ? retained.request : undefined;
-  const retainedState = retained === undefined ? undefined : retained.state === "pending" ? "pending" : retained.outcome?.kind === "uncertain" ? "uncertain" : retained.outcome?.kind === "confirmed" ? "settled" : "refused";
+  const retainedState = retained === undefined ? undefined : runCommandState(commandAttemptView(retained));
   const retainedFeedback = retained?.outcome !== undefined && "feedback" in retained.outcome ? retained.outcome.feedback.text : undefined;
   const retainedCommand = useMemo<typeof command>(() => retainedEnvelope === undefined || retainedState === undefined ? undefined
     : { owner: commandOwner, envelope: retainedEnvelope, state: retainedState, feedback: retainedFeedback },

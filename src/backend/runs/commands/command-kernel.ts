@@ -21,7 +21,7 @@ import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recove
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { authenticateDescendantHome,captureDelegationResume,delegationResumeCommandId,currentDelegationManifests,retainedDelegationManifests,selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
 import { readRunCheckpoint, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
-import { executeFailureResolution,failureResolutionCapability } from "../lifecycle/failure-resolution.js";
+import { executeFailureResolution } from "../lifecycle/failure-resolution.js";
 import { assertOcrReviewChildrenCurrent,readOcrReviewAuthority,readOcrSnapshotsAuthority,reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
 import { reviewedRunSettingsCurrent,selectNewRunIdentity,selectRunRuntime } from "../settings/run-settings.js";
 import { workflowPreflightScope } from "../start/preflight-scope.js";
@@ -289,7 +289,7 @@ export interface CommandKernelDependencies {
   /** The pinned assistant workflow facts; a change stales every outstanding assistant proposal. */
   readonly assistantFactsSha256?: () => string;
   readonly assistantRevalidate?: (command: CommandRequest) => void;
-  readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution;capability:typeof failureResolutionCapability}>;
+  readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution}>;
   readonly commandNotices?: Pick<NotificationInbox, "record">;
 
 
@@ -2655,7 +2655,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
   const availability = () => commandAssistantAvailability((family, action) => {
     if (family === "assistant-model-preference" || family === "application" || family === "run" && action === "recover-run") return false;
     if (family === "settings") return dependencies.settings !== undefined;
-    if (family === "failure-resolution") return dependencies.failureResolution?.capability().state === "available";
+    if (family === "failure-resolution") return dependencies.failureResolution !== undefined;
     if (family === "start" || family === "intake") return dependencies.workflowSources !== undefined
       && Object.entries(dependencies.workflowSources).some(([id, source]) => source === "served" && dependencies.descriptors.resolve(id) !== undefined
         && (family !== "intake" || dependencies.intakeProjections.resolve(id) !== undefined));
@@ -2837,9 +2837,6 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       }
       dependencies.assistantRevalidate?.(request);
   if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("command-envelope-size-exceeded");
-      if (request.family === "failure-resolution" && (dependencies.failureResolution?.capability ?? failureResolutionCapability)().state === "unavailable") {
-        return {state:"rejected",commandId:request.commandId,code:"capability-unavailable",message:"Failure resolution is not available in this build."};
-      }
       return executeSync(request, parentCommandId);
     },
     async executeStart(input: unknown): Promise<CommandResult> {
