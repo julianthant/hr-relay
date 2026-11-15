@@ -1,6 +1,7 @@
 import { ProfileOnboardingBrowserFailureCodeSchema, PROFILE_ONBOARDING_STATE } from "../../../models/profiles/public-profile.js";
 import type { DashboardClient } from "../../client/index.js";
-import type { ConfirmProfileOnboardingDuoRequest, ProfileOnboardingState, ProfileOnboardingMethod, PublicProfileState } from "../../../models/profiles/public-profile.js";
+import type { ConfirmProfileOnboardingDuoRequest, DuoReenrolState, ProfileOnboardingState, ProfileOnboardingMethod, PublicProfileState } from "../../../models/profiles/public-profile.js";
+import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type OnboardingStep = "login" | "signup" | "duo" | "ready";
@@ -22,6 +23,8 @@ export interface ServedOnboardingPort {
   readonly source: "served";
   readonly onboarding?: ProfileOnboardingState;
   readonly unavailable?: boolean;
+  /** Set when the draft is a re-enrolment of the signed-in profile: `complete` switches to the new devices and `cancel` keeps the old ones. */
+  readonly reenrol?: true;
   readonly authorityScope?: object;
   readonly readRevision?: number;
   /** Set only for the first profile read, so a later sign-in refusal stays on the form. */
@@ -435,4 +438,58 @@ export function useServedDuoSetup(port?: ServedOnboardingPort) {
       if (latest) void run(() => latest.confirmDuo(scope));
     },
   };
+}
+
+const asDraft = (state: DuoReenrolState): ProfileOnboardingState => ({ ...state, state: PROFILE_ONBOARDING_STATE });
+const reenrolFailure = (error: unknown): string => {
+  const code = error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : undefined;
+  return operatorFailureSentence(code === undefined ? "PROFILE_DUO_REENROL_UNCERTAIN" : code);
+};
+
+/** Drives Duo re-enrolment for the signed-in profile and exposes it as the setup window's served port. */
+export function useDuoReenrol(client: DashboardClient, enabled: boolean) {
+  const [state, setState] = useState<DuoReenrolState>();
+  const [unavailable, setUnavailable] = useState(false);
+  const live = useRef(false);
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  useEffect(() => { if (!enabled) setState(undefined); }, [enabled]);
+  const operationId = state?.operationId;
+  const scope = useMemo(() => ({ client, operationId }), [client, operationId]);
+  useEffect(() => {
+    if (operationId === undefined) return;
+    let reading = false;
+    const timer = window.setInterval(() => {
+      if (reading) return;
+      reading = true;
+      void client.readProfileDuoReenrol({ operationId }).then(next => { if (live.current) { setState(next); setUnavailable(false); } }, () => { if (live.current) setUnavailable(true); }).finally(() => { reading = false; });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [client, operationId]);
+  const port = useMemo<ServedOnboardingPort | undefined>(() => {
+    if (state === undefined) return undefined;
+    const step = async (action: Promise<DuoReenrolState>) => { const next = await action; if (live.current) setState(next); return asDraft(next); };
+    const finish = async (action: Promise<PublicProfileState>) => {
+      const result = await action;
+      if (result.state === "refused" || result.state === "error") throw Object.assign(new Error(result.code), { code: result.code });
+      if (live.current) setState(undefined);
+      return result;
+    };
+    const id = { operationId: state.operationId };
+    const refused = () => Promise.reject(new Error("ONBOARDING_DRAFT_REQUIRED"));
+    return Object.freeze<ServedOnboardingPort>({ source: "served", reenrol: true, validate: validateOnboarding, onboarding: asDraft(state), unavailable, authorityScope: scope,
+      complete: () => finish(client.commitProfileDuoReenrol(id)), cancel: () => finish(client.cancelProfileDuoReenrol(id)),
+      cancelDuo: (method, attemptId) => step(client.cancelProfileDuoReenrolAttempt({ ...id, method, attemptId })),
+      showBrowser: () => step(client.showProfileDuoReenrolBrowser(id)),
+      reopenBrowser: () => step(client.reopenProfileDuoReenrolBrowser({ ...id, generation: state.browser.generation })),
+      openPortal: () => step(client.openProfileDuoReenrolPortal(id)),
+      start: method => step(client.startProfileDuoReenrol({ ...id, method })),
+      confirmDuo: confirmation => step(client.confirmProfileDuoReenrol({ operationId: confirmation.operationId, method: confirmation.method, attemptId: confirmation.attemptId, operatorConfirmed: true })),
+      resume: refused, submit: refused });
+  }, [client, state, unavailable, scope]);
+  return { port,
+    /** Resolves to the backend's sentence when the re-enrolment could not open. */
+    async begin(this: void): Promise<string | undefined> {
+      try { const next = await client.beginProfileDuoReenrol(); if (live.current) { setUnavailable(false); setState(next); } return undefined; }
+      catch (error) { return reenrolFailure(error); }
+    } };
 }
