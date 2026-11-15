@@ -6,7 +6,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { spreadsheetCsvRow } from "../exports/spreadsheet-csv.js";
 import { deriveRunStatus } from "../../../rules/runs/run-status.js";
-import { runResultCurrent } from "../../../models/run/record.js";
+import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
 import { activityReportCsv, activityReportCsvFileName } from "./activity-export.js";
 import { createActivitySelectionService, createActivitySnapshotSigner } from "./activity-selection.js";
 import { queryActivitySummaries, visitActivitySummaryRange } from "./activity-summaries.js";

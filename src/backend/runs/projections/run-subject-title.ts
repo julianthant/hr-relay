@@ -1,6 +1,7 @@
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { workflowPlanning } from "../../../workflow-kit/workflow.js";
-import { runResultCurrent, type RunRecord } from "../../../models/run/record.js";
+import type { RunRecord } from "../../../models/run/record.js";
+import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
 import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
 import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/evidence-identity.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";

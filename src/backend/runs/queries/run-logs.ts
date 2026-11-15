@@ -14,7 +14,8 @@ import {
   RunDetailSectionResponseSchema,
   type RunDetailSectionResponse,
 } from "../../../models/dashboard/run-detail.js";
-import { runResultCurrent, type RunRecord } from "../../../models/run/record.js";
+import type { RunRecord } from "../../../models/run/record.js";
+import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
 import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import {
   NoteWireSchema as NoteAtRestSchema,

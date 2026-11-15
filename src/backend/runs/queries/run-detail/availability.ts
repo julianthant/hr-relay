@@ -1,5 +1,6 @@
 import type { RunDetailTrustDeps } from "../run-detail-types.js";
-import { runResultCurrent, type RunRecord } from "../../../../models/run/record.js";
+import type { RunRecord } from "../../../../models/run/record.js";
+import { runResultCurrent } from "../../../storage/sqlite/delegation-refresh.js";
 import type { RunFoldRecord } from "../../projections/run-queue-projection.js";
 import type { RunCaptureAvailabilityWire } from "../../../../models/dashboard/run-detail.js";
 

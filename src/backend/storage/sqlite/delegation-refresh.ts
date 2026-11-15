@@ -3,7 +3,7 @@ import { RunContinuationRefusedError } from "./run-continuation.js";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
 import type { AuthorityRepositories } from "./authority-database.js";
 import { DelegationRefreshRequestSchema, DelegationRetryRequestSchema } from "./delegation-contracts.js";
-import { PredecessorRunRecordSchema, RunRecordSchema, type PredecessorRunRecord, type RunRecord } from "../../../models/run/record.js";
+import { PredecessorRunRecordSchema, RunRecordSchema, type PredecessorRunRecord, type RunLifecycle, type RunRecord } from "../../../models/run/record.js";
 import { terminalEvidenceResult, type RunResultRecord } from "../../../models/run/result.js";
 import { RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -206,4 +206,9 @@ export function settleDelegationRefresh(repositories: AuthorityRepositories, par
     rootCommandId: refresh.commandId, retryCommandIds: refresh.retryCommandIds, children });
   return applyRefresh(repositories, parent, request, now, RunRecordSchema.parse({ ...parent, version: parent.version + 1, updatedAt: now,
     delegationRefresh: { ...refresh, phase: "settled" } }), write);
+}
+
+/** Whether a run's stored result is its current one. A delegation refresh requeues a finished parent, so its earlier result stops being current until the parent settles again; any terminal state it then reaches, cancellation included, writes its own settlement. */
+export function runResultCurrent<Run extends Readonly<{ lifecycle: RunLifecycle }>>(run: Run): run is Run & Readonly<{ lifecycle: Extract<RunLifecycle, { state: "terminal" }> }> {
+  return run.lifecycle.state === "terminal";
 }
