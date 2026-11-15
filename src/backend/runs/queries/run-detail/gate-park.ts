@@ -4,7 +4,7 @@ import { acceptsRecheckTransactionId } from "../../../../rules/write-safety/park
 import { retainedUcpathFindings } from "./ucpath-findings.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
 import type { IdentityGateAnswerResolution } from "../../commands/operator-command-ingress.js";
-import { CommandRequestSchema, ParkedWriteCheckTargetSchema, type CommandRequest, type IdentityGateAnswerRequest, type ParkedWriteCheckTarget } from "../../../../rules/commands/commands.js";
+import { CommandRequestSchema, ParkedWriteCheckTargetSchema, type CommandRequest, type GateArmAnswerRequest, type IdentityGateAnswerRequest, type ParkedWriteCheckTarget } from "../../../../rules/commands/commands.js";
 import { IdentityApprovalResultSchema, type IdentityApprovalResult } from "../../../../rules/separations/identity-approval.js";
 import { requireParkedWriteCheckTarget } from "../../../runtime/writes/write-recovery.js";
 import { WorkerControlRefusal } from "../../../../models/run/worker-control.js";
@@ -16,9 +16,12 @@ import {
   publicTransactionKeyDigest,
 } from "../../../../models/write-safety/protected-input.js";
 import { deriveIdentityEvidenceDigest } from "../../../../rules/separations/identity-evidence.js";
-import type { z } from "zod";
+import { z } from "zod";
+import { HirePlanSchema } from "../../../../models/workflows/onboarding/read-hire-plan.js";
 import { SearchPersonMatchOutputSchema } from "../../../../models/systems/ucpath/search-person-match.js";
-import { ONBOARDING_WRITE_REVIEW_GATE } from "../../../../models/workflows/onboarding/read-write-plan.js";
+import { ONBOARDING_WRITE_REVIEW_GATE, OnboardingWriteApprovalSchema } from "../../../../models/workflows/onboarding/read-write-plan.js";
+import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
+import { hireReviewChoices, type HireReviewChoices } from "../../../../rules/onboarding/match-hire-subject.js";
 import { MatchIdentityOutputSchema } from "../../../../models/workflows/separations/match-identity.js";
 import type { IdentityEvidencePacket } from "../../../../rules/separations/identity-evidence.js";
 import {
@@ -122,45 +125,135 @@ function settledGateWire(
   };
 }
 
-/** D4 for the hire review: `new-hire` and `existing-person` are served only as `readOnboardingWritePlan` would accept them, from the run's own UCPath match. Other operator gates stay unprojected: the identity gate has its own section, and no other arm's result can be built from served facts. */
+/** D4 for the hire review: both arms are served from `hireReviewChoices` over the run's own UCPath match, exactly as `readOnboardingWritePlan` accepts them. Other operator gates stay unprojected: the identity gate has its own section, and no other arm's result can be built from served facts. */
 function reviewBeforeWriteDecision(deps: RunDetailQueryDeps, authority: RunRecord, gateId: string): RunDecisionWire | undefined {
   const arms = findGateDecision(authority.envelope.workflow, gateId)?.arms;
   if (gateId !== ONBOARDING_WRITE_REVIEW_GATE || arms === undefined) return undefined;
-  const match = hireReviewMatch(deps, authority);
-  return match === undefined ? undefined : hireReviewDecision(match, arms, gateId, authority.version);
+  const review = hireReviewFacts(deps, authority);
+  return review === undefined ? undefined
+    : hireReviewDecision(review.mode, review.match, review.plan.employee, arms, gateId, authority.version);
 }
 
-export function hireReviewDecision(match: z.infer<typeof SearchPersonMatchOutputSchema>,
+const RunModeSchema = z.object({ mode: OnboardingInput.shape.mode });
+
+/** The run's mode, UCPath match and hire plan, or undefined when any is unreadable for this run. */
+function hireReviewFacts(deps: RunDetailQueryDeps, authority: RunRecord) {
+  const mode = RunModeSchema.safeParse(authority.input.parsed.value);
+  const match = hireReviewCheckpoint(deps, authority, "ucpath-source", SearchPersonMatchOutputSchema);
+  const plan = hireReviewCheckpoint(deps, authority, "hire-plan", HirePlanSchema);
+  return !mode.success || match === undefined || plan === undefined ? undefined : { mode: mode.data.mode, match, plan };
+}
+
+/** Structural failure from `assertClassifiedMatch`: the hit is not a hire-review decision. */
+const UNCLASSIFIED_HIRE_MATCH = { state: "unclassified" } as const;
+const UNCLASSIFIED_MATCH_ERRORS = new Set([
+  "UCPath match confirmation has no originating hit",
+  "UCPath Search/Match returned duplicate person IDs",
+  "UCPath confirmation names a person outside its search hits",
+  "UCPath confirmation did not classify every person exactly once",
+]);
+
+/** `hireReviewChoices`, or undefined for a match that fails its structural checks. */
+function safeHireReviewChoices(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>,
+  hire: Readonly<{ firstName: string; middleName: string; lastName: string }>): HireReviewChoices | undefined {
+  const choices = classifyHireReviewChoices(mode, match, hire);
+  if ("state" in choices) return undefined;
+  return choices;
+}
+
+function classifyHireReviewChoices(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>,
+  hire: Readonly<{ firstName: string; middleName: string; lastName: string }>): HireReviewChoices | typeof UNCLASSIFIED_HIRE_MATCH {
+  try {
+    return hireReviewChoices(mode, match, hire);
+  } catch (error) {
+    if (error instanceof Error && UNCLASSIFIED_MATCH_ERRORS.has(error.message)) return UNCLASSIFIED_HIRE_MATCH;
+    throw error;
+  }
+}
+
+type HireNames = Pick<z.infer<typeof HirePlanSchema>["employee"], "firstName" | "middleName" | "lastName"
+  | "preferredFirstName" | "preferredMiddleName" | "preferredLastName" | "ssn">;
+const nameParts = (first: string, middle: string, last: string) => `first ${first}, ${middle === "" ? "no middle name" : `middle ${middle}`}, last ${last}`;
+
+/** The split legal and preferred names are served before approval because the hire writes them; an unconfirmed match lists every dropped hit with its reason. No SSN or date of birth is served. */
+export function hireReviewDecision(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>, names: HireNames,
   arms: readonly Readonly<{ value: string; label: string; hint: string }>[], gateId: string, expectedVersion: number): RunDecisionWire | undefined {
-  const confirmed = match.confirmed.filter(person => match.hits.some(hit => hit.emplId === person.emplId && hit.name === person.name)
-    && !match.dropped.some(hit => hit.emplId === person.emplId));
-  const newHire = match.hits.length === 0 && match.confirmed.length === 0 && match.dropped.length === 0;
+  const choices = safeHireReviewChoices(mode, match, names);
+  if (choices === undefined) return undefined;
+  const unconfirmed = match.hits.length > 0 && match.confirmed.length === 0, count = match.hits.length;
+  const unpickable = unconfirmed ? match.dropped.filter(hit => !choices.existing.some(person => person.emplId === hit.emplId)) : [];
   const send = (arm: string) => ({ via: "gate-arm" as const, gateNodeId: gateId, expectedVersion, arm });
   const served = arms.flatMap(arm => {
-    if (arm.value === "new-hire" && newHire) return [{ id: arm.value, label: arm.label, hint: arm.hint, send: send(arm.value) }];
-    if (arm.value === "existing-person" && confirmed.length > 0) return [{ id: arm.value, label: arm.label, hint: arm.hint, send: send(arm.value), input: { kind: "candidate" as const, table: {
-      title: "Confirmed UCPath matches",
-      columns: [{ id: "name", label: "Name" }, { id: "eid", label: "Employee ID" }],
-      rows: confirmed.map(person => ({ id: person.emplId, name: person.name, eid: person.emplId, cells: [
-        { columnId: "name", value: person.name }, { columnId: "eid", value: `••••${directIdentifierDisplay(person.emplId.slice(-4))}` },
-      ] })),
-    } } }];
+    if (arm.value === "new-hire" && choices.newHire) return [unconfirmed
+      ? { id: arm.value, label: "File as a new hire", hint: `None of the ${String(count)} UCPath matches is this person. Relay creates a new person.`, send: send(arm.value),
+        confirm: { title: "File as a new hire", body: `You are ruling out all ${String(count)} UCPath matches. Relay creates a new person in UCPath.`, confirmLabel: "File new hire", tone: "destructive" as const } }
+      : { id: arm.value, label: arm.label, hint: arm.hint, send: send(arm.value) }];
+    if (arm.value === "existing-person" && choices.existing.length > 0) return [{ id: arm.value, label: arm.label, send: send(arm.value),
+      hint: unconfirmed ? "One of the UCPath matches is this person. Relay files the hire under that employee ID." : arm.hint,
+      input: { kind: "candidate" as const, table: {
+        title: unconfirmed ? "UCPath matches" : "Confirmed UCPath matches",
+        columns: [{ id: "name", label: "Name" }, { id: "eid", label: "Employee ID" }, ...unconfirmed ? [{ id: "check", label: "UCPath check" }] : []],
+        rows: choices.existing.map(person => ({ id: person.emplId, name: person.name, eid: person.emplId, cells: [
+          { columnId: "name", value: person.name }, { columnId: "eid", value: maskedEid(person.emplId) },
+          ...person.reason === undefined ? [] : [{ columnId: "check", value: person.reason, tone: "attention" as const }],
+        ] })),
+      } },
+      ...unconfirmed ? { confirm: { title: "Use an unconfirmed employee", body: "Relay did not confirm this person in Person Org. The hire is filed under the employee ID you picked.",
+        confirmLabel: "Use this employee", tone: "destructive" as const } } : {} }];
     return [];
   });
-  return served.length === 0 ? undefined : projectDecision("review-before-write", served);
+  // The confirmable existing-person arm opens first, so the matches are on screen when the card opens.
+  const ordered = [...served.filter(option => option.id === "existing-person"), ...served.filter(option => option.id !== "existing-person")];
+  const context = `Legal name: ${nameParts(names.firstName, names.middleName, names.lastName)}. `
+    + `Preferred name: ${nameParts(names.preferredFirstName, names.preferredMiddleName, names.preferredLastName)}.`
+    + (unconfirmed ? ` UCPath returned ${String(count)} possible ${count === 1 ? "match" : "matches"} and Relay confirmed none. `
+      + (names.ssn === null ? "Searched by name and date of birth." : "Searched by name, date of birth and SSN.") : "")
+    + (unpickable.length === 0 ? "" : ` Under another name: ${unpickable.map(hit => `${hit.name} (${directIdentifierDisplay(maskedEid(hit.emplId))}): ${hit.reason}`).join("; ")}. `
+      + "Relay cannot file a hire under another name. If one of them is this person, cancel this run and file the rehire by hand in UCPath.");
+  // With no eligible arm (a concurrent hire whose hits are all under another name) the card still explains the manual rehire.
+  return ordered.length === 0 && unpickable.length === 0 ? undefined : projectDecision("review-before-write", ordered, { context });
 }
 
-/** The run's `ucpath-source` match checkpoint, or undefined when it cannot be read for this run's bound descriptor. */
-function hireReviewMatch(deps: RunDetailQueryDeps, authority: RunRecord): z.infer<typeof SearchPersonMatchOutputSchema> | undefined {
+const STALE_HIRE_REVIEW = "This review changed. Reload it before answering.";
+
+/** Resolve the dashboard's gate-arm answer to the kernel's `resolve-gate`, composing the hire-review result from the UCPath match this run holds now. */
+export function resolveGateArmAnswer(deps: RunDetailQueryDeps, answer: GateArmAnswerRequest, journaled: CommandRequest | undefined): IdentityGateAnswerResolution {
+  const refused = (code: "invalid-state" | "command-divergent", message: string) => ({ state: "refused" as const, code, message });
+  if (journaled !== undefined) {
+    const approval = journaled.family === "gate" && journaled.type === "resolve-gate" ? OnboardingWriteApprovalSchema.safeParse(journaled.payload.result.value) : undefined;
+    return approval?.success === true && canonicalJsonStringify(journaled.target) === canonicalJsonStringify(answer.target)
+      && approval.data.decision === answer.payload.arm && (approval.data.decision === "existing-person" ? approval.data.emplId : undefined) === answer.payload.rowId
+      ? { state: "accepted", request: journaled }
+      : refused("command-divergent", "command-divergent: this command was already used for a different answer");
+  }
+  const authority = requireTrustRun(deps.runReader, answer.target.runId);
+  if (authority.lifecycle.state !== "parked-gate" || String(authority.lifecycle.gateId) !== String(answer.target.gateId)
+    || String(answer.target.gateId) !== ONBOARDING_WRITE_REVIEW_GATE || authority.version !== answer.target.expectedVersion) return refused("invalid-state", STALE_HIRE_REVIEW);
+  const review = hireReviewFacts(deps, authority);
+  const choices = review === undefined ? undefined : safeHireReviewChoices(review.mode, review.match, review.plan.employee);
+  if (review === undefined || choices === undefined) return refused("invalid-state", STALE_HIRE_REVIEW);
+  const { arm, rowId } = answer.payload;
+  const person = choices.existing.find(entry => entry.emplId === rowId);
+  const value = arm === "new-hire" && choices.newHire && rowId === undefined
+    ? { decision: "new-hire" as const, ruledOut: review.match.hits.map(hit => hit.emplId).sort() }
+    : arm === "existing-person" && person !== undefined ? { decision: "existing-person" as const, emplId: person.emplId, confirmedBy: person.confirmedBy } : undefined;
+  if (value === undefined) return refused("invalid-state", STALE_HIRE_REVIEW);
+  const { commandId, requestedAt, requestedBy, source, target } = answer;
+  return { state: "accepted", request: CommandRequestSchema.parse({ commandId, requestedAt, requestedBy, source, family: "gate", type: "resolve-gate",
+    target, payload: { result: { schemaHash: deriveSchemaHash(OnboardingWriteApprovalSchema, "output"), value: OnboardingWriteApprovalSchema.parse(value) } } }) };
+}
+
+/** The run's own checkpoint for `nodeId`, or undefined when it cannot be read for this run's bound descriptor. */
+function hireReviewCheckpoint<S extends z.ZodType>(deps: RunDetailQueryDeps, authority: RunRecord, nodeId: string, schema: S): z.infer<S> | undefined {
   const canonical = deps.canonical;
   if (canonical === undefined) return undefined;
   const { envelope } = authority;
-  const stored = readRunCheckpoint(canonical.database.authority, envelope, "ucpath-source", true);
+  const stored = readRunCheckpoint(canonical.database.authority, envelope, nodeId, true);
   if (stored === undefined || stored.workflowId !== envelope.workflow || stored.itemId !== envelope.itemId
     || stored.attempt > envelope.attempt || stored.descriptorVersion !== envelope.descriptorVersion
     || stored.contractFingerprint !== envelope.contractFingerprint
-    || stored.output.schemaHash !== deriveSchemaHash(SearchPersonMatchOutputSchema, "output")) return undefined;
-  const parsed = SearchPersonMatchOutputSchema.safeParse(stored.output.value);
+    || stored.output.schemaHash !== deriveSchemaHash(schema, "output")) return undefined;
+  const parsed = schema.safeParse(stored.output.value);
   return parsed.success ? parsed.data : undefined;
 }
 
