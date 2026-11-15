@@ -7,6 +7,7 @@ import type { RunRecord } from "../../../models/run/record.js";
 import type { FailureRecord } from "../../../models/trust/failure.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { RerunRefusedError } from "./rerun.js";
+import { protectedDeclarationPaths } from "../../../models/write-safety/protected-input.js";
 
 export function failureCorrectionSubmission(descriptor: AnyWorkflowDescriptor, run: RunRecord, failure: FailureRecord | undefined, request: StartPlanIngress) {
   const source = request.rerunSource;
@@ -35,6 +36,6 @@ export function failureCorrectionSubmission(descriptor: AnyWorkflowDescriptor, r
   }
   const retained = z.object({}).passthrough().parse(run.input.parsed.value);
   const submission = { ...retained, [declaration.inputField]: value };
-  for (const binding of descriptor.protectedInputs ?? []) delete submission[binding.inputPath];
+  for (const declaration of descriptor.protectedInputs ?? []) for (const inputPath of protectedDeclarationPaths(declaration)) delete submission[inputPath];
   return JsonValueSchema.parse(submission);
 }
