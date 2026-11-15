@@ -6,6 +6,7 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 export { beforeEffectRefusal } from "../../../app/commands/command-result.js";
 import type { EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
 import type { CommandOutcome } from "../../../app/commands/command-executor.js";
+import { commandAttemptView } from "../../../app/commands/command-outcome.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
 
 export type OrdinarySettingsAttempt = z.infer<typeof SettingsCommandRequestSchema>;
@@ -22,8 +23,15 @@ export type SettingsSaveProblem = SettingsSaveNotice & Readonly<{ tone: "danger"
 export type SettingsSaveProblemListener = (notice: SettingsSaveProblem) => void;
 export function commandSaveState(outcome: CommandOutcome | undefined): SettingsSaveState {
   if (outcome === undefined) return { state: "refused", code: "DASHBOARD_AUTHORITY_REPLACED", message: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text };
-  if (outcome.kind === "confirmed") return { state: "applied", replayed: outcome.reply !== undefined && "state" in outcome.reply && outcome.reply.state === "already-applied" };
-  return { state: outcome.kind === "uncertain" ? "unconfirmed" : outcome.kind === "conflict" ? "conflict" : "refused", code: outcome.feedback.code, message: outcome.feedback.text };
+  const attempt = commandAttemptView(outcome);
+  switch (attempt.view) {
+    case "landed": return { state: "applied", replayed: attempt.replayed };
+    case "unknown": return { state: "unconfirmed", code: attempt.feedback.code, message: attempt.feedback.text };
+    case "conflict": case "superseded": return { state: "conflict", code: attempt.feedback.code, message: attempt.feedback.text };
+    case "bulk": return { state: attempt.kind === "conflict" ? "conflict" : "refused", code: attempt.feedback.code, message: attempt.feedback.text };
+    case "pending": throw new Error("settings-save-outcome-pending");
+    default: return { state: "refused", code: attempt.feedback.code, message: attempt.feedback.text };
+  }
 }
 export function settingsScopeRecoveryState(): SettingsSaveState {
   return { state: "unconfirmed", code: "DASHBOARD_AUTHORITY_REPLACED", message: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text };
@@ -50,21 +58,6 @@ export function checkedSettingsResult(command: SettingsAttempt, input: unknown):
   }
   return result.data;
 }
-export function settingsRefusal(code: string): string {
-  switch (code) {
-    case "schema-mismatch": return "The settings schema changed. Reopen Settings before retrying.";
-    case "patch-fingerprint-mismatch": case "envelope-fingerprint-mismatch": case "command-divergent": return "The command identity did not match. Review the draft before retrying.";
-    case "not-editable": return "This document contains a setting that cannot be edited here.";
-    case "invalid-value": case "cross-field-invalid": return "Check the draft values and all required fields in coupled records.";
-    case "document-too-large": return "The settings document is too large. Reduce the draft.";
-    case "directory-integrity": return "The credential store failed its integrity check. Check storage before retrying.";
-    case "lock-unavailable": return "The credential store is busy. Retry when it is available.";
-    case "write-id-reused": return "The write identity was already used. Retry with a fresh identity; your draft is retained.";
-    case "authority-unjournaled": case "authority-uncertain": return "The write could not be confirmed. It may already be stored. Retry the exact attempt to resolve it.";
-    default: return "The settings command was refused. Review the current document before retrying.";
-  }
-}
-export function uncertainSettingsCode(code: string): boolean { return code === "authority-uncertain" || code === "authority-unjournaled"; }
 export function protectedReadbackConfirms(command: ProtectedSettingsAttempt, result: CommandResult, document: EditableSettingsWire): boolean {
   if ((result.state !== "applied" && result.state !== "already-applied") || document.protectedSettings.state !== "available") return false;
   const current = document.protectedSettings.readback;

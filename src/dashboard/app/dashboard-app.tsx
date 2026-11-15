@@ -1,4 +1,5 @@
 import { runStartRefusalToast } from "./commands/command-result.js";
+import { attemptUnresolved, commandAttemptView } from "./commands/command-outcome.js";
 import { createPersonPreferences, type PersonPreferencesOwner } from "../state/person-preferences-model.js";
 import { PersonPreferencesContext, usePersonPreferences } from "../lib/person-preferences.js";
 import { PROFILE_ONBOARDING_STATE } from "../../models/profiles/public-profile.js";
@@ -522,8 +523,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [commandScope]);
   const commandFeedback = useCallback((outcome: CommandOutcome): void => {
     const warningId = unknownWarnings.current.get(outcome.commandId);
-    if (outcome.kind === "uncertain" && warningId !== undefined) return;
-    if (outcome.kind !== "uncertain" && warningId !== undefined) {
+    const unknown = commandAttemptView(outcome).view === "unknown";
+    if (unknown && warningId !== undefined) return;
+    if (!unknown && warningId !== undefined) {
       dismiss(warningId);
       unknownWarnings.current.delete(outcome.commandId);
     }
@@ -535,9 +537,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     }
     const original = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
     if (original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")) return; // SettingsSaveFeedback shows these
-    const toastId = toast(original?.family === "start" && (outcome.kind === "refused" || outcome.kind === "conflict")
-      ? runStartRefusalToast(outcome.feedback.text) : { tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
-    if (outcome.kind === "uncertain") unknownWarnings.current.set(outcome.commandId, toastId);
+    const toastId = toast(original?.family === "start" && !unknown && (outcome.kind === "refused" || outcome.kind === "conflict")
+      ? runStartRefusalToast(outcome.feedback.text) : { tone: unknown || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
+    if (unknown) unknownWarnings.current.set(outcome.commandId, toastId);
   }, [executor, toast, dismiss]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
   const currentPreferenceBinding = useRef(commandBinding);
@@ -552,9 +554,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const appAttempts = executor.retainedAttempts().filter(attempt => attempt.scope.actorId === commandScope.actorId
     && attempt.scope.authority === commandScope.authority && attempt.scope.client === client
     && (attempt.request.family === "application" || "targets" in attempt.request && attempt.request.type === "resume"));
-  const applicationBusy = appAttempts.some(attempt => attempt.state === "pending" || attempt.outcome?.kind === "uncertain");
+  const applicationBusy = appAttempts.some(attemptUnresolved);
   const quitting = appAttempts.some(attempt => attempt.request.type === "pause-all-and-quit"
-    && (attempt.state === "pending" || attempt.outcome?.kind === "confirmed" || attempt.outcome?.kind === "uncertain")) || application?.state === "quitting";
+    && (attemptUnresolved(attempt) || attempt.outcome?.kind === "confirmed")) || application?.state === "quitting";
   useEffect(() => {
     const quit = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "q") {
@@ -580,7 +582,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       targets: targets.map(target => ({ runId: target.runId, expectedVersion: target.expectedVersion,
         title: dayWire?.queueSurfaces.find(row => row.runId === target.runId)?.title ?? `run ${target.runId}` })) }];
   });
-  const unresolvedRunAction = useCallback((runId: string, type: string) => executor.retainedAttempts().find(attempt => (attempt.state === "pending" || attempt.outcome?.kind === "uncertain")
+  const unresolvedRunAction = useCallback((runId: string, type: string) => executor.retainedAttempts().find(attempt => attemptUnresolved(attempt)
     && attempt.scope.actorId === commandScope.actorId && attempt.request.type === type && !("targets" in attempt.request)
     && (attempt.request.family === "run" || attempt.request.family === "gate") && attempt.request.target.runId === runId), [executor, commandScope.actorId]);
 
@@ -725,7 +727,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           if (bulkWarning !== undefined) toast(bulkWarning);
         }
         if (outcome.kind !== "confirmed") {
-          if (!("targets" in request) && (request.family === "run" || request.family === "gate") && outcome.reply !== undefined && "state" in outcome.reply && "commandId" in outcome.reply) {
+          if (!("targets" in request) && (request.family === "run" || request.family === "gate") && commandAttemptView(outcome).view !== "unknown" && outcome.reply !== undefined && "state" in outcome.reply && "commandId" in outcome.reply) {
             const folded = settleCommandResult(outcome.reply);
             if (folded.kind === "refused") {
               const surface = dayWire?.queueSurfaces.find(row => row.runId === request.target.runId);
@@ -772,7 +774,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const dispatchCommand = useCallback((action: CommandAction, target: ActionTarget, answers: {
     renameAnswer?: string; source?: "queue" | "run-detail"; commandId?: string; requestedAt?: string;
   } = {}): void => {
-    const retained = executor.retainedAttempts().find(attempt => attempt.scope.actorId === commandScope.actorId && (attempt.state === "pending" || attempt.outcome?.kind === "uncertain")
+    const retained = executor.retainedAttempts().find(attempt => attempt.scope.actorId === commandScope.actorId && attemptUnresolved(attempt)
       && !("targets" in attempt.request) && (attempt.request.family === "run" || attempt.request.family === "gate")
       && attempt.request.target.runId === target.runId && attempt.request.type === action.command);
     if (retained !== undefined) { setPendingRecovery(retained.request.commandId); return; }
@@ -878,7 +880,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   /** Keyboard traversal must follow the same drawn order and attention bands. */
   /** Keep handler identity stable so unchanged callbacks do not defeat queue memoization. */
   const setBatchGrouping = useCallback(async (batch: QueueBatch, groupInQueue: boolean): Promise<void> => {
-    const retained = executor.retainedAttempts().find(attempt => attempt.scope.actorId === commandScope.actorId && (attempt.state === "pending" || attempt.outcome?.kind === "uncertain")
+    const retained = executor.retainedAttempts().find(attempt => attempt.scope.actorId === commandScope.actorId && attemptUnresolved(attempt)
       && !("targets" in attempt.request) && attempt.request.family === "workflow-batch" && attempt.request.target.batchId === batch.id);
     if (retained !== undefined) { setPendingRecovery(retained.request.commandId); return; }
     const request = WorkflowBatchCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: nowIso,

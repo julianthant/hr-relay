@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { CommandOutcome } from "../app/commands/command-executor.js";
+import { commandAttemptView } from "../app/commands/command-outcome.js";
 import { ReviewPageSchema, type ReviewPage } from "../../models/dashboard/run-detail.js";
 import type { DashboardClient } from "../client/index.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
@@ -114,6 +116,13 @@ function publishReview(memory: ReviewMemory): void {
   for (const notify of memory.listeners) notify();
 }
 
+function reviewAttemptState(outcome: CommandOutcome): "uncertain" | "conflict" | "refused" {
+  switch (commandAttemptView(outcome).view) {
+    case "unknown": return "uncertain";
+    case "conflict": case "superseded": return "conflict";
+    default: return "refused";
+  }
+}
 export function useOcrReviewEditor(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined) {
   const resource = useRunReview(client, selection, binding);
   const memory = useMemo(() => reviewMemory(client, selection.row.runId, binding?.authority.epoch, binding?.scope.actorId, binding?.authority.day),
@@ -163,7 +172,7 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
         memory.attempt = undefined;
       }
     }
-    if (outcome.kind !== "confirmed") memory.attempt = { request, captured, state: outcome.kind === "uncertain" ? "uncertain" : outcome.kind === "conflict" ? "conflict" : "refused", text: outcome.feedback.text };
+    if (outcome.kind !== "confirmed") memory.attempt = { request, captured, state: reviewAttemptState(outcome), text: outcome.feedback.text };
     publishReview(memory);
     if (memory.listeners.size > 0) {
       memory.binding?.feedback(outcome);

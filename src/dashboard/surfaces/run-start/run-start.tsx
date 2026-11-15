@@ -47,6 +47,7 @@ import {
   dsText,
 } from "../../ds/ui.js";
 import type { CommandResult, RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
+import { commandAttemptView } from "../../app/commands/command-outcome.js";
 import { runStartRefusalToast, settleCommandResult } from "../../app/commands/command-result.js";
 import {
   type InputRunSurface,
@@ -660,7 +661,8 @@ export function RunStartDialog({
       const outcome = await launchService.submit(command, binding, verificationPlan);
       if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance || commandBindingRef.current?.scope !== binding.scope) return;
       const reply = outcome.reply;
-      if (outcome.kind === "refused" && reply !== undefined && "state" in reply && reply.state === "rejected"
+      const view = commandAttemptView(outcome);
+      if (view.view === "rejected" && reply !== undefined && "state" in reply && reply.state === "rejected"
         && reply.code === "RUN_START_PLAN_EXPIRED" && expiryRequest !== undefined) {
         dismissLaunchRecovery(window.sessionStorage, command);
         finalRequest.current = null; setRecovery(null); setPlan(null); reviewedRequest.current = null; setExpiredPlan(false); setResult(null);
@@ -689,14 +691,14 @@ export function RunStartDialog({
         onApplied?.(command.target.workflowId, plan?.planned.length, workerStartup);
         onOpenChange(false);
         ++launchInstance.current;
-      } else if ((outcome.kind === "refused" || outcome.kind === "conflict") && reply !== undefined && "state" in reply
+      } else if ((view.view === "rejected" || view.view === "conflict") && reply !== undefined && "state" in reply
         && (reply.state === "rejected" || reply.state === "conflict")) {
         dismissLaunchRecovery(window.sessionStorage, command);
         finalRequest.current = null; setRecovery(null);
         closeAndReset(false);
       } else {
         setError(outcome.feedback.text);
-        if (outcome.kind !== "uncertain" && reply !== undefined && "state" in reply
+        if (view.view !== "unknown" && reply !== undefined && "state" in reply
           && (reply.state === "rejected" || reply.state === "conflict" || reply.state === "confirmation-required")) {
           setResult({ ...reply, message: outcome.feedback.text });
         }

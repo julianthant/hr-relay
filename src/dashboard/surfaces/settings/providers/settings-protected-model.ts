@@ -1,4 +1,5 @@
 import type { CommandExecutionOptions, CommandExecutionScope, CommandOutcome } from "../../../app/commands/command-executor.js";
+import { attemptUnresolved } from "../../../app/commands/command-outcome.js";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
@@ -27,7 +28,7 @@ export function useProtectedSettings(input: {
   const busy = useRef(false);
   const recoveryFailure = useRef<CommandOutcome | undefined>(undefined);
   const attemptScope = useRef<CommandExecutionScope | undefined>(undefined);
-  const retained = binding?.executor.retainedAttempts().find(attempt => (attempt.state === "pending" || attempt.outcome?.kind === "uncertain") && attempt.scope.actorId === binding.scope.actorId
+  const retained = binding?.executor.retainedAttempts().find(attempt => attemptUnresolved(attempt) && attempt.scope.actorId === binding.scope.actorId
     && attempt.request.family === "settings" && attempt.request.type === "apply-protected-settings");
   if (pending.current === undefined && retained?.request.family === "settings" && retained.request.type === "apply-protected-settings") {
     pending.current = retained.request.commandId;
