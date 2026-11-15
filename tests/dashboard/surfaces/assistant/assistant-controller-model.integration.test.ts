@@ -268,7 +268,7 @@ it.each([
   await render(oldId);
   await act(async () => { current.onAction({ type: 'edit', value: 'mark notifications read' }); current.onAction({ type: 'send' }); });
   const forgottenAction = current.onAction;
-  await act(async () => current.onAction({ type: decision }));
+  await act(async () => { current.onAction({ type: decision }); await vi.waitFor(() => assert.equal(decisions, 1)); });
   assert.equal(decisions, 1);
   const retain = vi.spyOn(history, 'retain');
   await act(async () => {
@@ -339,7 +339,7 @@ it('disables Cancel and Confirm once a refused decision leaves the issued card s
   await act(async () => { current.onAction({ type: 'edit', value: 'mark notifications read' }); current.onAction({ type: 'send' }); });
   const button = (name: string) => [...host.querySelectorAll('article[aria-label^="Proposed "] button')].find(item => item.textContent === name) as HTMLButtonElement;
   assert.equal(button('Cancel').disabled, false); assert.equal(button('Confirm').disabled, false);
-  await act(async () => { button('Confirm').click(); });
+  await act(async () => { button('Confirm').click(); await vi.waitFor(() => assert.equal(decisions, 1)); });
   assert.equal(decisions, 1); assert.equal((current.state.turn as { disposition?: string }).disposition, 'stale');
   assert.equal(button('Cancel').disabled, true); assert.equal(button('Confirm').disabled, true);
   await act(async () => { button('Cancel').click(); button('Confirm').click(); });
