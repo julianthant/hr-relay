@@ -1,9 +1,10 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
-import { applyAuthorityMigrationsAfter } from '../../../src/backend/storage/sqlite/authority-database.js';
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from '../../../src/backend/storage/sqlite/migrations.js';
-import { IsoInstantSchema } from '../../../src/rules/identity/ids.js';
-import { createWorkbookLibraryRepository, validateWorkbookLibrary, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
+import { applyAuthorityMigrationsAfter } from '../../../../src/backend/storage/sqlite/authority-database.js';
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from '../../../../src/backend/storage/sqlite/migrations.js';
+import { IsoInstantSchema } from '../../../../src/rules/identity/ids.js';
+import { createWorkbookLibraryRepository, validateWorkbookLibrary, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION } from '../../../../src/backend/storage/sqlite/workbook-library-repository.js';
+import { regressSchema27EffortScale, removeEmptySchema26AssistantHistory, removeEmptySchema28Attachments, restoreSchema28AssistantGrants, restoreSchema29WorkbookPinTags } from '../../../support/fixtures/storage/historical-run-schema.js';
 
 const databases: DatabaseSync[] = [];
 afterEach(() => databases.splice(0).forEach(database => database.close()));
@@ -65,4 +66,16 @@ it('refuses a schema-29 recorded action whose result already carries a pin or ta
   const before = payloads(database, 'workbook_library_actions');
   expect(() => validateWorkbookLibrary(database, true, true, false)).toThrow();
   expect(payloads(database, 'workbook_library_actions')).toEqual(before);
+});
+
+it('steps a current store with a library action back through every historical rewind entry point', () => {
+  for (const [rewind, target] of [[restoreSchema29WorkbookPinTags, 29], [restoreSchema28AssistantGrants, 28], [removeEmptySchema28Attachments, 27],
+    [regressSchema27EffortScale, 26], [removeEmptySchema26AssistantHistory, 25]] as const) {
+    const database = schema29Store();
+    applyAuthorityMigrationsAfter(database, 29, { now: '2026-11-03T00:00:00.000Z', captureFile: () => { throw new Error('no capture expected'); } });
+    database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+    rewind(database);
+    expect(database.prepare('PRAGMA user_version').get()?.user_version).toBe(target);
+    expect(validateWorkbookLibrary(database, true, true, false)).toBeGreaterThan(0);
+  }
 });
