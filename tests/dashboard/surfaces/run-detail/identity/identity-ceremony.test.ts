@@ -10,6 +10,7 @@ type CommandAction,
 import {
 identityCeremonyFor,
 identityDraftProblem,
+type IdentityGateAnswer,
 type IdentityGateDetail,
 } from "../../../../../src/dashboard/surfaces/run-detail/identity/identity-ceremony.js";
 
@@ -96,19 +97,17 @@ describe("identityCeremonyFor — the server names the ceremony (ref write-safet
 });
 
 describe("identityDraftProblem — only a served candidate can be sent", () => {
-  it("refuses a ref the review never served, accepts a served one, and checks a typed value's shape", () => {
+  it("refuses a ref the review never served and accepts a served one", () => {
     const detail = gateDetail(CHOOSE);
     const ceremony = identityCeremonyFor(detail);
     assert.match(identityDraftProblem(ceremony, { decision: "approved", optionRef: "" }) ?? "", /Pick which candidate/);
     assert.match(identityDraftProblem(ceremony, { decision: "approved", optionRef: UNSERVED_REF }) ?? "", /Pick which candidate/);
     assert.equal(identityDraftProblem(ceremony, { decision: "approved", optionRef: detail.options[1].ref }), undefined);
-    assert.match(identityDraftProblem(ceremony, { decision: "approved", typedEid: "1234" }) ?? "", /8-digit/);
-    assert.equal(identityDraftProblem(ceremony, { decision: "approved", typedEid: "10203262" }), undefined);
   });
 
   it("carries the unsupported reason through as the problem, so the send stays blocked", () => {
     const forged = { ...gateDetail(CHOOSE), approvalShape: "biometric-scan" } as unknown as IdentityGateDetail;
-    assert.match(identityDraftProblem(identityCeremonyFor(forged), { decision: "approved", typedEid: CHECKED }) ?? "", /biometric-scan/);
+    assert.match(identityDraftProblem(identityCeremonyFor(forged), { decision: "approved", optionRef: forged.options[0].ref }) ?? "", /biometric-scan/);
   });
 });
 
@@ -142,18 +141,13 @@ describe("composeCommandRequest — the ceremonies reach the identity-answer end
     assert.deepEqual(parsed.payload, { decision: "approved", gateRef: detail.gateRef, optionRef: detail.options[0].ref });
   });
 
-  it("composes a typed 8-digit Employee ID as typedEid and refuses a malformed one", () => {
+  it("never composes a typed Employee ID as an identity answer", () => {
     const detail = gateDetail(CHOOSE);
-    const parsed = parsedGateAnswer(composeCommandRequest(
-      APPROVE, { runId: runId(1), expectedVersion: 3 },
-      { ...COMMAND_CONTEXT, gate: available(detail), gateAnswer: { decision: "approved", typedEid: "10203262" } },
-    ));
-    assert.deepEqual(parsed.payload, { decision: "approved", gateRef: detail.gateRef, typedEid: "10203262" });
-    const refused = composeCommandRequest(
-      APPROVE, { runId: runId(1), expectedVersion: 3 },
-      { ...COMMAND_CONTEXT, gate: available(detail), gateAnswer: { decision: "approved", typedEid: "1234" } },
-    );
-    assert.equal(refused.state, "refused");
+    for (const typedEid of ["10203262", CHECKED]) {
+      const typed = { decision: "approved", typedEid } as unknown as IdentityGateAnswer;
+      assert.equal(composeCommandRequest(APPROVE, { runId: runId(1), expectedVersion: 3 },
+        { ...COMMAND_CONTEXT, gate: available(detail), gateAnswer: typed }).state, "refused");
+    }
   });
 
   it("refuses a picked ref the review did not serve", () => {
