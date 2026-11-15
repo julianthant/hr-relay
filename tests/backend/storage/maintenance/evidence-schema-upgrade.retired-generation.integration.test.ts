@@ -98,7 +98,7 @@ it("refuses a stored Separations run under an unlisted input hash", async () => 
     const { separationsDescriptor } = await import("../../../support/helpers/registered-workflows.js");
     const { RunRecordSchema } = await import("../../../../src/models/run/record.js");
     const unlisted = RunRecordSchema.parse({ ...f.run, input: { ...f.run.input, parsed: { ...f.run.input.parsed, schemaHash: "e".repeat(64) } } });
-    assert.throws(() => collectEvidenceSchemaAdmissions({ descriptors: [separationsDescriptor], runs: [unlisted], writes: [], checkpoints: [] }), /evidence-schema-source-selector-refused/u);
+    assert.throws(() => collectEvidenceSchemaAdmissions({ descriptors: [separationsDescriptor], runs: [unlisted], writes: [], checkpoints: [] }), /timekeeperInitials/u);
   } finally { await f.cleanup(); }
 });
 
