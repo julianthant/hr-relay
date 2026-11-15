@@ -124,7 +124,7 @@ composeCommandRequest, verifyShellCommandEffect,
 type CommandAction,
 } from "./commands/command-dispatch.js";
 import { settleCommandResult } from "./commands/command-result.js";
-import { appliedWorkerStartupToast, stoppedWorkerToasts, unconfirmedBulkWorkerToast, workflowWorkersStopped } from "./commands/worker-startup-toast.js";
+import { appliedWorkerStartupToast, stoppedWorkerToasts, unconfirmedBulkWorkerToast } from "./commands/worker-startup-toast.js";
 import { preflightAttentionToast } from "./commands/preflight-attention-toast.js";
 import {
 RUN_START_DOOR_ID, currentCommandConfirmation, type DashboardAuthority
@@ -1407,7 +1407,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         onPreviewClose={closeMockLaunch}
         panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
-        workersStopped={workflowId => dayResource.state === "loaded" && workflowWorkersStopped(dayResource.value, workflowId) !== undefined}
         onApplied={(workflowId) => {
           leaveSettings(() => {
             if (!setActiveWorkflowId(workflowId)) return;
