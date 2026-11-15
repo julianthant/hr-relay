@@ -6114,7 +6114,13 @@ export class AuthorityDatabase implements Disposable {
     return highest + 1;
   }
 
+  /** The one run-row write; an update is refused unless the run transition table allows it from the stored row. */
   #writeRunRow(record: RunRecord, mode: "insert" | "update"): void {
+    if (mode === "update") {
+      const current = this.#readRunRow(record.envelope.runId);
+      const violation = current === undefined ? undefined : runTransitionViolation(current.lifecycle, record.lifecycle, record);
+      if (violation !== undefined) throw new Error(`run ${record.envelope.runId}: ${violation}`);
+    }
     const columns = runRecordColumns(record);
     const entries = Object.entries(columns).filter(([key]) => mode === "insert" || key !== "id");
     const keys = entries.map(([key]) => key);
