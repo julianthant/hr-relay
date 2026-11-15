@@ -7,8 +7,27 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
+/** Removes schema 30's pin and tags from every library state and recorded action result; the schema version is left to the caller. */
+function removeSchema30WorkbookPinTags(database: DatabaseSync): void {
+  const guard = SQLITE_MIGRATIONS.find(migration => migration.version === 30)?.statements
+    .find(statement => statement.startsWith("CREATE TRIGGER workbook_library_actions_update"));
+  assert.ok(guard);
+  database.exec(`DROP TRIGGER workbook_library_actions_update;
+    UPDATE workbook_library_state SET payload_json=json_remove(payload_json,'$.pinned','$.tags');
+    UPDATE workbook_library_actions SET payload_json=json_remove(payload_json,'$.result.pinned','$.result.tags');
+    ${guard}`);
+}
+
+/** Steps a current authority back to schema 29: library states and recorded actions carried no pin or tags. */
+export function restoreSchema29WorkbookPinTags(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 30);
+  removeSchema30WorkbookPinTags(database);
+  database.exec("UPDATE database_states SET schema_version=29; PRAGMA user_version=29");
+}
+
 /** Steps an empty current authority back to schema 28: the empty operator grant table still existed. */
 export function restoreSchema28AssistantGrants(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 30) restoreSchema29WorkbookPinTags(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 29);
   const ddl = SQLITE_MIGRATIONS.find(migration => migration.version === 8)?.statements.join("\n");
   const table = ddl?.match(/CREATE TABLE assistant_grants \([\s\S]*?\n\) STRICT;/u)?.[0], trigger = ddl?.match(/CREATE TRIGGER assistant_grants_revision[\s\S]*?END;/u)?.[0];
@@ -45,6 +64,7 @@ export function removeEmptySchema26AssistantHistory(database: DatabaseSync): voi
 /** Returns a current store to the schema-22 worker custody DDL, keeping each worker slot in its predecessor row shape; the schema version is left to the caller. */
 export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  removeSchema30WorkbookPinTags(database);
   // Rebuilding worker_slots briefly orphans the Duo and exclusive-session leases that reference it; the caller's transaction checks them at commit.
   database.exec("PRAGMA defer_foreign_keys=ON");
   const slots = z.array(z.object({ id: z.string(), workflow: z.string(), ordinal: z.number(), pool_index: z.number(), retired_at: z.string().nullable(),

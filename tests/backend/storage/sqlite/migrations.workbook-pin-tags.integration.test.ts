@@ -1,9 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
-import { applyAuthorityMigrationsAfter } from '../../../src/backend/storage/sqlite/authority-database.js';
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from '../../../src/backend/storage/sqlite/migrations.js';
-import { IsoInstantSchema } from '../../../src/rules/identity/ids.js';
-import { createWorkbookLibraryRepository, validateWorkbookLibrary, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
+import { applyAuthorityMigrationsAfter } from '../../../../src/backend/storage/sqlite/authority-database.js';
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from '../../../../src/backend/storage/sqlite/migrations.js';
+import { IsoInstantSchema } from '../../../../src/rules/identity/ids.js';
+import { createWorkbookLibraryRepository, validateWorkbookLibrary, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION } from '../../../../src/backend/storage/sqlite/workbook-library-repository.js';
 
 const databases: DatabaseSync[] = [];
 afterEach(() => databases.splice(0).forEach(database => database.close()));
