@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { chatGptStatusFixture } from "../../../support/helpers/chatgpt-status-fixture.js";
 import { useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
-import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_MODEL_COMMAND, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
 
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createAssistantMockProducer, useAssistantPanel, type AssistantPorts, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
 import { ChatGptAccountViewSchema } from '../../../../src/models/dashboard/chatgpt-account.js';
 import type { DashboardClient } from '../../../../src/dashboard/client/index.js';
+import { resultClient } from '../../../support/helpers/dashboard/assistant-served-client.js';
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 let root: Root | undefined;
 let host: HTMLDivElement;
@@ -71,12 +72,12 @@ it('blocks every setup attachment before panel registration and both local file 
   let controller!: ReturnType<typeof useAssistantController>, registrations = 0, attachments = 0, requests = 0;
   const ports: AssistantPorts = { async onRegisterSpreadsheet() { registrations++; },
     async onAttachFile() { attachments++; return file; } };
-  const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected', citations: [] }; } };
+  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected' }; } });
   const producer = createAssistantMockProducer();
   function Harness() { controller = useAssistantController(client, 'profile', undefined, false); model = useAssistantPanel({ producer, accountClient, ports, served: controller }); return null; }
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(Harness)));
-  for (const text of [ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND]) {
+  for (const text of [ASSISTANT_MODEL_COMMAND]) {
     await act(async () => controller.onAction({ type: "edit", value: text }));
     await act(async () => {
       expect(await model.attachFile(new File(['fixture'], 'fixture.txt'))).toBeNull();

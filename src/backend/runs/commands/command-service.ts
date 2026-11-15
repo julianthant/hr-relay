@@ -11,6 +11,7 @@ import {
   type BulkRunCommandOutcome,
   type BulkRunCommandResponse,
   type CapacityRequest,
+  type CommandRequest,
   type CommandResult,
   type RunWorkerStartupFailure,
 } from "../../../rules/commands/commands.js";
@@ -35,6 +36,11 @@ export interface DashboardCommandService {
   submit(input: unknown): Promise<CommandResult>;
 
   executeBulk(input: unknown): Promise<BulkRunCommandResponse>;
+
+  completeConsumed(request: CommandRequest, result: CommandResult): Promise<CommandResult>;
+
+  /** Publishes an already-executed command's applied result exactly as `execute` does, without executing it again. */
+  publish(input: unknown, result: CommandResult): void;
 }
 
 // Derive child command IDs from bulk ID and run ID for exact replay.
@@ -48,34 +54,35 @@ const SPANLESS_RUN_TYPES = new Set([
 
 export function createDashboardCommandService(deps: DashboardCommandServiceDeps): DashboardCommandService {
   function executeOne(input: unknown, parentCommandId?: string): CommandResult {
-      return projectResult(input, deps.kernel.execute(input, parentCommandId));
+    const result = deps.kernel.execute(input, parentCommandId);
+    publish(input, result);
+    return result;
   }
-  function projectResult(input: unknown, result: CommandResult): CommandResult {
-      if (result.state !== "applied") return result;
+  function publish(input: unknown, result: CommandResult): void {
+      if (result.state !== "applied") return;
       // The kernel already validated the request exhaustively; this re-parse
       // only recovers the typed view the emission step dispatches on.
       const request = CommandRequestSchema.parse(input);
       if (request.family === "application") {
         for (const target of request.payload.targets) deps.projection.refreshRun(target.runId);
-        return result;
+        return;
       }
 
       if (request.family === "start" || (request.family === "intake" && request.type === "enqueue-intake-manifest")
         || (request.family === "run" && (request.type === "retry" || request.type === "recover-run"))) {
         deps.projection.ingestFromTimeline();
-        return result;
+        return;
       }
 
       if (request.family === "gate" || request.family === "run" && request.type === "resolve-workbook-reference-row") {
         deps.projection.ingestFromTimeline();
-        return result;
+        return;
       }
       if (request.family === "ocr-review") deps.projection.refreshRun(request.target.runId);
 
       if (request.family === "run" && SPANLESS_RUN_TYPES.has(request.type)) {
         deps.projection.refreshRun(request.target.runId);
       }
-      return result;
   }
 
   // Choose sync or async execution by envelope family; malformed input still reaches kernel validation.
@@ -105,6 +112,16 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       };
     }
   }
+  async function completeCapacity(capacity: RunWorkerCapacity, request: CapacityRequest, result: CommandResult): Promise<CommandResult> {
+    if (result.state !== "applied" && result.state !== "already-applied") return result;
+    const workerStartup = await ensureCapacity(capacity, request, result);
+    return workerStartup === undefined ? result : CommandResultSchema.parse({ ...result, workerStartup });
+  }
+  async function completeConsumed(request: CommandRequest, result: CommandResult): Promise<CommandResult> {
+    if ((result.state !== "applied" && result.state !== "already-applied") || !needsWorkerCapacity(request) || deps.startWorkerCapacity === undefined) return result;
+    const capacity = deps.startWorkerCapacity, key = capacity.workflowOf(request);
+    return key === undefined ? result : inWorkflowLane(key, () => completeCapacity(capacity, request, result));
+  }
   async function submit(input: unknown): Promise<CommandResult> {
     if (AssistantModelPreferenceCommandRequestSchema.safeParse(input).success) return deps.kernel.executeAssistantModelPreference(input);
     if (WorkerBrowserSniffSchema.safeParse(input).success) {
@@ -121,7 +138,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
     const capacity = deps.startWorkerCapacity;
     const key = needsWorkerCapacity(request) ? capacity?.workflowOf(request) : undefined;
     if (request.family === "start") {
-      const start = async () => projectResult(request, await deps.kernel.executeStart(request));
+      const start = async () => { const result = await deps.kernel.executeStart(request); publish(request, result); return result; };
       // Starts of one workflow still admit one at a time, so their preflights never overlap; only capacity leaves the reply.
       const result = key === undefined ? await start() : await inWorkflowLane(`start:${key}`, start);
       if (capacity === undefined || key === undefined || (result.state !== "applied" && result.state !== "already-applied")) return result;
@@ -130,17 +147,14 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       return result;
     }
     if (capacity === undefined || key === undefined || !needsWorkerCapacity(request)) return executeOne(request);
-    return inWorkflowLane(key, async () => {
-      const result = executeOne(request);
-      if (result.state !== "applied" && result.state !== "already-applied") return result;
-      const workerStartup = await ensureCapacity(capacity, request, result);
-      return workerStartup === undefined ? result : CommandResultSchema.parse({ ...result, workerStartup });
-    });
+    return inWorkflowLane(key, async () => completeCapacity(capacity, request, executeOne(request)));
   }
 
   return Object.freeze({
     execute: executeOne,
     submit,
+    completeConsumed,
+    publish,
 
     // Whole-request refusals reach no target; each target outcome remains a separate vector entry.
     async executeBulk(input: unknown): Promise<BulkRunCommandResponse> {
