@@ -82,7 +82,7 @@ Bootstrap projects the admitted person registry name as the actor label. Appeara
 `app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json` into `WORKFLOW_SOURCES`.
 Every declared value is `mock`, `served` or `hidden`. `workflowSource` throws `WORKFLOW_SOURCE_UNDECLARED`
 for an absent ID. `PRODUCT_WORKFLOW_COMPOSITION` supplies the static product policy;
-`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup, Separations and the public I-9 Check PDF parent use `served`. OCR and I-9 Lookup are `hidden`: their admitted child runs use served data without public catalog or assistant entries. The I-9 Check person child has no source entry. Other configured workflows use `mock`.
+`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup, Separations, Onboarding, Work-Study and the public I-9 Check PDF parent use `served`. OCR and I-9 Lookup are `hidden`: their admitted child runs use served data without public catalog or assistant entries. The I-9 Check person child has no source entry. Other configured workflows use `mock`.
 Product mock queues start empty. `WorkflowComposition.initialMockRuns` supplies initial rows; the product supplies none, while the mock composition supplies `seedMockRuns`. The mock composition starts from an explicit mock policy and opts fixture workflows into served capability tests. There is no runtime served-to-mock fallback.
 
 `WorkflowComposition.sources` controls workflow presentation; `explorerSources`, `logsSources`,
@@ -453,16 +453,21 @@ result whose fault cannot be written still answers its outcome, marked `diagnost
 that cannot prove its write durable fails the sign-in or change that ran it, which may then be
 retried. The epoch, Duo material and other profiles are unchanged.
 
-`POST /api/v1/profile/account/details` `{name?: {firstName, lastName}, initials?, timekeeperName?}`
-changes the current session's Name, Initials or Timekeeper name in its registry row. It needs at
-least one value and returns `{state: "changed", account}` or `{state: "refused", code}`. Every value
-is checked before anything is written, so one refused value changes nothing:
-`PROFILE_DISPLAY_NAME_REFUSED` for a name the sign-up rules refuse, `PROFILE_INITIALS_REFUSED`
-unless the initials are 1 to 8 letters A to Z, and `PROFILE_NAME_REFUSED` for a timekeeper name
-that is padded, has a control character, is longer than 129 characters or has a word that does not
-start with a letter. Timekeeper initials are not stored; they are `profileInitials(timekeeper)`.
-`/profile/state`, bootstrap's actor label and the next run's timekeeper read the new values. A run
-already planned or started keeps the timekeeper name it captured.
+`POST /api/v1/profile/account/details`
+`{name?: {firstName, lastName}, initials?, timekeeperName?, timekeeperInitials?}` changes the current
+session's Name, Initials, Timekeeper name or Timekeeper initials in its registry row. It needs at
+least one value and returns `{state: "changed", account}` or `{state: "refused", code}`; `account`
+carries `timekeeperInitials` beside `timekeeper`. Every value is checked before anything is written,
+so one refused value changes nothing: `PROFILE_DISPLAY_NAME_REFUSED` for a name the sign-up rules
+refuse, `PROFILE_INITIALS_REFUSED` unless the initials or timekeeper initials are 1 to 8 letters A
+to Z, and `PROFILE_NAME_REFUSED` for a timekeeper name that is padded, has a control character, is
+longer than 129 characters or has a word that does not start with a letter. The timekeeper initials
+are a stored value of their own: sign-up writes the letters of the timekeeper name, and changing the
+timekeeper name leaves them as they are. `/profile/state`, bootstrap's actor label, the admitted
+profile identity (`displayName` and `initials`) and the next run's timekeeper name and initials read
+the new values. Separations signs its Kuali and date-change comments with the stored timekeeper
+initials, admitted with the name from one identity read. A run already planned or started keeps the
+timekeeper name and initials it captured.
 
 ### Profile onboarding boundary
 

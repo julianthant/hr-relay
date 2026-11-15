@@ -53,7 +53,7 @@ describe_m0("complete workflow presentation mocks", () => {
 
 describe_m1("source-backed workflow operation detail", () => {
   it_m1("resolves Explorer's detailed field provenance and excludes evidence for unavailable outcomes", () => {
-    for (const id of ["work-study", "onbase", "oath-upload", "old-kronos-reports", "ocr"] as const) {
+    for (const id of ["onbase", "oath-upload", "old-kronos-reports", "ocr"] as const) {
       const choices = initialWorkflowChoices_m1(id), mock = buildWorkflowMock_m1(id, choices);
       const detail = mock.steps.flatMap(step => allFields_m1(step.parts).filter(field => field.source?.startsWith("operation:")).map(field => [field, step.number] as const));
       expect_m1(detail.length, id).toBeGreaterThan(0);

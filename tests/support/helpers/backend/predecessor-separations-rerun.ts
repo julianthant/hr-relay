@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { vi } from "vitest";
 import { predecessorEvidenceSchemaHash } from "../../../../src/backend/storage/sqlite/evidence-schema-upgrade.js";
 import { JsonValueSchema, type JsonValue } from "../../../../src/rules/validation/canonical-json.js";
+import { simulatePreviousSeparationsInputGeneration } from "./retired-separations-run.js";
 
 function merge(example: JsonValue, value: JsonValue): JsonValue {
   if (example === null || value === null || typeof example !== "object" || typeof value !== "object" || Array.isArray(example) || Array.isArray(value)) return value;
@@ -11,6 +12,7 @@ function merge(example: JsonValue, value: JsonValue): JsonValue {
   return result;
 }
 
+/** A closed profile store whose Separations run was stored by the profile-name-domain build (input generation 1, no stored initials) with its committed Kuali write, plus predecessor credentials. */
 export async function predecessorSeparationsRerun(options: Readonly<{ predecessorCredentials?: boolean; keepOpen?: boolean }> = {}) {
   vi.resetModules();
   vi.doMock("../../../../src/models/validation/schema-bound-value.js", async importOriginal => {
@@ -19,6 +21,8 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
     return { ...current, deriveSchemaHash: (schema: Parameters<typeof current.deriveSchemaHash>[0], io: "input" | "output") =>
       FingerprintSchema.parse(predecessorEvidenceSchemaHash(schema, io)) };
   });
+  // The receipt is derived by the build that stored the run: the profile-name-domain build, whose Separations input had no stored initials.
+  const restoreBuild = simulatePreviousSeparationsInputGeneration();
   const { compositionHarness, compositionQueuedRun, compositionClaimRunning, compositionContext, COMPOSITION_SCOPE_OUTPUTS,
     COMPOSITION_TIMEKEEPER, FINALIZE_NODE } = await import("../separations-composition-fixtures.js");
   const h = await compositionHarness();
@@ -35,7 +39,8 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
     const { buildNodeFailureRecord } = await import("../../../../src/backend/runtime/execution/run-failure.js");
     const { buildFailureTerminalAuthorization } = await import("../../../../src/backend/runs/lifecycle/terminal-authorization.js");
     const { NodeIdSchema } = await import("../../../../src/rules/identity/ids.js");
-    const valueId = randomUUID(), raw = RunRecordSchema.parse(compositionQueuedRun());
+    const { preInitialsSeparationsRun, preInitialsExecutionInput, preInitialsSignedComment } = await import("../../fixtures/storage/pre-initials-separations.js");
+    const valueId = randomUUID(), raw = preInitialsSeparationsRun(RunRecordSchema.parse(compositionQueuedRun()), "name-domain");
     const queued = { ...raw, input: { ...raw.input, parsed: { ...raw.input.parsed,
       protectedBindings: [{ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId }] } } };
     const { run, claim } = compositionClaimRunning(h.database, h.clock, queued, FINALIZE_NODE);
@@ -47,7 +52,8 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
     const context = compositionContext(run, claim, FINALIZE_NODE), nodes = descriptorRuntimeNodes(descriptor), outputs: Record<string, JsonValue> = {};
     for (const id of context.node.dependsOn) {
       const node = nodes.find(node => node.id === id); assert.ok(node?.kind === "task");
-      const override: unknown = id === "approval" ? { ...COMPOSITION_SCOPE_OUTPUTS.approval, jobs: FINALIZATION_SCOPE_OUTPUTS.approval.jobs } : Reflect.get(COMPOSITION_SCOPE_OUTPUTS, id);
+      const override: unknown = id === "approval" ? { ...COMPOSITION_SCOPE_OUTPUTS.approval, jobs: FINALIZATION_SCOPE_OUTPUTS.approval.jobs }
+        : id === "dates" ? { ...COMPOSITION_SCOPE_OUTPUTS.dates, dateChangeComments: preInitialsSignedComment(COMPOSITION_SCOPE_OUTPUTS.dates.dateChangeComments) } : Reflect.get(COMPOSITION_SCOPE_OUTPUTS, id);
       const value = JsonValueSchema.parse(node.uses.output.parse(merge(JsonValueSchema.parse(node.uses.example), JsonValueSchema.parse(override))));
       outputs[id] = value;
       h.database.authority.runCheckpoints.insert(RunCheckpointRecordSchema.parse({ workflowId: descriptor.id, runId: run.envelope.runId,
@@ -57,7 +63,7 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
         provenance: evidenceLeaves(value).map(({ path }) => ({ path, source: "live", observedAt: h.clock.now().toISOString(), originalObservedAt: h.clock.now().toISOString() })) }));
     }
     const outcome = await h.bound(() => h.sequencer.executeTransaction({ ...context,
-      scope: { input: run.input.parsed.value, protectedInputBindings: run.input.parsed.protectedBindings, outputs } }));
+      scope: { input: preInitialsExecutionInput(run), protectedInputBindings: run.input.parsed.protectedBindings, outputs } }));
     assert.equal(Reflect.get(Object(outcome), "disposition"), "committed");
     const current = h.database.authority.runs.get(run.envelope.runId); assert.ok(current);
     const failure = buildNodeFailureRecord({ writes: [], run: current, failureId: randomUUID(), nodeId: NodeIdSchema.parse(FINALIZE_NODE), taskId: context.node.commit.uses.id,
@@ -75,5 +81,5 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
     if (!options.keepOpen) await h.closeController(); if (!options.keepOpen && options.predecessorCredentials !== false) installPredecessorProfileCredentials(credential, COMPOSITION_TIMEKEEPER, valueId);
     return { ...paths, database: h.database, clock: h.clock, run: terminal, result, checkpoints, writes, receipt, valueId, cleanup: h.dispose };
   } catch (error) { await h.dispose(); throw error; }
-  finally { vi.doUnmock("../../../../src/models/validation/schema-bound-value.js"); vi.resetModules(); }
+  finally { restoreBuild(); vi.doUnmock("../../../../src/models/validation/schema-bound-value.js"); vi.resetModules(); }
 }
