@@ -129,8 +129,8 @@ import { ASSISTANT_HISTORY_MIGRATION, assistantConversationFromRow, assistantMes
 import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow, migrateAssistantEffortScale } from "./assistant-effort-migration.js";
 import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE, assertNoAssistantGrantHistory } from "./assistant-grant-retirement.js";
 import { assistantAttachmentFromRow, byteAwareRow } from "./assistant-attachments.js";
-import { RECOGNIZED_AUTHORITY_SCHEMA_VERSIONS, isOpenableAuthoritySchemaVersion, isUpgradeableAuthoritySchemaVersion } from "../../../models/config/authority-schema-versions.js";
-import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
+import { RECOGNIZED_AUTHORITY_SCHEMA_VERSIONS } from "../../../models/config/authority-schema-versions.js";
+import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema,type ArtifactOutboxStorageRecord,type ArtifactSinkHeadRecord,type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
@@ -2609,7 +2609,7 @@ export class AuthorityDatabase implements Disposable {
     owner.assertStoppedProfile(operation); copy.assertReadOnlyAuthorityDatabase(path);
     return withAuthorityDatabaseReadOnly(copy, path, database => {
       const version = readIntPragma(database, "user_version"), meta = readMetaRow(database), binding = owner.profileBinding;
-      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || !isOpenableAuthoritySchemaVersion(version)
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || !OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(version)
         || meta.schema_version !== version || meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) throw new Error("restore-candidate-binding-mismatch");
       const facts = Object.freeze(browserProfileInventory(database, version));
       owner.assertStoppedProfile(operation); return facts;
@@ -2861,7 +2861,7 @@ export class AuthorityDatabase implements Disposable {
         if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("profile-startup-foreign-application");
         assertPublishedAssistantNumbering(database);
         if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_NEWER_VERSION", { cause: new AuthoritySchemaVersionError(version) });
-        if (!isOpenableAuthoritySchemaVersion(version)) {
+        if (!OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(version)) {
           throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_FORMAT_UNSUPPORTED", { cause: new AuthoritySchemaVersionError(version) });
         }
         return work(database, version);
@@ -2996,7 +2996,7 @@ export class AuthorityDatabase implements Disposable {
       if (record === undefined || !("startupLogout" in record) || record.startupLogout === undefined
         || canonicalJsonStringify(record.startupLogout.operation) !== canonicalJsonStringify(operation)) return undefined;
       const settlement = operation.settlement;
-      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || !isUpgradeableAuthoritySchemaVersion(record.fromSchemaVersion)
+      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || !UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(record.fromSchemaVersion)
         || settlement === undefined || record.startupLogout.postimage !== authorityContentFingerprint(database, record.recordKey)) throw new Error("profile-startup-logout-postimage-changed");
       const backup = verifyBackup(admission, record.backup.manifestPath);
       if (backup.manifest.sha256 !== record.backup.sha256 || backup.manifest.authorityContentFingerprint !== record.upgradeId
@@ -3262,7 +3262,7 @@ export class AuthorityDatabase implements Disposable {
     return withAuthorityDatabaseReadOnly(admission, path, (database) => {
       if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new TimelineRecordError("preserved authority is not the HR authority store");
       const version = readIntPragma(database, "user_version");
-      if (!isOpenableAuthoritySchemaVersion(version)) throw new TimelineRecordError(`preserved authority schema ${String(version)} is not openable`);
+      if (!OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(version)) throw new TimelineRecordError(`preserved authority schema ${String(version)} is not openable`);
       const names = inspectionTableNames(database), expected = [...migrationTableNames(version)].sort();
       if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
         throw new TimelineRecordError(`preserved authority tables do not match schema ${String(version)}`);

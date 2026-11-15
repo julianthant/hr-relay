@@ -15,6 +15,8 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { AUTHORITY_DERIVED_TABLES, AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
+  OPENABLE_AUTHORITY_SCHEMA_VERSIONS as openableAuthoritySchemaVersions,
+  UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS as upgradeableAuthoritySchemaVersions,
   isSupportedStoppedAuthoritySchemaVersion,
   isUpgradeableAuthoritySchemaVersion,
   type OpenableAuthoritySchemaVersion,
@@ -27,16 +29,17 @@ export {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   EVIDENCE_SCHEMA_UPGRADE_VERSIONS,
   MAINTENANCE_AUTHORITY_SCHEMA_VERSIONS,
-  OPENABLE_AUTHORITY_SCHEMA_VERSIONS,
   RECOGNIZED_AUTHORITY_SCHEMA_VERSIONS,
   SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS,
   UNBOUND_PREDECESSOR_AUTHORITY_SCHEMA_VERSIONS,
-  UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,
   isCurrentAuthoritySchemaVersion,
   isOpenableAuthoritySchemaVersion,
   isSupportedStoppedAuthoritySchemaVersion,
   isUpgradeableAuthoritySchemaVersion,
 } from "../../../models/config/authority-schema-versions.js";
+// Callers pass a number to includes. The literal tuples stay in the schema-version module.
+export const UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = upgradeableAuthoritySchemaVersions;
+export const OPENABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = openableAuthoritySchemaVersions;
 /** Runs stored before this version may omit buildId. Later versions keep the strict envelope. */
 export const BUILD_ID_ENVELOPE_SCHEMA_VERSION = 22;
 /** Migration 22 deletes every run approved before envelopes carried a build id, through the native run deletion. */
