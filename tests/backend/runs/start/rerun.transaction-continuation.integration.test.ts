@@ -117,7 +117,7 @@ async function fixture(failOn: readonly number[] = [2], selected: AnyWorkflowDes
   if (pauseAtCommit) assert.equal(failed.pause?.state, "paused");
   else {
     const failure = h.database.authority.failures.listByRun(failed.envelope.runId)[0]; assert.ok(failure);
-    assert.equal(failure.nodeId, "finish", `${failure.code}: ${failure.summary}`); assert.equal(failure.code, "UNHANDLED");
+    assert.equal(failure.nodeId, "finish", `${failure.code}: ${failure.summary}`); assert.equal(failure.code, "TASK_UNHANDLED_FAILURE");
     assert.match(failure.summary, /fixture downstream failure/u);
   }
   return { ...h, get descriptor() { return h.descriptor; }, failed };

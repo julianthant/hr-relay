@@ -14,7 +14,7 @@ const SYSTEM = "onbase";
 
 export const onbaseLoginRecipe = defineVerifiedLoginRecipe({
   system: SYSTEM,
-  verify: async (): Promise<{ authenticated: false; reason: string }> => ({ authenticated: false, reason: "fixture" }),
+  verify: async (): Promise<{ authenticated: false; reason: string; check: "application-route" }> => ({ authenticated: false, reason: "fixture", check: "application-route" }),
   flow: async (context: { page: { goto: (url: string) => Promise<void> } }): Promise<string> => {
     await context.page.goto("https://onbase.example/login");
     await waitForSsoForm(SYSTEM, context);

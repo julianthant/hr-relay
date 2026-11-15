@@ -84,9 +84,18 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
     const person = admission.admitProfile(selected.profileId);
     let stored: ReturnType<typeof AuthorityDatabase.inspectTimelinePageReadOnly>;
     try {
+      selected.assertCurrent();
+      person.assertProfileRuntime();
       stored = AuthorityDatabase.inspectTimelinePageReadOnly(person, selected.authorityPath, options.request);
       selected.assertCurrent();
-    } finally { person.release(); }
+    } catch (error) {
+      if (hasUnprovedSourceClosure(error)) {
+        admission.retainSourceClosure(error); person.retainSourceClosure(error);
+        retainUnprovedSourceOwners(error, { admission: person });
+      } else person.release();
+      throw error;
+    }
+    person.release();
     const page = { ...stored, records: stored.records.map(debugRecordView) };
     return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}${page.failureCauses.map(entry => `\nfailure ${entry.failureId} causes: ${[...entry.codes, ...entry.classes].join(", ") || "(none)"}`).join("")}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
   }

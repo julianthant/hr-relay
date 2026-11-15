@@ -10,7 +10,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { createDashboardClient,type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { failureDecision } from "../../../src/backend/runs/queries/run-detail/receipts-failures.js";
-import { parkedWriteDecision } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { hireReviewDecision, parkedWriteDecision } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { gateDecisionFor } from "../../../src/models/trust/gate-decisions.js";
+import { SearchPersonMatchOutputSchema } from "../../../src/models/systems/ucpath/search-person-match.js";
 import { projectRunLogs, readRunLogs, useRunWiring, type RunWiringConfirm } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
@@ -304,6 +306,41 @@ describe("served Logs decision authority", () => {
     }
   });
 
+  it("answers a served hire-review arm with answer-gate-arm only after the operator confirms, carrying the picked row", async () => {
+    const dropped = ["10000001", "10000002"].map(emplId => ({ emplId, name: emplId === "10000002" ? "Person, Fixture" : "Other, Person" }));
+    const match = SearchPersonMatchOutputSchema.parse({ hits: dropped, confirmed: [], dropped: dropped.map(hit => ({ ...hit, reason: "Last name does not match" })) });
+    const names = { firstName: "Fixture", middleName: "", lastName: "Person", preferredFirstName: "", preferredMiddleName: "", preferredLastName: "", ssn: null };
+    const decision = hireReviewDecision("new-hire", match, names, gateDecisionFor("onboarding", "hire-review").arms, "hire-review", 3);
+    assert.ok(decision !== undefined);
+    const selected = selectionAt(3);
+    const open = detailAt(selected, 3, { gate: { state: "open", gateId: NOTE, nodeId: "hire-review", label: "Review the hire", openedAt: AT, revision: 1, decision } });
+    const [existing, newHire] = decision.options;
+    assert.ok(existing && newHire);
+    async function answer(option: NonNullable<typeof existing>, picked: { candidate?: string }) {
+      await act(async () => root?.unmount()); root = undefined;
+      const sent: DashboardCommandRequest[] = [], requested: { pending: PendingCommand; onConfirmed: () => void }[] = [];
+      const client = { runDetail: async () => open, artifactUrl: (id: string) => `/artifacts/${id}`, runSection: async () => logs(),
+        executeCommand: async (raw: unknown) => { const envelope = DashboardCommandRequestSchema.parse(raw); sent.push(envelope);
+          return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: "hire-review" }] }); },
+      } as unknown as DashboardClient;
+      const h = await harness(client, (pending, onConfirmed) => { requested.push({ pending, onConfirmed }); });
+      await h.render(selected);
+      await act(async () => h.state?.onDecision?.(NOTE, option, picked));
+      assert.equal(sent.length, 0, "nothing is sent before the confirmation");
+      if (requested.length === 0) return undefined;
+      assert.deepEqual(requested[0].pending.action.confirm, option.confirm);
+      await act(async () => { requested[0].onConfirmed(); await new Promise(resolve => setTimeout(resolve, 0)); });
+      assert.equal(sent.length, 1);
+      const [envelope] = sent;
+      assert.ok(envelope?.family === "gate" && envelope.type === "answer-gate-arm");
+      assert.deepEqual(envelope.target, { runId: RUN, gateId: "hire-review", expectedVersion: 3 });
+      return envelope.payload;
+    }
+    assert.equal(await answer(existing, {}), undefined, "Use existing employee needs a picked row");
+    assert.deepEqual(await answer(newHire, {}), { arm: "new-hire" });
+    assert.deepEqual(await answer(existing, { candidate: "10000002" }), { arm: "existing-person", rowId: "10000002" });
+  });
+
   it("carries the chosen candidate through confirmation", async () => {
     const gate = servedGate(fixtures.CHOOSE);
     const selected = selectionAt(3);
@@ -318,6 +355,58 @@ describe("served Logs decision authority", () => {
     await act(async () => { requested[0](); await new Promise(resolve => setTimeout(resolve, 0)); });
     assert.equal(sent.length, 1);
     if (sent[0].family === "gate") assert.deepEqual(sent[0].payload, { decision: "approved", gateRef: gate.gateRef, optionRef: gate.options[1].ref });
+  });
+
+  it("looks a typed Employee ID up through a start plan that replaces the run, never a gate answer", async () => {
+    const chosen = servedGate(fixtures.CHOOSE);
+    const pick = chosen.decision?.options[0];
+    assert.ok(pick?.input?.kind === "candidate");
+    const correction = { inputField: "operatorEmployeeId", label: "Employee ID", placeholder: "8 digits", pattern: "^10\\d{6}$", expectedVersion: 3,
+      confirm: { title: "Look up this Employee ID", confirmLabel: "Look up", tone: "neutral" as const },
+      request: StartPlanRequestSchema.parse({ workflowId: "separations", dryRun: true, browserMode: "headless", captureBrowserScreenshots: false, submissions: [{}],
+        selectedStepKeys: ["identity-check"], rerunSource: { runId: RUN, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["identity-check"],
+          gateCorrection: { gateId: GATE_NODE, inputField: "operatorEmployeeId" } } }) };
+    const lookupPick = { ...pick, input: { ...pick.input, table: { ...pick.input.table, typed: { label: "Employee ID", placeholder: "8 digits", pattern: "^10\\d{6}$", lookup: true as const } } } };
+    const gate = IdentityGateDetailWireSchema.parse({ ...chosen, correction, decision: { ...chosen.decision, options: [lookupPick, ...(chosen.decision?.options.slice(1) ?? [])] } });
+    const selected = selectionAt(3);
+    const sent: DashboardCommandRequest[] = [], planned: unknown[] = [], requested: { pending: PendingCommand; onConfirmed: () => void }[] = [];
+    const client = { ...gateClient(gate, selected, sent), submitStartPlan: async (input: unknown) => {
+      const request = StartPlanRequestSchema.parse(input); planned.push(request);
+      return StartPlanWireSchema.parse({ wireVersion: 1, startPlanId: NOTE, workflowId: "separations", expectedVersion: 1,
+        expiresAt: "2026-08-03T13:00:00.000Z", dryRun: request.dryRun, browserMode: request.browserMode, captureBrowserScreenshots: request.captureBrowserScreenshots,
+        priority: "interactive", plannedBy: "local-operator", configSnapshotId: NOTE, rerun: { source: request.rerunSource, warnings: [], warningDigest: "a".repeat(64) },
+        fingerprints: Object.fromEntries(["descriptorFingerprint", "configFingerprint", "ingressSchemaHash", "canonicalInputSchemaHash", "inputFingerprint"].map(key => [key, "a".repeat(64)])),
+        planned: [{ logicalKey: RUN, title: "Separation 4502", matchKey: "4502" }], refused: [] });
+    } };
+    const h = await harness(client, (pending, onConfirmed) => { requested.push({ pending, onConfirmed }); });
+    await h.render(selected);
+    const option = gate.decision?.options[0];
+    assert.ok(option);
+    await act(async () => { h.state?.onDecision?.(gate.gateRef, option, { typed: " 10800002 " }); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(sent.length, 0);
+    assert.equal(planned.length, 1);
+    const request = StartPlanRequestSchema.parse(planned[0]);
+    assert.deepEqual(request.submissions, [{ operatorEmployeeId: "10800002" }]);
+    assert.deepEqual(request.rerunSource?.gateCorrection, { gateId: GATE_NODE, inputField: "operatorEmployeeId" });
+    assert.equal(requested.length, 1);
+    assert.deepEqual(requested[0].pending.action.confirm, correction.confirm);
+    assert.equal(JSON.stringify(requested[0].pending).includes("10800002"), false, "the confirm dialog carries no typed digits");
+    await act(async () => { requested[0].onConfirmed(); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].family, "start");
+    assert.ok(sent.every(envelope => envelope.family !== "gate"));
+  });
+
+  it("sends nothing for a typed Employee ID when the gate serves no lookup", async () => {
+    const gate = servedGate(fixtures.CHOOSE);
+    const selected = selectionAt(3);
+    const sent: DashboardCommandRequest[] = [], requested: unknown[] = [];
+    const h = await harness(gateClient(gate, selected, sent), pending => { requested.push(pending); });
+    await h.render(selected);
+    const option = gate.decision?.options[0];
+    assert.ok(option);
+    await act(async () => { h.state?.onDecision?.(gate.gateRef, option, { typed: "10800002" }); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.deepEqual([sent.length, requested.length], [0, 0]);
   });
 
   it("sends nothing when a newer row revision supersedes the confirmed gate", async () => {

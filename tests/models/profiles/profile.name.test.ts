@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { deriveProfileNames, isProfileName, profileDetailsPatch, ProfileNameValidationError } from "../../../src/models/profiles/profile.js";
 
-const accepted: readonly (readonly [string, string, { readonly firstName: string; readonly lastName: string; readonly initials: string; readonly timekeeperName: string }])[] = [
-  ["Alex", "Rivera", { firstName: "Alex", lastName: "Rivera", initials: "AR", timekeeperName: "Alex Rivera" }],
-  ["alex", "rivera", { firstName: "alex", lastName: "rivera", initials: "AR", timekeeperName: "alex rivera" }],
-  ["Alex Middle", "Rivera", { firstName: "Alex Middle", lastName: "Rivera", initials: "AMR", timekeeperName: "Alex Middle Rivera" }],
-  ["Alex  Middle", "Rivera", { firstName: "Alex  Middle", lastName: "Rivera", initials: "AMR", timekeeperName: "Alex  Middle Rivera" }],
-  ["André", "José", { firstName: "André", lastName: "José", initials: "AJ", timekeeperName: "André José" }],
+const accepted: readonly (readonly [string, string, { readonly firstName: string; readonly lastName: string; readonly initials: string; readonly timekeeperName: string; readonly timekeeperInitials: string }])[] = [
+  ["Alex", "Rivera", { firstName: "Alex", lastName: "Rivera", initials: "AR", timekeeperName: "Alex Rivera", timekeeperInitials: "AR" }],
+  ["alex", "rivera", { firstName: "alex", lastName: "rivera", initials: "AR", timekeeperName: "alex rivera", timekeeperInitials: "AR" }],
+  ["Alex Middle", "Rivera", { firstName: "Alex Middle", lastName: "Rivera", initials: "AMR", timekeeperName: "Alex Middle Rivera", timekeeperInitials: "AMR" }],
+  ["Alex  Middle", "Rivera", { firstName: "Alex  Middle", lastName: "Rivera", initials: "AMR", timekeeperName: "Alex  Middle Rivera", timekeeperInitials: "AMR" }],
+  ["André", "José", { firstName: "André", lastName: "José", initials: "AJ", timekeeperName: "André José", timekeeperInitials: "AJ" }],
 ];
 
 const refused: readonly (readonly [string, string])[] = [
@@ -39,7 +39,7 @@ describe("profile name check", () => {
     const firstName = "A".repeat(64), lastName = "B".repeat(64);
     assert.equal(isProfileName(firstName, lastName), true);
     assert.deepEqual(deriveProfileNames(firstName, lastName), {
-      firstName, lastName, initials: "AB", timekeeperName: `${firstName} ${lastName}`,
+      firstName, lastName, initials: "AB", timekeeperName: `${firstName} ${lastName}`, timekeeperInitials: "AB",
     });
   });
 
