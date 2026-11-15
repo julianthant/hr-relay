@@ -91,6 +91,24 @@ describe("UCPath hire browser operations on a fake page", () => {
     await assert.rejects(drift.driver.scanHireTransactions(target), /membership-changed/u);
     assert.equal(drift.actions.includes("click:save"), false);
   });
+  it("refuses a result row outside the searched name before any drill", async () => {
+    const h = fixture({ existingRows: [UCPATH_HIRE_PROOF_EXAMPLE, { ...UCPATH_HIRE_PROOF_EXAMPLE, transactionId: "T009000002", displayedName: "Other Person" }] });
+    await assert.rejects(h.driver.scanHireTransactions(target), /search-result-outside-key/u);
+    assert.equal(h.actions.some(action => action.startsWith("click:drill:")), false);
+  });
+  it("never clicks Clear on a freshly loaded search form", async () => {
+    const h = fixture(); await h.driver.scanHireTransactions(target);
+    assert.equal(h.actions.includes("click:clear"), false);
+  });
+  it("refuses a preloaded name box", async () => {
+    const h = fixture({ presetName: "Other Person" });
+    await assert.rejects(h.driver.scanHireTransactions(target), /filter-not-cleared/u);
+    assert.equal(h.actions.includes("click:search"), false);
+  });
+  it("refuses an auto-opened detail for another name", async () => {
+    const h = fixture({ existingRows: [{ ...UCPATH_HIRE_PROOF_EXAMPLE, displayedName: "Other Person" }] });
+    await assert.rejects(h.driver.scanHireTransactions(target), /search-result-outside-key/u);
+  });
   for (const options of [{ submitSignal: "person-match" as const }, { submitSignal: "select-action" as const }, { submitSignal: "error" as const }, { unknownSubmit: true }, { saved: { approvalStatus: "Denied" } }, { saved: { email: "other@example.test" } }]) {
     it(`refuses unproved completion after one save for ${JSON.stringify(options)}`, async () => {
       const h = fixture(options); await h.driver.stageHire(target, h.capture);

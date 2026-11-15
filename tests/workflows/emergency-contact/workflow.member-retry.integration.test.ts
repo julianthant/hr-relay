@@ -16,6 +16,7 @@ import { delegationEvidenceOutput, deriveRunResultDigest, deriveTerminalDependen
 import { contactSaveMember, createEmergencyContactRetryWorld } from "../../support/helpers/backend/emergency-contact-retry-world.js";
 import { authorizeWorkflowDelegationRefresh, workflowDelegationAccounting } from "../../../src/workflow-kit/workflow.js";
 import { runWorkerLoop } from "../../../src/backend/runtime/workers/worker-loop.js";
+import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.js";
 import { workerRunLifecyclePort } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createWriteSequencer } from "../../../src/backend/runtime/writes/write-sequencer.js";
 import { createOcrApprovedSnapshotAdapter } from "../../../src/backend/processing/providers/ocr-approved-snapshot-adapter.js";
@@ -611,9 +612,11 @@ it(`retries a member while its parent is ${boundary}`, async () => {
     try { return transaction(work); } finally { transactionDepth -= 1; }
   };
   const claimed: string[] = [];
+  const debugEvents = createDebugEventWriter({ repository: f.database.authority.timelineEvents, clock: f.clock, build: "test" });
+  const debugAfter = f.database.authority.timelineEvents.highWaterMark();
   let report: Awaited<ReturnType<typeof runWorkerLoop>>;
   try {
-    report = await runWorkerLoop({ ...f.harness.deps, ...(diagnostics === undefined ? {} : { diagnostics }), workflowId: f.root.descriptor.id, workerId: owner.workerId, lifecycle,
+    report = await runWorkerLoop({ ...f.harness.deps, debugEvents, ...(diagnostics === undefined ? {} : { diagnostics }), workflowId: f.root.descriptor.id, workerId: owner.workerId, lifecycle,
     sessionFactory: f.harness.sessions.factory, sessionAcquireMs: 20_000,
     browserScreenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } },
     duoCeremony: duoCeremonyGatesOver(f.database, f.clock, f.harness.scheduler),
@@ -652,6 +655,8 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   if (settlementRetry) assert.deepEqual(holdAcknowledged, { transactionDepth: 1, outerTransaction: 1 });
   if (diagnosticCapture) assert.deepEqual(f.database.authority.failures.listByRun(f.parentRun.envelope.runId), []);
   assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["abandoned", "done"]);
+  assert.deepEqual(f.database.authority.timelineEvents.page({ after: debugAfter, limit: 1000 }).filter(record => record.payload.kind === "debug"
+    && record.payload.event.reason === "run-failed"), [], "a held or lost failure settlement records no failure event");
   assert.equal(report.stopped, "idle"); assert.equal(report.closure, "proved");
   assert.equal(f.current().lifecycle.state, "queued");
   assert.equal(f.current().pause?.state, "paused");
@@ -744,4 +749,21 @@ for (const unknown of [false, true]) it(`refuses another member Retry after a ${
   const rows = readQueueRecordMembers(f.database.authority, f.canonical.lifecycle, f.current(),
     f.database.authority.runs.listChildren(f.parentRun.envelope.runId), f.resolve); assert.ok(rows);
   assert.equal(rows.members[0]?.statusLabel, "Saved");
+});
+
+it("offers and applies a member Retry after a restart re-activates the same config under a new snapshot id", async () => {
+  const f = fixture;
+  const previous = failed(f);
+  const active = f.database.authority.runtimeConfig.get(); assert.ok(active);
+  const prior = f.database.authority.configSnapshots.get(active.configSnapshotId); assert.ok(prior);
+  const configSnapshotId = randomUUID();
+  f.database.withAuthorityTransaction(repositories => {
+    repositories.configSnapshots.insert({ ...prior, configSnapshotId });
+    repositories.runtimeConfig.activate({ settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint,
+      configFingerprint: active.configFingerprint, activatedAt: f.clock.now().toISOString(), configSnapshotId });
+  });
+  assert.equal(aggregateMemberRetryAvailable(f.database.authority, f.canonical.lifecycle, previous, f.resolve), true);
+  const applied = f.canonical.kernel.execute(f.runCommand("retry", previous)); assert.equal(applied.state, "applied", JSON.stringify(applied));
+  const replacement = f.children().find(child => child.envelope.retryOf === previous.envelope.runId); assert.ok(replacement);
+  assert.equal(replacement.envelope.configSnapshotId, previous.envelope.configSnapshotId);
 });

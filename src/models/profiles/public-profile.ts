@@ -22,19 +22,23 @@ export const ProfileLoginChangeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("unknown"), code: z.literal("PROFILE_LOGIN_CHANGE_UNKNOWN"), diagnostics: z.literal("unrecorded").optional() }),
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
 ]);
-/** The signed-in person's account values; Timekeeper initials are not a value of their own but `profileInitials(timekeeper)`. */
+/** The signed-in person's account values; the timekeeper name and timekeeper initials are stored and changed independently. */
 export const ProfileAccountSchema = z.strictObject({ name: z.string(), initials: ProfileRegistryRowSchema.shape.initials,
-  timekeeper: ProfileRegistryRowSchema.shape.timekeeperName, lastSignedInAt: ProfileRegistryRowSchema.shape.lastSignedInAt });
+  timekeeper: ProfileRegistryRowSchema.shape.timekeeperName, timekeeperInitials: ProfileRegistryRowSchema.shape.timekeeperInitials,
+  lastSignedInAt: ProfileRegistryRowSchema.shape.lastSignedInAt });
 export type ProfileAccount = z.infer<typeof ProfileAccountSchema>;
 export function profileAccount(row: ProfileRegistryRow): ProfileAccount {
-  return ProfileAccountSchema.parse({ name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName, lastSignedInAt: row.lastSignedInAt });
+  return ProfileAccountSchema.parse({ name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName,
+    timekeeperInitials: row.timekeeperInitials, lastSignedInAt: row.lastSignedInAt });
 }
 /** A details change names at least one value; each value is checked by `profileDetailsPatch`, whose refusal states the reason. */
 export const ProfileDetailsChangeRequestSchema = z.strictObject({
   name: z.strictObject({ firstName: z.string().max(64), lastName: z.string().max(64) }).optional(),
   initials: z.string().max(64).optional(),
   timekeeperName: z.string().max(256).optional(),
-}).refine(value => value.name !== undefined || value.initials !== undefined || value.timekeeperName !== undefined, "profile-details-change-empty");
+  timekeeperInitials: z.string().max(64).optional(),
+}).refine(value => value.name !== undefined || value.initials !== undefined || value.timekeeperName !== undefined || value.timekeeperInitials !== undefined,
+  "profile-details-change-empty");
 export const ProfileDetailsChangeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("changed"), account: ProfileAccountSchema }),
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
@@ -65,12 +69,13 @@ export const ProfileOnboardingBrowserSchema = z.discriminatedUnion("state", [
 ]);
 export type ProfileOnboardingBrowser = z.infer<typeof ProfileOnboardingBrowserSchema>;
 
-export const ProfileOnboardingStateSchema = z.strictObject({
-  state: z.literal(PROFILE_ONBOARDING_STATE), operationId: z.uuid(), profileId: ProfileIdSchema,
+const DuoSetupFields = {
+  operationId: z.uuid(), profileId: ProfileIdSchema,
   step: z.enum(["duo", "ready"]),
   methods: z.strictObject({ key: ProfileOnboardingMethodStateSchema, touch: ProfileOnboardingMethodStateSchema }),
   browser: ProfileOnboardingBrowserSchema,
-}).superRefine((value, context) => {
+};
+function refineDuoSetup(value: Readonly<{ step: "duo" | "ready"; methods: Readonly<Record<ProfileOnboardingMethod, ProfileOnboardingMethodState>> }>, context: z.RefinementCtx): void {
   const complete = value.methods.key.state === "complete" && value.methods.touch.state === "complete";
   if ((value.step === "ready") !== complete) context.addIssue({ code: "custom", message: "profile-onboarding-readiness-invalid" });
   for (const [name, method] of Object.entries(value.methods)) {
@@ -79,8 +84,12 @@ export const ProfileOnboardingStateSchema = z.strictObject({
       context.addIssue({ code: "custom", message: "profile-onboarding-method-incomplete" });
     }
   }
-});
+}
+export const ProfileOnboardingStateSchema = z.strictObject({ state: z.literal(PROFILE_ONBOARDING_STATE), ...DuoSetupFields }).superRefine(refineDuoSetup);
 export type ProfileOnboardingState = z.infer<typeof ProfileOnboardingStateSchema>;
+/** Setting Duo up again is a resource of the active session, so the profile's own state stays active while it is open. */
+export const DuoReenrolStateSchema = z.strictObject({ state: z.literal("duo-reenrol"), ...DuoSetupFields }).superRefine(refineDuoSetup);
+export type DuoReenrolState = z.infer<typeof DuoReenrolStateSchema>;
 export const CompleteProfileOnboardingRequestSchema = z.strictObject({ operationId: z.uuid() });
 export type CompleteProfileOnboardingRequest = z.infer<typeof CompleteProfileOnboardingRequestSchema>;
 export const CancelProfileOnboardingRequestSchema = CompleteProfileOnboardingRequestSchema;

@@ -43,7 +43,6 @@ export function mockFieldValue(run: MockRun, label: string): string {
   if (label === "Phone") return reviewValue(record, "cellPhone") || "(202) 555-0102";
   if (label === "Relationship") return reviewValue(record, "relationship") || "Sibling";
   if (label === "Effective date") { const [year, month, day] = run.draft.effectiveDate.split("-"); return run.workflowId === "kronos-pay-rule" ? "07/01/2026" : `${month}/${day}/${year}`; }
-  if (label === "Job Data comments" || label === "Initiator comments") return `Updated pool id to F per work study award ${mockFieldValue(run, "Effective date")}`;
   const value = VALUES[label];
   if (value === undefined) throw new Error(`MOCK_RESULT_FIELD_UNKNOWN: ${label}`);
   return value;

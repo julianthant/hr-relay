@@ -87,6 +87,9 @@ function dryRunCell(row: WorkflowCapabilityRowWire): CapabilityCell {
 
 /** Distinguish preview support, no transactions and preview refusal before offering a real write. */
 export function dryRunPostureSentence(row: WorkflowCapabilityRowWire): string {
+  if (row.dryRun.state === "supported" && "firstPublicationNodeId" in row.dryRun) {
+    return "Reads and checks each stage and prepares the output without saving it.";
+  }
   if (row.dryRun.state === "supported") {
     return "Reads, fills, verifies and captures each applicable stage without submitting; sample values are labelled dry-run sample.";
   }
