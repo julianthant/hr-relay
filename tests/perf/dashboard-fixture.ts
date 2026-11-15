@@ -152,7 +152,7 @@ function instantOf(day: string, seed: number): Date {
 
 function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
   const descriptor = spec.separations === true ? separationsDescriptor : personLookupDescriptor;
-  const rawInput = spec.separations === true ? { documentNumber: String(4510 + spec.seed), timekeeperName: "Synthetic Timekeeper" } : { emplId: "10873698" };
+  const rawInput = spec.separations === true ? { documentNumber: String(4510 + spec.seed), timekeeperName: "Synthetic Timekeeper", timekeeperInitials: "ST" } : { emplId: "10873698" };
   const parsedInput = spec.separations === true ? SeparationsInput.parse(rawInput) : { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false };
   const resolvedInstance = spec.separations === true ? { kuali: "prod", ucpath: "prod", "new-kronos": "prod" } : { ucpath: "prod", crm: "prod" };
   const runId = uuidOf(ID_SPACE.run + spec.seed);

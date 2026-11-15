@@ -200,7 +200,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
         if (input.productApp === true && url.pathname === "/api/v1/profile/state") {
           res.writeHead(200, { "content-type": "application/json" });
           res.end(JSON.stringify(PublicProfileStateSchema.parse({ state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready",
-            account: { name: "Smoke Test", initials: "ST", timekeeper: "Smoke Test", lastSignedInAt: "2026-11-10T08:30:00-08:00" } })));
+            account: { name: "Smoke Test", initials: "ST", timekeeper: "Smoke Test", timekeeperInitials: "ST", lastSignedInAt: "2026-11-10T08:30:00-08:00" } })));
           return;
         }
         if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/events/")) {
