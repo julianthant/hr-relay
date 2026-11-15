@@ -89,7 +89,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
   const WorkerBrowserSniffSchema = z.strictObject({ family: z.literal("worker-browser") }).loose();
 
   const startTails = new Map<string, Promise<void>>();
-  /** One capacity ensure at a time per workflow, so concurrent commands never race a spawn. */
+  /** One capacity ensure at a time per workflow, so concurrent commands never race a spawn; a `start:` key admits that workflow's Starts one at a time. */
   async function inWorkflowLane<Result>(key: string, work: () => Promise<Result>): Promise<Result> {
     const previous = startTails.get(key);
     let release: () => void = () => undefined;
@@ -135,17 +135,19 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
     }
     if (!parsed.success) return executeOne(input);
     const request = parsed.data;
-    const executeRequest = async (): Promise<CommandResult> => {
-      if (request.family !== "start") return executeOne(request);
-      const result = await deps.kernel.executeStart(request);
-      publish(request, result);
-      return result;
-    };
-    if (!needsWorkerCapacity(request) || deps.startWorkerCapacity === undefined) return executeRequest();
     const capacity = deps.startWorkerCapacity;
-    const key = capacity.workflowOf(request);
-    if (key === undefined) return executeRequest();
-    return inWorkflowLane(key, async () => completeCapacity(capacity, request, await executeRequest()));
+    const key = needsWorkerCapacity(request) ? capacity?.workflowOf(request) : undefined;
+    if (request.family === "start") {
+      const start = async () => { const result = await deps.kernel.executeStart(request); publish(request, result); return result; };
+      // Starts of one workflow still admit one at a time, so their preflights never overlap; only capacity leaves the reply.
+      const result = key === undefined ? await start() : await inWorkflowLane(`start:${key}`, start);
+      if (capacity === undefined || key === undefined || (result.state !== "applied" && result.state !== "already-applied")) return result;
+      // Start replies once its run is committed; a startup that fails later shows on the workflow's worker cards.
+      capacity.detach(inWorkflowLane(key, () => capacity.ensure(request, result)));
+      return result;
+    }
+    if (capacity === undefined || key === undefined || !needsWorkerCapacity(request)) return executeOne(request);
+    return inWorkflowLane(key, async () => completeCapacity(capacity, request, executeOne(request)));
   }
 
   return Object.freeze({

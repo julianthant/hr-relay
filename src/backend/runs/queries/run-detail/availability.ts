@@ -1,5 +1,6 @@
 import type { RunDetailTrustDeps } from "../run-detail-types.js";
 import type { RunRecord } from "../../../../models/run/record.js";
+import { runResultCurrent } from "../../../storage/sqlite/delegation-refresh.js";
 import type { RunFoldRecord } from "../../projections/run-queue-projection.js";
 import type { RunCaptureAvailabilityWire } from "../../../../models/dashboard/run-detail.js";
 
@@ -12,7 +13,7 @@ export function availableSections(
 ): readonly ("logs" | "receipt" | "context-data" | "context-attempts" | "failure" | "captures" | "parked-write" | "identity-gate" | "review" | "workbook-writes")[] {
   const { lifecycle } = authority;
   const terminal = lifecycle.state === "terminal";
-  const settled = terminal && lifecycle.outcome !== "interrupted";
+  const settled = runResultCurrent(authority) && authority.lifecycle.outcome !== "interrupted";
   return [
     "logs",
     ...(review ? (["review"] as const) : []),
