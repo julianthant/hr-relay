@@ -165,4 +165,3 @@ for (const status of ["attempting", "parked"] as const) it(`refuses a persisted 
   assert.equal(f.database.authority.writeAttempts.get(f.prior.currentAttemptId)?.outcome.state, status);
   f.assertNoWrites();
 });
-
