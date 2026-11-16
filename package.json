@@ -29,7 +29,6 @@
     "test:architecture": "vitest run --project architecture --passWithNoTests=false",
     "test:coverage": "vitest run --coverage --project unit --project integration --project architecture",
     "test:perf": "vitest run --project perf --passWithNoTests=false",
-    "test:local": "vitest run --project local --passWithNoTests=true",
     "test:pc": "tsx scripts/test/pc.ts",
     "test:watch": "vitest --project unit --project integration --project architecture --project perf",
     "perf:dashboard": "TZ=UTC tsx tests/perf/dashboard-benchmark.ts",
