@@ -71,11 +71,6 @@ export function sessionTallies(workers: readonly SessionWorker[]): readonly { st
   return order.map(state => ({ state, count: workers.filter(worker => worker.state === state).length }))
     .filter(tally => tally.count > 0 || ["running", "starting", "idle"].includes(tally.state));
 }
-export function sessionTimelineSummary(nodes: readonly SessionNode[]): { completed: number; total: number } {
-  if (!nodes.length || new Set(nodes.map(node => node.id)).size !== nodes.length) throw new Error("session-timeline-invalid");
-  return { completed: nodes.filter(node => node.state === "completed").length, total: nodes.length };
-}
-
 export function sessionWorkerLifetimeKey(card: WorkerCardWire): string {
   return JSON.stringify([card.member, card.controls?.basis.state === "present" ? card.controls.basis.value.lifetimeId : undefined,
     card.browsers.map(browser => [browser.sessionId, browser.observation?.state === "present" ? [browser.observation.instance, browser.observation.configFingerprint, browser.observation.browserMode] : undefined]).sort()]);
