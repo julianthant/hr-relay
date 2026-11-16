@@ -9,7 +9,7 @@ import { attemptUnresolved, commandAttemptView, type CommandAttemptView } from "
 import { batchMemberRetryAction, batchMemberRetrySourceMatches, childRetrySourceMatches, composeCommandRequest, verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import { DashboardCommandRequestSchema, type DashboardCommandRequest } from "../../rules/commands/commands.js";
 import type { DecisionOptionWire } from "../../models/dashboard/run-decision.js";
-import { answeredRow, decisionAnswerValid, lookupTyped, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
+import { answeredRow, decisionAnswerValid, failureCardFacts, lookupTyped, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
 import { identityCeremonyFor } from "../surfaces/run-detail/identity/identity-ceremony.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -385,7 +385,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);
       steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failure.display?.title ?? failure.code,
         entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failure.display?.title ?? failure.code,
-          state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message,
+          state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message, ...failureCardFacts(failure.display),
           ...(failure.writeState === "not-attempted" ? { footer: WRITE_STATE_NOTE[failure.writeState] } : { caution: WRITE_STATE_NOTE[failure.writeState] }),
           ...(noScreenshot === undefined ? {} : { unavailableCapture: noScreenshot }),
           ...(failure.decision === undefined ? {} : { served: failure.decision }) } }] });

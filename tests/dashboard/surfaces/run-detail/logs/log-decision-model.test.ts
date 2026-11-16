@@ -93,16 +93,14 @@ describe("served log decisions", () => {
     await act(async () => button("Confirm").click());
     assert.deepEqual(calls, [["saved", { text: "T00042871" }]]);
   });
-  it("closes a failure after a write with Mark as failed, or with a typed note", async () => {
-    assert.deepEqual(choiceOptions(served("failure-committed")).map(item => [item.id, item.label]), [["mark-as-failed", "Mark as failed"], ["add-note", "Add note"]]);
+  it("closes a failure after a write with Mark as failed and offers no note", async () => {
+    assert.deepEqual(choiceOptions(served("failure-committed")).map(item => [item.id, item.label]), [["mark-as-failed", "Mark as failed"]]);
     assert.equal(recommendedOption(served("failure-committed"))?.id, "mark-as-failed");
     const calls: unknown[] = [];
     await mount("failure-committed", (picked, answer) => calls.push([picked.id, answer]));
-    assert.equal(button("Confirm").disabled, false);
-    await act(async () => button("Confirm").click());
+    assert.equal(button("Mark as failed").disabled, false);
+    await act(async () => button("Mark as failed").click());
     assert.deepEqual(calls, [["mark-as-failed", {}]]);
-    assert.equal(decisionAnswerValid(option("failure-committed", "add-note"), { text: "  " }), false);
-    assert.equal(decisionAnswerValid(option("failure-committed", "add-note"), { text: "Checked by hand" }), true);
   });
   it("cancels the run only from Cancel run", async () => {
     const calls: string[] = [];
@@ -125,11 +123,11 @@ describe("served log decisions", () => {
     assert.equal(document.querySelector("button"), null);
     assert.equal(document.querySelector("figure"), null);
   });
-  it("keeps Confirm disabled when a served decision has no choice, and locks the date without an answer handler", async () => {
+  it("shows no Confirm when a served failure has no choice, and locks the date without an answer handler", async () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const base = example("failure-no-write").decision;
     await act(async () => root?.render(createElement(LogDecisionBlock, { decision: { ...base, served: { ...served("failure-no-write"), options: [] } }, onAnswer: () => undefined })));
-    assert.equal(button("Confirm").disabled, true);
+    assert.equal(host.textContent?.includes("Confirm"), false);
     await act(async () => root?.render(createElement(LogDecisionBlock, { decision: example("review-fields").decision })));
     assert.equal(document.querySelector('[role="spinbutton"]')?.getAttribute("aria-disabled"), "true");
   });
