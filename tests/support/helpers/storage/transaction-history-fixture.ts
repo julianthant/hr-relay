@@ -18,7 +18,7 @@ export async function historyWorld(options: Readonly<{ terminalize?: boolean }> 
   const { root, path } = admitted;
   const open = () => AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "transaction-history-test" }, historyClock);
   let database = admitted.db;
-  return { root, path, get machine() { return admitted.profile.machine; }, get database() { return database; }, get history() { return createTransactionHistory(database.authority); },
+  return { root, path, get database() { return database; }, get history() { return createTransactionHistory(database.authority); },
     commit(index: number, overrides: Parameters<typeof ledgerCommitFixture>[1] = {}) {
       const fixture = ledgerCommitFixture(index, { runId: fixtureUuid(`history-run-${String(index)}`), itemId: fixtureUuid(`history-item-${String(index)}`), ...overrides, workflowId: separationsDescriptor.id, configFingerprint: admitted.snapshot.fingerprint });
       const ledger = fixture.commit.transaction;

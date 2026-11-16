@@ -16,7 +16,7 @@ import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../src/backend
 import type { RuntimeAdmission } from "../src/backend/storage/admission/admission.js";
 import { RuntimeLifetimeLock, RuntimeAlreadyRunningError } from "../src/backend/storage/admission/lifetime-lock.js";
 import { runCli } from "../src/cli.js";
-import { findProfileFixtureAdmission } from "./support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, findProfileFixtureAdmission } from "./support/helpers/admission-fixture.js";
 import { historyWorld } from "./support/helpers/storage/transaction-history-fixture.js";
 
 /** Admissions are frozen, so the stores the transaction export opens record which admission opened them. */
@@ -31,6 +31,11 @@ vi.mock("../src/backend/storage/sqlite/authority-database.js", async importOrigi
   };
   return { ...actual, AuthorityDatabase: new Proxy(actual.AuthorityDatabase, {
     get: (target, key, receiver): unknown => key === "open" ? open : Reflect.get(target, key, receiver) }) };
+});
+/** The history world keeps its installation private; the call-through factory spy hands this test that installation. */
+vi.mock("./support/helpers/admission-fixture.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("./support/helpers/admission-fixture.js")>();
+  return { ...actual, createBoundProfileFixture: vi.fn(actual.createBoundProfileFixture) };
 });
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -370,6 +375,15 @@ describe("the `storage transactions` CLI command", () => {
     return written.join("");
   }
 
+  async function installationOf(personRoot: string): Promise<RuntimeAdmission> {
+    const fixtures = await Promise.all(vi.mocked(createBoundProfileFixture).mock.results
+      .flatMap(result => result.type === "return" ? [result.value] : []));
+    const fixture = fixtures.find(candidate => candidate.stateRoot === personRoot);
+    assert.ok(fixture, "the history world was built on a bound profile fixture");
+    assert.equal(fixture.machine.isInstallation(), true);
+    return fixture.machine;
+  }
+
   /** The installation opens its one ready person's store under that person's own admission, then releases it. */
   function assertPersonReleased(personRoot: string): void {
     const opened = transactionStoreOwners.splice(0);
@@ -381,12 +395,12 @@ describe("the `storage transactions` CLI command", () => {
     const w = await historyWorld();
     try {
       const committed = w.commit(901);
-      assert.equal(w.machine.isInstallation(), true);
-      const [person] = w.machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready");
+      const machine = await installationOf(w.root);
+      const [person] = machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready");
       assert.ok(person, "the fixture installation has one ready person");
       const output = join(w.root, "report.json");
       transactionStoreOwners.splice(0);
-      const stdout = await runTransactions(w.machine, ["--from", range.from, "--to", range.to, "--output", output]);
+      const stdout = await runTransactions(machine, ["--from", range.from, "--to", range.to, "--output", output]);
       assertPersonReleased(w.root);
       const personOutput = join(w.root, `report.${person.profileId}.json`);
       const reported = z.strictObject({ profiles: z.array(z.strictObject({ profileId: z.string(), output: z.string(),
@@ -403,12 +417,13 @@ describe("the `storage transactions` CLI command", () => {
     const w = await historyWorld();
     try {
       w.commit(902);
-      const [person] = w.machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready");
+      const machine = await installationOf(w.root);
+      const [person] = machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready");
       assert.ok(person);
       const occupied = join(w.root, `report.${person.profileId}.json`);
       writeFileSync(occupied, "other-owner");
       transactionStoreOwners.splice(0);
-      await assert.rejects(runTransactions(w.machine, ["--from", range.from, "--to", range.to, "--output", join(w.root, "report.json")]), /EEXIST/u);
+      await assert.rejects(runTransactions(machine, ["--from", range.from, "--to", range.to, "--output", join(w.root, "report.json")]), /EEXIST/u);
       assertPersonReleased(w.root);
       assert.equal(readFileSync(occupied, "utf8"), "other-owner");
     } finally { await w.dispose(); }
@@ -432,7 +447,7 @@ describe("the `storage transactions` CLI command", () => {
   it("prints usage that names the per-person report path", async () => {
     const w = await historyWorld();
     try {
-      assert.equal(await runTransactions(w.machine, ["--help"]), "storage transactions --from YYYY-MM-DD --to YYYY-MM-DD [--system SYSTEM] --output PATH\n"
+      assert.equal(await runTransactions(await installationOf(w.root), ["--help"]), "storage transactions --from YYYY-MM-DD --to YYYY-MM-DD [--system SYSTEM] --output PATH\n"
         + "Writes a deterministic JSON transaction report from one database snapshot; an existing output is refused.\n"
         + "On an installation, each ready person's report is written beside PATH as NAME.<profile-id>.EXT.\n");
     } finally { await w.dispose(); }
