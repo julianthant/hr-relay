@@ -19,9 +19,11 @@ it("files to OnBase as the member's third step, declared after the Save without 
   assert.ok(node?.kind === "child-run");
   assert.equal(node.target.id, "onbase");
   assert.equal(node.cardinality, "many");
-  // "all" applies fail-parent to a failed filing; "all-settled" would ignore it. An empty group still satisfies "all".
+  // "all" applies block-parent to a failed filing; "all-settled" would ignore it. An empty group still satisfies "all".
   assert.equal(node.join, "all");
-  assert.equal(node.policy.onChildFailed, "fail-parent");
+  // The member waits on a failed filing and continues by itself once a Retry of the filing is done.
+  assert.equal(node.policy.onChildFailed, "block-parent");
+  assert.equal(node.policy.afterChildRetry, "resume-parent");
   assert.equal(node.await, "terminal");
   // A 0 ms derived read would expire between the Save and admission, so the child binds from input alone.
   assert.deepEqual(node.dependsOn, []);
