@@ -269,7 +269,9 @@ for (const dryRun of [true, false]) {
       }
     }
     const filings = members.flatMap(member => repositories.runs.listChildren(member.child.envelope.runId));
-    assert.ok(filings.length > 0 && filings.every(run => run.envelope.workflow === "onbase" && run.envelope.dryRun === dryRun
+    // The two approved records come from different pages, so each member files its own page.
+    assert.equal(filings.length, 2);
+    assert.ok(filings.every(run => run.envelope.workflow === "onbase" && run.envelope.dryRun === dryRun
       && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done"));
     for (const run of filings) if (dryRun) assert.deepEqual(repositories.writeIntents.listByRun(run.envelope.runId), []);
     assert.equal(filing.imports(), dryRun ? 0 : filings.length, "each live filing clicks Import once; a dry run never does");
