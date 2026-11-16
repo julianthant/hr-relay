@@ -149,7 +149,7 @@ async function verifyManifest(
   const copyAdmission = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
   let inspection: BackupCopyInspection;
   try {
-    // A synchronous inspector keeps today's order: nothing else runs between the inspection and the release.
+    // A synchronous inspection and its release run in one turn.
     const inspected = inspect(copyAdmission, backupPath, manifest.schemaVersion);
     inspection = inspected instanceof Promise ? await inspected : inspected;
   }
