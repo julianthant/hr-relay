@@ -21,7 +21,7 @@ async function fixture() {
   const sessionBackups = createSessionBackups({ admission: bound.admission, database, clock, directory });
   const events: unknown[] = [];
   sessionBackups.start({ emit: input => events.push(input) });
-  cleanups.push(async () => { vi.restoreAllMocks(); sessionBackups.requestCancellation(); await sessionBackups.awaitCancellation().catch(() => undefined); if (existsSync(directory)) chmodSync(directory, 0o700); 
+  cleanups.push(async () => { vi.restoreAllMocks(); sessionBackups.requestCancellation(); await sessionBackups.awaitCancellation().catch(() => undefined); if (existsSync(directory)) chmodSync(directory, 0o700);
     // A retained unproved closure legitimately makes the profile refuse release.
     try { database.close(); await bound.close(); } catch (error) { if (!hasUnprovedSourceClosure(error)) throw error; }
   });
