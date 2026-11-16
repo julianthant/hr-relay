@@ -14,13 +14,14 @@ export async function onbaseFilingFixture(pageCount = 2) {
   const document = OnbaseInputSchema.shape.document.parse({ ...ONBASE_EXAMPLE_INPUT.document,
     sha256: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.length });
   const pages: ReturnType<typeof fakeOnbasePage>[] = [];
-  /** What the next OnBase session open meets: `unavailable` opens fail before any page exists, then `page` shapes the fake page. */
-  const next: { unavailable: number; page: NonNullable<Parameters<typeof fakeOnbasePage>[0]> } = { unavailable: 0, page: {} };
+  /** What the next OnBase session open meets: `unavailable` opens fail before any page exists, then `page` shapes the fake page; `onOpen` runs inside the running filing, before any page action. */
+  const next: { unavailable: number; page: NonNullable<Parameters<typeof fakeOnbasePage>[0]>; onOpen?: () => void } = { unavailable: 0, page: {} };
   return { bytes, document, pages, next,
     imports: () => pages.flatMap(page => page.actions).filter(action => action === "click:Import").length,
     saved: () => pages.flatMap(page => page.saved),
     session: (clock: () => Clock) => () => {
       if (next.unavailable > 0) { next.unavailable -= 1; throw new Error("fixture-onbase-unavailable"); }
+      next.onOpen?.();
       const page = fakeOnbasePage(next.page);
       pages.push(page);
       return createOnbaseDriver(() => undefined, page.page, clock());

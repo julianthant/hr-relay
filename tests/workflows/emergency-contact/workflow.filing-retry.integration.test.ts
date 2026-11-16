@@ -123,3 +123,30 @@ for (const state of ["retried and queued again", "still failed"] as const) it(`S
   assert.equal(f.filing.imports(), 0);
   assert.deepEqual(saves(f), [1, 1]);
 });
+
+it("Stop on the parent while the retried filing is running cancels it before any Import or further Save", async () => {
+  const { filing } = people(f);
+  assert.equal(retry(f, filing).state, "applied");
+  const stop = () => f.canonical.kernel.execute({ ...f.runCommand("retry", f.current()), type: "cancel" });
+  let running: RunRecord | undefined;
+  // The OnBase session opens inside the claimed filing, before its Import is fenced.
+  f.filing.next.onOpen = () => { running = people(f).filing; assert.equal(stop().state, "applied"); };
+  const stepped = await f.raw.step(f.parentRun, signal());
+  assert.ok(running);
+  assert.equal(running.envelope.retryOf, filing.envelope.runId);
+  assert.equal(running.lifecycle.state, "running");
+  assert.equal(stepped.run.envelope.runId, running.envelope.runId);
+  assert.deepEqual(stepped.outcome, { state: "abandoned", runId: running.envelope.runId, reason: "cancelled" });
+  const stopped = people(f);
+  assert.equal(stopped.filing.envelope.runId, running.envelope.runId, "no further filing is admitted");
+  assert.ok(stopped.filing.lifecycle.state === "terminal" && stopped.filing.lifecycle.outcome === "cancelled");
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(running.envelope.runId), []);
+  // The person and the run are marked for cancellation and no worker claims them again; a second Stop settles them.
+  assert.deepEqual([stopped.waiting, f.current()].map(run => [run.lifecycle.state, run.cancelRequested]), [["queued", true], ["queued", true]]);
+  await assert.rejects(f.raw.step(f.parentRun, signal()));
+  assert.equal(stop().state, "applied");
+  for (const run of [people(f).waiting, f.current()]) assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled", `${run.envelope.workflow} ${JSON.stringify(run.lifecycle)}`);
+  assert.equal(served(f, people(f).filing), false);
+  assert.equal(f.filing.imports(), 0);
+  assert.deepEqual(saves(f), [1, 1]);
+});
