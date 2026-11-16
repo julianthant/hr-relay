@@ -37,7 +37,7 @@ export function runsPlugin(deps: AssistantPluginDeps, workflowLabel: (id: string
     failure: z.strictObject({ code: ErrorCodeSchema, text: z.string().nullable() }).nullable(),
   });
   const Logs = z.strictObject({ total: z.number().int().nonnegative(), steps: z.array(z.strictObject({
-    at: z.iso.datetime(), label: z.string(), state: z.enum(["pending", "active", "done", "failed", "blocked", "cancelled", "skipped"]),
+    at: z.iso.datetime(), label: z.string(), stepLabel: z.string(), state: z.enum(["pending", "active", "done", "failed", "blocked", "cancelled", "skipped"]),
     skipped: z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]).nullable() })) });
   /** A pinned reference (the selected run) refuses once its row has moved on, before any fact is read out. */
   const currentDetail = (token: string, context: AssistantToolContext) => {
@@ -76,13 +76,19 @@ export function runsPlugin(deps: AssistantPluginDeps, workflowLabel: (id: string
         }));
       } },
     { kind: "read", tier: "read", name: "read_run_logs",
-      description: "Read the last steps of one run's Logs timeline in order: label, state and why a skipped step did not run.",
-      parameters: logsParameters, output: Logs, privacy: [{ path: "steps[].label", origin: "repository-authored" }],
+      description: "Read the last events of one run's Logs timeline in order. Name each step by stepLabel, the label shown in Logs; label names the action inside that step. Includes state and why a skipped action did not run.",
+      parameters: logsParameters, output: Logs, privacy: [{ path: "steps[].label", origin: "repository-authored" }, { path: "steps[].stepLabel", origin: "repository-authored" }],
       async invoke(value, context) {
-        const input = logsParameters.parse(value), events = currentDetail(input.run, context).detail.timeline.events;
+        const input = logsParameters.parse(value), { timeline } = currentDetail(input.run, context).detail;
+        const { events } = timeline;
         context.assertCurrent();
-        return JsonValueSchema.parse({ total: events.length, steps: events.slice(-input.last).map(event => ({ at: event.at, label: event.label, state: event.state,
-          skipped: event.notRun.state === "present" ? event.notRun.reason : null })) });
+        return JsonValueSchema.parse({ total: events.length, steps: events.slice(-input.last).map(event => {
+          const matches = timeline.steps?.filter(step => step.members.some(member => member.nodeId !== undefined && member.nodeId === event.native?.nodeId)) ?? [];
+          const step = matches.length === 1 ? matches[0] : undefined;
+          if (step === undefined) throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE");
+          return { at: event.at, label: event.label, stepLabel: step.label, state: event.state,
+            skipped: event.notRun.state === "present" ? event.notRun.reason : null };
+        }) });
       } },
   ] };
 }
