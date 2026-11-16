@@ -42,7 +42,7 @@ const facts = ["Example, Avery", "Example, Blake"].map((employeeName, index) => 
 const SqliteTableSchema = z.object({ name: z.string(), sql: z.string().nullable() });
 const SqliteColumnSchema = z.object({ name: z.string(), type: z.string() });
 
-type RetryOptions = Readonly<{ failures?: number; failApprovedRecordOnce?: boolean; onFencedSave?: () => void; secondMemberAlreadyPresent?: boolean }>;
+type RetryOptions = Readonly<{ failures?: number; /** OnBase session opens that fail while the template is built: the first saved person then waits on a failed filing. */ filingFailures?: number; failApprovedRecordOnce?: boolean; onFencedSave?: () => void; secondMemberAlreadyPresent?: boolean }>;
 type ContactSeed = Readonly<{ emplId: string; persisted: ReturnType<ReturnType<typeof createDeterministicContactPersistence>["snapshot"]>; submissions: ReturnType<ReturnType<typeof createDeterministicContactPersistence>["snapshot"]>[] }>;
 type MemberStageSeed = Readonly<{
   ticks: number; approvedReadFailed: boolean; failuresRemaining: number; failAfterSave: boolean;
@@ -154,7 +154,7 @@ function adoptWorkers(database: AuthorityDatabase, path: string, clock: TestCloc
 }
 
 function templateKey(options: RetryOptions) {
-  return JSON.stringify({ failures: options.failures ?? 1, failApprovedRecordOnce: options.failApprovedRecordOnce === true, secondMemberAlreadyPresent: options.secondMemberAlreadyPresent === true });
+  return JSON.stringify({ failures: options.failures ?? 1, filingFailures: options.filingFailures ?? 0, failApprovedRecordOnce: options.failApprovedRecordOnce === true, secondMemberAlreadyPresent: options.secondMemberAlreadyPresent === true });
 }
 
 export function createEmergencyContactRetryWorld() {
@@ -243,6 +243,7 @@ export function createEmergencyContactRetryWorld() {
   }
   async function build(options: RetryOptions) {
     const live = pieces({ ...options, onFencedSave: undefined }, await onbaseFilingFixture());
+    live.filing.next.unavailable = options.filingFailures ?? 0;
     const ids = sequentialIdFactory("b");
     const f = await world.fixture({ ids, coordinator: true, member: live.member, approvedStore: live.accountingStore, documentBytes: live.filing.bytes,
       onHarness: harness => { live.clock.current = harness.authority.clock; },
@@ -275,10 +276,12 @@ export function createEmergencyContactRetryWorld() {
     assert.equal(interrupted.run?.lifecycle.state, "queued", "a terminal failed sibling requeues the allow-partial parent");
     // A saved member waits on its OnBase filing child; settle every member before the template is captured.
     const memberActive = () => f.database.authority.runs.listChildren(f.parentRun.envelope.runId)
-      .some(child => child.envelope.workflow === "emergency-contact-member" && child.lifecycle.state !== "terminal");
+      .some(child => child.envelope.workflow === "emergency-contact-member" && child.lifecycle.state !== "terminal"
+        && f.database.authority.dependencies.waitState(child.envelope.runId)?.state !== "blocked");
     while (memberActive()) {
       const next = await f.canonical.step(f.parentRun, new AbortController().signal);
-      assert.ok(next.outcome.state === "done" || next.outcome.state === "yielded-delegation", `filing stopped: ${next.run.envelope.workflow} ${next.outcome.state}`);
+      assert.ok(next.outcome.state === "done" || next.outcome.state === "yielded-delegation"
+        || (options.filingFailures ?? 0) > 0 && next.run.envelope.workflow === "onbase" && next.outcome.state === "failed", `filing stopped: ${next.run.envelope.workflow} ${next.outcome.state}`);
     }
     return { ...f, live, mintedIds: ids.minted().length };
   }
@@ -296,7 +299,7 @@ export function createEmergencyContactRetryWorld() {
       assert.equal(filed.run.envelope.workflow, "onbase"); assert.equal(filed.run.envelope.parent?.runId, executed.run.envelope.runId);
       return f.canonical.step(root, signal);
     };
-    return { ...f, canonical: { ...f.canonical, step }, facts, persistence: live.persistence, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children, filing: live.filing };
+    return { ...f, raw: f.canonical, canonical: { ...f.canonical, step }, facts, persistence: live.persistence, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children, filing: live.filing };
   }
   async function capture(built: Awaited<ReturnType<typeof build>>): Promise<MemberStageTemplate> {
     const source = built.harness.authority.profile.workspace;

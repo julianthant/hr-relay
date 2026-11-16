@@ -204,13 +204,14 @@ it("shared-page-save — a committed Save with no page to file admits no filing 
   assert.deepEqual(f.children(), []);
   assert.equal(f.filing.imports(), 0);
 });
-it("failed-filing-save — a failed OnBase filing after a committed Save fails the member and keeps its one Save", async () => {
+it("failed-filing-save — a failed OnBase filing after a committed Save holds the member open on its one Save", async () => {
   const f = await memberFixture({ onbaseUnavailable: true });
   const child = f.children()[0]; assert.ok(child);
   assert.ok(child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed");
-  if (f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state !== "terminal") await f.execution.execute(f.run, new AbortController().signal);
   const member = f.database.authority.runs.get(f.run.envelope.runId);
-  assert.ok(member?.lifecycle.state === "terminal" && member.lifecycle.outcome === "failed", `a failed filing must fail its member: ${JSON.stringify(member?.lifecycle)}`);
+  assert.equal(member?.lifecycle.state, "queued", `a failed filing must hold its member open: ${JSON.stringify(member?.lifecycle)}`);
+  assert.deepEqual(f.database.authority.dependencies.waitState(f.run.envelope.runId), { nodeId: "onbase-filing", state: "blocked" });
+  assert.equal(f.database.authority.runResults.get(f.run.envelope.runId), undefined);
   assert.equal(f.persistence.submissions.length, 1);
   assert.equal(f.database.authority.writeIntents.listByRun(f.run.envelope.runId)[0]?.status, "committed");
   assert.equal(f.filing.imports(), 0);
