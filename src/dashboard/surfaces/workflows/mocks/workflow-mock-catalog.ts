@@ -7,7 +7,6 @@ const WORKFLOW_PREVIEW_DEFINITIONS = [{"id": "separations", "label": "Separation
 
 /** Copied contracts: legacy hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87
  * src/dashboard/lib/{input-run-registry,run-modal-registry,onbase-document-types,run-settings}.ts */
-export const MOCK_LEGACY_COMMIT = "9bb973672666b9267569a22d3fa0af722e4c5e87";
 export type MockWorkflowId = typeof WORKFLOW_PREVIEW_DEFINITIONS[number]["id"];
 export type MockMethod = "typed" | "pdf" | "roster" | "delegated";
 export type MockStep = Readonly<{ key: string; label: string; system?: string; message: string; write?: boolean }>;
