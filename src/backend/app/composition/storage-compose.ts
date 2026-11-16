@@ -23,16 +23,19 @@ import { readPrivateFile } from "../../storage/configuration/credential-safe-fil
 import { assertCredentialStoreOwner,createCredentialStore,type CredentialStoreHooks } from "../../storage/configuration/credential-store.js";
 import { prepareStoppedBackupClosure,probeRestoreProfileBrowsersClosed,ProfileRestoreBrowserCustodyUnprovedError,type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
 import { assertStoppedProfileResourcesClosed } from "../../storage/maintenance/profile-custody.js";
+import { fsyncPath,writePrivateStage } from "../../storage/private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../storage/sqlite/migrations.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { composeProfileSettings } from "./dashboard/settings.js";
 import { assertProfileBrowserRoot,composeProfileClosureInventory } from "./profile-credential-inventory.js";
 
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync,readdirSync,readFileSync } from "node:fs";
+import { once } from "node:events";
+import { closeSync,existsSync,mkdirSync,openSync,readdirSync,readFileSync,renameSync,rmSync } from "node:fs";
 import { appendEmergencyFault } from "../../logs/emergency-faults.js";
-import { join,resolve } from "node:path";
+import { dirname,join,resolve } from "node:path";
 import { z } from "zod";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
@@ -255,17 +258,26 @@ async function recoverRegisteredPersonCrash(workspace: string, lifetime: Runtime
   });
 }
 
+/** The storage command a detached quit-time backup finisher runs: `storage finish-shutdown-backup <workspace> <profileId>...`. */
+export const FINISH_SHUTDOWN_BACKUP = "finish-shutdown-backup";
+
+export type ShutdownBackup = (workspace: string, lifetime: RuntimeLifetimeLock, clock: Clock) => Promise<void>;
+
+function shutdownBackupPeople(machine: RuntimeAdmission, lifetime: RuntimeLifetimeLock) {
+  // A person held at startup was never opened this run and keeps their pre-upgrade backup; their store may still be at an older schema.
+  const held = heldPeople.get(lifetime);
+  return machine.readProfileRegistry().profiles.filter(profile => profile.lifecycle === "ready" && profile.credentialState === "saved" && held?.has(profile.profileId) !== true);
+}
+
+/** `only` limits the backup to the people a stopping dashboard handed to its finisher. */
 export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, lifetime: RuntimeLifetimeLock,
-  clock: Clock = systemClock): Promise<void> {
+  clock: Clock = systemClock, only?: ReadonlySet<string>): Promise<void> {
   lifetime.assertHeld();
   if (!existsSync(join(workspace, ".tracker", "control", "installation.json"))) throw new Error("shutdown-backup-installation-missing");
   try {
     await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
       const operation = machine.maintenanceOperation(); operation.consume();
-      const registry = machine.readProfileRegistry();
-      // A person held at startup was never opened this run and keeps their pre-upgrade backup; their store may still be at an older schema.
-      const held = heldPeople.get(lifetime);
-      const ready = registry.profiles.filter(profile => profile.lifecycle === "ready" && profile.credentialState === "saved" && held?.has(profile.profileId) !== true);
+      const ready = shutdownBackupPeople(machine, lifetime).filter(profile => only === undefined || only.has(profile.profileId));
       if (ready.length !== 0) assertMaintenanceCustodyAvailable("backup");
       for (const row of ready) {
         if (hasPendingShutdownBackupRetirement(join(machine.stateRoot, "profiles", row.profileId))) {
@@ -277,16 +289,81 @@ export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, l
         const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
         const closure = await prepareStoppedBackupClosure(profileBrowserClosure, admission, operation, clock, processLockRoot);
         const { backupStoppedAuthority } = await import("../../storage/maintenance/upgrade.js");
-        await backupStoppedAuthority(closure, admission, admission.stateRoot, clock, processLockRoot, operation, "graceful-drain");
+        const report = await backupStoppedAuthority(closure, admission, admission.stateRoot, clock, processLockRoot, operation, "graceful-drain");
+        const manifest = report.manifests.at(-1); if (manifest === undefined) throw new Error("shutdown-backup-result-missing");
+        const backupPath = join(admission.stateRoot, "backups", "authority", manifest.backupFileName);
         assertStoppedProfileResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
         const { retainCleanShutdownBackups } = await import("../../storage/maintenance/clean-shutdown-backups.js");
-        await retainCleanShutdownBackups(admission, clock);
+        await retainCleanShutdownBackups(admission, clock, { manifestPath: `${backupPath}.manifest.json`, backupPath, manifest });
       }
     });
   } catch (error) {
     if (error instanceof StorageMaintenanceCustodyUnavailableError && error.constructor === StorageMaintenanceCustodyUnavailableError && error.cause === undefined && !hasUnprovedSourceClosure(error)) throw error;
     throw new AutomaticShutdownBackupError(error);
   }
+}
+
+const pendingShutdownBackupPath = (workspace: string) => join(workspace, rebuildRuntimeIsolation.stateRoot, "shutdown-backup.pending.json");
+
+/** Records the people whose quit-time backup is unfinished; whoever next holds the lifetime lock completes it. */
+export function writePendingShutdownBackup(workspace: string, people: readonly string[]): void {
+  const path = pendingShutdownBackupPath(workspace), directory = dirname(path), stage = `${path}.stage`;
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  rmSync(stage, { force: true });
+  writePrivateStage(stage, Buffer.from(JSON.stringify({ people })));
+  renameSync(stage, path);
+  fsyncPath(directory);
+}
+
+/** A quit adds its people to any record a finisher or start has not completed yet, so no earlier quit's people are dropped. */
+export function addPendingShutdownBackup(workspace: string, people: readonly string[]): void {
+  writePendingShutdownBackup(workspace, [...new Set([...readPendingShutdownBackup(workspace) ?? [], ...people])]);
+}
+
+/** Whether a quit-time backup is unfinished: its finisher, or a start completing it, may hold the lifetime lock. */
+export function hasPendingShutdownBackup(workspace: string): boolean {
+  return existsSync(pendingShutdownBackupPath(workspace));
+}
+
+export function readPendingShutdownBackup(workspace: string): ReadonlySet<string> | undefined {
+  const path = pendingShutdownBackupPath(workspace);
+  if (!existsSync(path)) return undefined;
+  return new Set(z.strictObject({ people: z.array(z.uuid()).min(1) }).parse(JSON.parse(readFileSync(path, "utf8"))).people);
+}
+
+export function removePendingShutdownBackup(workspace: string): void {
+  rmSync(pendingShutdownBackupPath(workspace), { force: true });
+  fsyncPath(dirname(pendingShutdownBackupPath(workspace)));
+}
+
+/**
+ * The quit-time backup of the stopped store runs in a detached process so the dashboard exits at once. The finisher takes the
+ * lifetime lock this process releases, so it never runs beside a dashboard; a killed finisher leaves no manifest, so nothing counts.
+ */
+export function detachedShutdownBackup(launch: Readonly<{ command: string; prefixArgs: readonly string[]; environment: NodeJS.ProcessEnv; cwd: string }>,
+  spawnProcess: typeof spawn = spawn): ShutdownBackup {
+  return async (workspace, lifetime) => {
+    lifetime.assertHeld();
+    if (!existsSync(join(workspace, ".tracker", "control", "installation.json"))) throw new Error("shutdown-backup-installation-missing");
+    try {
+      const people = await withStoppedMachineStorage(workspace, lifetime, machine => Promise.resolve(shutdownBackupPeople(machine, lifetime).map(profile => profile.profileId)));
+      if (people.length === 0) return;
+      assertMaintenanceCustodyAvailable("backup");
+      addPendingShutdownBackup(workspace, people);
+      const logDirectory = join(workspace, rebuildRuntimeIsolation.stateRoot, "logs");
+      mkdirSync(logDirectory, { recursive: true, mode: 0o700 });
+      const log = openSync(join(logDirectory, "shutdown-backup.log"), "a", 0o600);
+      try {
+        const child = spawnProcess(launch.command, [...launch.prefixArgs, "storage", FINISH_SHUTDOWN_BACKUP, workspace, ...people],
+          { cwd: launch.cwd, env: launch.environment, detached: true, stdio: ["ignore", log, log] });
+        await once(child, "spawn");
+        child.unref();
+      } finally { closeSync(log); }
+    } catch (error) {
+      if (error instanceof StorageMaintenanceCustodyUnavailableError && error.constructor === StorageMaintenanceCustodyUnavailableError && error.cause === undefined && !hasUnprovedSourceClosure(error)) throw error;
+      throw new AutomaticShutdownBackupError(error);
+    }
+  };
 }
 
 export class AutomaticShutdownBackupError extends Error {
