@@ -1,5 +1,7 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("node:worker_threads", async () => {
@@ -7,7 +9,7 @@ vi.mock("node:worker_threads", async () => {
   class Worker extends EventEmitter {
     static started: Worker[] = [];
     terminated = false;
-    constructor(readonly entry: URL, readonly options: { execArgv: string[]; workerData: { path: string; scratchDirectory: string } }) {
+    constructor(readonly entry: URL, readonly options: { execArgv: string[]; env: Record<string, string>; workerData: { path: string } }) {
       super();
       Worker.started.push(this);
     }
@@ -17,7 +19,7 @@ vi.mock("node:worker_threads", async () => {
 });
 
 const { answerInspectionRequest, inspectBackupFileOffThread, workerExecArgv } = await import("../../../../src/backend/storage/sqlite/backup-inspection-worker.js");
-type StubWorker = import("node:events").EventEmitter & { terminated: boolean; options: { execArgv: string[]; workerData: { path: string; scratchDirectory: string } } };
+type StubWorker = import("node:events").EventEmitter & { terminated: boolean; options: { execArgv: string[]; env: Record<string, string>; workerData: { path: string } } };
 const StubWorker = (await import("node:worker_threads")).Worker as unknown as { started: StubWorker[] };
 
 const verdict = { applicationId: 1_217_249_861, schemaVersion: 30, pageCount: 3, authorityGeneration: 7, authorityContentFingerprint: "a".repeat(64), quickCheck: "ok",
@@ -72,7 +74,7 @@ describe("backup inspection worker", () => {
     for (const [index, reply] of replies.entries()) {
       const result = outcome(inspectBackupFileOffThread("/backups/a.sqlite", 22));
       const worker = await started(index + 1);
-      const scratch = worker.options.workerData.scratchDirectory;
+      const scratch = worker.options.env.TMPDIR;
       worker.emit("message", reply);
       expect(await result).toEqual({ error: { name: "Error", message: "backup-inspection-reply-invalid" } });
       expect(worker.terminated).toBe(true);
@@ -82,11 +84,11 @@ describe("backup inspection worker", () => {
   });
 
   it("the thread answers a malformed request with a failure, never an inspection, and ignores another module's start data", () => {
-    const request = { protocol: "relay.backup-inspection.v1", path: "/backups/a.sqlite", busyTimeoutMs: 250, scratchDirectory: "/scratch" };
+    const request = { protocol: "relay.backup-inspection.v1", path: "/backups/a.sqlite", busyTimeoutMs: 250 };
     const invalid = { kind: "failed", name: "Error", message: "backup-inspection-request-invalid" };
     expect(answerInspectionRequest({ protocol: "relay.backup-inspection.v1" })).toEqual(invalid);
     expect(answerInspectionRequest({ ...request, path: 5 })).toEqual(invalid);
-    expect(answerInspectionRequest({ ...request, scratchDirectory: "" })).toEqual(invalid);
+    expect(answerInspectionRequest({ ...request, path: "" })).toEqual(invalid);
     expect(answerInspectionRequest({ ...request, expectedSchemaVersion: "22" })).toEqual(invalid);
     expect(answerInspectionRequest({ ...request, extra: true })).toEqual(invalid);
     expect(answerInspectionRequest(null)).toBeUndefined();
@@ -99,9 +101,10 @@ describe("backup inspection worker", () => {
     const running = outcome(inspectBackupFileOffThread("/backups/a.sqlite", 22, { signal: stop.signal }));
     const queued = outcome(inspectBackupFileOffThread("/backups/b.sqlite", 22, { signal: stop.signal }));
     const worker = await started(1);
-    const scratch = worker.options.workerData.scratchDirectory;
+    const scratch = worker.options.env.TMPDIR;
     expect(scratch.startsWith(`${realpathSync(tmpdir())}/relay-readonly-authority-pid${String(process.pid)}-inspection-`)).toBe(true);
     expect(existsSync(scratch)).toBe(true);
+    expect([worker.options.env.TMP, worker.options.env.TEMP]).toEqual([scratch, scratch]);
     stop.abort();
     expect(await running).toEqual({ error: { name: "AbortError", message: "This operation was aborted", code: 20 } });
     expect(await queued).toEqual({ error: { name: "AbortError", message: "This operation was aborted", code: 20 } });
@@ -121,4 +124,12 @@ describe("backup inspection worker", () => {
     expect(argv[3]).toMatch(/^file:\/\/.*\/tsx\//u);
     expect(argv).toHaveLength(4);
   });
+
+  it.each(["admission/admission.ts", "sqlite/backup-inspection.ts", "sqlite/backup-service.ts", "sqlite/backup-inspection-worker.ts"])(
+    "loads in a fresh process when %s is the first storage module imported", entry => {
+      const url = new URL(`../../../../src/backend/storage/${entry}`, import.meta.url);
+      const output = execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `await import(${JSON.stringify(url.href)}); console.log("loaded");`],
+        { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      expect(output.trim()).toBe("loaded");
+    }, 60_000);
 });

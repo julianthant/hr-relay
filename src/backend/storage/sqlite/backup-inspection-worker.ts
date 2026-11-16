@@ -4,15 +4,17 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { isMainThread, parentPort, Worker, workerData } from "node:worker_threads";
 import { z } from "zod";
+import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { createPrivateDirectory } from "../private-path.js";
-import { BackupCopyInspectionSchema, inspectOpenDatabase, type BackupCopyInspection } from "./backup-inspection.js";
+import { inspectOpenDatabase, type BackupCopyInspection } from "./backup-inspection.js";
 import { withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
+import { BackupCopyInspectionSchema } from "./recovery-contracts.js";
 
 const PROTOCOL = "relay.backup-inspection.v1";
 const InspectionRequestSchema = z.strictObject({ protocol: z.literal(PROTOCOL), path: z.string().min(1), expectedSchemaVersion: z.number().int().positive().optional(),
-  busyTimeoutMs: z.number().int().nonnegative(), scratchDirectory: z.string().min(1) });
+  busyTimeoutMs: z.number().int().nonnegative() });
 const InspectionReplySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("inspected"), inspection: BackupCopyInspectionSchema }),
   z.strictObject({ kind: z.literal("failed"), name: z.string(), message: z.string(), code: z.string().optional() }),
@@ -49,7 +51,9 @@ export function inspectBackupFileOffThread(path: string, expectedSchemaVersion: 
       } catch (error) { releaseTurn(); fail(new Error("backup-inspection-scratch-failed", { cause: error })); return; }
       try {
         worker = new Worker(new URL("./backup-inspection-worker.js", import.meta.url), { name: "relay-backup-inspection", execArgv: workerExecArgv(),
-          workerData: InspectionRequestSchema.parse({ protocol: PROTOCOL, path, ...(expectedSchemaVersion === undefined ? {} : { expectedSchemaVersion }), busyTimeoutMs, scratchDirectory }) });
+          // os.tmpdir() reads the thread's own environment, so the snapshot copy lands in the folder removed on its exit.
+          env: { ...workerBootstrapEnvironment(), TMPDIR: scratchDirectory, TMP: scratchDirectory, TEMP: scratchDirectory },
+          workerData: InspectionRequestSchema.parse({ protocol: PROTOCOL, path, ...(expectedSchemaVersion === undefined ? {} : { expectedSchemaVersion }), busyTimeoutMs }) });
       } catch (error) { removeScratchDirectory(scratchDirectory); releaseTurn(); fail(new Error("backup-inspection-worker-failed", { cause: error })); return; }
       const stop = () => { fail(abortReason(signal)); void worker.terminate(); };
       signal?.addEventListener("abort", stop, { once: true });
@@ -126,8 +130,6 @@ export function answerInspectionRequest(data: unknown): InspectionReply | undefi
 }
 
 function runInspection(request: InspectionRequest): InspectionReply {
-  // os.tmpdir() reads this thread's own environment, so the snapshot copy lands in the folder the parent removes.
-  for (const key of ["TMPDIR", "TMP", "TEMP"]) process.env[key] = request.scratchDirectory;
   try {
     return { kind: "inspected", inspection: BackupCopyInspectionSchema.parse(withReadonlyAuthoritySnapshot(request.path, database => inspectOpenDatabase(database, request.expectedSchemaVersion), request.busyTimeoutMs)) };
   } catch (error) {
