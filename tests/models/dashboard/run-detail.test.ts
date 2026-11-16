@@ -19,6 +19,8 @@ it("binds a cancellation ending to the cancelled run, recorded time and requeste
   const parent = { ...candidate, header: { ...candidate.header, parentRunId: RUN_2 },
     cancellation: { ...cancellation, requestedBy: "parent", outcome: "This run was cancelled when its parent was stopped." } };
   assert.equal(RunDetailWireSchema.safeParse(parent).success, true);
+  const unavailable = { ...candidate, cancellation: { ...cancellation, requestedBy: "unavailable", outcome: "This run was cancelled." } };
+  assert.equal(RunDetailWireSchema.safeParse(unavailable).success, true);
   for (const changed of [
     { ...candidate, header: { ...candidate.header, status: "failed" } },
     { ...candidate, header: { ...candidate.header, status: "running" } },
@@ -27,6 +29,10 @@ it("binds a cancellation ending to the cancelled run, recorded time and requeste
     { ...candidate, cancellation: { ...cancellation, at: "2026-07-31T17:00:01.000Z" } },
     { ...parent, header: candidate.header },
     { ...candidate, cancellation: { ...cancellation, outcome: parent.cancellation.outcome } },
+    { ...unavailable, cancellation: { ...unavailable.cancellation, outcome: cancellation.outcome } },
+    { ...unavailable, cancellation: { ...unavailable.cancellation, outcome: parent.cancellation.outcome } },
+    { ...candidate, cancellation: { ...cancellation, outcome: unavailable.cancellation.outcome } },
+    { ...parent, cancellation: { ...parent.cancellation, outcome: unavailable.cancellation.outcome } },
     { ...candidate, cancellation: { ...cancellation, title: "Internal task name" } },
     { ...candidate, cancellation: { ...cancellation, outcome: "Unreviewed reason" } },
     { ...candidate, cancellation: { ...cancellation, nodeId: "fabricated-node" } },

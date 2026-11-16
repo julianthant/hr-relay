@@ -6,6 +6,7 @@ import { createOperatorProjection } from "../../../../../src/backend/app/composi
 import { createOperatorRunDetail } from "../../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { buildRunDetail } from "../../../../../src/backend/runs/queries/run-detail.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { childExecutionModules, childExecutionRoot } from "../../../../support/fixtures/child-execution-workflows.js";
 import { plan1ControlledFailureStores, plan1Leaf } from "../../../../support/fixtures/plan1-operation-workflows.js";
 import { createDelegationExecutionWorld } from "../../../../support/helpers/backend/delegation-execution-world.js";
@@ -81,13 +82,16 @@ it("serves no cancellation ending for a failed run", async () => {
   assert.deepEqual(detail.timeline.steps?.map(step => step.state), ["failed", "pending"]);
 });
 
-it("does not guess a requester when the retained ending has no cancellation source", async () => {
+it.each([undefined, "RUN_STALE_QUEUE_CANCELLED", "RUN_LOGOUT_CANCELLED"] as const)("preserves the ending without guessing an unavailable requester (%s)", async code => {
   const f = await world.fixture();
+  const at = f.clock.now().toISOString();
   assert.equal(f.execution.lifecycle.transition({ commandId: randomUUID(), runId: f.run.envelope.runId,
-    expectedVersion: f.run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }).state, "applied");
+    expectedVersion: f.run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: at,
+      ...(code === undefined ? {} : { errorSummary: `${code}: ${ERROR_CATALOG[code].text}` }) } }).state, "applied");
+  f.clock.advanceWall(30_000);
   const detail = detailOf(f);
   assert.equal(detail.header.status, "cancelled");
-  assert.equal(detail.cancellation, undefined);
+  assert.deepEqual(detail.cancellation, { title: "Run cancelled", at, requestedBy: "unavailable", outcome: "This run was cancelled." });
   assert.deepEqual(detail.timeline.steps?.map(step => step.state), ["cancelled", "pending"]);
 });
 

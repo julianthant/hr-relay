@@ -363,12 +363,12 @@ export function buildRunDetail(
 
   const canonical = deps.canonical;
   let cancellation: RunDetailWire["cancellation"];
-  // A retained ending without its cancellation source cannot name a requester.
-  if (lifecycle.state === "terminal" && lifecycle.outcome === "cancelled" && canonical !== undefined
-    && canonical.database.authority.lifecycleJournal.findCancellation(runId) !== undefined) {
-    const { cancelledBy } = readDelegationCancellation(canonical.database.authority, runId);
-    cancellation = { title: "Run cancelled", at: lifecycle.endedAt, requestedBy: cancelledBy,
-      outcome: cancelledBy === "parent" ? "This run was cancelled when its parent was stopped." : "You cancelled this run." };
+  if (lifecycle.state === "terminal" && lifecycle.outcome === "cancelled") {
+    const requestedBy = canonical !== undefined && canonical.database.authority.lifecycleJournal.findCancellation(runId) !== undefined
+      ? readDelegationCancellation(canonical.database.authority, runId).cancelledBy : "unavailable";
+    cancellation = { title: "Run cancelled", at: lifecycle.endedAt, requestedBy,
+      outcome: requestedBy === "parent" ? "This run was cancelled when its parent was stopped."
+        : requestedBy === "operator" ? "You cancelled this run." : "This run was cancelled." };
   }
   const review = canonical === undefined ? undefined : canonical.database.withAuthorityReadSnapshot(() => {
     const ocrRunId = authority.envelope.workflow === "ocr" ? runId : hostedOcrRun(canonical.database.authority, authority)?.envelope.runId;

@@ -283,8 +283,8 @@ export const RunDetailWireSchema = z.strictObject({
   cancellation: z.strictObject({
     title: z.literal("Run cancelled"),
     at: IsoInstantSchema,
-    requestedBy: z.enum(["operator", "parent"]),
-    outcome: z.enum(["You cancelled this run.", "This run was cancelled when its parent was stopped."]),
+    requestedBy: z.enum(["operator", "parent", "unavailable"]),
+    outcome: z.enum(["You cancelled this run.", "This run was cancelled when its parent was stopped.", "This run was cancelled."]),
   }).optional(),
   context: ContextSummaryWireSchema,
   ocrReviewChanges: z.array(OcrReviewChangeSchema).min(1).optional(),
@@ -306,7 +306,8 @@ export const RunDetailWireSchema = z.strictObject({
     || detail.outcome.completedAt !== detail.cancellation.at
     || detail.cancellation.requestedBy === "parent" && detail.header.parentRunId === undefined
     || detail.cancellation.outcome !== (detail.cancellation.requestedBy === "parent"
-      ? "This run was cancelled when its parent was stopped." : "You cancelled this run."))) {
+      ? "This run was cancelled when its parent was stopped."
+      : detail.cancellation.requestedBy === "operator" ? "You cancelled this run." : "This run was cancelled."))) {
     context.addIssue({ code: "custom", path: ["cancellation"], message: "cancellation requires the cancelled run's recorded time and requester" });
   }
   refineDecisionActions(detail.decision, detail.childRetry === undefined ? [] : [detail.childRetry], context, ["decision"]);
