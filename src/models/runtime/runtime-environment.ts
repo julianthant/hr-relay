@@ -127,7 +127,7 @@ const SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
 ] as const;
 
 const TEST_ONLY_ENVIRONMENT_KEYS = [
-  "SESSIONS_BAR_RENDER_DIR", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN", "RELAY_TEST_TIME_SCALE", "RELAY_TEST_PROCESS_IMPORT",
+  "SESSIONS_BAR_RENDER_DIR", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN", "RELAY_TEST_NATIVE", "RELAY_TEST_TIME_SCALE", "RELAY_TEST_PROCESS_IMPORT",
   "RELAY_TEST_HOST",
   "NOTIFICATIONS_MOCK_OUT", "NOTIFICATIONS_MOCK_THEMES", "NOTIFICATIONS_MOCK_SCALE", "AX_MOCK_OUT", "AX_MOCK_THEMES", "AX_MOCK_WIDTH", "AX_MOCK_ONLY", "AX_MOCK_SCALE", "STATUS_MOCK_OUT", "STATUS_MOCK_THEMES", "STATUS_MOCK_WIDTH", "STATUS_MOCK_ONLY", "STATUS_MOCK_SCALE", "LOGS_CARDS_OUT", "LOGS_CARDS_ONLY", "LOGS_CARDS_HEIGHT",
   "TMPDIR", "TMP", "TEMP", "KEEP_TEST_TMP",
@@ -160,6 +160,7 @@ const DOCUMENTED_ENVIRONMENT_KEYS: ReadonlySet<string> = new Set(["RELAY_TEST_HO
 const TEST_ONLY_ENVIRONMENT_OWNERS = {
   NODE_OPTIONS: ["playwright.mocks.config.ts", "tests/support/duo-ceremony-setup.ts", "tests/support/helpers/credential-keychain-fake.ts"],
   RELAY_TEST_KEYCHAIN: ["tests/support/helpers/credential-keychain-fake.ts"],
+  RELAY_TEST_NATIVE: ["vitest.config.ts", "tests/architecture/tooling/guard-manifest.test.ts"],
   RELAY_TEST_TIME_SCALE: ["tests/support/time-scale.ts"],
   RELAY_TEST_PROCESS_IMPORT: ["tests/support/compiled-process.ts", "tests/support/compiled-process-setup.ts"],
   RELAY_TEST_HOST: ["scripts/test/pc.ts"],
@@ -294,6 +295,7 @@ export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReader
   { key: PARENT_BUILD_ID_ENV, paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
   { key: "NODE_OPTIONS", paths: ["playwright.mocks.config.ts"] },
   { key: "RELAY_TEST_HOST", paths: ["scripts/test/pc.ts"] },
+  { key: "RELAY_TEST_NATIVE", paths: ["vitest.config.ts"] },
 ]));
 
 interface ComputedReaderInput {
@@ -338,6 +340,8 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "hostAwareResolutionEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
   computedReader({ path: "scripts/dev/dashboard.ts", enclosingSymbol: "runDevDashboard", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "target-bootstrap", targets: { kind: "bulk-pass-through", boundary: "dashboard-child-processes", reason: "the dashboard launcher forwards its inherited environment plus one owned nonce to the two same-runtime child processes" } }),
   computedReader({ path: "vite.dashboard.config.ts", enclosingSymbol: "<module>", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "5c77e74cb49d532097f685ae27e9a8029afb783349dbaff9f709b90a7cece316", classification: "target-bootstrap", targets: { kind: "closed-targets", exact: ["HRAUTO_DASHBOARD_LAUNCH_NONCE"], families: [] } }),
+  computedReader({ path: "scripts/test/pc.ts", enclosingSymbol: "mac", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "test-command-child", reason: "the PC Vitest listing passes the inherited environment with RELAY_TEST_NATIVE set" } }),
+  computedReader({ path: "scripts/test/pc.ts", enclosingSymbol: "remote", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "test-command-child", reason: "the PC remote Vitest run passes the inherited environment with RELAY_TEST_NATIVE set" } }),
 ]));
 
 export const RuntimeEnvironmentRegistrySchema = z.strictObject({

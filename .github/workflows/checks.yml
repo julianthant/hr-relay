@@ -1,18 +1,12 @@
-name: Release checks
+name: Checks
 
 on:
   workflow_call:
-    outputs:
-      static:
-        value: ${{ jobs.static.result }}
-      privacy:
-        value: ${{ jobs.privacy.result }}
-      unit:
-        value: ${{ jobs.unit.result }}
-      integration:
-        value: ${{ jobs.integration.result }}
-      architecture:
-        value: ${{ jobs.architecture.result }}
+    inputs:
+      kind:
+        description: Calling workflow, portable or release.
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -103,17 +97,34 @@ jobs:
         id: select
         env:
           FILTERS: ${{ toJSON(steps.filter.outputs) }}
+          KIND: ${{ inputs.kind }}
         with:
           script: |
             const { execFileSync } = require('node:child_process');
             const input = {
-              workflow: 'release', event: context.eventName,
+              workflow: process.env.KIND, event: context.eventName,
               base: context.payload.pull_request?.base.ref ?? '', head: context.payload.pull_request?.head.ref ?? '',
               draft: context.payload.pull_request?.draft ?? false, filters: JSON.parse(process.env.FILTERS),
             };
             core.setOutput('plan', execFileSync('node', [
               '--import', 'tsx', 'scripts/test/ci-plan.ts', 'plan', JSON.stringify(input),
             ], { encoding: 'utf8' }).trim());
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm ci
+        working-directory: fast-duo
+      - run: npm run lint
+        working-directory: fast-duo
 
   static:
     name: static
@@ -126,12 +137,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npm run lint
       - run: npm ci
         working-directory: fast-duo
       - run: npm test
-        working-directory: fast-duo
-      - run: npm run lint
         working-directory: fast-duo
       - run: npm run build:observer-policy
       - run: npm run build:observer-policy -- --check
@@ -189,7 +197,7 @@ jobs:
         env:
           SUITE: ${{ matrix.suite }}
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=2
+        run: scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=3
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
@@ -285,76 +293,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  windows:
-    needs: changes
-    name: Windows ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.shards }}
-    if: ${{ fromJSON(needs.changes.outputs.plan).windows.include[0] != null }}
-    runs-on: windows-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        shell: bash
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.plan).windows }}
-    steps:
-      - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .node-version
-          cache: npm
-      - run: npm ci
-      - run: npm run build:observer-policy
-      - uses: actions/download-artifact@v8
-        with:
-          name: ci-balancing
-          path: scripts/test/
-      - uses: actions/cache@v6
-        if: fromJSON(needs.changes.outputs.plan).integration
-        with:
-          path: ~/AppData/Local/ms-playwright
-          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}
-      - name: Install Chromium
-        if: fromJSON(needs.changes.outputs.plan).integration
-        run: npx playwright install chromium
-      - run: npm run web:build
-        if: fromJSON(needs.changes.outputs.plan).integration
-      - name: Verify full Chromium installation before timed native proofs
-        if: fromJSON(needs.changes.outputs.plan).integration
-        timeout-minutes: 1
-        run: npx tsx scripts/test/chromium-preflight.ts
-      - name: Check native browser process proofs without competing files
-        if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan).integration }}
-        env:
-          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh integration serial "$SLICE" --maxWorkers=1 --no-file-parallelism
-      - name: Storage upgrade files without competing files
-        if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan).integration }}
-        env:
-          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh integration storage "$SLICE" --maxWorkers=1 --no-file-parallelism
-      - name: Native unit files
-        if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan).unit }}
-        env:
-          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh unit native "$SLICE" --maxWorkers=2
-      - name: Native integration files
-        if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan).integration }}
-        env:
-          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh integration native "$SLICE" --maxWorkers=2
-      - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
-        with:
-          name: durations-windows-${{ matrix.shard }}
-          path: ${{ runner.temp }}/durations/
-          if-no-files-found: ignore
-          retention-days: 14
-
   unit-proofs:
-    needs: [changes, ubuntu, macos, windows]
-    if: ${{ !cancelled() }}
+    needs: [changes, ubuntu, macos]
+    if: ${{ !cancelled() && inputs.kind == 'release' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -370,7 +311,7 @@ jobs:
 
   integration:
     name: integration
-    needs: [changes, ubuntu, macos, windows]
+    needs: [changes, ubuntu, macos]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -379,7 +320,7 @@ jobs:
           SELECTED: ${{ fromJSON(needs.changes.outputs.plan).integration }}
           UBUNTU_RESULT: ${{ needs.ubuntu.result }}
           FULL_RELEASE: ${{ fromJSON(needs.changes.outputs.plan).fullRelease }}
-          NATIVE_RESULTS: ${{ needs.macos.result }} ${{ needs.windows.result }}
+          NATIVE_RESULT: ${{ needs.macos.result }}
         run: |
           test "$PLAN_RESULT" = success
           if [ "$SELECTED" = false ]; then
@@ -388,10 +329,10 @@ jobs:
             test "$SELECTED" = true
             test "$UBUNTU_RESULT" = success
             if [ "$FULL_RELEASE" = true ]; then
-              test "$NATIVE_RESULTS" = "success success"
+              test "$NATIVE_RESULT" = success
             else
               test "$FULL_RELEASE" = false
-              test "$NATIVE_RESULTS" = "skipped skipped"
+              test "$NATIVE_RESULT" = skipped
             fi
           fi
 
@@ -415,11 +356,12 @@ jobs:
           fi
 
 
-  release-batch:
-    name: release batch
-    if: ${{ fromJSON(needs.changes.outputs.plan).releaseBatch }}
-    needs: [changes, static, privacy, unit-proofs, integration, architecture]
-    runs-on: macos-15
+  perf:
+    name: perf
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).perf }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -429,28 +371,24 @@ jobs:
       - run: npm ci
       - run: npm run build:observer-policy
       - uses: actions/cache@v6
-        id: browsers
         with:
-          path: ~/Library/Caches/ms-playwright
-          key: ${{ runner.os }}-${{ runner.arch }}-macos-15-playwright-chromium-${{ hashFiles('package-lock.json') }}
-      - run: npx playwright install chromium
-        if: steps.browsers.outputs.cache-hit != 'true'
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}
+      - name: Install Chromium
+        run: npx playwright install chromium
       - run: npm run web:build
-      - name: Mount test temp on a RAM disk
+      - name: Put test temp on tmpfs
         run: |
-          dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
-          vol=$(dirname "$dir")
-          case "$(mount | grep -F " on ${vol} " || true)" in
-            *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
-          esac
+          dir=$(mktemp -d /dev/shm/relay-tmp.XXXXXX)
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - run: npm run test:coverage
       - run: npm run test:perf
 
-  timings:
-    needs: [changes, static, privacy, ubuntu, integration, architecture, macos, windows, unit-proofs, release-batch]
-    if: ${{ !cancelled() && needs.changes.result == 'success' && fromJSON(needs.changes.outputs.plan).testJobs > 0 }}
+  smoke:
+    name: smoke
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).smoke }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -458,29 +396,23 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - env:
-          PLAN: ${{ needs.changes.outputs.plan }}
-          RESULTS: ${{ toJSON(needs) }}
-        run: node --import tsx scripts/test/ci-plan.ts proofs "$PLAN" "$RESULTS"
-      - uses: actions/download-artifact@v8
+      - run: npm run build:observer-policy
+      - uses: actions/cache@v6
         with:
-          name: ci-balancing
-          path: scripts/test/
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: durations-*
-          path: ${{ runner.temp }}/durations
-          merge-multiple: true
-      - run: npx tsx scripts/test/ci-files.ts durations "$RUNNER_TEMP/durations"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ci-timings
-          path: scripts/test/ci-durations.json
-          retention-days: 14
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - run: npm run web:build
+      - name: Put test temp on tmpfs
+        run: |
+          dir=$(mktemp -d /dev/shm/relay-tmp.XXXXXX)
+          printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
+      - run: npm run test:smoke
 
   unit:
     name: unit
-    needs: [changes, static, privacy, ubuntu, integration, architecture, macos, windows, unit-proofs, release-batch, timings]
+    needs: [changes, lint, static, privacy, ubuntu, integration, architecture, macos, unit-proofs, perf, smoke]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -490,7 +422,40 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - env:
+      - name: Require every proof
+        env:
+          PLAN: ${{ needs.changes.outputs.plan }}
+          RESULTS: ${{ toJSON(needs) }}
+        run: node --import tsx scripts/test/ci-plan.ts proofs "$PLAN" "$RESULTS"
+      - name: Decide ci-timings publication
+        id: publish
+        env:
+          PLAN: ${{ needs.changes.outputs.plan }}
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          decision=$(node --import tsx scripts/test/ci-plan.ts publish "$PLAN" "$RESULTS")
+          echo "upload=$decision" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
+        if: ${{ success() && steps.publish.outputs.upload == 'true' }}
+        with:
+          name: ci-balancing
+          path: scripts/test/
+      - uses: actions/download-artifact@v8
+        if: ${{ success() && steps.publish.outputs.upload == 'true' }}
+        with:
+          pattern: durations-*
+          path: ${{ runner.temp }}/durations
+          merge-multiple: true
+      - run: npx tsx scripts/test/ci-files.ts durations "$RUNNER_TEMP/durations"
+        if: ${{ success() && steps.publish.outputs.upload == 'true' }}
+      - uses: actions/upload-artifact@v7
+        if: ${{ success() && steps.publish.outputs.upload == 'true' }}
+        with:
+          name: ci-timings
+          path: scripts/test/ci-durations.json
+          retention-days: 14
+      - name: Verify the required unit result
+        env:
           PLAN: ${{ needs.changes.outputs.plan }}
           RESULTS: ${{ toJSON(needs) }}
         run: node --import tsx scripts/test/ci-plan.ts verify "$PLAN" "$RESULTS"

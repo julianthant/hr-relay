@@ -1,12 +1,9 @@
 name: Merge train
 
-# Merges the latest staging into every open PR so CI always tests the real combination.
+# Merges the latest staging into eligible PRs with auto-merge enabled.
 # Only operator-authored, same-repository PRs may run generators.
-# CI calls it as its final job (with the PR result); a push to staging also starts it.
+# staging.yml calls it after a pull request's gate, on a push to staging and when auto-merge is enabled.
 on:
-  push:
-    branches: [staging]
-    paths-ignore: ['docs/roadmap/**']
   workflow_call:
     inputs:
       pr: {type: string, default: ""}
@@ -53,13 +50,11 @@ jobs:
             success) gh pr edit "$PR" --remove-label train-failed || true ;;
           esac
 
-      - name: Merge staging into every open PR that lacks it
+      - name: Merge staging into auto-merge PRs that lack it
         run: |
-          # A new staging can change how a PR must be fixed, so every open PR re-runs on it,
-          # whatever its labels or auto-merge state. CI's per-PR supersession cancels the older run.
           gh pr list --base staging --state open --limit 100 \
-            --json number,isDraft,headRefOid,headRepositoryOwner,isCrossRepository,author \
-            --jq '.[] | select(.isDraft == false and .isCrossRepository == false and .author.login == "julianthant" and .headRepositoryOwner.login == "${{ github.repository_owner }}") | "\(.number) \(.headRefOid)"' |
+            --json number,isDraft,headRefOid,headRepositoryOwner,isCrossRepository,author,autoMergeRequest \
+            --jq '.[] | select(.isDraft == false and .isCrossRepository == false and .author.login == "julianthant" and .headRepositoryOwner.login == "${{ github.repository_owner }}" and .autoMergeRequest != null) | "\(.number) \(.headRefOid)"' |
           while read -r number head; do
             behind=$(gh api "repos/$GH_REPO/compare/$head...staging" --jq .ahead_by) || continue
             [ "$behind" = 0 ] && continue
