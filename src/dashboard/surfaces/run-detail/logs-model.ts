@@ -1,5 +1,4 @@
 /** Which tabs a run detail advertises, and which one opens. */
-import { useCallback, useMemo, useRef, useState } from "react";
 import type { z } from "zod";
 import {
   LogPageCursorSchema,

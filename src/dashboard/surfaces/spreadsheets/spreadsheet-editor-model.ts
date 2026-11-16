@@ -3,7 +3,6 @@ import { displayExtractedDate, formatInstantDate } from "../../lib/date-format.j
 import { SPREADSHEET_FIELDS, spreadsheetField } from '../../../models/fields/workbook-fields.js';
 import { CustomRosterFieldIdSchema } from '../../../models/dashboard/workbooks.js';
 import { spreadsheetEditorField, spreadsheetValueMatches } from './spreadsheet-fields-model.js';
-import { populatedSpreadsheetValue, workbookSizeIssue } from '../../../rules/spreadsheets/workbook-size.js';
 
 export function spreadsheetForeground(background: string | undefined): string | undefined {
   const hex = background?.match(/#[0-9a-f]{6}/i)?.[0];

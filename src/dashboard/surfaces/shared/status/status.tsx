@@ -1,6 +1,6 @@
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { cn } from "../../../lib/utils.js";
-import { DS_STATUS, StatusPill, dsText } from "../../../ds/ui.js";
+import { DS_STATUS, StatusPill } from "../../../ds/ui.js";
 import type { QueueSurfaceWire, StepInterruptWire } from "../../../../models/dashboard/projection.js";
 import {
   stepInterruptLabel,

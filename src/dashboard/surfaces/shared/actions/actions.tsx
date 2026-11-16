@@ -2,9 +2,7 @@ import { useRef, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
-  CheckCircle2,
   ChevronsUp,
-  CircleSlash,
   ClipboardList,
   PauseCircle,
   Pause,
@@ -36,7 +34,6 @@ import {
   dsIcon,
   dsMotion,
   dsRadius,
-  dsText,
 } from "../../../ds/ui.js";
 import {
   actionsAt,
