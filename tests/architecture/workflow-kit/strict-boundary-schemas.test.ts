@@ -55,7 +55,6 @@ import { FreshnessPolicySchema, ProvenancePolicySchema, SubjectBindingSpecSchema
 import { UiVerificationEvidenceManifestSchema, UiVerificationScenarioSchema } from "../../../src/models/ui/contracts.js";
 import { CRM_ONBOARDING_DISPLAYED_EID, CrmOnboardingDatesReadSchema, CrmOnboardingRecordReadSchema, CrmSubjectBindingSchema } from "../../../src/models/ui/crm-onboarding.js";
 import { SECRET_SPECS, ProtectedSecretSourceSchema, SecretAvailabilitySchema, SecretSpecSchema } from "../../../src/models/config/secrets.js";
-import { ActivityPersonPseudonymEvidenceSchema, ActivityPersonPseudonymGenerationBindingSchema } from "../../../src/models/trust/activity-person-pseudonym.js";
 import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
 import { ActionEvidenceSchema, DecisionEvidenceSchema, EvidenceFactSchema, ReuseEvidenceSchema, RunEvidenceReceiptSchema, UncertaintyEvidenceSchema, VerificationEvidenceSchema } from "../../../src/models/trust/evidence.js";
 import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
@@ -542,22 +541,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "AuthorityDatabaseOptions", schema: AuthorityDatabaseOptionsSchema, fixtures: [{ path: "/tmp/authority.sqlite", busyTimeoutMs: 250, migrationOwner: "unit-test" }] },
   { name: "AuthorityMeta", schema: AuthorityMetaSchema, fixtures: [{ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, installationId: UUID_1, profileId: UUID_2, authorityGeneration: 0, updatedAt: NOW }] },
   { name: "AuthoritySchemaInspection", schema: AuthoritySchemaInspectionSchema, fixtures: [SQLITE_SCHEMA_INSPECTION] },
-  { name: "ActivityPersonPseudonymEvidence", schema: ActivityPersonPseudonymEvidenceSchema, fixtures: [{
-    runId: UUID_2,
-    workflowId: "separations",
-    keyGeneration: "activity-person-g1",
-    pseudonym: HASH_A,
-    derivation: "hmac-sha-256/activity-person/v1",
-  }] },
-  {
-    name: "ActivityPersonPseudonymGenerationBinding",
-    schema: ActivityPersonPseudonymGenerationBindingSchema,
-    fixtures: [{
-      keyGeneration: "activity-person-g1",
-      keyCommitment: HASH_A,
-      derivation: "hmac-sha-256/activity-person-key-commitment/v1",
-    }],
-  },
 
 
 
@@ -1173,8 +1156,6 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/intake/enqueue.ts:IntakeEnqueueSessionView",
   "src/models/intake/enqueue.ts:IntakeEnqueuePlan",
   "src/models/intake/enqueue.ts:IntakeEnqueuePlanInput",
-  // The identity domain retains a secret in a closure; only its schema-bound derivation crosses boundaries.
-  "src/models/trust/activity-person-pseudonym.ts:ActivityPersonPseudonymDomain",
   // Omission declarations carry producer functions and plans use Maps; crossing values have strict schemas.
   "src/models/workflow/step-omission.ts:StepOmissionProduceContext",
   "src/models/workflow/step-omission.ts:StepOmissionDeclaration",
