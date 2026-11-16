@@ -61,7 +61,6 @@ helpers that hide test registrations behind a helper-style name.
 | Types | `tests/types/`; `npm run typecheck` | Type inference and illegal calls pinned with `@ts-expect-error` and positive controls. |
 | Mock scenes | `tests/mocks/`; `npm run mocks` | `/ui-mock` frames rendered from the mock build. Not a test gate; CI never runs it. |
 | Performance | `tests/perf/**/*.test.ts`; Vitest `perf` via `npm run test:perf`. `tests/perf/dashboard-benchmark.ts` via `npm run perf:dashboard`. | Fixture performance checks outside coverage, deterministic structural counters, and separately reported host-dependent timings. |
-| Local | `<module>.local.test.ts` and `<module>.local.integration.test.ts`; Vitest `local` via `npm run test:local`. | Tests that need the operator's machine or accounts: a live dry run against UCPath, Kuali, CRM or Duo, the real login Keychain, or the real store. The topic name `local` is that marker. |
 
 A test that opens a database, including `:memory:`, starts a process or socket, drives a browser,
 or executes a composed workflow belongs in integration unless it is a repository-wide architecture
@@ -87,19 +86,16 @@ use the same zone, so reviewed local dates and times do not depend on the host's
 
 ## 2. Vitest selection and commands
 
-`vitest.config.ts` defines five named projects. `guard-manifest.test.ts` audits exact includes,
-excludes, reporters, and single ownership of the test corpus. Unit, integration, architecture and
-perf fail when empty. The local project may be empty: that is the absence of an operator-machine
-test, and `npm run test:local` passes `--passWithNoTests=true` for it. Cloud runs select unit,
-integration and architecture only. Coverage stays on those three and does not select local.
+`vitest.config.ts` defines four named projects. `guard-manifest.test.ts` audits exact includes,
+excludes, reporters, and single ownership of the test corpus. Every project fails when empty.
+Cloud runs and coverage select unit, integration and architecture.
 
 | Project | Include | Exclude |
 | --- | --- | --- |
-| `unit` | `tests/**/*.test.ts` | `tests/**/*.integration.test.ts`, `tests/**/*.local.test.ts`, `tests/architecture/**`, `tests/mocks/**`, `tests/perf/**` |
-| `integration` | `tests/**/*.integration.test.ts` | `tests/**/*.local.integration.test.ts`, `tests/perf/**` |
-| `architecture` | `tests/architecture/**/*.test.ts` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` |
-| `perf` | `tests/perf/**/*.test.ts` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` |
-| `local` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` | `tests/mocks/**` |
+| `unit` | `tests/**/*.test.ts` | `tests/**/*.integration.test.ts`, `tests/architecture/**`, `tests/mocks/**`, `tests/perf/**` |
+| `integration` | `tests/**/*.integration.test.ts` | `tests/perf/**` |
+| `architecture` | `tests/architecture/**/*.test.ts` | None |
+| `perf` | `tests/perf/**/*.test.ts` | None |
 
 `tests/mocks/` is outside Vitest. There is no scenario project or current `tests/scenario/`
 corpus. Scenario declarations retained in workflow/contracts are graph metadata, not execution
@@ -107,11 +103,10 @@ results. Role-derived scenario paths do not prove that a file exists.
 
 | Command | Exact package script or purpose |
 | --- | --- |
-| `npm run test -- <paths>` | `vitest run --project unit --project integration --project architecture --project perf`. A bare run does not select `local`. |
+| `npm run test -- <paths>` | `vitest run --project unit --project integration --project architecture --project perf`. |
 | `npm run test:unit -- <paths>` | `vitest run --project unit --passWithNoTests=false`. |
 | `npm run test:integration -- <paths>` | `vitest run --project integration --passWithNoTests=false`. |
 | `npm run test:architecture -- <paths>` | `vitest run --project architecture --passWithNoTests=false`. |
-| `npm run test:local -- <paths>` | `vitest run --project local --passWithNoTests=true`. |
 | `npm run test:coverage` | Local only: `vitest run --coverage --project unit --project integration --project architecture`. No workflow runs coverage; floors are unchanged. |
 | `npm run test:perf` | `vitest run --project perf --passWithNoTests=false`. |
 | `npm run test:watch` | Interactive `vitest` on unit, integration, architecture and perf. |
@@ -326,7 +321,7 @@ proves the selections give each file to exactly one job, so selected paths need 
 selection/history adapters and actual summary-shell failures for staging, source/head, Markdown
 and manual cases. Source/API-list checks are not the Actions graph proof: the operator reviews
 the actual published staging graph to confirm no release workflow is loaded.
-Coverage is local only through `npm run test:coverage`, with unchanged floors. Local project selection is unchanged.
+Coverage is local only through `npm run test:coverage`, with unchanged floors.
 
 ## 3. Private test temporary directory
 
@@ -527,10 +522,9 @@ maintenance. Its broad patterns include `src/**/*write-sequencer*.ts`,
 `coverage.thresholds` contains no branch threshold. Those constants do not create a branch gate.
 The global configured floor is 60, not 80.
 
-The sole exclusion is `src/generated/**/*.ts`, declared planned with owner `src/generated` and
-reason "Generated projections are verified by determinism guards." The manifest verifies the
-serialized exclusion-list SHA-256 from `guard-inventory.json`. A planned owner must not exist or
-match files. An active owner must exist and match files. Owners must be exact, independent paths,
+The coverage exclusion list is empty. The manifest verifies its serialized SHA-256 from
+`guard-inventory.json` and audits exclusion activation with independent fixtures. A planned owner
+must not exist or match files. An active owner must exist and match files. Owners must be exact, independent paths,
 with nonempty reasons. An exclusion cannot silently grow into a parent scope.
 
 ## 7. Mock scenes
