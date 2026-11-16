@@ -3,10 +3,13 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
-import { QUEUED_RUN } from "../../../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
+import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import { describe, expect, it, vi } from "vitest";
 import { createNotificationHealthObserver, readNotificationHealth } from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import * as backupInspection from "../../../../../src/backend/storage/sqlite/backup-inspection.js";
+import * as backupInspectionWorker from "../../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
 import { parseBackupManifestFile } from "../../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityBackupService, syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { releaseSeededWriteOwners } from "../../../../support/helpers/timeline-write-fixture.js";
@@ -174,5 +177,96 @@ describe("canonical notification producers", () => {
       expect(f.inbox.list("local-operator").find(row => row.title.includes("disk-space"))?.count).toBe(2);
       expect(f.db.authority.notificationHealth.get("outbox-stalled")).toBeUndefined();
     } finally { await f.close(); }
+  });
+});
+
+/** Holds each off-thread backup inspection until the test settles it; the stand-in verdict is the synchronous full inspection. */
+function holdBackupInspections() {
+  const held: Array<{ settle(outcome: "inspect" | Error): void; signal: AbortSignal | undefined; path: string }> = [];
+  const spy = vi.spyOn(backupInspectionWorker, "inspectAuthorityBackupOffThread").mockImplementation((admission, path, expectedSchemaVersion, options) =>
+    new Promise((resolve, reject) => {
+      options?.signal?.addEventListener("abort", () => reject(new DOMException("stopped", "AbortError")), { once: true });
+      held.push({ signal: options?.signal, path, settle: outcome => {
+        if (outcome instanceof Error) reject(outcome);
+        else resolve(backupInspection.inspectAuthorityBackupReadOnly(admission, path, expectedSchemaVersion));
+      } });
+    }));
+  return { held, restore: () => spy.mockRestore() };
+}
+async function withOneBackup(f: Awaited<ReturnType<typeof fixture>>) {
+  const directory = join(f.root, "backups", "authority"); mkdirSync(directory, { recursive: true });
+  await new AuthorityBackupService(f.db, { directory }, f.clock).request({ trigger: "operator", requiredGeneration: f.db.getMeta().authorityGeneration });
+}
+const settledYet = (promise: Promise<unknown>) => { let settled = false; void promise.then(() => { settled = true; }, () => { settled = true; }); return () => settled; };
+
+describe("backup inspection off the main thread", () => {
+  it("returns to the event loop while a backup inspection runs and waits for its verdict", async () => {
+    const f = await fixture();
+    const inspections = holdBackupInspections();
+    try {
+      await withOneBackup(f);
+      const reading = readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock });
+      const settled = settledYet(reading);
+      await vi.waitFor(() => expect(inspections.held).toHaveLength(1));
+      await new Promise(resolve => setTimeout(resolve, 5));
+      expect(settled()).toBe(false);
+      inspections.held[0].settle("inspect");
+      expect((await reading).backupFailed).toBe(false);
+    } finally { inspections.restore(); await f.close(); }
+  });
+
+  it("raises nothing while an inspection is pending and fails the backup when the inspection throws, without remembering it", async () => {
+    const f = await fixture();
+    const inspections = holdBackupInspections();
+    try {
+      await withOneBackup(f);
+      const read = () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock });
+      const pass = createNotificationHealthObserver({ database: f.db, clock: f.clock, inbox: f.inbox, read })();
+      await vi.waitFor(() => expect(inspections.held).toHaveLength(1));
+      expect(f.inbox.list("local-operator")).toEqual([]);
+      expect(f.db.authority.notificationHealth.get("backup")).toBeUndefined();
+      inspections.held[0].settle(new Error("backup-inspection-worker-exited: 1"));
+      await pass;
+      expect(f.db.authority.notificationHealth.get("backup")?.active).toBe(true);
+      expect(f.inbox.list("local-operator").filter(row => row.title.includes("backup"))).toHaveLength(1);
+      const again = read();
+      await vi.waitFor(() => expect(inspections.held).toHaveLength(2));
+      inspections.held[1].settle("inspect");
+      expect((await again).backupFailed).toBe(false);
+    } finally { inspections.restore(); await f.close(); }
+  });
+
+  it("a stop during a pending inspection ends it, writes nothing and is not a failed observation", async () => {
+    const f = await fixture();
+    const inspections = holdBackupInspections();
+    try {
+      await withOneBackup(f);
+      const { observer, inbox } = createTrustNotifications({ admission: syntheticStateRoot(f.root), database: f.db, clock: f.clock, ids: sequentialIdFactory("stop"), reader: f.reader, stateRoot: f.root });
+      const pass = observer.observe();
+      await vi.waitFor(() => expect(inspections.held).toHaveLength(1));
+      await observer.stop();
+      expect(inspections.held[0].signal?.aborted).toBe(true);
+      await pass;
+      expect(observer.status().state).toBe("stopped");
+      expect(inbox.list("local-operator")).toEqual([]);
+      expect(f.db.authority.notificationHealth.get("backup")).toBeUndefined();
+    } finally { inspections.restore(); await f.close(); }
+  });
+
+  it("fails a backup that changes after its inspection and before the verdict arrives, and never reuses that verdict", async () => {
+    const f = await fixture();
+    const inspections = holdBackupInspections();
+    try {
+      await withOneBackup(f);
+      const read = () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock });
+      const first = read();
+      await vi.waitFor(() => expect(inspections.held).toHaveLength(1));
+      const { path } = inspections.held[0];
+      inspections.held[0].settle("inspect");
+      const bytes = readFileSync(path); bytes[bytes.length - 1] ^= 1; writeFileSync(path, bytes);
+      expect((await first).backupFailed).toBe(true);
+      expect((await read()).backupFailed).toBe(true);
+      expect(inspections.held).toHaveLength(1);
+    } finally { inspections.restore(); await f.close(); }
   });
 });
