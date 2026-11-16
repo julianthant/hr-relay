@@ -139,7 +139,6 @@
   "src/dashboard/surfaces/spreadsheets/design/sheets-v2-grid.tsx",
   "src/dashboard/surfaces/spreadsheets/design/sheets-v2-import.tsx",
   "src/dashboard/surfaces/spreadsheets/design/sheets-v2-list.tsx",
-  "src/dashboard/surfaces/spreadsheets/design/sheets-v2-slide.tsx",
   "src/dashboard/surfaces/spreadsheets/design/sheets-v2-tagfilter.tsx",
   "src/dashboard/surfaces/spreadsheets/design/sheets-v2-ui.tsx",
   "src/dashboard/surfaces/spreadsheets/design/sheets-v2.css",
