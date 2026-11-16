@@ -21,18 +21,23 @@ describe("product composition keeps the hidden OCR child of a mock host", () => 
     expect(keepsMockRun(composition, { ...mockRunsForDraft("oath-upload", draft, 1)[0], workflowId: "person-lookup" })).toBe(false);
   });
 
-  it("keeps I-9 Lookup only as a hidden child and rejects the served parent's mock runs", () => {
+  it("keeps a hidden run only under a kept mock host and rejects the served parent's mock runs", () => {
     const composition = productWorkflowComposition();
     const runs = seedMockRuns();
     const lookup = runs.find(run => run.workflowId === "i9-lookup");
     const parent = runs.find(run => run.workflowId === "i9-check-start");
     assert.ok(lookup); assert.ok(parent);
-    expect(keepsMockRun(composition, lookup)).toBe(true);
-    expect(keepsMockRun(composition, { ...lookup, parentId: undefined })).toBe(false);
+    expect(lookup.parentWorkflowId).toBe("onbase");
+    expect(composition.sourceForRoute("onbase", true)).toBe("hidden");
+    expect(keepsMockRun(composition, lookup)).toBe(false);
+    expect(keepsMockRun(composition, { ...lookup, parentWorkflowId: "oath-upload" })).toBe(true);
+    expect(keepsMockRun(composition, { ...lookup, parentId: undefined, parentWorkflowId: undefined })).toBe(false);
     expect(keepsMockRun(composition, parent)).toBe(false);
     const kept = mockRunSubset(runs, run => keepsMockRun(composition, run));
-    expect(kept.find(run => run.id === lookup.id)?.parentId).toBe(lookup.parentId);
-    expect(kept.some(run => run.workflowId === "i9-check-start")).toBe(false);
+    expect(kept.some(run => run.workflowId === "i9-lookup" || run.workflowId === "onbase" || run.workflowId === "i9-check-start")).toBe(false);
+    const hidden = kept.filter(run => composition.sourceForRoute(run.workflowId, true) === "hidden");
+    expect(hidden.length).toBeGreaterThan(0);
+    for (const run of hidden) expect(kept.find(host => host.id === run.parentId)?.workflowId).toBe(run.parentWorkflowId);
     for (const preview of [false, true]) {
       expect(composition.sourceForRoute("i9-check-start", preview)).toBe("served");
       expect(composition.sourceForRoute("i9-lookup", preview)).toBe("hidden");
