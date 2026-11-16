@@ -20,7 +20,8 @@ const client = createDashboardClient({ baseUrl: window.location.origin });
 const fixture = new URLSearchParams(location.search).get("fixture");
 const personAppearance = Reflect.get(window, "relayMockPersonPreferences") === true;
 const controlPreviews = import.meta.glob<{ ControlPreview: ComponentType }>("../support/helpers/dashboard/controls/*-preview.tsx");
-const previewLoader = new Map(Object.entries(controlPreviews)).get(`../support/helpers/dashboard/controls/${fixture}-preview.tsx`);
+const previewPath = `../support/helpers/dashboard/controls/${fixture}-preview.tsx`;
+const previewLoader = Object.hasOwn(controlPreviews, previewPath) ? controlPreviews[previewPath] : undefined;
 const ControlPreview = previewLoader ? lazy(() => previewLoader().then(module => ({ default: module.ControlPreview }))) : undefined;
 const composition = fixture === "product-workflows" || Reflect.get(window, "relayMockProductWorkflows") === true
   ? productWorkflowComposition
