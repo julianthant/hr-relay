@@ -4797,7 +4797,9 @@ export class AuthorityDatabase implements Disposable {
       : (value: typeof search) => { validateAuthorityChanges(database, entries, singletonChangeKeys(reader.singleton, singleton), value); };
     try { check(search); }
     catch (error) {
-      reader.failed = search !== "none" && (() => { try { check("none"); return true; } catch { return false; } })() ? "projection-only" : "authority";
+      // The refusal is rethrown either way; this only names which half failed.
+      reader.failed = "authority";
+      if (search !== "none") { try { check("none"); reader.failed = "projection-only"; } catch { /* the authority rows fail on their own */ } }
       throw error;
     }
     if (schemaMoved) {
