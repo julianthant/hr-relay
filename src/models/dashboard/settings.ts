@@ -7,8 +7,6 @@ import {
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
 
-/** The system-host section wire identity. */
-export const SETTINGS_SYSTEM_HOSTS_SECTION_ID = "system-hosts";
 export const SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID = "workflow-capabilities";
 
 /** Explicit test-host availability states. */
