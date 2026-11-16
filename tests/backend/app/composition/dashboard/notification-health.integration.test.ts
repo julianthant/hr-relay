@@ -182,11 +182,11 @@ describe("canonical notification producers", () => {
 
 /** Holds each off-thread backup inspection until the test settles it; the stand-in verdict is the synchronous full inspection. */
 function holdBackupInspections() {
-  const held: Array<{ settle(outcome: "inspect" | Error): void; signal: AbortSignal | undefined }> = [];
+  const held: Array<{ settle(outcome: "inspect" | Error): void; signal: AbortSignal | undefined; path: string }> = [];
   const spy = vi.spyOn(backupInspectionWorker, "inspectAuthorityBackupOffThread").mockImplementation((admission, path, expectedSchemaVersion, options) =>
     new Promise((resolve, reject) => {
       options?.signal?.addEventListener("abort", () => reject(new DOMException("stopped", "AbortError")), { once: true });
-      held.push({ signal: options?.signal, settle: outcome => {
+      held.push({ signal: options?.signal, path, settle: outcome => {
         if (outcome instanceof Error) reject(outcome);
         else resolve(backupInspection.inspectAuthorityBackupReadOnly(admission, path, expectedSchemaVersion));
       } });
@@ -250,6 +250,23 @@ describe("backup inspection off the main thread", () => {
       expect(observer.status().state).toBe("stopped");
       expect(inbox.list("local-operator")).toEqual([]);
       expect(f.db.authority.notificationHealth.get("backup")).toBeUndefined();
+    } finally { inspections.restore(); await f.close(); }
+  });
+
+  it("fails a backup that changes after its inspection and before the verdict arrives, and never reuses that verdict", async () => {
+    const f = await fixture();
+    const inspections = holdBackupInspections();
+    try {
+      await withOneBackup(f);
+      const read = () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock });
+      const first = read();
+      await vi.waitFor(() => expect(inspections.held).toHaveLength(1));
+      const { path } = inspections.held[0];
+      inspections.held[0].settle("inspect");
+      const bytes = readFileSync(path); bytes[bytes.length - 1] ^= 1; writeFileSync(path, bytes);
+      expect((await first).backupFailed).toBe(true);
+      expect((await read()).backupFailed).toBe(true);
+      expect(inspections.held).toHaveLength(1);
     } finally { inspections.restore(); await f.close(); }
   });
 });

@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync, statfsSync } from "node:fs";
 import { join } from "node:path";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
-import { verifyBackupManifestOffThread } from "../../../storage/sqlite/backup-service.js";
+import { parseBackupManifestFile, verifyBackupManifestOffThread } from "../../../storage/sqlite/backup-service.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import type { NotificationInbox } from "../../../runs/notifications/inbox.js";
 import { followOwnedWrite } from "./notification-sources.js";
@@ -65,8 +65,11 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
       // The full verifier runs again only for a new or changed backup, on a worker thread; a failure is never remembered.
       if (prior !== undefined && prior.manifest === manifest && prior.backup === backupFiles(prior.backupPath)) { current.set(manifestPath, prior); continue; }
       try {
-        const { backupPath } = await verifyBackupManifestOffThread(input.admission, manifestPath, { signal: input.signal });
-        if (fileIdentity(manifestPath) === manifest) current.set(manifestPath, { manifest, backupPath, backup: backupFiles(backupPath) });
+        // The verdict belongs to the files as they were before verification began; a backup that changed since is not the one inspected.
+        const backupPath = join(backupRoot, parseBackupManifestFile(manifestPath).backupFileName), file = fileIdentity(backupPath), backup = backupFiles(backupPath);
+        const verified = await verifyBackupManifestOffThread(input.admission, manifestPath, { signal: input.signal });
+        if (verified.backupPath !== backupPath || fileIdentity(backupPath) !== file) throw new Error("backup-changed-during-inspection");
+        if (fileIdentity(manifestPath) === manifest && backupFiles(backupPath) === backup) current.set(manifestPath, { manifest, backupPath, backup });
       } catch (error) {
         if (input.signal?.aborted === true) throw error;
         backupFailed = true;
