@@ -7,7 +7,8 @@ import { createProfileFixtureSet } from "../../../../support/helpers/admission-f
 import { makeWorld, queuedEventOf, runEndedEventOf, failureRecordOf, uuidOf, traceOf, type DashboardWorld } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { onboardingModule, personLookupDescriptor, registeredModule } from "../../../../support/helpers/registered-workflows.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
-import { TimelineAppendSchema } from "../../../../../src/models/events/timeline.js";
+import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
+import { dataOriginViewsOf } from "../../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import { trustWorld } from "../../../../support/helpers/backend/trust-authority-fixture.js";
 
 const profiles = createProfileFixtureSet();
@@ -19,8 +20,9 @@ afterEach(async () => {
   for (const world of worlds.splice(0)) await world.dispose();
 });
 
-async function fixture(kind: "ucpath" | "i9" = "ucpath", withheld = false) {
-  const descriptor = kind === "ucpath" ? registeredModule(workStudyWorkflow).descriptor : onboardingModule.descriptor;
+async function fixture(kind: "ucpath" | "i9" = "ucpath", { withheld = false, observed = true } = {}) {
+  const module = kind === "ucpath" ? registeredModule(workStudyWorkflow) : onboardingModule;
+  const descriptor = module.descriptor;
   const nodeId = kind === "ucpath" ? "paypath-position" : "i9-lookup";
   const code = kind === "ucpath" ? "UNEXPECTED_PAGE_STATE" : "ONBOARDING_I9_LOOKUP_UNRESOLVED";
   const taskId = kind === "ucpath" ? "ucpath/read-paypath-position" : "workflow:onboarding/read-i9-lookup";
@@ -34,21 +36,23 @@ async function fixture(kind: "ucpath" | "i9" = "ucpath", withheld = false) {
   world.authority.failures.set(failure.failureId, failure);
   const run = world.authority.getRun(failure.runId);
   assert.ok(run);
-  const noteRecord = world.timeline.append({ schemaVersion: 1, eventId: uuidOf(42), scope: { kind: "run", runId: failure.runId }, workflow: descriptor.id,
-    occurredAt: failure.occurredAt, recordedAt: failure.occurredAt, retentionDate: "2026-08-03", source: { kind: "native" },
-    payload: { kind: "note", note: { workflow: descriptor.id, runId: failure.runId, attempt: 1, traceId: failure.traceId,
-      spanPath: `${failure.traceId}/${nodeId}#1`, ts: failure.occurredAt, pid: 4242, level: "step", message: "Untrusted diagnostic text",
-      action: { kind: "typed", targetId: "ucpath.person-org.eid-input", value: "10000001", operation: {
-        runId: failure.runId, definitionFingerprint: descriptor.contractFingerprint, nodeId, taskId: failure.taskId,
-        attempt: 1, claimGeneration: 1, taskAttempt: 1, invocationId: "search", occurrencePath: ["search"], logicalActionId: "employee-id",
-        occurrence: 1, logicalSessionId: "ucpath", state: "completed",
-        value: { slot: "employee-id", fieldPath: "emplId", producer: { kind: "run-input", path: "emplId" },
-          consumed: withheld ? { state: "withheld", reason: "classification-required" } : { state: "observed", value: "10000001" } },
-      } },
-    } } }).record;
+  const notes = createNoteTimelineWriter({ repository: world.timeline, clock: world.clock, pid: 4242 });
+  const address = { runId: failure.runId, attempt: 1, traceId: failure.traceId,
+    spanPath: `${failure.traceId}/${kind === "ucpath" ? nodeId : "ucpath-source"}#1` };
+  notes.emitRunAction({ workflow: descriptor.id, address,
+    action: { kind: "typed", targetId: "ucpath.person-org.eid-input", value: "10000001", at: failure.occurredAt } }, run);
+  notes.emitRunLog({ workflow: descriptor.id, address, level: "step", message: "Untrusted diagnostic text" }, run);
+  const observe = (value: string, retained = !withheld) => world.writer.emit({ t: "data.observed", ts: failure.occurredAt,
+    observedAt: failure.occurredAt, workflow: descriptor.id, ...address, nodeId, taskId,
+    points: [{ direction: "read", field: "emplId", values: [retained
+      ? { key: "emplId", state: "allowed", classification: "direct-identifier", transform: "allow", value }
+      : { key: "emplId", state: "redacted", classification: "direct-identifier", transform: "drop", rawValue: value }] }] });
+  if (kind === "ucpath" && observed) observe("10000001");
+  if (kind === "i9") world.writer.emit({ t: "span.ended", kind: "task", ts: failure.occurredAt, workflow: descriptor.id,
+    ...address, spanPath: `${failure.traceId}/hire-subject#1`, outcome: "done" });
   runEndedEventOf(world, 41, "failed", { workflow: descriptor.id, failureId: failure.failureId });
   const deps = { runReader: world.runReader, timeline: world.timeline, stateRoot: world.stateRoot,
-    projection: world.projection, authority: world.authority, descriptors: { resolve: () => descriptor },
+    projection: world.projection, authority: world.authority, descriptors: { resolve: () => ({ ...descriptor, dataOrigins: dataOriginViewsOf(module) }) },
     canonical: { reader: world.runReader, database: world.database, descriptors: { resolve: () => descriptor } },
     trust: { getFailure: (id: string) => world.authority.getFailure(id), countFailuresByFingerprint: () => 1,
       ensureReceipt: () => { throw new Error("failure facts must not derive or store a receipt"); } } };
@@ -57,7 +61,7 @@ async function fixture(kind: "ucpath" | "i9" = "ucpath", withheld = false) {
     assert.ok(section.section === "failure" && section.payload.state === "available");
     return section.payload.value;
   };
-  return { world, failure, run, deps, read, noteRecord };
+  return { world, failure, run, deps, read, notes, address, observe };
 }
 
 describe("served failure card facts", () => {
@@ -67,9 +71,9 @@ describe("served failure card facts", () => {
     assert.deepEqual(failure.display, {
       title: "Open PayPath Actions for the employee",
       observation: "The system did not show the expected page. Review the current page before continuing.",
-      attemptedAction: "Read Person Org EID input",
-      lastCompleted: "Entered Person Org EID input",
-      field: { label: "Person Org EID input", value: "10000001", outcome: "Entered" },
+      attemptedAction: "Open PayPath Actions for the employee",
+      lastCompleted: "Read Employee ID",
+      field: { label: "Employee ID", value: "10000001", outcome: "Read" },
     });
     assert.equal(failure.retry?.kind, "command");
     assert.equal(failure.retry?.kind === "command" && failure.retry.command, "retry");
@@ -78,6 +82,7 @@ describe("served failure card facts", () => {
       { id: "retry", label: "Retry step", send: { via: "action", actionKey: "retry-failed-step" } },
     ]);
     assert.doesNotMatch(JSON.stringify(failure.display), /Untrusted diagnostic text/u);
+    assert.doesNotMatch(JSON.stringify(failure.display), /Person Org EID input|ucpath\.person-org/u, "registry-only captions do not enter display copy");
     assert.doesNotMatch(JSON.stringify({ ...failure.display, field: undefined }), /10000001/u, "a captured person value never enters a sentence");
   });
 
@@ -87,8 +92,8 @@ describe("served failure card facts", () => {
     assert.equal(failure.display?.title, "Retain delegated I-9 lookup");
     assert.equal(failure.display?.observation, "The delegated I-9 lookup did not establish a result for this hire. No profile will be created.");
     assert.equal(failure.display?.attemptedAction, "Retain delegated I-9 lookup");
-    assert.equal(failure.display?.lastCompleted, "Entered Person Org EID input");
-    assert.equal(failure.display?.field?.value, "10000001");
+    assert.equal(failure.display?.lastCompleted, "Check UCPath duplicate identity");
+    assert.equal(failure.display?.field, undefined, "the preceding tasks declare no operator field for the retained gesture value");
     assert.deepEqual(failure.decision?.options.map(option => option.label), ["Retry step"]);
   });
 
@@ -128,22 +133,36 @@ describe("served failure card facts", () => {
 
   it("keeps actions recorded after the failure out of the last-completed fact and value row", async () => {
     const h = await fixture();
-    const { cursor: _cursor, ...record } = h.noteRecord;
-    assert.ok(record.payload.kind === "note" && record.payload.note.action !== undefined);
-    const action = record.payload.note.action;
-    assert.ok(action.operation?.value !== undefined);
-    h.world.timeline.append(TimelineAppendSchema.parse({ ...record, eventId: uuidOf(44), payload: { kind: "note", note: {
-      ...record.payload.note, action: { ...action, kind: "selected", operation: { ...action.operation,
-        value: { ...action.operation.value, consumed: { state: "observed", value: "Later value" } } } },
-    } } }));
+    h.notes.emitRunAction({ workflow: h.failure.workflowId, address: h.address,
+      action: { kind: "selected", targetId: "ucpath.person-org.eid-input", value: "Later value", at: h.failure.occurredAt } }, h.run);
+    h.observe("Later value");
     const failure = h.read();
-    assert.equal(failure.display?.lastCompleted, "Entered Person Org EID input");
+    assert.equal(failure.display?.lastCompleted, "Read Employee ID");
     assert.equal(failure.display?.field?.value, "10000001");
   });
 
-  it("omits a withheld consumed value even when the raw browser action retains a value", async () => {
-    const failure = (await fixture("ucpath", true)).read();
-    assert.equal(failure.display?.lastCompleted, "Entered Person Org EID input");
+  it("omits a redacted observation even when the raw browser action retains a value", async () => {
+    const failure = (await fixture("ucpath", { withheld: true })).read();
+    assert.equal(failure.display?.lastCompleted, "Read Employee ID");
+    assert.equal(failure.display?.field, undefined);
+    assert.doesNotMatch(JSON.stringify(failure.display), /10000001/u);
+  });
+
+  it("keeps missing facts absent when a first read failed before retaining an observation", async () => {
+    const failure = (await fixture("ucpath", { observed: false })).read();
+    assert.equal(failure.display?.attemptedAction, "Open PayPath Actions for the employee");
+    assert.equal(failure.display?.lastCompleted, undefined);
+    assert.equal(failure.display?.field, undefined);
+    assert.doesNotMatch(JSON.stringify(failure.display), /10000001|Person Org EID input/u);
+  });
+
+  it("omits retained values from a protected-input run", async () => {
+    const h = await fixture();
+    h.world.authority.put(RunRecordSchema.parse({ ...h.run, input: { ...h.run.input,
+      parsed: { ...h.run.input.parsed, protectedBindings: [{ kind: "test-data-local", sourceId: uuidOf(49),
+        inputPath: "emplId", name: "personLookupCanaryEid" }] } } }));
+    const failure = h.read();
+    assert.equal(failure.display?.lastCompleted, "Read Employee ID");
     assert.equal(failure.display?.field, undefined);
     assert.doesNotMatch(JSON.stringify(failure.display), /10000001/u);
   });

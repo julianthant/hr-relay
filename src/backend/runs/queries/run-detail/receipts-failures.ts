@@ -6,7 +6,7 @@ import { readTimelineRecords } from "../../../storage/events/timeline-reader.js"
 import { FailureRetryWireSchema, projectFailureDisplay } from "../../../../models/dashboard/failure-display.js";
 import type { FailureDisplaySchema } from "../../../../models/dashboard/failure-display.js";
 import type { TimelineEventRecord } from "../../../../models/events/timeline.js";
-import { buildUiTaskLinks } from "../../../systems/ui-task-links.js";
+import { projectObservedOperatorFields } from "../run-logs.js";
 import { nodeIdOfTaskSpanPath } from "../../lifecycle/support.js";
 import { aggregateMemberRetryAvailable } from "../run-retry.js";
 import { ocrChildRetryAvailable } from "../../lifecycle/ocr-review-authority.js";
@@ -36,7 +36,6 @@ import { DiagnosticBundleCorruptError } from "../../commands/refusals.js";
 import { availableSections } from "./availability.js";
 
 export type ReceiptFailureSection = "receipt" | "failure";
-const UI_LABELS = new Map(buildUiTaskLinks().map(entry => [entry.id, entry.label]));
 
 export function buildReceiptFailureSection(
   deps: RunDetailQueryDeps,
@@ -167,49 +166,41 @@ function failureRetry(deps: RunDetailQueryDeps, run: RunRecord, failure: Failure
 
 function failureDisplayFacts(deps: RunDetailQueryDeps, run: RunRecord, failure: FailureRecord,
   records: readonly TimelineEventRecord[]): z.infer<typeof FailureDisplaySchema> {
-  const labels = new Map(deps.descriptors.resolve(run.envelope.workflow)?.timeline?.flatMap(step => step.nodes.map(node => [node.id, node.label] as const)));
+  const descriptor = deps.descriptors.resolve(run.envelope.workflow);
+  const labels = new Map(descriptor?.timeline?.flatMap(step => step.nodes.map(node => [node.id, node.label] as const)));
   const title = failure.nodeId === undefined ? undefined : labels.get(failure.nodeId);
-  const projected = projectFailureForOperator(failure, retainedRunProtectedBindings(run).length > 0);
+  const protectedInput = retainedRunProtectedBindings(run).length > 0;
+  const projected = projectFailureForOperator(failure, protectedInput);
   const display = { ...projectFailureDisplay(projected), ...(title === undefined ? {} : { title }), observation: projected.summary };
-  const target = failure.action?.elementId === undefined ? undefined : UI_LABELS.get(failure.action.elementId);
-  const operation = failure.action?.operation;
-  const verbs = { goto: "Open", wait: "Wait for", read: "Read", fill: "Enter", click: "Click", choose: "Select", commit: "Submit" };
-  const attemptedAction = target !== undefined && operation !== undefined ? `${verbs[operation]} ${target}` : title;
   let lastCompleted: string | undefined;
   let field: z.infer<typeof FailureDisplaySchema>["field"];
-  const outcomes: Readonly<Partial<Record<string, NonNullable<z.infer<typeof FailureDisplaySchema>["field"]>["outcome"]>>> = {
-    typed: "Entered", selected: "Selected", read: "Read", checked: "Checked", verified: "Verified", set: "Set", cleared: "Cleared",
-  };
   for (const record of records) {
     if (Date.parse(record.occurredAt) > Date.parse(failure.occurredAt)) continue;
     const payload = record.payload;
-    if (payload.kind === "span") {
-      const event = payload.event;
-      if (event.t !== "span.ended" || event.kind !== "task" || event.outcome !== "done" || event.attempt !== failure.attempt) continue;
-      if (event.traceId !== failure.traceId) throw new LogIdentityRefusedError("RUN_LOG_FAILURE_NATIVE_IDENTITY_MISMATCH");
+    if (payload.kind !== "span" && payload.kind !== "note") continue;
+    const identity = payload.kind === "span" ? payload.event : payload.note;
+    if (!("runId" in identity) || identity.attempt !== failure.attempt) continue;
+    if (identity.traceId !== failure.traceId) throw new LogIdentityRefusedError("RUN_LOG_FAILURE_NATIVE_IDENTITY_MISMATCH");
+    if (payload.kind !== "span") continue;
+    const event = payload.event;
+    if (event.t === "span.ended" && event.kind === "task" && event.outcome === "done") {
       const nodeId = nodeIdOfTaskSpanPath(event.spanPath);
       const label = nodeId === undefined ? undefined : labels.get(nodeId);
       if (label !== undefined) lastCompleted = label;
-    } else if (payload.kind === "note") {
-      const note = payload.note;
-      if (!("runId" in note) || note.attempt !== failure.attempt) continue;
-      if (note.traceId !== failure.traceId) throw new LogIdentityRefusedError("RUN_LOG_FAILURE_NATIVE_IDENTITY_MISMATCH");
-      const action = note.action;
-      const occurrence = action?.operation;
-      if (action === undefined || occurrence === undefined || !["completed", "confirmed"].includes(occurrence.state ?? "")) continue;
-      if (occurrence.runId !== run.envelope.runId || occurrence.attempt !== failure.attempt
-        || occurrence.nodeId !== nodeIdOfTaskSpanPath(note.spanPath)) throw new LogIdentityRefusedError("RUN_LOG_FAILURE_NATIVE_IDENTITY_MISMATCH");
-      const label = UI_LABELS.get(action.targetId);
-      const outcome = outcomes[action.kind];
-      if (label === undefined || outcome === undefined) continue;
-      lastCompleted = `${outcome} ${label}`;
-      const consumed = occurrence.value?.consumed;
-      if (retainedRunProtectedBindings(run).length === 0 && consumed?.state === "observed"
-        && (typeof consumed.value === "string" || typeof consumed.value === "number" || typeof consumed.value === "boolean")
-        && String(consumed.value) !== "") field = { label, value: String(consumed.value), outcome };
+    } else if (event.t === "data.observed") {
+      if (Date.parse(event.observedAt) > Date.parse(failure.occurredAt)) continue;
+      if (event.nodeId !== nodeIdOfTaskSpanPath(event.spanPath)) throw new LogIdentityRefusedError("RUN_LOG_FAILURE_NATIVE_IDENTITY_MISMATCH");
+      const origin = descriptor?.dataOrigins?.find(entry => entry.nodeId === event.nodeId && entry.taskId === event.taskId);
+      for (const observed of projectObservedOperatorFields(event, origin?.operatorFields)) {
+        if (observed.direction !== "read") continue;
+        lastCompleted = `Read ${observed.label}`;
+        if (!protectedInput && observed.point.values.every(value => value.state === "allowed")) {
+          field = { label: observed.label, value: observed.value, outcome: "Read" };
+        }
+      }
     }
   }
-  return { ...display, ...(attemptedAction === undefined ? {} : { attemptedAction }),
+  return { ...display, ...(title === undefined ? {} : { attemptedAction: title }),
     ...(lastCompleted === undefined ? {} : { lastCompleted }), ...(field === undefined ? {} : { field }) };
 }
 
