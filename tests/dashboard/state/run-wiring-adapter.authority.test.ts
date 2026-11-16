@@ -927,7 +927,7 @@ describe("failure resolution from the decision card", () => {
   function committedAt(selected: LogSelection) {
     const { recovery: _recovery, decision: _decision, ...failed } = failedAt(selected);
     return withFailureDecision(FailureDetailWireSchema.parse({ ...failed, writeState: "committed",
-      resolution: { capability: { state: "available" }, capture: { failureId: FAILURE, runId: RUN, resolution: { status: "unresolved", version: 2 } } } }));
+      resolution: { capture: { failureId: FAILURE, runId: RUN, resolution: { status: "unresolved", version: 2 } } } }));
   }
   const applied = async (request: DashboardCommandRequest) => CommandResultSchema.parse({ state: "applied", commandId: request.commandId,
     affectedTargets: [{ family: "failure-resolution", runId: RUN, failureId: FAILURE }] });
@@ -965,7 +965,7 @@ describe("failure resolution from the decision card", () => {
     await act(async () => first.state?.onDecision?.(FAILURE, stale, {}));
     assert.equal(sent.length, 1);
     const { decision: _decision, ...open } = committedAt(selected);
-    const resolved = withFailureDecision(FailureDetailWireSchema.parse({ ...open, resolution: { capability: { state: "available" },
+    const resolved = withFailureDecision(FailureDetailWireSchema.parse({ ...open, resolution: {
       capture: { failureId: FAILURE, runId: RUN, resolution: { status: "resolved", version: 3, by: "local-operator", at: "2026-08-03T12:00:00.000Z" } } } }));
     assert.deepEqual(resolved.decision?.options, []);
     const refreshed = failureClient(selected, sent, [], applied, resolved);

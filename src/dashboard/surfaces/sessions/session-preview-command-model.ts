@@ -1,4 +1,5 @@
 import type { DashboardClient } from '../../client/index.js';
+import { attemptUnresolved, commandAttemptView } from '../../app/commands/command-outcome.js';
 import type { DashboardDayState } from '../../state/use-dashboard-day.js';
 import type { DashboardDayWire } from '../../../models/dashboard/projection.js';
 import { CommandRequestSchema, CommandResultSchema, type CommandRequest, type DashboardCommandRequest } from '../../../rules/commands/commands.js';
@@ -69,7 +70,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
   };
   const retainedOperation = (binding: SessionCommandBinding, retained: ReturnType<CommandExecutor["retainedAttempts"]>[number], settled = false): SessionPreviewOperation | undefined => {
     const command = retained.request;
-    const open = retained.state === "pending" || retained.outcome?.kind === "uncertain";
+    const open = attemptUnresolved(retained);
     if (!open && !settled || "targets" in command || command.family !== "worker-browser"
       || !["pause-worker", "resume-worker", "retry-worker", "stop-worker", "remove-worker"].includes(command.type) || !("workerId" in command.target)
       || retained.scope.actorId !== binding.scope.actorId || retained.scope.client !== binding.scope.client || retained.scope.authority !== binding.scope.authority) return undefined;
@@ -78,7 +79,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
     const outcome = retained.outcome;
     if (retained.state === "pending" || outcome === undefined) return { request, state: "pending", message: `${label(request)} requested…` };
     if (outcome.kind === "confirmed") return { request, state: "confirmed", message: `${label(request)} confirmed` };
-    return { request, state: outcome.kind === "uncertain" ? "uncertain" : "refused", message: outcome.feedback.text, code: outcome.feedback.code };
+    return { request, state: commandAttemptView(outcome).view === "unknown" ? "uncertain" : "refused", message: outcome.feedback.text, code: outcome.feedback.code };
   };
   const valid = (attempt: NativeAttempt, binding: SessionCommandBinding) => {
     const next = requireBinding();
@@ -111,7 +112,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
       && (outcome === undefined || outcome.kind === "confirmed") && attempt.commands.every(command => sessionCommandEffect(attempt.snapshot!, command));
     const data = attempt.snapshot === undefined ? undefined : sessionsFromDay(attempt.snapshot, current().catalog, requireBinding().nowIso);
     return all ? { id: request.id, state: "confirmed", data } : { id: request.id,
-      state: attempt.commands.length === 1 && (outcome?.kind === "refused" || outcome?.kind === "conflict" || outcome?.kind === "confirmation-required" || outcome?.kind === "failed") ? "refused" : "uncertain",
+      state: attempt.commands.length === 1 && outcome !== undefined && outcome.kind !== "confirmed" && commandAttemptView(outcome).view !== "unknown" ? "refused" : "uncertain",
       code: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.code : undefined,
       message: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.text : commandFeedback("COMMAND_OUTCOME_UNCERTAIN"), data };
   };
@@ -183,8 +184,8 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
           if (retained === undefined) continue;
           if (retained.scope.actorId !== binding.scope.actorId || retained.scope.client !== binding.scope.client || retained.scope.authority !== binding.scope.authority) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
           // The audited outcome, read without resending; a command with no audit stays unproved.
-          const checked = retained.outcome?.kind === "uncertain";
-          const reply = checked ? CommandResultSchema.safeParse(retained.outcome.reply) : undefined;
+          const checked = retained.outcome !== undefined && commandAttemptView(retained.outcome).view === "unknown";
+          const reply = checked ? CommandResultSchema.safeParse(retained.outcome?.reply) : undefined;
           const settled = !checked ? retained.outcome : await binding.executor.check(command.commandId, { ...options(attempt, binding), observe: async sent => {
             // The command's own applied reply still proves it; a lost or unapplied reply falls back to the audit.
             if (reply?.success && (reply.data.state === "applied" || reply.data.state === "already-applied")) return reply.data;

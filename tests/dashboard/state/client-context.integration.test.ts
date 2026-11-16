@@ -22,7 +22,7 @@ it("retains an unknown envelope across loaded-tree unmount and client replacemen
     assert.equal(typeof init?.body, "string");
     if (typeof init?.body !== "string") assert.fail("missing body");
     sent.push(init.body); const request = CommandRequestSchema.parse(JSON.parse(init.body));
-    return Response.json(uncertain ? { state: "rejected", commandId: request.commandId, code: "authority-uncertain", message: "private" }
+    return Response.json(uncertain ? { state: "pending", commandId: request.commandId }
       : { state: "applied", commandId: request.commandId, affectedTargets: [{ family: "settings", revision: 2 }], settingsRevision: 2, settingsFingerprint: stored.settingsFingerprint, restartRequired: false });
   } });
   const first = client(true), second = client(false);

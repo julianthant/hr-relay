@@ -1,4 +1,5 @@
 import { useCallback,useEffect,useEffectEvent,useMemo,useRef,useState,useSyncExternalStore } from "react";
+import { attemptUnresolved, commandAttemptView } from "../../../app/commands/command-outcome.js";
 import { deriveSettingsPatchFingerprint } from "../../../../models/config/settings.js";
 import { EditableSettingsWireSchema,type EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
 import { createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
@@ -48,7 +49,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const pending = useRef<OrdinarySettingsAttempt | undefined>(undefined);
   const busy = useRef(false);
   const attemptScope = useRef<CommandExecutionScope | undefined>(undefined);
-  const retained = binding?.executor.retainedAttempts().find(attempt => (attempt.state === "pending" || attempt.outcome?.kind === "uncertain") && attempt.scope.actorId === binding.scope.actorId
+  const retained = binding?.executor.retainedAttempts().find(attempt => attemptUnresolved(attempt) && attempt.scope.actorId === binding.scope.actorId
     && attempt.request.source === "settings-surface" && attempt.request.family === "settings" && attempt.request.type === "apply-settings");
   if (pending.current === undefined && retained?.request.family === "settings" && retained.request.type === "apply-settings") pending.current = retained.request;
   if (attemptScope.current === undefined && retained !== undefined) attemptScope.current = retained.scope;
@@ -151,7 +152,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
           acceptedRequest.current = request; resource.accept(readDocument); setEditor({ state: "loaded", document: readDocument }); setReadProblem(undefined);
         }
         if (outcome.kind === "conflict") void refresh().catch(() => undefined);
-        if (outcome.kind !== "uncertain" && !(outcome.kind === "refused" && outcome.reason === "locked")) pending.current = undefined;
+        const view = commandAttemptView(outcome);
+        if (view.view !== "unknown" && !(view.view === "call-refused" && view.reason === "locked")) pending.current = undefined;
         const next = outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome);
         setSave(next);
         if (outcome.kind === "confirmed") {

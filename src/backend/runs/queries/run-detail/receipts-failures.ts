@@ -115,7 +115,7 @@ export function buildReceiptFailureSection(
 export function failureDecision(failure: FailureDetailWire): RunDecisionWire {
   // Both close the failure through annotate-failure; neither runs, retries or files anything.
   const annotate = { via: "command" as const, family: "failure-resolution", type: "annotate-failure" };
-  const resolvable = failure.resolution?.capability.state === "available" && failure.resolution.capture.resolution.status === "unresolved";
+  const resolvable = failure.resolution?.capture.resolution.status === "unresolved";
   const addNote = resolvable ? [{ id: "add-note", send: annotate, input: { kind: "text" as const, label: "Note" } }] : [];
   const recovery = failure.recovery;
   if (recovery !== undefined) {
@@ -195,7 +195,7 @@ function failureDetailWire(
   return FailureDetailWireSchema.parse({
     runId,
     failureId: projected.failureId,
-    ...(resolution === undefined ? {} : {resolution:{capability:trust.failureResolution?.capability(),capture:projectFailureResolution(resolution, protectedInput)}}),
+    ...(resolution === undefined ? {} : {resolution:{capture:projectFailureResolution(resolution, protectedInput)}}),
     traceId: projected.traceId,
     attempt: projected.attempt,
     workflowId: projected.workflowId,

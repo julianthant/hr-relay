@@ -6,7 +6,7 @@ import { failureDetailWireFixture } from "../../../../support/helpers/trust/trus
 
 const RUN = "00000000-0000-4000-8000-000000000001", FAILURE = "00000000-0000-4000-8000-000000000004";
 const base = failureDetailWireFixture({ runId: RUN, failureId: FAILURE, traceId: "sep-101500-0001", workflowId: "separations" });
-const capable = { resolution: { capability: { state: "available" as const }, capture: { failureId: FAILURE, runId: RUN, resolution: { status: "unresolved" as const, version: 1 } } } };
+const capable = { resolution: { capture: { failureId: FAILURE, runId: RUN, resolution: { status: "unresolved" as const, version: 1 } } } };
 
 function corrected(prefill?: string) {
   return FailureDetailWireSchema.parse({ ...base, nodeId: "job-summary", code: "EMPLOYEE_NOT_FOUND",
@@ -53,14 +53,14 @@ describe("failureDecision", () => {
       assert.deepEqual(decision.options[1]?.input, { kind: "text", label: "Note" });
       assert.ok(decision.options.every(({ id }) => id !== "retry" && id !== "check-again"), "nothing after a committed write runs again from this card");
     }
-    assert.deepEqual(failureDecision(FailureDetailWireSchema.parse({ ...base, writeState: "committed" })).options, [], "no option without the resolution capability");
+    assert.deepEqual(failureDecision(FailureDetailWireSchema.parse({ ...base, writeState: "committed" })).options, [], "no option without a served resolution");
   });
 
   it("serves any other failure as D7 with no retry, because no retry is served without a correction", () => {
     const decision = failureDecision(FailureDetailWireSchema.parse({ ...base, ...capable }));
     assert.equal(decision.type, "failed-retryable");
     assert.deepEqual(decision.options.map(({ id, recommended, input }) => [id, recommended, input]), [["add-note", true, { kind: "text", label: "Note" }]]);
-    assert.deepEqual(failureDecision(base).options, [], "no note option without the resolution capability");
+    assert.deepEqual(failureDecision(base).options, [], "no note option without a served resolution");
   });
 
   it("serves no annotate option once the capture is resolved, because a second resolve is refused", () => {

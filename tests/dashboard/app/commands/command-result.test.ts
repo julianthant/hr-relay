@@ -2,6 +2,7 @@ import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,it as it_m0 } from "vitest";
 import { commandFailureToast as commandFailureToast_m0,settleCommandResult as settleCommandResult_m0 } from "../../../../src/dashboard/app/commands/command-result.js";
 import { CommandRejectionCodeSchema as CommandRejectionCodeSchema_m0,CommandResultSchema as CommandResultSchema_m0 } from "../../../../src/rules/commands/commands.js";
+import { UNKNOWN_EFFECT_CODES as UNKNOWN_EFFECT_CODES_m0 } from "../../../../src/rules/commands/command-lifecycle.js";
 // @vitest-environment jsdom
 import assert_m1 from "node:assert/strict";
 import { describe as describe_m1,it as it_m1 } from "vitest";
@@ -96,9 +97,9 @@ describe_m0("settleCommandResult", () => {
     });
   });
 
-  it_m0("carries EVERY rejection code the kernel can send, verbatim", () => {
-
-    for (const code of CommandRejectionCodeSchema_m0.options) {
+  it_m0("carries EVERY rejection code that proves no effect, verbatim", () => {
+    const unknown: readonly string[] = UNKNOWN_EFFECT_CODES_m0;
+    for (const code of CommandRejectionCodeSchema_m0.options.filter(option => !unknown.includes(option))) {
       const settlement = rejectedOf(code);
       assert_m0.equal(
         settlement.kind === "refused" && settlement.reason === "rejected" ? settlement.code : undefined,
@@ -106,6 +107,13 @@ describe_m0("settleCommandResult", () => {
         `the fold must carry the ${code} rejection code`,
       );
     }
+  });
+
+  it_m0("never folds a reply whose effect is unknown into a refusal", () => {
+    for (const code of UNKNOWN_EFFECT_CODES_m0) {
+      assert_m0.throws(() => rejectedOf(code), { name: "CommandResultUnknownEffectError", message: new RegExp(`rejected ${code}`, "u") });
+    }
+    assert_m0.throws(() => settle({ state: "pending", commandId: COMMAND_ID }), { name: "CommandResultUnknownEffectError", message: /pending/u });
   });
 
   it_m0("keeps the two refusals distinguishable — they are different operator acts", () => {
