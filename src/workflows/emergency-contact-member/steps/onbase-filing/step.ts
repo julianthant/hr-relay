@@ -16,7 +16,7 @@ export const ONBASE_FILING_STEP = Object.freeze({ ...defineWorkflowStep({ key: "
 export function buildOnbaseFiling(author: WorkflowAuthor<typeof EmergencyContactMemberInputSchema>) {
   const filing = author.delegate({ id: "onbase-filing", label: "Import this person's page to OnBase",
     target: { id: WorkflowIdSchema.parse("onbase"), input: OnbaseInputSchema, result: OnbaseResultSchema },
-    edgeId: "onbase-filing", cardinality: "many", await: "terminal", join: "all-settled",
+    edgeId: "onbase-filing", cardinality: "many", await: "terminal", join: "all",
     policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "manual-parent-resume", visibility: "hidden-unless-failed" },
   }, [], { bind: ({ input }) => input.sourcePage === null ? [] : [{ ucpathId: approvedEmergencyContact(input.record).emplId, document: input.document, sourcePage: input.sourcePage }],
     deriveChildItemId: (_input, context) => context.canonicalItemId });
