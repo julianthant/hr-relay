@@ -169,15 +169,6 @@ it("corrupt private storage becomes unavailable without leaking input", async ()
     const state = f.service.readAccount(); assert.equal(state.state, "unavailable"); assert.equal(JSON.stringify(state).includes("synthetic-sensitive"), false);
   } finally { await f.cleanup(); }
 });
-it("failed first code exchange retains issued registration for fresh authorization", async () => {
-  const f = await chatGptFixture(); try {
-    f.setTokenStatus(400); const attempt = await f.service.signIn({ usePlan: true }); await f.callback(attempt); await assert.rejects(attempt.completion, { code: "CHATGPT_ACCOUNT_EXPIRED" });
-    assert.deepEqual(f.service.readAccount(), { state: "signed-out" }); f.setTokenStatus(200);
-    const retry = await f.service.signIn({ usePlan: true }), url = new URL(retry.authorizationUrl);
-    assert.equal(url.searchParams.get("client_id"), "oaiapp_fixture"); assert.equal(url.searchParams.has("agent_name_hint"), false);
-    await f.callback(retry); assert.equal((await retry.completion).state, "connected");
-  } finally { await f.cleanup(); }
-});
 it("rejects an ID token with a forged signature", async () => {
   const f = await chatGptFixture(); try { f.tamperSignature(); const attempt = await f.service.signIn({ usePlan: true }); await f.callback(attempt); await assert.rejects(attempt.completion, { code: "CHATGPT_AUTH_INVALID" }); assert.deepEqual(f.service.readAccount(), { state: "signed-out" }); } finally { await f.cleanup(); }
 });

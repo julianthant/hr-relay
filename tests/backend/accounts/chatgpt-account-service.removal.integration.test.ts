@@ -67,3 +67,33 @@ it("forgets an unrenewable connection whose access token is rejected", async () 
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 1);
   } finally { await f.cleanup(); }
 });
+it("connects fresh after a connect that stopped once the callback stored its client", async () => {
+  const f = await chatGptFixture();
+  try {
+    f.setTokenStatus(400); const stopped = await f.service.signIn({ usePlan: true }); await f.callback(stopped);
+    await assert.rejects(stopped.completion, { code: "CHATGPT_ACCOUNT_EXPIRED" });
+    const leftover = f.repository.read(); assert.equal(leftover?.clientId, "oaiapp_fixture"); assert.equal(leftover.session, null);
+    assert.deepEqual((await f.service.readStatus()).account, { state: "signed-out" });
+    f.setTokenStatus(200);
+    const attempt = await f.service.signIn({ usePlan: true }), url = new URL(attempt.authorizationUrl);
+    assert.equal(url.searchParams.get("client_id"), "dynamic_agent_client"); assert.equal(url.searchParams.get("agent_name_hint"), "Relay");
+    assert.equal(url.searchParams.has("login_hint"), false); assert.notEqual(url.searchParams.get("ext_agent_host_id"), leftover.hostId);
+    f.setClaims({ aud: "oaiapp_fresh" }); await f.callback(attempt, { client_id: "oaiapp_fresh" });
+    assert.equal((await attempt.completion).state, "connected"); assert.equal(f.repository.read()?.clientId, "oaiapp_fresh");
+  } finally { await f.cleanup(); }
+});
+for (const leftover of ["client", "client and identity"] as const)
+  it(`reads a stored ${leftover} without a session as not connected and connects with the dynamic client and no login hint`, async () => {
+    const f = await chatGptFixture();
+    try {
+      await f.connected(); const connected = f.repository.read(); assert.ok(connected);
+      await f.repository.withLock(async transaction => {
+        transaction.replace({ ...connected, revision: connected.revision + 1, session: null, ...(leftover === "client" ? { registration: null } : {}) }, connected.revision);
+      });
+      assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+      assert.deepEqual((await f.service.readStatus()).account, { state: "signed-out" });
+      const url = new URL((await f.service.signIn({ usePlan: true })).authorizationUrl);
+      assert.equal(url.searchParams.get("client_id"), "dynamic_agent_client"); assert.equal(url.searchParams.has("login_hint"), false);
+      assert.notEqual(url.searchParams.get("ext_agent_host_id"), connected.hostId);
+    } finally { await f.cleanup(); }
+  });

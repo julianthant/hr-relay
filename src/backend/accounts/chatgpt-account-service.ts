@@ -417,7 +417,10 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     try {
       const record = await repository.withLock(async transaction => {
         if (fenced()) throw fault("CHATGPT_AUTH_CANCELLED");
-        const current = transaction.read(); if (current !== undefined) return current;
+        const current = transaction.read();
+        // A client kept from a connect that never stored a session is not reused: Connect starts fresh.
+        if (current?.session === null && current.clientId !== null) { const fresh = forgotten(current); transaction.replace(fresh, current.revision); return fresh; }
+        if (current !== undefined) return current;
         const initial: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null, session: null };
         transaction.replace(initial, null); return initial;
       });
